@@ -1,0 +1,100 @@
+//! Input-addressed store paths (plan/0001 §3.4).
+//!
+//! A store path is `<gripsack-home>/store/<input-hash>-<name>` where the
+//! input hash covers the resolved module plan (fetch spec + pinned refs +
+//! build recipe + dependency hashes). Store paths are immutable; the same
+//! resolved inputs produce the same path on any machine of the same
+//! platform — that is what makes store sharing a trivial later feature.
+
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
+
+pub const STORE_DIR: &str = "store";
+pub const GENERATIONS_DIR: &str = "generations";
+/// Length of the hex input hash prefix in store path names.
+pub const HASH_LEN: usize = 16;
+
+/// Hex sha256 prefix of the canonical serialized module plan. `canonical`
+/// must be a stable serialization (serde struct field order is).
+pub fn input_hash(canonical: &str) -> String {
+    let digest = Sha256::digest(canonical.as_bytes());
+    digest
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .take(HASH_LEN)
+        .collect()
+}
+
+/// The store path for a module with the given resolved plan.
+pub fn store_path(home: &Path, name: &str, canonical: &str) -> PathBuf {
+    home.join(STORE_DIR)
+        .join(format!("{}-{name}", input_hash(canonical)))
+}
+
+/// Base directory for everything gripsack owns: store, generations, and
+/// the `current` symlink. `$GRIPSACK_HOME` wins, then
+/// `$XDG_DATA_HOME/gripsack`, then `~/.local/share/gripsack`.
+pub fn gripsack_home() -> PathBuf {
+    if let Some(dir) = std::env::var_os("GRIPSACK_HOME") {
+        return PathBuf::from(dir);
+    }
+    if let Some(data) = std::env::var_os("XDG_DATA_HOME") {
+        return PathBuf::from(data).join("gripsack");
+    }
+    let home = std::env::var_os("HOME").expect("HOME is not set");
+    PathBuf::from(home).join(".local/share/gripsack")
+}
+
+/// The `current` symlink — flipping it IS activation (0001 §9.2).
+pub fn current_link(home: &Path) -> PathBuf {
+    home.join("current")
+}
+
+/// Directory of one generation's profile tree.
+pub fn generation_dir(home: &Path, generation: u64) -> PathBuf {
+    home.join(GENERATIONS_DIR).join(generation.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_is_stable_and_input_sensitive() {
+        assert_eq!(input_hash("plan-a"), input_hash("plan-a"));
+        assert_ne!(input_hash("plan-a"), input_hash("plan-b"));
+        assert_eq!(input_hash("plan-a").len(), HASH_LEN * 2);
+    }
+
+    #[test]
+    fn store_path_format() {
+        let p = store_path(Path::new("/gs"), "helix", "plan-a");
+        let name = p.file_name().unwrap().to_str().unwrap();
+        assert!(name.ends_with("-helix"));
+        assert_eq!(name.len(), HASH_LEN * 2 + 1 + "helix".len());
+        assert_eq!(p.parent().unwrap(), Path::new("/gs/store"));
+    }
+
+    #[test]
+    fn home_resolution() {
+        // Single test mutating env to avoid cross-test races.
+        std::env::set_var("GRIPSACK_HOME", "/tmp/gs-explicit");
+        assert_eq!(gripsack_home(), Path::new("/tmp/gs-explicit"));
+        std::env::remove_var("GRIPSACK_HOME");
+        std::env::set_var("XDG_DATA_HOME", "/tmp/gs-xdg");
+        assert_eq!(gripsack_home(), Path::new("/tmp/gs-xdg/gripsack"));
+        std::env::remove_var("XDG_DATA_HOME");
+        std::env::set_var("HOME", "/tmp/gs-home");
+        assert_eq!(
+            gripsack_home(),
+            Path::new("/tmp/gs-home/.local/share/gripsack")
+        );
+    }
+
+    #[test]
+    fn generation_layout() {
+        let home = Path::new("/gs");
+        assert_eq!(current_link(home), Path::new("/gs/current"));
+        assert_eq!(generation_dir(home, 42), Path::new("/gs/generations/42"));
+    }
+}

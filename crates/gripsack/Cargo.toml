@@ -13,7 +13,11 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+owo-colors.workspace = true
 gripsack-ir.workspace = true
 gripsack-store.workspace = true
 gripsack-exec.workspace = true
 gripsack-fetch.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

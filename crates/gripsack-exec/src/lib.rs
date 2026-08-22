@@ -61,6 +61,33 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
     Ok(order)
 }
 
+/// Levelized view of the DAG for display: wave 0 = modules with no
+/// dependencies, wave k = everything whose deps finished in waves < k.
+/// Waves are a *reporting* artifact (0007 §5) — the scheduler runs a
+/// ready-queue, not barriers.
+pub fn waves(ir: &Ir) -> Result<Vec<Vec<String>>, PlanError> {
+    let order = build_order(ir)?;
+    let mut level: BTreeMap<&str, usize> = BTreeMap::new();
+    for name in &order {
+        let module = &ir.modules[name.as_str()];
+        let l = module
+            .depends
+            .iter()
+            .map(|d| level.get(d.module.as_str()).copied().unwrap_or(0) + 1)
+            .max()
+            .unwrap_or(0);
+        level.insert(name.as_str(), l);
+    }
+    let mut waves: Vec<Vec<String>> = Vec::new();
+    for (name, &l) in &level {
+        while waves.len() <= l {
+            waves.push(Vec::new());
+        }
+        waves[l].push(name.to_string());
+    }
+    Ok(waves)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +148,25 @@ mod tests {
         ir.modules.get_mut("helix").unwrap().depends[0].edge = EdgeKind::Build;
         let order = build_order(&ir).unwrap();
         assert_eq!(order, vec!["rust", "helix"]);
+    }
+
+    #[test]
+    fn waves_levelize_the_dag() {
+        let graph = ir(&[("a", &["b", "c"]), ("b", &["d"]), ("c", &["d"]), ("d", &[])]);
+        let w = waves(&graph).unwrap();
+        assert_eq!(
+            w,
+            vec![
+                vec!["d".to_string()],
+                vec!["b".to_string(), "c".to_string()],
+                vec!["a".to_string()],
+            ]
+        );
+        // independent modules share wave 0
+        let graph = ir(&[("z", &["x"]), ("x", &[] as &[&str]), ("y", &[] as &[&str])]);
+        let w = waves(&graph).unwrap();
+        assert_eq!(w[0], vec!["x".to_string(), "y".to_string()]);
+        assert_eq!(w[1], vec!["z".to_string()]);
     }
 
     #[test]

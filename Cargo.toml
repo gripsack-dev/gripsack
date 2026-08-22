@@ -15,6 +15,7 @@ serde_json = "1"
 thiserror = "2"
 sha2 = "0.10"
 clap = { version = "4", features = ["derive"] }
+owo-colors = "4"
 gripsack-ir = { path = "crates/gripsack-ir" }
 gripsack-store = { path = "crates/gripsack-store" }
 gripsack-exec = { path = "crates/gripsack-exec" }

@@ -1,10 +1,17 @@
 //! `grip` — the gripsack CLI.
 //!
-//! Scaffold state: `doctor` is real (it checks the frontend environment,
-//! which exists today); the remaining subcommands are the CLI surface
-//! from plan/0001 §6 and report themselves unimplemented.
+//! Real today: `doctor` (frontend environment), `plan --ir <file>`
+//! (diagnostics + execution waves for a frontend's IR). The remaining
+//! subcommands are the surface from plan/0001 §6 and report themselves
+//! unimplemented.
+
+mod render;
 
 use clap::{Parser, Subcommand};
+use owo_colors::OwoColorize;
+use render::Palette;
+
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[derive(Parser)]
@@ -28,11 +35,15 @@ enum Command {
         /// Restrict to these modules (default: the whole graph)
         modules: Vec<String>,
     },
-    /// Show what an apply would change, without changing anything
+    /// Show what an apply would change, without changing anything.
+    /// For now: validate IR and show the execution waves.
     Plan {
         #[arg(long)]
         host: Option<String>,
         modules: Vec<String>,
+        /// Read IR JSON directly (frontend debugging)
+        #[arg(long)]
+        ir: Option<PathBuf>,
     },
     /// Flip `current` back to a previous generation
     Rollback {
@@ -45,25 +56,85 @@ enum Command {
     Gc,
     /// Show which module owns a deployed path
     WhyOwns { path: String },
-    /// Check the frontend environment (python + gripsack package)
+    /// Check the frontend environment (python + node + gripsack package)
     Doctor,
 }
 
 fn main() -> ExitCode {
+    let palette = Palette::detect();
     match Cli::parse().command {
-        Command::Doctor => doctor(),
+        Command::Doctor => doctor(palette),
+        Command::Plan { ir: Some(path), .. } => plan_ir(&path, palette),
         other => {
             eprintln!("grip: `{other:?}` is not implemented yet — see plan/0001-architecture.md");
+            eprintln!("      (try `grip plan --ir <file>` or `grip doctor`)");
             ExitCode::from(2)
         }
     }
 }
 
+/// Validate an IR file and show the execution waves (0004 §4, 0007 §5).
+fn plan_ir(path: &PathBuf, palette: Palette) -> ExitCode {
+    let json = match std::fs::read_to_string(path) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("grip: cannot read {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let ir = match gripsack_ir::check(&json) {
+        Ok(ir) => ir,
+        Err(diagnostics) => {
+            eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+            return ExitCode::FAILURE;
+        }
+    };
+    let host = &ir.host;
+    println!(
+        "{} {} modules · host {}/{} · tags: {}",
+        "plan:".green().bold(),
+        ir.modules.len(),
+        host.os,
+        host.arch,
+        if host.tags.is_empty() {
+            "(none)".to_string()
+        } else {
+            host.tags.join(", ")
+        }
+    );
+    match gripsack_exec::waves(&ir) {
+        Ok(waves) => {
+            for (i, wave) in waves.iter().enumerate() {
+                println!(
+                    "  {} {}",
+                    format!("wave {i}").blue().bold(),
+                    wave.join(", ")
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", format!("error: {e}").red().bold());
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::SUCCESS
+}
+
 /// The frontend contract (plan/0003 §8): a Python with the `gripsack`
-/// package importable. Eval happens in that environment; the core never
-/// embeds an interpreter.
-fn doctor() -> ExitCode {
+/// package importable; node for TypeScript repos (0005 §1).
+fn doctor(palette: Palette) -> ExitCode {
     let mut ok = true;
+    let colored = palette.enabled;
+    let mark = |good: bool| {
+        if !colored {
+            return if good { "ok  " } else { "MISS" }.to_string();
+        }
+        if good {
+            "ok  ".green().bold().to_string()
+        } else {
+            "MISS".red().bold().to_string()
+        }
+    };
 
     match std::process::Command::new("python3")
         .arg("--version")
@@ -77,10 +148,10 @@ fn doctor() -> ExitCode {
             } else {
                 v.to_string()
             };
-            println!("ok    python: {v}");
+            println!("{}  python: {v}", mark(true));
         }
         _ => {
-            println!("MISS  python: `python3` not found on PATH");
+            println!("{}  python: `python3` not found on PATH", mark(false));
             ok = false;
         }
     }
@@ -91,22 +162,26 @@ fn doctor() -> ExitCode {
     match check {
         Ok(out) if out.status.success() => {
             println!(
-                "ok    frontend: gripsack python {}",
+                "{}  frontend: gripsack python {}",
+                mark(true),
                 String::from_utf8_lossy(&out.stdout).trim()
             );
         }
         _ => {
-            println!("MISS  frontend: `import gripsack` failed — pip install gripsack");
+            println!(
+                "{}  frontend: `import gripsack` failed — pip install gripsack",
+                mark(false)
+            );
             ok = false;
         }
     }
 
-    // TypeScript frontend (plan/0005 §1): optional — only repos declaring
-    // `frontend = "typescript"` need it, so absence is informational.
+    // TypeScript frontend (plan/0005 §1): optional.
     match std::process::Command::new("node").arg("--version").output() {
         Ok(out) if out.status.success() => {
             println!(
-                "ok    node: {} (typescript frontend)",
+                "{}  node: {} (typescript frontend)",
+                mark(true),
                 String::from_utf8_lossy(&out.stdout).trim()
             );
         }
