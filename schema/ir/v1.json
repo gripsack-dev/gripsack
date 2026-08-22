@@ -35,8 +35,7 @@
     },
     "module": {
       "type": "object",
-      "required": ["source"],
-      "properties": {
+            "properties": {
         "source": { "$ref": "#/$defs/source" },
         "build": { "$ref": "#/$defs/build" },
         "install": {

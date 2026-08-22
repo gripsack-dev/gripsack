@@ -173,7 +173,7 @@ def custom_hook(script: str, trigger: str = "post_activate") -> Intent:
 @dataclass
 class Module:
     name: str
-    source: Source
+    source: Optional[Source]
     build: Optional[dict[str, Any]] = None
     install: dict[str, Dest] = field(default_factory=dict)
     config: dict[str, Dest] = field(default_factory=dict)
@@ -182,7 +182,9 @@ class Module:
     span: Optional[dict[str, Any]] = None
 
     def to_ir(self) -> dict[str, Any]:
-        ir: dict[str, Any] = {"source": self.source.to_ir()}
+        ir: dict[str, Any] = {}
+        if self.source:
+            ir["source"] = self.source.to_ir()
         if self.build:
             ir["build"] = self.build
         if self.install:
@@ -211,7 +213,7 @@ _GRAPH: dict[str, Module] = {}
 
 def module(
     name: str,
-    source: Source,
+    source: Optional[Source] = None,
     build: Optional[dict[str, Any]] = None,
     install: Optional[dict[str, Dest]] = None,
     config: Optional[dict[str, Dest]] = None,
@@ -220,6 +222,7 @@ def module(
 ) -> Module:
     """Declare a module and register it in the graph.
 
+    `source` may be None for dotfiles-only modules (0006 §2 level 1).
     Captures the caller's file/line as its span (0004 §2).
     """
     frame = inspect.currentframe()

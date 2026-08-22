@@ -69,7 +69,7 @@ mod tests {
 
     fn module_with_deps(deps: &[&str]) -> Module {
         Module {
-            source: Source::File { path: "/x".into() },
+            source: Some(Source::File { path: "/x".into() }),
             build: Default::default(),
             install: vec![],
             config: vec![],

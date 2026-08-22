@@ -75,5 +75,16 @@ def test_build_edge_is_declared():
     assert ir["modules"]["helix-src"]["depends"][0]["edge"] == "build"
 
 
+def test_dotfiles_only_module_emits_no_source():
+    module(
+        "helix",
+        config={"config.toml": tracked_copy("~/.config/helix/config.toml")},
+    )
+    ir = json.loads(emit_ir())
+    helix = ir["modules"]["helix"]
+    assert "source" not in helix
+    assert helix["config"][0]["mode"] == "tracked_copy"
+
+
 def test_version_string_exists():
     assert gripsack.__version__

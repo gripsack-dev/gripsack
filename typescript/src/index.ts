@@ -127,7 +127,8 @@ export const customHook = (script: string, trigger: Trigger = "post_activate"): 
 // ---------------------------------------------------------------- modules
 
 export interface ModuleSpec {
-  source: Source;
+  /** Optional for dotfiles-only modules (0006 §2 level 1). */
+  source?: Source;
   build?: { kind: "none" | "cargo_install" | "make" } | { kind: "custom_shell"; script: string };
   install?: Record<string, Dest>;
   config?: Record<string, Dest>;
@@ -142,7 +143,7 @@ interface IrEntry {
 }
 
 interface IrModule {
-  source: Source;
+  source?: Source;
   build?: ModuleSpec["build"];
   install?: IrEntry[];
   config?: IrEntry[];
@@ -170,7 +171,8 @@ function callerSpan(): Span | undefined {
 
 /** Declare a module and register it in the graph. */
 export function module(name: string, spec: ModuleSpec): void {
-  const ir: IrModule = { source: spec.source };
+  const ir: IrModule = {};
+  if (spec.source) ir.source = spec.source;
   if (spec.build) ir.build = spec.build;
   const entries = (rec?: Record<string, Dest>): IrEntry[] | undefined =>
     rec && Object.keys(rec).length > 0

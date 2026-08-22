@@ -64,6 +64,15 @@ describe("emitIr", () => {
     assert.ok(span.col > 0);
   });
 
+  it("dotfiles-only modules emit no source", () => {
+    module("helix", {
+      config: { "config.toml": trackedCopy("~/.config/helix/config.toml") },
+    });
+    const ir = JSON.parse(emitIr());
+    assert.equal(ir.modules.helix.source, undefined);
+    assert.equal(ir.modules.helix.config[0].mode, "tracked_copy");
+  });
+
   it("marks build-only deps", () => {
     module("helix-src", {
       source: tarball("https://example.invalid/helix.tar.xz"),

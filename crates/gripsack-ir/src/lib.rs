@@ -59,7 +59,10 @@ pub struct HostFacts {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Module {
-    pub source: Source,
+    /// None for dotfiles-only modules — their content is their config
+    /// files (0006 §2 level 1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Source>,
     #[serde(default)]
     pub build: Build,
     #[serde(default)]
@@ -384,7 +387,7 @@ mod tests {
         assert_eq!(ir.ir_version, 1);
         assert_eq!(ir.modules.len(), 2);
         let helix = &ir.modules["helix"];
-        assert!(matches!(helix.source, Source::GithubRelease { .. }));
+        assert!(matches!(helix.source, Some(Source::GithubRelease { .. })));
         assert_eq!(helix.config[0].mode, Ownership::TrackedCopy);
         assert_eq!(helix.span.as_ref().unwrap().line, 4);
         let again = serde_json::to_string(&ir).unwrap();
@@ -435,6 +438,24 @@ mod tests {
         assert!(matches!(e.mode, Ownership::Owned));
         let d: Dependency = serde_json::from_str(r#"{"module":"m"}"#).unwrap();
         assert!(matches!(d.edge, EdgeKind::Runtime));
+    }
+
+    #[test]
+    fn dotfiles_only_module_needs_no_source() {
+        // 0006 §2 level 1: a module that only manages configs.
+        let json = r#"{
+            "ir_version": 1,
+            "modules": {
+                "helix": {
+                    "config": [{"from": "config.toml",
+                                "to": "~/.config/helix/config.toml",
+                                "mode": "tracked_copy"}]
+                }
+            }
+        }"#;
+        let ir = check(json).unwrap();
+        assert_eq!(ir.modules["helix"].source, None);
+        assert_eq!(ir.modules["helix"].config.len(), 1);
     }
 
     #[test]
