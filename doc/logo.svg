@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 310" font-family="ui-monospace, DejaVu Sans Mono, monospace">
+  <!-- gripsack logo, Catppuccin Mocha (static bake for README/<img> use;
+       the re-themable var() version lives on gripsack.dev). A traveler's
+       gripsack with a config file and a terminal chip peeking out. -->
+  <rect width="480" height="310" rx="18" fill="#11111b"/>
+  <ellipse cx="240" cy="240" rx="118" ry="10" fill="#181825"/>
+  <g transform="rotate(-10 176 82)">
+    <rect x="152" y="46" width="48" height="72" rx="6" fill="#1e1e2e" stroke="#585b70" stroke-width="2.5"/>
+    <rect x="161" y="62" width="24" height="6" rx="2.5" fill="#89b4fa"/>
+    <rect x="161" y="74" width="30" height="6" rx="2.5" fill="#94e2d5"/>
+    <rect x="161" y="86" width="20" height="6" rx="2.5" fill="#a6adc8"/>
+  </g>
+  <g transform="rotate(9 307 77)">
+    <rect x="282" y="44" width="50" height="66" rx="9" fill="#1e1e2e" stroke="#585b70" stroke-width="2.5"/>
+    <text x="293" y="76" font-size="24" font-weight="bold" fill="#a6e3a1">❯</text>
+    <rect x="308" y="60" width="10" height="17" rx="2.5" fill="#a6e3a1" opacity="0.65"/>
+  </g>
+  <rect x="204" y="68" width="72" height="44" rx="18" fill="none" stroke="#c9906a" stroke-width="8"/>
+  <rect x="140" y="110" width="200" height="122" rx="26" fill="#fab387"/>
+  <rect x="140" y="110" width="200" height="48" rx="24" fill="#d1946f"/>
+  <rect x="180" y="102" width="14" height="64" rx="4" fill="#b87f5c"/>
+  <rect x="286" y="102" width="14" height="64" rx="4" fill="#b87f5c"/>
+  <rect x="176" y="126" width="22" height="16" rx="4" fill="none" stroke="#f9e2af" stroke-width="3.5"/>
+  <rect x="282" y="126" width="22" height="16" rx="4" fill="none" stroke="#f9e2af" stroke-width="3.5"/>
+  <circle cx="187" cy="162" r="3.2" fill="#f9e2af"/>
+  <circle cx="293" cy="162" r="3.2" fill="#f9e2af"/>
+  <path d="M 158 212 H 322" stroke="#b87f5c" stroke-width="3.5" stroke-dasharray="8 8" stroke-linecap="round"/>
+  <text x="240" y="291" text-anchor="middle" font-size="54" font-weight="bold" letter-spacing="-2" fill="#cdd6f4">gripsack</text>
+</svg>
