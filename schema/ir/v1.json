@@ -23,13 +23,15 @@
         "tags": { "type": "array", "items": { "type": "string" } }
       }
     },
-    "provenance": {
+    "span": {
       "type": "object",
       "required": ["file", "line"],
       "properties": {
         "file": { "type": "string" },
-        "line": { "type": "integer", "minimum": 1 }
-      }
+        "line": { "type": "integer", "minimum": 1 },
+        "col": { "type": "integer", "minimum": 1 }
+      },
+      "description": "Source location of this node in frontend code (plan/0004 §2). Optional; built-in frontends MUST emit it at module level."
     },
     "module": {
       "type": "object",
@@ -53,7 +55,7 @@
           "type": "array",
           "items": { "$ref": "#/$defs/intent" }
         },
-        "provenance": { "$ref": "#/$defs/provenance" }
+        "span": { "$ref": "#/$defs/span" }
       }
     },
     "source": {
@@ -130,7 +132,8 @@
         "mode": {
           "enum": ["owned", "tracked_copy", "merge", "template"],
           "default": "owned"
-        }
+        },
+        "span": { "$ref": "#/$defs/span" }
       }
     },
     "dependency": {
@@ -138,7 +141,8 @@
       "required": ["module"],
       "properties": {
         "module": { "type": "string", "minLength": 1 },
-        "edge": { "enum": ["runtime", "build"], "default": "runtime" }
+        "edge": { "enum": ["runtime", "build"], "default": "runtime" },
+        "span": { "$ref": "#/$defs/span" }
       }
     },
     "intent": {
@@ -152,7 +156,8 @@
         "kind": { "enum": ["service", "fonts", "desktop_entry", "custom_shell"] },
         "name": { "type": "string" },
         "user": { "type": "boolean" },
-        "script": { "type": "string" }
+        "script": { "type": "string" },
+        "span": { "$ref": "#/$defs/span" }
       }
     },
     "sha256": {

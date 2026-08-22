@@ -14,6 +14,13 @@ services:
     # exists, the gate passed. The command is just a confirmation.
     command: 'echo "gate passed: fmt + clippy -D warnings + cargo test"'
 
+  ts-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ts-test
+    command: 'echo "gate passed: typescript frontend tests"'
+
   pytest:
     build:
       context: .

@@ -16,6 +16,15 @@ RUN cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
 
+# TypeScript frontend tests (plan/0005 §1). Independent stage — no rust
+# cache needed, builds in parallel with the chain below.
+FROM node:22-alpine AS ts-test
+WORKDIR /app
+COPY typescript/package.json typescript/package-lock.json ./typescript/
+RUN cd typescript && npm ci
+COPY typescript ./typescript
+RUN cd typescript && npm test
+
 # Python frontend tests. FROM test reuses the compiled cache and makes
 # the rust gate a precondition of this stage existing at all.
 FROM test AS pytest

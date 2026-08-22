@@ -1,0 +1,12 @@
+[package]
+name = "gripsack-config"
+description = "gripsack tool configuration: env.toml + layered merge (plan/0005)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+toml = "0.8"

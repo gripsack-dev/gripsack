@@ -57,12 +57,12 @@ def test_emit_shape_matches_ir_v1():
     assert "depends" not in git_mod
 
 
-def test_provenance_points_at_this_file():
+def test_span_points_at_this_file():
     module("x", source=tarball("https://example.invalid/x.tar.xz"))
     ir = json.loads(emit_ir())
-    prov = ir["modules"]["x"]["provenance"]
-    assert prov["file"].endswith("test_emit.py")
-    assert isinstance(prov["line"], int) and prov["line"] > 0
+    span = ir["modules"]["x"]["span"]
+    assert span["file"].endswith("test_emit.py")
+    assert isinstance(span["line"], int) and span["line"] > 0
 
 
 def test_build_edge_is_declared():

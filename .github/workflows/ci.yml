@@ -18,6 +18,9 @@ jobs:
       - name: Python frontend tests
         run: docker compose run --build --rm pytest
 
+      - name: TypeScript frontend tests
+        run: docker compose run --build --rm ts-test
+
       # Flow tests: real binary + real frontend against fixture env
       # repos, offline (file:// fixtures only).
       - name: E2E (flow suite)

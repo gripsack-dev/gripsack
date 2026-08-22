@@ -78,10 +78,11 @@ mod tests {
                 .map(|d| Dependency {
                     module: d.to_string(),
                     edge: EdgeKind::Runtime,
+                    span: None,
                 })
                 .collect(),
             activate: vec![],
-            provenance: None,
+            span: None,
         }
     }
 

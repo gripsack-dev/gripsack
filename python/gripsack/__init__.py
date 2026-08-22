@@ -4,8 +4,8 @@ Modules are plain Python using this package (plan/0001 §3.3). Evaluation
 collects Module objects into a graph and emits the IR (JSON) the Rust
 core consumes. The core never executes this code; it only reads the IR.
 
-Provenance (0001 §3.2): `module()` captures the caller's file and line so
-core errors can point back at the user's source.
+Spans (0004 §2): `module()` captures the caller's file and line so core
+errors can point back at the user's source.
 """
 
 from __future__ import annotations
@@ -179,7 +179,7 @@ class Module:
     config: dict[str, Dest] = field(default_factory=dict)
     depends: list[Dependency] = field(default_factory=list)
     activate: list[Intent] = field(default_factory=list)
-    provenance: Optional[dict[str, Any]] = None
+    span: Optional[dict[str, Any]] = None
 
     def to_ir(self) -> dict[str, Any]:
         ir: dict[str, Any] = {"source": self.source.to_ir()}
@@ -201,8 +201,8 @@ class Module:
             ]
         if self.activate:
             ir["activate"] = [i.to_ir() for i in self.activate]
-        if self.provenance:
-            ir["provenance"] = self.provenance
+        if self.span:
+            ir["span"] = self.span
         return ir
 
 
@@ -220,11 +220,11 @@ def module(
 ) -> Module:
     """Declare a module and register it in the graph.
 
-    Captures the caller's file/line as provenance (0001 §3.2).
+    Captures the caller's file/line as its span (0004 §2).
     """
     frame = inspect.currentframe()
     caller = frame.f_back if frame and frame.f_back else None
-    provenance = (
+    span = (
         {"file": caller.f_code.co_filename, "line": caller.f_lineno}
         if caller
         else None
@@ -237,7 +237,7 @@ def module(
         config=config or {},
         depends=depends or [],
         activate=activate or [],
-        provenance=provenance,
+        span=span,
     )
     _GRAPH[name] = m
     return m

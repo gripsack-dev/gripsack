@@ -1,4 +1,6 @@
 target/
+typescript/node_modules/
+typescript/dist/
 dist/
 .git/
 **/.venv/

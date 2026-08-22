@@ -101,6 +101,18 @@ fn doctor() -> ExitCode {
         }
     }
 
+    // TypeScript frontend (plan/0005 §1): optional — only repos declaring
+    // `frontend = "typescript"` need it, so absence is informational.
+    match std::process::Command::new("node").arg("--version").output() {
+        Ok(out) if out.status.success() => {
+            println!(
+                "ok    node: {} (typescript frontend)",
+                String::from_utf8_lossy(&out.stdout).trim()
+            );
+        }
+        _ => println!("info  node: not found — only needed for `frontend = \"typescript\"` repos"),
+    }
+
     println!("      home: {}", gripsack_store::gripsack_home().display());
 
     if ok {
