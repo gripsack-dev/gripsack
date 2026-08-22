@@ -8,7 +8,7 @@ from gripsack import module, github_release, symlink, tracked_copy
 
 helix = module(
     "helix",
-    source=github_release(
+    fetch=github_release(
         repo="helix-editor/helix",
         asset="helix-{version}-x86_64-linux.tar.xz",
     ),

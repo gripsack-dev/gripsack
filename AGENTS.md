@@ -5,7 +5,7 @@ described once in typed Python, deployed by a Rust core into a
 hash-addressed store with generations and rollback. Frontends evaluate
 modules to IR (JSON); the core only ever consumes IR (`plan/0001`).
 Sourcing splits into eval-time Python resolvers and exec-time transports,
-with `gripsource-*` plugins for bespoke transports (`plan/0002`).
+with `gripfetch-*` plugins for bespoke transports (`plan/0002`).
 
 ## Build & test — docker first
 
@@ -33,7 +33,7 @@ files (container mounts) — delete via docker or `sudo`.
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
 | `crates/gripsack-store` | store paths, generations, GC |
 | `crates/gripsack-exec` | DAG scheduling |
-| `crates/gripsack-source` | built-in fetchers + `gripsource-*` plugin host |
+| `crates/gripsack-fetch` | built-in fetchers + `gripfetch-*` plugin host |
 | `crates/gripsack` | the `grip` CLI |
 | `python/` | the typed module DSL (pip package `gripsack`) |
 | `e2e/` | uv+pytest flow tests against the real binary |
@@ -44,7 +44,7 @@ files (container mounts) — delete via docker or `sudo`.
 
 - `plan/0001-architecture.md` — modules, store, generations, ownership
   modes, activation, invariants (§9 holds or nothing does).
-- `plan/0002-sourcing.md` — resolver/transport split, sourcerer protocol,
+- `plan/0002-sourcing.md` — resolver/transport split, fetcher protocol,
   hash verification rules.
 - `plan/0003-repo-and-tooling.md` — this file's details: gates, releases,
   versioning, IR compatibility policy.

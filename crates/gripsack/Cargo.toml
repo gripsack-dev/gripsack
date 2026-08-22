@@ -16,4 +16,4 @@ clap.workspace = true
 gripsack-ir.workspace = true
 gripsack-store.workspace = true
 gripsack-exec.workspace = true
-gripsack-source.workspace = true
+gripsack-fetch.workspace = true

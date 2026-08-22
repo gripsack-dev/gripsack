@@ -18,4 +18,4 @@ clap = { version = "4", features = ["derive"] }
 gripsack-ir = { path = "crates/gripsack-ir" }
 gripsack-store = { path = "crates/gripsack-store" }
 gripsack-exec = { path = "crates/gripsack-exec" }
-gripsack-source = { path = "crates/gripsack-source" }
+gripsack-fetch = { path = "crates/gripsack-fetch" }

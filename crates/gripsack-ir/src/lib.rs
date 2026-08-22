@@ -81,7 +81,7 @@ pub struct Module {
     /// files (0006 §2 level 1). Mutually exclusive with `steps`
     /// (0007 §1, E103).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<Source>,
+    pub fetch: Option<FetchSpec>,
     #[serde(default)]
     pub build: Build,
     #[serde(default)]
@@ -96,16 +96,23 @@ pub struct Module {
     /// fields above must all be empty — the core rejects both-shapes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub steps: Option<Vec<Step>>,
+    /// Module-level smoke contract — a synthesized terminal step in the
+    /// pipeline, run pre-flip (0007 §verify).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify: Option<Verify>,
+    /// Retry default for this module's steps (0007 §retries).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retries: Option<u32>,
     /// Where this module was declared (0004 §2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
 }
 
-/// How to obtain the module's payload. Plugin sources are opaque to the
-/// core beyond `name` + `args` (0002 §4).
+/// How to obtain the module's payload — a fetch spec. Plugin fetches are
+/// opaque to the core beyond `name` + `args` (0002 §4).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Source {
+pub enum FetchSpec {
     GithubRelease {
         repo: String,
         asset: String,
@@ -245,6 +252,14 @@ pub struct Step {
     /// Reporting tag — never a scheduling barrier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<Phase>,
+    /// Smoke contract run right after the action; failure = step failed
+    /// (0007 §verify). Mandatory in spirit for custom_shell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify: Option<Verify>,
+    /// Retry count override (0007 §retries). Default: engine policy —
+    /// retries only for fetch actions, 0 otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retries: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
 }
@@ -253,7 +268,7 @@ pub struct Step {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StepAction {
     Fetch {
-        source: Source,
+        fetch: FetchSpec,
     },
     Build {
         spec: Build,
@@ -269,6 +284,23 @@ pub enum StepAction {
     },
     /// The honest escape hatch: declared, flagged, cache-busting.
     CustomShell {
+        script: String,
+    },
+}
+
+/// A verify check — a smoke contract, not a test framework (0007 §verify).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Verify {
+    BinaryRuns {
+        path: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        args: Vec<String>,
+    },
+    FileExists {
+        path: String,
+    },
+    Shell {
         script: String,
     },
 }
@@ -440,7 +472,7 @@ fn validate_steps(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
             continue;
         };
         // E103: explicit steps + any declarative field.
-        let mixed = module.source.is_some()
+        let mixed = module.fetch.is_some()
             || module.build != Build::None
             || !module.install.is_empty()
             || !module.config.is_empty()
@@ -451,7 +483,7 @@ fn validate_steps(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                     codes::STEPS_WITH_FIELDS,
                     format!(
                         "module {name:?} mixes `steps` with declarative fields \
-                         (source/build/install/config/activate)"
+                         (fetch/build/install/config/activate)"
                     ),
                 )
                 .with_label(module.span.clone(), "module declared here")
@@ -539,7 +571,7 @@ mod tests {
         "host": {"os": "linux", "arch": "x86_64", "tags": ["gui"]},
         "modules": {
             "helix": {
-                "source": {"kind": "github_release", "repo": "helix-editor/helix",
+                "fetch": {"kind": "github_release", "repo": "helix-editor/helix",
                            "asset": "helix-{version}-x86_64-linux.tar.xz"},
                 "install": [{"from": "bin/hx", "to": "~/.local/bin/hx", "mode": "owned"}],
                 "config": [{"from": "config.toml", "to": "~/.config/helix/config.toml",
@@ -550,7 +582,7 @@ mod tests {
                 "span": {"file": "modules/helix.py", "line": 4, "col": 1}
             },
             "git": {
-                "source": {"kind": "tarball", "url": "https://example.invalid/git.tar.xz"}
+                "fetch": {"kind": "tarball", "url": "https://example.invalid/git.tar.xz"}
             }
         }
     }"#;
@@ -561,7 +593,7 @@ mod tests {
         assert_eq!(ir.ir_version, 1);
         assert_eq!(ir.modules.len(), 2);
         let helix = &ir.modules["helix"];
-        assert!(matches!(helix.source, Some(Source::GithubRelease { .. })));
+        assert!(matches!(helix.fetch, Some(FetchSpec::GithubRelease { .. })));
         assert_eq!(helix.config[0].mode, Ownership::TrackedCopy);
         assert_eq!(helix.span.as_ref().unwrap().line, 4);
         let again = serde_json::to_string(&ir).unwrap();
@@ -628,7 +660,7 @@ mod tests {
             }
         }"#;
         let ir = check(json).unwrap();
-        assert_eq!(ir.modules["helix"].source, None);
+        assert_eq!(ir.modules["helix"].fetch, None);
         assert_eq!(ir.modules["helix"].config.len(), 1);
     }
 
@@ -638,14 +670,14 @@ mod tests {
             "helix": {
                 "steps": [
                     {"id": "fetch", "action": {"kind": "fetch",
-                     "source": {"kind": "tarball", "url": "https://example.invalid/h.tar.xz"}},
+                     "fetch": {"kind": "tarball", "url": "https://example.invalid/h.tar.xz"}},
                      "phase": "fetch"},
                     {"id": "patch", "action": {"kind": "custom_shell", "script": "true"},
                      "needs": ["fetch"], "phase": "custom"}
                 ]
             },
             "rust": {
-                "source": {"kind": "tarball", "url": "https://example.invalid/r.tar.xz"}
+                "fetch": {"kind": "tarball", "url": "https://example.invalid/r.tar.xz"}
             }
         }
     }"#;
@@ -653,6 +685,22 @@ mod tests {
     #[test]
     fn explicit_steps_validate() {
         check(STEPPED).unwrap();
+    }
+
+    #[test]
+    fn verify_and_retries_roundtrip() {
+        let json = STEPPED.replace(
+            r#""needs": ["fetch"], "phase": "custom"}"#,
+            r#""needs": ["fetch"], "phase": "custom",
+             "verify": {"kind": "binary_runs", "path": "bin/hx", "args": ["--version"]},
+             "retries": 2}"#,
+        );
+        let ir = check(&json).unwrap();
+        let step = &ir.modules["helix"].steps.as_ref().unwrap()[1];
+        assert!(matches!(step.verify, Some(Verify::BinaryRuns { .. })));
+        assert_eq!(step.retries, Some(2));
+        let again = serde_json::to_string(&ir).unwrap();
+        check(&again).unwrap();
     }
 
     #[test]
@@ -671,7 +719,7 @@ mod tests {
     fn steps_plus_declarative_fields_is_e103() {
         let bad = STEPPED.replace(
             r#""steps": ["#,
-            r#""source": {"kind": "file", "path": "/x"}, "steps": ["#,
+            r#""fetch": {"kind": "file", "path": "/x"}, "steps": ["#,
         );
         let diagnostics = check(&bad).unwrap_err();
         assert_eq!(diagnostics[0].code, codes::STEPS_WITH_FIELDS);

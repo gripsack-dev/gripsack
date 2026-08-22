@@ -26,7 +26,7 @@ gripsack/                    github.com/gripsack-dev/gripsack
     gripsack-ir              IR types + validation
     gripsack-store           store paths, generations, GC
     gripsack-exec            DAG scheduling
-    gripsack-source          built-in fetchers + sourcerer host (0002)
+    gripsack-fetch          built-in fetchers + fetcher plugin host (0002)
   python/                    typed module DSL, emits IR → PyPI `gripsack`
   e2e/                       uv+pytest flow tests against the real binary
   demos/                     VHS tapes
@@ -69,7 +69,7 @@ the compose gates. `./dist/` and `target/` may contain root-owned files.
 
 | layer | what | where |
 |---|---|---|
-| unit | IR validation, store hashing, topo order, sourcerer discovery | per crate, in `test` gate |
+| unit | IR validation, store hashing, topo order, fetcher discovery | per crate, in `test` gate |
 | frontend | emit shape, provenance capture, IR round-trip | `python/tests`, in `pytest` gate |
 | e2e flow | the product working | `e2e/`, in `e2e` gate |
 

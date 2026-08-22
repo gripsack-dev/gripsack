@@ -2,9 +2,10 @@
 
 import type { Dependency } from "./deps.js";
 import type { Dest, Ownership } from "./entries.js";
+import type { Fetch } from "./fetch.js";
 import type { Intent } from "./intents.js";
-import type { Source } from "./sources.js";
 import type { Step } from "./steps.js";
+import type { Verify } from "./verify.js";
 import { register } from "./graph.js";
 
 export interface Span {
@@ -16,7 +17,7 @@ export interface Span {
 export interface ModuleSpec {
   /** Optional for dotfiles-only modules (0006 §2 level 1). Mutually
    *  exclusive with `steps` (0007 §1). */
-  source?: Source;
+  fetch?: Fetch;
   build?: { kind: "none" | "cargo_install" | "make" } | { kind: "custom_shell"; script: string };
   install?: Record<string, Dest>;
   config?: Record<string, Dest>;
@@ -24,6 +25,10 @@ export interface ModuleSpec {
   activate?: Intent[];
   /** Explicit pipeline control (0007). */
   steps?: Step[];
+  /** Module-level smoke contract, run pre-flip (0007 §verify). */
+  verify?: Verify;
+  /** Retry default for this module's steps (0007 §retries). */
+  retries?: number;
 }
 
 export interface IrEntry {
@@ -33,13 +38,15 @@ export interface IrEntry {
 }
 
 export interface IrModule {
-  source?: Source;
+  fetch?: Fetch;
   build?: ModuleSpec["build"];
   install?: IrEntry[];
   config?: IrEntry[];
   depends?: Dependency[];
   activate?: Intent[];
   steps?: Step[];
+  verify?: Verify;
+  retries?: number;
   span?: Span;
 }
 
@@ -61,7 +68,7 @@ function callerSpan(): Span | undefined {
 /** Declare a module and register it in the graph. */
 export function module(name: string, spec: ModuleSpec): void {
   const ir: IrModule = {};
-  if (spec.source) ir.source = spec.source;
+  if (spec.fetch) ir.fetch = spec.fetch;
   if (spec.build) ir.build = spec.build;
   const entries = (rec?: Record<string, Dest>): IrEntry[] | undefined =>
     rec && Object.keys(rec).length > 0
@@ -74,6 +81,8 @@ export function module(name: string, spec: ModuleSpec): void {
   if (spec.depends?.length) ir.depends = spec.depends;
   if (spec.activate?.length) ir.activate = spec.activate;
   if (spec.steps?.length) ir.steps = spec.steps;
+  if (spec.verify) ir.verify = spec.verify;
+  if (spec.retries !== undefined) ir.retries = spec.retries;
   const span = callerSpan();
   if (span) ir.span = span;
   register(name, ir);

@@ -64,12 +64,12 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gripsack_ir::{Dependency, EdgeKind, Module, Source};
+    use gripsack_ir::{Dependency, EdgeKind, FetchSpec, Module};
     use std::collections::BTreeMap;
 
     fn module_with_deps(deps: &[&str]) -> Module {
         Module {
-            source: Some(Source::File { path: "/x".into() }),
+            fetch: Some(FetchSpec::File { path: "/x".into() }),
             build: Default::default(),
             install: vec![],
             config: vec![],
@@ -83,6 +83,8 @@ mod tests {
                 .collect(),
             activate: vec![],
             steps: None,
+            verify: None,
+            retries: None,
             span: None,
         }
     }

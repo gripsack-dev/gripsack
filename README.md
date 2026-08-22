@@ -38,7 +38,7 @@ root, no sandbox dogma.
   deps are ephemeral.
 - **Any source** — GitHub releases, tarballs, git builds, cargo, your
   company's internal registry. Fetchers are pluggable; the escalation
-  ladder is built-in args → Python/TS resolvers → `gripsource-*`
+  ladder is built-in args → Python/TS resolvers → `gripfetch-*`
   plugins ([plan/0002](plan/0002-sourcing.md)).
 - **Dotfiles, first-class** — per-file ownership: `owned` symlinks,
   `tracked-copy` with drift detection, `merge` blocks, `template` for
@@ -81,7 +81,7 @@ IR — the core never embeds either runtime
 Resolution happens at eval (arbitrary, credentialed Python/TS in your
 repo); transport happens in the core. Internal registry? A resolver in
 your env repo's `lib/` usually suffices — the skill travels with your
-dotfiles. Bespoke transport (mTLS, non-HTTP) gets a `gripsource-*`
+dotfiles. Bespoke transport (mTLS, non-HTTP) gets a `gripfetch-*`
 plugin speaking NDJSON over stdio, with the core verifying every byte
 against the lockfile.
 
@@ -90,7 +90,7 @@ against the lockfile.
 | Doc | Contents |
 |---|---|
 | [0001 — architecture](plan/0001-architecture.md) | modules, store, generations, ownership, activation, invariants |
-| [0002 — sourcing](plan/0002-sourcing.md) | resolvers, transports, sourcerers |
+| [0002 — sourcing](plan/0002-sourcing.md) | resolvers, transports, fetchers |
 | [0003 — repo & tooling](plan/0003-repo-and-tooling.md) | layout, docker gates, CI, releases |
 | [0004 — rich IR & passes](plan/0004-rich-ir-and-passes.md) | spans, diagnostics, compiler passes, LSP |
 | [0005 — frontends & config](plan/0005-frontends-and-configuration.md) | TypeScript, env.toml, evaluation order |

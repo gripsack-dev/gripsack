@@ -25,7 +25,7 @@ def setup_function():
 def test_emit_shape_matches_ir_v1():
     module(
         "helix",
-        source=github_release(
+        fetch=github_release(
             repo="helix-editor/helix",
             asset="helix-{version}-x86_64-linux.tar.xz",
         ),
@@ -34,7 +34,7 @@ def test_emit_shape_matches_ir_v1():
         depends=[dep("git")],
         activate=[service("syncthing")],
     )
-    module("git", source=tarball("https://example.invalid/git.tar.xz"))
+    module("git", fetch=tarball("https://example.invalid/git.tar.xz"))
 
     ir = json.loads(emit_ir(tags=["gui"]))
 
@@ -43,8 +43,8 @@ def test_emit_shape_matches_ir_v1():
     assert ir["host"]["os"] and ir["host"]["arch"]
 
     helix = ir["modules"]["helix"]
-    assert helix["source"]["kind"] == "github_release"
-    assert helix["source"]["repo"] == "helix-editor/helix"
+    assert helix["fetch"]["kind"] == "github_release"
+    assert helix["fetch"]["repo"] == "helix-editor/helix"
     assert helix["install"] == [
         {"from": "bin/hx", "to": "~/.local/bin/hx", "mode": "owned"}
     ]
@@ -60,7 +60,7 @@ def test_emit_shape_matches_ir_v1():
 
 
 def test_span_points_at_this_file():
-    module("x", source=tarball("https://example.invalid/x.tar.xz"))
+    module("x", fetch=tarball("https://example.invalid/x.tar.xz"))
     ir = json.loads(emit_ir())
     span = ir["modules"]["x"]["span"]
     assert span["file"].endswith("test_emit.py")
@@ -70,7 +70,7 @@ def test_span_points_at_this_file():
 def test_build_edge_is_declared():
     module(
         "helix-src",
-        source=tarball("https://example.invalid/helix.tar.xz"),
+        fetch=tarball("https://example.invalid/helix.tar.xz"),
         depends=[dep("rust", edge="build")],
     )
     ir = json.loads(emit_ir())
@@ -84,7 +84,7 @@ def test_dotfiles_only_module_emits_no_source():
     )
     ir = json.loads(emit_ir())
     helix = ir["modules"]["helix"]
-    assert "source" not in helix
+    assert "fetch" not in helix
     assert helix["config"][0]["mode"] == "tracked_copy"
 
 

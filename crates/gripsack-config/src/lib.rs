@@ -22,7 +22,11 @@ pub enum ConfigError {
 pub struct EnvConfig {
     pub env: EnvSection,
     pub eval: EvalSection,
-    pub sources: BTreeMap<String, SourceSection>,
+    pub fetchers: BTreeMap<String, FetcherSection>,
+    /// Rate limits per throttle domain, e.g. `"api.github.com" = "2/s"`
+    /// (0007 §throttling). The core attaches primitives to domains.
+    #[serde(default)]
+    pub throttle: BTreeMap<String, String>,
     pub settings: Settings,
 }
 
@@ -31,7 +35,7 @@ pub struct EnvConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct UserConfig {
-    pub sources: BTreeMap<String, SourceSection>,
+    pub fetchers: BTreeMap<String, FetcherSection>,
     pub settings: Settings,
 }
 
@@ -53,7 +57,7 @@ pub enum Frontend {
 }
 
 /// Frontend-environment provisioning: packages the modules import at
-/// eval time (resolvers, sourcerer libraries — 0002 §3). Content-cached:
+/// eval time (resolvers, fetcher libraries — 0002 §3). Content-cached:
 /// same spec, same environment.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -61,12 +65,12 @@ pub struct EvalSection {
     pub deps: Vec<String>,
 }
 
-/// A named external source's tool-level wiring (0002 §4).
+/// A named fetcher.s tool-level wiring (0002 §4).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct SourceSection {
-    /// Sourcerer executable override; default discovery is
-    /// `gripsource-<name>` on PATH.
+pub struct FetcherSection {
+    /// Fetcher plugin override; default discovery is
+    /// `gripfetch-<name>` on PATH.
     pub plugin: Option<String>,
 }
 
@@ -80,11 +84,11 @@ pub struct Settings {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Config {
     pub settings: Settings,
-    pub sources: BTreeMap<String, SourceSectionView>,
+    pub fetchers: BTreeMap<String, FetcherSectionView>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct SourceSectionView {
+pub struct FetcherSectionView {
     pub plugin: Option<String>,
 }
 
@@ -105,26 +109,29 @@ pub fn merge(user: Option<&UserConfig>, repo: &EnvConfig) -> Config {
             .keep_generations
             .or_else(|| user.and_then(|u| u.settings.keep_generations)),
     };
-    let mut sources: BTreeMap<String, SourceSectionView> = BTreeMap::new();
+    let mut sources: BTreeMap<String, FetcherSectionView> = BTreeMap::new();
     if let Some(user) = user {
-        for (name, section) in &user.sources {
+        for (name, section) in &user.fetchers {
             sources.insert(
                 name.clone(),
-                SourceSectionView {
+                FetcherSectionView {
                     plugin: section.plugin.clone(),
                 },
             );
         }
     }
-    for (name, section) in &repo.sources {
+    for (name, section) in &repo.fetchers {
         sources.insert(
             name.clone(),
-            SourceSectionView {
+            FetcherSectionView {
                 plugin: section.plugin.clone(),
             },
         );
     }
-    Config { settings, sources }
+    Config {
+        settings,
+        fetchers: sources,
+    }
 }
 
 #[cfg(test)]
@@ -137,10 +144,10 @@ name = "tarek"
 frontend = "typescript"
 
 [eval]
-deps = ["gripsack-sourcerer-artifactory==1.2.0"]
+deps = ["gripsack-fetcher-artifactory==1.2.0"]
 
-[sources.artifactory]
-plugin = "gripsource-artifactory"
+[fetchers.artifactory]
+plugin = "gripfetch-artifactory"
 
 [settings]
 keep_generations = 20
@@ -153,10 +160,16 @@ keep_generations = 20
         assert_eq!(env.env.frontend, Frontend::Typescript);
         assert_eq!(env.eval.deps.len(), 1);
         assert_eq!(
-            env.sources["artifactory"].plugin.as_deref(),
-            Some("gripsource-artifactory")
+            env.fetchers["artifactory"].plugin.as_deref(),
+            Some("gripfetch-artifactory")
         );
         assert_eq!(env.settings.keep_generations, Some(20));
+    }
+
+    #[test]
+    fn parses_throttle_table() {
+        let env = parse_env("[throttle]\n\"api.github.com\" = \"2/s\"\n").unwrap();
+        assert_eq!(env.throttle["api.github.com"], "2/s");
     }
 
     #[test]
@@ -164,15 +177,15 @@ keep_generations = 20
         let env = parse_env("").unwrap();
         assert_eq!(env.env.frontend, Frontend::Python);
         assert!(env.eval.deps.is_empty());
-        assert!(env.sources.is_empty());
+        assert!(env.fetchers.is_empty());
     }
 
     #[test]
     fn repo_wins_user_fills_gaps() {
         let user = parse_user(
             r#"
-[sources.corp]
-plugin = "gripsource-corp"
+[fetchers.corp]
+plugin = "gripfetch-corp"
 
 [settings]
 keep_generations = 10
@@ -185,8 +198,8 @@ keep_generations = 10
         assert_eq!(config.settings.keep_generations, Some(20));
         // user-only source survives
         assert_eq!(
-            config.sources["corp"].plugin.as_deref(),
-            Some("gripsource-corp")
+            config.fetchers["corp"].plugin.as_deref(),
+            Some("gripfetch-corp")
         );
     }
 

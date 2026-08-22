@@ -7,8 +7,8 @@ from typing import Any, Optional
 
 
 @dataclass(frozen=True)
-class Source:
-    """A typed fetcher — the engine interprets it; never a script."""
+class Fetch:
+    """A fetch spec — the engine interprets it; never a script."""
 
     kind: str
     args: dict[str, Any]
@@ -23,7 +23,7 @@ def github_release(
     version: Optional[str] = None,
     sha256: Optional[str] = None,
     base_url: Optional[str] = None,
-) -> Source:
+) -> Fetch:
     """GitHub releases; `base_url` covers GitHub Enterprise (0002 rung 1)."""
     args: dict[str, Any] = {"repo": repo, "asset": asset}
     if version is not None:
@@ -32,24 +32,24 @@ def github_release(
         args["sha256"] = sha256
     if base_url is not None:
         args["base_url"] = base_url
-    return Source("github_release", args)
+    return Fetch("github_release", args)
 
 
-def tarball(url: str, sha256: Optional[str] = None) -> Source:
+def tarball(url: str, sha256: Optional[str] = None) -> Fetch:
     args: dict[str, Any] = {"url": url}
     if sha256 is not None:
         args["sha256"] = sha256
-    return Source("tarball", args)
+    return Fetch("tarball", args)
 
 
-def git(url: str, rev: str) -> Source:
-    return Source("git", {"url": url, "rev": rev})
+def git(url: str, rev: str) -> Fetch:
+    return Fetch("git", {"url": url, "rev": rev})
 
 
-def file_source(path: str) -> Source:
-    return Source("file", {"path": path})
+def file_fetch(path: str) -> Fetch:
+    return Fetch("file", {"path": path})
 
 
-def plugin_source(name: str, **args: Any) -> Source:
-    """A sourcerer plugin transport (0002 §4)."""
-    return Source("plugin", {"name": name, "args": args})
+def plugin_fetch(name: str, **args: Any) -> Fetch:
+    """A fetcher plugin transport (0002 §4) — `gripfetch-<name>`."""
+    return Fetch("plugin", {"name": name, "args": args})

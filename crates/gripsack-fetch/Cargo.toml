@@ -1,5 +1,5 @@
 [package]
-name = "gripsack-source"
+name = "gripsack-fetch"
 description = "gripsack built-in fetchers and sourcerer plugin host (plan/0002)"
 version.workspace = true
 edition.workspace = true

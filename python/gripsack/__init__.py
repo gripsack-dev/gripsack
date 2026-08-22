@@ -11,18 +11,12 @@ errors can point back at the user's source.
 from .deps import Dependency, dep
 from .entries import Dest, merge, symlink, template, tracked_copy
 from .facts import current_facts
+from .fetch import Fetch, file_fetch, git, github_release, plugin_fetch, tarball
 from .graph import IR_VERSION, clear_graph, emit_ir
 from .intents import Intent, custom_hook, desktop_entry, fonts, service
 from .module import Module, module
-from .sources import (
-    Source,
-    file_source,
-    git,
-    github_release,
-    plugin_source,
-    tarball,
-)
 from .steps import Step, build_step, fetch_step, shell_step, step
+from .verify import Verify, verify_binary, verify_file, verify_shell
 
 __version__ = "0.1.0"
 
@@ -35,9 +29,9 @@ __all__ = [
     "github_release",
     "tarball",
     "git",
-    "file_source",
-    "plugin_source",
-    "Source",
+    "file_fetch",
+    "plugin_fetch",
+    "Fetch",
     "symlink",
     "tracked_copy",
     "merge",
@@ -53,6 +47,10 @@ __all__ = [
     "build_step",
     "shell_step",
     "Step",
+    "verify_binary",
+    "verify_file",
+    "verify_shell",
+    "Verify",
     "current_facts",
     "emit_ir",
     "clear_graph",

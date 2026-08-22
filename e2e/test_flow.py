@@ -30,11 +30,11 @@ def test_apply_creates_generation_and_symlinks(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, file_source, symlink
+from gripsack import module, file_fetch, symlink
 
 module(
     "hello",
-    source=file_source("{payload}"),
+    fetch=file_fetch("{payload}"),
     install={{"bin/hello": symlink("~/.local/bin/hello")}},
 )
 """,

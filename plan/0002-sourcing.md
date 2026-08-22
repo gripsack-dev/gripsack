@@ -1,8 +1,12 @@
-# 0002 — Sourcing: resolvers, transports, and sourcerers
+# 0002 — Sourcing: resolvers, transports, and fetchers
 
 - Status: draft
 - Date: 2026-08-22
 - Amends: 0001 (§3.1 sources, §6 components)
+
+> Rename note (2026-08-22): "sourcerer" → **fetcher**; plugin executables
+> are `gripfetch-<name>`; the IR module field is `fetch`, not `source`
+> ("source" is reserved). Resolver packages: `gripsack-fetcher-*`.
 
 ## 1. The decomposition
 
@@ -32,7 +36,7 @@ Use the lowest rung that works:
    Python in the env repo's `lib/` or a pip package. It returns a **pinned
    fetch descriptor** (fetcher + URL/rev + hash). The core never learns
    anything new; the IR already only carries pinned sources.
-3. **Sourcerer plugin at execute.** Only when the *transport itself* is
+3. **Fetcher plugin at execute.** Only when the *transport itself* is
    bespoke: mTLS, non-HTTP protocols, credentialed redirect dances. A
    separate executable the core drives over stdio.
 
@@ -57,20 +61,23 @@ tentacles.
   (0001 §9) survives intact: the lockfile remains the sole source of
   resolution.
 
-## 4. Sourcerers (transport plugins)
+## 4. Fetchers (transport plugins)
 
-- An executable named `gripsource-<name>`, discovered on `PATH` (git
-  remote-helper style) or declared explicitly in `env.toml`. Any language.
+- An executable named `gripfetch-<name>`, discovered on `PATH` (git
+  remote-helper style) or declared explicitly in `env.toml`
+  (`[fetchers.<name>]`). Any language.
 - Protocol: NDJSON over stdio, same family as rootle's provider protocol.
-  Two operations are enough to start:
+  Three operations to start:
   - `fetch {args, dest_dir, locked}` → writes bytes under `dest_dir`,
     responds `{sha256, provenance}`
   - `capabilities` → declared feature set (for `plan`/doctor output)
-- IR node: `{"fetcher": "plugin", "name": "<name>", "args": {...}}` —
-  opaque to the core; the store-path hash covers name + args.
+    **including its rate budget** — the fetcher knows its backend's
+    limits better than the core does (0007 §throttling).
+- IR node: `{"kind": "plugin", "name": "<name>", "args": {...}}` — opaque
+  to the core; the store-path hash covers name + args.
 - **The core verifies.** Returned bytes are hashed and checked against the
   lockfile before anything enters the store. Plugin output is never
-  trusted: a sourcerer can be wrong or malicious and the worst outcome is
+  trusted: a fetcher can be wrong or malicious and the worst outcome is
   a failed apply, never a poisoned store.
 - Failure modes, decided now: plugin missing → `plan`-time error with
   provenance pointing at the module line; hash mismatch → hard error
@@ -81,27 +88,33 @@ tentacles.
 | what | where |
 |---|---|
 | built-in fetchers + plugin host + hash verification | `gripsack-dev/gripsack` (core) |
-| official sourcerers (artifactory, nexus, s3, …) | `gripsack-dev/gripsource-*` repos |
-| official resolver libraries | pip packages `gripsack-sourcerer-*` |
-| company-private resolvers/sourcerers | the company's env repo or internal index |
+| official fetchers (artifactory, nexus, s3, …) | `gripsack-dev/gripfetch-*` repos |
+| official resolver libraries | pip packages `gripsack-fetcher-*` |
+| company-private resolvers/fetchers | the company's env repo or internal index |
 
-Sourcerers are pinned like everything else (git URL + rev, or a versioned
-package) — but because transports are hash-verified, a sourcerer's version
+Fetchers are pinned like everything else (git URL + rev, or a versioned
+package) — but because transports are hash-verified, a fetcher's version
 does **not** participate in store-path identity: content is content.
 Resolution behavior is captured by the lockfile as usual.
 
 ## 6. Non-goals and adjacencies
 
-- No sandboxing of resolvers or sourcerers (consistent with 0001 §2.3):
+- No sandboxing of resolvers or fetchers (consistent with 0001 §2.3):
   they are trusted code, same as modules.
 - Builders get the same treatment later (in-process builders now,
   `custom_shell` escape hatch, plugin builders if reality demands).
-- Resolver/sourcerer auth is always ambient (env, files, SSO brokers);
+- Resolver/fetcher auth is always ambient (env, files, SSO brokers);
   gripsack defines no credential store of its own. (Secrets-in-dotfiles is
   a separate future doc.)
 
-## 7. Naming
+## 7. Resolution lives in the core (amendment)
 
-The plugin family is **sourcerers** (source + sorcerer): transport
-executables `gripsource-*`, Python resolver packages `gripsack-sourcerer-*`.
-The pun is the brand.
+Built-in fetcher resolution ("latest release", tag listings) happens **in
+the core at lock/update time**, not in frontend code at eval time. This
+keeps all built-in API traffic inside the engine's throttle domains and
+retry policy (0007 §throttling) — eval-time Python/TS resolvers remain
+possible for custom registries but are outside the throttle by nature.
+Rate behavior: honor `Retry-After` on 429 within the step's retry budget
+before failing; throttle domains are token buckets per host
+(`[throttle]` in `env.toml`), conservative built-in budget for
+`api.github.com`.

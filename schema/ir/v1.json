@@ -2,195 +2,431 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://gripsack.dev/schema/ir/v1.json",
   "title": "gripsack IR v1 (draft)",
-  "description": "The contract between gripsack frontends and the core (plan/0001 §3.2). Readers MUST tolerate unknown fields; writers never emit fields this schema does not describe (plan/0003 §8).",
+  "description": "The contract between gripsack frontends and the core (plan/0001 \u00a73.2). Readers MUST tolerate unknown fields; writers never emit fields this schema does not describe (plan/0003 \u00a78).",
   "type": "object",
-  "required": ["ir_version", "modules"],
+  "required": [
+    "ir_version",
+    "modules"
+  ],
   "properties": {
-    "ir_version": { "const": 1 },
-    "host": { "$ref": "#/$defs/hostFacts" },
+    "ir_version": {
+      "const": 1
+    },
+    "host": {
+      "$ref": "#/$defs/hostFacts"
+    },
     "modules": {
       "type": "object",
       "minProperties": 1,
-      "additionalProperties": { "$ref": "#/$defs/module" }
+      "additionalProperties": {
+        "$ref": "#/$defs/module"
+      }
     }
   },
   "$defs": {
     "hostFacts": {
       "type": "object",
       "properties": {
-        "os": { "type": "string" },
-        "arch": { "type": "string" },
-        "tags": { "type": "array", "items": { "type": "string" } }
+        "os": {
+          "type": "string"
+        },
+        "arch": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "span": {
       "type": "object",
-      "required": ["file", "line"],
+      "required": [
+        "file",
+        "line"
+      ],
       "properties": {
-        "file": { "type": "string" },
-        "line": { "type": "integer", "minimum": 1 },
-        "col": { "type": "integer", "minimum": 1 }
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "col": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
-      "description": "Source location of this node in frontend code (plan/0004 §2). Optional; built-in frontends MUST emit it at module level."
+      "description": "Source location of this node in frontend code (plan/0004 \u00a72). Optional; built-in frontends MUST emit it at module level."
     },
     "module": {
       "type": "object",
-            "properties": {
-        "source": { "$ref": "#/$defs/source" },
-        "build": { "$ref": "#/$defs/build" },
+      "properties": {
+        "fetch": {
+          "$ref": "#/$defs/fetch"
+        },
+        "build": {
+          "$ref": "#/$defs/build"
+        },
         "install": {
           "type": "array",
-          "items": { "$ref": "#/$defs/entry" }
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
         },
         "config": {
           "type": "array",
-          "items": { "$ref": "#/$defs/entry" }
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
         },
         "depends": {
           "type": "array",
-          "items": { "$ref": "#/$defs/dependency" }
+          "items": {
+            "$ref": "#/$defs/dependency"
+          }
         },
         "activate": {
           "type": "array",
-          "items": { "$ref": "#/$defs/intent" }
+          "items": {
+            "$ref": "#/$defs/intent"
+          }
         },
-        "span": { "$ref": "#/$defs/span" }
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "verify": {
+          "$ref": "#/$defs/verify"
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Retry count override (0007); default 0 for non-fetch steps"
+        }
       }
-    },
-    "source": {
-      "type": "object",
-      "required": ["kind"],
-      "properties": {
-        "kind": {
-          "enum": ["github_release", "tarball", "git", "file", "plugin"]
-        }
-      },
-      "oneOf": [
-        {
-          "properties": {
-            "kind": { "const": "github_release" },
-            "repo": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
-            "asset": { "type": "string" },
-            "version": { "type": "string" },
-            "sha256": { "$ref": "#/$defs/sha256" },
-            "base_url": { "type": "string", "format": "uri" }
-          },
-          "required": ["kind", "repo", "asset"]
-        },
-        {
-          "properties": {
-            "kind": { "const": "tarball" },
-            "url": { "type": "string" },
-            "sha256": { "$ref": "#/$defs/sha256" }
-          },
-          "required": ["kind", "url"]
-        },
-        {
-          "properties": {
-            "kind": { "const": "git" },
-            "url": { "type": "string" },
-            "rev": { "type": "string", "minLength": 1 }
-          },
-          "required": ["kind", "url", "rev"]
-        },
-        {
-          "properties": {
-            "kind": { "const": "file" },
-            "path": { "type": "string" }
-          },
-          "required": ["kind", "path"]
-        },
-        {
-          "properties": {
-            "kind": { "const": "plugin" },
-            "name": { "type": "string", "minLength": 1 },
-            "args": { "type": "object" }
-          },
-          "required": ["kind", "name"]
-        }
-      ]
     },
     "build": {
       "type": "object",
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
-        "kind": { "enum": ["none", "cargo_install", "make", "custom_shell"] },
-        "script": { "type": "string" }
+        "kind": {
+          "enum": [
+            "none",
+            "cargo_install",
+            "make",
+            "custom_shell"
+          ]
+        },
+        "script": {
+          "type": "string"
+        }
       }
     },
     "entry": {
       "type": "object",
-      "required": ["from", "to"],
+      "required": [
+        "from",
+        "to"
+      ],
       "properties": {
-        "from": { "type": "string", "minLength": 1 },
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
         "to": {
           "type": "string",
           "pattern": "^(/|~/)",
           "description": "absolute or ~/-prefixed destination"
         },
         "mode": {
-          "enum": ["owned", "tracked_copy", "merge", "template"],
+          "enum": [
+            "owned",
+            "tracked_copy",
+            "merge",
+            "template"
+          ],
           "default": "owned"
         },
-        "span": { "$ref": "#/$defs/span" }
+        "span": {
+          "$ref": "#/$defs/span"
+        }
       }
     },
     "dependency": {
       "type": "object",
-      "required": ["module"],
+      "required": [
+        "module"
+      ],
       "properties": {
-        "module": { "type": "string", "minLength": 1 },
-        "edge": { "enum": ["runtime", "build"], "default": "runtime" },
-        "span": { "$ref": "#/$defs/span" }
+        "module": {
+          "type": "string",
+          "minLength": 1
+        },
+        "edge": {
+          "enum": [
+            "runtime",
+            "build"
+          ],
+          "default": "runtime"
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        }
       }
     },
     "intent": {
       "type": "object",
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "trigger": {
-          "enum": ["post_link", "post_activate", "on_remove"],
+          "enum": [
+            "post_link",
+            "post_activate",
+            "on_remove"
+          ],
           "default": "post_activate"
         },
-        "kind": { "enum": ["service", "fonts", "desktop_entry", "custom_shell"] },
-        "name": { "type": "string" },
-        "user": { "type": "boolean" },
-        "script": { "type": "string" },
-        "span": { "$ref": "#/$defs/span" }
+        "kind": {
+          "enum": [
+            "service",
+            "fonts",
+            "desktop_entry",
+            "custom_shell"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "user": {
+          "type": "boolean"
+        },
+        "script": {
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        }
       }
     },
     "step": {
       "type": "object",
-      "required": ["id", "action"],
+      "required": [
+        "id",
+        "action"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
         "action": {
           "type": "object",
-          "required": ["kind"],
+          "required": [
+            "kind"
+          ],
           "properties": {
             "kind": {
-              "enum": ["fetch", "build", "install", "config_deploy", "intent", "custom_shell"]
+              "enum": [
+                "fetch",
+                "build",
+                "install",
+                "config_deploy",
+                "intent",
+                "custom_shell"
+              ]
             }
           }
         },
         "needs": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "sibling step ids or cross-module 'module:step' refs"
         },
         "resources": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "phase": {
-          "enum": ["fetch", "build", "install", "config", "activate", "custom"]
+          "enum": [
+            "fetch",
+            "build",
+            "install",
+            "config",
+            "activate",
+            "custom"
+          ]
         },
-        "span": { "$ref": "#/$defs/span" }
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "verify": {
+          "$ref": "#/$defs/verify"
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Retry count override (0007); default 0 for non-fetch steps"
+        }
       }
     },
     "sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "fetch": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "github_release",
+            "tarball",
+            "git",
+            "file",
+            "plugin"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "github_release"
+            },
+            "repo": {
+              "type": "string",
+              "pattern": "^[^/]+/[^/]+$"
+            },
+            "asset": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "base_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "kind",
+            "repo",
+            "asset"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "tarball"
+            },
+            "url": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "required": [
+            "kind",
+            "url"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "git"
+            },
+            "url": {
+              "type": "string"
+            },
+            "rev": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind",
+            "url",
+            "rev"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "file"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "plugin"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "args": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
+        }
+      ]
+    },
+    "verify": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "binary_runs",
+            "file_exists",
+            "shell"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "script": {
+          "type": "string"
+        }
+      },
+      "description": "Smoke contract (0007): binary_runs {path,args} | file_exists {path} | shell {script}. Runs pre-flip."
     }
   }
 }

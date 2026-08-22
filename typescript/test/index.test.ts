@@ -21,7 +21,7 @@ beforeEach(() => clearGraph());
 describe("emitIr", () => {
   it("emits IR v1 shape", () => {
     module("helix", {
-      source: githubRelease({
+      fetch: githubRelease({
         repo: "helix-editor/helix",
         asset: "helix-{version}-x86_64-linux.tar.xz",
       }),
@@ -30,7 +30,7 @@ describe("emitIr", () => {
       depends: [dep("git")],
       activate: [service("syncthing")],
     });
-    module("git", { source: tarball("https://example.invalid/git.tar.xz") });
+    module("git", { fetch: tarball("https://example.invalid/git.tar.xz") });
 
     const ir = JSON.parse(emitIr(["gui"]));
 
@@ -40,8 +40,8 @@ describe("emitIr", () => {
     assert.ok(ir.host.arch);
 
     const helix = ir.modules.helix;
-    assert.equal(helix.source.kind, "github_release");
-    assert.equal(helix.source.repo, "helix-editor/helix");
+    assert.equal(helix.fetch.kind, "github_release");
+    assert.equal(helix.fetch.repo, "helix-editor/helix");
     assert.deepEqual(helix.install, [
       { from: "bin/hx", to: "~/.local/bin/hx", mode: "owned" },
     ]);
@@ -56,7 +56,7 @@ describe("emitIr", () => {
   });
 
   it("captures spans pointing at this file", () => {
-    module("x", { source: tarball("https://example.invalid/x.tar.xz") });
+    module("x", { fetch: tarball("https://example.invalid/x.tar.xz") });
     const ir = JSON.parse(emitIr());
     const span = ir.modules.x.span;
     assert.ok(span, "span present");
@@ -71,7 +71,7 @@ describe("emitIr", () => {
       config: { "config.toml": trackedCopy("~/.config/helix/config.toml") },
     });
     const ir = JSON.parse(emitIr());
-    assert.equal(ir.modules.helix.source, undefined);
+    assert.equal(ir.modules.helix.fetch, undefined);
     assert.equal(ir.modules.helix.config[0].mode, "tracked_copy");
   });
 
@@ -93,7 +93,7 @@ describe("emitIr", () => {
 
   it("marks build-only deps", () => {
     module("helix-src", {
-      source: tarball("https://example.invalid/helix.tar.xz"),
+      fetch: tarball("https://example.invalid/helix.tar.xz"),
       depends: [dep("rust", "build")],
     });
     const ir = JSON.parse(emitIr());

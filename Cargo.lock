@@ -197,8 +197,8 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "gripsack-exec",
+ "gripsack-fetch",
  "gripsack-ir",
- "gripsack-source",
  "gripsack-store",
 ]
 
@@ -220,6 +220,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gripsack-fetch"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "gripsack-ir"
 version = "0.1.0"
 dependencies = [
@@ -229,18 +236,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "gripsack-source"
-version = "0.1.0"
-dependencies = [
- "tempfile",
-]
-
-[[package]]
 name = "gripsack-store"
 version = "0.1.0"
 dependencies = [
  "serde_json",
  "sha2",
+ "tempfile",
 ]
 
 [[package]]

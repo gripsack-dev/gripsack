@@ -62,8 +62,8 @@ Ladder, same philosophy as sourcing (0002 §2):
    env repo, deployed and hash-verified like any other payload).
    Declared, flagged in `plan`, and it busts fine-grained caching —
    honestly, visibly.
-3. **Builder/sourcerer plugin** — reusable logic becomes a new
-   primitive out-of-tree (0002 §4).
+3. **Builder/fetcher plugin** — reusable logic becomes a new primitive
+   out-of-tree (0002 §4).
 
 What we will NOT do: `python_module("...")` or any code-by-reference
 step action. The moment executable code rides inside the IR, the core
@@ -74,6 +74,52 @@ with extra steps. If a primitive is missing, the eval-time escape hatch
 already exists: compute in your frontend and emit a primitive. If it
 must run at execute time, that's `custom_shell`. If it's reusable,
 that's a plugin. Three doors, all honest.
+
+## 4a. Verify
+
+A step or module MAY carry a `verify` — a smoke contract, not a test
+framework:
+
+- **Primitives verify themselves for free** (fetch checks sha256,
+  install checks link targets). Explicit verify matters for
+  `custom_shell` — an opaque action needs an explicit contract — and as
+  a module-level smoke test (`hx --version`).
+- Kinds: `binary_runs {path, args}`, `file_exists {path}`,
+  `shell {script}`.
+- Module-level verify is a synthesized terminal step:
+  `fetch → build → install → config → verify → activate`. It runs
+  **pre-flip** — a broken module never activates. Post-flip failure
+  stays degraded-generation territory (0001 §3.8); verify never runs
+  post-flip, and never on a no-op apply (0008 §4).
+- Verify failures get their own diagnostic class (`E3xx`) so
+  "step failed" and "verify failed" are greppable apart.
+
+## 4b. Retries
+
+- **Default retries apply only to fetch actions** (network transients:
+  connect errors, 5xx, 429). Everything else defaults to 0 — a failing
+  build is almost always deterministic, and a `custom_shell` may not be
+  idempotent (fetch is, because the destination is content-addressed).
+- **Failure classes, not blanket retry**: hash mismatch, 404, and
+  validation errors are never retried — a lockfile hash mismatch is a
+  tampering signal (0002 §4).
+- **Hierarchy**: engine default < module `retries` < step `retries` — a
+  bare count; backoff policy is engine-owned (exponential + full
+  jitter). Attempts are reported (`attempt 2/4 after 1.3s: …`).
+
+## 4c. Throttling
+
+Concurrency caps (resources) don't solve rate. Throttle domains do:
+
+- Token-bucket domains in the core; conservative built-in budget for
+  `api.github.com`; primitives auto-attach to their domain. Custom
+  domains in `env.toml`: `[throttle] "api.corp.com" = "5/s"`.
+- 429 handling honors `Retry-After` (bounded) within the step's retry
+  budget before failing.
+- Fetcher plugins declare their budget in `capabilities` (0002 §4).
+- Built-in resolution ("latest release") happens **in the core at
+  lock/update time** (0002 §7) so built-in API traffic stays inside the
+  throttle; eval-time resolvers are outside it by nature.
 
 ## 4. Resources
 

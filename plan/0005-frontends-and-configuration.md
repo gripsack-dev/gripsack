@@ -44,11 +44,11 @@ name = "tarek"
 frontend = "python"            # or "typescript"
 
 [eval]
-# frontend-environment deps — resolvers/sourcerers the modules import
-deps = ["gripsack-sourcerer-artifactory==1.2.0"]
+# frontend-environment deps — resolvers/fetchers the modules import
+deps = ["gripsack-fetchrer-artifactory==1.2.0"]
 
 [sources.artifactory]
-plugin = "gripsource-artifactory"   # transport, if a resolver needs one (0002)
+plugin = "gripfetch-artifactory"   # transport, if a resolver needs one (0002)
 
 [settings]
 keep_generations = 20
@@ -74,7 +74,7 @@ cycles, by construction.
 
 Consequences:
 
-- Sourcerer declarations and eval deps are known *before* eval, so a
+- fetcher declarations and eval deps are known *before* eval, so a
   module may `import` a resolver whose package env.toml pinned — the
   env repo genuinely carries its own skills (0002 §3).
 - Step 3 is content-cached: same `[eval]` spec, same venv/node_modules,
