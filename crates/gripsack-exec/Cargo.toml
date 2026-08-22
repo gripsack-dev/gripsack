@@ -1,0 +1,11 @@
+[package]
+name = "gripsack-exec"
+description = "gripsack DAG scheduling (plan/0001)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+gripsack-ir.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "gripsack-source"
+description = "gripsack built-in fetchers and sourcerer plugin host (plan/0002)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gripsack"
+version = "0.1.0"
+description = "gripsack python frontend — typed module DSL, emits IR"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "gripsack-dev" }]
+keywords = ["dotfiles", "package-manager", "environment"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3",
+]
+urls = { Homepage = "https://gripsack.dev", Repository = "https://github.com/gripsack-dev/gripsack" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["gripsack"]
+
+[dependency-groups]
+dev = ["pytest>=8"]

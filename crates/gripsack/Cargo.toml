@@ -1,0 +1,19 @@
+[package]
+name = "gripsack"
+description = "your whole environment in one bag — the grip CLI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[[bin]]
+name = "grip"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+gripsack-ir.workspace = true
+gripsack-store.workspace = true
+gripsack-exec.workspace = true
+gripsack-source.workspace = true

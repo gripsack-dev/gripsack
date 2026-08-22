@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Rust gate (fmt, clippy, tests)
+        run: docker compose run --build --rm test
+
+      - name: Python frontend tests
+        run: docker compose run --build --rm pytest
+
+      # Flow tests: real binary + real frontend against fixture env
+      # repos, offline (file:// fixtures only).
+      - name: E2E (flow suite)
+        run: docker compose run --build --rm e2e

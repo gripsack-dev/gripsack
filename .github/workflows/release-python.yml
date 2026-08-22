@@ -1,0 +1,40 @@
+name: release-python
+
+on:
+  push:
+    tags: ["py-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v5
+
+      # The guard fails a mistagged release instead of publishing the
+      # wrong version.
+      - name: Guard tag matches package version
+        run: |
+          ver="$(grep -m1 '^version' python/pyproject.toml | cut -d'\"' -f2)"
+          test "py-v$ver" = "$GITHUB_REF_NAME" || {
+            echo "::error::tag $GITHUB_REF_NAME != python version py-v$ver"; exit 1; }
+
+      - name: Build wheel
+        run: uv build --directory python --out-dir dist
+
+      - name: Publish to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: uv publish dist/*
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "gripsack-python ${GITHUB_REF_NAME#py-v}" \
+            --generate-notes

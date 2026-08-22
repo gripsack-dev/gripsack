@@ -1,0 +1,65 @@
+# gripsack build/test/release services (plan/0003 §3).
+#   docker compose run --build --rm test      # fmt + clippy + cargo test
+#   docker compose run --build --rm pytest    # python frontend tests
+#   docker compose run --build --rm e2e       # flow tests (offline)
+#   docker compose run --build --rm -e VERSION=x.y.z release   # tarball → ./dist/
+
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    # The gate runs at image-build time (RUN steps); if the image
+    # exists, the gate passed. The command is just a confirmation.
+    command: 'echo "gate passed: fmt + clippy -D warnings + cargo test"'
+
+  pytest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: pytest
+    command: 'echo "gate passed: python frontend tests"'
+
+  build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: cargo build --locked
+
+  # Exports a versioned tarball + checksum to ./dist/ (VERSION required).
+  # The tarball layout is the install.sh contract (plan/0003 §4):
+  #   gripsack-<VERSION>-<TARGET>.tar.gz containing <dir>/grip
+  release:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        VERSION="$${VERSION:?set VERSION to the release version, e.g. -e VERSION=0.1.0}"
+        TARGET="x86_64-unknown-linux-musl"
+        PKG="gripsack-$$VERSION-$$TARGET"
+        cargo build --release --locked -p gripsack \
+        && strip target/release/grip \
+        && staging="$$(mktemp -d)" \
+        && mkdir -p "$$staging/$$PKG" \
+        && install -m755 target/release/grip "$$staging/$$PKG/grip" \
+        && tar -czf "/dist/$$PKG.tar.gz" -C "$$staging" "$$PKG" \
+        && cd /dist \
+        && sha256sum "$$PKG.tar.gz" > "$$PKG.tar.gz.sha256" \
+        && echo "released: /dist/$$PKG.tar.gz"
+    volumes:
+      - ./dist:/dist
+
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: e2e
+    # Suite runs at container start (CMD in the Dockerfile); the gate
+    # stages' caches are reused — `--build` after source changes.
