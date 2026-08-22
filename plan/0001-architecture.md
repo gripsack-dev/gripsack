@@ -3,6 +3,7 @@
 - Status: draft
 - Date: 2026-08-22
 - Domain: gripsack.dev
+- Org: github.com/gripsack-dev (CLI, frontends, and IR tooling live here)
 
 ## 1. What gripsack is
 
@@ -71,6 +72,11 @@ facts at execution time — it executes exactly what the IR says.
 
 Because IR is data, `grip plan` (diff of would-be generation vs current),
 `grip why-owns <path>`, and generation diffs are mechanical.
+**Provenance.** Every IR node carries optional `source: {file, line}` —
+the module file that emitted it. This is nearly free to add at emit time
+and very expensive to retrofit: it is what lets a validation or execution
+error point back at the user's Python instead of at raw JSON. Frontends
+SHOULD emit it; the core preserves and surfaces it, never interprets it.
 
 ### 3.3 Frontends
 
@@ -258,3 +264,5 @@ CLI surface (sketch): `apply [--host H] [MODULE...]`, `plan`, `rollback [N]`,
 - 0004: generation/activation lifecycle in detail (ordering, degraded states,
   GC pinning rules).
 - Secrets design; store sync/cache protocol; system-scope extension.
+- IR tooling (separate repos under gripsack-dev, later): schema validator,
+  IR linter, provenance-aware error reporter.
