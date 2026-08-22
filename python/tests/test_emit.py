@@ -7,9 +7,11 @@ from gripsack import (
     clear_graph,
     dep,
     emit_ir,
+    fetch_step,
     github_release,
     module,
     service,
+    shell_step,
     symlink,
     tarball,
     tracked_copy,
@@ -84,6 +86,26 @@ def test_dotfiles_only_module_emits_no_source():
     helix = ir["modules"]["helix"]
     assert "source" not in helix
     assert helix["config"][0]["mode"] == "tracked_copy"
+
+
+def test_explicit_steps_emit():
+    module(
+        "helix-patched",
+        steps=[
+            fetch_step(tarball("https://example.invalid/helix.tar.xz")),
+            shell_step("patch -p1 < fix.patch", id="patch", needs=["fetch"]),
+        ],
+    )
+    ir = json.loads(emit_ir())
+    steps = ir["modules"]["helix-patched"]["steps"]
+    assert steps[0]["action"]["kind"] == "fetch"
+    assert steps[0]["phase"] == "fetch"
+    assert steps[1] == {
+        "id": "patch",
+        "action": {"kind": "custom_shell", "script": "patch -p1 < fix.patch"},
+        "needs": ["fetch"],
+        "phase": "custom",
+    }
 
 
 def test_version_string_exists():

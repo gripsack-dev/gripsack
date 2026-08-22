@@ -82,6 +82,7 @@ mod tests {
                 })
                 .collect(),
             activate: vec![],
+            steps: None,
             span: None,
         }
     }

@@ -16,7 +16,25 @@ pub mod codes {
     pub const VERSION: &str = "E100";
     pub const UNKNOWN_DEPENDENCY: &str = "E101";
     pub const BAD_DESTINATION: &str = "E102";
+    pub const STEPS_WITH_FIELDS: &str = "E103";
+    pub const UNKNOWN_STEP: &str = "E104";
+    pub const DUPLICATE_STEP: &str = "E106";
+    pub const UNKNOWN_RESOURCE: &str = "W201";
 }
+
+/// Step ids every declarative module gets after expansion (0007 §2) —
+/// the valid cross-module targets (`rust:install`) when the target
+/// module does not declare explicit steps.
+pub const SYNTHESIZED_STEP_IDS: [&str; 6] =
+    ["fetch", "build", "install", "config", "activate", "done"];
+
+/// The reserved barrier step id (0007 §2); explicit modules may not
+/// claim it.
+pub const BARRIER_STEP_ID: &str = "done";
+
+/// Resources the core knows how to serialize/throttle (0007 §4).
+/// Anything else warns (W201) — an open namespace.
+pub const KNOWN_RESOURCES: [&str; 3] = ["network", "pixi-lock", "cargo-lock"];
 
 /// Source location of an IR node in the user's frontend code (0004 §2).
 /// Payload: threaded through passes, never recomputed, never part of
@@ -60,7 +78,8 @@ pub struct HostFacts {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Module {
     /// None for dotfiles-only modules — their content is their config
-    /// files (0006 §2 level 1).
+    /// files (0006 §2 level 1). Mutually exclusive with `steps`
+    /// (0007 §1, E103).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
     #[serde(default)]
@@ -73,6 +92,10 @@ pub struct Module {
     pub depends: Vec<Dependency>,
     #[serde(default)]
     pub activate: Vec<Intent>,
+    /// Explicit pipeline control (0007). Present means the declarative
+    /// fields above must all be empty — the core rejects both-shapes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steps: Option<Vec<Step>>,
     /// Where this module was declared (0004 §2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
@@ -208,6 +231,59 @@ pub enum Action {
     },
 }
 
+/// A step: one node in a module's execution DAG (0007 §2).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Step {
+    pub id: String,
+    pub action: StepAction,
+    /// Sibling step ids, or cross-module `module:step` refs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub needs: Vec<String>,
+    /// Named resources to acquire before running (0007 §4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<String>,
+    /// Reporting tag — never a scheduling barrier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<Phase>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<Span>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StepAction {
+    Fetch {
+        source: Source,
+    },
+    Build {
+        spec: Build,
+    },
+    Install {
+        entries: Vec<Entry>,
+    },
+    ConfigDeploy {
+        entries: Vec<Entry>,
+    },
+    Intent {
+        action: Box<Action>,
+    },
+    /// The honest escape hatch: declared, flagged, cache-busting.
+    CustomShell {
+        script: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Phase {
+    Fetch,
+    Build,
+    Install,
+    Config,
+    Activate,
+    Custom,
+}
+
 // ---------------------------------------------------------------- diagnostics
 
 /// Compiler-style diagnostics (0004 §3): structured, span-labeled,
@@ -320,6 +396,7 @@ pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
 /// Pass 2 — structural sema (0004 §4): collect all diagnostics.
 pub fn validate(ir: &Ir) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    validate_steps(ir, &mut diagnostics);
     for (name, module) in &ir.modules {
         for dep in &module.depends {
             if !ir.modules.contains_key(&dep.module) {
@@ -354,6 +431,103 @@ pub fn validate(ir: &Ir) -> Vec<Diagnostic> {
         }
     }
     diagnostics
+}
+
+/// Steps pass (0007 §6): shape, refs, ids.
+fn validate_steps(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
+    for (name, module) in &ir.modules {
+        let Some(steps) = &module.steps else {
+            continue;
+        };
+        // E103: explicit steps + any declarative field.
+        let mixed = module.source.is_some()
+            || module.build != Build::None
+            || !module.install.is_empty()
+            || !module.config.is_empty()
+            || !module.activate.is_empty();
+        if mixed {
+            diagnostics.push(
+                Diagnostic::error(
+                    codes::STEPS_WITH_FIELDS,
+                    format!(
+                        "module {name:?} mixes `steps` with declarative fields \
+                         (source/build/install/config/activate)"
+                    ),
+                )
+                .with_label(module.span.clone(), "module declared here")
+                .with_help("pick one shape: fields (expanded for you) or explicit steps"),
+            );
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for step in steps {
+            // E106: duplicate or reserved ids.
+            if !seen.insert(step.id.as_str()) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        codes::DUPLICATE_STEP,
+                        format!("module {name:?}: duplicate step id {:?}", step.id),
+                    )
+                    .with_label(step.span.clone().or_else(|| module.span.clone()), ""),
+                );
+            }
+            if step.id == BARRIER_STEP_ID {
+                diagnostics.push(
+                    Diagnostic::error(
+                        codes::DUPLICATE_STEP,
+                        format!(
+                            "module {name:?}: step id {BARRIER_STEP_ID:?} is reserved \
+                             (the module's barrier step)"
+                        ),
+                    )
+                    .with_label(step.span.clone().or_else(|| module.span.clone()), ""),
+                );
+            }
+            // E104: unknown step refs.
+            for need in &step.needs {
+                let unknown = match need.split_once(':') {
+                    Some((target_module, target_step)) => match ir.modules.get(target_module) {
+                        None => true,
+                        Some(target) => match &target.steps {
+                            Some(target_steps) => !target_steps.iter().any(|s| s.id == target_step),
+                            None => !SYNTHESIZED_STEP_IDS.contains(&target_step),
+                        },
+                    },
+                    None => !steps.iter().any(|s| s.id == *need),
+                };
+                if unknown {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            codes::UNKNOWN_STEP,
+                            format!(
+                                "module {name:?}: step {:?} needs unknown step {need:?}",
+                                step.id
+                            ),
+                        )
+                        .with_label(step.span.clone().or_else(|| module.span.clone()), ""),
+                    );
+                }
+            }
+            // W201: unknown resource names.
+            for resource in &step.resources {
+                if !KNOWN_RESOURCES.contains(&resource.as_str()) {
+                    diagnostics.push(Diagnostic {
+                        code: codes::UNKNOWN_RESOURCE,
+                        severity: Severity::Warning,
+                        message: format!(
+                            "module {name:?}: step {:?} requires unknown resource \
+                             {resource:?} (no mutual exclusion will apply)",
+                            step.id
+                        ),
+                        labels: vec![Label {
+                            span: step.span.clone().or_else(|| module.span.clone()),
+                            note: String::new(),
+                        }],
+                        help: Some(format!("known: {}", KNOWN_RESOURCES.join(", "))),
+                    });
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -456,6 +630,86 @@ mod tests {
         let ir = check(json).unwrap();
         assert_eq!(ir.modules["helix"].source, None);
         assert_eq!(ir.modules["helix"].config.len(), 1);
+    }
+
+    const STEPPED: &str = r#"{
+        "ir_version": 1,
+        "modules": {
+            "helix": {
+                "steps": [
+                    {"id": "fetch", "action": {"kind": "fetch",
+                     "source": {"kind": "tarball", "url": "https://example.invalid/h.tar.xz"}},
+                     "phase": "fetch"},
+                    {"id": "patch", "action": {"kind": "custom_shell", "script": "true"},
+                     "needs": ["fetch"], "phase": "custom"}
+                ]
+            },
+            "rust": {
+                "source": {"kind": "tarball", "url": "https://example.invalid/r.tar.xz"}
+            }
+        }
+    }"#;
+
+    #[test]
+    fn explicit_steps_validate() {
+        check(STEPPED).unwrap();
+    }
+
+    #[test]
+    fn cross_module_ref_into_declarative_module() {
+        let json = STEPPED.replace(
+            r#""needs": ["fetch"]"#,
+            r#""needs": ["fetch", "rust:install"]"#,
+        );
+        check(&json).unwrap();
+        let bad = STEPPED.replace(r#""needs": ["fetch"]"#, r#""needs": ["fetch", "rust:wat"]"#);
+        let diagnostics = check(&bad).unwrap_err();
+        assert!(diagnostics.iter().any(|d| d.code == codes::UNKNOWN_STEP));
+    }
+
+    #[test]
+    fn steps_plus_declarative_fields_is_e103() {
+        let bad = STEPPED.replace(
+            r#""steps": ["#,
+            r#""source": {"kind": "file", "path": "/x"}, "steps": ["#,
+        );
+        let diagnostics = check(&bad).unwrap_err();
+        assert_eq!(diagnostics[0].code, codes::STEPS_WITH_FIELDS);
+        assert!(diagnostics[0].help.is_some());
+    }
+
+    #[test]
+    fn duplicate_and_reserved_step_ids_are_e106() {
+        let dup = STEPPED.replace(
+            r#"{"id": "patch", "action": {"kind": "custom_shell", "script": "true"},
+                     "needs": ["fetch"], "phase": "custom"}"#,
+            r#"{"id": "fetch", "action": {"kind": "custom_shell", "script": "true"}}"#,
+        );
+        assert!(check(&dup)
+            .unwrap_err()
+            .iter()
+            .any(|d| d.code == codes::DUPLICATE_STEP));
+
+        let reserved = STEPPED.replace(r#""id": "patch""#, r#""id": "done""#);
+        assert!(check(&reserved)
+            .unwrap_err()
+            .iter()
+            .any(|d| d.code == codes::DUPLICATE_STEP));
+    }
+
+    #[test]
+    fn unknown_resource_warns_but_passes() {
+        let json = STEPPED.replace(
+            r#""needs": ["fetch"]"#,
+            r#""needs": ["fetch"], "resources": ["my-lock"]"#,
+        );
+        // warnings don't fail the check
+        let ir = check(&json).unwrap();
+        assert!(ir.modules["helix"].steps.is_some());
+        let diagnostics = validate(&ir);
+        assert!(diagnostics
+            .iter()
+            .any(|d| d.code == codes::UNKNOWN_RESOURCE && d.severity == Severity::Warning));
     }
 
     #[test]

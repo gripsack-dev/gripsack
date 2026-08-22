@@ -159,6 +159,35 @@
         "span": { "$ref": "#/$defs/span" }
       }
     },
+    "step": {
+      "type": "object",
+      "required": ["id", "action"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "action": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "enum": ["fetch", "build", "install", "config_deploy", "intent", "custom_shell"]
+            }
+          }
+        },
+        "needs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "sibling step ids or cross-module 'module:step' refs"
+        },
+        "resources": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "phase": {
+          "enum": ["fetch", "build", "install", "config", "activate", "custom"]
+        },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
     "sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"

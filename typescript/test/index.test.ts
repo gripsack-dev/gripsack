@@ -6,9 +6,11 @@ import {
   clearGraph,
   dep,
   emitIr,
+  fetchStep,
   githubRelease,
   module,
   service,
+  shellStep,
   symlink,
   tarball,
   trackedCopy,
@@ -71,6 +73,22 @@ describe("emitIr", () => {
     const ir = JSON.parse(emitIr());
     assert.equal(ir.modules.helix.source, undefined);
     assert.equal(ir.modules.helix.config[0].mode, "tracked_copy");
+  });
+
+  it("emits explicit steps", () => {
+    module("helix-patched", {
+      steps: [
+        fetchStep(tarball("https://example.invalid/helix.tar.xz")),
+        shellStep("patch -p1 < fix.patch", "patch", { needs: ["fetch"] }),
+      ],
+    });
+    const ir = JSON.parse(emitIr());
+    const steps = ir.modules["helix-patched"].steps;
+    assert.equal(steps[0].action.kind, "fetch");
+    assert.equal(steps[0].phase, "fetch");
+    assert.equal(steps[1].id, "patch");
+    assert.equal(steps[1].action.kind, "custom_shell");
+    assert.deepEqual(steps[1].needs, ["fetch"]);
   });
 
   it("marks build-only deps", () => {
