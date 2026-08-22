@@ -1,0 +1,107 @@
+# 0002 — Sourcing: resolvers, transports, and sourcerers
+
+- Status: draft
+- Date: 2026-08-22
+- Amends: 0001 (§3.1 sources, §6 components)
+
+## 1. The decomposition
+
+"How to source a package" is two problems, and conflating them is what makes
+package-manager plugin systems sprawl:
+
+- **resolution** — deciding *what* to fetch: querying a registry API,
+  picking a version, mapping an abstract name to a concrete artifact.
+- **transport** — getting the bytes: HTTPS, git, mTLS, a signed URL, an
+  internal CA.
+
+They happen at different times in the gripsack model (0001 §4):
+resolution at **eval** (Python, trusted, credentialed), transport at
+**execute** (Rust core). Keeping them separate is what lets each stay small.
+
+## 2. The escalation ladder
+
+Use the lowest rung that works:
+
+1. **Built-in fetcher with arguments.** Core fetchers (`tarball`, `git`,
+   `github_release`, `cargo`, `file`) take overrides first:
+   `base_url` (GitHub Enterprise is `github_release` with a different
+   `base_url`, not a new fetcher), static headers, CA bundle. Covers most
+   "internal mirror" cases.
+2. **Python resolver at eval.** Arbitrary registry logic — internal
+   Artifactory/Nexus APIs, version policy, SSO-token URL signing — is plain
+   Python in the env repo's `lib/` or a pip package. It returns a **pinned
+   fetch descriptor** (fetcher + URL/rev + hash). The core never learns
+   anything new; the IR already only carries pinned sources.
+3. **Sourcerer plugin at execute.** Only when the *transport itself* is
+   bespoke: mTLS, non-HTTP protocols, credentialed redirect dances. A
+   separate executable the core drives over stdio.
+
+Rungs 1–2 need no new machinery and cover the large majority of
+internal-registry reality. Rung 3 exists so rungs 1–2 never have to grow
+tentacles.
+
+## 3. Resolvers (eval time)
+
+- A resolver is ordinary Python: `(request) -> FetchDescriptor`. It runs
+  with the user's credentials and environment — internal SSO, netrc,
+  tokens. **The core never sees credentials.**
+- Distribution: env repo `lib/`, or pip packages (PyPI or an internal
+  index) declared under `[eval] deps` in `env.toml`. This is "the system
+  acquired a new skill": the env repo is self-describing, including its
+  sourcing logic — machine B clones the repo and has the skill.
+- **Pinning rule**: a resolver MUST return an immutable reference
+  (version, digest, rev). It SHOULD return the content hash; if it can't
+  know the hash upfront, the core records it in the lockfile on first
+  fetch (trust-on-first-use) and every later run verifies against it.
+  Hash drift = hard error until `grip update` re-resolves. Invariant 6
+  (0001 §9) survives intact: the lockfile remains the sole source of
+  resolution.
+
+## 4. Sourcerers (transport plugins)
+
+- An executable named `gripsource-<name>`, discovered on `PATH` (git
+  remote-helper style) or declared explicitly in `env.toml`. Any language.
+- Protocol: NDJSON over stdio, same family as rootle's provider protocol.
+  Two operations are enough to start:
+  - `fetch {args, dest_dir, locked}` → writes bytes under `dest_dir`,
+    responds `{sha256, provenance}`
+  - `capabilities` → declared feature set (for `plan`/doctor output)
+- IR node: `{"fetcher": "plugin", "name": "<name>", "args": {...}}` —
+  opaque to the core; the store-path hash covers name + args.
+- **The core verifies.** Returned bytes are hashed and checked against the
+  lockfile before anything enters the store. Plugin output is never
+  trusted: a sourcerer can be wrong or malicious and the worst outcome is
+  a failed apply, never a poisoned store.
+- Failure modes, decided now: plugin missing → `plan`-time error with
+  provenance pointing at the module line; hash mismatch → hard error
+  (upstream mutation or tampering), `grip update` to accept deliberately.
+
+## 5. Where things live
+
+| what | where |
+|---|---|
+| built-in fetchers + plugin host + hash verification | `gripsack-dev/gripsack` (core) |
+| official sourcerers (artifactory, nexus, s3, …) | `gripsack-dev/gripsource-*` repos |
+| official resolver libraries | pip packages `gripsack-sourcerer-*` |
+| company-private resolvers/sourcerers | the company's env repo or internal index |
+
+Sourcerers are pinned like everything else (git URL + rev, or a versioned
+package) — but because transports are hash-verified, a sourcerer's version
+does **not** participate in store-path identity: content is content.
+Resolution behavior is captured by the lockfile as usual.
+
+## 6. Non-goals and adjacencies
+
+- No sandboxing of resolvers or sourcerers (consistent with 0001 §2.3):
+  they are trusted code, same as modules.
+- Builders get the same treatment later (in-process builders now,
+  `custom_shell` escape hatch, plugin builders if reality demands).
+- Resolver/sourcerer auth is always ambient (env, files, SSO brokers);
+  gripsack defines no credential store of its own. (Secrets-in-dotfiles is
+  a separate future doc.)
+
+## 7. Naming
+
+The plugin family is **sourcerers** (source + sorcerer): transport
+executables `gripsource-*`, Python resolver packages `gripsack-sourcerer-*`.
+The pun is the brand.
