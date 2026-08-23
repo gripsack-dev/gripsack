@@ -18,7 +18,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::prelude::*;
-use tracing_subscriber::Layer as _;
 
 /// A started run: its id and the JSONL path.
 #[derive(Debug, Clone)]
