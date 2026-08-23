@@ -1,7 +1,7 @@
 {
   "name": "@gripsack/core",
-  "version": "0.1.0",
-  "description": "gripsack typescript frontend — typed module DSL, emits IR",
+  "version": "0.1.2",
+  "description": "gripsack typescript frontend \u2014 typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",
   "main": "./dist/src/index.js",
@@ -12,15 +12,23 @@
       "import": "./dist/src/index.js"
     }
   },
-  "files": ["dist/src"],
+  "files": [
+    "dist/src"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "tsc && node --test dist/test/*.test.js"
   },
-  "keywords": ["dotfiles", "package-manager", "environment"],
+  "keywords": [
+    "dotfiles",
+    "package-manager",
+    "environment"
+  ],
   "homepage": "https://gripsack.dev",
   "repository": "https://github.com/gripsack-dev/gripsack",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "devDependencies": {
     "@types/node": "^26",
     "typescript": "^7"
