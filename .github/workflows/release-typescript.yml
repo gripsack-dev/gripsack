@@ -1,0 +1,48 @@
+name: release-typescript
+
+on:
+  push:
+    tags: ["ts-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      # The guard fails a mistagged release instead of publishing the
+      # wrong version.
+      - name: Guard tag matches package version
+        run: |
+          ver="$(jq -r .version typescript/package.json)"
+          test "ts-v$ver" = "$GITHUB_REF_NAME" || {
+            echo "::error::tag $GITHUB_REF_NAME != package version ts-v$ver"; exit 1; }
+
+      - name: Build
+        run: |
+          cd typescript
+          npm ci
+          npm test
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd typescript
+          npm publish --access public
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "@gripsack/core ${GITHUB_REF_NAME#ts-v}" \
+            --generate-notes

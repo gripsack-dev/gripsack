@@ -34,7 +34,7 @@ jobs:
       # publishing the wrong version.
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Publish to crates.io
+      - name: Publish to crates.io (dependency order)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
@@ -42,7 +42,16 @@ jobs:
             | jq -r '.packages[] | select(.name == "gripsack") | .version')"
           test "core-v$pkg" = "$GITHUB_REF_NAME" || {
             echo "::error::tag $GITHUB_REF_NAME != crate version core-v$pkg"; exit 1; }
-          cargo publish -p gripsack
+          # the workspace publishes in dependency order; the retry loop
+          # absorbs crates.io index propagation lag between crates
+          for crate in gripsack-ir gripsack-store gripsack-fetch gripsack-config \
+                       gripsack-trace gripsack-exec gripsack; do
+            for attempt in 1 2 3; do
+              cargo publish -p "$crate" && break
+              echo "::warning::publish of $crate failed (attempt $attempt); retrying in 30s"
+              sleep 30
+            done
+          done
 
       - name: Create GitHub release
         env:

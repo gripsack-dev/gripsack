@@ -16,9 +16,9 @@ thiserror = "2"
 sha2 = "0.10"
 clap = { version = "4", features = ["derive"] }
 owo-colors = "4"
-gripsack-ir = { path = "crates/gripsack-ir" }
-gripsack-store = { path = "crates/gripsack-store" }
-gripsack-trace = { path = "crates/gripsack-trace" }
-gripsack-config = { path = "crates/gripsack-config" }
-gripsack-exec = { path = "crates/gripsack-exec" }
-gripsack-fetch = { path = "crates/gripsack-fetch" }
+gripsack-ir = { version = "0.1.0", path = "crates/gripsack-ir" }
+gripsack-store = { version = "0.1.0", path = "crates/gripsack-store" }
+gripsack-trace = { version = "0.1.0", path = "crates/gripsack-trace" }
+gripsack-config = { version = "0.1.0", path = "crates/gripsack-config" }
+gripsack-exec = { version = "0.1.0", path = "crates/gripsack-exec" }
+gripsack-fetch = { version = "0.1.0", path = "crates/gripsack-fetch" }
