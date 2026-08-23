@@ -83,7 +83,23 @@ tentacles.
   provenance pointing at the module line; hash mismatch → hard error
   (upstream mutation or tampering), `grip update` to accept deliberately.
 
-## 5. Where things live
+## 5. Fetcher tiers
+
+**In-tree (first-class, maintained in the core):** `file`, `tarball`,
+`git`, `github_release`, `brew` (bottles), `pixi` (conda packages).
+`mise` is deliberately absent — its backends are mostly GitHub releases,
+which `github_release` already covers. Version pinning: git revs and
+lockfile content hashes are trivial; brew/pixi pin via their own
+lockfiles and bottle/package hashes, captured into our lockfile at
+update time (0008 §5).
+
+**Out-of-tree (`gripfetch-*` plugins):** distro packages (apt/dnf —
+their pinning story is repo snapshots and maintainer scripts, not ours
+to own), internal registries, anything bespoke. The plugin protocol is
+the permanent home for the long tail; in-tree is earned by being
+boring and universal.
+
+## 6. Where things live
 
 | what | where |
 |---|---|
@@ -97,7 +113,7 @@ package) — but because transports are hash-verified, a fetcher's version
 does **not** participate in store-path identity: content is content.
 Resolution behavior is captured by the lockfile as usual.
 
-## 6. Non-goals and adjacencies
+## 7. Non-goals and adjacencies
 
 - No sandboxing of resolvers or fetchers (consistent with 0001 §2.3):
   they are trusted code, same as modules.
@@ -107,7 +123,7 @@ Resolution behavior is captured by the lockfile as usual.
   gripsack defines no credential store of its own. (Secrets-in-dotfiles is
   a separate future doc.)
 
-## 7. Resolution lives in the core (amendment)
+## 8. Resolution lives in the core (amendment)
 
 Built-in fetcher resolution ("latest release", tag listings) happens **in
 the core at lock/update time**, not in frontend code at eval time. This

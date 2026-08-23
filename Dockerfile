@@ -5,7 +5,7 @@
 # dependency that drags in openssl is a bug (AGENTS.md hard rules).
 
 FROM rust:alpine AS builder
-RUN apk add --no-cache musl-dev \
+RUN apk add --no-cache musl-dev git \
     && rustup component add clippy rustfmt
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./

@@ -7,3 +7,4 @@ you operate and debug gripsack. (Maintainer skills live in
 | Skill | Purpose |
 |---|---|
 | [gripsack-debug](gripsack-debug/SKILL.md) | diagnose a failing run from its JSONL run log |
+| [gripsack-adopt](gripsack-adopt/SKILL.md) | interview-driven migration of an existing tool into a module |

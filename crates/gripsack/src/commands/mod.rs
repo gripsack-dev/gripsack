@@ -2,6 +2,7 @@
 //! `eval` (frontend wiring) and `expand_home`.
 
 pub mod apply;
+pub mod doctor;
 pub mod eval;
 pub mod generations;
 pub mod plan;
@@ -9,6 +10,7 @@ pub mod rollback;
 pub mod update;
 
 pub use apply::apply;
+pub use doctor::doctor;
 pub use eval::{check_ir, eval_repo};
 pub use generations::generations;
 pub use plan::{plan_ir, plan_module};
