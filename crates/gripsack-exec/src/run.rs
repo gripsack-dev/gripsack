@@ -302,16 +302,16 @@ fn deploy_entry(
     let source = resolve_source(store_path, &entry.from, &ctx.repo);
     let dest = expand_home(&entry.to);
     let hash = store::canonical_file_hash(&source)?;
-    match &entry.mode {
+    let (summary, kind) = match &entry.mode {
         Ownership::Owned => {
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent)?;
             }
             store::symlink_replace(&dest, &source)?;
-            return Ok((
+            (
                 format!("linked {} → {}", entry.from, entry.to),
                 ReportKind::Installed,
-            ));
+            )
         }
         Ownership::TrackedCopy => {
             let prev_hash = prev
@@ -320,36 +320,31 @@ fn deploy_entry(
             if dest.exists() {
                 let current = store::canonical_file_hash(&dest)?;
                 if current == hash {
-                    // already deployed, nothing to do
-                } else if prev_hash == Some(current.as_str()) || prev_hash.is_none() && false {
-                    // destination matches the previous generation: normal update
+                    (format!("{} unchanged", entry.to), ReportKind::Satisfied)
+                } else if prev_hash == Some(current.as_str()) {
                     store::atomic_write(&dest, &std::fs::read(&source)?)?;
-                } else if prev_hash.is_none() {
-                    // first deploy over an existing file the user wrote
-                    tracing::warn!(
-                        "{}",
-                        format!(
-                            "{} exists and was not deployed by gripsack — keeping it (adopt into the module to manage)",
-                            dest.display()
-                        )
-                    );
+                    (
+                        format!("updated {} → {}", entry.from, entry.to),
+                        ReportKind::Configured,
+                    )
                 } else {
-                    tracing::warn!(
-                        "{}",
-                        format!(
-                            "{} drifted since the last generation — keeping it",
-                            dest.display()
-                        )
-                    );
+                    let note = if prev_hash.is_none() {
+                        format!("{} exists (not deployed by gripsack) — kept", entry.to)
+                    } else {
+                        format!("{} drifted — kept", entry.to)
+                    };
+                    tracing::warn!("{}", note);
+                    (note, ReportKind::Warned)
                 }
             } else {
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                return Ok((
+                store::atomic_write(&dest, &std::fs::read(&source)?)?;
+                (
                     format!("copied {} → {}", entry.from, entry.to),
                     ReportKind::Configured,
-                ));
+                )
             }
         }
         other => {
@@ -359,14 +354,14 @@ fn deploy_entry(
                 detail: format!("ownership mode {other:?} lands in 0.2"),
             });
         }
-    }
+    };
     out.push(store::DeployedEntry {
         from: entry.from.clone(),
         to: entry.to.clone(),
         mode: entry.mode.clone(),
         hash,
     });
-    Ok((String::new(), ReportKind::Satisfied))
+    Ok((summary, kind))
 }
 
 /// Entry content lives in the store payload if present, else in the
