@@ -64,6 +64,27 @@ jobs:
           done
           [ -z "$failed" ] || { echo "::error::failed to publish:$failed"; exit 1; }
 
+      # Keep the tap in sync: bump the formula's version + crate sha256.
+      # Needs HOMEBREW_TAP_TOKEN (fine-grained PAT, contents:write on
+      # gripsack-dev/homebrew-tap) — GITHUB_TOKEN is repo-scoped.
+      - name: Bump homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        if: env.HAS_TAP_TOKEN != ''
+        run: |
+          ver="${GITHUB_REF_NAME#core-v}"
+          sha="$(curl -fsSL "https://static.crates.io/crates/gripsack/gripsack-$ver.crate" | sha256sum | cut -d' ' -f1)"
+          gh repo clone gripsack-dev/homebrew-tap /tmp/tap -- --depth 1
+          sed -i -e "s|gripsack-[0-9.]*\.crate|gripsack-$ver.crate|" \
+                 -e "s|sha256 \"[0-9a-f]*\"|sha256 \"$sha\"|" \
+                 /tmp/tap/Formula/gripsack.rb
+          cd /tmp/tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "gripsack $ver"
+          git push
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
