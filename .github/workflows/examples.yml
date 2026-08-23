@@ -1,0 +1,79 @@
+name: examples
+
+# API canary: the example env repos under gripsack-dev are applied (or
+# typechecked) on every change — if we break the frontend API or the IR
+# contract, this fails.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python-env:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: gripsack
+
+      - name: Build grip (static musl)
+        run: docker compose run --build --rm -e VERSION=0.0.0-ci release
+        working-directory: gripsack
+
+      - name: Extract binary
+        run: |
+          tar -xzf gripsack/dist/gripsack-*.tar.gz -C gripsack/dist
+          echo "GRIP=$(find gripsack/dist -type f -name grip)" >> "$GITHUB_ENV"
+
+      - name: Install the python frontend
+        run: |
+          python3 -m venv /tmp/fenv
+          /tmp/fenv/bin/pip install -q ./gripsack/python
+
+      - uses: actions/checkout@v7
+        with:
+          repository: gripsack-dev/example-env-python
+          path: example
+
+      - name: Apply the example env (twice — the second must be satisfied)
+        env:
+          HOME: /tmp/example-home
+          GRIPSACK_HOME: /tmp/example-home/.gs
+        run: |
+          mkdir -p "$HOME"
+          export PATH="/tmp/fenv/bin:$PATH"
+          cd example
+          "$GRIP" apply --host laptop | tee /tmp/apply1.log
+          grep -q "applied" /tmp/apply1.log
+          "$GRIP" apply --host laptop | tee /tmp/apply2.log
+          grep -q "already satisfied" /tmp/apply2.log
+          "$HOME/.local/bin/hello"
+          "$HOME/.local/bin/hello-patched"
+          grep -q "catppuccin-mocha" "$HOME/.config/editor/editor.toml"
+          "$GRIP" generations | grep -q "→"
+
+  typescript-env:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: gripsack
+
+      - uses: actions/checkout@v7
+        with:
+          repository: gripsack-dev/example-env-typescript
+          path: example
+
+      - name: Build @gripsack/core
+        run: |
+          cd gripsack/typescript
+          npm ci
+          npm run build
+
+      - name: Typecheck the example env
+        run: |
+          cd example
+          npm pkg delete 'dependencies.@gripsack/core'
+          npm install "$GITHUB_WORKSPACE/gripsack/typescript"
+          npx tsc

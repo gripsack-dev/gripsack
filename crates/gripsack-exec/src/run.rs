@@ -77,21 +77,23 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<Outcome, ExecError> {
         );
     }
 
+    // Satisfied = the module states are identical (the generation
+    // number is not part of the comparison — 0008 §3).
     let next = current_gen.unwrap_or(0) + 1;
-    let generation = store::Generation {
-        number: next,
-        modules,
-    };
     if current_gen
         .and_then(|n| store::read_manifest(&ctx.home, n).ok())
+        .map(|g| g.modules)
         .as_ref()
-        == Some(&generation)
+        == Some(&modules)
     {
-        info!("already satisfied");
         return Ok(Outcome::Satisfied {
             generation: current_gen,
         });
     }
+    let generation = store::Generation {
+        number: next,
+        modules,
+    };
     store::write_manifest(&ctx.home, &generation)?;
     store::flip(&ctx.home, next)?;
     info!(generation = next, "activated");

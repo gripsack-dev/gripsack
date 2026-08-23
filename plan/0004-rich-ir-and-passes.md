@@ -114,6 +114,12 @@ thin, boring program (tower-lsp + gripsack-ir). Scheduled after `apply`.
 
 ## 6. Non-goals
 
+- **Editions & deprecation (future).** The deprecation channel exists
+  by construction: warning-severity diagnostics with stable `W` codes,
+  spans pointing at the offending module line, and `ir_version` as the
+  compatibility knob. A future "editions" policy is a new warning pass
+  in `sema/`, not a redesign.
+
 - No incremental/lazy query system (rustc's salsa) — env graphs are
   hundreds of nodes; recompute is microseconds. Revisit only if profiled.
 - No span-perfect byte ranges — `{file, line, col}` granularity is
