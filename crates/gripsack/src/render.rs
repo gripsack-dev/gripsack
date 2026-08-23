@@ -154,6 +154,8 @@ fn describe_fetch(fetch: &gripsack_ir::FetchSpec) -> String {
         F::Git { url, rev } => format!("git {url} @ {rev}"),
         F::File { path } => format!("file {path}"),
         F::Plugin { name, .. } => format!("plugin gripfetch-{name}"),
+        F::Brew { formula, .. } => format!("brew {formula}"),
+        F::Pixi { package, .. } => format!("pixi {package}"),
     }
 }
 

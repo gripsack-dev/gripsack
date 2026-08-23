@@ -36,6 +36,8 @@ impl From<ureq::Error> for ResolveError {
 pub struct ResolvedRelease {
     pub version: String,
     pub url: String,
+    /// Present when the registry gives us the hash upfront (brew bottles).
+    pub sha256: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -72,6 +74,7 @@ pub fn pick_asset(
             return Ok(ResolvedRelease {
                 version: tag.to_string(),
                 url: url.clone(),
+                sha256: None,
             });
         }
     }
@@ -155,4 +158,92 @@ mod tests {
             other => panic!("{other:?}"),
         }
     }
+}
+
+// ---------------------------------------------------------------- brew
+
+#[derive(Deserialize)]
+pub struct Formula {
+    pub versions: Versions,
+    pub bottle: Bottles,
+}
+
+#[derive(Deserialize)]
+pub struct Versions {
+    pub stable: String,
+}
+
+#[derive(Deserialize)]
+pub struct Bottles {
+    pub stable: BottleStable,
+}
+
+#[derive(Deserialize)]
+pub struct BottleStable {
+    pub files: std::collections::BTreeMap<String, BottleFile>,
+}
+
+#[derive(Deserialize)]
+pub struct BottleFile {
+    pub url: String,
+    pub sha256: String,
+}
+
+/// The bottle file key for this platform: linux is `x86_64_linux`;
+/// macOS keys are arm64_* / plain names (sonoma…) — take the newest.
+pub fn bottle_key(files: &std::collections::BTreeMap<String, BottleFile>) -> Option<&str> {
+    let (os, arch) = (std::env::consts::OS, std::env::consts::ARCH);
+    if os == "linux" {
+        return if arch == "x86_64" {
+            Some("x86_64_linux")
+        } else {
+            Some("arm64_linux")
+        }
+        .filter(|k| files.contains_key(*k));
+    }
+    if os == "macos" {
+        if arch == "aarch64" {
+            return files
+                .keys()
+                .rfind(|k| k.starts_with("arm64_"))
+                .map(String::as_str);
+        }
+        return files
+            .keys()
+            .rfind(|k| !k.starts_with("arm64") && *k != "all")
+            .map(String::as_str);
+    }
+    None
+}
+
+/// Resolve a brew formula to a bottle URL — the sha256 comes from the
+/// formula JSON, so pinning needs no download.
+pub fn resolve_brew(formula: &str) -> Result<ResolvedRelease, ResolveError> {
+    let url = format!("https://formulae.brew.sh/api/formula/{formula}.json");
+    let f: Formula = ureq::get(&url)
+        .set("User-Agent", "gripsack")
+        .call()?
+        .into_json()?;
+    let key = bottle_key(&f.bottle.stable.files).ok_or_else(|| ResolveError::NoAsset {
+        repo: formula.to_string(),
+        asset: "bottle for this platform".into(),
+        available: f.bottle.stable.files.keys().cloned().collect(),
+    })?;
+    let file = &f.bottle.stable.files[key];
+    Ok(ResolvedRelease {
+        version: f.versions.stable,
+        url: file.url.clone(),
+        sha256: Some(file.sha256.clone()),
+    })
+}
+
+/// ghcr.io blobs need an anonymous bearer token.
+pub fn ghcr_token(scope_repo: &str) -> Result<String, ResolveError> {
+    #[derive(Deserialize)]
+    struct Token {
+        token: String,
+    }
+    let url = format!("https://ghcr.io/token?scope=repository:{scope_repo}:pull");
+    let t: Token = ureq::get(&url).call()?.into_json()?;
+    Ok(t.token)
 }

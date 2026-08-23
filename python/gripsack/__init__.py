@@ -12,7 +12,17 @@ data-style :func:`module` and the class-style :class:`Module`.
 from .deps import Dependency, dep
 from .entries import Dest, merge, symlink, template, tracked_copy
 from .facts import current_facts
-from .fetch import Fetch, file_fetch, git, github_release, plugin_fetch, tarball
+from .fetch import (
+    Fetch,
+    FetchKind,
+    brew,
+    file_fetch,
+    git,
+    github_release,
+    pixi,
+    plugin_fetch,
+    tarball,
+)
 from .graph import IR_VERSION, clear_graph, emit_ir
 from .intents import Intent, custom_hook, desktop_entry, fonts, service
 from .module import Module, ModuleData, module
@@ -49,6 +59,8 @@ __all__ = [
     "git",
     "file_fetch",
     "plugin_fetch",
+    "brew",
+    "pixi",
     "Fetch",
     "symlink",
     "tracked_copy",

@@ -15,6 +15,8 @@ class FetchKind(str, Enum):
     GIT = "git"
     FILE = "file"
     PLUGIN = "plugin"
+    BREW = "brew"
+    PIXI = "pixi"
 
 
 @dataclass(frozen=True)
@@ -67,3 +69,18 @@ def file_fetch(path: str) -> Fetch:
 def plugin_fetch(name: str, **args: Any) -> Fetch:
     """A fetcher plugin transport (0002 §4) — `gripfetch-<name>`."""
     return Fetch(FetchKind.PLUGIN, {"name": name, "args": args})
+
+
+def brew(formula: str) -> Fetch:
+    """A Homebrew bottle — resolved from the formula JSON, so the pin
+    (bottle sha256) needs no download at update time."""
+    return Fetch(FetchKind.BREW, {"formula": formula})
+
+
+def pixi(package: str, version: Optional[str] = None) -> Fetch:
+    """A conda package via pixi, installed into an isolated PIXI_HOME
+    and harvested into the store."""
+    args: dict[str, Any] = {"package": package}
+    if version is not None:
+        args["version"] = version
+    return Fetch(FetchKind.PIXI, args)

@@ -253,6 +253,20 @@ fn run_module(
                         version = Some(m.version.clone());
                     }
                     let sha = fetch(&concrete, stage).map_err(ExecError::Fetch)?;
+                    // pin enforcement for kinds without download-level
+                    // verification (pixi trees, git revs)
+                    if let Some(expected) = locked
+                        .and_then(|e| e.resolved.as_ref())
+                        .and_then(|r| r.sha256.as_ref())
+                        && sha != *expected
+                        && !matches!(concrete, gripsack_ir::FetchSpec::Tarball { .. })
+                    {
+                        return Err(ExecError::Fetch(gripsack_fetch::FetchError::HashMismatch {
+                            url: format!("{name} payload"),
+                            expected: expected.clone(),
+                            actual: sha,
+                        }));
+                    }
                     lock_entry = Some(crate::lockfile::LockEntry {
                         fetch: spec.clone(),
                         resolved: Some(crate::lockfile::Resolved {
@@ -409,6 +423,34 @@ fn resolve_spec(
                     sha256: None,
                 },
                 Some(release),
+            ))
+        }
+        F::Brew { formula, .. } => {
+            let meta = gripsack_fetch::resolve_brew(formula).map_err(|e| ExecError::Step {
+                module: formula.clone(),
+                step: "resolve".into(),
+                detail: e.to_string(),
+            })?;
+            let locked_sha = resolved.and_then(|r| r.sha256.clone());
+            Ok((
+                F::Brew {
+                    formula: formula.clone(),
+                    sha256: locked_sha,
+                },
+                Some(meta),
+            ))
+        }
+        F::Pixi {
+            package, version, ..
+        } => {
+            let locked_sha = resolved.and_then(|r| r.sha256.clone());
+            Ok((
+                F::Pixi {
+                    package: package.clone(),
+                    version: version.clone(),
+                    sha256: locked_sha,
+                },
+                None,
             ))
         }
         other => Ok((inject_locked_sha(other, locked), None)),
@@ -573,6 +615,8 @@ fn describe_fetch(spec: &gripsack_ir::FetchSpec) -> String {
         F::Git { url, rev } => format!("git {url} @ {rev}"),
         F::File { path } => format!("file {path}"),
         F::Plugin { name, .. } => format!("plugin gripfetch-{name}"),
+        F::Brew { formula, .. } => format!("brew {formula}"),
+        F::Pixi { package, .. } => format!("pixi {package}"),
     }
 }
 

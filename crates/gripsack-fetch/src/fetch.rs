@@ -42,6 +42,12 @@ pub fn payload_hash(spec: &FetchSpec) -> Result<Option<String>, FetchError> {
             }
         }
         FetchSpec::Tarball { url, .. } => Ok(Some(hex(&Sha256::digest(read_url(url)?)))),
+        FetchSpec::Brew { formula, .. } => Ok(crate::resolve::resolve_brew(formula)
+            .map_err(|e| FetchError::Http {
+                url: formula.clone(),
+                reason: e.to_string(),
+            })?
+            .sha256),
         _ => Ok(None),
     }
 }
@@ -66,6 +72,77 @@ pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<String, FetchError> {
             }
             extract_tarball(&bytes, dest)?;
             Ok(actual)
+        }
+        FetchSpec::Brew { formula, sha256 } => {
+            let resolved = crate::resolve::resolve_brew(formula).map_err(|e| FetchError::Http {
+                url: formula.clone(),
+                reason: e.to_string(),
+            })?;
+            let token =
+                crate::resolve::ghcr_token(&format!("homebrew/core/{formula}")).map_err(|e| {
+                    FetchError::Http {
+                        url: formula.clone(),
+                        reason: e.to_string(),
+                    }
+                })?;
+            let bytes = ureq::get(&resolved.url)
+                .set("Authorization", &format!("Bearer {token}"))
+                .call()
+                .map_err(|e| FetchError::Http {
+                    url: resolved.url.clone(),
+                    reason: e.to_string(),
+                })?
+                .into_reader();
+            let mut bytes_vec = Vec::new();
+            io::Read::read_to_end(
+                &mut io::Read::take(bytes, 512 * 1024 * 1024),
+                &mut bytes_vec,
+            )?;
+            let actual = hex(&Sha256::digest(&bytes_vec));
+            let expected = sha256.as_ref().or(resolved.sha256.as_ref());
+            if let Some(expected) = expected
+                && actual != *expected
+            {
+                return Err(FetchError::HashMismatch {
+                    url: resolved.url,
+                    expected: expected.clone(),
+                    actual,
+                });
+            }
+            extract_tarball(&bytes_vec, dest)?;
+            pour(dest)?;
+            Ok(actual)
+        }
+        FetchSpec::Pixi {
+            package, version, ..
+        } => {
+            let spec = match version {
+                Some(v) => format!("{package}=={v}"),
+                None => package.clone(),
+            };
+            let pixi_home =
+                std::env::temp_dir().join(format!("gripsack-pixi-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&pixi_home);
+            let status = std::process::Command::new("pixi")
+                .args(["global", "install", &spec])
+                .env("PIXI_HOME", &pixi_home)
+                .status()?;
+            if !status.success() {
+                return Err(FetchError::Http {
+                    url: package.clone(),
+                    reason: format!("pixi global install exited {status}"),
+                });
+            }
+            let env_dir = pixi_home.join("envs").join(package);
+            if !env_dir.exists() {
+                return Err(FetchError::Http {
+                    url: package.clone(),
+                    reason: format!("no pixi env at {}", env_dir.display()),
+                });
+            }
+            copy_tree(&env_dir, dest).map_err(FetchError::Io)?;
+            let _ = std::fs::remove_dir_all(&pixi_home);
+            Ok(gripsack_store::canonical_tree_hash(dest)?)
         }
         FetchSpec::Git { url, rev } => {
             // pinned to an immutable rev; a shallow fetch of the exact
@@ -174,6 +251,60 @@ fn extract_tarball(bytes: &[u8], dest: &Path) -> Result<(), FetchError> {
 
 fn looks_like_tar(bytes: &[u8]) -> bool {
     bytes.len() > 262 && &bytes[257..262] == b"ustar"
+}
+
+/// The bottle pour: brew rewrites @@HOMEBREW_PREFIX@@ placeholders at
+/// install time. For ELF binaries the interpreter is the blocker —
+/// patch it to the system loader (fits the placeholder's length).
+#[cfg(unix)]
+fn pour(dest: &Path) -> io::Result<()> {
+    const PLACEHOLDER: &[u8] = b"@@HOMEBREW_PREFIX@@/lib/ld.so";
+    let loader: &[u8] = if cfg!(target_arch = "aarch64") {
+        b"/lib/ld-linux-aarch64.so.1"
+    } else {
+        b"/lib64/ld-linux-x86-64.so.2"
+    };
+    pour_dir(dest, PLACEHOLDER, loader)
+}
+
+#[cfg(unix)]
+fn pour_dir(dir: &Path, placeholder: &[u8], loader: &[u8]) -> io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() && !path.is_symlink() {
+            pour_dir(&path, placeholder, loader)?;
+        } else if path.is_file() {
+            let mut bytes = std::fs::read(&path)?;
+            let mut cursor = 0;
+            let mut touched = false;
+            while let Some(pos) = bytes[cursor..]
+                .windows(placeholder.len())
+                .position(|w| w == placeholder)
+            {
+                let start = cursor + pos;
+                bytes[start..start + loader.len()].copy_from_slice(loader);
+                for b in &mut bytes[start + loader.len()..start + placeholder.len()] {
+                    *b = 0;
+                }
+                cursor = start + placeholder.len();
+                touched = true;
+            }
+            if touched {
+                // bottles ship read-only files
+                let mut perms = std::fs::metadata(&path)?.permissions();
+                #[allow(clippy::permissions_set_readonly_false)]
+                perms.set_readonly(false);
+                std::fs::set_permissions(&path, perms)?;
+                std::fs::write(&path, &bytes)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn pour(_dest: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {

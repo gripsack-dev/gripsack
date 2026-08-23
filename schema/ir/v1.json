@@ -322,7 +322,9 @@
             "tarball",
             "git",
             "file",
-            "plugin"
+            "plugin",
+            "brew",
+            "pixi"
           ]
         }
       },
@@ -422,6 +424,43 @@
           "required": [
             "kind",
             "name"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "brew"
+            },
+            "formula": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "required": [
+            "kind",
+            "formula"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "pixi"
+            },
+            "package": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "required": [
+            "kind",
+            "package"
           ]
         }
       ]

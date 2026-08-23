@@ -16,7 +16,7 @@ export { merge, symlink, template, trackedCopy } from "./entries.js";
 export type { Dest, Ownership } from "./entries.js";
 export { currentFacts } from "./facts.js";
 export type { HostFacts } from "./facts.js";
-export { fileFetch, git, githubRelease, pluginFetch, tarball } from "./fetch.js";
+export { brew, fileFetch, git, githubRelease, pixi, pluginFetch, tarball } from "./fetch.js";
 export type { Fetch } from "./fetch.js";
 export { clearGraph, emitIr, IR_VERSION, register } from "./graph.js";
 export { customHook, desktopEntry, fonts, service } from "./intents.js";

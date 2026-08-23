@@ -17,7 +17,7 @@ pub mod fetch;
 pub mod resolve;
 
 pub use fetch::{FetchError, fetch, payload_hash};
-pub use resolve::{ResolvedRelease, resolve_latest};
+pub use resolve::{ResolvedRelease, resolve_brew, resolve_latest};
 
 use std::path::PathBuf;
 
