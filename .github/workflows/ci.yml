@@ -25,3 +25,11 @@ jobs:
       # repos, offline (file:// fixtures only).
       - name: E2E (flow suite)
         run: docker compose run --build --rm e2e
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
