@@ -1,0 +1,8 @@
+# cargo audit configuration
+
+[advisories]
+ignore = [
+    # number_prefix (via indicatif) is unmaintained; informational only,
+    # no vulnerability and no replacement on the indicatif path.
+    "RUSTSEC-2025-0119",
+]
