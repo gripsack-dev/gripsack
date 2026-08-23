@@ -22,9 +22,11 @@ jobs:
         working-directory: gripsack
 
       - name: Extract binary
+        # dist/ is root-owned (container mount) — extract elsewhere
         run: |
-          tar -xzf gripsack/dist/gripsack-*.tar.gz -C gripsack/dist
-          echo "GRIP=$(find gripsack/dist -type f -name grip)" >> "$GITHUB_ENV"
+          mkdir -p /tmp/grip-bin
+          tar -xzf gripsack/dist/gripsack-*.tar.gz -C /tmp/grip-bin
+          echo "GRIP=$(find /tmp/grip-bin -type f -name grip)" >> "$GITHUB_ENV"
 
       - name: Install the python frontend
         run: |
