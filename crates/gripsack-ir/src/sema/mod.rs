@@ -102,7 +102,7 @@ mod tests {
             .replace("~/.local/bin/hx", "bin/hx-elsewhere");
         let diagnostics = check(&bad).unwrap_err();
         assert_eq!(diagnostics.len(), 2);
-        let codes: Vec<_> = diagnostics.iter().map(|d| d.code).collect();
+        let codes: Vec<_> = diagnostics.iter().map(|d| d.code.as_ref()).collect();
         assert!(codes.contains(&codes::UNKNOWN_DEPENDENCY));
         assert!(codes.contains(&codes::BAD_DESTINATION));
     }

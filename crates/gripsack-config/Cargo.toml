@@ -7,6 +7,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+gripsack-ir.workspace = true
 serde.workspace = true
-thiserror.workspace = true
 toml = "0.8"

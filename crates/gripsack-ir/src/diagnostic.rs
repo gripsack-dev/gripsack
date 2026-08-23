@@ -1,4 +1,6 @@
 use crate::span::Span;
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::fmt;
 
 /// Stable diagnostic codes (0004 §3). Match on codes, never on text.
@@ -11,6 +13,7 @@ pub mod codes {
     pub const UNKNOWN_STEP: &str = "E104";
     pub const DUPLICATE_STEP: &str = "E106";
     pub const UNKNOWN_RESOURCE: &str = "E107";
+    pub const CONFIG: &str = "E400";
 }
 
 // ---------------------------------------------------------------- diagnostics
@@ -18,16 +21,19 @@ pub mod codes {
 /// Compiler-style diagnostics (0004 §3): structured, span-labeled,
 /// collected across passes. Rendered by the CLI; matched on `code` by
 /// tooling and the future LSP.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
-    pub code: &'static str,
+    /// Stable code (`E101`); plugin codes are namespaced runtime
+    /// strings (0009 §2), hence the Cow.
+    pub code: Cow<'static, str>,
     pub severity: Severity,
     pub message: String,
     pub labels: Vec<Label>,
     pub help: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Severity {
     Error,
     Warning,
@@ -42,7 +48,7 @@ impl fmt::Display for Severity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Label {
     /// None when the node has no span — the message carries context then.
     pub span: Option<Span>,
@@ -52,7 +58,7 @@ pub struct Label {
 impl Diagnostic {
     pub fn error(code: &'static str, message: impl Into<String>) -> Self {
         Diagnostic {
-            code,
+            code: Cow::Borrowed(code),
             severity: Severity::Error,
             message: message.into(),
             labels: Vec::new(),

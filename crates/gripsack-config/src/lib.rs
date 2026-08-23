@@ -18,16 +18,12 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
-#[derive(Debug, thiserror::Error)]
-pub enum ConfigError {
-    #[error("invalid config TOML: {0}")]
-    Toml(#[from] toml::de::Error),
-}
+use gripsack_ir::{codes, Diagnostic, Span};
 
 /// Repo-level configuration (`env.toml`), committed — the env is
 /// self-describing.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct EnvConfig {
     pub env: EnvSection,
     pub eval: EvalSection,
@@ -42,14 +38,14 @@ pub struct EnvConfig {
 /// User-level configuration (`~/.config/gripsack/config.toml`) — for
 /// machine-local overrides that must not be committed.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct UserConfig {
     pub fetchers: BTreeMap<String, FetcherSection>,
     pub settings: Settings,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct EnvSection {
     pub name: Option<String>,
     #[serde(default)]
@@ -69,14 +65,14 @@ pub enum Frontend {
 /// eval time (resolvers, fetcher libraries — 0002 §3). Content-cached:
 /// same spec, same environment.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct EvalSection {
     pub deps: Vec<String>,
 }
 
 /// A named fetcher.s tool-level wiring (0002 §4).
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct FetcherSection {
     /// Fetcher plugin override; default discovery is
     /// `gripfetch-<name>` on PATH.
@@ -84,7 +80,7 @@ pub struct FetcherSection {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub keep_generations: Option<u32>,
 }
@@ -101,12 +97,66 @@ pub struct FetcherSectionView {
     pub plugin: Option<String>,
 }
 
-pub fn parse_env(toml_str: &str) -> Result<EnvConfig, ConfigError> {
-    Ok(toml::from_str(toml_str)?)
+/// Parse a repo `env.toml`. Errors are span-labeled diagnostics
+/// pointing at the exact line (0009 §3).
+pub fn parse_env(source: &str) -> Result<EnvConfig, Vec<Diagnostic>> {
+    parse_as(source, "<env.toml>")
 }
 
-pub fn parse_user(toml_str: &str) -> Result<UserConfig, ConfigError> {
-    Ok(toml::from_str(toml_str)?)
+/// Parse a user config (`~/.config/gripsack/config.toml`).
+pub fn parse_user(source: &str) -> Result<UserConfig, Vec<Diagnostic>> {
+    parse_as(source, "<config.toml>")
+}
+
+/// Read and parse a repo `env.toml` from disk — spans name the file.
+pub fn load_env(path: &std::path::Path) -> Result<EnvConfig, Vec<Diagnostic>> {
+    let source = std::fs::read_to_string(path).map_err(|e| {
+        vec![Diagnostic::error(
+            codes::CONFIG,
+            format!("cannot read {}: {e}", path.display()),
+        )]
+    })?;
+    parse_as(&source, &path.display().to_string())
+}
+
+fn parse_as<T: serde::de::DeserializeOwned>(
+    source: &str,
+    file: &str,
+) -> Result<T, Vec<Diagnostic>> {
+    toml::from_str(source).map_err(|e| vec![toml_diagnostic(source, file, &e)])
+}
+
+/// Map a toml error's byte span to a line:col span and render it as our
+/// diagnostic — the same shape modules get (0009 §3).
+fn toml_diagnostic(source: &str, file: &str, e: &toml::de::Error) -> Diagnostic {
+    let span = e.span().map(|range| {
+        let (line, col) = line_col(source, range.start);
+        Span {
+            file: file.to_string(),
+            line,
+            col: Some(col),
+        }
+    });
+    Diagnostic::error(codes::CONFIG, format!("invalid config: {}", e.message()))
+        .with_label(span, "here")
+        .with_help("check the key name and type against doc/settings-reference")
+}
+
+fn line_col(source: &str, offset: usize) -> (u32, u32) {
+    let mut line = 1u32;
+    let mut col = 1u32;
+    for (i, ch) in source.char_indices() {
+        if i >= offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
 }
 
 /// Layer user config under repo config: repo wins on conflicts, missing
@@ -173,6 +223,23 @@ keep_generations = 20
             Some("gripfetch-artifactory")
         );
         assert_eq!(env.settings.keep_generations, Some(20));
+    }
+
+    #[test]
+    fn typo_key_is_a_span_labeled_diagnostic() {
+        let err = parse_env("[settings]\nkeep_generation = 20\n").unwrap_err();
+        let d = &err[0];
+        assert_eq!(d.code, gripsack_ir::codes::CONFIG);
+        let span = d.labels[0].span.as_ref().unwrap();
+        assert_eq!(span.line, 2);
+        assert!(d.to_string().contains("keep_generation"));
+    }
+
+    #[test]
+    fn unknown_top_level_key_is_an_error() {
+        let err =
+            parse_env("[env]\nname = \"x\"\n\n[eval]\ndeps = []\n\n[setttings]\n").unwrap_err();
+        assert_eq!(err[0].code, gripsack_ir::codes::CONFIG);
     }
 
     #[test]

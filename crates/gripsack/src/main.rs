@@ -108,7 +108,7 @@ fn plan_ir(path: &PathBuf, palette: Palette) -> ExitCode {
         Ok(ir) => ir,
         Err(diagnostics) => {
             for d in &diagnostics {
-                tracing::error!(code = d.code, "{}", d.message);
+                tracing::error!(code = d.code.as_ref(), "{}", d.message);
             }
             eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
             return ExitCode::FAILURE;

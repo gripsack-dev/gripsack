@@ -219,8 +219,8 @@ dependencies = [
 name = "gripsack-config"
 version = "0.1.0"
 dependencies = [
+ "gripsack-ir",
  "serde",
- "thiserror",
  "toml",
 ]
 
