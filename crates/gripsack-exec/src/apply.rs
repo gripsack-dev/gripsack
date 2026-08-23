@@ -31,7 +31,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         let _entered = span.enter();
         let module = &ir.modules[name.as_str()];
         let steps = &steps_by_module[name.as_str()];
-        let (state, module_reports, entry) = run_module(
+        let outcome = run_module(
             name,
             module,
             steps,
@@ -39,14 +39,14 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             modules.get(name.as_str()),
             lock.modules.get(name.as_str()),
         )?;
-        reports.extend(module_reports);
-        if let Some(entry) = entry
+        reports.extend(outcome.reports);
+        if let Some(entry) = outcome.lock_entry
             && lock.modules.get(name.as_str()) != Some(&entry)
         {
             lock.modules.insert(name.clone(), entry);
             lock_dirty = true;
         }
-        modules.insert(name.clone(), state);
+        modules.insert(name.clone(), outcome.state);
     }
 
     // Satisfied = the module states are identical (the generation
