@@ -199,10 +199,15 @@ fn run_module(
     // the very first apply (0008 §5) — resolve it before the existence
     // check or the first and second applies would compute different paths.
     let resolved = locked.and_then(|e| e.sha256.clone()).or_else(|| {
-        module
-            .fetch
-            .as_ref()
-            .and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
+        // the fetch spec lives in module.fetch (declarative) or in a
+        // fetch step (explicit steps) — check both
+        let spec = module.fetch.as_ref().or_else(|| {
+            steps.iter().find_map(|s| match &s.action {
+                StepAction::Fetch { fetch } => Some(fetch),
+                _ => None,
+            })
+        });
+        spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
     });
     let input = match &resolved {
         Some(sha) => format!("{}|payload={sha}", module_input(module, &ctx.repo)?),

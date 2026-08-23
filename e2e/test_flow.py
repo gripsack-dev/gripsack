@@ -46,6 +46,32 @@ module(
     assert (sandbox / ".local/bin/hello").is_symlink()
 
 
+def test_explicit_steps_module_is_satisfied_on_reapply(sandbox):
+    """Class/explicit-steps modules keep fetch specs in steps, not
+    module.fetch — their store path must still be stable (canary-caught)."""
+    payload = sandbox / "hello.tar.gz"
+    make_tarball(payload, {"bin/x": b"#!/bin/sh\necho x\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+from gripsack import module, fetch_step, shell_step, tarball
+
+module(
+    "stepped",
+    steps=[
+        fetch_step(tarball("file://{payload}")),
+        shell_step("true", id="noop", needs=["fetch"]),
+    ],
+)
+""",
+    )
+    first = grip("apply", "--host", "testhost", cwd=repo)
+    assert first.returncode == 0, first.stderr
+    second = grip("apply", "--host", "testhost", cwd=repo)
+    assert second.returncode == 0, second.stderr
+    assert "already satisfied" in second.stdout
+
+
 def test_update_rewrites_lockfile_then_apply_deploys(sandbox):
     """The flake cycle: update moves the lockfile, apply executes it."""
     payload = sandbox / "hello.tar.gz"
