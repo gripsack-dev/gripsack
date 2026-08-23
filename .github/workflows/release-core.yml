@@ -83,7 +83,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "gripsack $ver"
-          git push
+          git push "https://x-access-token:${GH_TOKEN}@github.com/gripsack-dev/homebrew-tap.git" HEAD:main
 
       - name: Create GitHub release
         env:
