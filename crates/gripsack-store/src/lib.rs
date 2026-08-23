@@ -22,10 +22,15 @@
 //! single indivisible rename.
 
 pub mod fs;
+pub mod generations;
 pub mod hash;
 pub mod paths;
 
 pub use fs::{atomic_write, publish_dir, symlink_replace};
+pub use generations::{
+    current as current_generation, flip, list as list_generations, read_manifest, write_manifest,
+    DeployedEntry, Generation, ModuleState,
+};
 pub use hash::{canonical_file_hash, canonical_tree_hash};
 pub use paths::{
     current_link, generation_dir, gripsack_home, input_hash, store_path, GENERATIONS_DIR, HASH_LEN,

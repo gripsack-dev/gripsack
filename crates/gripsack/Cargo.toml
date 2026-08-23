@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 owo-colors.workspace = true
+gripsack-config.workspace = true
 gripsack-ir.workspace = true
 gripsack-store.workspace = true
 gripsack-trace.workspace = true

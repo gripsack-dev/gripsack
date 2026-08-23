@@ -13,6 +13,10 @@
 //!
 //! Discovery only, for now; the protocol host lands with the executor.
 
+pub mod fetch;
+
+pub use fetch::{fetch, FetchError};
+
 use std::path::PathBuf;
 
 pub const FETCHER_PREFIX: &str = "gripfetch-";

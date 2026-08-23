@@ -22,7 +22,6 @@ def test_doctor_reports_environment(sandbox):
     assert str(sandbox) in out.stdout
 
 
-@pytest.mark.skip(reason="0004: grip apply not implemented")
 def test_apply_creates_generation_and_symlinks(sandbox):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
@@ -47,7 +46,6 @@ module(
     assert (sandbox / ".local/bin/hello").is_symlink()
 
 
-@pytest.mark.skip(reason="0004: grip apply not implemented")
 def test_rollback_restores_previous_generation(sandbox):
     repo = make_env_repo(sandbox / "myenv", "# modules go here\n")
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0

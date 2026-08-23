@@ -33,7 +33,7 @@ pub struct HostFacts {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Module {
     /// None for dotfiles-only modules — their content is their config
     /// files (0006 §2 level 1). Mutually exclusive with `steps`

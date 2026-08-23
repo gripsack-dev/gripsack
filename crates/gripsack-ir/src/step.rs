@@ -61,6 +61,11 @@ pub enum StepAction {
     Intent {
         action: Box<Action>,
     },
+    /// A module-level smoke contract as a terminal step (synthesized by
+    /// the expansion pass; 0007 §verify).
+    Verify {
+        verify: Verify,
+    },
     /// A structured action (0007 §3): argv/env/cwd as data, no shell
     /// interpretation. Declared `outputs` make it satisfiable (0008 §4).
     Run {

@@ -16,6 +16,11 @@
 //! (0001 §3.1). Waves are a *reporting* artifact: the scheduler runs a
 //! ready-queue, not barriers.
 
+pub mod expand;
+pub mod run;
+
+pub use run::{apply, Ctx, ExecError, Outcome};
+
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};
 

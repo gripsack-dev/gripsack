@@ -46,8 +46,11 @@ jobs:
       - name: Render demo GIF
         run: |
           tar -xzf dist/gripsack-*.tar.gz -C dist
+          # the tape runs a real apply: the frontend must be importable
           docker run --rm -v "$PWD:/vhs" -w /vhs --entrypoint sh ghcr.io/charmbracelet/vhs -c \
-            "install -m755 /vhs/dist/gripsack-*/grip /usr/local/bin/grip \
+            "apk add --no-cache python3 >/dev/null \
+             && install -m755 /vhs/dist/gripsack-*/grip /usr/local/bin/grip \
+             && export PYTHONPATH=/vhs/python \
              && vhs /vhs/demos/demo.tape"
 
       - uses: actions/upload-artifact@v7

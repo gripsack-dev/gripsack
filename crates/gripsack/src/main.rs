@@ -10,6 +10,7 @@
 //! Colors and source snippets live in [`render`]; they follow the
 //! terminal — piped output is plain.
 
+mod commands;
 mod render;
 
 use clap::{Parser, Subcommand};
@@ -78,6 +79,12 @@ fn main() -> ExitCode {
     let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());
     match cli.command {
         Command::Doctor => doctor(palette),
+        Command::Apply { host, modules } => {
+            let repo = std::env::current_dir().unwrap_or_default();
+            commands::apply(&repo, host.as_deref(), modules, palette)
+        }
+        Command::Generations => commands::generations(),
+        Command::Rollback { generation } => commands::rollback(generation),
         Command::Plan {
             ir: Some(path),
             modules,
@@ -86,6 +93,37 @@ fn main() -> ExitCode {
             Some(name) => plan_module(&path, name, palette),
             None => plan_ir(&path, palette),
         },
+        Command::Plan {
+            ir: None,
+            host,
+            modules,
+        } => {
+            let repo = std::env::current_dir().unwrap_or_default();
+            match commands::eval_repo(&repo, host.as_deref(), palette)
+                .and_then(|json| commands::check_ir(&json, palette))
+            {
+                Ok(ir) => {
+                    let waves = gripsack_exec::waves(&ir).unwrap_or_default();
+                    match modules.first() {
+                        Some(name) => {
+                            println!("{}", render::render_module(&ir, name, &waves, palette))
+                        }
+                        None => {
+                            println!("{} {} modules", "plan:".green().bold(), ir.modules.len());
+                            for (i, wave) in waves.iter().enumerate() {
+                                println!(
+                                    "  {} {}",
+                                    format!("wave {i}").blue().bold(),
+                                    wave.join(", ")
+                                );
+                            }
+                        }
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(code) => code,
+            }
+        }
         other => {
             eprintln!("grip: `{other:?}` is not implemented yet — see plan/0001-architecture.md");
             eprintln!("      (try `grip plan --ir <file>` or `grip doctor`)");
