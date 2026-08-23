@@ -1,0 +1,14 @@
+{
+  "ir_version": 1,
+  "host": {"os": "linux", "arch": "x86_64", "tags": ["demo"]},
+  "modules": {
+    "helix": {
+      "fetch": {"kind": "github_release", "repo": "helix-editor/helix", "asset": "h.tar.xz"},
+      "depends": [{"module": "nvim"}],
+      "span": {"file": "/vhs/demos/fixtures/modules/helix.py", "line": 6, "col": 15}
+    },
+    "git": {
+      "fetch": {"kind": "tarball", "url": "https://example.invalid/git.tar.xz"}
+    }
+  }
+}

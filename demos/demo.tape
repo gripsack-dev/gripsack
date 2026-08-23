@@ -4,7 +4,7 @@
 Output demos/demo.gif
 Set FontSize 14
 Set Width 900
-Set Height 500
+Set Height 560
 Set Theme "Catppuccin Mocha"
 
 Type@10ms "grip --version"
@@ -13,6 +13,6 @@ Sleep 1s
 Type@10ms "grip doctor"
 Enter
 Sleep 2s
-Type@10ms "grip apply --help"
+Type@10ms "grip plan --ir /vhs/demos/fixtures/ir.json"
 Enter
-Sleep 2s
+Sleep 3s

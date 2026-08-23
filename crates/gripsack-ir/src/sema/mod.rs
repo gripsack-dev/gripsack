@@ -1,193 +1,52 @@
-use crate::diagnostic::{codes, Diagnostic, Severity};
-use crate::model::{Build, Ir};
-use crate::step::{BARRIER_STEP_ID, KNOWN_RESOURCES, SYNTHESIZED_STEP_IDS};
+//! Structural sema (0004 §4): ordered, composable passes.
+//!
+//! Each pass is one small function in its own module with the same
+//! signature — `check(&Ir, &mut Vec<Diagnostic>)` — and one concern.
+//! To add a check: write the pass, add one line to `PASSES`, add a
+//! test. Passes never short-circuit internally: collect everything,
+//! so one bad module never hides another.
 
-/// The only IR version this core accepts (for now).
-pub const IR_VERSION: u32 = 1;
+mod deps;
+mod destinations;
+mod resources;
+mod steps;
 
-/// Parse + validate in one call (the CLI's usual path). Collects
+use crate::diagnostic::{Diagnostic, Severity};
+use crate::model::Ir;
+use crate::parse::parse;
+
+/// The passes, in execution order.
+const PASSES: &[fn(&Ir, &mut Vec<Diagnostic>)] = &[
+    steps::check,
+    deps::check,
+    destinations::check,
+    resources::check,
+];
+
+/// Pass 2 — run every sema pass, collecting all diagnostics.
+pub fn run(ir: &Ir) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    for pass in PASSES {
+        pass(ir, &mut diagnostics);
+    }
+    diagnostics
+}
+
+/// Parse + sema in one call (the CLI's usual path). Collects
 /// everything pass 2 finds — one bad module never hides another.
 pub fn check(json: &str) -> Result<Ir, Vec<Diagnostic>> {
     let ir = parse(json).map_err(|d| vec![d])?;
-    let diagnostics = validate(&ir);
+    let diagnostics = run(&ir);
     if diagnostics.iter().any(|d| d.severity == Severity::Error) {
         return Err(diagnostics);
     }
     Ok(ir)
 }
 
-/// Pass 1 — parse (0004 §4): syntax + version gate.
-pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
-    let ir: Ir = serde_json::from_str(json).map_err(|e| {
-        Diagnostic::error(codes::MALFORMED, format!("invalid IR JSON: {e}"))
-            .with_help("the frontend emitted malformed IR — this is a frontend bug")
-    })?;
-    if ir.ir_version != IR_VERSION {
-        return Err(Diagnostic::error(
-            codes::VERSION,
-            format!(
-                "unsupported ir_version {} (this core accepts {IR_VERSION})",
-                ir.ir_version
-            ),
-        ));
-    }
-    Ok(ir)
-}
-
-/// Pass 2 — structural sema (0004 §4): collect all diagnostics.
-pub fn validate(ir: &Ir) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-    validate_steps(ir, &mut diagnostics);
-    for (name, module) in &ir.modules {
-        for dep in &module.depends {
-            if !ir.modules.contains_key(&dep.module) {
-                diagnostics.push(
-                    Diagnostic::error(
-                        codes::UNKNOWN_DEPENDENCY,
-                        format!("module {name:?} depends on unknown module {:?}", dep.module),
-                    )
-                    .with_label(
-                        dep.span.clone().or_else(|| module.span.clone()),
-                        "dependency declared here",
-                    ),
-                );
-            }
-        }
-        for entry in module.install.iter().chain(module.config.iter()) {
-            if !(entry.to.starts_with('/') || entry.to.starts_with("~/")) {
-                diagnostics.push(
-                    Diagnostic::error(
-                        codes::BAD_DESTINATION,
-                        format!(
-                            "module {name:?}: destination {:?} must be absolute or start with ~/",
-                            entry.to
-                        ),
-                    )
-                    .with_label(
-                        entry.span.clone().or_else(|| module.span.clone()),
-                        "entry declared here",
-                    ),
-                );
-            }
-        }
-    }
-    diagnostics
-}
-
-/// Steps pass (0007 §6): shape, refs, ids.
-fn validate_steps(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
-    for (name, module) in &ir.modules {
-        let Some(steps) = &module.steps else {
-            continue;
-        };
-        // E103: explicit steps + any declarative field.
-        let mixed = module.fetch.is_some()
-            || module.build != Build::None
-            || !module.install.is_empty()
-            || !module.config.is_empty()
-            || !module.activate.is_empty();
-        if mixed {
-            diagnostics.push(
-                Diagnostic::error(
-                    codes::STEPS_WITH_FIELDS,
-                    format!(
-                        "module {name:?} mixes `steps` with declarative fields \
-                         (fetch/build/install/config/activate)"
-                    ),
-                )
-                .with_label(module.span.clone(), "module declared here")
-                .with_help("pick one shape: fields (expanded for you) or explicit steps"),
-            );
-        }
-        let mut seen = std::collections::BTreeSet::new();
-        for step in steps {
-            // E106: duplicate or reserved ids.
-            if !seen.insert(step.id.as_str()) {
-                diagnostics.push(
-                    Diagnostic::error(
-                        codes::DUPLICATE_STEP,
-                        format!("module {name:?}: duplicate step id {:?}", step.id),
-                    )
-                    .with_label(step.span.clone().or_else(|| module.span.clone()), ""),
-                );
-            }
-            if step.id == BARRIER_STEP_ID {
-                diagnostics.push(
-                    Diagnostic::error(
-                        codes::DUPLICATE_STEP,
-                        format!(
-                            "module {name:?}: step id {BARRIER_STEP_ID:?} is reserved \
-                             (the module's barrier step)"
-                        ),
-                    )
-                    .with_label(step.span.clone().or_else(|| module.span.clone()), ""),
-                );
-            }
-            // E104: unknown step refs.
-            for need in &step.needs {
-                let unknown = match need.split_once(':') {
-                    Some((target_module, target_step)) => match ir.modules.get(target_module) {
-                        None => true,
-                        Some(target) => {
-                            !(target_step == BARRIER_STEP_ID
-                                || match &target.steps {
-                                    Some(target_steps) => {
-                                        target_steps.iter().any(|s| s.id == target_step)
-                                    }
-                                    None => SYNTHESIZED_STEP_IDS.contains(&target_step),
-                                })
-                        }
-                    },
-                    // `module:done` is always valid: the barrier exists
-                    // for explicit and synthesized modules alike (0007 §2).
-                    None => !steps.iter().any(|s| s.id == *need),
-                };
-                if unknown {
-                    diagnostics.push(
-                        Diagnostic::error(
-                            codes::UNKNOWN_STEP,
-                            format!(
-                                "module {name:?}: step {:?} needs unknown step {need:?}",
-                                step.id
-                            ),
-                        )
-                        .with_label(step.span.clone().or_else(|| module.span.clone()), ""),
-                    );
-                }
-            }
-            // E107: resources must be declared in the IR `resources`
-            // section or be a core built-in (0007 §4).
-            for resource in &step.resources {
-                let declared = ir.resources.iter().any(|r| r.name == *resource)
-                    || KNOWN_RESOURCES.contains(&resource.as_str());
-                if !declared {
-                    diagnostics.push(
-                        Diagnostic::error(
-                            codes::UNKNOWN_RESOURCE,
-                            format!(
-                                "module {name:?}: step {:?} requires undeclared resource \
-                                 {resource:?}",
-                                step.id
-                            ),
-                        )
-                        .with_label(
-                            step.span.clone().or_else(|| module.span.clone()),
-                            "required here",
-                        )
-                        .with_help(format!(
-                            "declare it in the IR `resources` section, or use a built-in: {}",
-                            KNOWN_RESOURCES.join(", ")
-                        )),
-                    );
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagnostic::codes;
     use crate::model::*;
 
     const EXAMPLE: &str = r#"{

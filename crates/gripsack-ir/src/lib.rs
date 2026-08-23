@@ -5,12 +5,16 @@
 
 pub mod diagnostic;
 pub mod model;
+pub mod parse;
+pub mod sema;
 pub mod span;
 pub mod step;
-pub mod validate;
 
 pub use diagnostic::{codes, Diagnostic, Label, Severity};
 pub use model::*;
+pub use parse::{parse, IR_VERSION};
+/// Backwards-compatible alias: pass 2 is `sema::run`.
+pub use sema::run as validate;
+pub use sema::{check, run};
 pub use span::Span;
 pub use step::*;
-pub use validate::{check, parse, validate, IR_VERSION};
