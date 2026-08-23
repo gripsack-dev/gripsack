@@ -9,4 +9,4 @@ repository.workspace = true
 [dependencies]
 gripsack-ir.workspace = true
 serde.workspace = true
-toml = "0.8"
+toml = "1.1"
