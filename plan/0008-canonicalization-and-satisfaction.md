@@ -69,7 +69,26 @@ Generations represent state transitions; empty ones are noise.
 Second consecutive `grip apply`: eval → lockfile match → store paths
 exist → empty deploy diff → done, well under a second.
 
-## 4. The custom_shell contract
+## 5. Updates
+
+The flake cycle, verbatim:
+
+- **`grip update [MODULE...]`** re-runs resolution and rewrites
+  `locks/<host>.lock` — nothing deploys. `grip plan` then shows the
+  diff; `grip apply` executes it. Per-module update is free because
+  lockfile entries and resolution are both per-module.
+- **apply never re-resolves.** It verifies fetched payloads against the
+  locked hash; a mismatch is the E2xx tampering signal, never a silent
+  re-pin.
+- **First apply pins** (trust-on-first-use, 0002 §3): the payload hash
+  is recorded on first fetch. The hash participates in store-path
+  identity from the *first* apply — resolved before the existence
+  check, so a lockfile write never changes a module's path.
+- Re-resolution is a core operation (0002 §7): built-in fetchers
+  resolve in the engine at lock/update time, keeping API traffic inside
+  the throttle domains (0007 §4c).
+
+## 6. The custom_shell contract
 
 Opaque actions can't be satisfied automatically. Rule: a `custom_shell`
 step MUST declare `outputs = [...]`; satisfaction = declared outputs

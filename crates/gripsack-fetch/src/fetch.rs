@@ -27,24 +27,43 @@ pub enum FetchError {
     Unsupported(String),
 }
 
-/// Fetch a spec into `dest` (created by the caller or here).
-pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<(), FetchError> {
+/// The payload's sha256 without staging anything — None for fetch kinds
+/// whose resolution lands in 0.2 (git, github_release, plugin).
+pub fn payload_hash(spec: &FetchSpec) -> Result<Option<String>, FetchError> {
+    match spec {
+        FetchSpec::File { path } => {
+            let path = Path::new(path);
+            if path.is_dir() {
+                Ok(Some(gripsack_store::canonical_tree_hash(path)?))
+            } else {
+                Ok(Some(hex(&Sha256::digest(std::fs::read(path)?))))
+            }
+        }
+        FetchSpec::Tarball { url, .. } => Ok(Some(hex(&Sha256::digest(read_url(url)?)))),
+        _ => Ok(None),
+    }
+}
+
+/// Fetch a spec into `dest` (created by the caller or here). Returns
+/// the payload's sha256 — the lockfile pins it (0008 §5).
+pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<String, FetchError> {
     std::fs::create_dir_all(dest)?;
     match spec {
         FetchSpec::File { path } => stage_local(Path::new(path), dest),
         FetchSpec::Tarball { url, sha256 } => {
             let bytes = read_url(url)?;
-            if let Some(expected) = sha256 {
-                let actual = hex(&Sha256::digest(&bytes));
-                if actual != *expected {
-                    return Err(FetchError::HashMismatch {
-                        url: url.clone(),
-                        expected: expected.clone(),
-                        actual,
-                    });
-                }
+            let actual = hex(&Sha256::digest(&bytes));
+            if let Some(expected) = sha256
+                && actual != *expected
+            {
+                return Err(FetchError::HashMismatch {
+                    url: url.clone(),
+                    expected: expected.clone(),
+                    actual,
+                });
             }
-            extract_tarball(&bytes, dest)
+            extract_tarball(&bytes, dest)?;
+            Ok(actual)
         }
         FetchSpec::Git { .. } => Err(FetchError::Unsupported("git (0.2)".into())),
         FetchSpec::GithubRelease { .. } => {
@@ -57,12 +76,15 @@ pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<(), FetchError> {
 }
 
 /// file: a tarball path or a plain directory of payload files.
-fn stage_local(path: &Path, dest: &Path) -> Result<(), FetchError> {
+fn stage_local(path: &Path, dest: &Path) -> Result<String, FetchError> {
     if path.is_dir() {
-        copy_tree(path, dest).map_err(FetchError::Io)
+        copy_tree(path, dest).map_err(FetchError::Io)?;
+        Ok(gripsack_store::canonical_tree_hash(path)?)
     } else {
         let bytes = std::fs::read(path)?;
-        extract_tarball(&bytes, dest)
+        let hash = hex(&Sha256::digest(&bytes));
+        extract_tarball(&bytes, dest)?;
+        Ok(hash)
     }
 }
 

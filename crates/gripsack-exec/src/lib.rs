@@ -17,9 +17,13 @@
 //! ready-queue, not barriers.
 
 pub mod expand;
+pub mod lockfile;
 pub mod run;
 
-pub use run::{ApplyResult, Ctx, ExecError, Outcome, ReportKind, StepReport, apply};
+pub use run::{
+    ApplyResult, Ctx, ExecError, Outcome, ReportKind, StepReport, UpdateReport, UpdateStatus,
+    apply, update,
+};
 
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};

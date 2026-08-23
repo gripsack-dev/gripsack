@@ -56,6 +56,12 @@ enum Command {
         /// Generation number (default: the previous one)
         generation: Option<u64>,
     },
+    /// Re-resolve and rewrite the lockfile (never deploys — apply after)
+    Update {
+        #[arg(long)]
+        host: Option<String>,
+        modules: Vec<String>,
+    },
     /// List generations and their status
     Generations,
     /// Collect store paths no generation references
@@ -84,6 +90,10 @@ fn main() -> ExitCode {
             commands::apply(&repo, host.as_deref(), modules, palette)
         }
         Command::Generations => commands::generations(),
+        Command::Update { host, modules } => {
+            let repo = std::env::current_dir().unwrap_or_default();
+            commands::update(&repo, host.as_deref(), modules, palette)
+        }
         Command::Rollback { generation } => commands::rollback(generation),
         Command::Plan {
             ir: Some(path),

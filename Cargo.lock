@@ -316,7 +316,9 @@ dependencies = [
  "gripsack-fetch",
  "gripsack-ir",
  "gripsack-store",
+ "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tracing",
 ]
@@ -327,6 +329,7 @@ version = "0.1.1"
 dependencies = [
  "flate2",
  "gripsack-ir",
+ "gripsack-store",
  "sha2",
  "tar",
  "tempfile",

@@ -23,6 +23,8 @@ pub struct Ctx {
     /// Subset apply: only these modules plus their dependencies (0001
     /// §3.6). Empty = the whole graph.
     pub only: Vec<String>,
+    /// Host name — selects the lockfile (`locks/<host>.lock`).
+    pub host: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,6 +85,8 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     let order = scoped_order(ir, &ctx.only)?;
     let steps_by_module = expand::expand_all(&ir.modules);
     let mut reports = Vec::new();
+    let mut lock = crate::lockfile::read(&ctx.repo, &ctx.host).unwrap_or_default();
+    let mut lock_dirty = false;
 
     // The manifest starts from the current generation — a subset apply
     // replaces only the modules it touches (0001 §3.6).
@@ -97,9 +101,21 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         let _entered = span.enter();
         let module = &ir.modules[name.as_str()];
         let steps = &steps_by_module[name.as_str()];
-        let (state, module_reports) =
-            run_module(name, module, steps, ctx, modules.get(name.as_str()))?;
+        let (state, module_reports, entry) = run_module(
+            name,
+            module,
+            steps,
+            ctx,
+            modules.get(name.as_str()),
+            lock.modules.get(name.as_str()),
+        )?;
         reports.extend(module_reports);
+        if let Some(entry) = entry
+            && lock.modules.get(name.as_str()) != Some(&entry)
+        {
+            lock.modules.insert(name.clone(), entry);
+            lock_dirty = true;
+        }
         modules.insert(name.clone(), state);
     }
 
@@ -125,6 +141,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     };
     store::write_manifest(&ctx.home, &generation)?;
     store::flip(&ctx.home, next)?;
+    if lock_dirty {
+        crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
+    }
     info!(generation = next, "activated");
     Ok(ApplyResult {
         outcome: Outcome::Applied { generation: next },
@@ -162,8 +181,30 @@ fn run_module(
     steps: &[Step],
     ctx: &Ctx,
     prev: Option<&store::ModuleState>,
-) -> Result<(store::ModuleState, Vec<StepReport>), ExecError> {
-    let store_path = store::store_path(&ctx.home, name, &module_input(module, &ctx.repo)?);
+    locked: Option<&crate::lockfile::LockEntry>,
+) -> Result<
+    (
+        store::ModuleState,
+        Vec<StepReport>,
+        Option<crate::lockfile::LockEntry>,
+    ),
+    ExecError,
+> {
+    // The payload hash participates in the store-path identity from
+    // the very first apply (0008 §5) — resolve it before the existence
+    // check or the first and second applies would compute different paths.
+    let resolved = locked.and_then(|e| e.sha256.clone()).or_else(|| {
+        module
+            .fetch
+            .as_ref()
+            .and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
+    });
+    let input = match &resolved {
+        Some(sha) => format!("{}|payload={sha}", module_input(module, &ctx.repo)?),
+        None => module_input(module, &ctx.repo)?,
+    };
+    let store_path = store::store_path(&ctx.home, name, &input);
+    let mut lock_entry: Option<crate::lockfile::LockEntry> = None;
     // Satisfaction (0008 §3): presence is proof — skip fetch and build.
     let present = store_path.exists();
     let mut reports = Vec::new();
@@ -183,7 +224,13 @@ fn run_module(
             match &step.action {
                 StepAction::Fetch { fetch: spec } => {
                     let stage = staging.get_or_insert_with(|| fresh_staging(name));
-                    fetch(spec, stage).map_err(ExecError::Fetch)?;
+                    // the lockfile's hash wins for verification (0002 §3)
+                    let spec = &inject_locked_sha(spec, locked);
+                    let sha = fetch(spec, stage).map_err(ExecError::Fetch)?;
+                    lock_entry = Some(crate::lockfile::LockEntry {
+                        fetch: spec.clone(),
+                        sha256: Some(sha),
+                    });
                     info!(step = %step.id, "fetched");
                     reports.push(StepReport {
                         module: name.to_string(),
@@ -277,7 +324,28 @@ fn run_module(
             entries: deployed,
         },
         reports,
+        lock_entry,
     ))
+}
+
+/// A locked hash overrides the spec's for verification.
+fn inject_locked_sha(
+    spec: &gripsack_ir::FetchSpec,
+    locked: Option<&crate::lockfile::LockEntry>,
+) -> gripsack_ir::FetchSpec {
+    let Some(entry) = locked else {
+        return spec.clone();
+    };
+    let Some(sha) = &entry.sha256 else {
+        return spec.clone();
+    };
+    match spec.clone() {
+        gripsack_ir::FetchSpec::Tarball { url, .. } => gripsack_ir::FetchSpec::Tarball {
+            url,
+            sha256: Some(sha.clone()),
+        },
+        other => other,
+    }
 }
 
 fn fresh_staging(name: &str) -> PathBuf {
@@ -459,4 +527,75 @@ fn run_shell(script: &str, cwd: &Path) -> Result<(), String> {
     } else {
         Err(format!("sh -c exited {status}"))
     }
+}
+
+/// One line of an update report.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpdateReport {
+    pub module: String,
+    pub status: UpdateStatus,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpdateStatus {
+    Unchanged,
+    /// New or bumped pin — apply to deploy it.
+    Bumped {
+        old: Option<String>,
+        new: String,
+    },
+    /// Resolution for this fetch kind lands in 0.2 (github_release, git).
+    Skipped,
+}
+
+/// Re-resolve and rewrite the lockfile — the only mutator of it
+/// (0008 §5). `grip update` never deploys; apply does.
+pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
+    let order = scoped_order(ir, &ctx.only)?;
+    let mut lock = crate::lockfile::read(&ctx.repo, &ctx.host).unwrap_or_default();
+    let mut reports = Vec::new();
+    for name in &order {
+        let module = &ir.modules[name.as_str()];
+        let Some(spec) = &module.fetch else {
+            continue;
+        };
+        let old = lock
+            .modules
+            .get(name.as_str())
+            .and_then(|e| e.sha256.clone());
+        match spec {
+            gripsack_ir::FetchSpec::File { .. } | gripsack_ir::FetchSpec::Tarball { .. } => {
+                // resolve the payload hash without deploying
+                let sha = gripsack_fetch::payload_hash(spec)
+                    .map_err(ExecError::Fetch)?
+                    .expect("file/tarball always hash");
+                if old.as_deref() == Some(sha.as_str()) {
+                    reports.push(UpdateReport {
+                        module: name.clone(),
+                        status: UpdateStatus::Unchanged,
+                    });
+                } else {
+                    lock.modules.insert(
+                        name.clone(),
+                        crate::lockfile::LockEntry {
+                            fetch: spec.clone(),
+                            sha256: Some(sha.clone()),
+                        },
+                    );
+                    reports.push(UpdateReport {
+                        module: name.clone(),
+                        status: UpdateStatus::Bumped { old, new: sha },
+                    });
+                }
+            }
+            _ => {
+                reports.push(UpdateReport {
+                    module: name.clone(),
+                    status: UpdateStatus::Skipped,
+                });
+            }
+        }
+    }
+    crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
+    Ok(reports)
 }

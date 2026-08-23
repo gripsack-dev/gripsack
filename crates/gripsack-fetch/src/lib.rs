@@ -15,7 +15,7 @@
 
 pub mod fetch;
 
-pub use fetch::{FetchError, fetch};
+pub use fetch::{FetchError, fetch, payload_hash};
 
 use std::path::PathBuf;
 

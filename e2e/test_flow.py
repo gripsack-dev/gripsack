@@ -46,6 +46,45 @@ module(
     assert (sandbox / ".local/bin/hello").is_symlink()
 
 
+def test_update_rewrites_lockfile_then_apply_deploys(sandbox):
+    """The flake cycle: update moves the lockfile, apply executes it."""
+    payload = sandbox / "hello.tar.gz"
+    make_tarball(payload, {"bin/hello": b"#!/bin/sh\necho v1\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+from gripsack import module, file_fetch, symlink
+
+module(
+    "hello",
+    fetch=file_fetch("{payload}"),
+    install={{"bin/hello": symlink("~/.local/bin/hello")}},
+)
+""",
+    )
+    assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
+    lock = repo / "locks" / "testhost.lock"
+    assert lock.exists()
+    first_pin = lock.read_text()
+
+    # no movement -> unchanged
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "unchanged" in out.stdout
+    assert lock.read_text() == first_pin
+
+    # payload changes -> update bumps the pin, apply deploys it
+    make_tarball(payload, {"bin/hello": b"#!/bin/sh\necho v2\n"})
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "bumped" in out.stdout
+    assert lock.read_text() != first_pin
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "applied" in out.stdout
+
+
 def test_rollback_restores_previous_generation(sandbox, tmp_path):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
