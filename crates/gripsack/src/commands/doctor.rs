@@ -45,11 +45,16 @@ pub fn doctor(palette: Palette) -> ExitCode {
         .output();
     match check {
         Ok(out) if out.status.success() => {
-            println!(
-                "{}  frontend: gripsack python {}",
-                mark(true),
-                String::from_utf8_lossy(&out.stdout).trim()
-            );
+            let frontend_v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            println!("{}  frontend: gripsack python {frontend_v}", mark(true));
+            let core_v = env!("CARGO_PKG_VERSION");
+            if frontend_v != core_v {
+                println!(
+                    "{}  core/frontend mismatch: grip {core_v} vs python {frontend_v} — {}",
+                    "warn".yellow().bold(),
+                    "pip install -U gripsack".dimmed()
+                );
+            }
         }
         _ => {
             println!(

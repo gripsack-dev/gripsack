@@ -23,6 +23,8 @@ pub enum FetchError {
     },
     #[error("http error fetching {url}: {reason}")]
     Http { url: String, reason: String },
+    #[error("zip extract: {0}")]
+    Zip(#[from] zip::result::ZipError),
     #[error("unsupported fetch kind for v0.1: {0}")]
     Unsupported(String),
 }
@@ -134,15 +136,44 @@ fn read_url(url: &str) -> Result<Vec<u8>, FetchError> {
     Ok(bytes)
 }
 
+/// Payload shapes (0009 critique): .tar.gz / .tar / .tar.xz / .zip,
+/// and bare binaries — staged as a single executable file when the
+/// magic isn't an archive (half of GitHub releases ships bare binaries).
 fn extract_tarball(bytes: &[u8], dest: &Path) -> Result<(), FetchError> {
-    let tar: Box<dyn io::Read> = if bytes.starts_with(&[0x1f, 0x8b]) {
-        Box::new(GzDecoder::new(bytes))
-    } else {
-        Box::new(bytes)
-    };
-    let mut archive = tar::Archive::new(tar);
-    archive.unpack(dest)?;
+    const XZ_MAGIC: &[u8] = b"\xfd7zXZ\x00";
+    const ZIP_MAGIC: &[u8] = b"PK\x03\x04";
+    if bytes.starts_with(XZ_MAGIC) {
+        let mut archive = tar::Archive::new(xz2::read::XzDecoder::new(bytes));
+        archive.unpack(dest)?;
+        return Ok(());
+    }
+    if bytes.starts_with(ZIP_MAGIC) {
+        zip::ZipArchive::new(io::Cursor::new(bytes))?.extract(dest)?;
+        return Ok(());
+    }
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        let mut archive = tar::Archive::new(GzDecoder::new(bytes));
+        archive.unpack(dest)?;
+        return Ok(());
+    }
+    if bytes.starts_with(b"ustar".as_slice()) || looks_like_tar(bytes) {
+        let mut archive = tar::Archive::new(bytes);
+        archive.unpack(dest)?;
+        return Ok(());
+    }
+    // bare payload: stage as one file, executable if it looks like a binary
+    let path = dest.join("bin");
+    std::fs::write(&path, bytes)?;
+    #[cfg(unix)]
+    if bytes.starts_with(b"\x7fELF") || bytes.starts_with(b"#!") {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+    }
     Ok(())
+}
+
+fn looks_like_tar(bytes: &[u8]) -> bool {
+    bytes.len() > 262 && &bytes[257..262] == b"ustar"
 }
 
 fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
@@ -203,6 +234,60 @@ mod tests {
         )
         .unwrap();
         assert!(dest.join("bin/hello").exists());
+    }
+
+    #[test]
+    fn bare_binary_staged_as_executable_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let payload = dir.path().join("tool");
+        std::fs::write(&payload, b"\x7fELF-fake-binary").unwrap();
+        let dest = dir.path().join("out");
+        fetch(
+            &FetchSpec::File {
+                path: payload.to_string_lossy().into_owned(),
+            },
+            &dest,
+        )
+        .unwrap();
+        let staged = dest.join("bin");
+        assert_eq!(std::fs::read(&staged).unwrap(), b"\x7fELF-fake-binary");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                staged.metadata().unwrap().permissions().mode() & 0o111,
+                0o111
+            );
+        }
+    }
+
+    #[test]
+    fn xz_and_zip_extract() {
+        let dir = tempfile::tempdir().unwrap();
+        // .tar.xz
+        let xz_path = dir.path().join("p.tar.xz");
+        {
+            let file = std::fs::File::create(&xz_path).unwrap();
+            let enc = xz2::write::XzEncoder::new(file, 6);
+            let mut builder = tar::Builder::new(enc);
+            let mut header = tar::Header::new_gnu();
+            let content = b"x";
+            header.set_size(1);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "x.txt", &content[..])
+                .unwrap();
+            builder.into_inner().unwrap().finish().unwrap();
+        }
+        let dest = dir.path().join("xz-out");
+        fetch(
+            &FetchSpec::File {
+                path: xz_path.to_string_lossy().into_owned(),
+            },
+            &dest,
+        )
+        .unwrap();
+        assert!(dest.join("x.txt").exists());
     }
 
     #[test]

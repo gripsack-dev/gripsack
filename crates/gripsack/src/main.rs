@@ -43,6 +43,9 @@ enum Command {
         repo: Option<String>,
         /// Restrict to these modules (default: the whole graph)
         modules: Vec<String>,
+        /// Overwrite foreign/drifted tracked_copy destinations
+        #[arg(long)]
+        take_over: bool,
     },
     /// Show what an apply would change, without changing anything.
     /// For now: validate IR and show the execution waves.
@@ -108,8 +111,9 @@ fn main() -> ExitCode {
             host,
             repo,
             modules,
+            take_over,
         } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::apply(&repo, host.as_deref(), modules, palette),
+            Ok(repo) => commands::apply(&repo, host.as_deref(), modules, take_over, palette),
             Err(code) => code,
         },
         Command::Generations => commands::generations(),

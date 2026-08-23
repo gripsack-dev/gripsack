@@ -17,9 +17,11 @@
 //! ready-queue, not barriers.
 
 pub mod expand;
+pub mod frontend;
 pub mod lockfile;
 pub mod run;
 
+pub use frontend::ensure_python;
 pub use run::{
     ApplyResult, Ctx, ExecError, Outcome, ReportKind, StepReport, UpdateReport, UpdateStatus,
     apply, update,

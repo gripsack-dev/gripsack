@@ -30,7 +30,12 @@ from .steps import (
 )
 from .verify import Verify, verify_binary, verify_file, verify_shell
 
-__version__ = "0.1.0"
+import importlib.metadata as _meta
+
+try:
+    __version__ = _meta.version("gripsack")
+except _meta.PackageNotFoundError:  # running from a source tree
+    __version__ = "0.0.0-dev"
 
 __all__ = [
     "IR_VERSION",
@@ -67,6 +72,7 @@ __all__ = [
     "verify_binary",
     "verify_file",
     "verify_shell",
+    "verify_deployed",
     "Verify",
     "resource",
     "Resource",

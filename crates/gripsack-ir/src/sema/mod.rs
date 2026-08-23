@@ -11,6 +11,7 @@ mod destinations;
 mod features;
 mod resources;
 mod steps;
+mod verify_paths;
 
 use crate::diagnostic::{Diagnostic, Severity};
 use crate::model::Ir;
@@ -23,6 +24,7 @@ const PASSES: &[fn(&Ir, &mut Vec<Diagnostic>)] = &[
     destinations::check,
     resources::check,
     features::check,
+    verify_paths::check,
 ];
 
 /// Pass 2 — run every sema pass, collecting all diagnostics.
@@ -310,6 +312,28 @@ mod tests {
         let diagnostics = check(json).unwrap_err();
         assert_eq!(diagnostics[0].code, codes::UNSUPPORTED_MODE);
         assert!(diagnostics[0].help.is_some());
+    }
+
+    #[test]
+    fn destination_shaped_verify_path_is_e109() {
+        let json = r#"{
+            "ir_version": 1,
+            "modules": {
+                "gitui": {
+                    "config": [{"from": "theme.ron", "to": "~/.config/gitui/theme.ron"}],
+                    "verify": {"kind": "file_exists", "path": "~/.config/gitui/theme.ron"}
+                }
+            }
+        }"#;
+        let diagnostics = check(json).unwrap_err();
+        assert_eq!(diagnostics[0].code, codes::VERIFY_PATH_SHAPE);
+        assert!(
+            diagnostics[0]
+                .help
+                .as_ref()
+                .unwrap()
+                .contains("verify_deployed")
+        );
     }
 
     #[test]

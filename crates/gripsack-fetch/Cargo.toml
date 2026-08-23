@@ -8,6 +8,8 @@ repository.workspace = true
 
 [dependencies]
 flate2 = "1"
+xz2 = "0.1"
+zip = { version = "2", default-features = false }
 gripsack-ir.workspace = true
 gripsack-store.workspace = true
 sha2.workspace = true

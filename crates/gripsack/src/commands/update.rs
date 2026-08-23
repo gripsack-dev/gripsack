@@ -27,9 +27,13 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
         only: modules,
         host: host_name,
         on_progress: None,
+        take_over: false,
     };
     match gripsack_exec::update(&ir, &ctx) {
         Ok(reports) => {
+            if reports.is_empty() {
+                println!("nothing to resolve yet — no resolvable fetches in the graph");
+            }
             for r in &reports {
                 match &r.status {
                     gripsack_exec::UpdateStatus::Unchanged => {

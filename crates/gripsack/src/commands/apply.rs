@@ -7,7 +7,13 @@ use std::path::Path;
 use std::process::ExitCode;
 
 /// grip apply: eval → validate → execute → new generation (or satisfied).
-pub fn apply(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Palette) -> ExitCode {
+pub fn apply(
+    repo: &Path,
+    host: Option<&str>,
+    modules: Vec<String>,
+    take_over: bool,
+    palette: Palette,
+) -> ExitCode {
     let json = match eval_repo(repo, host, palette) {
         Ok(j) => j,
         Err(code) => return code,
@@ -35,6 +41,7 @@ pub fn apply(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pal
             .map(str::to_string)
             .or_else(|| std::env::var("HOSTNAME").ok())
             .unwrap_or_else(|| "default".into()),
+        take_over,
         on_progress: spinner.as_ref().map(|pb| {
             let pb = pb.clone();
             Box::new(move |module: &str, verb: &str| {

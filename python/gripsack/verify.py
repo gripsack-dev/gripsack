@@ -13,6 +13,7 @@ class VerifyKind(str, Enum):
     BINARY_RUNS = "binary_runs"
     FILE_EXISTS = "file_exists"
     SHELL = "shell"
+    FILE_DEPLOYED = "file_deployed"
 
 
 @dataclass(frozen=True)
@@ -41,3 +42,9 @@ def verify_file(path: str) -> Verify:
 
 def verify_shell(script: str) -> Verify:
     return Verify(VerifyKind.SHELL, {"script": script})
+
+
+def verify_deployed(path: str) -> Verify:
+    """Check a deployed *destination* — for config-only modules, where
+    payload-relative verifies don't apply."""
+    return Verify(VerifyKind.FILE_DEPLOYED, {"path": path})

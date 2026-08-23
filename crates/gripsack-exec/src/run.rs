@@ -30,6 +30,9 @@ pub struct Ctx {
     pub host: String,
     /// Progress events `(module, verb)` — the CLI renders spinners.
     pub on_progress: Option<ProgressCallback>,
+    /// Overwrite foreign/drifted tracked_copy destinations (explicit
+    /// user intent — 0009 critique finding 3).
+    pub take_over: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -389,6 +392,24 @@ fn deploy_entry(
 ) -> Result<(String, ReportKind), ExecError> {
     let source = resolve_source(store_path, &entry.from, &ctx.repo);
     let dest = expand_home(&entry.to);
+    let fail = |detail: String| ExecError::Step {
+        module: entry.from.clone(),
+        step: "deploy".into(),
+        detail,
+    };
+    if !source.exists() {
+        return Err(fail(format!(
+            "no payload or repo file at {} (from {})",
+            source.display(),
+            entry.from
+        )));
+    }
+    if source.is_dir() && entry.mode != Ownership::Owned {
+        return Err(fail(format!(
+            "{:?} on a directory ({}) — tree deploys land in 0.2; owned symlinks work today",
+            entry.mode, entry.from
+        )));
+    }
     let hash = store::canonical_file_hash(&source)?;
     let (summary, kind) = match &entry.mode {
         Ownership::Owned => {
@@ -413,6 +434,12 @@ fn deploy_entry(
                     store::atomic_write(&dest, &std::fs::read(&source)?)?;
                     (
                         format!("updated {} → {}", entry.from, entry.to),
+                        ReportKind::Configured,
+                    )
+                } else if ctx.take_over {
+                    store::atomic_write(&dest, &std::fs::read(&source)?)?;
+                    (
+                        format!("took over {} → {}", entry.from, entry.to),
                         ReportKind::Configured,
                     )
                 } else {
@@ -479,6 +506,7 @@ fn describe_verify(verify: &Verify) -> String {
         Verify::BinaryRuns { path, .. } => format!("verified {path} runs"),
         Verify::FileExists { path } => format!("verified {path} exists"),
         Verify::Shell { .. } => "verified (shell check)".to_string(),
+        Verify::FileDeployed { path } => format!("verified {path} deployed"),
     }
 }
 
@@ -528,6 +556,11 @@ fn run_verify(name: &str, verify: &Verify, store_path: &Path) -> Result<(), Exec
         Verify::FileExists { path } => {
             if !store_path.join(path).exists() {
                 return Err(fail(format!("{} missing in payload", path)));
+            }
+        }
+        Verify::FileDeployed { path } => {
+            if !expand_home(path).exists() {
+                return Err(fail(format!("{} not deployed", path)));
             }
         }
         Verify::Shell { script } => run_shell(script, store_path).map_err(fail)?,

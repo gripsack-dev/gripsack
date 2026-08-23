@@ -215,4 +215,9 @@ pub enum Verify {
     Shell {
         script: String,
     },
+    /// Check a deployed *destination* (not the payload) — for
+    /// config-only modules (0009 critique: verify_file can't).
+    FileDeployed {
+        path: String,
+    },
 }

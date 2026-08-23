@@ -31,13 +31,25 @@
     }
   },
   "$defs": {
-        "hostFacts": {
+    "hostFacts": {
       "type": "object",
       "properties": {
-        "os": { "type": "string" },
-        "arch": { "type": "string" },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "libc": { "type": "string", "description": "e.g. glibc-2.36, musl, darwin" }
+        "os": {
+          "type": "string"
+        },
+        "arch": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "libc": {
+          "type": "string",
+          "description": "e.g. glibc-2.36, musl, darwin"
+        }
       }
     },
     "span": {
@@ -244,7 +256,16 @@
           ],
           "properties": {
             "kind": {
-                            "enum": ["fetch", "build", "install", "config_deploy", "intent", "verify", "run", "custom_shell"]
+              "enum": [
+                "fetch",
+                "build",
+                "install",
+                "config_deploy",
+                "intent",
+                "verify",
+                "run",
+                "custom_shell"
+              ]
             }
           }
         },
@@ -415,7 +436,8 @@
           "enum": [
             "binary_runs",
             "file_exists",
-            "shell"
+            "shell",
+            "file_deployed"
           ]
         },
         "path": {
