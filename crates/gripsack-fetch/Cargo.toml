@@ -15,6 +15,7 @@ gripsack-store.workspace = true
 sha2.workspace = true
 tar = "0.4"
 thiserror.workspace = true
+tracing = "0.1"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }

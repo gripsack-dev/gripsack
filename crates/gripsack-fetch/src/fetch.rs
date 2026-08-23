@@ -11,6 +11,7 @@ pub(crate) mod brew;
 pub(crate) mod file;
 pub(crate) mod git;
 pub(crate) mod pixi;
+pub(crate) mod plugin;
 pub(crate) mod tarball;
 
 #[derive(Debug, thiserror::Error)]
@@ -58,8 +59,6 @@ pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<String, FetchError> {
         FetchSpec::GithubRelease { .. } => Err(FetchError::Unsupported(
             "github_release resolves to a tarball upstream of fetch (exec::resolve)".into(),
         )),
-        FetchSpec::Plugin { name, .. } => Err(FetchError::Unsupported(format!(
-            "plugin gripfetch-{name} (protocol host lands with the scheduler)"
-        ))),
+        FetchSpec::Plugin { name, args } => plugin::fetch(name, args, dest),
     }
 }

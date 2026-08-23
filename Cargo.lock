@@ -415,6 +415,7 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror",
+ "tracing",
  "ureq",
  "xz2",
  "zip",
