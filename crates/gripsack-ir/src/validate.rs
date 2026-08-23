@@ -312,6 +312,26 @@ mod tests {
     }
 
     #[test]
+    fn run_action_parses_with_outputs() {
+        let json = STEPPED.replace(
+            r#"{"id": "patch", "action": {"kind": "custom_shell", "script": "true"},
+                     "needs": ["fetch"], "phase": "custom"}"#,
+            r#"{"id": "make", "action": {"kind": "run",
+                     "argv": ["make", "install"], "outputs": ["bin/hx"]},
+                     "needs": ["fetch"]}"#,
+        );
+        let ir = check(&json).unwrap();
+        let step = &ir.modules["helix"].steps.as_ref().unwrap()[1];
+        match &step.action {
+            crate::StepAction::Run { argv, outputs, .. } => {
+                assert_eq!(argv, &["make", "install"]);
+                assert_eq!(outputs, &["bin/hx"]);
+            }
+            other => panic!("expected run action, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn verify_and_retries_roundtrip() {
         let json = STEPPED.replace(
             r#""needs": ["fetch"], "phase": "custom"}"#,

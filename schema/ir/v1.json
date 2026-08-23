@@ -252,14 +252,7 @@
           ],
           "properties": {
             "kind": {
-              "enum": [
-                "fetch",
-                "build",
-                "install",
-                "config_deploy",
-                "intent",
-                "custom_shell"
-              ]
+                            "enum": ["fetch", "build", "install", "config_deploy", "intent", "run", "custom_shell"]
             }
           }
         },

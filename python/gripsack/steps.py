@@ -19,12 +19,25 @@ action:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Optional
 
 from .entries import Dest
 from .fetch import Fetch
 from .resources import validate_resource_refs
 from .verify import Verify
+
+
+class Phase(str, Enum):
+    """Reporting tag for a step (0007 §2) — never a scheduling barrier."""
+
+    FETCH = "fetch"
+    BUILD = "build"
+    INSTALL = "install"
+    CONFIG = "config"
+    VERIFY = "verify"
+    ACTIVATE = "activate"
+    CUSTOM = "custom"
 
 
 @dataclass(frozen=True)
@@ -52,12 +65,14 @@ class Step:
     action: dict[str, Any]
     needs: list[str] = field(default_factory=list)
     resources: list[str] = field(default_factory=list)
-    phase: Optional[str] = None
+    phase: Optional[Phase] = None
     verify: Optional[Verify] = None
     retries: Optional[int] = None
 
     def __post_init__(self) -> None:
         validate_resource_refs(self.resources, f"step {self.id!r}")
+        if self.phase is not None:
+            object.__setattr__(self, "phase", Phase(self.phase))
 
     def to_ir(self) -> dict[str, Any]:
         ir: dict[str, Any] = {"id": self.id, "action": self.action}
@@ -166,27 +181,56 @@ def config_step(
     )
 
 
+def run_step(
+    argv: list[str],
+    id: str = "run",
+    needs: Optional[list[str]] = None,
+    env: Optional[dict[str, str]] = None,
+    cwd: Optional[str] = None,
+    outputs: Optional[list[str]] = None,
+    resources: Optional[list[str]] = None,
+    verify: Optional[Verify] = None,
+    retries: Optional[int] = None,
+) -> Step:
+    """A structured action — the rung between primitives and shell
+    (0007 §3): argv/env/cwd as data, no shell interpretation, declared
+    ``outputs`` make it cacheable (0008 §4).
+
+    >>> run_step(["make", "install"], outputs=["bin/hx"]).action["kind"]
+    'run'
+    """
+    action: dict[str, Any] = {"kind": "run", "argv": argv}
+    if env:
+        action["env"] = env
+    if cwd:
+        action["cwd"] = cwd
+    if outputs:
+        action["outputs"] = outputs
+    return Step(
+        id, action, needs or [], resources or [], Phase.CUSTOM, verify, retries
+    )
+
+
 def shell_step(
     script: str,
     id: str,
     needs: Optional[list[str]] = None,
     resources: Optional[list[str]] = None,
-    phase: Optional[str] = "custom",
+    phase: Optional[Phase] = Phase.CUSTOM,
     verify: Optional[Verify] = None,
     retries: Optional[int] = None,
+    outputs: Optional[list[str]] = None,
 ) -> Step:
-    """The honest escape hatch: declared, flagged in `plan`, busts
-    fine-grained caching. Pair it with a verify contract (0007 §3).
+    """The last rung, not the default (0007 §3): declared, flagged in
+    `plan`. Declared ``outputs`` restore caching/satisfaction (0008 §4);
+    without them the step always runs.
 
-    >>> shell_step("make install", id="make-install", needs=["build"]).action
+    >>> shell_step("make install", id="mk", needs=["build"]).action
     {'kind': 'custom_shell', 'script': 'make install'}
     """
+    action: dict[str, Any] = {"kind": "custom_shell", "script": script}
+    if outputs:
+        action["outputs"] = outputs
     return Step(
-        id,
-        {"kind": "custom_shell", "script": script},
-        needs or [],
-        resources or [],
-        phase,
-        verify,
-        retries,
+        id, action, needs or [], resources or [], phase, verify, retries
     )

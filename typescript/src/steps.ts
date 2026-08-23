@@ -20,7 +20,8 @@ export type StepAction =
   | { kind: "build"; spec: Record<string, unknown> }
   | { kind: "install"; entries: unknown[] }
   | { kind: "config_deploy"; entries: unknown[] }
-  | { kind: "custom_shell"; script: string };
+  | { kind: "run"; argv: string[]; env?: Record<string, string>; cwd?: string; outputs?: string[] }
+  | { kind: "custom_shell"; script: string; outputs?: string[] };
 
 export interface Step {
   id: string;
@@ -103,14 +104,47 @@ export function configStep(
   };
 }
 
-/** The honest escape hatch: declared, flagged in `plan`, busts
- *  fine-grained caching. Pair it with a verify contract (0007 §3). */
-export function shellStep(script: string, id: string, opts?: StepOpts): Step {
+/** A structured action — the rung between primitives and shell
+ *  (0007 §3): argv/env/cwd as data, no shell interpretation, declared
+ *  `outputs` make it cacheable (0008 §4). */
+export function runStep(
+  argv: string[],
+  id = "run",
+  opts?: StepOpts & {
+    env?: Record<string, string>;
+    cwd?: string;
+    outputs?: string[];
+  },
+): Step {
+  const { env, cwd, outputs, ...rest } = opts ?? {};
+  const action: StepAction = {
+    kind: "run",
+    argv,
+    ...(env !== undefined ? { env } : {}),
+    ...(cwd !== undefined ? { cwd } : {}),
+    ...(outputs !== undefined ? { outputs } : {}),
+  };
+  return { id, action, phase: "custom", ...rest };
+}
+
+/** The last rung, not the default (0007 §3): declared, flagged in
+ *  `plan`. Declared `outputs` restore caching/satisfaction (0008 §4);
+ *  without them the step always runs. */
+export function shellStep(
+  script: string,
+  id: string,
+  opts?: StepOpts & { outputs?: string[] },
+): Step {
   validateResourceRefs(opts?.resources ?? [], `step '${id}'`);
+  const { outputs, ...rest } = opts ?? {};
   return {
     id,
-    action: { kind: "custom_shell", script },
-    phase: opts?.phase ?? "custom",
-    ...opts,
+    action: {
+      kind: "custom_shell",
+      script,
+      ...(outputs !== undefined ? { outputs } : {}),
+    },
+    phase: rest.phase ?? "custom",
+    ...rest,
   };
 }

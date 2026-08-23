@@ -24,7 +24,9 @@ from .steps import (
     fetch_step,
     install_step,
     shell_step,
+    run_step,
     step,
+    run_step,
 )
 from .verify import Verify, verify_binary, verify_file, verify_shell
 
@@ -59,6 +61,7 @@ __all__ = [
     "install_step",
     "config_step",
     "shell_step",
+    "run_step",
     "Step",
     "verify_binary",
     "verify_file",

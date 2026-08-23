@@ -58,12 +58,40 @@ Ladder, same philosophy as sourcing (0002 §2):
 
 1. **Typed primitive** — the engine interprets it: cacheable,
    introspectable, shown by `plan`.
-2. **`custom_shell`** — script *content* in the IR (or a file from the
+2. **`run`** — a *structured* action: `argv`, `env`, `cwd`, `outputs`
+   as data. No shell interpretation, no quoting bugs; declared outputs
+   keep it cacheable and satisfiable (0008 §4). This is the
+   Pants/Bazel lesson: build logic should produce action *descriptions*
+   (data), not shell text — and it covers most things people reach for
+   shell for ("run this binary with these args").
+3. **`custom_shell`** — script *content* in the IR (or a file from the
    env repo, deployed and hash-verified like any other payload).
-   Declared, flagged in `plan`, and it busts fine-grained caching —
-   honestly, visibly.
-3. **Builder/fetcher plugin** — reusable logic becomes a new primitive
+   Declared, flagged in `plan`, cache-busting without declared
+   `outputs`. The last rung, for genuinely shell-shaped work (pipes,
+   redirects).
+4. **Builder/fetcher plugin** — reusable logic becomes a new primitive
    out-of-tree (0002 §4).
+
+What the field teaches:
+
+- **Nix** embeds shell snippets in the DSL (phases as bash strings) —
+  the cautionary tale: untyped, unquotable, undebuggable.
+- **Guix** stages Scheme into the store via g-expressions — true
+  single-language builds, but it works because Scheme is code-as-data;
+  reproducing it means shipping a language runtime into every build.
+  Not our trade.
+- **Bazel/Buck2** have custom logic (Starlark) *register structured
+  actions* (argv, inputs, outputs, env) that the engine executes and
+  caches — logic in the language, execution as data.
+- **Pants** is our closest architectural sibling: Python `@rule`s
+  return `Process` *descriptions* to a Rust engine. Same split as our
+  eval/execute halves.
+
+Our answer sits at their intersection: all *decision logic* lives in
+your typed Python/TS at eval time (single language for config AND
+logic); everything that crosses into the core is data — primitives,
+then `run`, then shell. Guix-style staging is the one model we
+explicitly reject: the core never evaluates code.
 
 What we will NOT do: `python_module("...")` or any code-by-reference
 step action. The moment executable code rides inside the IR, the core

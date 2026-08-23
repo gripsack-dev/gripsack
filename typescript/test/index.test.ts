@@ -15,6 +15,7 @@ import {
   Module,
   module,
   resource,
+  runStep,
   service,
   shellStep,
   symlink,
@@ -155,5 +156,23 @@ describe("emitIr", () => {
     });
     const ir = JSON.parse(emitIr());
     assert.equal(ir.modules["helix-src"].depends[0].edge, "build");
+  });
+});
+
+describe("runStep", () => {
+  it("emits structured argv actions with outputs", () => {
+    module("built", {
+      steps: [
+        runStep(["make", "install"], "make-install", {
+          needs: ["fetch"],
+          outputs: ["bin/hx"],
+        }),
+      ],
+    });
+    const ir = JSON.parse(emitIr());
+    const action = ir.modules.built.steps[0].action;
+    assert.equal(action.kind, "run");
+    assert.deepEqual(action.argv, ["make", "install"]);
+    assert.deepEqual(action.outputs, ["bin/hx"]);
   });
 });

@@ -1,6 +1,7 @@
 use crate::model::{Action, Build, Entry, FetchSpec, Verify};
 use crate::span::Span;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Step ids every declarative module gets after expansion (0007 §2) —
 /// the valid cross-module targets (`rust:install`) when the target
@@ -60,9 +61,23 @@ pub enum StepAction {
     Intent {
         action: Box<Action>,
     },
-    /// The honest escape hatch: declared, flagged, cache-busting.
+    /// A structured action (0007 §3): argv/env/cwd as data, no shell
+    /// interpretation. Declared `outputs` make it satisfiable (0008 §4).
+    Run {
+        argv: Vec<String>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        env: BTreeMap<String, String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        outputs: Vec<String>,
+    },
+    /// The last rung: declared, flagged. Declared `outputs` restore
+    /// caching; without them the step always runs (0008 §4).
     CustomShell {
         script: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        outputs: Vec<String>,
     },
 }
 

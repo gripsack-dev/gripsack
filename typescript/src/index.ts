@@ -25,7 +25,7 @@ export { define, Module, module } from "./module.js";
 export type { IrEntry, IrModule, ModuleSpec, Span } from "./module.js";
 export { CORE_RESOURCES, clearResources, resource } from "./resources.js";
 export type { Resource } from "./resources.js";
-export { buildStep, configStep, fetchStep, installStep, shellStep, step } from "./steps.js";
+export { buildStep, configStep, fetchStep, installStep, runStep, shellStep, step } from "./steps.js";
 export type { Phase, Step, StepAction, StepOpts } from "./steps.js";
 export { verifyBinary, verifyFile, verifyShell } from "./verify.js";
 export type { Verify } from "./verify.js";
