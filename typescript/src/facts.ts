@@ -5,7 +5,7 @@ export interface HostFacts {
   arch: string;
   tags: string[];
   /** e.g. "glibc-2.36", "darwin" — binary asset selection depends on it. */
-  libc?: string;
+  libc: string | undefined;
 }
 
 function detectLibc(): string | undefined {
@@ -18,11 +18,10 @@ function detectLibc(): string | undefined {
 }
 
 export function currentFacts(tags: string[] = [], host?: Partial<HostFacts>): HostFacts {
-  const libc = host?.libc ?? detectLibc();
   return {
     os: host?.os ?? process.platform,
     arch: host?.arch ?? process.arch,
     tags,
-    ...(libc !== undefined ? { libc } : {}),
+    libc: host?.libc ?? detectLibc(),
   };
 }

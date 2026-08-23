@@ -179,3 +179,16 @@ export function define(ctor: new () => Module): void {
   const named = ctor as unknown as { moduleName?: string };
   registerClass(named.moduleName ?? ctor.name.toLowerCase(), ctor, callerSpan());
 }
+
+import { when } from "./conditions.js";
+import type { Condition } from "./conditions.js";
+
+/** Data-style module registered only when the condition matches. */
+export function moduleIf(name: string, spec: ModuleSpec, cond: Condition): void {
+  if (when(cond)) module(name, spec);
+}
+
+/** Class-style module registered only when the condition matches. */
+export function defineIf(ctor: new () => Module, cond: Condition): void {
+  if (when(cond)) define(ctor);
+}

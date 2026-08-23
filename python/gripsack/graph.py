@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Optional
 
-from .facts import current_facts
+from ._facts import current_facts
 from .module import ModuleData, _collect_pipeline
 from .resources import declared_resources
 
@@ -53,8 +53,13 @@ def clear_graph() -> None:
 
 def emit_ir(tags: Optional[list[str]] = None) -> str:
     """Serialize the registered graph as IR JSON."""
+    from ._facts import facts
+
     modules = dict(_GRAPH)
     for name, (cls, span) in _CLASSES.items():
+        condition = getattr(cls, 'when', None)
+        if condition is not None and not condition.matches(facts):
+            continue
         instance = cls()
         steps, verify = _collect_pipeline(instance)
         modules[name] = ModuleData(

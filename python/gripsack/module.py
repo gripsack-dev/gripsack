@@ -42,6 +42,7 @@ from .fetch import Fetch
 from .intents import Intent
 from .steps import Step
 from .verify import Verify
+from .conditions import When
 
 #: Pipeline order for the class style (0007 §verify).
 PIPELINE_PHASES = ("fetch", "build", "install", "config", "verify", "activate")
@@ -122,6 +123,7 @@ def module(
     steps: Optional[list[Step]] = None,
     verify: Optional[Verify] = None,
     retries: Optional[int] = None,
+    when: Optional[When] = None,
 ) -> ModuleData:
     """Declare a module from declarative fields (data style).
 
@@ -142,6 +144,7 @@ def module(
 
     Captures the caller's file/line as the module's span (0004 §2).
     """
+    from ._facts import facts
     from .graph import register
 
     m = ModuleData(
@@ -157,7 +160,8 @@ def module(
         retries=retries,
         span=_caller_span(),
     )
-    register(m)
+    if when is None or when.matches(facts):
+        register(m)
     return m
 
 StepsResult = Union[Step, list[Step], None]

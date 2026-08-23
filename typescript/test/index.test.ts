@@ -14,6 +14,7 @@ import {
   installStep,
   Module,
   module,
+  moduleIf,
   resource,
   runStep,
   service,
@@ -184,5 +185,15 @@ describe("registry safety", () => {
       () => module("dup", { fetch: tarball("https://example.invalid/b.tar.xz") }),
       /duplicate module 'dup'/,
     );
+  });
+});
+
+describe("when", () => {
+  it("filters modules by host facts", () => {
+    moduleIf("steam", { fetch: tarball("https://example.invalid/s.tar.xz") }, { os: "plan9" });
+    module("git", { fetch: tarball("https://example.invalid/g.tar.xz") });
+    const ir = JSON.parse(emitIr());
+    assert.equal(ir.modules.steam, undefined);
+    assert.ok(ir.modules.git);
   });
 });

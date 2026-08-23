@@ -40,6 +40,11 @@ def main() -> None:
             host_mod = _exec(host_file, "gripsack_user.host")
             tags = list(getattr(host_mod, "tags", tags))
 
+    if tags:
+        from ._facts import _set_tags
+
+        _set_tags(tags)
+
     modules_dir = repo / "modules"
     if modules_dir.is_dir():
         for f in sorted(modules_dir.glob("*.py")):

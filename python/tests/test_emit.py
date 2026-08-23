@@ -189,5 +189,41 @@ def test_duplicate_module_names_error_at_eval():
         module("dup", fetch=tarball("https://example.invalid/b.tar.xz"))
 
 
+def test_when_filters_data_style_modules():
+    from gripsack import when as mkwhen
+
+    module(
+        "steam",
+        fetch=tarball("https://example.invalid/s.tar.xz"),
+        when=mkwhen(os="plan9"),
+    )
+    module("git", fetch=tarball("https://example.invalid/g.tar.xz"))
+    ir = json.loads(emit_ir())
+    assert "steam" not in ir["modules"]
+    assert "git" in ir["modules"]
+
+
+def test_when_decorator_filters_class_modules():
+    from gripsack import when as mkwhen
+
+    @mkwhen(os="plan9")
+    class Steam(Module):
+        def fetch(self):
+            return fetch_step(tarball("https://example.invalid/s.tar.xz"))
+
+    ir = json.loads(emit_ir())
+    assert "steam" not in ir["modules"]
+
+
+def test_facts_object_has_tags_after_runner_sets():
+    import sys
+
+    from gripsack._facts import _set_tags
+
+    _set_tags(["gui", "laptop"])
+    assert sys.modules["gripsack._facts"].facts.has("gui")
+    _set_tags([])
+
+
 def test_version_string_exists():
     assert gripsack.__version__

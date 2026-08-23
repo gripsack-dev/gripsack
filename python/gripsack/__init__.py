@@ -11,7 +11,7 @@ data-style :func:`module` and the class-style :class:`Module`.
 
 from .deps import Dependency, dep
 from .entries import Dest, merge, symlink, template, tracked_copy
-from .facts import current_facts
+from ._facts import Facts, current_facts, facts
 from .fetch import (
     Fetch,
     FetchKind,
@@ -38,6 +38,7 @@ from .steps import (
     shell_step,
     step,
 )
+from .conditions import When, when
 from .verify import Verify, verify_binary, verify_file, verify_shell
 
 import importlib.metadata as _meta
@@ -91,6 +92,10 @@ __all__ = [
     "CORE_RESOURCES",
     "clear_resources",
     "current_facts",
+    "facts",
+    "Facts",
+    "when",
+    "When",
     "emit_ir",
     "clear_graph",
 ]
