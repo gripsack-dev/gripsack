@@ -2,6 +2,7 @@
 
 import { currentFacts } from "./facts.js";
 import type { IrModule } from "./module.js";
+import { declaredResources } from "./resources.js";
 
 export const IR_VERSION = 1;
 
@@ -18,10 +19,12 @@ export function clearGraph(): void {
 
 /** Serialize the registered graph as IR JSON. */
 export function emitIr(tags: string[] = []): string {
-  const ir = {
+  const resources = declaredResources();
+  const ir: Record<string, unknown> = {
     ir_version: IR_VERSION,
     host: currentFacts(tags),
     modules: Object.fromEntries(GRAPH),
   };
+  if (resources.length > 0) ir.resources = resources;
   return JSON.stringify(ir, null, 2);
 }

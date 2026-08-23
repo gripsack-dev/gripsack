@@ -119,6 +119,7 @@ mod tests {
     fn ir(entries: &[(&str, &[&str])]) -> Ir {
         Ir {
             ir_version: 1,
+            resources: vec![],
             host: Default::default(),
             modules: entries
                 .iter()

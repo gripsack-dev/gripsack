@@ -8,7 +8,18 @@ pub struct Ir {
     pub ir_version: u32,
     #[serde(default)]
     pub host: HostFacts,
+    /// Declared resources (0007 §4): step `resources` must resolve to
+    /// these or the core's built-ins, else E107.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<Resource>,
     pub modules: BTreeMap<String, Module>,
+}
+
+/// A named, declared resource — a marker closing the namespace so typos
+/// are sema errors, not silent "no mutual exclusion".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Resource {
+    pub name: String,
 }
 
 /// Facts resolved at eval time; the core never re-derives them (0001 §5).

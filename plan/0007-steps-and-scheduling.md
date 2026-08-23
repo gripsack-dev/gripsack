@@ -134,9 +134,13 @@ every resource it declares is free.
 - **Cross-process safety**: named resources map to `flock` files under
   `$GRIPSACK_HOME/locks/`, so two concurrent `grip` runs serialize too
   — in-process semaphores alone wouldn't.
-- Unknown resource names are a *warning* (`W201`), not an error —
-  resources are an open namespace; a typo degrades to "no mutual
-  exclusion", which is worth surfacing but not blocking.
+- **The namespace is closed by declaration.** The IR carries a
+  top-level `resources` section (`[{"name": "pixi.lock"}]`); frontends
+  expose `resource("pixi.lock")` markers. A step's `resources` must
+  resolve to declared resources ∪ core built-ins (`network`,
+  `pixi-lock`, `cargo-lock`) — anything else is a hard error (`E107`).
+  Frontends also validate at eval time, so a typo fails in the user's
+  editor run, before the core ever sees the IR.
 
 ## 5. Scheduling: no waves
 
@@ -161,19 +165,38 @@ running → done | failed`.
   module-level cycles now surface here with step precision).
 - `W201` — unknown resource name.
 
-## 7. Library structure (both frontends)
+## 7. Authoring styles
+
+Two ways to write a module, both producing the same IR:
+
+- **Data style** — `module(name, fetch=..., config=...)`: declarative
+  fields the core expands (§1). The default for simple and
+  dotfiles-only modules.
+- **Class style** — subclass `Module` and override phase methods
+  (`fetch()`, `build()`, `install()`, `config()`, `verify()`,
+  `activate()`), each returning a step or list of steps. Phase methods
+  run **at eval time only** — they build data, never execute at build
+  time. The pipeline chains steps: within a phase and across phase
+  boundaries a step with empty `needs` needs the previous step;
+  explicit `needs` always win. The chaining is compiled to explicit
+  `needs` in the emitted IR — the IR carries no sugar, and the
+  conformance test is that both frontends emit identical IR for the
+  same logical module.
+
+## 8. Library structure (both frontends)
 
 Single-file packages stop here. Both frontends become real libraries:
 
 ```
 python/gripsack/                typescript/src/
-  sources.py    — fetchers        sources.ts
+  fetch.py      — fetchers        fetch.ts
   entries.py    — Dest/ownership  entries.ts
   deps.py       — Dependency      deps.ts
   intents.py    — activation      intents.ts
   steps.py      — Step + helpers  steps.ts
   facts.py      — host facts/tags facts.ts
-  module.py     — module()        module.ts
+  resources.py  — declarations    resources.ts
+  module.py     — module + Module module.ts
   graph.py      — registry, emit  graph.ts
 ```
 

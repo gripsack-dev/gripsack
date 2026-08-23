@@ -4,8 +4,9 @@ Modules are plain Python using this package (plan/0001 §3.3). Evaluation
 collects Module objects into a graph and emits the IR (JSON) the Rust
 core consumes. The core never executes this code; it only reads the IR.
 
-Spans (0004 §2): `module()` captures the caller's file and line so core
-errors can point back at the user's source.
+Spans (0004 §2): modules capture their declaration site so core errors
+point back at your source. Two authoring styles (0007 §1): the
+data-style :func:`module` and the class-style :class:`Module`.
 """
 
 from .deps import Dependency, dep
@@ -14,8 +15,17 @@ from .facts import current_facts
 from .fetch import Fetch, file_fetch, git, github_release, plugin_fetch, tarball
 from .graph import IR_VERSION, clear_graph, emit_ir
 from .intents import Intent, custom_hook, desktop_entry, fonts, service
-from .module import Module, module
-from .steps import Step, build_step, fetch_step, shell_step, step
+from .module import Module, ModuleData, module
+from .resources import CORE_RESOURCES, Resource, clear_resources, resource
+from .steps import (
+    Step,
+    build_step,
+    config_step,
+    fetch_step,
+    install_step,
+    shell_step,
+    step,
+)
 from .verify import Verify, verify_binary, verify_file, verify_shell
 
 __version__ = "0.1.0"
@@ -24,6 +34,7 @@ __all__ = [
     "IR_VERSION",
     "module",
     "Module",
+    "ModuleData",
     "dep",
     "Dependency",
     "github_release",
@@ -45,12 +56,18 @@ __all__ = [
     "step",
     "fetch_step",
     "build_step",
+    "install_step",
+    "config_step",
     "shell_step",
     "Step",
     "verify_binary",
     "verify_file",
     "verify_shell",
     "Verify",
+    "resource",
+    "Resource",
+    "CORE_RESOURCES",
+    "clear_resources",
     "current_facts",
     "emit_ir",
     "clear_graph",

@@ -2,14 +2,21 @@
 
 import json
 
+import pytest
+
 import gripsack
 from gripsack import (
+    Module,
     clear_graph,
+    clear_resources,
+    config_step,
     dep,
     emit_ir,
     fetch_step,
     github_release,
+    install_step,
     module,
+    resource,
     service,
     shell_step,
     symlink,
@@ -20,6 +27,7 @@ from gripsack import (
 
 def setup_function():
     clear_graph()
+    clear_resources()
 
 
 def test_emit_shape_matches_ir_v1():
@@ -106,6 +114,73 @@ def test_explicit_steps_emit():
         "needs": ["fetch"],
         "phase": "custom",
     }
+
+
+def test_declared_resources_emit_and_validate():
+    resource("company.lock")
+    module(
+        "tool",
+        steps=[
+            shell_step("./sync.sh", id="sync", resources=["company.lock"]),
+        ],
+    )
+    ir = json.loads(emit_ir())
+    assert ir["resources"] == [{"name": "company.lock"}]
+    assert ir["modules"]["tool"]["steps"][0]["resources"] == ["company.lock"]
+
+
+def test_undeclared_resource_raises_at_eval():
+    with pytest.raises(ValueError, match="unknown resource 'cargo.lokc'"):
+        shell_step("true", id="x", resources=["cargo.lokc"])
+
+
+def test_builtin_resources_pass_eval():
+    s = shell_step("cargo install hx", id="build", resources=["cargo-lock"])
+    assert s.resources == ["cargo-lock"]
+
+
+def test_class_module_chains_pipeline():
+    class Helix(Module):
+        def fetch(self):
+            return fetch_step(tarball("https://example.invalid/h.tar.xz"))
+
+        def install(self):
+            return install_step({"bin/hx": symlink("~/.local/bin/hx")})
+
+        def config(self):
+            return config_step(
+                {"config.toml": tracked_copy("~/.config/helix/config.toml")}
+            )
+
+    ir = json.loads(emit_ir())
+    steps = ir["modules"]["helix"]["steps"]
+    assert [s["id"] for s in steps] == ["fetch", "install", "config"]
+    # implicit sequencing compiled to explicit needs
+    assert "needs" not in steps[0]
+    assert steps[1]["needs"] == ["fetch"]
+    assert steps[2]["needs"] == ["install"]
+    # phase tags filled from the pipeline
+    assert steps[2]["phase"] == "config"
+    # span points at the class definition
+    assert ir["modules"]["helix"]["span"]["file"].endswith("test_emit.py")
+
+
+def test_class_module_explicit_needs_win_and_abstract_bases_skip():
+    class Base(Module):
+        abstract = True
+
+        def fetch(self):
+            return fetch_step(tarball("https://example.invalid/x.tar.xz"))
+
+    class Tool(Base):
+        def build(self):
+            return shell_step("make", id="make", needs=["fetch"])
+
+    ir = json.loads(emit_ir())
+    assert "base" not in ir["modules"]
+    steps = ir["modules"]["tool"]["steps"]
+    # explicit needs are preserved, not chained
+    assert steps[1]["needs"] == ["fetch"]
 
 
 def test_version_string_exists():

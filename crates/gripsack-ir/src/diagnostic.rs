@@ -10,7 +10,7 @@ pub mod codes {
     pub const STEPS_WITH_FIELDS: &str = "E103";
     pub const UNKNOWN_STEP: &str = "E104";
     pub const DUPLICATE_STEP: &str = "E106";
-    pub const UNKNOWN_RESOURCE: &str = "W201";
+    pub const UNKNOWN_RESOURCE: &str = "E107";
 }
 
 // ---------------------------------------------------------------- diagnostics

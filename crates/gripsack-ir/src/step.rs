@@ -73,6 +73,7 @@ pub enum Phase {
     Build,
     Install,
     Config,
+    Verify,
     Activate,
     Custom,
 }

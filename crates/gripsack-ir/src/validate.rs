@@ -1,4 +1,4 @@
-use crate::diagnostic::{codes, Diagnostic, Label, Severity};
+use crate::diagnostic::{codes, Diagnostic, Severity};
 use crate::model::{Build, Ir};
 use crate::step::{BARRIER_STEP_ID, KNOWN_RESOURCES, SYNTHESIZED_STEP_IDS};
 
@@ -128,11 +128,18 @@ fn validate_steps(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                 let unknown = match need.split_once(':') {
                     Some((target_module, target_step)) => match ir.modules.get(target_module) {
                         None => true,
-                        Some(target) => match &target.steps {
-                            Some(target_steps) => !target_steps.iter().any(|s| s.id == target_step),
-                            None => !SYNTHESIZED_STEP_IDS.contains(&target_step),
-                        },
+                        Some(target) => {
+                            !(target_step == BARRIER_STEP_ID
+                                || match &target.steps {
+                                    Some(target_steps) => {
+                                        target_steps.iter().any(|s| s.id == target_step)
+                                    }
+                                    None => SYNTHESIZED_STEP_IDS.contains(&target_step),
+                                })
+                        }
                     },
+                    // `module:done` is always valid: the barrier exists
+                    // for explicit and synthesized modules alike (0007 §2).
                     None => !steps.iter().any(|s| s.id == *need),
                 };
                 if unknown {
@@ -148,23 +155,30 @@ fn validate_steps(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                     );
                 }
             }
-            // W201: unknown resource names.
+            // E107: resources must be declared in the IR `resources`
+            // section or be a core built-in (0007 §4).
             for resource in &step.resources {
-                if !KNOWN_RESOURCES.contains(&resource.as_str()) {
-                    diagnostics.push(Diagnostic {
-                        code: codes::UNKNOWN_RESOURCE,
-                        severity: Severity::Warning,
-                        message: format!(
-                            "module {name:?}: step {:?} requires unknown resource \
-                             {resource:?} (no mutual exclusion will apply)",
-                            step.id
-                        ),
-                        labels: vec![Label {
-                            span: step.span.clone().or_else(|| module.span.clone()),
-                            note: String::new(),
-                        }],
-                        help: Some(format!("known: {}", KNOWN_RESOURCES.join(", "))),
-                    });
+                let declared = ir.resources.iter().any(|r| r.name == *resource)
+                    || KNOWN_RESOURCES.contains(&resource.as_str());
+                if !declared {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            codes::UNKNOWN_RESOURCE,
+                            format!(
+                                "module {name:?}: step {:?} requires undeclared resource \
+                                 {resource:?}",
+                                step.id
+                            ),
+                        )
+                        .with_label(
+                            step.span.clone().or_else(|| module.span.clone()),
+                            "required here",
+                        )
+                        .with_help(format!(
+                            "declare it in the IR `resources` section, or use a built-in: {}",
+                            KNOWN_RESOURCES.join(", ")
+                        )),
+                    );
                 }
             }
         }
@@ -356,18 +370,44 @@ mod tests {
     }
 
     #[test]
-    fn unknown_resource_warns_but_passes() {
+    fn undeclared_resource_is_e107() {
         let json = STEPPED.replace(
             r#""needs": ["fetch"]"#,
             r#""needs": ["fetch"], "resources": ["my-lock"]"#,
         );
-        // warnings don't fail the check
-        let ir = check(&json).unwrap();
-        assert!(ir.modules["helix"].steps.is_some());
-        let diagnostics = validate(&ir);
+        let diagnostics = check(&json).unwrap_err();
         assert!(diagnostics
             .iter()
-            .any(|d| d.code == codes::UNKNOWN_RESOURCE && d.severity == Severity::Warning));
+            .any(|d| d.code == codes::UNKNOWN_RESOURCE && d.severity == Severity::Error));
+    }
+
+    #[test]
+    fn declared_and_builtin_resources_pass() {
+        let json = STEPPED
+            .replace(
+                r#""needs": ["fetch"]"#,
+                r#""needs": ["fetch"], "resources": ["my-lock", "cargo-lock"]"#,
+            )
+            .replace(
+                r#""modules": {"#,
+                r#""resources": [{"name": "my-lock"}], "modules": {"#,
+            );
+        check(&json).unwrap();
+    }
+
+    #[test]
+    fn done_barrier_ref_is_always_valid() {
+        let json = STEPPED.replace(
+            r#""needs": ["fetch"]"#,
+            r#""needs": ["fetch", "rust:done"]"#,
+        );
+        check(&json).unwrap();
+        // and into an explicit-steps module too
+        let json = STEPPED.replace(
+            r#""needs": ["fetch"]"#,
+            r#""needs": ["fetch", "helix:done"]"#,
+        );
+        check(&json).unwrap();
     }
 
     #[test]

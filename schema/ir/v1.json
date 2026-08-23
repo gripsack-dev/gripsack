@@ -15,6 +15,13 @@
     "host": {
       "$ref": "#/$defs/hostFacts"
     },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resource"
+      },
+      "description": "Declared resources (0007 \u00a74); step resources must resolve to these or core built-ins"
+    },
     "modules": {
       "type": "object",
       "minProperties": 1,
@@ -215,6 +222,18 @@
         }
       }
     },
+    "resource": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "step": {
       "type": "object",
       "required": [
@@ -263,6 +282,7 @@
             "build",
             "install",
             "config",
+            "verify",
             "activate",
             "custom"
           ]

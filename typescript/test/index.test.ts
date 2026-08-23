@@ -4,11 +4,17 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach } from "node:test";
 import {
   clearGraph,
+  clearResources,
+  configStep,
+  define,
   dep,
   emitIr,
   fetchStep,
   githubRelease,
+  installStep,
+  Module,
   module,
+  resource,
   service,
   shellStep,
   symlink,
@@ -16,7 +22,10 @@ import {
   trackedCopy,
 } from "../src/index.js";
 
-beforeEach(() => clearGraph());
+beforeEach(() => {
+  clearGraph();
+  clearResources();
+});
 
 describe("emitIr", () => {
   it("emits IR v1 shape", () => {
@@ -89,6 +98,54 @@ describe("emitIr", () => {
     assert.equal(steps[1].id, "patch");
     assert.equal(steps[1].action.kind, "custom_shell");
     assert.deepEqual(steps[1].needs, ["fetch"]);
+  });
+
+  it("declared resources emit and validate", () => {
+    resource("company.lock");
+    module("tool", {
+      steps: [shellStep("./sync.sh", "sync", { resources: ["company.lock"] })],
+    });
+    const ir = JSON.parse(emitIr());
+    assert.deepEqual(ir.resources, [{ name: "company.lock" }]);
+    assert.deepEqual(ir.modules.tool.steps[0].resources, ["company.lock"]);
+  });
+
+  it("undeclared resources throw at eval", () => {
+    assert.throws(
+      () => shellStep("true", "x", { resources: ["cargo.lokc"] }),
+      /unknown resource 'cargo\.lokc'/,
+    );
+  });
+
+  it("builtin resources pass eval", () => {
+    const s = shellStep("cargo install hx", "build", { resources: ["cargo-lock"] });
+    assert.deepEqual(s.resources, ["cargo-lock"]);
+  });
+
+  it("class modules chain the pipeline", () => {
+    class Helix extends Module {
+      override fetch() {
+        return fetchStep(tarball("https://example.invalid/h.tar.xz"));
+      }
+      override install() {
+        return installStep({ "bin/hx": symlink("~/.local/bin/hx") });
+      }
+      override config() {
+        return configStep({ "config.toml": trackedCopy("~/.config/helix/config.toml") });
+      }
+    }
+    define(Helix);
+    const ir = JSON.parse(emitIr());
+    const steps = ir.modules.helix.steps;
+    assert.deepEqual(
+      steps.map((s: { id: string }) => s.id),
+      ["fetch", "install", "config"],
+    );
+    assert.equal(steps[0].needs, undefined);
+    assert.deepEqual(steps[1].needs, ["fetch"]);
+    assert.deepEqual(steps[2].needs, ["install"]);
+    assert.equal(steps[2].phase, "config");
+    assert.match(ir.modules.helix.span.file, /index\.test\.(ts|js)$/);
   });
 
   it("marks build-only deps", () => {

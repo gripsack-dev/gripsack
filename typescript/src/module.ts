@@ -50,6 +50,79 @@ export interface IrModule {
   span?: Span;
 }
 
+/** Pipeline order for the class style (0007 §verify). */
+const PIPELINE_PHASES = ["fetch", "build", "install", "config", "verify", "activate"] as const;
+
+type PhaseName = (typeof PIPELINE_PHASES)[number];
+type StepsResult = Step | Step[] | void;
+
+/**
+ * Base class for the class authoring style (0007 §1).
+ *
+ * Subclass and override any phase method — each returns a step, a list
+ * of steps, or nothing. The pipeline chains phases in order and
+ * sequences steps within each phase, filling only *empty* `needs` —
+ * explicit `needs` always win. Register with {@link define}.
+ *
+ * **Phase methods run at eval time only** — they build IR, they never
+ * run while your system is being built.
+ *
+ * @example
+ * ```ts
+ * class Helix extends Module {
+ *   override fetch() {
+ *     return fetchStep(githubRelease({ repo: "helix-editor/helix", asset: "h.tar.xz" }));
+ *   }
+ *   override install() {
+ *     return installStep({ "bin/hx": symlink("~/.local/bin/hx") });
+ *   }
+ * }
+ * define(Helix);
+ * ```
+ */
+export abstract class Module {
+  /** Module name; defaults to the class name lowercased. */
+  static moduleName?: string;
+
+  fetch(): StepsResult {
+    return;
+  }
+  build(): StepsResult {
+    return;
+  }
+  install(): StepsResult {
+    return;
+  }
+  config(): StepsResult {
+    return;
+  }
+  verify(): StepsResult {
+    return;
+  }
+  activate(): StepsResult {
+    return;
+  }
+}
+
+function normalize(result: StepsResult, phase: PhaseName): Step[] {
+  if (!result) return [];
+  const steps = Array.isArray(result) ? result : [result];
+  return steps.map((s) => (s.phase === undefined ? { ...s, phase } : s));
+}
+
+function collectPipeline(instance: Module): Step[] {
+  const chained: Step[] = [];
+  for (const phase of PIPELINE_PHASES) {
+    for (const s of normalize(instance[phase](), phase)) {
+      const prev = chained[chained.length - 1];
+      chained.push(
+        s.needs === undefined && prev ? { ...s, needs: [prev.id] } : s,
+      );
+    }
+  }
+  return chained;
+}
+
 /** Capture the first stack frame outside this file (V8: file:line:col). */
 function callerSpan(): Span | undefined {
   const here = new URL(import.meta.url).pathname;
@@ -65,7 +138,7 @@ function callerSpan(): Span | undefined {
   return undefined;
 }
 
-/** Declare a module and register it in the graph. */
+/** Declare a module from declarative fields (data style). */
 export function module(name: string, spec: ModuleSpec): void {
   const ir: IrModule = {};
   if (spec.fetch) ir.fetch = spec.fetch;
@@ -86,4 +159,14 @@ export function module(name: string, spec: ModuleSpec): void {
   const span = callerSpan();
   if (span) ir.span = span;
   register(name, ir);
+}
+
+/** Instantiate a class-style module and register it (see {@link Module}). */
+export function define(ctor: new () => Module): void {
+  const instance = new ctor();
+  const ir: IrModule = { steps: collectPipeline(instance) };
+  const span = callerSpan();
+  if (span) ir.span = span;
+  const named = ctor as unknown as { moduleName?: string };
+  register(named.moduleName ?? ctor.name.toLowerCase(), ir);
 }

@@ -8,14 +8,18 @@
  * (E103).
  */
 
+import type { Dest } from "./entries.js";
 import type { Fetch } from "./fetch.js";
+import { validateResourceRefs } from "./resources.js";
 import type { Verify } from "./verify.js";
 
-export type Phase = "fetch" | "build" | "install" | "config" | "activate" | "custom";
+export type Phase = "fetch" | "build" | "install" | "config" | "verify" | "activate" | "custom";
 
 export type StepAction =
   | { kind: "fetch"; fetch: Fetch }
   | { kind: "build"; spec: Record<string, unknown> }
+  | { kind: "install"; entries: unknown[] }
+  | { kind: "config_deploy"; entries: unknown[] }
   | { kind: "custom_shell"; script: string };
 
 export interface Step {
@@ -37,6 +41,7 @@ export interface StepOpts {
 }
 
 export function step(id: string, action: StepAction, opts?: StepOpts): Step {
+  validateResourceRefs(opts?.resources ?? [], `step '${id}'`);
   return { id, action, ...opts };
 }
 
@@ -44,6 +49,7 @@ export function step(id: string, action: StepAction, opts?: StepOpts): Step {
  *  (pixi → `pixi-lock`, …) — `resources` is for your own shared
  *  state (0007 §4). Fetch steps retry by default. */
 export function fetchStep(fetch: Fetch, id = "fetch", opts?: StepOpts): Step {
+  validateResourceRefs(opts?.resources ?? [], `step '${id}'`);
   return { id, action: { kind: "fetch", fetch }, phase: "fetch", ...opts };
 }
 
@@ -55,9 +61,52 @@ export function buildStep(
   return { id, action: { kind: "build", spec }, phase: "build", ...opts };
 }
 
+/** Deploy built artifacts to their destinations. */
+export function installStep(
+  entries: Record<string, Dest>,
+  id = "install",
+  opts?: StepOpts,
+): Step {
+  return {
+    id,
+    action: {
+      kind: "install",
+      entries: Object.entries(entries).map(([from, d]) => ({
+        from,
+        to: d.to,
+        mode: d.mode,
+      })),
+    } as StepAction,
+    phase: "install",
+    ...opts,
+  };
+}
+
+/** Deploy config files per their ownership modes (0001 §3.7). */
+export function configStep(
+  entries: Record<string, Dest>,
+  id = "config",
+  opts?: StepOpts,
+): Step {
+  return {
+    id,
+    action: {
+      kind: "config_deploy",
+      entries: Object.entries(entries).map(([from, d]) => ({
+        from,
+        to: d.to,
+        mode: d.mode,
+      })),
+    } as StepAction,
+    phase: "config",
+    ...opts,
+  };
+}
+
 /** The honest escape hatch: declared, flagged in `plan`, busts
  *  fine-grained caching. Pair it with a verify contract (0007 §3). */
 export function shellStep(script: string, id: string, opts?: StepOpts): Step {
+  validateResourceRefs(opts?.resources ?? [], `step '${id}'`);
   return {
     id,
     action: { kind: "custom_shell", script },
