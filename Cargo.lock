@@ -346,6 +346,7 @@ dependencies = [
  "gripsack-trace",
  "indicatif",
  "owo-colors",
+ "sha2",
  "tempfile",
  "tracing",
 ]

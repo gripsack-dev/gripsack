@@ -38,6 +38,9 @@ enum Command {
         /// Host entrypoint (default: this machine's hostname)
         #[arg(long)]
         host: Option<String>,
+        /// Env repo path or git URL (default: current directory)
+        #[arg(long)]
+        repo: Option<String>,
         /// Restrict to these modules (default: the whole graph)
         modules: Vec<String>,
     },
@@ -50,6 +53,9 @@ enum Command {
         /// Read IR JSON directly (frontend debugging)
         #[arg(long)]
         ir: Option<PathBuf>,
+        /// Env repo path or git URL (default: current directory)
+        #[arg(long)]
+        repo: Option<String>,
     },
     /// Flip `current` back to a previous generation
     Rollback {
@@ -60,6 +66,9 @@ enum Command {
     Update {
         #[arg(long)]
         host: Option<String>,
+        /// Env repo path or git URL (default: current directory)
+        #[arg(long)]
+        repo: Option<String>,
         modules: Vec<String>,
     },
     /// List generations and their status
@@ -95,15 +104,23 @@ fn main() -> ExitCode {
     let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());
     match cli.command {
         Command::Doctor => commands::doctor(palette),
-        Command::Apply { host, modules } => {
-            let repo = std::env::current_dir().unwrap_or_default();
-            commands::apply(&repo, host.as_deref(), modules, palette)
-        }
+        Command::Apply {
+            host,
+            repo,
+            modules,
+        } => match commands::resolve_repo(repo.as_deref()) {
+            Ok(repo) => commands::apply(&repo, host.as_deref(), modules, palette),
+            Err(code) => code,
+        },
         Command::Generations => commands::generations(),
-        Command::Update { host, modules } => {
-            let repo = std::env::current_dir().unwrap_or_default();
-            commands::update(&repo, host.as_deref(), modules, palette)
-        }
+        Command::Update {
+            host,
+            repo,
+            modules,
+        } => match commands::resolve_repo(repo.as_deref()) {
+            Ok(repo) => commands::update(&repo, host.as_deref(), modules, palette),
+            Err(code) => code,
+        },
         Command::Rollback { generation } => commands::rollback(generation),
         Command::Plan {
             ir: Some(path),
@@ -117,8 +134,12 @@ fn main() -> ExitCode {
             ir: None,
             host,
             modules,
+            repo,
         } => {
-            let repo = std::env::current_dir().unwrap_or_default();
+            let repo = match commands::resolve_repo(repo.as_deref()) {
+                Ok(r) => r,
+                Err(code) => return code,
+            };
             match commands::eval_repo(&repo, host.as_deref(), palette)
                 .and_then(|json| commands::check_ir(&json, palette))
             {

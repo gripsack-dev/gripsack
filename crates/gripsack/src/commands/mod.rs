@@ -6,6 +6,7 @@ pub mod doctor;
 pub mod eval;
 pub mod generations;
 pub mod plan;
+pub mod repo;
 pub mod rollback;
 pub mod update;
 
@@ -14,6 +15,7 @@ pub use doctor::doctor;
 pub use eval::{check_ir, eval_repo};
 pub use generations::generations;
 pub use plan::{plan_ir, plan_module};
+pub use repo::resolve as resolve_repo;
 pub use rollback::rollback;
 pub use update::update;
 

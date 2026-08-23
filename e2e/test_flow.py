@@ -1,7 +1,9 @@
 """Flow tests (plan/0003 §5). Skipped until the flows land; unskip in the
 same PR that implements them (gripsack-e2e skill)."""
 
+import os
 import pytest
+import subprocess
 
 from conftest import GRIP, grip, make_env_repo, make_tarball
 
@@ -44,6 +46,46 @@ module(
     assert (home / "generations/1").is_dir()
     assert (home / "current").is_symlink()
     assert (sandbox / ".local/bin/hello").is_symlink()
+
+
+def test_apply_repo_from_elsewhere(sandbox):
+    """The bootstrap story: apply a repo that isn't the cwd."""
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+from gripsack import module, file_fetch, symlink
+
+module(
+    "hello",
+    fetch=file_fetch("{payload}"),
+    install={{"bin/hello": symlink("~/.local/bin/hello")}},
+)
+""",
+    )
+    elsewhere = sandbox / "elsewhere"
+    elsewhere.mkdir()
+    out = grip("apply", "--host", "testhost", "--repo", str(repo), cwd=elsewhere)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".local/bin/hello").is_symlink()
+
+    # git URL form (a local path is a valid clone source)
+    git_env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "PATH": os.environ["PATH"],
+    }
+    subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True, env=git_env)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=git_env)
+    subprocess.run(["git", "commit", "--quiet", "-m", "init"], cwd=repo, check=True, env=git_env)
+    bare = sandbox / "myenv-remote"
+    subprocess.run(["git", "clone", "--quiet", str(repo), str(bare)], check=True, env=git_env)
+    out = grip("apply", "--host", "testhost", "--repo", str(bare), cwd=elsewhere)
+    assert out.returncode == 0, out.stderr
 
 
 def test_explicit_steps_module_is_satisfied_on_reapply(sandbox):
