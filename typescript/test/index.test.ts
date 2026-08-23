@@ -176,3 +176,13 @@ describe("runStep", () => {
     assert.deepEqual(action.outputs, ["bin/hx"]);
   });
 });
+
+describe("registry safety", () => {
+  it("duplicate module names throw at eval", () => {
+    module("dup", { fetch: tarball("https://example.invalid/a.tar.xz") });
+    assert.throws(
+      () => module("dup", { fetch: tarball("https://example.invalid/b.tar.xz") }),
+      /duplicate module 'dup'/,
+    );
+  });
+});

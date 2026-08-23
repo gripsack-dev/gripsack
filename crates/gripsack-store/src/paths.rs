@@ -78,13 +78,13 @@ mod tests {
     #[test]
     fn home_resolution() {
         // Single test mutating env to avoid cross-test races.
-        std::env::set_var("GRIPSACK_HOME", "/tmp/gs-explicit");
+        unsafe { std::env::set_var("GRIPSACK_HOME", "/tmp/gs-explicit") };
         assert_eq!(gripsack_home(), Path::new("/tmp/gs-explicit"));
-        std::env::remove_var("GRIPSACK_HOME");
-        std::env::set_var("XDG_DATA_HOME", "/tmp/gs-xdg");
+        unsafe { std::env::remove_var("GRIPSACK_HOME") };
+        unsafe { std::env::set_var("XDG_DATA_HOME", "/tmp/gs-xdg") };
         assert_eq!(gripsack_home(), Path::new("/tmp/gs-xdg/gripsack"));
-        std::env::remove_var("XDG_DATA_HOME");
-        std::env::set_var("HOME", "/tmp/gs-home");
+        unsafe { std::env::remove_var("XDG_DATA_HOME") };
+        unsafe { std::env::set_var("HOME", "/tmp/gs-home") };
         assert_eq!(
             gripsack_home(),
             Path::new("/tmp/gs-home/.local/share/gripsack")

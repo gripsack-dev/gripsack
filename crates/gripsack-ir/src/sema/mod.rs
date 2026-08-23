@@ -8,6 +8,7 @@
 
 mod deps;
 mod destinations;
+mod features;
 mod resources;
 mod steps;
 
@@ -21,6 +22,7 @@ const PASSES: &[fn(&Ir, &mut Vec<Diagnostic>)] = &[
     deps::check,
     destinations::check,
     resources::check,
+    features::check,
 ];
 
 /// Pass 2 — run every sema pass, collecting all diagnostics.
@@ -236,16 +238,20 @@ mod tests {
                      "needs": ["fetch"], "phase": "custom"}"#,
             r#"{"id": "fetch", "action": {"kind": "custom_shell", "script": "true"}}"#,
         );
-        assert!(check(&dup)
-            .unwrap_err()
-            .iter()
-            .any(|d| d.code == codes::DUPLICATE_STEP));
+        assert!(
+            check(&dup)
+                .unwrap_err()
+                .iter()
+                .any(|d| d.code == codes::DUPLICATE_STEP)
+        );
 
         let reserved = STEPPED.replace(r#""id": "patch""#, r#""id": "done""#);
-        assert!(check(&reserved)
-            .unwrap_err()
-            .iter()
-            .any(|d| d.code == codes::DUPLICATE_STEP));
+        assert!(
+            check(&reserved)
+                .unwrap_err()
+                .iter()
+                .any(|d| d.code == codes::DUPLICATE_STEP)
+        );
     }
 
     #[test]
@@ -255,9 +261,11 @@ mod tests {
             r#""needs": ["fetch"], "resources": ["my-lock"]"#,
         );
         let diagnostics = check(&json).unwrap_err();
-        assert!(diagnostics
-            .iter()
-            .any(|d| d.code == codes::UNKNOWN_RESOURCE && d.severity == Severity::Error));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.code == codes::UNKNOWN_RESOURCE && d.severity == Severity::Error)
+        );
     }
 
     #[test]
@@ -287,6 +295,21 @@ mod tests {
             r#""needs": ["fetch", "helix:done"]"#,
         );
         check(&json).unwrap();
+    }
+
+    #[test]
+    fn merge_mode_is_e108_not_a_mid_apply_error() {
+        let json = r#"{
+            "ir_version": 1,
+            "modules": {
+                "shell": {
+                    "config": [{"from": "rc", "to": "~/.bashrc", "mode": "merge"}]
+                }
+            }
+        }"#;
+        let diagnostics = check(json).unwrap_err();
+        assert_eq!(diagnostics[0].code, codes::UNSUPPORTED_MODE);
+        assert!(diagnostics[0].help.is_some());
     }
 
     #[test]

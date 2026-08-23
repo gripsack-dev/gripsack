@@ -1,6 +1,6 @@
 //! E107 — step resources must be declared (0007 §4).
 
-use crate::diagnostic::{codes, Diagnostic};
+use crate::diagnostic::{Diagnostic, codes};
 use crate::model::Ir;
 use crate::step::KNOWN_RESOURCES;
 

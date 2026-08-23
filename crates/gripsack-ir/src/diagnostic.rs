@@ -14,6 +14,7 @@ pub mod codes {
     pub const DUPLICATE_STEP: &str = "E106";
     pub const UNKNOWN_RESOURCE: &str = "E107";
     pub const CONFIG: &str = "E400";
+    pub const UNSUPPORTED_MODE: &str = "E108";
 }
 
 // ---------------------------------------------------------------- diagnostics

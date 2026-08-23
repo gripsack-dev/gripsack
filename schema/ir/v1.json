@@ -31,21 +31,13 @@
     }
   },
   "$defs": {
-    "hostFacts": {
+        "hostFacts": {
       "type": "object",
       "properties": {
-        "os": {
-          "type": "string"
-        },
-        "arch": {
-          "type": "string"
-        },
-        "tags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
+        "os": { "type": "string" },
+        "arch": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "libc": { "type": "string", "description": "e.g. glibc-2.36, musl, darwin" }
       }
     },
     "span": {

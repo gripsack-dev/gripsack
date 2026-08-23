@@ -28,11 +28,11 @@ pub mod paths;
 
 pub use fs::{atomic_write, publish_dir, symlink_replace};
 pub use generations::{
-    current as current_generation, flip, list as list_generations, read_manifest, write_manifest,
-    DeployedEntry, Generation, ModuleState,
+    DeployedEntry, Generation, ModuleState, current as current_generation, flip,
+    list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{canonical_file_hash, canonical_tree_hash};
 pub use paths::{
-    current_link, generation_dir, gripsack_home, input_hash, store_path, GENERATIONS_DIR, HASH_LEN,
-    STORE_DIR,
+    GENERATIONS_DIR, HASH_LEN, STORE_DIR, current_link, generation_dir, gripsack_home, input_hash,
+    store_path,
 };

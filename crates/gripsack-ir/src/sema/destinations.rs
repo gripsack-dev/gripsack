@@ -1,6 +1,6 @@
 //! E102 — destinations must be absolute or ~/-prefixed.
 
-use crate::diagnostic::{codes, Diagnostic};
+use crate::diagnostic::{Diagnostic, codes};
 use crate::model::Ir;
 
 pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {

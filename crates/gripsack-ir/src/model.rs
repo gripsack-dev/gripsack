@@ -31,6 +31,10 @@ pub struct HostFacts {
     pub arch: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// e.g. "glibc-2.36", "musl", "darwin" — matters for binary asset
+    /// selection in platform-conditional fetches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub libc: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

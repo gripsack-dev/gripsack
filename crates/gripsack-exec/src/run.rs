@@ -6,7 +6,7 @@
 //! with resource locks replaces the loop without changing semantics.
 
 use crate::expand;
-use gripsack_fetch::{fetch, FetchError};
+use gripsack_fetch::{FetchError, fetch};
 use gripsack_ir::{Build, Entry, Ir, Ownership, Step, StepAction, Verify};
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
@@ -395,10 +395,10 @@ fn describe_verify(verify: &Verify) -> String {
 }
 
 fn expand_home(to: &str) -> PathBuf {
-    if let Some(rest) = to.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home).join(rest);
-        }
+    if let Some(rest) = to.strip_prefix("~/")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        return PathBuf::from(home).join(rest);
     }
     PathBuf::from(to)
 }

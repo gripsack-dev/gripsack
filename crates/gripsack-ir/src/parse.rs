@@ -1,6 +1,6 @@
 //! Pass 1 — parse (0004 §4): syntax + version gate.
 
-use crate::diagnostic::{codes, Diagnostic};
+use crate::diagnostic::{Diagnostic, codes};
 use crate::model::Ir;
 
 /// The only IR version this core accepts (for now).

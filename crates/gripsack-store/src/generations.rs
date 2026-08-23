@@ -94,7 +94,7 @@ pub fn flip(home: &Path, generation: u64) -> io::Result<()> {
 mod tests {
     use super::*;
 
-    fn gen(n: u64) -> Generation {
+    fn mk_gen(n: u64) -> Generation {
         let mut modules = BTreeMap::new();
         modules.insert(
             "helix".to_string(),
@@ -115,8 +115,8 @@ mod tests {
     fn manifest_roundtrip_and_listing() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
-        write_manifest(home, &gen(1)).unwrap();
-        write_manifest(home, &gen(2)).unwrap();
+        write_manifest(home, &mk_gen(1)).unwrap();
+        write_manifest(home, &mk_gen(2)).unwrap();
         assert_eq!(list(home), vec![1, 2]);
         let read = read_manifest(home, 1).unwrap();
         assert_eq!(read.modules["helix"].entries[0].hash, "deadbeef");
@@ -126,8 +126,8 @@ mod tests {
     fn flip_and_current() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
-        write_manifest(home, &gen(1)).unwrap();
-        write_manifest(home, &gen(2)).unwrap();
+        write_manifest(home, &mk_gen(1)).unwrap();
+        write_manifest(home, &mk_gen(2)).unwrap();
         assert_eq!(current(home), None);
         flip(home, 1).unwrap();
         assert_eq!(current(home), Some(1));

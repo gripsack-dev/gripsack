@@ -18,7 +18,7 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
-use gripsack_ir::{codes, Diagnostic, Span};
+use gripsack_ir::{Diagnostic, Span, codes};
 
 /// Repo-level configuration (`env.toml`), committed — the env is
 /// self-describing.

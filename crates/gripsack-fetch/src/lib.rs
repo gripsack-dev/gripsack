@@ -15,7 +15,7 @@
 
 pub mod fetch;
 
-pub use fetch::{fetch, FetchError};
+pub use fetch::{FetchError, fetch};
 
 use std::path::PathBuf;
 
@@ -75,13 +75,13 @@ mod tests {
         fs::write(&non_exe, "#!/bin/sh\n").unwrap();
 
         let original = std::env::var_os("PATH");
-        std::env::set_var("PATH", dir.path());
+        unsafe { std::env::set_var("PATH", dir.path()) };
         assert_eq!(find_fetcher("internal"), Some(exe));
         assert_eq!(find_fetcher("notexec"), None);
         assert_eq!(find_fetcher("absent"), None);
         match original {
-            Some(v) => std::env::set_var("PATH", v),
-            None => std::env::remove_var("PATH"),
+            Some(v) => unsafe { std::env::set_var("PATH", v) },
+            None => unsafe { std::env::remove_var("PATH") },
         }
     }
 }

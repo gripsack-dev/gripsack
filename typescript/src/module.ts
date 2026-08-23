@@ -6,7 +6,7 @@ import type { Fetch } from "./fetch.js";
 import type { Intent } from "./intents.js";
 import type { Step } from "./steps.js";
 import type { Verify } from "./verify.js";
-import { register } from "./graph.js";
+import { register, registerClass } from "./graph.js";
 
 export interface Span {
   file: string;
@@ -96,7 +96,9 @@ export abstract class Module {
   config(): StepsResult {
     return;
   }
-  verify(): StepsResult {
+  /** Smoke contract, run pre-flip — return a `Verify` (same object the
+   *  data style's `verify` field takes) or verify steps. */
+  verify(): StepsResult | Verify {
     return;
   }
   activate(): StepsResult {
@@ -110,27 +112,37 @@ function normalize(result: StepsResult, phase: PhaseName): Step[] {
   return steps.map((s) => (s.phase === undefined ? { ...s, phase } : s));
 }
 
-function collectPipeline(instance: Module): Step[] {
+/** @internal Gather phase methods into a chained step list, plus the
+ *  module-level verify contract if `verify()` returned one. */
+export function collectPipeline(instance: Module): { steps: Step[]; verify?: Verify } {
   const chained: Step[] = [];
+  let verify: Verify | undefined;
   for (const phase of PIPELINE_PHASES) {
-    for (const s of normalize(instance[phase](), phase)) {
+    const result = instance[phase]();
+    if (phase === "verify" && result && !Array.isArray(result) && "kind" in result) {
+      verify = result as Verify;
+      continue;
+    }
+    for (const s of normalize(result as StepsResult, phase)) {
       const prev = chained[chained.length - 1];
       chained.push(
         s.needs === undefined && prev ? { ...s, needs: [prev.id] } : s,
       );
     }
   }
-  return chained;
+  return verify === undefined ? { steps: chained } : { steps: chained, verify };
 }
 
-/** Capture the first stack frame outside this file (V8: file:line:col). */
+/** Capture the first stack frame outside the package (V8:
+ *  file:line:col) — a helper wrapper in user code must never steal
+ *  the span. */
 function callerSpan(): Span | undefined {
-  const here = new URL(import.meta.url).pathname;
+  const pkgDir = new URL(".", import.meta.url).pathname;
   const stack = new Error().stack;
   if (!stack) return undefined;
   for (const line of stack.split("\n").slice(1)) {
     const m = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
-    if (m && m[1] && !m[1].endsWith(here)) {
+    if (m && m[1] && !m[1].replace(/^file:\/\//, "").startsWith(pkgDir)) {
       const file = m[1].replace(/^file:\/\//, "");
       return { file, line: Number(m[2]), col: Number(m[3]) };
     }
@@ -161,12 +173,9 @@ export function module(name: string, spec: ModuleSpec): void {
   register(name, ir);
 }
 
-/** Instantiate a class-style module and register it (see {@link Module}). */
+/** Register a class-style module (see {@link Module}). Instantiation is
+ *  deferred to emit time — defining a module never *does* anything. */
 export function define(ctor: new () => Module): void {
-  const instance = new ctor();
-  const ir: IrModule = { steps: collectPipeline(instance) };
-  const span = callerSpan();
-  if (span) ir.span = span;
   const named = ctor as unknown as { moduleName?: string };
-  register(named.moduleName ?? ctor.name.toLowerCase(), ir);
+  registerClass(named.moduleName ?? ctor.name.toLowerCase(), ctor, callerSpan());
 }

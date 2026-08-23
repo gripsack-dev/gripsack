@@ -19,7 +19,7 @@
 pub mod expand;
 pub mod run;
 
-pub use run::{apply, ApplyResult, Ctx, ExecError, Outcome, ReportKind, StepReport};
+pub use run::{ApplyResult, Ctx, ExecError, Outcome, ReportKind, StepReport, apply};
 
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};
@@ -50,7 +50,7 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
     }
     let mut ready: BTreeSet<&str> = indegree
         .iter()
-        .filter(|(_, &n)| n == 0)
+        .filter(|(_, n)| **n == 0)
         .map(|(&k, _)| k)
         .collect();
     let mut order = Vec::with_capacity(ir.modules.len());
@@ -68,7 +68,7 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
     if order.len() != ir.modules.len() {
         let mut stuck: Vec<String> = indegree
             .iter()
-            .filter(|(_, &n)| n > 0)
+            .filter(|(_, n)| **n > 0)
             .map(|(&k, _)| k.to_owned())
             .collect();
         stuck.sort();

@@ -16,7 +16,7 @@ order (within a phase and across phase boundaries) without you writing
 ``needs`` by hand:
 
 >>> from gripsack import Module, fetch_step, install_step, symlink
->>> class Helix(Module):
+>>> class Toolbox(Module):
 ...     def fetch(self):
 ...         return fetch_step(github_release(
 ...             repo="helix-editor/helix", asset="h.tar.xz"))
@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, ClassVar, Optional, Union
 
 from .deps import Dependency
@@ -44,7 +45,6 @@ from .verify import Verify
 
 #: Pipeline order for the class style (0007 §verify).
 PIPELINE_PHASES = ("fetch", "build", "install", "config", "verify", "activate")
-
 
 @dataclass
 class ModuleData:
@@ -94,16 +94,22 @@ class ModuleData:
             ir["span"] = self.span
         return ir
 
+_PKG_DIR = Path(__file__).resolve().parent
 
-def _caller_span(depth: int) -> Optional[dict[str, Any]]:
+def _caller_span() -> Optional[dict[str, Any]]:
+    """First frame outside the gripsack package (0004 §2).
+
+    Frame-depth counting misattributes spans as soon as a user's helper
+    wraps module() — walking to the first non-package frame is the only
+    correct rule.
+    """
     frame = inspect.currentframe()
-    for _ in range(depth):
-        if frame and frame.f_back:
-            frame = frame.f_back
-    if frame is None:
-        return None
-    return {"file": frame.f_code.co_filename, "line": frame.f_lineno}
-
+    while frame is not None:
+        file = Path(frame.f_code.co_filename).resolve()
+        if not file.is_relative_to(_PKG_DIR):
+            return {"file": str(file), "line": frame.f_lineno}
+        frame = frame.f_back
+    return None
 
 def module(
     name: str,
@@ -149,14 +155,12 @@ def module(
         steps=steps,
         verify=verify,
         retries=retries,
-        span=_caller_span(2),
+        span=_caller_span(),
     )
     register(m)
     return m
 
-
 StepsResult = Union[Step, list[Step], None]
-
 
 class Module:
     """Base class for the class authoring style (0007 §1).
@@ -204,8 +208,9 @@ class Module:
         """Deploy config files — e.g. ``config_step({...})``."""
         return []
 
-    def verify(self) -> StepsResult:
-        """Smoke contract, run pre-flip — e.g. a binary-runs check."""
+    def verify(self) -> Union[Verify, StepsResult]:
+        """Smoke contract, run pre-flip. Return a ``Verify`` (the same
+        object the data style's ``verify=`` kwarg takes) or verify steps."""
         return []
 
     def activate(self) -> StepsResult:
@@ -216,19 +221,11 @@ class Module:
         super().__init_subclass__(**kwargs)
         if cls.__dict__.get("abstract"):
             return
-        from .graph import register
+        from .graph import register_class
 
-        span = _caller_span(2)
-        instance = cls()
-        steps = _collect_pipeline(instance)
-        register(
-            ModuleData(
-                name=cls.name or cls.__name__.lower(),
-                steps=steps,
-                span=span,
-            )
-        )
-
+        # Definition registers the class; instantiation is deferred to
+        # emit time, so defining a module never *does* anything (0007 §7).
+        register_class(cls, span=_caller_span())
 
 def _normalize(result: StepsResult, phase: str) -> list[Step]:
     if result is None:
@@ -243,17 +240,22 @@ def _normalize(result: StepsResult, phase: str) -> list[Step]:
         out.append(s)
     return out
 
-
-def _collect_pipeline(instance: Module) -> list[Step]:
-    """Gather phase methods into a chained, explicit step list.
+def _collect_pipeline(instance: Module) -> tuple[list[Step], Optional[Verify]]:
+    """Gather phase methods into a chained, explicit step list, plus the
+    module-level verify contract if ``verify()`` returned one.
 
     Sequencing rule: within a phase and across phase boundaries, a step
     with empty ``needs`` needs the previous step; explicit ``needs``
     are never rewritten.
     """
     chained: list[Step] = []
+    module_verify: Optional[Verify] = None
     for phase in PIPELINE_PHASES:
-        steps = _normalize(getattr(instance, phase)(), phase)
+        result = getattr(instance, phase)()
+        if phase == "verify" and isinstance(result, Verify):
+            module_verify = result
+            continue
+        steps = _normalize(result, phase)
         for s in steps:
             if not s.needs and chained:
                 s = Step(
@@ -266,4 +268,4 @@ def _collect_pipeline(instance: Module) -> list[Step]:
                     s.retries,
                 )
             chained.append(s)
-    return chained
+    return chained, module_verify

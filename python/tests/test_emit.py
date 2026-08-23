@@ -183,5 +183,11 @@ def test_class_module_explicit_needs_win_and_abstract_bases_skip():
     assert steps[1]["needs"] == ["fetch"]
 
 
+def test_duplicate_module_names_error_at_eval():
+    module("dup", fetch=tarball("https://example.invalid/a.tar.xz"))
+    with pytest.raises(ValueError, match="duplicate module 'dup'"):
+        module("dup", fetch=tarball("https://example.invalid/b.tar.xz"))
+
+
 def test_version_string_exists():
     assert gripsack.__version__

@@ -173,17 +173,17 @@ pub fn rollback(generation: Option<u64>) -> ExitCode {
         }
     };
     // Remove destinations the target generation doesn't know about.
-    if let Some(c) = current {
-        if let Ok(current_manifest) = store::read_manifest(&home, c) {
-            for (name, state) in &current_manifest.modules {
-                let target_entries = manifest.modules.get(name);
-                for entry in &state.entries {
-                    let still = target_entries
-                        .map(|s| s.entries.iter().any(|e| e.to == entry.to))
-                        .unwrap_or(false);
-                    if !still {
-                        let _ = std::fs::remove_file(expand_home(&entry.to));
-                    }
+    if let Some(c) = current
+        && let Ok(current_manifest) = store::read_manifest(&home, c)
+    {
+        for (name, state) in &current_manifest.modules {
+            let target_entries = manifest.modules.get(name);
+            for entry in &state.entries {
+                let still = target_entries
+                    .map(|s| s.entries.iter().any(|e| e.to == entry.to))
+                    .unwrap_or(false);
+                if !still {
+                    let _ = std::fs::remove_file(expand_home(&entry.to));
                 }
             }
         }
@@ -215,10 +215,10 @@ pub fn rollback(generation: Option<u64>) -> ExitCode {
 }
 
 fn expand_home(to: &str) -> PathBuf {
-    if let Some(rest) = to.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home).join(rest);
-        }
+    if let Some(rest) = to.strip_prefix("~/")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        return PathBuf::from(home).join(rest);
     }
     PathBuf::from(to)
 }

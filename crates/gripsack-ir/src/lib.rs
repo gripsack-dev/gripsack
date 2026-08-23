@@ -28,9 +28,9 @@ pub mod sema;
 pub mod span;
 pub mod step;
 
-pub use diagnostic::{codes, Diagnostic, Label, Severity};
+pub use diagnostic::{Diagnostic, Label, Severity, codes};
 pub use model::*;
-pub use parse::{parse, IR_VERSION};
+pub use parse::{IR_VERSION, parse};
 /// Backwards-compatible alias: pass 2 is `sema::run`.
 pub use sema::run as validate;
 pub use sema::{check, run};

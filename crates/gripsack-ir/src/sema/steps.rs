@@ -1,6 +1,6 @@
 //! E103/E106/E104 — step shape, ids, and refs (0007 §6).
 
-use crate::diagnostic::{codes, Diagnostic};
+use crate::diagnostic::{Diagnostic, codes};
 use crate::model::{Build, Ir};
 use crate::step::{BARRIER_STEP_ID, SYNTHESIZED_STEP_IDS};
 
