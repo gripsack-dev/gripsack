@@ -201,22 +201,30 @@ fn run_module(
     // The payload hash participates in the store-path identity from
     // the very first apply (0008 §5) — resolve it before the existence
     // check or the first and second applies would compute different paths.
-    let resolved = locked.and_then(|e| e.sha256.clone()).or_else(|| {
-        // the fetch spec lives in module.fetch (declarative) or in a
-        // fetch step (explicit steps) — check both
-        let spec = module.fetch.as_ref().or_else(|| {
-            steps.iter().find_map(|s| match &s.action {
-                StepAction::Fetch { fetch } => Some(fetch),
-                _ => None,
-            })
+    let resolved = locked
+        .and_then(|e| e.resolved.as_ref())
+        .and_then(|r| r.sha256.clone())
+        .or_else(|| {
+            // the fetch spec lives in module.fetch (declarative) or in a
+            // fetch step (explicit steps) — check both
+            let spec = module.fetch.as_ref().or_else(|| {
+                steps.iter().find_map(|s| match &s.action {
+                    StepAction::Fetch { fetch } => Some(fetch),
+                    _ => None,
+                })
+            });
+            spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
         });
-        spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
-    });
     let input = match &resolved {
         Some(sha) => format!("{}|payload={sha}", module_input(module, &ctx.repo)?),
         None => module_input(module, &ctx.repo)?,
     };
     let store_path = store::store_path(&ctx.home, name, &input);
+    // {version} in entry paths substitutes from the locked pin, or
+    // from a resolution that happens during this apply (0008 §5)
+    let mut version = locked
+        .and_then(|e| e.resolved.as_ref())
+        .and_then(|r| r.version.clone());
     let mut lock_entry: Option<crate::lockfile::LockEntry> = None;
     // Satisfaction (0008 §3): presence is proof — skip fetch and build.
     let present = store_path.exists();
@@ -238,12 +246,20 @@ fn run_module(
                 StepAction::Fetch { fetch: spec } => {
                     progress(ctx, name, "fetching");
                     let stage = staging.get_or_insert_with(|| fresh_staging(name));
-                    // the lockfile's hash wins for verification (0002 §3)
-                    let spec = &inject_locked_sha(spec, locked);
-                    let sha = fetch(spec, stage).map_err(ExecError::Fetch)?;
+                    // resolve to a concrete spec — the locked pin wins;
+                    // else resolve now (trust on first use, 0002 §3)
+                    let (concrete, meta) = resolve_spec(spec, locked)?;
+                    if let Some(m) = &meta {
+                        version = Some(m.version.clone());
+                    }
+                    let sha = fetch(&concrete, stage).map_err(ExecError::Fetch)?;
                     lock_entry = Some(crate::lockfile::LockEntry {
                         fetch: spec.clone(),
-                        sha256: Some(sha),
+                        resolved: Some(crate::lockfile::Resolved {
+                            url: meta.as_ref().map(|m| m.url.clone()),
+                            version: meta.as_ref().map(|m| m.version.clone()),
+                            sha256: Some(sha),
+                        }),
                     });
                     info!(step = %step.id, "fetched");
                     reports.push(StepReport {
@@ -299,8 +315,14 @@ fn run_module(
             StepAction::Install { entries } | StepAction::ConfigDeploy { entries } => {
                 progress(ctx, name, "deploying");
                 for entry in entries {
-                    let (summary, kind) =
-                        deploy_entry(&mut deployed, &store_path, entry, ctx, prev)?;
+                    let (summary, kind) = deploy_entry(
+                        &mut deployed,
+                        &store_path,
+                        entry,
+                        ctx,
+                        prev,
+                        version.as_deref(),
+                    )?;
                     reports.push(StepReport {
                         module: name.to_string(),
                         summary,
@@ -310,7 +332,7 @@ fn run_module(
             }
             StepAction::Verify { verify } if !present => {
                 progress(ctx, name, "verifying");
-                run_verify(name, verify, &store_path)?;
+                run_verify(name, verify, &store_path, version.as_deref())?;
                 reports.push(StepReport {
                     module: name.to_string(),
                     summary: describe_verify(verify),
@@ -327,7 +349,7 @@ fn run_module(
     }
     if !present {
         for verify in pending_verifies {
-            run_verify(name, verify, &store_path)?;
+            run_verify(name, verify, &store_path, version.as_deref())?;
             reports.push(StepReport {
                 module: name.to_string(),
                 summary: describe_verify(verify),
@@ -345,6 +367,54 @@ fn run_module(
     ))
 }
 
+/// Resolve a fetch spec to a concrete, fetchable one. The lockfile's
+/// pin wins; github_release resolves through the API (0002 §8).
+fn resolve_spec(
+    spec: &gripsack_ir::FetchSpec,
+    locked: Option<&crate::lockfile::LockEntry>,
+) -> Result<
+    (
+        gripsack_ir::FetchSpec,
+        Option<gripsack_fetch::ResolvedRelease>,
+    ),
+    ExecError,
+> {
+    use gripsack_ir::FetchSpec as F;
+    let resolved = locked.and_then(|e| e.resolved.as_ref());
+    match spec {
+        F::GithubRelease {
+            repo,
+            asset,
+            base_url,
+            ..
+        } => {
+            if let Some(url) = resolved.and_then(|r| r.url.clone()) {
+                return Ok((
+                    F::Tarball {
+                        url,
+                        sha256: resolved.and_then(|r| r.sha256.clone()),
+                    },
+                    None,
+                ));
+            }
+            let release = gripsack_fetch::resolve_latest(repo, asset, base_url.as_deref())
+                .map_err(|e| ExecError::Step {
+                    module: repo.clone(),
+                    step: "resolve".into(),
+                    detail: e.to_string(),
+                })?;
+            Ok((
+                F::Tarball {
+                    url: release.url.clone(),
+                    sha256: None,
+                },
+                Some(release),
+            ))
+        }
+        other => Ok((inject_locked_sha(other, locked), None)),
+    }
+}
+
 /// A locked hash overrides the spec's for verification.
 fn inject_locked_sha(
     spec: &gripsack_ir::FetchSpec,
@@ -353,7 +423,7 @@ fn inject_locked_sha(
     let Some(entry) = locked else {
         return spec.clone();
     };
-    let Some(sha) = &entry.sha256 else {
+    let Some(sha) = entry.resolved.as_ref().and_then(|r| r.sha256.as_ref()) else {
         return spec.clone();
     };
     match spec.clone() {
@@ -389,8 +459,13 @@ fn deploy_entry(
     entry: &Entry,
     ctx: &Ctx,
     prev: Option<&store::ModuleState>,
+    version: Option<&str>,
 ) -> Result<(String, ReportKind), ExecError> {
-    let source = resolve_source(store_path, &entry.from, &ctx.repo);
+    let from = match version {
+        Some(v) => entry.from.replace("{version}", v),
+        None => entry.from.clone(),
+    };
+    let source = resolve_source(store_path, &from, &ctx.repo);
     let dest = expand_home(&entry.to);
     let fail = |detail: String| ExecError::Step {
         module: entry.from.clone(),
@@ -418,7 +493,7 @@ fn deploy_entry(
             }
             store::symlink_replace(&dest, &source)?;
             (
-                format!("linked {} → {}", entry.from, entry.to),
+                format!("linked {} → {}", from, entry.to),
                 ReportKind::Installed,
             )
         }
@@ -433,13 +508,13 @@ fn deploy_entry(
                 } else if prev_hash == Some(current.as_str()) {
                     store::atomic_write(&dest, &std::fs::read(&source)?)?;
                     (
-                        format!("updated {} → {}", entry.from, entry.to),
+                        format!("updated {} → {}", from, entry.to),
                         ReportKind::Configured,
                     )
                 } else if ctx.take_over {
                     store::atomic_write(&dest, &std::fs::read(&source)?)?;
                     (
-                        format!("took over {} → {}", entry.from, entry.to),
+                        format!("took over {} → {}", from, entry.to),
                         ReportKind::Configured,
                     )
                 } else {
@@ -457,7 +532,7 @@ fn deploy_entry(
                 }
                 store::atomic_write(&dest, &std::fs::read(&source)?)?;
                 (
-                    format!("copied {} → {}", entry.from, entry.to),
+                    format!("copied {} → {}", from, entry.to),
                     ReportKind::Configured,
                 )
             }
@@ -535,14 +610,23 @@ fn module_input(module: &gripsack_ir::Module, repo: &Path) -> Result<String, Exe
     Ok(input)
 }
 
-fn run_verify(name: &str, verify: &Verify, store_path: &Path) -> Result<(), ExecError> {
+fn run_verify(
+    name: &str,
+    verify: &Verify,
+    store_path: &Path,
+    version: Option<&str>,
+) -> Result<(), ExecError> {
     let fail = |detail: String| ExecError::Verify {
         module: name.to_string(),
         detail,
     };
+    let subst = |p: &String| match version {
+        Some(v) => p.replace("{version}", v),
+        None => p.clone(),
+    };
     match verify {
         Verify::BinaryRuns { path, args } => {
-            let bin = store_path.join(path);
+            let bin = store_path.join(subst(path));
             let status = std::process::Command::new(&bin)
                 .args(args)
                 .stdout(std::process::Stdio::null())
@@ -554,7 +638,7 @@ fn run_verify(name: &str, verify: &Verify, store_path: &Path) -> Result<(), Exec
             }
         }
         Verify::FileExists { path } => {
-            if !store_path.join(path).exists() {
+            if !store_path.join(subst(path)).exists() {
                 return Err(fail(format!("{} missing in payload", path)));
             }
         }
@@ -604,6 +688,7 @@ pub enum UpdateStatus {
 /// Re-resolve and rewrite the lockfile — the only mutator of it
 /// (0008 §5). `grip update` never deploys; apply does.
 pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
+    use gripsack_ir::FetchSpec as F;
     let order = scoped_order(ir, &ctx.only)?;
     let mut lock = crate::lockfile::read(&ctx.repo, &ctx.host).unwrap_or_default();
     let mut reports = Vec::new();
@@ -615,7 +700,8 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
         let old = lock
             .modules
             .get(name.as_str())
-            .and_then(|e| e.sha256.clone());
+            .and_then(|e| e.resolved.as_ref())
+            .and_then(|r| r.sha256.clone());
         match spec {
             gripsack_ir::FetchSpec::File { .. } | gripsack_ir::FetchSpec::Tarball { .. } => {
                 // resolve the payload hash without deploying
@@ -632,12 +718,70 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                         name.clone(),
                         crate::lockfile::LockEntry {
                             fetch: spec.clone(),
-                            sha256: Some(sha.clone()),
+                            resolved: Some(crate::lockfile::Resolved {
+                                url: None,
+                                version: None,
+                                sha256: Some(sha.clone()),
+                            }),
                         },
                     );
                     reports.push(UpdateReport {
                         module: name.clone(),
                         status: UpdateStatus::Bumped { old, new: sha },
+                    });
+                }
+            }
+            F::GithubRelease {
+                repo,
+                asset,
+                base_url,
+                ..
+            } => {
+                let release = gripsack_fetch::resolve_latest(repo, asset, base_url.as_deref())
+                    .map_err(|e| ExecError::Step {
+                        module: repo.clone(),
+                        step: "resolve".into(),
+                        detail: e.to_string(),
+                    })?;
+                let sha = gripsack_fetch::payload_hash(&F::Tarball {
+                    url: release.url.clone(),
+                    sha256: None,
+                })
+                .map_err(ExecError::Fetch)?
+                .expect("tarball hashes");
+                let old_v = lock
+                    .modules
+                    .get(name.as_str())
+                    .and_then(|e| e.resolved.as_ref())
+                    .and_then(|r| r.version.clone());
+                let old_sha = lock
+                    .modules
+                    .get(name.as_str())
+                    .and_then(|e| e.resolved.as_ref())
+                    .and_then(|r| r.sha256.clone());
+                if old_sha.as_deref() == Some(sha.as_str()) {
+                    reports.push(UpdateReport {
+                        module: name.clone(),
+                        status: UpdateStatus::Unchanged,
+                    });
+                } else {
+                    lock.modules.insert(
+                        name.clone(),
+                        crate::lockfile::LockEntry {
+                            fetch: spec.clone(),
+                            resolved: Some(crate::lockfile::Resolved {
+                                url: Some(release.url),
+                                version: Some(release.version.clone()),
+                                sha256: Some(sha),
+                            }),
+                        },
+                    );
+                    reports.push(UpdateReport {
+                        module: name.clone(),
+                        status: UpdateStatus::Bumped {
+                            old: old_v.or(old_sha),
+                            new: release.version,
+                        },
                     });
                 }
             }

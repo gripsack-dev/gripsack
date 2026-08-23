@@ -3,6 +3,9 @@
 //! `locks/<host>.lock` lives in the env repo. `grip update` is the only
 //! mutator; `apply` verifies against it — a hash mismatch is a hard
 //! error (tampering signal), never silently re-pinned.
+//!
+//! Entry shape: `fetch` is the intent, `resolved` is the pin — a URL,
+//! a version, and a content hash, uniform across fetcher kinds.
 
 use gripsack_ir::FetchSpec;
 use serde::{Deserialize, Serialize};
@@ -10,12 +13,23 @@ use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// One module's resolved fetch: the spec plus the payload hash.
+/// The pin: what resolution produced for a fetch spec.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Resolved {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+/// One module's resolved fetch: the spec plus the pin.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LockEntry {
     pub fetch: FetchSpec,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sha256: Option<String>,
+    pub resolved: Option<Resolved>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -54,7 +68,11 @@ mod tests {
                     url: "https://example.invalid/h.tar.xz".into(),
                     sha256: None,
                 },
-                sha256: Some("ab".repeat(32)),
+                resolved: Some(Resolved {
+                    url: None,
+                    version: None,
+                    sha256: Some("ab".repeat(32)),
+                }),
             },
         );
         write(dir.path(), "laptop", &lock).unwrap();

@@ -14,8 +14,10 @@
 //! Discovery only, for now; the protocol host lands with the executor.
 
 pub mod fetch;
+pub mod resolve;
 
 pub use fetch::{FetchError, fetch, payload_hash};
+pub use resolve::{ResolvedRelease, resolve_latest};
 
 use std::path::PathBuf;
 

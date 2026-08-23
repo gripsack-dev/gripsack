@@ -15,7 +15,9 @@ gripsack-store.workspace = true
 sha2.workspace = true
 tar = "0.4"
 thiserror.workspace = true
-ureq = { version = "2", default-features = false, features = ["tls"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 
 [dev-dependencies]
 tempfile = "3"
