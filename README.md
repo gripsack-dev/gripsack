@@ -4,12 +4,15 @@
 
 **gripsack — your whole environment in one bag**
 
-**status: design/scaffold** — the architecture is public and settling;
-nothing is installable yet. Watch releases if this is the package
-manager you also wish existed.
+**status: alpha (v0.1)** — the core flow works: apply, generations,
+rollback. Fetchers are file/tarball for now; see
+[the plan](plan/) for what's next.
 
 [![ci](https://github.com/gripsack-dev/gripsack/actions/workflows/ci.yml/badge.svg)](https://github.com/gripsack-dev/gripsack/actions/workflows/ci.yml)
 [![audit](https://github.com/gripsack-dev/gripsack/actions/workflows/audit.yml/badge.svg)](https://github.com/gripsack-dev/gripsack/actions/workflows/audit.yml)
+[![crates.io](https://img.shields.io/crates/v/gripsack.svg)](https://crates.io/crates/gripsack)
+[![pypi](https://img.shields.io/pypi/v/gripsack.svg)](https://pypi.org/project/gripsack/)
+[![npm](https://img.shields.io/npm/v/@gripsack/core.svg)](https://www.npmjs.com/package/@gripsack/core)
 [![website](https://img.shields.io/badge/website-gripsack.dev-89b4fa)](https://gripsack.dev/)
 [![status](https://img.shields.io/badge/status-design-yellow)](https://github.com/gripsack-dev/gripsack/tree/main/plan)
 
@@ -30,6 +33,13 @@ root, no sandbox dogma.
 - [Sourcing](#sourcing)
 - [Documentation](#documentation)
 - [Development](#development)
+
+## Install
+
+```bash
+cargo install gripsack          # the grip binary (static musl)
+pip install gripsack            # python frontend  ·  npm i @gripsack/core
+```
 
 ## What it does
 
