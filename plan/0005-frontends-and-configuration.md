@@ -82,10 +82,22 @@ Consequences:
 - `grip doctor` checks exactly steps 2–3 for the configured frontend:
   config parses, runtime present, frontend package importable.
 
-## 4. Frontend protocol (v1)
+## 4. Frontend evolution policy
+
+Frontend packages are **not** import-path versioned (`from gripsack
+import module`, not `gripsack.v1`). Gradual adoption lives in the IR:
+the core accepts a range of `ir_version`s and the frontend declares
+what it emits; per-repo pins (eval deps / package.json) handle the
+rest. When a v2 DSL ever happens: python ships a `gripsack.v2`
+submodule with v1 kept as a shim emitting a deprecation warning
+(0004 §6), npm moves `@gripsack/core` to major 2 (npm coexists majors
+natively). We pay the versioning tax when there is a second version,
+not before.
+
+## 5. Frontend protocol (v1)
 
 ```
-grip → <frontend-runtime> <entrypoint> --emit-ir --host <name> \
+grip → <frontend-runtime> <repo> --host <name> \
          --tags a,b --out -            (stdout: IR JSON)
 ```
 
