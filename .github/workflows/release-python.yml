@@ -24,18 +24,19 @@ jobs:
           test "py-v$ver" = "$GITHUB_REF_NAME" || {
             echo "::error::tag $GITHUB_REF_NAME != python version py-v$ver"; exit 1; }
 
+      # note: --out-dir resolves relative to the package dir (python/)
       - name: Build wheel
         run: uv build --directory python --out-dir dist
 
       - name: Publish to PyPI
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        run: uv publish dist/*
+        run: uv publish 'python/dist/*'
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          gh release create "$GITHUB_REF_NAME" python/dist/* \
             --title "gripsack-python ${GITHUB_REF_NAME#py-v}" \
             --generate-notes

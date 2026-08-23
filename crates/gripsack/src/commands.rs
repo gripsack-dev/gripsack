@@ -82,27 +82,55 @@ pub fn apply(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pal
         repo: repo.to_path_buf(),
         only: modules,
     };
+    let started = std::time::Instant::now();
     match gripsack_exec::apply(&ir, &ctx) {
-        Ok(Outcome::Satisfied { generation }) => {
-            println!(
-                "{} (generation {})",
-                "already satisfied".green().bold(),
-                generation.map(|n| n.to_string()).unwrap_or("—".into())
-            );
-            ExitCode::SUCCESS
-        }
-        Ok(Outcome::Applied { generation }) => {
-            println!(
-                "{} generation {} active",
-                "applied —".green().bold(),
-                generation
-            );
+        Ok(result) => {
+            print_reports(&result.reports, palette);
+            let elapsed = format!("{:.1}s", started.elapsed().as_secs_f32());
+            match result.outcome {
+                Outcome::Satisfied { generation } => println!(
+                    "{} (generation {}, {})",
+                    "already satisfied".green().bold(),
+                    generation.map(|n| n.to_string()).unwrap_or("—".into()),
+                    elapsed.dimmed()
+                ),
+                Outcome::Applied { generation } => println!(
+                    "{} generation {} active ({})",
+                    "applied —".green().bold(),
+                    generation,
+                    elapsed.dimmed()
+                ),
+            }
             ExitCode::SUCCESS
         }
         Err(e) => {
             eprintln!("{}", format!("error: {e}").red().bold());
             ExitCode::FAILURE
         }
+    }
+}
+
+/// The apply report: aligned module column, symbol, summary (cargo/uv
+/// conventions — symbols sparse, paths dimmed, quiet by default).
+fn print_reports(reports: &[gripsack_exec::StepReport], palette: Palette) {
+    use gripsack_exec::ReportKind as K;
+    let width = reports.iter().map(|r| r.module.len()).max().unwrap_or(0);
+    for r in reports {
+        let symbol = match (r.kind, palette.enabled) {
+            (K::Warned, true) => "⚠".yellow().to_string(),
+            (K::Satisfied, true) => "·".dimmed().to_string(),
+            (_, true) => "✓".green().to_string(),
+            (K::Warned, false) => "⚠".to_string(),
+            (K::Satisfied, false) => "·".to_string(),
+            (_, false) => "✓".to_string(),
+        };
+        let module = format!("{:>width$}", r.module);
+        let module = if palette.enabled {
+            module.cyan().to_string()
+        } else {
+            module
+        };
+        println!("  {module} {symbol} {}", r.summary);
     }
 }
 

@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::Layer as _;
 
 /// A started run: its id and the JSONL path.
 #[derive(Debug, Clone)]
@@ -53,21 +54,25 @@ pub fn init(home: &Path) -> io::Result<RunLog> {
     std::fs::create_dir_all(run.path.parent().expect("runs dir"))?;
     let file = Arc::new(std::fs::File::create(&run.path)?);
 
-    let filter = tracing_subscriber::EnvFilter::try_from_env("GRIPSACK_LOG")
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    // Console is warn-by-default (GRIPSACK_LOG raises it); the JSONL
+    // always gets info and up — the log is the full record, the console
+    // is for humans.
+    let console_filter = tracing_subscriber::EnvFilter::try_from_env("GRIPSACK_LOG")
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
     let console = tracing_subscriber::fmt::layer()
         .compact()
         .with_ansi(io::stdout().is_terminal())
-        .with_writer(io::stdout);
+        .with_writer(io::stdout)
+        .with_filter(console_filter);
     let json = tracing_subscriber::fmt::layer()
         .json()
         .with_current_span(true)
         .with_span_list(true)
-        .with_writer(FileWriter(file));
+        .with_writer(FileWriter(file))
+        .with_filter(tracing_subscriber::EnvFilter::new("info"));
     let _ = tracing_subscriber::registry()
         .with(console)
         .with(json)
-        .with(filter)
         .try_init();
 
     gripsack_store::symlink_replace(&home.join("runs").join("latest"), &run.path)?;

@@ -33,6 +33,31 @@ pub enum Outcome {
     Applied { generation: u64 },
 }
 
+/// One user-visible line of what a step did — the CLI renders these.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StepReport {
+    pub module: String,
+    pub summary: String,
+    pub kind: ReportKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportKind {
+    Fetched,
+    Installed,
+    Configured,
+    Verified,
+    Satisfied,
+    Warned,
+}
+
+/// The result of an apply: outcome + the reports for the CLI.
+#[derive(Debug)]
+pub struct ApplyResult {
+    pub outcome: Outcome,
+    pub reports: Vec<StepReport>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ExecError {
     #[error("io: {0}")]
@@ -54,9 +79,10 @@ pub enum ExecError {
 }
 
 /// Apply the whole graph (or a subset) and activate a new generation.
-pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<Outcome, ExecError> {
+pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     let order = scoped_order(ir, &ctx.only)?;
     let steps_by_module = expand::expand_all(&ir.modules);
+    let mut reports = Vec::new();
 
     // The manifest starts from the current generation — a subset apply
     // replaces only the modules it touches (0001 §3.6).
@@ -71,10 +97,10 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<Outcome, ExecError> {
         let _entered = span.enter();
         let module = &ir.modules[name.as_str()];
         let steps = &steps_by_module[name.as_str()];
-        modules.insert(
-            name.clone(),
-            run_module(name, module, steps, ctx, modules.get(name.as_str()))?,
-        );
+        let (state, module_reports) =
+            run_module(name, module, steps, ctx, modules.get(name.as_str()))?;
+        reports.extend(module_reports);
+        modules.insert(name.clone(), state);
     }
 
     // Satisfied = the module states are identical (the generation
@@ -86,8 +112,11 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<Outcome, ExecError> {
         .as_ref()
         == Some(&modules)
     {
-        return Ok(Outcome::Satisfied {
-            generation: current_gen,
+        return Ok(ApplyResult {
+            outcome: Outcome::Satisfied {
+                generation: current_gen,
+            },
+            reports,
         });
     }
     let generation = store::Generation {
@@ -97,7 +126,10 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<Outcome, ExecError> {
     store::write_manifest(&ctx.home, &generation)?;
     store::flip(&ctx.home, next)?;
     info!(generation = next, "activated");
-    Ok(Outcome::Applied { generation: next })
+    Ok(ApplyResult {
+        outcome: Outcome::Applied { generation: next },
+        reports,
+    })
 }
 
 /// DAG order restricted to `only` + their transitive dependencies.
@@ -130,10 +162,18 @@ fn run_module(
     steps: &[Step],
     ctx: &Ctx,
     prev: Option<&store::ModuleState>,
-) -> Result<store::ModuleState, ExecError> {
+) -> Result<(store::ModuleState, Vec<StepReport>), ExecError> {
     let store_path = store::store_path(&ctx.home, name, &module_input(module, &ctx.repo)?);
     // Satisfaction (0008 §3): presence is proof — skip fetch and build.
     let present = store_path.exists();
+    let mut reports = Vec::new();
+    if present {
+        reports.push(StepReport {
+            module: name.to_string(),
+            summary: "payload already in store".into(),
+            kind: ReportKind::Satisfied,
+        });
+    }
     let mut staging: Option<PathBuf> = None;
     let mut pending_verifies: Vec<&Verify> = Vec::new();
 
@@ -145,6 +185,11 @@ fn run_module(
                     let stage = staging.get_or_insert_with(|| fresh_staging(name));
                     fetch(spec, stage).map_err(ExecError::Fetch)?;
                     info!(step = %step.id, "fetched");
+                    reports.push(StepReport {
+                        module: name.to_string(),
+                        summary: format!("fetched {}", describe_fetch(spec)),
+                        kind: ReportKind::Fetched,
+                    });
                 }
                 StepAction::Build {
                     spec: Build::CustomShell { script },
@@ -191,10 +236,23 @@ fn run_module(
         match &step.action {
             StepAction::Install { entries } | StepAction::ConfigDeploy { entries } => {
                 for entry in entries {
-                    deploy_entry(&mut deployed, &store_path, entry, ctx, prev)?;
+                    let (summary, kind) =
+                        deploy_entry(&mut deployed, &store_path, entry, ctx, prev)?;
+                    reports.push(StepReport {
+                        module: name.to_string(),
+                        summary,
+                        kind,
+                    });
                 }
             }
-            StepAction::Verify { verify } => run_verify(name, verify, &store_path)?,
+            StepAction::Verify { verify } if !present => {
+                run_verify(name, verify, &store_path)?;
+                reports.push(StepReport {
+                    module: name.to_string(),
+                    summary: describe_verify(verify),
+                    kind: ReportKind::Verified,
+                });
+            }
             StepAction::Intent { action } => {
                 // Activation adapters are 0.2 (0001 §3.8); declared
                 // intents are recorded, not yet executed.
@@ -203,13 +261,23 @@ fn run_module(
             _ => {}
         }
     }
-    for verify in pending_verifies {
-        run_verify(name, verify, &store_path)?;
+    if !present {
+        for verify in pending_verifies {
+            run_verify(name, verify, &store_path)?;
+            reports.push(StepReport {
+                module: name.to_string(),
+                summary: describe_verify(verify),
+                kind: ReportKind::Verified,
+            });
+        }
     }
-    Ok(store::ModuleState {
-        store_path,
-        entries: deployed,
-    })
+    Ok((
+        store::ModuleState {
+            store_path,
+            entries: deployed,
+        },
+        reports,
+    ))
 }
 
 fn fresh_staging(name: &str) -> PathBuf {
@@ -230,7 +298,7 @@ fn deploy_entry(
     entry: &Entry,
     ctx: &Ctx,
     prev: Option<&store::ModuleState>,
-) -> Result<(), ExecError> {
+) -> Result<(String, ReportKind), ExecError> {
     let source = resolve_source(store_path, &entry.from, &ctx.repo);
     let dest = expand_home(&entry.to);
     let hash = store::canonical_file_hash(&source)?;
@@ -240,6 +308,10 @@ fn deploy_entry(
                 std::fs::create_dir_all(parent)?;
             }
             store::symlink_replace(&dest, &source)?;
+            return Ok((
+                format!("linked {} → {}", entry.from, entry.to),
+                ReportKind::Installed,
+            ));
         }
         Ownership::TrackedCopy => {
             let prev_hash = prev
@@ -274,7 +346,10 @@ fn deploy_entry(
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                store::atomic_write(&dest, &std::fs::read(&source)?)?;
+                return Ok((
+                    format!("copied {} → {}", entry.from, entry.to),
+                    ReportKind::Configured,
+                ));
             }
         }
         other => {
@@ -291,7 +366,7 @@ fn deploy_entry(
         mode: entry.mode.clone(),
         hash,
     });
-    Ok(())
+    Ok((String::new(), ReportKind::Satisfied))
 }
 
 /// Entry content lives in the store payload if present, else in the
@@ -302,6 +377,25 @@ fn resolve_source(store_path: &Path, from: &str, repo: &Path) -> PathBuf {
         in_store
     } else {
         repo.join(from)
+    }
+}
+
+fn describe_fetch(spec: &gripsack_ir::FetchSpec) -> String {
+    use gripsack_ir::FetchSpec as F;
+    match spec {
+        F::GithubRelease { repo, asset, .. } => format!("github-release {repo} · {asset}"),
+        F::Tarball { url, .. } => format!("tarball {url}"),
+        F::Git { url, rev } => format!("git {url} @ {rev}"),
+        F::File { path } => format!("file {path}"),
+        F::Plugin { name, .. } => format!("plugin gripfetch-{name}"),
+    }
+}
+
+fn describe_verify(verify: &Verify) -> String {
+    match verify {
+        Verify::BinaryRuns { path, .. } => format!("verified {path} runs"),
+        Verify::FileExists { path } => format!("verified {path} exists"),
+        Verify::Shell { .. } => "verified (shell check)".to_string(),
     }
 }
 

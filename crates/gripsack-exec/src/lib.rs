@@ -19,7 +19,7 @@
 pub mod expand;
 pub mod run;
 
-pub use run::{apply, Ctx, ExecError, Outcome};
+pub use run::{apply, ApplyResult, Ctx, ExecError, Outcome, ReportKind, StepReport};
 
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};
