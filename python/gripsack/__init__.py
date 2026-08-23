@@ -19,14 +19,14 @@ from .module import Module, ModuleData, module
 from .resources import CORE_RESOURCES, Resource, clear_resources, resource
 from .steps import (
     Step,
+    StepActionKind,
     build_step,
     config_step,
     fetch_step,
     install_step,
+    run_step,
     shell_step,
-    run_step,
     step,
-    run_step,
 )
 from .verify import Verify, verify_binary, verify_file, verify_shell
 
@@ -56,6 +56,7 @@ __all__ = [
     "custom_hook",
     "Intent",
     "step",
+    "StepActionKind",
     "fetch_step",
     "build_step",
     "install_step",

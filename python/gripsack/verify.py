@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Optional
+
+
+class VerifyKind(str, Enum):
+    """The closed set of verify checks (0007 §verify)."""
+
+    BINARY_RUNS = "binary_runs"
+    FILE_EXISTS = "file_exists"
+    SHELL = "shell"
 
 
 @dataclass(frozen=True)
 class Verify:
-    kind: str
+    kind: VerifyKind
     args: dict[str, Any]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", VerifyKind(self.kind))
+
     def to_ir(self) -> dict[str, Any]:
-        return {"kind": self.kind, **self.args}
+        return {"kind": self.kind.value, **self.args}
 
 
 def verify_binary(path: str, args: Optional[list[str]] = None) -> Verify:
@@ -20,12 +32,12 @@ def verify_binary(path: str, args: Optional[list[str]] = None) -> Verify:
     ir_args: dict[str, Any] = {"path": path}
     if args:
         ir_args["args"] = args
-    return Verify("binary_runs", ir_args)
+    return Verify(VerifyKind.BINARY_RUNS, ir_args)
 
 
 def verify_file(path: str) -> Verify:
-    return Verify("file_exists", {"path": path})
+    return Verify(VerifyKind.FILE_EXISTS, {"path": path})
 
 
 def verify_shell(script: str) -> Verify:
-    return Verify("shell", {"script": script})
+    return Verify(VerifyKind.SHELL, {"script": script})

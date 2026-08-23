@@ -28,6 +28,19 @@ from .resources import validate_resource_refs
 from .verify import Verify
 
 
+class StepActionKind(str, Enum):
+    """The closed set of step actions the engine interprets."""
+
+    FETCH = "fetch"
+    BUILD = "build"
+    INSTALL = "install"
+    CONFIG_DEPLOY = "config_deploy"
+    INTENT = "intent"
+    VERIFY = "verify"
+    RUN = "run"
+    CUSTOM_SHELL = "custom_shell"
+
+
 class Phase(str, Enum):
     """Reporting tag for a step (0007 §2) — never a scheduling barrier."""
 
@@ -71,6 +84,7 @@ class Step:
 
     def __post_init__(self) -> None:
         validate_resource_refs(self.resources, f"step {self.id!r}")
+        StepActionKind(self.action.get("kind", ""))
         if self.phase is not None:
             object.__setattr__(self, "phase", Phase(self.phase))
 

@@ -3,18 +3,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Optional
+
+
+class FetchKind(str, Enum):
+    """The closed set of fetch kinds the engine interprets."""
+
+    GITHUB_RELEASE = "github_release"
+    TARBALL = "tarball"
+    GIT = "git"
+    FILE = "file"
+    PLUGIN = "plugin"
 
 
 @dataclass(frozen=True)
 class Fetch:
     """A fetch spec — the engine interprets it; never a script."""
 
-    kind: str
+    kind: FetchKind
     args: dict[str, Any]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", FetchKind(self.kind))
+
     def to_ir(self) -> dict[str, Any]:
-        return {"kind": self.kind, **self.args}
+        return {"kind": self.kind.value, **self.args}
 
 
 def github_release(
@@ -32,24 +46,24 @@ def github_release(
         args["sha256"] = sha256
     if base_url is not None:
         args["base_url"] = base_url
-    return Fetch("github_release", args)
+    return Fetch(FetchKind.GITHUB_RELEASE, args)
 
 
 def tarball(url: str, sha256: Optional[str] = None) -> Fetch:
     args: dict[str, Any] = {"url": url}
     if sha256 is not None:
         args["sha256"] = sha256
-    return Fetch("tarball", args)
+    return Fetch(FetchKind.TARBALL, args)
 
 
 def git(url: str, rev: str) -> Fetch:
-    return Fetch("git", {"url": url, "rev": rev})
+    return Fetch(FetchKind.GIT, {"url": url, "rev": rev})
 
 
 def file_fetch(path: str) -> Fetch:
-    return Fetch("file", {"path": path})
+    return Fetch(FetchKind.FILE, {"path": path})
 
 
 def plugin_fetch(name: str, **args: Any) -> Fetch:
     """A fetcher plugin transport (0002 §4) — `gripfetch-<name>`."""
-    return Fetch("plugin", {"name": name, "args": args})
+    return Fetch(FetchKind.PLUGIN, {"name": name, "args": args})
