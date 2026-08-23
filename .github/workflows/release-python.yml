@@ -19,7 +19,8 @@ jobs:
       # wrong version.
       - name: Guard tag matches package version
         run: |
-          ver="$(grep -m1 '^version' python/pyproject.toml | cut -d'\"' -f2)"
+          ver="$(sed -n 's/^version = "\(.*\)"$/\1/p' python/pyproject.toml | head -1)"
+          test -n "$ver" || { echo "::error::no version in python/pyproject.toml"; exit 1; }
           test "py-v$ver" = "$GITHUB_REF_NAME" || {
             echo "::error::tag $GITHUB_REF_NAME != python version py-v$ver"; exit 1; }
 
