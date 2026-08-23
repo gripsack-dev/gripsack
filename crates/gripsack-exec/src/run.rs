@@ -14,6 +14,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use tracing::{info, info_span};
 
+/// A progress callback: `(module, verb)` events during execution.
+pub type ProgressCallback = Box<dyn Fn(&str, &str)>;
+
 /// What an apply run needs beyond the IR.
 pub struct Ctx {
     /// $GRIPSACK_HOME.
@@ -25,6 +28,8 @@ pub struct Ctx {
     pub only: Vec<String>,
     /// Host name — selects the lockfile (`locks/<host>.lock`).
     pub host: String,
+    /// Progress events `(module, verb)` — the CLI renders spinners.
+    pub on_progress: Option<ProgressCallback>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -223,6 +228,7 @@ fn run_module(
         for step in steps {
             match &step.action {
                 StepAction::Fetch { fetch: spec } => {
+                    progress(ctx, name, "fetching");
                     let stage = staging.get_or_insert_with(|| fresh_staging(name));
                     // the lockfile's hash wins for verification (0002 §3)
                     let spec = &inject_locked_sha(spec, locked);
@@ -242,6 +248,7 @@ fn run_module(
                     spec: Build::CustomShell { script },
                 }
                 | StepAction::CustomShell { script, .. } => {
+                    progress(ctx, name, "building");
                     let dir = staging.clone().unwrap_or_else(|| fresh_staging(name));
                     run_shell(script, &dir).map_err(|detail| ExecError::Step {
                         module: name.to_string(),
@@ -282,6 +289,7 @@ fn run_module(
     for step in steps {
         match &step.action {
             StepAction::Install { entries } | StepAction::ConfigDeploy { entries } => {
+                progress(ctx, name, "deploying");
                 for entry in entries {
                     let (summary, kind) =
                         deploy_entry(&mut deployed, &store_path, entry, ctx, prev)?;
@@ -293,6 +301,7 @@ fn run_module(
                 }
             }
             StepAction::Verify { verify } if !present => {
+                progress(ctx, name, "verifying");
                 run_verify(name, verify, &store_path)?;
                 reports.push(StepReport {
                     module: name.to_string(),
@@ -345,6 +354,12 @@ fn inject_locked_sha(
             sha256: Some(sha.clone()),
         },
         other => other,
+    }
+}
+
+fn progress(ctx: &Ctx, module: &str, verb: &str) {
+    if let Some(cb) = &ctx.on_progress {
+        cb(module, verb);
     }
 }
 
