@@ -1,11 +1,20 @@
-//! Tool configuration (plan/0005 §2): `env.toml` at the repo root plus
-//! the layered merge. Configuration is pure data, read before any code
-//! runs — it can never depend on eval results (0005 §3).
+//! Tool configuration as data (plan/0005 §2): parsed before any module
+//! code runs — config can never depend on eval results.
 //!
-//! Precedence (later wins): built-in defaults < user config
-//! (`~/.config/gripsack/config.toml`) < repo `env.toml` < env vars <
-//! CLI flags. The last two layers resolve in the CLI, not here.
-
+//! ```text
+//! precedence (later wins):
+//!
+//!   built-in defaults
+//!     < ~/.config/gripsack/config.toml   user layer — machine-local, uncommitted
+//!     < env.toml                         repo layer — committed, self-describing
+//!     < GRIPSACK_* env vars
+//!     < CLI flags
+//! ```
+//!
+//! `env.toml` declares the frontend, eval-time deps (resolvers/fetcher
+//! libraries), fetcher plugin wiring, throttle domains, and settings.
+//! The user layer only fills gaps — a cloned repo behaves identically
+//! everywhere.
 use serde::Deserialize;
 use std::collections::BTreeMap;
 

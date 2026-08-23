@@ -1,9 +1,14 @@
 //! `grip` — the gripsack CLI.
 //!
-//! Real today: `doctor` (frontend environment), `plan --ir <file>`
-//! (diagnostics + execution waves for a frontend's IR). The remaining
-//! subcommands are the surface from plan/0001 §6 and report themselves
-//! unimplemented.
+//! ```text
+//! grip doctor          frontend environment check (python · node · packages)
+//! grip plan --ir FILE  validate IR, print diagnostics + execution waves
+//! grip apply|rollback|generations|gc|why-owns
+//!                      the executor (plan/0001–0008) — in progress
+//! ```
+//!
+//! Colors and source snippets live in [`render`]; they follow the
+//! terminal — piped output is plain.
 
 mod render;
 

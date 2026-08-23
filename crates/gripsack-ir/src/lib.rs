@@ -1,7 +1,25 @@
-//! IR v1 (draft) — the contract between frontends and the core.
-//! See plan/0001 §3.2, plan/0004 (spans, diagnostics, passes) and
-//! schema/ir/v1.json. Change all three sides together
+//! The IR contract between frontends and the core: types, spans,
+//! diagnostics, and the compiler passes every IR document goes through
+//! (plan/0001 §3.2, 0004, 0007). The schema lives in
+//! `schema/ir/v1.json`; change all three sides together
 //! (`.agents/skills/gripsack-ir`).
+//!
+//! ```text
+//! frontend (python | typescript)
+//!     │  evals your modules, emits JSON with spans
+//!     ▼
+//! parse        E000 malformed · E100 wrong ir_version
+//!     ▼
+//! sema::run    ordered passes, one concern each:
+//!     steps        E103 both-shapes · E106 dup/reserved ids · E104 refs
+//!     deps         E101 unknown module
+//!     destinations E102 bad destination
+//!     resources    E107 undeclared resource
+//!     ▼
+//! typed Ir  +  span-labeled Diagnostics (stable codes, source snippets)
+//! ```
+//!
+//! To add a check: one file in `sema/`, one line in `PASSES`, one test.
 
 pub mod diagnostic;
 pub mod model;

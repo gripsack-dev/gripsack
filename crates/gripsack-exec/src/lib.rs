@@ -1,9 +1,20 @@
-//! Build ordering over the module graph (plan/0001 §4).
+//! The module DAG: dependency-first build order and the levelized
+//! "waves" view (plan/0001 §4, 0007 §5).
 //!
-//! Both runtime and build edges constrain order — an ephemeral build
-//! dependency must exist before its dependent builds (0001 §3.1). The
-//! executor consumes this order; parallel scheduling layers on top of it
-//! without changing the semantics.
+//! ```text
+//! modules + edges ──► build_order   deterministic topological order
+//!                 ──► waves         levels for reporting:
+//!
+//!     d        wave 0
+//!     ├── b    wave 1 ─┐ same wave ⇒ no path between them,
+//!     └── c    wave 1 ─┘ the scheduler may run them in parallel
+//!     a        wave 2
+//! ```
+//!
+//! Both runtime and build edges constrain order — an ephemeral
+//! build-only dependency must exist before its dependent builds
+//! (0001 §3.1). Waves are a *reporting* artifact: the scheduler runs a
+//! ready-queue, not barriers.
 
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,7 +33,7 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
     let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for (name, module) in &ir.modules {
         for dep in &module.depends {
-            // Unknown deps are an IR-validation error, not a scheduling one.
+            // Unknown deps are a sema error (E101), not a scheduling one.
             if let Some(n) = indegree.get_mut(name.as_str()) {
                 *n += 1;
                 dependents
@@ -63,8 +74,6 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
 
 /// Levelized view of the DAG for display: wave 0 = modules with no
 /// dependencies, wave k = everything whose deps finished in waves < k.
-/// Waves are a *reporting* artifact (0007 §5) — the scheduler runs a
-/// ready-queue, not barriers.
 pub fn waves(ir: &Ir) -> Result<Vec<Vec<String>>, PlanError> {
     let order = build_order(ir)?;
     let mut level: BTreeMap<&str, usize> = BTreeMap::new();
@@ -119,8 +128,8 @@ mod tests {
     fn ir(entries: &[(&str, &[&str])]) -> Ir {
         Ir {
             ir_version: 1,
-            resources: vec![],
             host: Default::default(),
+            resources: vec![],
             modules: entries
                 .iter()
                 .map(|(name, deps)| (name.to_string(), module_with_deps(deps)))

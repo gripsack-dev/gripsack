@@ -1,11 +1,17 @@
-//! Fetcher discovery (plan/0002 §4).
+//! Fetcher plugin discovery (plan/0002 §4) — the runtime-pluggable
+//! transport seam.
 //!
-//! A fetcher plugin is an executable named `gripfetch-<name>` on `PATH` —
-//! the git remote-helper model. It speaks NDJSON over stdio and
-//! materializes a pinned fetch into a directory; the core verifies the
-//! returned bytes against the lockfile before anything enters the store.
-//! This module only discovers them; the protocol host lands with the
-//! executor.
+//! ```text
+//! module says {"kind": "plugin", "name": "artifactory", ...}
+//!     ▼
+//! find gripfetch-artifactory on $PATH
+//!   (or an explicit path from [fetchers.artifactory] in env.toml)
+//!     ▼
+//! the core drives it over NDJSON/stdio and hash-verifies
+//! every returned byte against the lockfile before it enters the store
+//! ```
+//!
+//! Discovery only, for now; the protocol host lands with the executor.
 
 use std::path::PathBuf;
 
