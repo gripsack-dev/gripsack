@@ -1,31 +1,38 @@
-//! The module DAG: dependency-first build order and the levelized
-//! "waves" view (plan/0001 §4, 0007 §5).
+//! The executor (plan/0001 §4, 0007 §5): run a validated IR graph
+//! against the store and deploy — one new generation per apply, or
+//! "already satisfied" when nothing changed (0008 §3).
 //!
 //! ```text
-//! modules + edges ──► build_order   deterministic topological order
-//!                 ──► waves         levels for reporting:
-//!
-//!     d        wave 0
-//!     ├── b    wave 1 ─┐ same wave ⇒ no path between them,
-//!     └── c    wave 1 ─┘ the scheduler may run them in parallel
-//!     a        wave 2
+//! apply.rs     the lifecycle: order → execute → compare → flip
+//! module.rs    per-module phases: produce (A) → publish → deploy (B)
+//! resolve.rs   fetch spec → concrete pin (lockfile wins)
+//! deploy.rs    ownership modes + drift
+//! verify.rs    smoke contracts
+//! update.rs    the only lockfile mutator
+//! ctx.rs       Ctx / Outcome / ExecError · report.rs — CLI reports
 //! ```
 //!
-//! Both runtime and build edges constrain order — an ephemeral
-//! build-only dependency must exist before its dependent builds
-//! (0001 §3.1). Waves are a *reporting* artifact: the scheduler runs a
-//! ready-queue, not barriers.
+//! v0.2: sequential execution in DAG order. The ready-queue scheduler
+//! with resource locks replaces the loop without changing semantics.
 
+pub mod apply;
+pub mod ctx;
+pub mod deploy;
 pub mod expand;
 pub mod frontend;
 pub mod lockfile;
-pub mod run;
+pub mod module;
+pub mod report;
+pub mod resolve;
+pub mod update;
+pub mod util;
+pub mod verify;
 
+pub use apply::apply;
+pub use ctx::{Ctx, ExecError, Outcome, ProgressCallback};
 pub use frontend::ensure_python;
-pub use run::{
-    ApplyResult, Ctx, ExecError, Outcome, ReportKind, StepReport, UpdateReport, UpdateStatus,
-    apply, update,
-};
+pub use report::{ApplyResult, ReportKind, StepReport, UpdateReport, UpdateStatus};
+pub use update::update;
 
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};
@@ -164,7 +171,6 @@ mod tests {
 
     #[test]
     fn build_edges_constrain_order_too() {
-        // `rust` is an ephemeral build-only dep of `helix` (0001 §3.1).
         let mut ir = ir(&[("helix", &["rust"]), ("rust", &[])]);
         ir.modules.get_mut("helix").unwrap().depends[0].edge = EdgeKind::Build;
         let order = build_order(&ir).unwrap();
@@ -183,7 +189,6 @@ mod tests {
                 vec!["a".to_string()],
             ]
         );
-        // independent modules share wave 0
         let graph = ir(&[("z", &["x"]), ("x", &[] as &[&str]), ("y", &[] as &[&str])]);
         let w = waves(&graph).unwrap();
         assert_eq!(w[0], vec!["x".to_string(), "y".to_string()]);
