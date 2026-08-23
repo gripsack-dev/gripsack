@@ -67,9 +67,25 @@ enum Command {
 
 fn main() -> ExitCode {
     let palette = Palette::detect();
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    let command_name = format!("{:?}", cli.command)
+        .split([' ', '('])
+        .next()
+        .unwrap_or("unknown")
+        .to_string();
+    let home = gripsack_store::gripsack_home();
+    let run = gripsack_trace::init(&home).ok();
+    let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());
+    match cli.command {
         Command::Doctor => doctor(palette),
-        Command::Plan { ir: Some(path), .. } => plan_ir(&path, palette),
+        Command::Plan {
+            ir: Some(path),
+            modules,
+            ..
+        } => match modules.first() {
+            Some(name) => plan_module(&path, name, palette),
+            None => plan_ir(&path, palette),
+        },
         other => {
             eprintln!("grip: `{other:?}` is not implemented yet — see plan/0001-architecture.md");
             eprintln!("      (try `grip plan --ir <file>` or `grip doctor`)");
@@ -79,6 +95,7 @@ fn main() -> ExitCode {
 }
 
 /// Validate an IR file and show the execution waves (0004 §4, 0007 §5).
+#[tracing::instrument(name = "plan", skip(palette), fields(file = %path.display()))]
 fn plan_ir(path: &PathBuf, palette: Palette) -> ExitCode {
     let json = match std::fs::read_to_string(path) {
         Ok(j) => j,
@@ -90,10 +107,14 @@ fn plan_ir(path: &PathBuf, palette: Palette) -> ExitCode {
     let ir = match gripsack_ir::check(&json) {
         Ok(ir) => ir,
         Err(diagnostics) => {
+            for d in &diagnostics {
+                tracing::error!(code = d.code, "{}", d.message);
+            }
             eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
             return ExitCode::FAILURE;
         }
     };
+    tracing::info!(modules = ir.modules.len(), "ir parsed and validated");
     let host = &ir.host;
     println!(
         "{} {} modules · host {}/{} · tags: {}",
@@ -116,12 +137,40 @@ fn plan_ir(path: &PathBuf, palette: Palette) -> ExitCode {
                     wave.join(", ")
                 );
             }
+            ExitCode::SUCCESS
         }
         Err(e) => {
             eprintln!("{}", format!("error: {e}").red().bold());
-            return ExitCode::FAILURE;
+            ExitCode::FAILURE
         }
     }
+}
+
+/// Module-scoped view: `grip plan --ir FILE <module>` (0007 §5).
+fn plan_module(path: &PathBuf, name: &str, palette: Palette) -> ExitCode {
+    let json = match std::fs::read_to_string(path) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("grip: cannot read {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let ir = match gripsack_ir::check(&json) {
+        Ok(ir) => ir,
+        Err(diagnostics) => {
+            eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+            return ExitCode::FAILURE;
+        }
+    };
+    if !ir.modules.contains_key(name) {
+        eprintln!(
+            "grip: no module {name:?} in the graph (have: {})",
+            ir.modules.keys().cloned().collect::<Vec<_>>().join(", ")
+        );
+        return ExitCode::FAILURE;
+    }
+    let waves = gripsack_exec::waves(&ir).unwrap_or_default();
+    println!("{}", render::render_module(&ir, name, &waves, palette));
     ExitCode::SUCCESS
 }
 

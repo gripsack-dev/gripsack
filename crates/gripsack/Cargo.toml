@@ -16,6 +16,8 @@ clap.workspace = true
 owo-colors.workspace = true
 gripsack-ir.workspace = true
 gripsack-store.workspace = true
+gripsack-trace.workspace = true
+tracing = "0.1"
 gripsack-exec.workspace = true
 gripsack-fetch.workspace = true
 

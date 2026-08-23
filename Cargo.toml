@@ -18,5 +18,7 @@ clap = { version = "4", features = ["derive"] }
 owo-colors = "4"
 gripsack-ir = { path = "crates/gripsack-ir" }
 gripsack-store = { path = "crates/gripsack-store" }
+gripsack-trace = { path = "crates/gripsack-trace" }
+gripsack-config = { path = "crates/gripsack-config" }
 gripsack-exec = { path = "crates/gripsack-exec" }
 gripsack-fetch = { path = "crates/gripsack-fetch" }

@@ -1,0 +1,15 @@
+[package]
+name = "gripsack-trace"
+description = "gripsack run tracing: console + JSONL with causal spans (plan/0004)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+gripsack-store.workspace = true
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter", "ansi"] }
+
+[dev-dependencies]
+tempfile = "3"

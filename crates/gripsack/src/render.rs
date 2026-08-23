@@ -3,7 +3,7 @@
 //! user's frontend code — a missing file degrades to the header alone,
 //! never an error.
 
-use gripsack_ir::{Diagnostic, Severity, Span};
+use gripsack_ir::{Diagnostic, Ir, Severity, Span};
 use owo_colors::OwoColorize;
 use std::io::IsTerminal;
 
@@ -83,6 +83,77 @@ fn snippet(span: &Span, note: &str, palette: Palette) -> String {
         format!("\n{}", out.dimmed())
     } else {
         out
+    }
+}
+
+/// Render one module's plan (0007 §5): what it fetches, deploys, needs,
+/// and which wave it lands in.
+pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palette) -> String {
+    let Some(module) = ir.modules.get(name) else {
+        return format!("no module {name:?}");
+    };
+    let wave = waves
+        .iter()
+        .position(|w| w.iter().any(|m| m == name))
+        .map(|i| i.to_string())
+        .unwrap_or_else(|| "?".into());
+    let title = format!("{name}  (wave {wave})");
+    let mut out = if palette.enabled {
+        title.green().bold().to_string()
+    } else {
+        title
+    };
+
+    if let Some(fetch) = &module.fetch {
+        out.push_str(&format!("\n  fetch    {}", describe_fetch(fetch)));
+    }
+    for entry in module.install.iter() {
+        out.push_str(&format!(
+            "\n  install  {} → {} ({:?})",
+            entry.from, entry.to, entry.mode
+        ));
+    }
+    for entry in module.config.iter() {
+        out.push_str(&format!(
+            "\n  config   {} → {} ({:?})",
+            entry.from, entry.to, entry.mode
+        ));
+    }
+    for dep in module.depends.iter() {
+        out.push_str(&format!("\n  depends  {} ({:?})", dep.module, dep.edge));
+    }
+    let dependents: Vec<_> = ir
+        .modules
+        .iter()
+        .filter(|(_, m)| m.depends.iter().any(|d| d.module == name))
+        .map(|(n, _)| n.as_str())
+        .collect();
+    if !dependents.is_empty() {
+        out.push_str(&format!("\n  blocks   {}", dependents.join(", ")));
+    }
+    if let Some(steps) = &module.steps {
+        out.push_str("\n  steps");
+        for step in steps {
+            let needs = if step.needs.is_empty() {
+                String::new()
+            } else {
+                format!(" ← {}", step.needs.join(", "))
+            };
+            out.push_str(&format!("\n    {}{needs}", step.id));
+        }
+    }
+    out
+}
+
+/// One-line fetch summary for the module view.
+fn describe_fetch(fetch: &gripsack_ir::FetchSpec) -> String {
+    use gripsack_ir::FetchSpec as F;
+    match fetch {
+        F::GithubRelease { repo, asset, .. } => format!("github-release {repo} · {asset}"),
+        F::Tarball { url, .. } => format!("tarball {url}"),
+        F::Git { url, rev } => format!("git {url} @ {rev}"),
+        F::File { path } => format!("file {path}"),
+        F::Plugin { name, .. } => format!("plugin gripfetch-{name}"),
     }
 }
 

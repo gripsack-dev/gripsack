@@ -39,6 +39,8 @@ files (container mounts) — delete via docker or `sudo`.
 | `e2e/` | uv+pytest flow tests against the real binary |
 | `demos/` | VHS tapes |
 | `.agents/skills/` | maintainer skills: IR evolution, e2e, demo capture, release, PR |
+| `skills/` | public skills: `gripsack-debug` (reading run logs) |
+| `crates/gripsack-trace` | run tracing: JSONL logs with causal spans |
 
 ## Contracts to read before changing behavior
 
