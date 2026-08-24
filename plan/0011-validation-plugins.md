@@ -43,6 +43,9 @@ module–linter pair:
 
 - `paths` is the module's config source set, post-`tree()` expansion —
   the frontend already knows it; repo files are linted in place.
+- Data style only at v1: class-style modules carry config in explicit
+  steps, so declaring `lint` there is a clear registration error, not
+  a silent skip.
 - `tool_version` comes from the host lockfile pin — the lock that pins
   the binary also pins the config schema. Unpinned → the linter uses
   its latest schema and emits a warning.
@@ -100,7 +103,29 @@ Linters are **static shape** (does this key exist in yazi 25.x);
 "native lint" mode that shells out to the tool itself (`hx --health`)
 belongs to the verify side, not here — keep the two apart.
 
-## 9. Implementation map
+## 9. Command surface
+
+Linting runs wherever eval runs, so every command that evaluates gets
+diagnostics for free. The deliberate addition is one command:
+
+- **`grip check`** — eval + IR sema + linters, then stop: render every
+  diagnostic, exit code = validity, zero side effects (no lockfile
+  reads that matter, no store, no staging). The cargo-check analogy is
+  exact: validate the env without deploying. This is the tight
+  config-editing loop and the CI gate for the dotfiles repo — and the
+  umbrella 0009 §5 reserved for validators.
+- **`grip plan`** — check + lockfile + diff vs the current generation.
+  Lint diagnostics render here too (eval happens), which is right:
+  "what would change" should include "and by the way, this is broken."
+- **`grip apply`** — unchanged: an error-severity lint diagnostic
+  fails eval before anything stages.
+
+`lint` stays the name of the plugin *kind* (`griplint-*`); `check` is
+the command. Two-way doors, deliberately unbuilt at v1: ad-hoc
+single-file linting (`grip check --file …`, via a `capabilities` op),
+and `check` growing deeper env.toml validation.
+
+## 10. Implementation map
 
 - `gripsack-config` — tolerate and parse `[linters]` (env.toml is
   `deny_unknown_fields`, 0009 §3); surface in doctor.
