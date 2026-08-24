@@ -1,6 +1,6 @@
 use crate::render::{self, Palette};
 use gripsack_ir::Ir;
-use std::path::{Path};
+use std::path::Path;
 use std::process::ExitCode;
 
 /// Evaluate an env repo's frontend into IR JSON (0005 §4). The core

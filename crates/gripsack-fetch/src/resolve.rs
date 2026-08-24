@@ -220,7 +220,8 @@ pub fn bottle_key(files: &std::collections::BTreeMap<String, BottleFile>) -> Opt
 /// formula JSON, so pinning needs no download.
 pub fn resolve_brew(formula: &str) -> Result<ResolvedRelease, ResolveError> {
     let url = format!("https://formulae.brew.sh/api/formula/{formula}.json");
-    let f: Formula = crate::http::agent().get(&url)
+    let f: Formula = crate::http::agent()
+        .get(&url)
         .set("User-Agent", "gripsack")
         .call()?
         .into_json()?;

@@ -22,7 +22,8 @@ pub(crate) fn fetch(
             reason: e.to_string(),
         }
     })?;
-    let bytes = crate::http::agent().get(&resolved.url)
+    let bytes = crate::http::agent()
+        .get(&resolved.url)
         .set("Authorization", &format!("Bearer {token}"))
         .call()
         .map_err(|e| FetchError::Http {
