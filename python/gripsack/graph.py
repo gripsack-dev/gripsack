@@ -39,6 +39,11 @@ def register(m: ModuleData) -> None:
 
 def register_class(cls: type["Module"], span: Optional[dict]) -> None:
     """Register a class-style module; instantiated lazily at emit time."""
+    if getattr(cls, "lint", None) is not None:
+        raise ValueError(
+            "lint= is data-style only for now (0011) — declare the module "
+            "with module(..., lint=...) instead of the class style"
+        )
     name = cls.name or cls.__name__.lower()
     if name in _GRAPH or name in _CLASSES:
         raise ValueError(f"duplicate module {name!r}")
@@ -49,6 +54,10 @@ def clear_graph() -> None:
     """Drop all registered modules (test isolation)."""
     _GRAPH.clear()
     _CLASSES.clear()
+
+def registered_modules() -> list[ModuleData]:
+    """Data-style modules registered so far (lint input, 0011 §3)."""
+    return list(_GRAPH.values())
 
 
 def emit_ir(tags: Optional[list[str]] = None) -> str:

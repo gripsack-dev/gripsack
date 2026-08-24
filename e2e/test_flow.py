@@ -113,6 +113,91 @@ module("zed", config={**tree("configs/zed", "~/.config/zed", mode=Ownership.OWNE
     assert (deployed / "a.txt").read_text() == "user edit\n"
 
 
+LINT_FIXTURE = """#!/usr/bin/env python3
+import json, sys
+req = json.loads(sys.stdin.readline())
+for p in req["paths"]:
+    for n, line in enumerate(open(p).read().splitlines(), 1):
+        if "BAD_KEY" in line:
+            print(json.dumps({"type": "diagnostic", "diagnostic": {
+                "code": "griplint-demo/A01", "severity": "error",
+                "message": "unknown key BAD_KEY",
+                "labels": [{"span": {"file": p, "line": n}, "note": "not a real key"}],
+                "help": "remove it"}}))
+        if "WARN_KEY" in line:
+            print(json.dumps({"type": "diagnostic", "diagnostic": {
+                "code": "griplint-demo/W01", "severity": "warning",
+                "message": "WARN_KEY is deprecated",
+                "labels": []}}))
+print(json.dumps({"type": "response", "id": 1, "result": {"linted": len(req["paths"])}}))
+"""
+
+
+def make_lint_repo(sandbox, config_text, lint_decl='lint = "demo"'):
+    """A repo with one linted config module and the fixture linter on
+    a path registration (offline — 0010 §3's path form)."""
+    import os
+    import stat
+
+    repo = sandbox / "myenv"
+    confdir = repo / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "demo.toml").write_text(config_text)
+    exe = sandbox / "griplint-demo"
+    exe.write_text(LINT_FIXTURE)
+    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    (repo / "modules").mkdir(exist_ok=True)
+    (repo / "hosts").mkdir(exist_ok=True)
+    (repo / "env.toml").write_text(
+        f'[env]\nname = "fixture"\n\n[linters.demo]\npath = "{exe}"\n'
+    )
+    (repo / "modules" / "demo.py").write_text(
+        f"""
+from gripsack import module, tracked_copy
+
+module("demo",
+    config={{"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")}},
+    {lint_decl})
+"""
+    )
+    (repo / "hosts" / "testhost.py").write_text('tags = ["test"]\n')
+    return repo
+
+
+def test_lint_error_fails_apply_before_staging(sandbox):
+    repo = make_lint_repo(sandbox, "BAD_KEY = 1\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "griplint-demo/A01" in out.stderr
+    assert "unknown key BAD_KEY" in out.stderr
+    # nothing staged or deployed
+    assert not (sandbox / ".config/demo/demo.toml").exists()
+    assert not (sandbox / ".local/share/gripsack/generations").exists()
+
+
+def test_lint_warning_flows_but_applies(sandbox):
+    repo = make_lint_repo(sandbox, "WARN_KEY = 1\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "griplint-demo/W01" in out.stderr
+    assert (sandbox / ".config/demo/demo.toml").exists()
+
+
+def test_lint_clean_config_applies(sandbox):
+    repo = make_lint_repo(sandbox, "good = true\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "griplint-demo" not in out.stderr
+
+
+def test_lint_unregistered_name_is_a_hard_eval_error(sandbox):
+    repo = make_lint_repo(sandbox, "good = true\n", lint_decl='lint = "ghost"')
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "E501" in out.stderr
+    assert "ghost" in out.stderr
+
+
 def test_owned_deploy_refuses_foreign_paths_unless_take_over(sandbox):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}

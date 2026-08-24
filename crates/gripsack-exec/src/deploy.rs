@@ -35,7 +35,7 @@ pub(crate) fn deploy_entry(
     }
     if source.is_dir() && entry.mode != Ownership::Owned {
         return Err(fail(format!(
-            "{:?} on a directory ({}) — tree deploys land in 0.2; owned symlinks work today",
+            "{:?} on a directory ({}) — directory payloads are not supported yet; owned symlinks work today",
             entry.mode, entry.from
         )));
     }
@@ -119,7 +119,7 @@ pub(crate) fn deploy_entry(
             return Err(ExecError::Step {
                 module: entry.from.clone(),
                 step: "deploy".into(),
-                detail: format!("ownership mode {other:?} lands in 0.2"),
+                detail: format!("ownership mode {other:?} is not supported yet"),
             });
         }
     };

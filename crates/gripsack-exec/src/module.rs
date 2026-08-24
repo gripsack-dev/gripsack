@@ -258,7 +258,7 @@ impl<'a> ModuleRun<'a> {
                     }
                 }
                 StepAction::Intent { action } => {
-                    // Activation adapters are 0.2 (0001 §3.8); declared
+                    // Activation adapters are not yet executed (0001 §3.8); declared
                     // intents are recorded, not yet executed.
                     info!(?action, "intent declared (not yet executed)");
                 }

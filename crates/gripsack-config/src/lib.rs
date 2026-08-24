@@ -28,6 +28,11 @@ pub struct EnvConfig {
     pub env: EnvSection,
     pub eval: EvalSection,
     pub fetchers: BTreeMap<String, FetcherSection>,
+    /// Linter registry (0011 §7): name → pinned package (provisioned
+    /// into the frontend venv) or an explicit executable path. The
+    /// frontend consumes it at eval; the core only parses it and
+    /// feeds `package` entries to provisioning.
+    pub linters: BTreeMap<String, LinterSection>,
     /// Rate limits per throttle domain, e.g. `"api.github.com" = "2/s"`
     /// (0007 §throttling). The core attaches primitives to domains.
     #[serde(default)]
@@ -77,6 +82,16 @@ pub struct FetcherSection {
     /// Fetcher plugin override; default discovery is
     /// `gripfetch-<name>` on PATH.
     pub plugin: Option<String>,
+}
+/// A named linter (0010 §3, 0011 §7): provisioned from a pinned
+/// package, or an explicit executable path for development.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LinterSection {
+    /// Pip requirement with an `==` pin, e.g. `griplint-yazi==1.2.0`.
+    pub package: Option<String>,
+    /// Explicit executable path — wins over `package`, for development.
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]

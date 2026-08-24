@@ -62,6 +62,8 @@ class ModuleData:
     verify: Optional[Verify] = None
     retries: Optional[int] = None
     span: Optional[dict[str, Any]] = None
+    #: Registered linter name (0011) — eval-time only, never in the IR.
+    lint: Optional[str] = None
 
     def to_ir(self) -> dict[str, Any]:
         ir: dict[str, Any] = {}
@@ -124,6 +126,7 @@ def module(
     verify: Optional[Verify] = None,
     retries: Optional[int] = None,
     when: Optional[When] = None,
+    lint: Optional[str] = None,
 ) -> ModuleData:
     """Declare a module from declarative fields (data style).
 
@@ -141,6 +144,9 @@ def module(
             declarative fields (E103).
         verify: module-level smoke contract, run pre-flip.
         retries: retry default for this module's steps.
+        lint: name of a registered linter (env.toml ``[linters]``) —
+            the module's config files are validated at eval, before
+            anything stages (0011). Data style only.
 
     Captures the caller's file/line as the module's span (0004 §2).
     """
@@ -159,6 +165,7 @@ def module(
         verify=verify,
         retries=retries,
         span=_caller_span(),
+        lint=lint,
     )
     if when is None or when.matches(facts):
         register(m)

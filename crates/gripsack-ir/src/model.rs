@@ -103,14 +103,14 @@ pub enum FetchSpec {
         #[serde(default)]
         args: serde_json::Value,
     },
-    /// Homebrew bottle (0.2): resolved from the formula JSON — bottle
+    /// Homebrew bottle : resolved from the formula JSON — bottle
     /// sha256 included, so pinning needs no download.
     Brew {
         formula: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         sha256: Option<String>,
     },
-    /// Conda package via pixi (0.2): installed into an isolated
+    /// Conda package via pixi : installed into an isolated
     /// PIXI_HOME and harvested into the store.
     Pixi {
         package: String,

@@ -12,7 +12,7 @@
 //! ctx.rs       Ctx / Outcome / ExecError · report.rs — CLI reports
 //! ```
 //!
-//! v0.2: sequential execution in DAG order. The ready-queue scheduler
+//! Currently: sequential execution in DAG order. The ready-queue scheduler
 //! with resource locks replaces the loop without changing semantics.
 
 pub mod apply;

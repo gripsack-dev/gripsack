@@ -40,7 +40,18 @@ fn system_python_works() -> bool {
 
 fn provision(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<PathBuf> {
     let uv = ensure_uv(home)?;
-    let spec = format!("gripsack=={core_version};{}", config.eval.deps.join(";"));
+    // Registered linters are provisioned like eval deps (0010 §3):
+    // pinned packages only — `path` entries need no install.
+    let linter_packages: Vec<&str> = config
+        .linters
+        .values()
+        .filter_map(|l| l.package.as_deref())
+        .collect();
+    let spec = format!(
+        "gripsack=={core_version};{};{}",
+        config.eval.deps.join(";"),
+        linter_packages.join(";")
+    );
     let hash: String = {
         use sha2::{Digest, Sha256};
         Sha256::digest(spec.as_bytes())
@@ -63,6 +74,7 @@ fn provision(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<
         format!("gripsack=={core_version}"),
     ];
     install.extend(config.eval.deps.iter().cloned());
+    install.extend(linter_packages.iter().map(|p| p.to_string()));
     let args: Vec<&str> = install.iter().map(String::as_str).collect();
     run(&uv, &args)?;
     Ok(python)
