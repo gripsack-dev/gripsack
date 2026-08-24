@@ -1,6 +1,6 @@
 use crate::render::{self, Palette};
 use gripsack_ir::Ir;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::process::ExitCode;
 
 /// Evaluate an env repo's frontend into IR JSON (0005 §4). The core
@@ -25,12 +25,20 @@ pub fn eval_repo(repo: &Path, host: Option<&str>, palette: Palette) -> Result<St
         eprintln!("grip: typescript eval lands in 0.2 — set `frontend = \"python\"` for now");
         return Err(ExitCode::from(2));
     }
-    let python = gripsack_exec::ensure_python(
+    let python = match gripsack_exec::ensure_python(
         &gripsack_store::gripsack_home(),
         &env,
         env!("CARGO_PKG_VERSION"),
-    )
-    .unwrap_or_else(|| PathBuf::from("python3"));
+    ) {
+        Ok(python) => python,
+        Err(e) => {
+            eprintln!("grip: frontend provisioning failed: {e}");
+            eprintln!(
+                "hint: set GRIPSACK_PYTHON to a python with `gripsack` installed to bypass provisioning"
+            );
+            return Err(ExitCode::FAILURE);
+        }
+    };
     let mut cmd = std::process::Command::new(python);
     cmd.arg("-m").arg("gripsack").arg(repo).current_dir(repo);
     let host = host

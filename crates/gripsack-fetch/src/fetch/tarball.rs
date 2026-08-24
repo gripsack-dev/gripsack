@@ -29,7 +29,7 @@ pub(crate) fn read_url(url: &str) -> Result<Vec<u8>, FetchError> {
     if let Some(path) = url.strip_prefix("file://") {
         return Ok(std::fs::read(path)?);
     }
-    let response = ureq::get(url).call().map_err(|e| FetchError::Http {
+    let response = crate::http::agent().get(url).call().map_err(|e| FetchError::Http {
         url: url.to_string(),
         reason: e.to_string(),
     })?;

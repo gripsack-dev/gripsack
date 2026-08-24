@@ -93,7 +93,7 @@ pub fn resolve_latest(
 ) -> Result<ResolvedRelease, ResolveError> {
     let base = base_url.unwrap_or("https://api.github.com");
     let url = format!("{base}/repos/{repo}/releases/latest");
-    let mut request = ureq::get(&url).set("User-Agent", "gripsack");
+    let mut request = crate::http::agent().get(&url).set("User-Agent", "gripsack");
     if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN")) {
         request = request.set("Authorization", &format!("Bearer {token}"));
     }
@@ -220,7 +220,7 @@ pub fn bottle_key(files: &std::collections::BTreeMap<String, BottleFile>) -> Opt
 /// formula JSON, so pinning needs no download.
 pub fn resolve_brew(formula: &str) -> Result<ResolvedRelease, ResolveError> {
     let url = format!("https://formulae.brew.sh/api/formula/{formula}.json");
-    let f: Formula = ureq::get(&url)
+    let f: Formula = crate::http::agent().get(&url)
         .set("User-Agent", "gripsack")
         .call()?
         .into_json()?;
@@ -244,6 +244,6 @@ pub fn ghcr_token(scope_repo: &str) -> Result<String, ResolveError> {
         token: String,
     }
     let url = format!("https://ghcr.io/token?scope=repository:{scope_repo}:pull");
-    let t: Token = ureq::get(&url).call()?.into_json()?;
+    let t: Token = crate::http::agent().get(&url).call()?.into_json()?;
     Ok(t.token)
 }

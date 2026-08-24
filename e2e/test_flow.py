@@ -75,6 +75,44 @@ module("zed", config={**tree("configs/zed", "~/.config/zed")})
     assert not (deployed / "keymap.json").exists()
 
 
+def test_owned_prune_on_undeclare(sandbox):
+    """Regression: prune-on-undeclare must work for owned symlinks too —
+    the recorded hash is the source content, so the tracked_copy hash
+    check can never match a symlink (gripsack-exec apply.rs)."""
+    confdir = sandbox / "myenv" / "configs" / "zed"
+    confdir.mkdir(parents=True)
+    (confdir / "a.txt").write_text("a\n")
+    (confdir / "b.txt").write_text("b\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tree
+from gripsack.entries import Ownership
+
+module("zed", config={**tree("configs/zed", "~/.config/zed", mode=Ownership.OWNED)})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    deployed = sandbox / ".config" / "zed"
+    assert (deployed / "a.txt").is_symlink()
+    assert (deployed / "b.txt").is_symlink()
+
+    (confdir / "b.txt").unlink()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (deployed / "a.txt").is_symlink()
+    assert not (deployed / "b.txt").exists()
+
+    # a user file replacing our symlink is never pruned
+    (deployed / "a.txt").unlink()
+    (deployed / "a.txt").write_text("user edit\n")
+    (confdir / "a.txt").unlink()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (deployed / "a.txt").read_text() == "user edit\n"
+
+
 def test_owned_deploy_refuses_foreign_paths_unless_take_over(sandbox):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
