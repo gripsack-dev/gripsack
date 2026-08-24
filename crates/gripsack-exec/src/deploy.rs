@@ -42,6 +42,30 @@ pub(crate) fn deploy_entry(
     let hash = store::canonical_file_hash(&source)?;
     let (summary, kind) = match &entry.mode {
         Ownership::Owned => {
+            // external satisfaction (0009 critique): never overwrite a
+            // path that is neither ours (symlink into the store) nor
+            // recorded in a previous manifest — unless --take-over.
+            let recorded = prev
+                .map(|m| m.entries.iter().any(|e| e.to == entry.to))
+                .unwrap_or(false);
+            let ours = std::fs::read_link(&dest)
+                .map(|t| t.starts_with(&ctx.home))
+                .unwrap_or(false);
+            if dest.symlink_metadata().is_ok()
+                && !ours
+                && !recorded
+                && !ctx.take_over
+                && !dest.is_symlink()
+            {
+                return Err(ExecError::Step {
+                    module: from.clone(),
+                    step: "deploy".into(),
+                    detail: format!(
+                        "{} exists and was not deployed by gripsack — move it away or use --take-over",
+                        entry.to
+                    ),
+                });
+            }
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent)?;
             }

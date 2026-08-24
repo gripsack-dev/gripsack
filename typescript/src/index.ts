@@ -21,6 +21,7 @@ export type { Fetch } from "./fetch.js";
 export { facts, hasTag, when } from "./conditions.js";
 export type { Condition, Facts } from "./conditions.js";
 export { clearGraph, emitIr, IR_VERSION, register } from "./graph.js";
+export { tree } from "./tree.js";
 export { define, defineIf, Module, module, moduleIf } from "./module.js";
 export { customHook, desktopEntry, fonts, service } from "./intents.js";
 export type { Intent, Trigger } from "./intents.js";

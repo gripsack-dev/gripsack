@@ -27,6 +27,7 @@ from .graph import IR_VERSION, clear_graph, emit_ir
 from .intents import Intent, custom_hook, desktop_entry, fonts, service
 from .module import Module, ModuleData, module
 from .resources import CORE_RESOURCES, Resource, clear_resources, resource
+from .tree import tree
 from .steps import (
     Step,
     StepActionKind,
@@ -65,6 +66,7 @@ __all__ = [
     "Fetch",
     "symlink",
     "tracked_copy",
+    "tree",
     "merge",
     "template",
     "Dest",

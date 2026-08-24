@@ -49,6 +49,15 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         modules.insert(name.clone(), outcome.state);
     }
 
+    // Prune-on-undeclare (0006 critique): destinations in the previous
+    // manifest but gone now are removed — only if the file still matches
+    // the recorded hash (user edits are never deleted).
+    if let Some(n) = current_gen
+        && let Ok(prev) = store::read_manifest(&ctx.home, n)
+    {
+        prune_undeclared(&prev, &modules, &ctx.home)?;
+    }
+
     // Satisfied = the module states are identical (the generation
     // number is not part of the comparison — 0008 §3).
     let next = current_gen.unwrap_or(0) + 1;
@@ -102,4 +111,36 @@ pub(crate) fn scoped_order(ir: &Ir, only: &[String]) -> Result<Vec<String>, Exec
         .into_iter()
         .filter(|n| wanted.contains(n.as_str()))
         .collect())
+}
+
+/// Remove destinations the new manifest no longer declares, iff the
+/// file on disk is still exactly what we deployed (hash check).
+fn prune_undeclared(
+    prev: &store::Generation,
+    modules: &BTreeMap<String, store::ModuleState>,
+    home: &std::path::Path,
+) -> Result<(), ExecError> {
+    let declared: BTreeSet<&str> = modules
+        .values()
+        .flat_map(|m| m.entries.iter().map(|e| e.to.as_str()))
+        .collect();
+    for state in prev.modules.values() {
+        for entry in &state.entries {
+            if declared.contains(entry.to.as_str()) {
+                continue;
+            }
+            let dest = crate::deploy::expand_home(&entry.to);
+            let Ok(current) = store::canonical_file_hash(&dest) else {
+                continue; // already gone
+            };
+            if current == entry.hash {
+                std::fs::remove_file(&dest)?;
+                info!("pruned {}", entry.to);
+            } else {
+                tracing::warn!("kept {} — modified since deploy", entry.to);
+            }
+        }
+    }
+    let _ = home;
+    Ok(())
 }

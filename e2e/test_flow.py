@@ -48,6 +48,62 @@ module(
     assert (sandbox / ".local/bin/hello").is_symlink()
 
 
+def test_tree_entries_and_prune_on_undeclare(sandbox):
+    confdir = sandbox / "myenv" / "configs" / "zed"
+    confdir.mkdir(parents=True)
+    (confdir / "settings.json").write_text('{"theme": "mocha"}\n')
+    (confdir / "keymap.json").write_text("[]\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tree
+
+module("zed", config={**tree("configs/zed", "~/.config/zed")})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    deployed = sandbox / ".config" / "zed"
+    assert (deployed / "settings.json").exists()
+    assert (deployed / "keymap.json").exists()
+
+    # drop a file from the tree -> pruned on next apply
+    (confdir / "keymap.json").unlink()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (deployed / "settings.json").exists()
+    assert not (deployed / "keymap.json").exists()
+
+
+def test_owned_deploy_refuses_foreign_paths_unless_take_over(sandbox):
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+from gripsack import module, file_fetch, symlink
+
+module(
+    "hello",
+    fetch=file_fetch("{payload}"),
+    install={{"bin/hello": symlink("~/.local/bin/hello")}},
+)
+""",
+    )
+    foreign = sandbox / ".local" / "bin"
+    foreign.mkdir(parents=True)
+    (foreign / "hello").write_text("system binary\n")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "not deployed by gripsack" in out.stderr
+
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (foreign / "hello").is_symlink()
+
+
 def test_apply_repo_from_elsewhere(sandbox):
     """The bootstrap story: apply a repo that isn't the cwd."""
     payload = make_tarball(
