@@ -17,6 +17,7 @@ pub mod fetch;
 pub mod host;
 pub(crate) mod http;
 pub mod resolve;
+pub mod throttle;
 
 pub use fetch::{FetchError, fetch, fetch_with_locked, payload_hash};
 pub use host::{AssetTarget, PIXI_RELEASE, UV_RELEASE, resolve as resolve_host_asset};

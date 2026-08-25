@@ -950,3 +950,77 @@ def test_init_scaffolds_a_working_env_repo(sandbox):
     out = grip("init", cwd=repo)
     assert out.returncode != 0
     assert "already looks like an env repo" in out.stderr
+
+
+FETCH_FIXTURE = """#!/usr/bin/env python3
+import json, os, sys
+req = json.loads(sys.stdin.readline())
+if req["op"] == "capabilities":
+    print(json.dumps({"type": "response", "result": {
+        "capabilities": {"throttle": {"demo.local": "1/s"}}}}))
+elif req["op"] == "fetch":
+    dest = req["dest_dir"]
+    os.makedirs(os.path.join(dest, "bin"), exist_ok=True)
+    with open(os.path.join(dest, "bin", "demo"), "w") as f:
+        f.write("#!/bin/sh\\necho demo\\n")
+    print(json.dumps({"type": "response", "result": {}}))
+sys.stdout.flush()
+"""
+
+
+def test_throttle_token_bucket_serializes_plugin_fetches(sandbox, monkeypatch):
+    """[throttle] (0002): a fetcher declares its rate budget via the
+    capabilities op; the core's token bucket enforces it across
+    concurrent modules — two fetches at 1/s take >= ~1s wall."""
+    bindir = sandbox / "bin"
+    bindir.mkdir()
+    fetcher = bindir / "gripfetch-demo"
+    fetcher.write_text(FETCH_FIXTURE)
+    fetcher.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, plugin_fetch, symlink
+
+module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
+module("b", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-b")})
+""",
+    )
+    import time
+
+    start = time.monotonic()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    elapsed = time.monotonic() - start
+    assert out.returncode == 0, out.stderr
+    assert elapsed >= 0.9, f"two 1/s fetches finished in {elapsed:.2f}s — bucket not enforced"
+    assert (sandbox / ".local/bin/demo-a").is_symlink()
+    assert (sandbox / ".local/bin/demo-b").is_symlink()
+
+
+def test_throttle_user_override_beats_plugin_budget(sandbox, monkeypatch):
+    """env.toml [throttle] outranks the fetcher's own declaration."""
+    bindir = sandbox / "bin"
+    bindir.mkdir()
+    fetcher = bindir / "gripfetch-demo"
+    fetcher.write_text(FETCH_FIXTURE)
+    fetcher.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, plugin_fetch, symlink
+
+module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
+module("b", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-b")})
+""",
+    )
+    with open(repo / "env.toml", "a") as f:
+        f.write('\n[throttle]\n"demo.local" = "100/s"\n')
+    import time
+
+    start = time.monotonic()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    elapsed = time.monotonic() - start
+    assert out.returncode == 0, out.stderr
+    assert elapsed < 0.9, f"override not applied — took {elapsed:.2f}s"
