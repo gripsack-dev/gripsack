@@ -91,6 +91,10 @@ tentacles.
   lockfile before anything enters the store. Plugin output is never
   trusted: a fetcher can be wrong or malicious and the worst outcome is
   a failed apply, never a poisoned store.
+- **Bare payloads** (a URL that isn't a tar/zip archive) stage as a
+  single file named after the asset — the URL's filename — so
+  `install={"gh-dash": symlink("~/.local/bin/gh-dash")}` reads
+  naturally; archives stage their contents.
 - Failure modes, decided now: plugin missing → `plan`-time error with
   provenance pointing at the module line; hash mismatch → hard error
   (upstream mutation or tampering), `grip update` to accept deliberately.

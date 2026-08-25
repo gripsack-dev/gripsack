@@ -4,11 +4,15 @@ use std::process::ExitCode;
 
 /// grip gc: collect store paths no generation references, and prune
 /// generations beyond keep_generations (user config) — never current.
-pub fn gc(palette: Palette) -> ExitCode {
+/// --dry-run previews without deleting (plan-before-apply, N6).
+pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
     let home = gripsack_store::gripsack_home();
     let keep = user_keep_generations();
-    match gripsack_exec::gc(&home, keep) {
+    match gripsack_exec::gc(&home, keep, dry_run) {
         Ok(report) => {
+            if dry_run {
+                println!("{}", "gc (dry run): nothing deleted".dimmed());
+            }
             if report.generations_removed.is_empty() && report.store_removed.is_empty() {
                 println!("{}", "gc: nothing to collect".dimmed());
             } else {

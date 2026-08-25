@@ -12,8 +12,8 @@ use crate::report::StepReport;
 use gripsack_ir::{Ir, Module, Step};
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
 use std::sync::{Condvar, Mutex};
 
 /// What the scheduler produced: the new manifest state, the reports
@@ -75,14 +75,15 @@ pub(crate) fn run_all(
         reports: Vec::new(),
         lock_entries: BTreeMap::new(),
     });
-    let finished = Mutex::new(BTreeSet::new());
     let condvar = Condvar::new();
     let dependents = &dependents;
     let indegree = &Mutex::new(indegree);
 
-    let workers = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
+    let workers = ctx.jobs.unwrap_or_else(|| {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
+    });
 
     std::thread::scope(|scope| {
         for _ in 0..workers {
@@ -92,11 +93,15 @@ pub(crate) fn run_all(
                         let mut st = state.lock().expect("scheduler state");
                         loop {
                             if st.error.is_some() {
-                                // stop picking new work; drain what's running
+                                // stop picking new work; drain what's
+                                // running — and WAIT like the success
+                                // path does, or every idle worker
+                                // busy-spins until the drain (N1)
                                 if st.running.is_empty() {
                                     return;
                                 }
-                                break None;
+                                st = condvar.wait(st).expect("scheduler state");
+                                continue;
                             }
                             if let Some(name) = st.ready.pop_front() {
                                 st.running.insert(name.clone());
@@ -121,10 +126,6 @@ pub(crate) fn run_all(
                             if let Some(entry) = outcome.lock_entry {
                                 st.lock_entries.insert(name.clone(), entry);
                             }
-                            finished
-                                .lock()
-                                .expect("scheduler finished")
-                                .insert(name.clone());
                             if let Some(deps) = dependents.get(name.as_str()) {
                                 let mut indeg = indegree.lock().expect("scheduler indegree");
                                 let mut st_ready = Vec::new();
@@ -181,7 +182,8 @@ pub(crate) fn run_all(
     })
 }
 
-/// One module, with its declared resources held (flock, 0007 §4).
+/// One module — steps acquire their own resources (0007 §4, N4); the
+/// scheduler only orders and fans out.
 fn run_one(
     name: &str,
     ir: &Ir,
@@ -192,14 +194,6 @@ fn run_one(
 ) -> Result<ModuleOutcome, ExecError> {
     let module: &Module = &ir.modules[name];
     let steps = &steps_by_module[name];
-    let resources: BTreeSet<&str> = steps
-        .iter()
-        .flat_map(|s| s.resources.iter().map(String::as_str))
-        .collect();
-    let mut guards = Vec::new();
-    for resource in resources {
-        guards.push(FlockGuard::acquire(&ctx.home, resource)?);
-    }
     run_module(
         name,
         module,
@@ -208,49 +202,4 @@ fn run_one(
         prev.get(name),
         lock.modules.get(name),
     )
-}
-
-/// An exclusive flock on `$GRIPSACK_HOME/locks/<name>.flock` — dropped
-/// when the module finishes. Two concurrent `grip` runs serialize on
-/// the same file (0007 §4).
-struct FlockGuard(std::fs::File);
-
-impl FlockGuard {
-    fn acquire(home: &Path, name: &str) -> io::Result<Self> {
-        let dir = home.join("locks");
-        std::fs::create_dir_all(&dir)?;
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(dir.join(format!("{name}.flock")))?;
-        flock(&file, true)?;
-        Ok(Self(file))
-    }
-}
-
-impl Drop for FlockGuard {
-    fn drop(&mut self) {
-        let _ = flock(&self.0, false);
-    }
-}
-
-#[cfg(unix)]
-fn flock(file: &std::fs::File, exclusive: bool) -> io::Result<()> {
-    use std::os::unix::io::AsRawFd;
-    let op = if exclusive {
-        libc::LOCK_EX
-    } else {
-        libc::LOCK_UN
-    };
-    if unsafe { libc::flock(file.as_raw_fd(), op) } == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
-
-#[cfg(not(unix))]
-fn flock(_file: &std::fs::File, _exclusive: bool) -> io::Result<()> {
-    Ok(()) // WSL is the Windows story — no flock there
 }

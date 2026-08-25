@@ -104,12 +104,20 @@ pub(crate) fn pour(_dest: &Path) -> io::Result<()> {
 }
 
 pub(crate) fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
+    copy_tree_filtered(from, to, &[])
+}
+
+/// Copy a tree, skipping top-level entries named in `skip`.
+pub(crate) fn copy_tree_filtered(from: &Path, to: &Path, skip: &[&str]) -> io::Result<()> {
     for entry in std::fs::read_dir(from)? {
         let entry = entry?;
+        if skip.iter().any(|s| entry.file_name() == *s) {
+            continue;
+        }
         let target = to.join(entry.file_name());
         if entry.file_type()?.is_dir() {
             std::fs::create_dir_all(&target)?;
-            copy_tree(&entry.path(), &target)?;
+            copy_tree_filtered(&entry.path(), &target, skip)?;
         } else {
             std::fs::copy(entry.path(), &target)?;
         }

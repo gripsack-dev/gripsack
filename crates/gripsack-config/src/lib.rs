@@ -73,6 +73,10 @@ pub enum Frontend {
 #[serde(default, deny_unknown_fields)]
 pub struct EvalSection {
     pub deps: Vec<String>,
+    /// Environment injected into the apply process for the run's
+    /// duration — build steps, fetchers, and plugins inherit it
+    /// (SSL_CERT_FILE is the canonical case).
+    pub env: std::collections::BTreeMap<String, String>,
 }
 
 /// A named fetcher.s tool-level wiring (0002 §4).

@@ -146,6 +146,19 @@ impl<'a> ModuleRun<'a> {
 
     /// Phase A: fetch and build steps, into staging. Skipped entirely
     /// when satisfied (presence is proof).
+    /// Acquire the step's declared resources for exactly its duration
+    /// (0007 §4, N4 — never the module's whole lifetime).
+    fn acquire_step(&self, step: &Step) -> Result<Vec<crate::util::FlockGuard>, ExecError> {
+        let mut guards = Vec::new();
+        // sorted by the BTreeSet at the call site — a total order, no AB/BA
+        let resources: std::collections::BTreeSet<&str> =
+            step.resources.iter().map(String::as_str).collect();
+        for resource in resources {
+            guards.push(crate::util::FlockGuard::acquire(&self.ctx.home, resource)?);
+        }
+        Ok(guards)
+    }
+
     fn produce(&mut self) -> Result<(), ExecError> {
         for step in self.steps {
             if let Some(verify) = &step.verify {
@@ -154,6 +167,7 @@ impl<'a> ModuleRun<'a> {
             if self.present {
                 continue;
             }
+            let _guards = self.acquire_step(step)?;
             match &step.action {
                 StepAction::Fetch { fetch: spec } => self.fetch_step(step, spec)?,
                 StepAction::Build {
@@ -268,6 +282,7 @@ impl<'a> ModuleRun<'a> {
             match &step.action {
                 StepAction::Install { entries } | StepAction::ConfigDeploy { entries } => {
                     progress(self.ctx, self.name, "deploying");
+                    let _guards = self.acquire_step(step)?;
                     for entry in entries {
                         let (summary, kind) = deploy_entry(
                             &mut self.deployed,

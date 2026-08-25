@@ -24,6 +24,9 @@ pub struct Ctx {
     /// Overwrite foreign/drifted tracked_copy destinations (explicit
     /// user intent — 0009 critique finding 3).
     pub take_over: bool,
+    /// Max concurrent modules in the scheduler (0007 §5). None = cores.
+    /// `--jobs` on the CLI; GRIPSACK_JOBS for CI.
+    pub jobs: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
