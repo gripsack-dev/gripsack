@@ -98,6 +98,16 @@ tentacles.
 - Failure modes, decided now: plugin missing → `plan`-time error with
   provenance pointing at the module line; hash mismatch → hard error
   (upstream mutation or tampering), `grip update` to accept deliberately.
+- Authoring support, decided now: the `gripfetch-author` skill
+  (griplint-py `.agents/skills/`) bakes in the nuances — `locked` as
+  resolve-vs-reproduce, provenance as the valuable response half,
+  same-pin-same-hash as the reproducibility bar — and
+  [gripfetch-conformance](https://github.com/gripsack-dev/gripfetch-conformance)
+  is the executable contract: an installable suite that drives a plugin
+  exactly like the core and asserts every clause (message shapes,
+  diagnostics, `locked`, hash stability, stderr robustness, provenance,
+  loud death). A conformance failure is a bug in the plugin, not an
+  opinion.
 
 ## 5. Fetcher tiers
 

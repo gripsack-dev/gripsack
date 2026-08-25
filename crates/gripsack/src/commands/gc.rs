@@ -7,6 +7,16 @@ use std::process::ExitCode;
 /// --dry-run previews without deleting (plan-before-apply, N6).
 pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
     let home = gripsack_store::gripsack_home();
+    // gc deletes store paths an in-flight apply may have published but
+    // not yet flipped — it must hold the same lifecycle lock as apply
+    // and rollback (finding D: same one-line fix, same family)
+    let _lifecycle_lock = match gripsack_exec::acquire_lifecycle_lock(&home) {
+        Ok(guard) => guard,
+        Err(e) => {
+            eprintln!("grip: cannot take the apply lock: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let keep = user_keep_generations();
     match gripsack_exec::gc(&home, keep, dry_run) {
         Ok(report) => {
