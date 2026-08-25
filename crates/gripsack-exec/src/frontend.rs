@@ -68,16 +68,23 @@ fn provision(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<
     let mut install = vec![
         "pip".into(),
         "install".into(),
-        "--extra-index-url".into(),
-        // griplint-* packages resolve here first — PyPI's project-
-        // creation cap can stall them for days, and our index carries
-        // versions PyPI may not have yet. Everything else falls
-        // through to PyPI (the default index).
-        "https://gripsack.dev/simple".into(),
         "--python".into(),
         python.to_string_lossy().into_owned(),
         format!("gripsack=={core_version}"),
     ];
+    // GRIPSACK_EXTRA_INDEX: opt-in extra indexes (comma-separated),
+    // e.g. https://gripsack.dev/simple for the griplint-* ecosystem
+    // while PyPI's project-creation cap holds packages back. Opt-in,
+    // NOT a default: a content-filtering proxy that 403s the index
+    // (observed: gripsack.dev/simple behind Bloomberg's egress) is a
+    // hard uv failure, which would break exactly the environments the
+    // index exists to help. PyPI stays the primary everywhere.
+    if let Ok(extra) = std::env::var("GRIPSACK_EXTRA_INDEX") {
+        for index in extra.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            install.push("--extra-index-url".into());
+            install.push(index.into());
+        }
+    }
     install.extend(config.eval.deps.iter().cloned());
     install.extend(linter_packages.iter().map(|p| p.to_string()));
     let args: Vec<&str> = install.iter().map(String::as_str).collect();
