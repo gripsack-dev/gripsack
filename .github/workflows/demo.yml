@@ -83,12 +83,6 @@ jobs:
             demos/demo-*.gif
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: demo-gif
-          path: demos/demo.gif
-          if-no-files-found: error
-
   publish:
     needs: render
     runs-on: ubuntu-latest
