@@ -14,10 +14,12 @@
 //! Discovery only, for now; the protocol host lands with the executor.
 
 pub mod fetch;
+pub mod host;
 pub(crate) mod http;
 pub mod resolve;
 
 pub use fetch::{FetchError, fetch, fetch_with_locked, payload_hash};
+pub use host::{AssetTarget, PIXI_RELEASE, UV_RELEASE, resolve as resolve_host_asset};
 pub use resolve::{ResolvedRelease, resolve_brew, resolve_latest};
 
 use std::path::PathBuf;

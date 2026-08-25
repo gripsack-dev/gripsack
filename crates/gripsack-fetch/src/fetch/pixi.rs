@@ -12,7 +12,39 @@
 
 use super::FetchError;
 use super::archive;
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
+
+/// The bundled pixi: per-platform pinned + sha256-verified through our
+/// own fetcher into `$GRIPSACK_HOME/tools/` (see host.rs) — same
+/// pattern as uv (0005 §3). Bundling is what makes `grip apply` one
+/// command on a clean machine; the pin also makes the fetcher itself
+/// reproducible, not just the packages.
+use crate::host::PIXI_RELEASE;
+
+fn ensure_pixi() -> Result<PathBuf, FetchError> {
+    let dir = gripsack_store::gripsack_home()
+        .join("tools")
+        .join(format!("pixi-{}", PIXI_RELEASE.version));
+    let pixi = dir.join("pixi");
+    if pixi.exists() {
+        return Ok(pixi);
+    }
+    let (url, sha) = crate::host::resolve(&PIXI_RELEASE)?;
+    let spec = gripsack_ir::FetchSpec::Tarball {
+        url,
+        sha256: Some(sha.to_string()),
+    };
+    let staging = dir.with_extension("staging");
+    let _ = std::fs::remove_dir_all(&staging);
+    crate::fetch::fetch(&spec, &staging)?;
+    std::fs::create_dir_all(&dir).map_err(io::Error::from)?;
+    // pixi's tarball is flat: a bare `pixi` binary at the root
+    // (unlike uv's nested uv-<triple>/ layout)
+    std::fs::rename(staging.join("pixi"), &pixi).map_err(io::Error::from)?;
+    let _ = std::fs::remove_dir_all(&staging);
+    Ok(pixi)
+}
 
 pub(crate) fn fetch(
     package: &str,
@@ -24,17 +56,11 @@ pub(crate) fn fetch(
         None => package.to_string(),
     };
     let pixi_home = gripsack_store::gripsack_home().join("tools/pixi");
-    let status = std::process::Command::new("pixi")
+    let pixi = ensure_pixi()?;
+    let status = std::process::Command::new(pixi)
         .args(["global", "install", &spec])
         .env("PIXI_HOME", &pixi_home)
-        .status()
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => FetchError::Http {
-                url: package.to_string(),
-                reason: "pixi not found on PATH — the pixi fetcher needs it as a host tool (https://pixi.sh)".to_string(),
-            },
-            _ => FetchError::Io(e),
-        })?;
+        .status()?;
     if !status.success() {
         return Err(FetchError::Http {
             url: package.to_string(),

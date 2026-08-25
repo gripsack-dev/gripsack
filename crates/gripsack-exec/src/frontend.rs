@@ -12,8 +12,7 @@ use gripsack_config::EnvConfig;
 use std::io;
 use std::path::{Path, PathBuf};
 
-const UV_VERSION: &str = "0.12.5";
-const UV_SHA256: &str = "a4742988791c9aeae68c78150d6cba762062ad2a47e53738c2779d2b596bfcdb";
+use gripsack_fetch::UV_RELEASE;
 
 /// The python to evaluate with, provisioned if needed. Provisioning
 /// failures are the caller's error to surface — never silently fall
@@ -81,24 +80,28 @@ fn provision(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<
 }
 
 fn ensure_uv(home: &Path) -> io::Result<PathBuf> {
-    let dir = home.join("tools").join(format!("uv-{UV_VERSION}"));
+    let dir = home
+        .join("tools")
+        .join(format!("uv-{}", UV_RELEASE.version));
     let uv = dir.join("uv");
     if uv.exists() {
         return Ok(uv);
     }
-    // dogfood: pinned + sha256-verified through our own fetcher
-    let url = format!(
-        "https://github.com/astral-sh/uv/releases/download/{UV_VERSION}/uv-x86_64-unknown-linux-musl.tar.gz"
-    );
+    // dogfood: per-platform pinned + sha256-verified through our own
+    // fetcher (host.rs)
+    let (url, sha) = gripsack_fetch::resolve_host_asset(&UV_RELEASE).map_err(io::Error::other)?;
     let spec = gripsack_ir::FetchSpec::Tarball {
         url,
-        sha256: Some(UV_SHA256.to_string()),
+        sha256: Some(sha.to_string()),
     };
     let staging = dir.with_extension("staging");
     let _ = std::fs::remove_dir_all(&staging);
     gripsack_fetch::fetch(&spec, &staging).map_err(io::Error::other)?;
-    // the tarball contains uv-x86_64-unknown-linux-musl/{uv,uvx}
-    let nested = staging.join("uv-x86_64-unknown-linux-musl");
+    // the tarball contains uv-<triple>/{uv,uvx}
+    let target = gripsack_fetch::AssetTarget::current()
+        .expect("resolved above")
+        .triple();
+    let nested = staging.join(format!("uv-{target}"));
     std::fs::create_dir_all(&dir)?;
     std::fs::rename(nested.join("uv"), &uv)?;
     let _ = std::fs::remove_dir_all(&staging);
