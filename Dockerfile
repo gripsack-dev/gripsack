@@ -10,6 +10,8 @@ RUN apk add --no-cache musl-dev git \
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+# grip init embeds the env-repo template at build time (include_str!)
+COPY template ./template
 
 FROM builder AS test
 RUN cargo fmt --check \
