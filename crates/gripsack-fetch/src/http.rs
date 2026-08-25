@@ -4,13 +4,26 @@
 //!
 //! - **Proxy** — `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` (either case) are
 //!   honored; without this every fetch is dead behind a corporate proxy.
-//!   (`no_proxy` is not supported by ureq 2.x — known limitation.)
 //! - **Roots** — trust is the bundled webpki roots *plus* the system
 //!   roots. rustls-native-certs goes through openssl-probe on Linux, so
 //!   `SSL_CERT_FILE`/`SSL_CERT_DIR` are honored — that is what makes a
 //!   TLS-intercepting proxy's CA verifiable.
+//!
+//! Plus the one ureq 2.x never grew: `NO_PROXY`/`no_proxy` (curl
+//! semantics — comma-separated, `*` matches everything, a bare domain
+//! matches it and its subdomains, optional `:port`).
 
 use std::sync::Arc;
+
+/// GET `url` through the right agent for the environment: direct when
+/// no_proxy says so, the env-proxy agent otherwise.
+pub(crate) fn get(url: &str) -> ureq::Request {
+    if proxy_bypassed(url) {
+        direct_agent().get(url)
+    } else {
+        agent().get(url)
+    }
+}
 
 /// A ureq agent configured for the environment it runs in.
 pub(crate) fn agent() -> ureq::Agent {
@@ -18,6 +31,65 @@ pub(crate) fn agent() -> ureq::Agent {
         .try_proxy_from_env(true)
         .tls_config(tls_config())
         .build()
+}
+
+/// An agent that never proxies.
+fn direct_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new().tls_config(tls_config()).build()
+}
+
+/// curl-style no_proxy: does this URL bypass the proxy?
+fn proxy_bypassed(url: &str) -> bool {
+    let list = std::env::var("NO_PROXY")
+        .or_else(|_| std::env::var("no_proxy"))
+        .unwrap_or_default();
+    if list.trim().is_empty() {
+        return false;
+    }
+    let Some((host, port)) = host_port(url) else {
+        return false;
+    };
+    list.split(',')
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .any(|entry| entry_matches(entry, &host, port.as_deref()))
+}
+
+/// (host, port) out of a URL — scheme://[user@]host[:port][/...].
+/// Returns lowercase host; port as the explicit string if present.
+fn host_port(url: &str) -> Option<(String, Option<String>)> {
+    let (_, after_scheme) = url.split_once("://")?;
+    let authority = after_scheme.split(['/', '?', '#']).next()?;
+    let hostport = authority.rsplit('@').next()?;
+    let hostport = hostport.strip_prefix('[').unwrap_or(hostport);
+    let (host, port) = match hostport.split_once(']') {
+        Some((h, rest)) => (h, rest.strip_prefix(':').map(str::to_string)),
+        None => match hostport.rsplit_once(':') {
+            Some((h, p)) if p.chars().all(|c| c.is_ascii_digit()) => (h, Some(p.to_string())),
+            _ => (hostport, None),
+        },
+    };
+    if host.is_empty() {
+        return None;
+    }
+    Some((host.to_lowercase(), port))
+}
+
+fn entry_matches(entry: &str, host: &str, port: Option<&str>) -> bool {
+    if entry == "*" {
+        return true;
+    }
+    let (entry_host, entry_port) = match entry.rsplit_once(':') {
+        Some((h, p)) if p.chars().all(|c| c.is_ascii_digit()) => (h, Some(p)),
+        _ => (entry, None),
+    };
+    if let Some(p) = entry_port
+        && port != Some(p)
+    {
+        return false;
+    }
+    let entry_host = entry_host.trim_start_matches('.').to_lowercase();
+    host == entry_host || host.ends_with(&format!(".{entry_host}"))
 }
 
 fn tls_config() -> Arc<rustls::ClientConfig> {
@@ -38,4 +110,54 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
         .with_root_certificates(roots)
         .with_no_client_auth();
     Arc::new(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_port_parses_common_shapes() {
+        assert_eq!(
+            host_port("https://github.com/org/repo"),
+            Some(("github.com".into(), None))
+        );
+        assert_eq!(
+            host_port("https://user:pw@proxy.internal:81/x"),
+            Some(("proxy.internal".into(), Some("81".into())))
+        );
+        assert_eq!(
+            host_port("http://[::1]:8080/y"),
+            Some(("::1".into(), Some("8080".into())))
+        );
+        assert_eq!(host_port("not a url at all"), None);
+    }
+
+    #[test]
+    fn entry_matching_is_curl_shaped() {
+        assert!(entry_matches("*", "anything", None));
+        assert!(entry_matches("example.com", "example.com", None));
+        assert!(entry_matches("example.com", "a.example.com", None));
+        assert!(entry_matches(".example.com", "a.example.com", None));
+        assert!(!entry_matches("example.com", "notexample.com", None));
+        assert!(entry_matches("internal:81", "internal", Some("81")));
+        assert!(!entry_matches("internal:81", "internal", Some("82")));
+        assert!(entry_matches("INTERNAL", "internal", None));
+    }
+
+    #[test]
+    fn bypass_reads_the_env() {
+        unsafe {
+            std::env::set_var("NO_PROXY", "github.com, .internal:81");
+        }
+        assert!(proxy_bypassed("https://github.com/x"));
+        assert!(proxy_bypassed("https://api.github.com/x"));
+        assert!(proxy_bypassed("https://proxy.internal:81/x"));
+        assert!(!proxy_bypassed("https://proxy.internal:82/x"));
+        assert!(!proxy_bypassed("https://crates.io/x"));
+        unsafe {
+            std::env::remove_var("NO_PROXY");
+        }
+        assert!(!proxy_bypassed("https://github.com/x"));
+    }
 }

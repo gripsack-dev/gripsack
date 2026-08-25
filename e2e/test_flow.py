@@ -75,6 +75,27 @@ module("zed", config={**tree("configs/zed", "~/.config/zed")})
     assert not (deployed / "keymap.json").exists()
 
 
+def test_check_passes_valid_repo_and_has_no_side_effects(sandbox):
+    """grip check (0011 §9): eval + sema + lint, zero side effects."""
+    repo = make_lint_repo(sandbox, "good = true\n")
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "check: ok" in out.stdout
+    # zero side effects: no generations, no store, nothing deployed
+    assert not (sandbox / ".local/share/gripsack/generations").exists()
+    assert not (sandbox / ".local/share/gripsack/store").exists()
+    assert not (sandbox / ".config/demo").exists()
+
+
+def test_check_fails_on_lint_error(sandbox):
+    repo = make_lint_repo(sandbox, "BAD_KEY = 1\n")
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "griplint-demo/A01" in out.stderr
+    assert not (sandbox / ".local/share/gripsack/generations").exists()
+    assert not (sandbox / ".config/demo").exists()
+
+
 def test_owned_prune_on_undeclare(sandbox):
     """Regression: prune-on-undeclare must work for owned symlinks too —
     the recorded hash is the source content, so the tracked_copy hash
