@@ -68,6 +68,12 @@ fn provision(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<
     let mut install = vec![
         "pip".into(),
         "install".into(),
+        "--extra-index-url".into(),
+        // griplint-* packages resolve here first — PyPI's project-
+        // creation cap can stall them for days, and our index carries
+        // versions PyPI may not have yet. Everything else falls
+        // through to PyPI (the default index).
+        "https://gripsack.dev/simple".into(),
         "--python".into(),
         python.to_string_lossy().into_owned(),
         format!("gripsack=={core_version}"),
@@ -82,7 +88,15 @@ fn provision(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<
 /// The minimum uv version a PATH uv must report to be preferred over
 /// the pinned download (review's uv cluster: skew both ways — too old
 /// is a bug, and a site config written for a newer uv breaks the pin).
-const UV_MIN_VERSION: &str = "0.12";
+const UV_MIN_VERSION: (u64, u64) = (0, 12);
+
+/// "0.13.7" → (0, 13) — semver-lite for uv's MAJOR.MINOR scheme.
+fn parse_version(v: &str) -> Option<(u64, u64)> {
+    let mut parts = v.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next().unwrap_or("0").parse().ok()?;
+    Some((major, minor))
+}
 
 fn ensure_uv(home: &Path) -> io::Result<PathBuf> {
     // GRIPSACK_UV is the explicit escape hatch (like GRIPSACK_PYTHON).
@@ -133,12 +147,15 @@ fn uv_on_path() -> io::Result<PathBuf> {
     }
     let version = String::from_utf8_lossy(&out.stdout);
     let version = version.trim().trim_start_matches("uv ").to_string();
-    if version.starts_with(UV_MIN_VERSION) {
-        Ok(PathBuf::from("uv"))
-    } else {
-        Err(io::Error::other(format!(
-            "uv on PATH is {version}, need >= {UV_MIN_VERSION} — provisioning the pinned one"
-        )))
+    // numeric compare, not string-prefix — 0.13/1.x are NEWER, not
+    // older (the string-prefix check reintroduced the skew trap it
+    // was built to avoid)
+    match parse_version(&version) {
+        Some(v) if v >= UV_MIN_VERSION => Ok(PathBuf::from("uv")),
+        _ => Err(io::Error::other(format!(
+            "uv on PATH is {version}, need >= {}.{} — provisioning the pinned one",
+            UV_MIN_VERSION.0, UV_MIN_VERSION.1
+        ))),
     }
 }
 
@@ -157,5 +174,27 @@ fn run(program: &Path, args: &[&str], home: &Path) -> io::Result<()> {
             program.display(),
             args
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{UV_MIN_VERSION, parse_version};
+
+    #[test]
+    fn path_uv_preference_is_a_real_semver_compare() {
+        for (v, preferred) in [
+            ("0.11.15", false),
+            ("0.12.5", true),
+            ("0.13.0", true),
+            ("0.20.0", true),
+            ("1.0.0", true),
+        ] {
+            assert_eq!(
+                parse_version(v).map(|p| p >= UV_MIN_VERSION),
+                Some(preferred),
+                "uv {v} preferred should be {preferred}"
+            );
+        }
     }
 }
