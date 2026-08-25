@@ -33,6 +33,11 @@ if TYPE_CHECKING:
 UNREGISTERED_LINTER = "E501"
 BAD_REGISTRATION = "E502"
 MISSING_EXECUTABLE = "E503"
+#: Severity for crash-class diagnostics (E99 crash, E02 protocol death):
+#: a broken linter is evidence about the LINTER, never about the config
+#: (review finding E). Reported loudly by name, but apply/check carry
+#: on — adopting a linter must never become an availability dependency.
+CRASH_SEVERITY = "warning"
 
 @dataclass
 class Diagnostic:
@@ -183,8 +188,9 @@ def _run_linter(
         diagnostics.append(
             Diagnostic(
                 f"griplint-{name}/E02",
-                "error",
-                f"linter exited {proc.returncode} without a response",
+                CRASH_SEVERITY,
+                f"linter {name!r} exited {proc.returncode} without a response — "
+                "the linter is broken, not the config",
                 labels,
             )
         )

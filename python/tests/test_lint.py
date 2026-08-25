@@ -94,4 +94,6 @@ def test_linter_death_is_not_silent(tmp_path, monkeypatch):
     diagnostics = run_lints(repo, "testhost", gripsack.graph.registered_modules())
     assert len(diagnostics) == 1
     assert diagnostics[0].code == "griplint-demo/E02"
-    assert diagnostics[0].severity == "error"
+    # crash class (review finding E): a broken linter is evidence
+    # about the linter, never about the config — warning, not a blocker
+    assert diagnostics[0].severity == "warning"

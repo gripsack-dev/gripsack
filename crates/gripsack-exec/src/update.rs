@@ -7,6 +7,9 @@ use gripsack_ir::Ir;
 
 /// (0008 §5). `grip update` never deploys; apply does.
 pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
+    // update rewrites the lockfile while apply may be reading it —
+    // same lifecycle lock (finding F, closed alongside D)
+    let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
     use gripsack_ir::FetchSpec as F;
     let order = scoped_order(ir, &ctx.only)?;
     let mut lock = crate::lockfile::read(&ctx.repo, &ctx.host).unwrap_or_default();
