@@ -31,7 +31,7 @@ pub use generations::{
     DeployedEntry, Generation, ModuleState, current as current_generation, flip,
     list as list_generations, read_manifest, write_manifest,
 };
-pub use hash::{canonical_file_hash, canonical_tree_hash};
+pub use hash::{canonical_bytes_hash, canonical_file_hash, canonical_tree_hash};
 pub use paths::{
     GENERATIONS_DIR, HASH_LEN, STORE_DIR, current_link, generation_dir, gripsack_home, input_hash,
     store_path,

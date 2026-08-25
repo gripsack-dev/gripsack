@@ -81,6 +81,7 @@ mod tests {
                 from: "a".into(),
                 to: "~/.a".into(),
                 mode: Ownership::Owned,
+                vars: Default::default(),
                 hash: "h".into(),
             }],
             env,

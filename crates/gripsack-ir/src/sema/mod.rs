@@ -8,7 +8,6 @@
 
 mod deps;
 mod destinations;
-mod features;
 mod resources;
 mod steps;
 mod verify_paths;
@@ -23,7 +22,6 @@ const PASSES: &[fn(&Ir, &mut Vec<Diagnostic>)] = &[
     deps::check,
     destinations::check,
     resources::check,
-    features::check,
     verify_paths::check,
 ];
 
@@ -300,18 +298,20 @@ mod tests {
     }
 
     #[test]
-    fn merge_mode_is_e108_not_a_mid_apply_error() {
-        let json = r#"{
+    fn merge_and_template_modes_pass_sema_with_vars_and_marker() {
+        let json = r##"{
             "ir_version": 1,
             "modules": {
                 "shell": {
-                    "config": [{"from": "rc", "to": "~/.bashrc", "mode": "merge"}]
+                    "config": [
+                        {"from": "rc", "to": "~/.bashrc", "mode": "merge", "marker": "#"},
+                        {"from": "id", "to": "~/.config/git/id", "mode": "template",
+                         "vars": {"email": "a@b.c"}}
+                    ]
                 }
             }
-        }"#;
-        let diagnostics = check(json).unwrap_err();
-        assert_eq!(diagnostics[0].code, codes::UNSUPPORTED_MODE);
-        assert!(diagnostics[0].help.is_some());
+        }"##;
+        assert!(check(json).is_ok());
     }
 
     #[test]

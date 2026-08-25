@@ -170,6 +170,17 @@
           ],
           "default": "owned"
         },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "template variables (mode template only)"
+        },
+        "marker": {
+          "type": "string",
+          "description": "comment prefix for the managed block (mode merge only); default: inferred from the dest extension"
+        },
         "span": {
           "$ref": "#/$defs/span"
         }

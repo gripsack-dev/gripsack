@@ -124,6 +124,7 @@ mod tests {
                     from: "a".into(),
                     to: "~/.config/m/a".into(),
                     mode: Ownership::TrackedCopy,
+                    vars: Default::default(),
                     hash: "h".into(),
                 }],
                 env: vec![],

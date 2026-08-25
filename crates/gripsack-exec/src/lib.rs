@@ -25,6 +25,7 @@ pub mod frontend;
 pub mod gc;
 pub mod lockfile;
 pub mod module;
+pub mod render;
 pub mod report;
 pub mod resolve;
 pub mod schedule;

@@ -820,3 +820,105 @@ module(
     assert current.resolve().name == "1"
     # the extra module's destination is gone after rollback
     assert not (sandbox / ".local/bin/extra").exists()
+
+
+def test_merge_mode_owns_one_block_in_a_foreign_file(sandbox):
+    """merge: gripsack owns exactly one delimited block; everything
+    outside the markers is never touched (0001 §3.7)."""
+    confdir = sandbox / "myenv" / "configs" / "shell"
+    confdir.mkdir(parents=True)
+    (confdir / "block.sh").write_text('export PATH="$HOME/.local/bin:$PATH"\n')
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, merge
+
+module("shell", config={"configs/shell/block.sh": merge("~/.bashrc")})
+""",
+    )
+    # foreign file with pre-existing content
+    bashrc = sandbox / ".bashrc"
+    bashrc.write_text("# user stuff\nexport EDITOR=hx\n")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    content = bashrc.read_text()
+    assert content.startswith("# user stuff\nexport EDITOR=hx\n")
+    assert "# >>> gripsack module=shell >>>" in content
+    assert 'export PATH="$HOME/.local/bin:$PATH"' in content
+    assert "# <<< gripsack <<<" in content
+
+    # re-apply is satisfied; user drift INSIDE the block self-heals,
+    # user content outside is untouched
+    healed = content.replace("export PATH", "# user edited\nexport PATH")
+    bashrc.write_text(healed + "\n# more user stuff\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    content = bashrc.read_text()
+    assert content.count("# >>> gripsack module=shell >>>") == 1
+    assert "# user edited" not in content
+    assert content.endswith("# more user stuff\n")
+
+    # undeclare prunes only the block; the foreign file stays
+    (sandbox / "myenv" / "modules" / "hello.py").write_text("")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    content = bashrc.read_text()
+    assert "gripsack" not in content
+    assert "# user stuff" in content
+    assert "# more user stuff" in content
+
+
+def test_template_mode_renders_vars_at_deploy(sandbox):
+    """template: {{ name }} placeholders render from entry vars at
+    deploy time; undefined variables fail loudly (0001 §3.7)."""
+    confdir = sandbox / "myenv" / "configs" / "git"
+    confdir.mkdir(parents=True)
+    (confdir / "id.toml").write_text(
+        'email = "{{ email }}"\nname = "{{ name }}"\nliteral = "{{{{ keep }}"\n'
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, template
+
+module("git", config={"configs/git/id.toml": template(
+    "~/.config/git/id.toml",
+    vars={"email": "a@b.c", "name": "T"},
+)})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    deployed = sandbox / ".config" / "git" / "id.toml"
+    assert deployed.read_text() == 'email = "a@b.c"\nname = "T"\nliteral = "{{ keep }}"\n'
+
+    # changing a var updates the rendered dest on the next apply
+    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+        """
+from gripsack import module, template
+
+module("git", config={"configs/git/id.toml": template(
+    "~/.config/git/id.toml",
+    vars={"email": "x@y.z", "name": "T"},
+)})
+"""
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert 'email = "x@y.z"' in deployed.read_text()
+
+    # an undefined variable fails at apply, never silently empty
+    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+        """
+from gripsack import module, template
+
+module("git", config={"configs/git/id.toml": template(
+    "~/.config/git/id.toml",
+    vars={"email": "x@y.z"},
+)})
+"""
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "undefined variable" in out.stderr

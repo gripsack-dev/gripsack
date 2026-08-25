@@ -27,6 +27,26 @@ pub(crate) fn run_rollback(
                         .join(&prev_entry.from);
                     let result = match prev_entry.mode {
                         Ownership::Owned => store::symlink_replace(&dest, &source),
+                        // a merge entry must never be restored by whole-
+                        // file write — the file is foreign; re-upsert
+                        // the previous generation's block instead
+                        Ownership::Merge => {
+                            let payload = std::fs::read_to_string(&source).unwrap_or_default();
+                            let existing = std::fs::read_to_string(&dest).unwrap_or_default();
+                            match crate::render::upsert_block(
+                                &existing, name, &dest, None, &payload,
+                            ) {
+                                Ok(new) => store::atomic_write(&dest, new.as_bytes()),
+                                Err(_) => Ok(()),
+                            }
+                        }
+                        // template dest holds RENDERED bytes — re-render
+                        // the previous payload with its recorded vars
+                        Ownership::Template => std::fs::read(&source).and_then(|raw| {
+                            crate::render::render_template(&raw, &prev_entry.vars, &prev_entry.from)
+                                .map_err(std::io::Error::other)
+                                .and_then(|bytes| store::atomic_write(&dest, &bytes))
+                        }),
                         _ => std::fs::read(&source)
                             .and_then(|bytes| store::atomic_write(&dest, &bytes)),
                     };
@@ -35,7 +55,22 @@ pub(crate) fn run_rollback(
                     }
                 }
                 None => {
-                    if std::fs::remove_file(&dest).is_ok() {
+                    // a merge entry with no previous deployment means we
+                    // ADDED a block this run — remove only the block,
+                    // never the foreign file
+                    if entry.mode == Ownership::Merge {
+                        let existing = std::fs::read_to_string(&dest).unwrap_or_default();
+                        if let Some(new) = crate::render::remove_block(&existing, name) {
+                            let removed = if new.trim().is_empty() {
+                                std::fs::remove_file(&dest).is_ok()
+                            } else {
+                                store::atomic_write(&dest, new.as_bytes()).is_ok()
+                            };
+                            if removed {
+                                tracing::info!("removed block in {} (run rolled back)", entry.to);
+                            }
+                        }
+                    } else if std::fs::remove_file(&dest).is_ok() {
                         tracing::info!("removed {} (run rolled back)", entry.to);
                     }
                 }
@@ -78,8 +113,17 @@ pub(crate) fn deploy_entry(
             entry.mode, entry.from
         )));
     }
-    let hash = store::canonical_file_hash(&source)?;
-    let (summary, kind) = match &entry.mode {
+    // template payloads render at deploy time — the vars were computed
+    // by the frontend at eval; the core only substitutes (0001 §3.7)
+    let rendered = match &entry.mode {
+        Ownership::Template => Some(crate::render::render_template(
+            &std::fs::read(&source)?,
+            &entry.vars,
+            &entry.from,
+        )?),
+        _ => None,
+    };
+    let (summary, kind, hash) = match &entry.mode {
         Ownership::Owned => {
             // external satisfaction (0009 critique): never overwrite a
             // path that is neither ours (symlink into the store) nor
@@ -110,27 +154,46 @@ pub(crate) fn deploy_entry(
             (
                 format!("linked {} → {}", from, entry.to),
                 ReportKind::Installed,
+                store::canonical_file_hash(&source)?,
             )
         }
-        Ownership::TrackedCopy => {
+        Ownership::TrackedCopy | Ownership::Template => {
+            let content;
+            let owned_bytes;
+            if let Some(r) = &rendered {
+                content = r.as_slice();
+            } else {
+                owned_bytes = std::fs::read(&source)?;
+                content = owned_bytes.as_slice();
+            }
+            let hash = match &rendered {
+                Some(bytes) => store::canonical_bytes_hash(bytes),
+                None => store::canonical_file_hash(&source)?,
+            };
             let prev_hash = prev
                 .and_then(|m| m.entries.iter().find(|e| e.to == entry.to))
                 .map(|e| e.hash.as_str());
             if dest.exists() {
                 let current = store::canonical_file_hash(&dest)?;
                 if current == hash {
-                    (format!("{} unchanged", entry.to), ReportKind::Satisfied)
+                    (
+                        format!("{} unchanged", entry.to),
+                        ReportKind::Satisfied,
+                        hash,
+                    )
                 } else if prev_hash == Some(current.as_str()) {
-                    store::atomic_write(&dest, &std::fs::read(&source)?)?;
+                    store::atomic_write(&dest, content)?;
                     (
                         format!("updated {} → {}", from, entry.to),
                         ReportKind::Configured,
+                        hash,
                     )
                 } else if ctx.take_over {
-                    store::atomic_write(&dest, &std::fs::read(&source)?)?;
+                    store::atomic_write(&dest, content)?;
                     (
                         format!("took over {} → {}", from, entry.to),
                         ReportKind::Configured,
+                        hash,
                     )
                 } else {
                     let note = if prev_hash.is_none() {
@@ -139,31 +202,63 @@ pub(crate) fn deploy_entry(
                         format!("{} drifted — kept", entry.to)
                     };
                     tracing::warn!("{}", note);
-                    (note, ReportKind::Warned)
+                    (note, ReportKind::Warned, hash)
                 }
             } else {
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                store::atomic_write(&dest, &std::fs::read(&source)?)?;
+                store::atomic_write(&dest, content)?;
                 (
                     format!("copied {} → {}", from, entry.to),
                     ReportKind::Configured,
+                    hash,
                 )
             }
         }
-        other => {
-            return Err(ExecError::Step {
-                module: entry.from.clone(),
-                step: "deploy".into(),
-                detail: format!("ownership mode {other:?} is not supported yet"),
-            });
+        Ownership::Merge => {
+            // the file is foreign — we own exactly one delimited block
+            // inside it and regenerate that block wholesale (conda's
+            // replace-not-merge: drift inside the markers self-heals)
+            let payload = std::fs::read_to_string(&source)
+                .map_err(|e| fail(format!("cannot read {}: {e}", source.display())))?;
+            let block = payload.trim_end_matches('\n');
+            let hash = store::canonical_bytes_hash(block.as_bytes());
+            let existing = std::fs::read_to_string(&dest).unwrap_or_default();
+            let satisfied = crate::render::extract_block(&existing, module)
+                .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()) == hash);
+            if satisfied {
+                (
+                    format!("{} block unchanged", entry.to),
+                    ReportKind::Satisfied,
+                    hash,
+                )
+            } else {
+                let new = crate::render::upsert_block(
+                    &existing,
+                    module,
+                    &dest,
+                    entry.marker.as_deref(),
+                    &payload,
+                )
+                .map_err(fail)?;
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                store::atomic_write(&dest, new.as_bytes())?;
+                (
+                    format!("merged {} → {}", from, entry.to),
+                    ReportKind::Configured,
+                    hash,
+                )
+            }
         }
     };
     out.push(store::DeployedEntry {
         from: entry.from.clone(),
         to: entry.to.clone(),
         mode: entry.mode.clone(),
+        vars: entry.vars.clone(),
         hash,
     });
     Ok((summary, kind))

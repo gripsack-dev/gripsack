@@ -13,9 +13,9 @@ diagnostics itself.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import sys
+import types
 from pathlib import Path
 
 from .graph import emit_ir, registered_modules
@@ -23,11 +23,16 @@ from .lint import run_lints
 
 
 def _exec(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    # Never the bytecode cache: env-repo modules are rewritten by
+    # scripts (grip apply loops, generators, git checkouts), and
+    # CPython's pyc validation — mtime in whole seconds + file size —
+    # treats a same-second, same-size rewrite as fresh. A stale module
+    # then silently deploys stale config (observed in e2e: a template
+    # vars change that never reached the core). Compile from source,
+    # every time — modules are tiny.
+    mod = types.ModuleType(name)
+    mod.__file__ = str(path)
+    exec(compile(path.read_bytes(), str(path), "exec"), mod.__dict__)
     return mod
 
 
