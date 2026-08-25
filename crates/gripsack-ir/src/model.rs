@@ -148,6 +148,15 @@ pub struct Entry {
     pub to: String,
     #[serde(default)]
     pub mode: Ownership,
+    /// Template variables (`{{ name }}` in the payload) — mode `template`
+    /// only. Values are computed by the frontend at eval time (facts,
+    /// per-host selection); the core stays a dumb substituter.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: std::collections::BTreeMap<String, String>,
+    /// Comment prefix for the managed block (mode `merge` only), e.g.
+    /// `//` for a jsonc dest. None → inferred from the dest extension.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
 }

@@ -69,6 +69,15 @@ class ModuleData:
     #: Registered linter name (0011) — eval-time only, never in the IR.
     lint: Optional[str] = None
 
+    @staticmethod
+    def _entry_ir(src: str, d: Dest) -> dict[str, Any]:
+        entry: dict[str, Any] = {"from": src, "to": d.to, "mode": d.mode}
+        if d.vars:
+            entry["vars"] = d.vars
+        if d.marker is not None:
+            entry["marker"] = d.marker
+        return entry
+
     def to_ir(self) -> dict[str, Any]:
         ir: dict[str, Any] = {}
         if self.fetch:
@@ -77,13 +86,11 @@ class ModuleData:
             ir["build"] = self.build
         if self.install:
             ir["install"] = [
-                {"from": src, "to": d.to, "mode": d.mode}
-                for src, d in self.install.items()
+                self._entry_ir(src, d) for src, d in self.install.items()
             ]
         if self.config:
             ir["config"] = [
-                {"from": src, "to": d.to, "mode": d.mode}
-                for src, d in self.config.items()
+                self._entry_ir(src, d) for src, d in self.config.items()
             ]
         if self.depends:
             ir["depends"] = [

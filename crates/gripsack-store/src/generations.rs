@@ -23,6 +23,9 @@ pub struct DeployedEntry {
     pub from: String,
     pub to: String,
     pub mode: Ownership,
+    /// Template vars at deploy time — rollback re-renders with these.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub vars: std::collections::BTreeMap<String, String>,
     pub hash: String,
 }
 
@@ -108,6 +111,7 @@ mod tests {
                     from: "config.toml".into(),
                     to: "~/.config/helix/config.toml".into(),
                     mode: Ownership::TrackedCopy,
+                    vars: Default::default(),
                     hash: "deadbeef".into(),
                 }],
                 env: vec![],

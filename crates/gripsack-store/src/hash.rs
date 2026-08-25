@@ -23,6 +23,16 @@ pub fn canonical_file_hash(path: &Path) -> std::io::Result<String> {
     Ok(hex(&hasher.finalize()))
 }
 
+/// Canonical hash of in-memory file contents (no executable bit) — for
+/// rendered templates and managed blocks, which have no store file.
+pub fn canonical_bytes_hash(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"file\0");
+    hasher.update([0u8]);
+    hasher.update(bytes);
+    hex(&hasher.finalize())
+}
+
 /// Canonical hash of a directory tree: sorted relative paths plus each
 /// entry's canonical identity. Deterministic across machines.
 pub fn canonical_tree_hash(root: &Path) -> std::io::Result<String> {

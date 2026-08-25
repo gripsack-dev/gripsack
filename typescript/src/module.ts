@@ -35,6 +35,8 @@ export interface IrEntry {
   from: string;
   to: string;
   mode: Ownership;
+  vars?: Record<string, string>;
+  marker?: string;
 }
 
 export interface IrModule {
@@ -157,7 +159,13 @@ export function module(name: string, spec: ModuleSpec): void {
   if (spec.build) ir.build = spec.build;
   const entries = (rec?: Record<string, Dest>): IrEntry[] | undefined =>
     rec && Object.keys(rec).length > 0
-      ? Object.entries(rec).map(([from, d]) => ({ from, to: d.to, mode: d.mode }))
+      ? Object.entries(rec).map(([from, d]) => ({
+          from,
+          to: d.to,
+          mode: d.mode,
+          ...(d.vars ? { vars: d.vars } : {}),
+          ...(d.marker !== undefined ? { marker: d.marker } : {}),
+        }))
       : undefined;
   const install = entries(spec.install);
   if (install) ir.install = install;

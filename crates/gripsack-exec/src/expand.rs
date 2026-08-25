@@ -123,6 +123,8 @@ mod tests {
                 from: "bin/hx".into(),
                 to: "~/.local/bin/hx".into(),
                 mode: Default::default(),
+                vars: Default::default(),
+                marker: None,
                 span: None,
             }],
             ..Default::default()
@@ -141,6 +143,8 @@ mod tests {
                 from: "config.toml".into(),
                 to: "~/.config/helix/config.toml".into(),
                 mode: Default::default(),
+                vars: Default::default(),
+                marker: None,
                 span: None,
             }],
             ..Default::default()
