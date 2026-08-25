@@ -43,15 +43,45 @@ jobs:
           name: release-tarball
           path: dist
 
-      - name: Render demo GIF
+      - name: Render demo GIFs (one per site palette)
         run: |
           tar -xzf dist/gripsack-*.tar.gz -C dist
-          # the tape runs a real apply: the frontend must be importable
-          docker run --rm -v "$PWD:/vhs" -w /vhs --entrypoint sh ghcr.io/charmbracelet/vhs -c \
-            "apt-get update -qq && apt-get install -y -qq python3 >/dev/null \
+          # the tape runs a real apply: the frontend must be importable.
+          # One render per palette the site's picker offers
+          # (gripsack-dev.github.io website/index.html palette-bar), so
+          # the site can swap the demo to match the picked palette —
+          # the rootle.dev pattern. Theme names are VHS built-ins
+          # (THEMES.md); demo.tape's own Output/Theme lines are the
+          # default-palette render and stay canonical.
+          docker run --rm -v "$PWD:/vhs" -w /vhs --entrypoint sh ghcr.io/charmbracelet/vhs -c '
+            apt-get update -qq && apt-get install -y -qq python3 >/dev/null \
              && install -m755 /vhs/dist/gripsack-*/grip /usr/local/bin/grip \
              && export PYTHONPATH=/vhs/python \
-             && vhs /vhs/demos/demo.tape"
+             && render() { \
+                  sed -e "s|^Output .*|Output demos/$1.gif|" \
+                      -e "s|^Set Theme .*|Set Theme \"$2\"|" \
+                      /vhs/demos/demo.tape > "/tmp/$1.tape" \
+                  && vhs "/tmp/$1.tape"; \
+                } \
+             && render demo "Catppuccin Mocha" \
+             && render demo-tokyo-night "TokyoNight" \
+             && render demo-gruvbox-dark "GruvboxDark" \
+             && render demo-nord "nord" \
+             && render demo-dracula "Dracula" \
+             && render demo-one-dark "OneDark" \
+             && render demo-solarized-dark "Solarized Dark" \
+             && render demo-catppuccin-latte "Catppuccin Latte" \
+             && render demo-github-light "Github" \
+             && render demo-one-light "AtomOneLight" \
+             && render demo-solarized-light "Solarized Light"'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: demo-gif
+          path: |
+            demos/demo.gif
+            demos/demo-*.gif
+          if-no-files-found: error
 
       - uses: actions/upload-artifact@v7
         with:
@@ -70,8 +100,8 @@ jobs:
           name: demo-gif
           path: /tmp/gif
 
-      - name: Place GIF
-        run: cp /tmp/gif/demo.gif demos/demo.gif
+      - name: Place GIFs
+        run: cp /tmp/gif/demo*.gif demos/
 
       # Idempotent: an unchanged render commits nothing, so this never
       # loops. main is protected, so changed artifacts land as a PR on a
@@ -83,7 +113,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add demos/demo.gif
+          git add demos/demo.gif demos/demo-*.gif
           git diff --cached --quiet && exit 0
           git checkout -B demo/artifacts
           git commit -m "docs: refresh demo GIF"
@@ -113,10 +143,10 @@ jobs:
           SITE_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
         run: |
           git clone --depth 1 "https://x-access-token:${SITE_TOKEN}@github.com/gripsack-dev/gripsack-dev.github.io.git" /tmp/site
-          cp /tmp/gif/demo.gif /tmp/site/img/demo.gif
+          cp /tmp/gif/demo*.gif /tmp/site/img/
           git -C /tmp/site config user.name "github-actions[bot]"
           git -C /tmp/site config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C /tmp/site add img/demo.gif
+          git -C /tmp/site add img/demo.gif img/demo-*.gif
           if git -C /tmp/site diff --cached --quiet; then
             echo "site GIF unchanged"
           else
