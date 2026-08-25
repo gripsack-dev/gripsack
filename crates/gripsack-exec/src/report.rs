@@ -65,6 +65,6 @@ pub enum UpdateStatus {
         old: Option<String>,
         new: String,
     },
-    /// Resolution for this fetch kind lands in 0.2 (github_release, git).
+    /// Resolution for this fetch kind is not supported yet (github_release, git).
     Skipped,
 }

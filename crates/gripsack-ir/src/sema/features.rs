@@ -14,7 +14,7 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                     Diagnostic::error(
                         codes::UNSUPPORTED_MODE,
                         format!(
-                            "module {name:?}: ownership mode {:?} is not implemented yet (0.2)",
+                            "module {name:?}: ownership mode {:?} is not implemented yet",
                             entry.mode
                         ),
                     )

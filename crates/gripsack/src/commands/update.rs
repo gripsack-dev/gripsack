@@ -45,7 +45,7 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
                     gripsack_exec::UpdateStatus::Skipped => println!(
                         "  {} {}",
                         r.module.cyan(),
-                        "skipped (resolution lands in 0.2)".dimmed()
+                        "skipped (resolution not supported yet)".dimmed()
                     ),
                 }
             }

@@ -1,17 +1,25 @@
-"""Eval entrypoint (plan/0005 §4): `python -m gripsack <repo> --host <name>`.
+"""Eval entrypoint (plan/0005 §5, 0011 §5): `python -m gripsack <repo> --host <name>`.
 
-Imports the env repo's modules and host entrypoint, then prints the IR
-on stdout. The core never embeds Python — it runs this as a subprocess.
+Imports the env repo's modules and host entrypoint, runs registered
+linters, then prints the eval envelope on stdout:
+
+    {"ir": {...}, "diagnostics": [...]}
+
+Any error-severity diagnostic fails eval (exit 1). The core never
+embeds Python — it runs this as a subprocess and renders the
+diagnostics itself.
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
-from .graph import emit_ir
+from .graph import emit_ir, registered_modules
+from .lint import run_lints
 
 
 def _exec(path: Path, name: str):
@@ -50,7 +58,14 @@ def main() -> None:
         for f in sorted(modules_dir.glob("*.py")):
             _exec(f, f"gripsack_user.{f.stem}")
 
-    sys.stdout.write(emit_ir(tags) + "\n")
+    diagnostics = run_lints(repo, args.host, registered_modules())
+    payload = {
+        "ir": json.loads(emit_ir(tags)),
+        "diagnostics": [d.to_dict() for d in diagnostics],
+    }
+    sys.stdout.write(json.dumps(payload) + "\n")
+    if any(d.severity == "error" for d in diagnostics):
+        sys.exit(1)
 
 
 if __name__ == "__main__":
