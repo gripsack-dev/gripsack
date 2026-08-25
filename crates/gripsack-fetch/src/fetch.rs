@@ -61,7 +61,9 @@ pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<String, FetchError> {
     match spec {
         FetchSpec::File { path } => file::fetch(path, dest),
         FetchSpec::Tarball { url, sha256 } => tarball::fetch(url, sha256.as_deref(), dest),
-        FetchSpec::Brew { formula, sha256 } => brew::fetch(formula, sha256.as_deref(), dest),
+        FetchSpec::Brew {
+            formula, sha256, ..
+        } => brew::fetch(formula, sha256.as_deref(), dest),
         FetchSpec::Pixi {
             package, version, ..
         } => pixi::fetch(package, version.as_deref(), dest),

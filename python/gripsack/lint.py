@@ -126,15 +126,26 @@ def _resolve_exe(name: str, registration: dict[str, Any]) -> tuple[Optional[str]
     )
 
 
+#: Codes that are crash-class by construction (review finding E,
+#: enforcement round): a plugin's self-reported severity for these is
+#: not evidence — the core classifies by code, always warning.
+_CRASH_CODES = ("E99", "E02")
+
+
 def _from_plugin(raw: dict[str, Any], module_name: str, module_span: Optional[dict[str, Any]]) -> Diagnostic:
     """Coerce a plugin diagnostic; a label-less diagnostic gets the
-    module-callsite label so it still points somewhere useful (0011 §6)."""
+    module-callsite label so it still points somewhere useful (0011 §6).
+    Crash-class codes (E99/E02) are ALWAYS warning severity here — a
+    plugin's opinion about its own crash isn't evidence, and adopting
+    lint= must never be an availability dependency on apply."""
     labels = raw.get("labels") or []
     if not labels and module_span:
         labels = [_label(module_span, f"module {module_name!r} requested this lint")]
+    code = str(raw.get("code", "griplint/?"))
+    crash_class = code.rsplit("/", 1)[-1] in _CRASH_CODES
     return Diagnostic(
-        code=str(raw.get("code", "griplint/?")),
-        severity=str(raw.get("severity", "error")),
+        code=code,
+        severity=CRASH_SEVERITY if crash_class else str(raw.get("severity", "error")),
         message=str(raw.get("message", "(no message)")),
         labels=labels,
         help=raw.get("help"),

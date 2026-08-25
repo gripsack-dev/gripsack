@@ -64,7 +64,7 @@ fn provision(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<
     if python.exists() {
         return Ok(python);
     }
-    run(&uv, &["venv", venv.to_str().expect("utf8 path")])?;
+    run(&uv, &["venv", venv.to_str().expect("utf8 path")], home)?;
     let mut install = vec![
         "pip".into(),
         "install".into(),
@@ -75,11 +75,25 @@ fn provision(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<
     install.extend(config.eval.deps.iter().cloned());
     install.extend(linter_packages.iter().map(|p| p.to_string()));
     let args: Vec<&str> = install.iter().map(String::as_str).collect();
-    run(&uv, &args)?;
+    run(&uv, &args, home)?;
     Ok(python)
 }
 
+/// The minimum uv version a PATH uv must report to be preferred over
+/// the pinned download (review's uv cluster: skew both ways — too old
+/// is a bug, and a site config written for a newer uv breaks the pin).
+const UV_MIN_VERSION: &str = "0.12";
+
 fn ensure_uv(home: &Path) -> io::Result<PathBuf> {
+    // GRIPSACK_UV is the explicit escape hatch (like GRIPSACK_PYTHON).
+    if let Ok(uv) = std::env::var("GRIPSACK_UV") {
+        return Ok(PathBuf::from(uv));
+    }
+    // A uv on PATH that satisfies the minimum understands the local
+    // config already — prefer it; the pinned download is the fallback.
+    if let Ok(uv) = uv_on_path() {
+        return Ok(uv);
+    }
     let dir = home
         .join("tools")
         .join(format!("uv-{}", UV_RELEASE.version));
@@ -108,8 +122,33 @@ fn ensure_uv(home: &Path) -> io::Result<PathBuf> {
     Ok(uv)
 }
 
-fn run(program: &Path, args: &[&str]) -> io::Result<()> {
-    let status = std::process::Command::new(program).args(args).status()?;
+/// A runnable uv on PATH reporting a version >= UV_MIN_VERSION.
+fn uv_on_path() -> io::Result<PathBuf> {
+    let out = std::process::Command::new("uv")
+        .arg("--version")
+        .output()
+        .map_err(|e| io::Error::new(e.kind(), format!("no usable uv on PATH: {e}")))?;
+    if !out.status.success() {
+        return Err(io::Error::other("uv on PATH failed --version"));
+    }
+    let version = String::from_utf8_lossy(&out.stdout);
+    let version = version.trim().trim_start_matches("uv ").to_string();
+    if version.starts_with(UV_MIN_VERSION) {
+        Ok(PathBuf::from("uv"))
+    } else {
+        Err(io::Error::other(format!(
+            "uv on PATH is {version}, need >= {UV_MIN_VERSION} — provisioning the pinned one"
+        )))
+    }
+}
+
+fn run(program: &Path, args: &[&str], home: &Path) -> io::Result<()> {
+    // run from $GRIPSACK_HOME, not the env repo — a stray uv.toml or
+    // [tool.uv] in the repo must not silently apply to provisioning
+    let status = std::process::Command::new(program)
+        .args(args)
+        .current_dir(home)
+        .status()?;
     if status.success() {
         Ok(())
     } else {

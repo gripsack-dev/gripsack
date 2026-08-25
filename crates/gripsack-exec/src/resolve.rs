@@ -47,16 +47,36 @@ pub(crate) fn resolve_spec(
                 Some(release),
             ))
         }
-        F::Brew { formula, .. } => {
+        F::Brew {
+            formula, version, ..
+        } => {
             let meta = gripsack_fetch::resolve_brew(formula).map_err(|e| ExecError::Step {
                 module: formula.clone(),
                 step: "resolve".into(),
                 detail: e.to_string(),
             })?;
+            // brew floats to the current formula — the API only serves
+            // stable. A declared version must match it or the module
+            // fails clearly here, not as a sha mismatch later (brew
+            // review): grip update is the way to move the pin.
+            if let Some(want) = version
+                && meta.version != *want
+            {
+                return Err(ExecError::Step {
+                    module: formula.clone(),
+                    step: "resolve".into(),
+                    detail: format!(
+                        "brew serves {formula} {stable}, but the module pins {want} — \
+                         brew() floats to the current formula; `grip update` to move",
+                        stable = meta.version
+                    ),
+                });
+            }
             let locked_sha = resolved.and_then(|r| r.sha256.clone());
             Ok((
                 F::Brew {
                     formula: formula.clone(),
+                    version: version.clone(),
                     sha256: locked_sha,
                 },
                 Some(meta),
