@@ -349,7 +349,7 @@ impl<'a> ModuleRun<'a> {
                 run_verify(self.name, verify, &self.store_path, self.version.as_deref())?;
                 self.reports.push(StepReport {
                     module: self.name.to_string(),
-                    summary: describe_verify(verify),
+                    summary: describe_verify(verify, self.version.as_deref()),
                     kind: ReportKind::Verified,
                 });
             }
@@ -358,7 +358,7 @@ impl<'a> ModuleRun<'a> {
             run_verify(self.name, verify, &self.store_path, self.version.as_deref())?;
             self.reports.push(StepReport {
                 module: self.name.to_string(),
-                summary: describe_verify(verify),
+                summary: describe_verify(verify, self.version.as_deref()),
                 kind: ReportKind::Verified,
             });
         }

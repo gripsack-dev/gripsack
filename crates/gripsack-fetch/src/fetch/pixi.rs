@@ -12,7 +12,6 @@
 
 use super::FetchError;
 use super::archive;
-use std::io;
 use std::path::{Path, PathBuf};
 
 /// The bundled pixi: per-platform pinned + sha256-verified through our
@@ -38,10 +37,10 @@ fn ensure_pixi() -> Result<PathBuf, FetchError> {
     let staging = dir.with_extension("staging");
     let _ = std::fs::remove_dir_all(&staging);
     crate::fetch::fetch(&spec, &staging)?;
-    std::fs::create_dir_all(&dir).map_err(io::Error::from)?;
+    std::fs::create_dir_all(&dir)?;
     // pixi's tarball is flat: a bare `pixi` binary at the root
     // (unlike uv's nested uv-<triple>/ layout)
-    std::fs::rename(staging.join("pixi"), &pixi).map_err(io::Error::from)?;
+    std::fs::rename(staging.join("pixi"), &pixi)?;
     let _ = std::fs::remove_dir_all(&staging);
     Ok(pixi)
 }

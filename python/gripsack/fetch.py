@@ -71,10 +71,17 @@ def plugin_fetch(name: str, **args: Any) -> Fetch:
     return Fetch(FetchKind.PLUGIN, {"name": name, "args": args})
 
 
-def brew(formula: str) -> Fetch:
+def brew(formula: str, version: Optional[str] = None) -> Fetch:
     """A Homebrew bottle — resolved from the formula JSON, so the pin
-    (bottle sha256) needs no download at update time."""
-    return Fetch(FetchKind.BREW, {"formula": formula})
+    (bottle sha256) needs no download at update time.
+
+    `version` is a tripwire, not a range: brew only ever serves the
+    *current* formula, so a mismatch fails at resolve with
+    "`grip update` to move" rather than a sha mismatch later."""
+    args: dict[str, Any] = {"formula": formula}
+    if version:
+        args["version"] = version
+    return Fetch(FetchKind.BREW, args)
 
 
 def pixi(package: str, version: Optional[str] = None) -> Fetch:

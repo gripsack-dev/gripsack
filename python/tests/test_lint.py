@@ -97,3 +97,24 @@ def test_linter_death_is_not_silent(tmp_path, monkeypatch):
     # crash class (review finding E): a broken linter is evidence
     # about the linter, never about the config — warning, not a blocker
     assert diagnostics[0].severity == "warning"
+
+
+def test_plugin_claimed_error_on_crash_codes_is_downgraded():
+    """Enforcement (finding E, enforcement round): the core classifies
+    crash-class codes by code, not by the plugin's claimed severity."""
+    from gripsack.lint import _from_plugin
+
+    for code in ("griplint-demo/E99", "griplint-demo/E02"):
+        d = _from_plugin(
+            {"code": code, "severity": "error", "message": "crash", "labels": []},
+            "demo",
+            None,
+        )
+        assert d.severity == "warning", f"{code} must be warning, got {d.severity}"
+
+    d = _from_plugin(
+        {"code": "griplint-demo/A01", "severity": "error", "message": "real", "labels": []},
+        "demo",
+        None,
+    )
+    assert d.severity == "error", "A01 findings keep their severity"

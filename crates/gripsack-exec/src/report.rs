@@ -41,9 +41,13 @@ pub(crate) fn describe_fetch(spec: &gripsack_ir::FetchSpec) -> String {
     }
 }
 
-pub(crate) fn describe_verify(verify: &Verify) -> String {
+pub(crate) fn describe_verify(verify: &Verify, version: Option<&str>) -> String {
+    let sub = |path: &str| match version {
+        Some(v) => path.replace("{version}", v),
+        None => path.to_string(),
+    };
     match verify {
-        Verify::BinaryRuns { path, .. } => format!("verified {path} runs"),
+        Verify::BinaryRuns { path, .. } => format!("verified {} runs", sub(path)),
         Verify::FileExists { path } => format!("verified {path} exists"),
         Verify::Shell { .. } => "verified (shell check)".to_string(),
         Verify::FileDeployed { path } => format!("verified {path} deployed"),

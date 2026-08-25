@@ -113,6 +113,8 @@ pub enum FetchSpec {
     Brew {
         formula: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         sha256: Option<String>,
     },
     /// Conda package via pixi : installed into an isolated

@@ -42,6 +42,16 @@ registry?) The install method decides the fetcher.
   - Disciplined read-only tools (helix, git) → `symlink` (owned)
   - `merge`/`template` don't exist yet — `plan` rejects them (E108).
 - **A verify contract**: almost always `verify_binary("bin/<tool>")`.
+- **Payload layouts per fetcher** (what `install={...}` paths look like):
+  - `tarball`/`github_release`: the archive's contents, verbatim.
+  - `file`: the directory's contents; a bare file stages under its basename.
+  - `pixi`: the conda env root — `bin/<tool>` works directly.
+  - `brew`: the RAW bottle layout — binaries live at
+    `{formula}/{version}/bin/<tool>`, so write
+    `install={"{formula}/{version}/bin/jq": symlink(...)}`; `{version}`
+    is substituted from the lock. `brew()` floats to the current
+    formula (the API only serves stable) — `version=` is a tripwire
+    that fails at resolve with `grip update` to move, not a range.
 
 ## 3. Write the module
 
