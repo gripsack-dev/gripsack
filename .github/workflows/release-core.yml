@@ -101,7 +101,9 @@ jobs:
 
       # The site's version chip reads the releases API at build time —
       # a rebuild dispatch keeps gripsack.dev current (rootle pattern).
+      # Non-fatal while SITE_REPO_TOKEN is unset — it must never fail a release.
       - name: Ping the site to redeploy
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
         run: |

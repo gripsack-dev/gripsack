@@ -106,7 +106,9 @@ jobs:
       # pattern): img/demo.gif on gripsack-dev.github.io, then a
       # rebuild dispatch. Needs SITE_REPO_TOKEN (fine-grained PAT,
       # contents:write on the site repo).
+      # Non-fatal while SITE_REPO_TOKEN is unset.
       - name: Publish GIF to the site repo
+        continue-on-error: true
         env:
           SITE_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
         run: |
@@ -123,6 +125,7 @@ jobs:
           fi
 
       - name: Ping the site to redeploy
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
         run: |
