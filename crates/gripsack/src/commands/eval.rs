@@ -32,6 +32,13 @@ pub fn eval_repo(repo: &Path, host: Option<&str>, palette: Palette) -> Result<St
             return Err(ExitCode::FAILURE);
         }
     };
+    // Rate budgets (0002 §throttle): [throttle] in env.toml overrides
+    // fetcher-declared budgets; buckets persist across runs so
+    // back-to-back applies share one budget.
+    gripsack_fetch::throttle::install(
+        &env.throttle,
+        Some(gripsack_store::gripsack_home().join("throttle.json")),
+    );
     // Build-time env (0001 §3.10 build side): injected for the run's
     // duration so every subprocess — fetchers, build steps, plugins —
     // inherits it. A CLI exits after one run, so process-env is the

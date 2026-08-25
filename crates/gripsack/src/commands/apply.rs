@@ -68,6 +68,7 @@ pub fn apply(
     };
     let started = std::time::Instant::now();
     let result = gripsack_exec::apply(&ir, &ctx);
+    gripsack_fetch::throttle::save_global();
     if let Some(pb) = &spinner {
         pb.finish_and_clear();
     }

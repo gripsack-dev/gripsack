@@ -17,7 +17,12 @@ use std::sync::Arc;
 
 /// GET `url` through the right agent for the environment: direct when
 /// no_proxy says so, the env-proxy agent otherwise.
+///
+/// The one choke point for every network path (fetch + resolve) —
+/// and therefore where rate budgets are enforced: the URL's host
+/// acquires a token before the request is built (0002 §throttle).
 pub(crate) fn get(url: &str) -> ureq::Request {
+    crate::throttle::acquire_url(url);
     if proxy_bypassed(url) {
         direct_agent().get(url)
     } else {

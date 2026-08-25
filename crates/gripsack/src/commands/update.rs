@@ -30,6 +30,7 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
         take_over: false,
         jobs: None,
     };
+    gripsack_fetch::throttle::save_global();
     match gripsack_exec::update(&ir, &ctx) {
         Ok(reports) => {
             if reports.is_empty() {

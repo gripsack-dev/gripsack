@@ -41,6 +41,75 @@ struct PluginResult {
     /// which mirror, which credential identity — it lands in the run
     /// log (0009 §2 rule 7).
     provenance: Option<serde_json::Value>,
+    /// The `capabilities` op payload — declared rate budgets (0002
+    /// §throttle), parsed separately from the fetch response.
+    capabilities: Option<serde_json::Value>,
+}
+
+/// What a fetcher tells us about itself (the `capabilities` op —
+/// 0002 §throttle). Unknown/unsupported op responses are tolerated:
+/// an older plugin simply has no declared budgets.
+#[derive(Deserialize, Default, Clone)]
+pub(crate) struct Capabilities {
+    #[serde(default)]
+    throttle: std::collections::BTreeMap<String, String>,
+}
+
+/// Ask a fetcher for its capabilities once per process; failures
+/// (old plugin, unknown op) mean "no declared budgets", never an
+/// error. Rate budgets live in fetchers — this is how they arrive.
+fn capabilities(name: &str, exe: &Path) -> Option<Capabilities> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::BTreeMap<String, Option<Capabilities>>>,
+    > = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeMap::new()));
+    if let Some(entry) = cache.lock().expect("caps cache").get(name) {
+        return entry.clone();
+    }
+    let caps = capabilities_exchange(exe);
+    cache
+        .lock()
+        .expect("caps cache")
+        .insert(name.to_string(), caps.clone());
+    caps
+}
+
+/// A short one-shot exchange: `{"op":"capabilities"}` in, one
+/// response out, 30s deadline. Same rules as the fetch exchange —
+/// stderr drained, non-protocol lines ignored.
+fn capabilities_exchange(exe: &Path) -> Option<Capabilities> {
+    let mut child = std::process::Command::new(exe)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdin = child.stdin.take()?;
+    use std::io::Write as _;
+    writeln!(stdin, r#"{{"op":"capabilities"}}"#).ok()?;
+    drop(stdin);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let stdout = child.stdout.take()?;
+    let mut result = None;
+    for line in std::io::BufReader::new(stdout).lines() {
+        if Instant::now() > deadline {
+            break;
+        }
+        let Ok(line) = line else { break };
+        let Ok(message) = serde_json::from_str::<PluginMessage>(&line) else {
+            continue;
+        };
+        if message.kind == "response" {
+            result = message
+                .result
+                .and_then(|r| r.capabilities)
+                .and_then(|c| serde_json::from_value::<Capabilities>(c).ok());
+            break;
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    result
 }
 
 pub(crate) fn fetch(
@@ -53,6 +122,13 @@ pub(crate) fn fetch(
         url: name.to_string(),
         reason: format!("gripfetch-{name} not found on PATH (or declare it in env.toml)"),
     })?;
+    // rate budgets live in fetchers: register the plugin's declared
+    // domains (capabilities op) and take a token per invocation
+    if let Some(caps) = capabilities(name, &exe) {
+        for (domain, budget) in &caps.throttle {
+            crate::throttle::acquire_declared(domain, budget);
+        }
+    }
     let mut child = std::process::Command::new(&exe)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
