@@ -7,6 +7,12 @@ on:
 permissions:
   contents: write
 
+# Two core tags cut at once (0.4.1 + 0.5.0) raced the homebrew-tap
+# push and one lost — serialize; the newer tag waits.
+concurrency:
+  group: release-core
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
