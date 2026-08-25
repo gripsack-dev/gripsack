@@ -106,3 +106,40 @@ pub fn check_ir(json: &str, palette: Palette) -> Result<Ir, ExitCode> {
         ExitCode::FAILURE
     })
 }
+
+/// E110: a fetch-less module can only deploy repo files — a missing
+/// source is statically knowable and must fail at eval/check time,
+/// not mid-deploy (review finding E2). Modules with a payload (fetch
+/// or a fetch step) legitimately reference into it.
+pub fn validate_sources(ir: &Ir, repo: &Path, palette: Palette) -> Result<(), ExitCode> {
+    let mut diagnostics = Vec::new();
+    for (name, module) in &ir.modules {
+        let has_payload = module.fetch.is_some()
+            || module.steps.as_ref().is_some_and(|steps| {
+                steps
+                    .iter()
+                    .any(|s| matches!(s.action, gripsack_ir::StepAction::Fetch { .. }))
+            });
+        if has_payload {
+            continue;
+        }
+        for entry in module.install.iter().chain(module.config.iter()) {
+            if !repo.join(&entry.from).exists() {
+                diagnostics.push(
+                    gripsack_ir::Diagnostic::error(
+                        gripsack_ir::codes::MISSING_SOURCE,
+                        format!("module {name:?}: no payload or repo file at {}", entry.from),
+                    )
+                    .with_label(module.span.clone(), "module declared here")
+                    .with_help("fix the path, or add a fetch if the source is a payload"),
+                );
+            }
+        }
+    }
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+        Err(ExitCode::FAILURE)
+    }
+}

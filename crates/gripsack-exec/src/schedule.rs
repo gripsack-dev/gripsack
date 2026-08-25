@@ -13,7 +13,7 @@ use gripsack_ir::{Ir, Module, Step};
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Condvar, Mutex};
 
 /// What the scheduler produced: the new manifest state, the reports
@@ -22,12 +22,15 @@ pub(crate) struct ScheduleOutcome {
     pub modules: BTreeMap<String, store::ModuleState>,
     pub reports: Vec<(String, Vec<StepReport>)>,
     pub lock_entries: BTreeMap<String, LockEntry>,
+    /// The first module failure (name, error, partial state) — apply
+    /// uses the partial state for its run-rollback (0001 §9).
+    pub failed: Option<(String, ExecError, store::ModuleState)>,
 }
 
 struct State {
     ready: VecDeque<String>,
     running: BTreeSet<String>,
-    error: Option<ExecError>,
+    error: Option<(String, ExecError, store::ModuleState)>,
     modules: BTreeMap<String, store::ModuleState>,
     reports: Vec<(String, Vec<StepReport>)>,
     lock_entries: BTreeMap<String, LockEntry>,
@@ -112,7 +115,7 @@ pub(crate) fn run_all(
                     let mut st = state.lock().expect("scheduler state");
                     st.running.remove(&name);
                     match result {
-                        Ok(outcome) => {
+                        Ok(outcome) if outcome.error.is_none() => {
                             st.reports.push((name.clone(), outcome.reports));
                             st.modules.insert(name.clone(), outcome.state);
                             if let Some(entry) = outcome.lock_entry {
@@ -139,9 +142,27 @@ pub(crate) fn run_all(
                                 }
                             }
                         }
+                        Ok(outcome) => {
+                            // a phase failed mid-module: keep the
+                            // partial state for the run-rollback, stop
+                            // scheduling new work
+                            if st.error.is_none() {
+                                let e = outcome.error.expect("marked by the guard");
+                                st.error = Some((name.clone(), e, outcome.state));
+                            }
+                            st.reports.push((name.clone(), outcome.reports));
+                        }
                         Err(e) => {
                             if st.error.is_none() {
-                                st.error = Some(e);
+                                st.error = Some((
+                                    name.clone(),
+                                    e,
+                                    store::ModuleState {
+                                        store_path: PathBuf::new(),
+                                        entries: vec![],
+                                        env: vec![],
+                                    },
+                                ));
                             }
                         }
                     }
@@ -152,13 +173,11 @@ pub(crate) fn run_all(
     });
 
     let st = state.into_inner().expect("scheduler state");
-    if let Some(e) = st.error {
-        return Err(e);
-    }
     Ok(ScheduleOutcome {
         modules: st.modules,
         reports: st.reports,
         lock_entries: st.lock_entries,
+        failed: st.error,
     })
 }
 

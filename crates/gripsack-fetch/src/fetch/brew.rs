@@ -47,7 +47,7 @@ pub(crate) fn fetch(
             actual,
         });
     }
-    archive::extract(&bytes_vec, dest)?;
+    archive::extract(&bytes_vec, dest, "bin")?;
     archive::pour(dest)?;
     Ok(actual)
 }

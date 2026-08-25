@@ -7,7 +7,11 @@ use sha2::{Digest, Sha256};
 use std::io;
 use std::path::Path;
 
-pub(crate) fn extract(bytes: &[u8], dest: &Path) -> Result<(), FetchError> {
+/// `bare_name` names the staged file when the payload isn't an
+/// archive — the asset's filename from the URL (falling back to
+/// "bin"), never a hardcoded name that collides with tarball bin/
+/// directories (review finding F5).
+pub(crate) fn extract(bytes: &[u8], dest: &Path, bare_name: &str) -> Result<(), FetchError> {
     const XZ_MAGIC: &[u8] = b"\xfd7zXZ\x00";
     const ZIP_MAGIC: &[u8] = b"PK\x03\x04";
     if bytes.starts_with(XZ_MAGIC) {
@@ -29,8 +33,9 @@ pub(crate) fn extract(bytes: &[u8], dest: &Path) -> Result<(), FetchError> {
         archive.unpack(dest)?;
         return Ok(());
     }
-    // bare payload: stage as one file, executable if it looks like a binary
-    let path = dest.join("bin");
+    // bare payload: stage as one file named after the asset,
+    // executable if it looks like a binary
+    let path = dest.join(bare_name);
     std::fs::write(&path, bytes)?;
     #[cfg(unix)]
     if bytes.starts_with(b"\x7fELF") || bytes.starts_with(b"#!") {
@@ -128,8 +133,8 @@ mod tests {
     #[test]
     fn bare_binary_staged_as_executable_file() {
         let dir = tempfile::tempdir().unwrap();
-        extract(b"\x7fELF-fake-binary", dir.path()).unwrap();
-        let staged = dir.path().join("bin");
+        extract(b"\x7fELF-fake-binary", dir.path(), "tool").unwrap();
+        let staged = dir.path().join("tool");
         assert_eq!(std::fs::read(&staged).unwrap(), b"\x7fELF-fake-binary");
         #[cfg(unix)]
         {
@@ -164,7 +169,7 @@ mod tests {
                 .unwrap();
         }
         let out = dir.path().join("out");
-        extract(&std::fs::read(&xz_path).unwrap(), &out).unwrap();
+        extract(&std::fs::read(&xz_path).unwrap(), &out, "bin").unwrap();
         assert!(out.join("x.txt").exists());
     }
 }

@@ -16,7 +16,6 @@ use crate::report::{ReportKind, StepReport, describe_fetch, describe_verify};
 use crate::resolve::{module_input, resolve_spec};
 use crate::util::{fresh_staging, progress};
 use crate::verify::{run_shell, run_verify};
-use gripsack_fetch::fetch;
 use gripsack_ir::{Build, Step, StepAction, Verify};
 use gripsack_store as store;
 use std::path::PathBuf;
@@ -28,6 +27,11 @@ pub(crate) struct ModuleOutcome {
     pub state: store::ModuleState,
     pub reports: Vec<StepReport>,
     pub lock_entry: Option<lockfile::LockEntry>,
+    /// The first phase error, if any — the run stops there but the
+    /// outcome keeps the deployments made so far, because apply's
+    /// run-rollback (0001 §9, review finding E1) needs them to restore
+    /// the previous state exactly.
+    pub error: Option<ExecError>,
 }
 
 /// One module's execution context. Fields evolve as phases run.
@@ -49,9 +53,11 @@ struct ModuleRun<'a> {
     reports: Vec<StepReport>,
     pending_verifies: Vec<&'a Verify>,
     lock_entry: Option<lockfile::LockEntry>,
+    error: Option<ExecError>,
 }
 
-/// Run one module's steps; returns its outcome for the manifest.
+/// Identity errors (new) escape before anything deploys; phase errors
+/// land in `outcome.error` with partial deployments recorded.
 pub(crate) fn run_module(
     name: &str,
     module: &gripsack_ir::Module,
@@ -61,10 +67,19 @@ pub(crate) fn run_module(
     locked: Option<&lockfile::LockEntry>,
 ) -> Result<ModuleOutcome, ExecError> {
     let mut run = ModuleRun::new(name, module, steps, ctx, prev, locked)?;
-    run.produce()?;
-    run.publish()?;
-    run.deploy()?;
-    run.verify()?;
+    for phase in [
+        ModuleRun::produce,
+        ModuleRun::publish,
+        ModuleRun::deploy,
+        ModuleRun::verify,
+    ] {
+        if run.error.is_some() {
+            break;
+        }
+        if let Err(e) = phase(&mut run) {
+            run.error = Some(e);
+        }
+    }
     Ok(run.finish())
 }
 
@@ -125,6 +140,7 @@ impl<'a> ModuleRun<'a> {
             reports,
             pending_verifies: Vec::new(),
             lock_entry: None,
+            error: None,
         })
     }
 
@@ -159,7 +175,15 @@ impl<'a> ModuleRun<'a> {
         if let Some(m) = &meta {
             self.version = Some(m.version.clone());
         }
-        let sha = fetch(&concrete, stage).map_err(ExecError::Fetch)?;
+        // Plugin fetchers learn the pin — first-fetch (resolve, TOFU)
+        // and pinned re-fetch (reproduce) are different code paths for
+        // internal registries (0002 §4 `locked`).
+        let locked_json = self
+            .locked
+            .and_then(|e| e.resolved.as_ref())
+            .and_then(|r| serde_json::to_value(r).ok());
+        let sha = gripsack_fetch::fetch_with_locked(&concrete, stage, locked_json.as_ref())
+            .map_err(ExecError::Fetch)?;
         // pin enforcement for kinds without download-level verification
         if let Some(expected) = self
             .locked
@@ -247,6 +271,7 @@ impl<'a> ModuleRun<'a> {
                     for entry in entries {
                         let (summary, kind) = deploy_entry(
                             &mut self.deployed,
+                            self.name,
                             &self.store_path,
                             entry,
                             self.ctx,
@@ -308,6 +333,7 @@ impl<'a> ModuleRun<'a> {
             },
             reports: self.reports,
             lock_entry: self.lock_entry,
+            error: self.error,
         }
     }
 }

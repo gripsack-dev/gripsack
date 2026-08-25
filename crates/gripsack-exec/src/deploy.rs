@@ -6,9 +6,48 @@ use gripsack_ir::{Entry, Ownership};
 use gripsack_store as store;
 use std::path::{Path, PathBuf};
 
+/// Run-level rollback (0001 §9, review finding E1): an apply that
+/// fails mid-graph must leave NO half-applied deployment behind —
+/// the generation flip was never reached, so every destination this
+/// run touched is restored to the previous generation's state (or
+/// removed if the previous generation didn't deploy it).
+pub(crate) fn run_rollback(
+    touched: &std::collections::BTreeMap<String, store::ModuleState>,
+    prev: &std::collections::BTreeMap<String, store::ModuleState>,
+) {
+    for (name, state) in touched {
+        let prev_state = prev.get(name);
+        for entry in &state.entries {
+            let dest = expand_home(&entry.to);
+            match prev_state.and_then(|p| p.entries.iter().find(|e| e.to == entry.to)) {
+                Some(prev_entry) => {
+                    let source = prev_state
+                        .expect("matched above")
+                        .store_path
+                        .join(&prev_entry.from);
+                    let result = match prev_entry.mode {
+                        Ownership::Owned => store::symlink_replace(&dest, &source),
+                        _ => std::fs::read(&source)
+                            .and_then(|bytes| store::atomic_write(&dest, &bytes)),
+                    };
+                    if result.is_ok() {
+                        tracing::info!("restored {} (run rolled back)", entry.to);
+                    }
+                }
+                None => {
+                    if std::fs::remove_file(&dest).is_ok() {
+                        tracing::info!("removed {} (run rolled back)", entry.to);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// never silently overwrite.
 pub(crate) fn deploy_entry(
     out: &mut Vec<store::DeployedEntry>,
+    module: &str,
     store_path: &Path,
     entry: &Entry,
     ctx: &Ctx,
@@ -22,7 +61,7 @@ pub(crate) fn deploy_entry(
     let source = resolve_source(store_path, &from, &ctx.repo);
     let dest = expand_home(&entry.to);
     let fail = |detail: String| ExecError::Step {
-        module: entry.from.clone(),
+        module: module.to_string(),
         step: "deploy".into(),
         detail,
     };
@@ -51,14 +90,12 @@ pub(crate) fn deploy_entry(
             let ours = std::fs::read_link(&dest)
                 .map(|t| t.starts_with(&ctx.home))
                 .unwrap_or(false);
-            if dest.symlink_metadata().is_ok()
-                && !ours
-                && !recorded
-                && !ctx.take_over
-                && !dest.is_symlink()
-            {
+            // foreign symlinks refuse too (review finding E4): a stow/
+            // chezmoi link is exactly the foreign path this guard is
+            // for — absorb it only via --take-over, never silently
+            if dest.symlink_metadata().is_ok() && !ours && !recorded && !ctx.take_over {
                 return Err(ExecError::Step {
-                    module: from.clone(),
+                    module: module.to_string(),
                     step: "deploy".into(),
                     detail: format!(
                         "{} exists and was not deployed by gripsack — move it away or use --take-over",

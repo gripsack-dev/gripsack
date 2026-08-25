@@ -16,6 +16,7 @@ pub mod codes {
     pub const CONFIG: &str = "E400";
     pub const UNSUPPORTED_MODE: &str = "E108";
     pub const VERIFY_PATH_SHAPE: &str = "E109";
+    pub const MISSING_SOURCE: &str = "E110";
 }
 
 // ---------------------------------------------------------------- diagnostics

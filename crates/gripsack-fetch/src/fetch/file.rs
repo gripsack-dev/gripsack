@@ -14,7 +14,8 @@ pub(crate) fn fetch(path: &str, dest: &Path) -> Result<String, FetchError> {
     } else {
         let bytes = std::fs::read(path)?;
         let hash = archive::sha256(&bytes);
-        archive::extract(&bytes, dest)?;
+        let bare_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("bin");
+        archive::extract(&bytes, dest, bare_name)?;
         Ok(hash)
     }
 }

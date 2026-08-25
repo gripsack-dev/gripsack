@@ -18,7 +18,9 @@ pub fn apply(
         Ok(j) => j,
         Err(code) => return code,
     };
-    let ir = match check_ir(&json, palette) {
+    let ir = match check_ir(&json, palette)
+        .and_then(|ir| crate::commands::validate_sources(&ir, repo, palette).map(|_| ir))
+    {
         Ok(ir) => ir,
         Err(code) => return code,
     };
@@ -74,6 +76,16 @@ pub fn apply(
                 ),
             }
             ExitCode::SUCCESS
+        }
+        Err(gripsack_exec::ExecError::Fetch(gripsack_fetch::FetchError::Diagnostics(
+            diagnostics,
+        ))) => {
+            // plugin diagnostics render through the one renderer (0009 §2)
+            eprintln!(
+                "{}",
+                crate::render::render_diagnostics(&diagnostics, palette)
+            );
+            ExitCode::FAILURE
         }
         Err(e) => {
             eprintln!("{}", format!("error: {e}").red().bold());
