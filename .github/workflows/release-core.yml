@@ -154,10 +154,32 @@ jobs:
           sed -i -e "s|gripsack-[0-9.]*\.crate|gripsack-$ver.crate|" \
                  -e "s|sha256 \"[0-9a-f]*\"|sha256 \"$sha\"|" \
                  /tmp/tap/Formula/gripsack.rb
+          # the cask: prebuilt per-arch binaries (no rust toolchain on
+          # the user's machine — the better macOS path, uv/pixi-class)
+          mkdir -p /tmp/tap/Casks
+          sha_arm="$(cut -d' ' -f1 "dist/gripsack-$ver-aarch64-apple-darwin.tar.gz.sha256")"
+          sha_x64="$(cut -d' ' -f1 "dist/gripsack-$ver-x86_64-apple-darwin.tar.gz.sha256")"
+          cat > /tmp/tap/Casks/gripsack.rb <<EOF
+          cask "gripsack" do
+            version "$ver"
+
+            arch arm: "aarch64", intel: "x86_64"
+            sha256 arm: "$sha_arm", intel: "$sha_x64"
+
+            url "https://github.com/gripsack-dev/gripsack/releases/download/core-v#{version}/gripsack-#{version}-#{arch}-apple-darwin.tar.gz"
+            name "gripsack"
+            desc "your whole environment in one bag"
+            homepage "https://gripsack.dev"
+
+            binary "gripsack-#{version}-#{arch}-apple-darwin/grip", target: "grip"
+          end
+          EOF
+
           cd /tmp/tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "gripsack $ver"
+          git add Formula/gripsack.rb Casks/gripsack.rb
+          git commit -m "gripsack $ver"
           git push "https://x-access-token:${GH_TOKEN}@github.com/gripsack-dev/homebrew-tap.git" HEAD:main
 
       - name: Create GitHub release

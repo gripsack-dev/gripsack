@@ -1,26 +1,38 @@
 #!/bin/sh
 # gripsack installer — curl -fsSL https://gripsack.dev/install.sh | sh
 #
-# Downloads the latest static musl binary from GitHub releases, verifies
-# the checksum, and installs to ~/.local/bin (override: GRIPSACK_BIN).
-# Linux x86_64 for now; macOS users: brew install gripsack-dev/tap/gripsack.
+# Detects OS/arch (linux + macOS, x86_64 and aarch64), downloads the
+# matching static binary from GitHub releases, verifies the checksum,
+# and installs to ~/.local/bin (override: GRIPSACK_BIN).
+# macOS users may prefer: brew install --cask gripsack-dev/tap/gripsack
 set -eu
 
 REPO="gripsack-dev/gripsack"
 DEST="${GRIPSACK_BIN:-$HOME/.local/bin}"
-TARGET="x86_64-unknown-linux-musl"
 
-if [ "$(uname -s)" != "Linux" ] || [ "$(uname -m)" != "x86_64" ]; then
-    echo "gripsack install.sh supports linux x86_64 for now." >&2
-    echo "  macOS: brew install $REPO/tap/gripsack" >&2
-    echo "  elsewhere: cargo install gripsack" >&2
-    exit 1
-fi
+os="$(uname -s)"
+arch="$(uname -m)"
+case "$arch" in
+    x86_64|amd64) arch="x86_64" ;;
+    aarch64|arm64) arch="aarch64" ;;
+    *) echo "gripsack: unsupported architecture: $arch" >&2; exit 1 ;;
+esac
+case "$os" in
+    Linux)  TARGET="$arch-unknown-linux-musl" ;;
+    Darwin) TARGET="$arch-apple-darwin" ;;
+    MINGW*|MSYS*|CYGWIN*)
+        echo "gripsack: no native Windows build by design — use WSL and run this script inside it" >&2
+        exit 1 ;;
+    *) echo "gripsack: unsupported OS: $os" >&2; exit 1 ;;
+esac
 
-latest="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-    | sed -n 's/.*"tag_name": *"core-v\([^"]*\)".*/\1/p' | head -1)"
+# release objects sort by creation time, which re-cut tags scramble —
+# resolve the HIGHEST core-v* git tag by semver instead
+latest="$(curl -fsSL "https://api.github.com/repos/$REPO/git/matching-refs/tags/core-v" \
+    | sed -n 's|.*"ref": *"refs/tags/core-v\([^"]*\)".*|\1|p' \
+    | sort -t. -k2,2nr -k3,3nr | head -1)"
 if [ -z "$latest" ]; then
-    echo "could not determine the latest release" >&2
+    echo "gripsack: could not determine the latest core release" >&2
     exit 1
 fi
 
@@ -30,11 +42,19 @@ base="https://github.com/$REPO/releases/download/core-v$latest"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$@"
+    else
+        shasum -a 256 "$@"
+    fi
+}
+
 echo "downloading gripsack $latest ($TARGET)"
 curl -fsSL "$base/$pkg.tar.gz" -o "$tmp/$pkg.tar.gz"
 curl -fsSL "$base/$pkg.tar.gz.sha256" -o "$tmp/$pkg.tar.gz.sha256"
 
-( cd "$tmp" && sha256sum -c "$pkg.tar.gz.sha256" >/dev/null )
+( cd "$tmp" && sha256 -c "$pkg.tar.gz.sha256" >/dev/null )
 
 tar -xzf "$tmp/$pkg.tar.gz" -C "$tmp"
 mkdir -p "$DEST"
