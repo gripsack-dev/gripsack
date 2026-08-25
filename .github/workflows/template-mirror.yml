@@ -7,7 +7,7 @@ name: template-mirror
 on:
   push:
     branches: [main]
-    paths: ["template/env-repo/**"]
+    paths: ["crates/gripsack/template/env-repo/**"]
   workflow_dispatch:
 
 permissions:
@@ -27,13 +27,13 @@ jobs:
         run: |
           set -euo pipefail
           work=$(mktemp -d)
-          cp -r template/env-repo/. "$work/"
+          cp -r crates/gripsack/template/env-repo/. "$work/"
           cd "$work"
           git init -q
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -q -m "mirror: template/env-repo @ ${GITHUB_SHA::8}" || {
+          git commit -q -m "mirror: crates/gripsack/template/env-repo @ ${GITHUB_SHA::8}" || {
             echo "no changes to mirror"
             exit 0
           }

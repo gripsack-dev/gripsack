@@ -3,7 +3,8 @@
 //! The template is embedded in the binary, never fetched: first run
 //! is exactly the moment a corporate proxy bites hardest, and an
 //! embedded template can never skew from the binary's feature set.
-//! The source lives in template/env-repo/ in the gripsack repo and is
+//! The source lives in crates/gripsack/template/env-repo/ (inside the
+//! crate, so `cargo publish` packages it) and is
 //! mirrored to github.com/gripsack-dev/template for browsing.
 
 use crate::render::Palette;
@@ -14,33 +15,30 @@ use std::process::ExitCode;
 /// (repo-relative path, embedded contents). `hosts/myhost.py` is
 /// renamed to the machine's hostname at write time.
 const TEMPLATE: &[(&str, &str)] = &[
-    (
-        "env.toml",
-        include_str!("../../../../template/env-repo/env.toml"),
-    ),
+    ("env.toml", include_str!("../../template/env-repo/env.toml")),
     (
         ".gitignore",
-        include_str!("../../../../template/env-repo/.gitignore"),
+        include_str!("../../template/env-repo/.gitignore"),
     ),
     (
         "README.md",
-        include_str!("../../../../template/env-repo/README.md"),
+        include_str!("../../template/env-repo/README.md"),
     ),
     (
         "hosts/myhost.py",
-        include_str!("../../../../template/env-repo/hosts/myhost.py"),
+        include_str!("../../template/env-repo/hosts/myhost.py"),
     ),
     (
         "modules/hello.py",
-        include_str!("../../../../template/env-repo/modules/hello.py"),
+        include_str!("../../template/env-repo/modules/hello.py"),
     ),
     (
         "modules/examples.py",
-        include_str!("../../../../template/env-repo/modules/examples.py"),
+        include_str!("../../template/env-repo/modules/examples.py"),
     ),
     (
         "configs/hello/hello.toml",
-        include_str!("../../../../template/env-repo/configs/hello/hello.toml"),
+        include_str!("../../template/env-repo/configs/hello/hello.toml"),
     ),
 ];
 
