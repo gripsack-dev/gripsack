@@ -1,0 +1,2 @@
+# Deployed by gripsack — edit me in the env repo, then `grip apply`.
+greeting = "hello from gripsack"

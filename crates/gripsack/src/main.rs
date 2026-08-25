@@ -97,6 +97,11 @@ enum Command {
     },
     /// Show which module owns a deployed path
     WhyOwns { path: String },
+    /// Scaffold an env repo (env.toml, hosts, modules, examples)
+    Init {
+        /// Directory to initialize (default: current directory)
+        dir: Option<PathBuf>,
+    },
     /// Check the frontend environment (python + node + gripsack package)
     Doctor,
 }
@@ -140,6 +145,9 @@ fn main() -> ExitCode {
         },
         Command::Gc { dry_run } => commands::gc(palette, dry_run),
         Command::WhyOwns { path } => commands::why_owns(&path),
+        Command::Init { dir } => {
+            commands::init(&dir.unwrap_or_else(|| PathBuf::from(".")), palette)
+        }
         Command::Generations => commands::generations(),
         Command::Update {
             host,

@@ -922,3 +922,31 @@ module("git", config={"configs/git/id.toml": template(
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "undefined variable" in out.stderr
+
+
+def test_init_scaffolds_a_working_env_repo(sandbox):
+    """grip init: embedded template (offline, version-matched), never
+    clobbers an existing env repo."""
+    repo = sandbox / "fresh"
+    repo.mkdir()
+    out = grip("init", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (repo / "env.toml").exists()
+    assert (repo / "modules" / "hello.py").exists()
+    assert (repo / "modules" / "examples.py").exists()
+    assert (repo / "configs" / "hello" / "hello.toml").exists()
+    hosts = list((repo / "hosts").glob("*.py"))
+    assert len(hosts) == 1
+    assert (repo / ".git").is_dir()
+
+    # the scaffold is a working repo: check and apply succeed offline
+    out = grip("check", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("apply", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".config" / "hello" / "hello.toml").is_symlink()
+
+    # init never clobbers an existing env repo
+    out = grip("init", cwd=repo)
+    assert out.returncode != 0
+    assert "already looks like an env repo" in out.stderr

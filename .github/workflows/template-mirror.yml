@@ -1,0 +1,40 @@
+name: template-mirror
+
+# Mirror template/env-repo/ to github.com/gripsack-dev/template for
+# browsing. The binary never fetches it — the template is embedded at
+# build time; this repo exists so people can read it without installing.
+
+on:
+  push:
+    branches: [main]
+    paths: ["template/env-repo/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Push template/env-repo to gripsack-dev/template
+        env:
+          TEMPLATE_TOKEN: ${{ secrets.TEMPLATE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          cp -r template/env-repo/. "$work/"
+          cd "$work"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "mirror: template/env-repo @ ${GITHUB_SHA::8}" || {
+            echo "no changes to mirror"
+            exit 0
+          }
+          git push -q --force "https://x-access-token:${TEMPLATE_TOKEN}@github.com/gripsack-dev/template.git" HEAD:main
