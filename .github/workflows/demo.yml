@@ -69,11 +69,11 @@ jobs:
              && render demo-nord "nord" \
              && render demo-dracula "Dracula" \
              && render demo-one-dark "OneDark" \
-             && render demo-solarized-dark "Solarized Dark" \
+             && render demo-solarized-dark "Builtin Solarized Dark" \
              && render demo-catppuccin-latte "Catppuccin Latte" \
              && render demo-github-light "Github" \
              && render demo-one-light "AtomOneLight" \
-             && render demo-solarized-light "Solarized Light"'
+             && render demo-solarized-light "Builtin Solarized Light"'
 
       - uses: actions/upload-artifact@v7
         with:
