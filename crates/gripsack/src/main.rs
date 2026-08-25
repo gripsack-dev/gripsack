@@ -130,6 +130,8 @@ fn main() -> ExitCode {
             Ok(repo) => commands::check(&repo, host.as_deref(), palette),
             Err(code) => code,
         },
+        Command::Gc => commands::gc(palette),
+        Command::WhyOwns { path } => commands::why_owns(&path),
         Command::Generations => commands::generations(),
         Command::Update {
             host,
@@ -182,11 +184,6 @@ fn main() -> ExitCode {
                 }
                 Err(code) => code,
             }
-        }
-        other => {
-            eprintln!("grip: `{other:?}` is not implemented yet — see plan/0001-architecture.md");
-            eprintln!("      (try `grip plan --ir <file>` or `grip doctor`)");
-            ExitCode::from(2)
         }
     }
 }

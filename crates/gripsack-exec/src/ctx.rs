@@ -5,7 +5,8 @@ use std::io;
 use std::path::PathBuf;
 
 /// A progress callback: `(module, verb)` events during execution.
-pub type ProgressCallback = Box<dyn Fn(&str, &str)>;
+/// Send + Sync — the scheduler (0007 §5) fires these from N workers.
+pub type ProgressCallback = Box<dyn Fn(&str, &str) + Send + Sync>;
 
 /// What an apply run needs beyond the IR.
 pub struct Ctx {

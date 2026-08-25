@@ -58,6 +58,10 @@ class ModuleData:
     config: dict[str, Dest] = field(default_factory=dict)
     depends: list[Dependency] = field(default_factory=list)
     activate: list[Intent] = field(default_factory=list)
+    #: Environment contributions: {"VAR": "value", "PATH+": "{store}/bin"}
+    #: — "+" prepends to a list var. Exported to the shell profile at
+    #: activation; {store} resolves to the module's store path.
+    env: dict[str, str] = field(default_factory=dict)
     steps: Optional[list[Step]] = None
     verify: Optional[Verify] = None
     retries: Optional[int] = None
@@ -87,6 +91,13 @@ class ModuleData:
             ]
         if self.activate:
             ir["activate"] = [i.to_ir() for i in self.activate]
+        if self.env:
+            ir["env"] = [
+                {"name": name[:-1] if name.endswith("+") else name,
+                 "op": "prepend" if name.endswith("+") else "set",
+                 "value": value}
+                for name, value in self.env.items()
+            ]
         if self.steps is not None:
             ir["steps"] = [s.to_ir() for s in self.steps]
         if self.verify:
@@ -123,6 +134,7 @@ def module(
     depends: Optional[list[Dependency]] = None,
     activate: Optional[list[Intent]] = None,
     steps: Optional[list[Step]] = None,
+    env: Optional[dict[str, str]] = None,
     verify: Optional[Verify] = None,
     retries: Optional[int] = None,
     when: Optional[When] = None,
@@ -142,6 +154,10 @@ def module(
         activate: activation intents (services, fonts, …).
         steps: explicit pipeline — mutually exclusive with the
             declarative fields (E103).
+        env: environment contributions exported to the shell profile
+            at activation — ``{"EDITOR": "hx"}`` sets, ``{"PATH+":
+            "{store}/bin"}`` prepends (``{store}`` resolves to the
+            module's store path).
         verify: module-level smoke contract, run pre-flip.
         retries: retry default for this module's steps.
         lint: name of a registered linter (env.toml ``[linters]``) —
@@ -162,6 +178,7 @@ def module(
         depends=depends or [],
         activate=activate or [],
         steps=steps,
+        env=env or {},
         verify=verify,
         retries=retries,
         span=_caller_span(),

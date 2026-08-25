@@ -15,22 +15,28 @@
 //! Currently: sequential execution in DAG order. The ready-queue scheduler
 //! with resource locks replaces the loop without changing semantics.
 
+pub mod activate;
 pub mod apply;
 pub mod ctx;
 pub mod deploy;
+pub mod env;
 pub mod expand;
 pub mod frontend;
+pub mod gc;
 pub mod lockfile;
 pub mod module;
 pub mod report;
 pub mod resolve;
+pub mod schedule;
 pub mod update;
 pub mod util;
 pub mod verify;
 
 pub use apply::apply;
 pub use ctx::{Ctx, ExecError, Outcome, ProgressCallback};
+pub use env::render_env_file;
 pub use frontend::ensure_python;
+pub use gc::{GcReport, gc, why_owns};
 pub use report::{ApplyResult, ReportKind, StepReport, UpdateReport, UpdateStatus};
 pub use update::update;
 
@@ -136,6 +142,7 @@ mod tests {
                 })
                 .collect(),
             activate: vec![],
+            env: vec![],
             steps: None,
             verify: None,
             retries: None,

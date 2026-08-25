@@ -116,6 +116,13 @@
           "type": "integer",
           "minimum": 0,
           "description": "Retry count override (0007); default 0 for non-fetch steps"
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/envVar"
+          },
+          "description": "Environment contributions exported to the shell profile at activation (plan/0001 \u00a73.10)"
         }
       }
     },
@@ -493,6 +500,32 @@
         }
       },
       "description": "Smoke contract (0007): binary_runs {path,args} | file_exists {path} | shell {script}. Runs pre-flip."
+    },
+    "envVar": {
+      "type": "object",
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "variable name; PATH-style list vars use prepend/append"
+        },
+        "op": {
+          "enum": [
+            "set",
+            "prepend",
+            "append"
+          ],
+          "default": "set"
+        },
+        "value": {
+          "type": "string",
+          "description": "`{store}` resolves to the module's store path"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }
