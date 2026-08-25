@@ -25,7 +25,9 @@ jobs:
         include:
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-latest, docker: true }
           - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, docker: true }
-          - { target: x86_64-apple-darwin, runner: macos-13 }
+          # both darwin targets on the arm runner — x86_64 cross-compiles
+          # with the stock Xcode (no macos-13 queue, which can idle 20-60min)
+          - { target: x86_64-apple-darwin, runner: macos-14, cross: true }
           - { target: aarch64-apple-darwin, runner: macos-14 }
     runs-on: ${{ matrix.runner }}
     steps:
