@@ -20,7 +20,9 @@ pub fn doctor(palette: Palette) -> ExitCode {
         }
     };
 
-    match std::process::Command::new("python3")
+    // The same python eval would use (0005 §3): GRIPSACK_PYTHON wins.
+    let python = std::env::var("GRIPSACK_PYTHON").unwrap_or_else(|_| "python3".into());
+    match std::process::Command::new(&python)
         .arg("--version")
         .output()
     {
@@ -35,12 +37,12 @@ pub fn doctor(palette: Palette) -> ExitCode {
             println!("{}  python: {v}", mark(true));
         }
         _ => {
-            println!("{}  python: `python3` not found on PATH", mark(false));
+            println!("{}  python: `{python}` not runnable", mark(false));
             ok = false;
         }
     }
 
-    let check = std::process::Command::new("python3")
+    let check = std::process::Command::new(&python)
         .args(["-c", "import gripsack; print(gripsack.__version__)"])
         .output();
     match check {
@@ -58,7 +60,7 @@ pub fn doctor(palette: Palette) -> ExitCode {
         }
         _ => {
             println!(
-                "{}  frontend: `import gripsack` failed — pip install gripsack",
+                "{}  frontend: `import gripsack` failed with {python} — pip install gripsack",
                 mark(false)
             );
             ok = false;

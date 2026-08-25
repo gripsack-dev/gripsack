@@ -40,7 +40,7 @@ from .steps import (
     step,
 )
 from .conditions import When, when
-from .verify import Verify, verify_binary, verify_file, verify_shell
+from .verify import Verify, verify_binary, verify_deployed, verify_file, verify_shell
 
 import importlib.metadata as _meta
 

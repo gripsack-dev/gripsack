@@ -214,6 +214,11 @@ impl<'a> ModuleRun<'a> {
             .staging
             .take()
             .unwrap_or_else(|| fresh_staging(self.name));
+        // fresh_staging only *clears* the path — the copy loop below is
+        // what creates it, so a zero-file payload (e.g. a tree whose
+        // last file was dropped) must create it explicitly or the
+        // publish rename fails with ENOENT.
+        std::fs::create_dir_all(&stage)?;
         for entry in self.module.install.iter().chain(self.module.config.iter()) {
             let repo_file = self.ctx.repo.join(&entry.from);
             if repo_file.is_file() {

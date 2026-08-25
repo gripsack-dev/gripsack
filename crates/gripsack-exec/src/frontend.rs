@@ -15,15 +15,17 @@ use std::path::{Path, PathBuf};
 const UV_VERSION: &str = "0.12.5";
 const UV_SHA256: &str = "a4742988791c9aeae68c78150d6cba762062ad2a47e53738c2779d2b596bfcdb";
 
-/// The python to evaluate with, provisioned if needed.
-pub fn ensure_python(home: &Path, config: &EnvConfig, core_version: &str) -> Option<PathBuf> {
+/// The python to evaluate with, provisioned if needed. Provisioning
+/// failures are the caller's error to surface — never silently fall
+/// back to a python3 that can't import gripsack.
+pub fn ensure_python(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<PathBuf> {
     if let Ok(python) = std::env::var("GRIPSACK_PYTHON") {
-        return Some(PathBuf::from(python));
+        return Ok(PathBuf::from(python));
     }
     if system_python_works() && config.eval.deps.is_empty() {
-        return Some(PathBuf::from("python3"));
+        return Ok(PathBuf::from("python3"));
     }
-    provision(home, config, core_version).ok()
+    provision(home, config, core_version)
 }
 
 fn system_python_works() -> bool {

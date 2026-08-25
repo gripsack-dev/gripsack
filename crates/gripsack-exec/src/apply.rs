@@ -114,7 +114,7 @@ pub(crate) fn scoped_order(ir: &Ir, only: &[String]) -> Result<Vec<String>, Exec
 }
 
 /// Remove destinations the new manifest no longer declares, iff the
-/// file on disk is still exactly what we deployed (hash check).
+/// file on disk is still exactly what we deployed.
 fn prune_undeclared(
     prev: &store::Generation,
     modules: &BTreeMap<String, store::ModuleState>,
@@ -130,6 +130,23 @@ fn prune_undeclared(
                 continue;
             }
             let dest = crate::deploy::expand_home(&entry.to);
+            if entry.mode == gripsack_ir::Ownership::Owned {
+                // Owned destinations are symlinks into the store; the
+                // recorded hash is the *source content*, so the hash
+                // check below can never match (it would hash the link
+                // target string). "Unmodified" for owned means: still
+                // our symlink — same test deploy uses (0009).
+                let ours = std::fs::read_link(&dest)
+                    .map(|t| t.starts_with(home))
+                    .unwrap_or(false);
+                if ours {
+                    std::fs::remove_file(&dest)?;
+                    info!("pruned {}", entry.to);
+                } else if dest.symlink_metadata().is_ok() {
+                    tracing::warn!("kept {} — replaced since deploy", entry.to);
+                }
+                continue;
+            }
             let Ok(current) = store::canonical_file_hash(&dest) else {
                 continue; // already gone
             };
@@ -141,6 +158,5 @@ fn prune_undeclared(
             }
         }
     }
-    let _ = home;
     Ok(())
 }
