@@ -456,6 +456,95 @@ module("hello", fetch=file_fetch("{payload}"),
     assert out.returncode != 0
 
 
+def test_duplicate_destination_is_a_check_time_error(sandbox):
+    """E111 (N2): two modules may not declare the same destination —
+    a deploy race in parallel and a lie for why-owns."""
+    confdir = sandbox / "myenv" / "configs" / "x"
+    confdir.mkdir(parents=True)
+    (confdir / "same.conf").write_text("x\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("one", config={"configs/x/same.conf": tracked_copy("~/.out/same.conf")})
+module("two", config={"configs/x/same.conf": tracked_copy("~/.out/same.conf")})
+""",
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "E111" in out.stderr
+    assert "same.conf" in out.stderr
+
+
+def test_jobs_one_forces_serial_execution(sandbox):
+    """--jobs bounds the scheduler (N3): the 2x2s parallel proof
+    inverted — with --jobs 1 it must take serial time."""
+    import time
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module
+
+module("slow-a", build={"kind": "custom_shell", "script": "sleep 2"})
+module("slow-b", build={"kind": "custom_shell", "script": "sleep 2"})
+""",
+    )
+    start = time.monotonic()
+    out = grip("apply", "--host", "testhost", "--jobs", "1", cwd=repo)
+    elapsed = time.monotonic() - start
+    assert out.returncode == 0, out.stderr
+    assert elapsed >= 3.5, f"--jobs 1 not respected: {elapsed:.1f}s"
+
+
+def test_gc_dry_run_previews_without_deleting(sandbox):
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho v1\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+from gripsack import module, file_fetch, symlink
+
+module("hello", fetch=file_fetch("{payload}"),
+    install={{"bin/hello": symlink("~/.local/bin/hello")}})
+""",
+    )
+    assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
+    (repo / "modules" / "hello.py").write_text("# empty\n")
+    assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
+    user_conf = sandbox / ".config/gripsack"
+    user_conf.mkdir(parents=True)
+    (user_conf / "config.toml").write_text("[settings]\nkeep_generations = 1\n")
+    store = sandbox / ".local/share/gripsack/store"
+    before = set(store.iterdir())
+    out = grip("gc", "--dry-run", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "dry run" in out.stdout
+    assert "collected" in out.stdout or "pruned" in out.stdout
+    assert set(store.iterdir()) == before  # nothing deleted
+    assert (sandbox / ".local/share/gripsack/generations/1").exists()
+
+
+def test_eval_env_reaches_build_steps(sandbox):
+    """[eval] env (build-time exported env): env.toml declares it,
+    a build step's shell inherits it."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, shell_step
+
+module("probe", steps=[shell_step("test \\"$MY_CERT_PATH\\" = \\"/etc/ssl/company.pem\\"", id="probe")])
+""",
+    )
+    (repo / "env.toml").write_text(
+        '[env]\nname = "fixture"\n\n[eval]\nenv = { MY_CERT_PATH = "/etc/ssl/company.pem" }\n'
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+
 def test_independent_modules_run_in_parallel(sandbox):
     """Two independent 2s builds finish in ~2s, not 4s (0007 §5 —
     the ready-queue scheduler runs N = cores)."""

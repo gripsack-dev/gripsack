@@ -46,6 +46,9 @@ enum Command {
         /// Overwrite foreign/drifted tracked_copy destinations
         #[arg(long)]
         take_over: bool,
+        /// Max concurrent modules (default: cores; env GRIPSACK_JOBS)
+        #[arg(long)]
+        jobs: Option<usize>,
     },
     /// Validate the env — eval, IR sema, linters — and stop (0011 §9).
     /// Zero side effects; exit code is the CI signal.
@@ -87,7 +90,11 @@ enum Command {
     /// List generations and their status
     Generations,
     /// Collect store paths no generation references
-    Gc,
+    Gc {
+        /// Preview what would be collected, deleting nothing
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Show which module owns a deployed path
     WhyOwns { path: String },
     /// Check the frontend environment (python + node + gripsack package)
@@ -122,15 +129,16 @@ fn main() -> ExitCode {
             repo,
             modules,
             take_over,
+            jobs,
         } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::apply(&repo, host.as_deref(), modules, take_over, palette),
+            Ok(repo) => commands::apply(&repo, host.as_deref(), modules, take_over, jobs, palette),
             Err(code) => code,
         },
         Command::Check { host, repo } => match commands::resolve_repo(repo.as_deref()) {
             Ok(repo) => commands::check(&repo, host.as_deref(), palette),
             Err(code) => code,
         },
-        Command::Gc => commands::gc(palette),
+        Command::Gc { dry_run } => commands::gc(palette, dry_run),
         Command::WhyOwns { path } => commands::why_owns(&path),
         Command::Generations => commands::generations(),
         Command::Update {

@@ -20,11 +20,16 @@ pub struct GcReport {
 /// Collect unreferenced store paths, and generations beyond `keep`
 /// (never the current one). Generation pruning happens first — paths
 /// only referenced by a pruned generation become collectable too.
-pub fn gc(home: &Path, keep: Option<u32>) -> Result<GcReport, ExecError> {
+/// `dry_run` reports without deleting (0003: plan-before-apply
+/// applies to the destructive commands too, N6).
+pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, ExecError> {
     let mut report = GcReport::default();
     let generations = store::list_generations(home);
     let current = store::current_generation(home);
 
+    // what WOULD be pruned (dry-run must preview the post-prune state,
+    // or it under-reports collectable paths)
+    let mut pruned = std::collections::BTreeSet::new();
     if let Some(keep) = keep {
         let keep = keep as usize;
         if generations.len() > keep {
@@ -33,7 +38,7 @@ pub fn gc(home: &Path, keep: Option<u32>) -> Result<GcReport, ExecError> {
                 if Some(*n) == current {
                     continue; // never the active one — keep one extra instead
                 }
-                std::fs::remove_dir_all(store::generation_dir(home, *n))?;
+                pruned.insert(*n);
                 report.generations_removed.push(*n);
             }
         }
@@ -41,10 +46,18 @@ pub fn gc(home: &Path, keep: Option<u32>) -> Result<GcReport, ExecError> {
 
     let mut referenced = std::collections::BTreeSet::new();
     for n in store::list_generations(home) {
+        if pruned.contains(&n) {
+            continue;
+        }
         if let Ok(manifest) = store::read_manifest(home, n) {
             for state in manifest.modules.values() {
                 referenced.insert(state.store_path.clone());
             }
+        }
+    }
+    if !dry_run {
+        for n in &pruned {
+            std::fs::remove_dir_all(store::generation_dir(home, *n))?;
         }
     }
 
@@ -54,7 +67,9 @@ pub fn gc(home: &Path, keep: Option<u32>) -> Result<GcReport, ExecError> {
             let path = entry?.path();
             if !referenced.contains(&path) {
                 report.bytes_freed += dir_size(&path)?;
-                std::fs::remove_dir_all(&path)?;
+                if !dry_run {
+                    std::fs::remove_dir_all(&path)?;
+                }
                 report.store_removed.push(path);
             }
         }
@@ -138,7 +153,7 @@ mod tests {
     fn collects_only_unreferenced_store_paths() {
         let dir = setup();
         let home = dir.path();
-        let report = gc(home, None).unwrap();
+        let report = gc(home, None, false).unwrap();
         assert_eq!(report.store_removed.len(), 1);
         assert!(report.store_removed[0].ends_with("zzz-orphan"));
         assert!(home.join("store/aaa-m").exists());
@@ -149,7 +164,7 @@ mod tests {
     fn keep_generations_prunes_oldest_and_their_paths() {
         let dir = setup();
         let home = dir.path();
-        let report = gc(home, Some(2)).unwrap();
+        let report = gc(home, Some(2), false).unwrap();
         assert_eq!(report.generations_removed, vec![1]);
         assert!(!store::generation_dir(home, 1).exists());
         assert!(store::generation_dir(home, 3).exists());
@@ -168,7 +183,7 @@ mod tests {
     fn never_prunes_the_current_generation() {
         let dir = setup();
         let home = dir.path();
-        let report = gc(home, Some(1)).unwrap();
+        let report = gc(home, Some(1), false).unwrap();
         assert!(store::generation_dir(home, 3).exists());
         assert!(!report.generations_removed.contains(&3));
         assert!(home.join("store/ccc-m").exists());

@@ -12,6 +12,7 @@ pub fn apply(
     host: Option<&str>,
     modules: Vec<String>,
     take_over: bool,
+    jobs: Option<usize>,
     palette: Palette,
 ) -> ExitCode {
     let json = match eval_repo(repo, host, palette) {
@@ -44,6 +45,11 @@ pub fn apply(
             .or_else(|| std::env::var("HOSTNAME").ok())
             .unwrap_or_else(|| "default".into()),
         take_over,
+        jobs: jobs.or_else(|| {
+            std::env::var("GRIPSACK_JOBS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+        }),
         on_progress: spinner.as_ref().map(|pb| {
             let pb = pb.clone();
             Box::new(move |module: &str, verb: &str| {

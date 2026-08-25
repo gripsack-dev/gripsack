@@ -28,6 +28,7 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
         host: host_name,
         on_progress: None,
         take_over: false,
+        jobs: None,
     };
     match gripsack_exec::update(&ir, &ctx) {
         Ok(reports) => {

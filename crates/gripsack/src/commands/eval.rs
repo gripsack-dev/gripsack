@@ -32,6 +32,13 @@ pub fn eval_repo(repo: &Path, host: Option<&str>, palette: Palette) -> Result<St
             return Err(ExitCode::FAILURE);
         }
     };
+    // Build-time env (0001 §3.10 build side): injected for the run's
+    // duration so every subprocess — fetchers, build steps, plugins —
+    // inherits it. A CLI exits after one run, so process-env is the
+    // honest carrier; [eval] env in env.toml is the declaration point.
+    for (name, value) in &env.eval.env {
+        unsafe { std::env::set_var(name, value) };
+    }
     if env.env.frontend != gripsack_config::Frontend::Python {
         eprintln!(
             "grip: typescript eval is not available yet — set `frontend = \"python\"` for now"

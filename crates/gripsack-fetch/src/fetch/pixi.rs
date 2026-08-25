@@ -48,6 +48,10 @@ pub(crate) fn fetch(
             reason: format!("no pixi env at {}", env_dir.display()),
         });
     }
-    archive::copy_tree(&env_dir, dest).map_err(FetchError::Io)?;
+    // conda-meta is pixi's bookkeeping, not payload — and it embeds the
+    // absolute PIXI_HOME path, which would make the same pin hash
+    // differently per machine (cross-machine reproducibility, 0001
+    // §3.4). Excluded from the harvest AND the identity.
+    archive::copy_tree_filtered(&env_dir, dest, &["conda-meta"]).map_err(FetchError::Io)?;
     Ok(gripsack_store::canonical_tree_hash(dest)?)
 }
