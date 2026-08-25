@@ -47,6 +47,16 @@ enum Command {
         #[arg(long)]
         take_over: bool,
     },
+    /// Validate the env — eval, IR sema, linters — and stop (0011 §9).
+    /// Zero side effects; exit code is the CI signal.
+    Check {
+        /// Host entrypoint (default: this machine's hostname)
+        #[arg(long)]
+        host: Option<String>,
+        /// Env repo path or git URL (default: current directory)
+        #[arg(long)]
+        repo: Option<String>,
+    },
     /// Show what an apply would change, without changing anything.
     /// For now: validate IR and show the execution waves.
     Plan {
@@ -114,6 +124,10 @@ fn main() -> ExitCode {
             take_over,
         } => match commands::resolve_repo(repo.as_deref()) {
             Ok(repo) => commands::apply(&repo, host.as_deref(), modules, take_over, palette),
+            Err(code) => code,
+        },
+        Command::Check { host, repo } => match commands::resolve_repo(repo.as_deref()) {
+            Ok(repo) => commands::check(&repo, host.as_deref(), palette),
             Err(code) => code,
         },
         Command::Generations => commands::generations(),
