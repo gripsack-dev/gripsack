@@ -7,6 +7,15 @@ use tracing::info;
 /// grip rollback: restore a generation's deployment, then flip back.
 pub fn rollback(generation: Option<u64>) -> ExitCode {
     let home = store::gripsack_home();
+    // rollback rewrites deployments and flips — same lifecycle race as
+    // apply, so it holds the same lock (finding A)
+    let _lifecycle_lock = match gripsack_exec::acquire_lifecycle_lock(&home) {
+        Ok(guard) => guard,
+        Err(e) => {
+            eprintln!("grip: cannot take the apply lock: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let current = store::current_generation(&home);
     let target = match (generation, current) {
         (Some(n), _) => n,

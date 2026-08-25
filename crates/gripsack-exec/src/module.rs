@@ -54,6 +54,12 @@ struct ModuleRun<'a> {
     pending_verifies: Vec<&'a Verify>,
     lock_entry: Option<lockfile::LockEntry>,
     error: Option<ExecError>,
+    /// Identity is finalized after fetch for kinds whose payload hash
+    /// isn't knowable up front (pixi, git, plugin — finding C): the
+    /// lock-independent path is provisional, and the first fetch's
+    /// sha256 completes it — the same path every later apply computes
+    /// from the lockfile.
+    identity_pending: bool,
 }
 
 /// Identity errors (new) escape before anything deploys; phase errors
@@ -114,7 +120,15 @@ impl<'a> ModuleRun<'a> {
             None => module_input(module, &ctx.repo)?,
         };
         let store_path = store::store_path(&ctx.home, name, &input);
-        let present = store_path.exists();
+        // Deferred identity (finding C): no hash from the lock AND none
+        // computable offline — the first fetch's sha will finalize the
+        // path. Presence is meaningless until then: always fetch.
+        let identity_pending = resolved.is_none()
+            && (module.fetch.is_some()
+                || steps
+                    .iter()
+                    .any(|s| matches!(s.action, gripsack_ir::StepAction::Fetch { .. })));
+        let present = store_path.exists() && !identity_pending;
         let mut reports = Vec::new();
         if present {
             reports.push(StepReport {
@@ -135,6 +149,7 @@ impl<'a> ModuleRun<'a> {
                 .and_then(|r| r.version.clone()),
             store_path,
             present,
+            identity_pending,
             staging: None,
             deployed: Vec::new(),
             reports,
@@ -198,6 +213,17 @@ impl<'a> ModuleRun<'a> {
             .and_then(|r| serde_json::to_value(r).ok());
         let sha = gripsack_fetch::fetch_with_locked(&concrete, stage, locked_json.as_ref())
             .map_err(ExecError::Fetch)?;
+        // Finalize a deferred identity (finding C): the first fetch's
+        // sha joins the store-path input — identical to what the lock
+        // gives every later apply. Presence was never checked against
+        // the provisional path, so this is the path publish must use.
+        if self.identity_pending {
+            let input = format!(
+                "{}|payload={sha}",
+                module_input(self.module, &self.ctx.repo)?
+            );
+            self.store_path = store::store_path(&self.ctx.home, self.name, &input);
+        }
         // pin enforcement for kinds without download-level verification
         if let Some(expected) = self
             .locked

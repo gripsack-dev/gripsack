@@ -658,6 +658,120 @@ module("bbb", fetch=file_fetch("{payload}"),
     assert not (sandbox / ".out/b").exists()
 
 
+def test_concurrent_applies_serialize_and_lose_nothing(sandbox):
+    """Finding A: two applies over disjoint subsets must not lose a
+    manifest update — the lifecycle holds apply.flock."""
+    import subprocess
+
+    repo = sandbox / "myenv"
+    for name in ("amod", "bmod"):
+        confdir = repo / "configs" / name
+        confdir.mkdir(parents=True)
+        (confdir / f"{name}.conf").write_text(f"{name}\n")
+    (repo / "modules").mkdir(parents=True)
+    (repo / "hosts").mkdir()
+    (repo / "env.toml").write_text('[env]\nname = "fixture"\n')
+    (repo / "hosts" / "testhost.py").write_text('tags = ["test"]\n')
+    for name in ("amod", "bmod"):
+        (repo / "modules" / f"{name}.py").write_text(
+            f"""
+from gripsack import module, tracked_copy
+
+module("{name}", config={{"configs/{name}/{name}.conf": tracked_copy("~/.out/{name}.conf")}})
+""",
+        )
+    grip_bin = str(GRIP.resolve())
+    p1 = subprocess.Popen(
+        [grip_bin, "apply", "--host", "testhost", "amod"],
+        cwd=repo,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    p2 = subprocess.Popen(
+        [grip_bin, "apply", "--host", "testhost", "bmod"],
+        cwd=repo,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    o1, e1 = p1.communicate(timeout=60)
+    o2, e2 = p2.communicate(timeout=60)
+    assert p1.returncode == 0, e1
+    assert p2.returncode == 0, e2
+    out = grip("why-owns", "~/.out/amod.conf", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "amod" in out.stdout
+    out = grip("why-owns", "~/.out/bmod.conf", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "bmod" in out.stdout
+
+
+def test_jobs_zero_is_rejected(sandbox):
+    """Finding B: --jobs 0 / GRIPSACK_JOBS=0 must fail loudly, never
+    silently unmanage the environment."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("a", config={"configs/a/a": tracked_copy("~/.out/a")})
+""",
+    )
+    (repo / "configs" / "a").mkdir(parents=True)
+    (repo / "configs" / "a" / "a").write_text("a\n")
+    out = grip("apply", "--host", "testhost", "--jobs", "0", cwd=repo)
+    assert out.returncode != 0
+    assert "--jobs 0" in out.stderr
+    assert not (sandbox / ".local/share/gripsack/generations").exists()
+
+
+def test_deferred_identity_is_stable_across_applies(sandbox):
+    """Finding C: fetch kinds whose payload hash isn't knowable up
+    front (git/pixi/plugin) must produce ONE store path and satisfy
+    on the second apply, not a spurious second generation."""
+    import subprocess as sp
+
+    remote = sandbox / "remote"
+    remote.mkdir()
+    env = dict(
+        GIT_AUTHOR_NAME="t",
+        GIT_AUTHOR_EMAIL="t@t",
+        GIT_COMMITTER_NAME="t",
+        GIT_COMMITTER_EMAIL="t@t",
+        PATH="/usr/bin:/bin:/usr/local/bin",
+        HOME=str(sandbox),
+    )
+    sp.run(["git", "init", "--quiet"], cwd=remote, env=env, check=True)
+    (remote / "bin.txt").write_text("payload\n")
+    sp.run(["git", "add", "."], cwd=remote, env=env, check=True)
+    sp.run(["git", "commit", "--quiet", "-m", "init"], cwd=remote, env=env, check=True)
+    rev = sp.run(
+        ["git", "rev-parse", "HEAD"], cwd=remote, env=env, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+from gripsack import module, git, symlink
+
+module("tool", fetch=git("file://{remote}", "{rev}"),
+    install={{"bin.txt": symlink("~/.local/bin/tool")}})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "applied" in out.stdout
+    store = sandbox / ".local/share/gripsack/store"
+    paths_after_first = sorted(p.name for p in store.iterdir())
+    assert len(paths_after_first) == 1
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "already satisfied" in out.stdout, out.stdout
+    assert sorted(p.name for p in store.iterdir()) == paths_after_first
+
+
 def test_rollback_restores_previous_generation(sandbox, tmp_path):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
