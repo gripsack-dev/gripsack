@@ -60,6 +60,11 @@ pub fn rollback(generation: Option<u64>) -> ExitCode {
         eprintln!("grip: cannot flip to generation {target}: {e}");
         return ExitCode::FAILURE;
     }
+    // The profile tracks the generation (0001 §3.10).
+    if let Err(e) = gripsack_exec::render_env_file(&home, &manifest.modules) {
+        eprintln!("grip: rolled back, but env profile failed: {e}");
+        return ExitCode::FAILURE;
+    }
     info!(generation = target, "rolled back");
     println!("{} generation {}", "rolled back to".green().bold(), target);
     ExitCode::SUCCESS

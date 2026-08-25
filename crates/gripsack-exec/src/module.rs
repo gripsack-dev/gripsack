@@ -197,6 +197,9 @@ impl<'a> ModuleRun<'a> {
             .staging
             .clone()
             .unwrap_or_else(|| fresh_staging(self.name));
+        // fresh_staging only *clears* the path — a build with no fetch
+        // step before it has no staging yet.
+        std::fs::create_dir_all(&dir)?;
         run_shell(script, &dir).map_err(|detail| ExecError::Step {
             module: self.name.to_string(),
             step: step.id.clone(),
@@ -301,6 +304,7 @@ impl<'a> ModuleRun<'a> {
             state: store::ModuleState {
                 store_path: self.store_path,
                 entries: self.deployed,
+                env: self.module.env.clone(),
             },
             reports: self.reports,
             lock_entry: self.lock_entry,

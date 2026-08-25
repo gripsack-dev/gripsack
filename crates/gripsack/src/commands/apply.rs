@@ -47,7 +47,7 @@ pub fn apply(
             Box::new(move |module: &str, verb: &str| {
                 pb.set_message(format!("{module} · {verb}"));
                 pb.tick();
-            }) as Box<dyn Fn(&str, &str)>
+            }) as gripsack_exec::ProgressCallback
         }),
     };
     let started = std::time::Instant::now();

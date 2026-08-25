@@ -412,6 +412,7 @@ dependencies = [
  "gripsack-fetch",
  "gripsack-ir",
  "gripsack-store",
+ "libc",
  "serde",
  "serde_json",
  "sha2",

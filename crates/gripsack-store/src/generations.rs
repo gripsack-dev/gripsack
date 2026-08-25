@@ -10,7 +10,7 @@
 //! ```
 
 use crate::fs;
-use gripsack_ir::Ownership;
+use gripsack_ir::{EnvVar, Ownership};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io;
@@ -31,6 +31,10 @@ pub struct ModuleState {
     pub store_path: PathBuf,
     #[serde(default)]
     pub entries: Vec<DeployedEntry>,
+    /// Environment contributions, replayed into the shell profile at
+    /// activation and rollback (0001 §3.10).
+    #[serde(default)]
+    pub env: Vec<EnvVar>,
 }
 
 /// A generation: an immutable record of one profile state.
@@ -106,6 +110,7 @@ mod tests {
                     mode: Ownership::TrackedCopy,
                     hash: "deadbeef".into(),
                 }],
+                env: vec![],
             },
         );
         Generation { number: n, modules }

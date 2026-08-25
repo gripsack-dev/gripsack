@@ -54,6 +54,11 @@ pub struct Module {
     pub depends: Vec<Dependency>,
     #[serde(default)]
     pub activate: Vec<Intent>,
+    /// Environment contributions exported to the shell profile at
+    /// activation (0001 §3.10). `{store}` in the value resolves to the
+    /// module's store path.
+    #[serde(default)]
+    pub env: Vec<EnvVar>,
     /// Explicit pipeline control (0007). Present means the declarative
     /// fields above must all be empty — the core rejects both-shapes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -177,6 +182,26 @@ pub enum EdgeKind {
     #[default]
     Runtime,
     Build,
+}
+
+/// How a variable reaches the profile: set outright, or grow a
+/// list-style variable (PATH & friends) at either end.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvOp {
+    #[default]
+    Set,
+    Prepend,
+    Append,
+}
+
+/// One environment contribution (0001 §3.10).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EnvVar {
+    pub name: String,
+    #[serde(default)]
+    pub op: EnvOp,
+    pub value: String,
 }
 
 /// Declared activation intent — translated by platform adapters, never

@@ -2,8 +2,8 @@
 
 use crate::ctx::Outcome;
 use crate::ctx::{Ctx, ExecError};
+use crate::env::render_env_file;
 use crate::expand;
-use crate::module::run_module;
 use crate::report::ApplyResult;
 use gripsack_ir::Ir;
 use gripsack_store as store;
@@ -18,36 +18,40 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     let mut lock = crate::lockfile::read(&ctx.repo, &ctx.host).unwrap_or_default();
     let mut lock_dirty = false;
 
-    // The manifest starts from the current generation — a subset apply
-    // replaces only the modules it touches (0001 §3.6).
+    // The previous generation's state, for drift detection — distinct
+    // from the manifest being built (see below).
     let current_gen = store::current_generation(&ctx.home);
-    let mut modules: BTreeMap<String, store::ModuleState> = current_gen
+    let prev_modules: BTreeMap<String, store::ModuleState> = current_gen
         .and_then(|n| store::read_manifest(&ctx.home, n).ok())
         .map(|g| g.modules)
         .unwrap_or_default();
+    // A subset apply starts from the current generation's manifest and
+    // replaces only the modules it touches (0001 §3.6). A full apply
+    // reconciles: modules absent from the IR are dropped from the
+    // manifest — prune_undeclared then removes their destinations.
+    let mut modules: BTreeMap<String, store::ModuleState> = if ctx.only.is_empty() {
+        BTreeMap::new()
+    } else {
+        prev_modules.clone()
+    };
 
-    for name in &order {
+    // The ready-queue scheduler (0007 §5): modules run as their
+    // dependencies finish, N = cores, resources via flock. The flip
+    // below stays the single barrier.
+    let outcome =
+        crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)?;
+    for (name, module_reports) in outcome.reports {
         let span = info_span!("module", name = name.as_str());
         let _entered = span.enter();
-        let module = &ir.modules[name.as_str()];
-        let steps = &steps_by_module[name.as_str()];
-        let outcome = run_module(
-            name,
-            module,
-            steps,
-            ctx,
-            modules.get(name.as_str()),
-            lock.modules.get(name.as_str()),
-        )?;
-        reports.extend(outcome.reports);
-        if let Some(entry) = outcome.lock_entry
-            && lock.modules.get(name.as_str()) != Some(&entry)
-        {
-            lock.modules.insert(name.clone(), entry);
+        reports.extend(module_reports);
+    }
+    for (name, entry) in outcome.lock_entries {
+        if lock.modules.get(&name) != Some(&entry) {
+            lock.modules.insert(name, entry);
             lock_dirty = true;
         }
-        modules.insert(name.clone(), outcome.state);
     }
+    modules.extend(outcome.modules);
 
     // Prune-on-undeclare (0006 critique): destinations in the previous
     // manifest but gone now are removed — only if the file still matches
@@ -80,6 +84,8 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     };
     store::write_manifest(&ctx.home, &generation)?;
     store::flip(&ctx.home, next)?;
+    render_env_file(&ctx.home, &generation.modules)?;
+    reports.extend(crate::activate::run_post_activate(&order, &ir.modules));
     if lock_dirty {
         crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
     }

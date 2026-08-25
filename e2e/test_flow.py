@@ -353,6 +353,130 @@ module(
     assert "applied" in out.stdout
 
 
+def test_exported_env_profile_tracks_the_generation(sandbox):
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("zed", config={"configs/zed/a": tracked_copy("~/.config/zed/a")},
+    env={"EDITOR": "zed", "PATH+": "{store}/bin"})
+""",
+    )
+    (repo / "configs" / "zed").mkdir(parents=True)
+    (repo / "configs" / "zed" / "a").write_text("a\n")
+    profile = sandbox / ".local/share/gripsack/env/profile.sh"
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    text = profile.read_text()
+    assert 'export EDITOR="zed"' in text
+    store_bin = next(
+        line for line in text.splitlines() if line.startswith("export PATH=")
+    )
+    assert "/bin:${PATH}" in store_bin
+    assert "/store/" in store_bin and "-zed/bin:" in store_bin
+
+    # drop the env declaration — the profile must not go stale
+    (repo / "modules" / "hello.py").write_text(
+        """
+from gripsack import module, tracked_copy
+
+module("zed", config={"configs/zed/a": tracked_copy("~/.config/zed/a")})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not profile.exists()
+
+
+def test_service_intent_runs_the_adapter_without_failing_apply(sandbox):
+    """systemd-user adapter: no systemctl/user bus in the sandbox —
+    the intent must degrade to a warning, never a failed apply
+    (0001 §3.8: never roll back on post-activation failure)."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, service, tracked_copy
+
+module("daemon", config={"configs/daemon/a": tracked_copy("~/.config/daemon/a")},
+    activate=[service("my-daemon.service")])
+""",
+    )
+    (repo / "configs" / "daemon").mkdir(parents=True)
+    (repo / "configs" / "daemon" / "a").write_text("a\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "my-daemon.service" in out.stdout
+
+
+def test_gc_collects_unreferenced_store_paths_and_why_owns(sandbox):
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho v1\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+from gripsack import module, file_fetch, symlink
+
+module("hello", fetch=file_fetch("{payload}"),
+    install={{"bin/hello": symlink("~/.local/bin/hello")}})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("why-owns", "~/.local/bin/hello", cwd=repo)
+    assert out.returncode == 0
+    assert "hello" in out.stdout
+    store = sandbox / ".local/share/gripsack/store"
+    before = {p.name for p in store.iterdir()}
+    assert len(before) == 1
+
+    # drop the module entirely; deployment pruned on the next apply
+    (repo / "modules" / "hello.py").write_text("# empty\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not (sandbox / ".local/bin/hello").exists()
+
+    # gen 1 still references the store path — gc alone must keep it
+    # (rollback!). keep_generations = 1 is what releases it.
+    out = grip("gc", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert set({p.name for p in store.iterdir()}) == before
+
+    user_conf = sandbox / ".config/gripsack"
+    user_conf.mkdir(parents=True)
+    (user_conf / "config.toml").write_text("[settings]\nkeep_generations = 1\n")
+    out = grip("gc", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    after = set(store.iterdir()) if store.exists() else set()
+    assert not after, f"gc left {after}"
+    assert not (sandbox / ".local/share/gripsack/generations/1").exists()
+    assert (sandbox / ".local/share/gripsack/generations/2").exists()
+    out = grip("why-owns", "~/.local/bin/hello", cwd=repo)
+    assert out.returncode != 0
+
+
+def test_independent_modules_run_in_parallel(sandbox):
+    """Two independent 2s builds finish in ~2s, not 4s (0007 §5 —
+    the ready-queue scheduler runs N = cores)."""
+    import time
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module
+
+module("slow-a", build={"kind": "custom_shell", "script": "sleep 2"})
+module("slow-b", build={"kind": "custom_shell", "script": "sleep 2"})
+""",
+    )
+    start = time.monotonic()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    elapsed = time.monotonic() - start
+    assert out.returncode == 0, out.stderr
+    assert elapsed < 3.5, f"serial execution suspected: {elapsed:.1f}s"
+
+
 def test_rollback_restores_previous_generation(sandbox, tmp_path):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
