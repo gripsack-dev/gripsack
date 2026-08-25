@@ -25,12 +25,15 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
     // Bundled roots first: minimal containers without a CA store keep
     // working. System roots on top: intercepting proxies verify.
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    match rustls_native_certs::load_native_certs() {
-        Ok(certs) => {
-            roots.add_parsable_certificates(certs);
-        }
-        Err(e) => tracing::warn!("could not load system CA roots: {e}"),
+    // 0.8 API: partial success is normal — take what loaded, log the rest.
+    let native = rustls_native_certs::load_native_certs();
+    if !native.errors.is_empty() {
+        tracing::warn!(
+            "some system CA roots failed to load ({} errors)",
+            native.errors.len()
+        );
     }
+    roots.add_parsable_certificates(native.certs);
     let config = rustls::ClientConfig::builder()
         .with_root_certificates(roots)
         .with_no_client_auth();
