@@ -7,7 +7,13 @@ use std::path::{Path, PathBuf};
 /// An exclusive flock on `$GRIPSACK_HOME/locks/<name>.flock` — held
 /// for one step's duration (0007 §4), dropped on scope exit. Two
 /// concurrent `grip` runs serialize on the same file.
-pub(crate) struct FlockGuard(std::fs::File);
+pub struct FlockGuard(std::fs::File);
+
+/// Hold the apply lifecycle lock (`apply.flock`) — the public handle
+/// for apply and rollback.
+pub fn acquire_lifecycle_lock(home: &Path) -> io::Result<FlockGuard> {
+    FlockGuard::acquire(home, "apply")
+}
 
 impl FlockGuard {
     pub(crate) fn acquire(home: &Path, name: &str) -> io::Result<Self> {

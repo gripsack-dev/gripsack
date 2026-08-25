@@ -39,6 +39,7 @@ pub use frontend::ensure_python;
 pub use gc::{GcReport, gc, why_owns};
 pub use report::{ApplyResult, ReportKind, StepReport, UpdateReport, UpdateStatus};
 pub use update::update;
+pub use util::acquire_lifecycle_lock;
 
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};

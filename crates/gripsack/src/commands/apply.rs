@@ -15,6 +15,14 @@ pub fn apply(
     jobs: Option<usize>,
     palette: Palette,
 ) -> ExitCode {
+    if jobs == Some(0) {
+        eprintln!("grip: --jobs 0 would run zero modules — pass a positive count");
+        return ExitCode::from(2);
+    }
+    if std::env::var("GRIPSACK_JOBS").ok().as_deref() == Some("0") {
+        eprintln!("grip: GRIPSACK_JOBS=0 would run zero modules — unset or fix it");
+        return ExitCode::from(2);
+    }
     let json = match eval_repo(repo, host, palette) {
         Ok(j) => j,
         Err(code) => return code,

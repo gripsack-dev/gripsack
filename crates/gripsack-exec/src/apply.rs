@@ -11,7 +11,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use tracing::{info, info_span};
 
 /// Apply the whole graph (or a subset) and activate a new generation.
+/// The lifecycle — read current → build → flip — is one
+/// read-modify-write, so the whole run holds `$GRIPSACK_HOME/
+/// locks/apply.flock` (finding A): two concurrent applies serialize,
+/// never lose a manifest update.
 pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
+    let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
     let order = scoped_order(ir, &ctx.only)?;
     let steps_by_module = expand::expand_all(&ir.modules);
     let mut reports = Vec::new();
@@ -40,6 +45,15 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // below stays the single barrier.
     let outcome =
         crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)?;
+    // An empty result set must be a deliberate empty declaration,
+    // never a scheduling artifact — prune can't tell them apart (B).
+    if outcome.modules.is_empty() && !ir.modules.is_empty() && outcome.failed.is_none() {
+        return Err(ExecError::Step {
+            module: "*".into(),
+            step: "schedule".into(),
+            detail: "the scheduler produced zero module states from a non-empty graph".into(),
+        });
+    }
     if let Some((name, error, failed_state)) = outcome.failed {
         // Run-level rollback (0001 §9): the flip never happened, so
         // every destination this run touched goes back to the previous
