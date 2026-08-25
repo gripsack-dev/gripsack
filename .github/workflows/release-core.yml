@@ -98,3 +98,12 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/* \
             --title "gripsack ${GITHUB_REF_NAME#core-v}" \
             --generate-notes
+
+      # The site's version chip reads the releases API at build time —
+      # a rebuild dispatch keeps gripsack.dev current (rootle pattern).
+      - name: Ping the site to redeploy
+        env:
+          GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+        run: |
+          gh api repos/gripsack-dev/gripsack-dev.github.io/dispatches \
+            -f event_type=rebuild
