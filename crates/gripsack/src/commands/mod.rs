@@ -16,7 +16,7 @@ pub mod why_owns;
 pub use apply::apply;
 pub use check::check;
 pub use doctor::doctor;
-pub use eval::{check_ir, eval_repo};
+pub use eval::{check_ir, eval_repo, validate_sources};
 pub use gc::gc;
 pub use generations::generations;
 pub use plan::{plan_ir, plan_module};

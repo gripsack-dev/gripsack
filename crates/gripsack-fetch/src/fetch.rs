@@ -28,6 +28,10 @@ pub enum FetchError {
     Http { url: String, reason: String },
     #[error("zip extract: {0}")]
     Zip(#[from] zip::result::ZipError),
+    /// Error-severity diagnostics from a plugin (0009 §2 rule 1) —
+    /// the CLI renders these through the same renderer as its own.
+    #[error("plugin reported {} error diagnostic(s)", .0.len())]
+    Diagnostics(Vec<gripsack_ir::Diagnostic>),
     #[error("unsupported fetch kind for v0.1: {0}")]
     Unsupported(String),
 }
@@ -37,6 +41,12 @@ pub enum FetchError {
 pub fn payload_hash(spec: &FetchSpec) -> Result<Option<String>, FetchError> {
     match spec {
         FetchSpec::File { path } => file::payload_hash(path),
+        // a pinned sha256 IS the identity — no download to decide
+        // satisfaction (review finding F9: fully-pinned modules paid a
+        // full payload download every apply)
+        FetchSpec::Tarball {
+            sha256: Some(sha), ..
+        } => Ok(Some(sha.clone())),
         FetchSpec::Tarball { url, .. } => tarball::payload_hash(url),
         FetchSpec::Brew { formula, .. } => brew::payload_hash(formula),
         _ => Ok(None),
@@ -59,6 +69,20 @@ pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<String, FetchError> {
         FetchSpec::GithubRelease { .. } => Err(FetchError::Unsupported(
             "github_release resolves to a tarball upstream of fetch (exec::resolve)".into(),
         )),
-        FetchSpec::Plugin { name, args } => plugin::fetch(name, args, dest),
+        FetchSpec::Plugin { name, args } => plugin::fetch(name, args, dest, None),
     }
+}
+
+/// Fetch with the module's lockfile pin, when one exists — plugin
+/// fetchers receive it as `locked` in the request (0002 §4).
+pub fn fetch_with_locked(
+    spec: &FetchSpec,
+    dest: &Path,
+    locked: Option<&serde_json::Value>,
+) -> Result<String, FetchError> {
+    if let FetchSpec::Plugin { name, args } = spec {
+        std::fs::create_dir_all(dest)?;
+        return plugin::fetch(name, args, dest, locked);
+    }
+    fetch(spec, dest)
 }

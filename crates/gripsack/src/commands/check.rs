@@ -12,7 +12,9 @@ pub fn check(repo: &Path, host: Option<&str>, palette: Palette) -> ExitCode {
         Ok(j) => j,
         Err(code) => return code,
     };
-    match check_ir(&json, palette) {
+    match check_ir(&json, palette)
+        .and_then(|ir| crate::commands::validate_sources(&ir, repo, palette).map(|_| ir))
+    {
         Ok(ir) => {
             let host = &ir.host;
             println!(

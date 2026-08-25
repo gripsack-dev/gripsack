@@ -40,6 +40,15 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // below stays the single barrier.
     let outcome =
         crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)?;
+    if let Some((name, error, failed_state)) = outcome.failed {
+        // Run-level rollback (0001 §9): the flip never happened, so
+        // every destination this run touched goes back to the previous
+        // generation's state — no half-applied deployment exists.
+        let mut touched = outcome.modules;
+        touched.insert(name, failed_state);
+        crate::deploy::run_rollback(&touched, &prev_modules);
+        return Err(error);
+    }
     for (name, module_reports) in outcome.reports {
         let span = info_span!("module", name = name.as_str());
         let _entered = span.enter();

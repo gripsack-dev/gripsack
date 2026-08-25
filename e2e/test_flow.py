@@ -477,6 +477,98 @@ module("slow-b", build={"kind": "custom_shell", "script": "sleep 2"})
     assert elapsed < 3.5, f"serial execution suspected: {elapsed:.1f}s"
 
 
+def test_check_fails_statically_on_missing_config_source(sandbox):
+    """E110 (review finding E2): a fetch-less module's source must be
+    a repo file — missing is a check-time error, not mid-deploy."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("aaa", config={"configs/aaa/MISSING.conf": tracked_copy("~/.out/a.conf")})
+""",
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "E110" in out.stderr
+    assert "MISSING.conf" in out.stderr
+    assert not (sandbox / ".local/share/gripsack/generations").exists()
+
+
+def test_owned_deploy_refuses_foreign_symlinks(sandbox):
+    """Review finding E4: a stow-style foreign symlink is exactly the
+    path the guard is for — refuse unless --take-over."""
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+from gripsack import module, file_fetch, symlink
+
+module("hello", fetch=file_fetch("{payload}"),
+    install={{"bin/hello": symlink("~/.local/bin/hello")}})
+""",
+    )
+    foreign = sandbox / ".local/bin"
+    foreign.mkdir(parents=True)
+    stow_target = sandbox / "elsewhere/real-hello"
+    stow_target.parent.mkdir(parents=True)
+    stow_target.write_text("#!/bin/sh\necho stow\n")
+    (foreign / "hello").symlink_to(stow_target)
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "not deployed by gripsack" in out.stderr
+    assert (foreign / "hello").readlink() == stow_target  # untouched
+
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert str(foreign / "hello").endswith("hello")
+
+
+def test_failed_apply_rolls_back_this_runs_deployments(sandbox):
+    """0001 §9 / review finding E1: a mid-graph failure must leave no
+    half-applied deployment — the flip never happens, and every
+    destination the failed run touched returns to the previous
+    generation's state."""
+    confdir = sandbox / "myenv" / "configs" / "aaa"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("v1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("aaa", config={"configs/aaa/a.conf": tracked_copy("~/.out/a.conf")})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".out/a.conf").read_text() == "v1\n"
+
+    # v2 of aaa + a module that fails at deploy (payload lacks the
+    # entry — a deploy-time failure E110 can't catch)
+    (confdir / "a.conf").write_text("v2\n")
+    payload = make_tarball(sandbox / "b.tar.gz", {"bin/b": b"#!/bin/sh\n"})
+    (repo / "modules" / "bbb.py").write_text(
+        f"""
+from gripsack import module, file_fetch, symlink
+
+module("bbb", fetch=file_fetch("{payload}"),
+    install={{"bin/MISSING": symlink("~/.out/b")}})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    # the flip never happened…
+    generations = sandbox / ".local/share/gripsack/generations"
+    assert [p.name for p in generations.iterdir()] == ["1"]
+    # …and this run's deployments are rolled back exactly
+    assert (sandbox / ".out/a.conf").read_text() == "v1\n"
+    assert not (sandbox / ".out/b").exists()
+
+
 def test_rollback_restores_previous_generation(sandbox, tmp_path):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}

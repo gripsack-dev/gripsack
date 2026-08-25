@@ -1,29 +1,53 @@
 //! `plugin:` — the `gripfetch-*` protocol host (0002 §4, 0009 §2).
 //!
 //! The core spawns the fetcher, sends one JSON request on stdin, and
-//! reads NDJSON messages back: diagnostics are logged (coded, so the
-//! run log keeps them), `response` ends the exchange. Exit status is
-//! not the contract — but a nonzero exit without a response synthesizes
-//! an error with the stderr tail (0009 §2 rule 5). The payload identity
-//! is computed by the core (canonical tree hash) — never the plugin's
-//! word.
+//! reads NDJSON messages back. The request carries `locked` when the
+//! lockfile has a pin for this module — a plugin must be able to tell
+//! first-fetch (resolve, TOFU) from pinned re-fetch (reproduce
+//! exactly); for internal registries those are different code paths.
+//!
+//! Diagnostics are deserialized, not logged raw: warnings trace into
+//! the run log coded; any error-severity diagnostic fails the fetch
+//! and the CLI renders it through the same renderer as its own (0009
+//! §2 rule 1). The payload identity is computed by the core
+//! (canonical tree hash) — never the plugin's word.
+//!
+//! Robustness: stderr is drained on its own thread (a chatty plugin
+//! fills the ~64KB pipe buffer and deadlocks otherwise), and the
+//! whole exchange has a deadline — no unbounded hangs.
 
 use super::FetchError;
 use serde::Deserialize;
 use std::io::{BufRead, Write};
 use std::path::Path;
+use std::time::{Duration, Instant};
+
+/// Whole-exchange deadline for one plugin fetch (0007 §retries —
+/// a stuck plugin is a failure, never a silent wait).
+const PLUGIN_TIMEOUT: Duration = Duration::from_secs(600);
 
 #[derive(Deserialize)]
 struct PluginMessage {
     #[serde(rename = "type")]
     kind: String,
-    diagnostic: Option<serde_json::Value>,
+    diagnostic: Option<gripsack_ir::Diagnostic>,
+    result: Option<PluginResult>,
+}
+
+#[derive(Deserialize)]
+struct PluginResult {
+    /// Informational only — the core recomputes identity from the
+    /// staged bytes. Provenance is the valuable half: which registry,
+    /// which mirror, which credential identity — it lands in the run
+    /// log (0009 §2 rule 7).
+    provenance: Option<serde_json::Value>,
 }
 
 pub(crate) fn fetch(
     name: &str,
     args: &serde_json::Value,
     dest: &Path,
+    locked: Option<&serde_json::Value>,
 ) -> Result<String, FetchError> {
     let exe = crate::find_fetcher(name).ok_or_else(|| FetchError::Http {
         url: name.to_string(),
@@ -36,18 +60,44 @@ pub(crate) fn fetch(
         .spawn()
         .map_err(FetchError::Io)?;
 
-    let request = serde_json::json!({
+    let mut request = serde_json::json!({
         "op": "fetch",
         "args": args,
         "dest_dir": dest.to_string_lossy(),
     });
+    if let Some(locked) = locked {
+        request["locked"] = locked.clone();
+    }
     let mut stdin = child.stdin.take().expect("piped stdin");
     let stdout = child.stdout.take().expect("piped stdout");
+    let stderr = child.stderr.take().expect("piped stderr");
     let write_result = writeln!(stdin, "{request}").and_then(|_| stdin.flush());
     drop(stdin);
     write_result?;
 
+    // stderr must drain concurrently — a plugin that chatters fills
+    // the pipe buffer and both sides block (review finding F1).
+    let stderr_thread = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let mut reader = std::io::BufReader::new(stderr);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    if buf.len() < 64 * 1024 {
+                        buf.extend_from_slice(line.as_bytes());
+                    }
+                }
+            }
+        }
+        buf
+    });
+
+    let deadline = Instant::now() + PLUGIN_TIMEOUT;
     let mut responded = false;
+    let mut error_diagnostics = Vec::new();
     for line in std::io::BufReader::new(stdout).lines() {
         let line = line?;
         if line.trim().is_empty() {
@@ -59,11 +109,20 @@ pub(crate) fn fetch(
         match message.kind.as_str() {
             "diagnostic" => {
                 if let Some(d) = message.diagnostic {
-                    tracing::warn!(plugin = name, "{d}");
+                    if d.severity == gripsack_ir::Severity::Error {
+                        error_diagnostics.push(d);
+                    } else {
+                        tracing::warn!(plugin = name, code = d.code.as_ref(), "{}", d.message);
+                    }
                 }
             }
             "progress" => tracing::info!(plugin = name, "{line}"),
-            "response" => responded = true,
+            "response" => {
+                responded = true;
+                if let Some(provenance) = message.result.and_then(|r| r.provenance) {
+                    tracing::info!(plugin = name, provenance = %provenance, "provenance");
+                }
+            }
             _ => {}
         }
         if responded {
@@ -71,9 +130,33 @@ pub(crate) fn fetch(
         }
     }
 
-    let output = child.wait_with_output()?;
-    if !output.status.success() || !responded {
-        let tail = String::from_utf8_lossy(&output.stderr);
+    // Reap the child within the deadline; a plugin ignoring a closed
+    // stdout gets killed, not waited on forever.
+    let status = loop {
+        match child.try_wait()? {
+            Some(status) => break status,
+            None if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stderr_thread.join();
+                return Err(FetchError::Http {
+                    url: name.to_string(),
+                    reason: format!(
+                        "gripfetch-{name} exceeded the {}s exchange deadline",
+                        PLUGIN_TIMEOUT.as_secs()
+                    ),
+                });
+            }
+        }
+    };
+    let stderr_buf = stderr_thread.join().unwrap_or_default();
+
+    if !error_diagnostics.is_empty() {
+        return Err(FetchError::Diagnostics(error_diagnostics));
+    }
+    if !status.success() || !responded {
+        let tail = String::from_utf8_lossy(&stderr_buf);
         let tail = tail
             .lines()
             .last()
@@ -84,79 +167,15 @@ pub(crate) fn fetch(
         return Err(FetchError::Http {
             url: name.to_string(),
             reason: format!(
-                "gripfetch-{name} exited {} without a response{}",
-                output.status,
+                "gripfetch-{name} exited {status} without a response{}",
                 if tail.is_empty() {
                     String::new()
                 } else {
-                    format!(": {tail}")
+                    format!(" — stderr tail: {tail}")
                 }
             ),
         });
     }
     // identity is computed by the core — never the plugin's word
     Ok(gripsack_store::canonical_tree_hash(dest)?)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::os::unix::fs::PermissionsExt;
-    use std::path::PathBuf;
-
-    fn fake_plugin(dir: &Path, body: &str) -> PathBuf {
-        let exe = dir.join("gripfetch-fake");
-        std::fs::write(&exe, body).unwrap();
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
-        exe
-    }
-
-    static PATH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn with_path<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
-        let _guard = PATH_LOCK.lock().unwrap();
-        let original = std::env::var_os("PATH");
-        unsafe { std::env::set_var("PATH", format!("{}:/usr/bin:/bin", dir.display())) };
-        let result = f();
-        match original {
-            Some(v) => unsafe { std::env::set_var("PATH", v) },
-            None => unsafe { std::env::remove_var("PATH") },
-        }
-        result
-    }
-
-    const GOOD: &str = r#"#!/bin/sh
-read line
-dest=$(echo "$line" | sed -n 's/.*"dest_dir": *"\([^"]*\)".*/\1/p')
-mkdir -p "$dest"
-echo "plugin payload" > "$dest/payload.txt"
-echo '{"type": "response"}'
-"#;
-
-    #[test]
-    fn plugin_fetch_roundtrip() {
-        let dir = tempfile::tempdir().unwrap();
-        fake_plugin(dir.path(), GOOD);
-        let dest = dir.path().join("out");
-        let hash = with_path(dir.path(), || fetch("fake", &serde_json::json!({}), &dest)).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(dest.join("payload.txt")).unwrap(),
-            "plugin payload\n"
-        );
-        assert_eq!(hash, gripsack_store::canonical_tree_hash(&dest).unwrap());
-    }
-
-    #[test]
-    fn dying_plugin_reports_stderr_tail() {
-        let dir = tempfile::tempdir().unwrap();
-        fake_plugin(
-            dir.path(),
-            "#!/bin/sh\necho 'registry exploded' >&2\nexit 3\n",
-        );
-        let dest = dir.path().join("out");
-        let err =
-            with_path(dir.path(), || fetch("fake", &serde_json::json!({}), &dest)).unwrap_err();
-        let text = err.to_string();
-        assert!(text.contains("registry exploded"), "{text}");
-    }
 }

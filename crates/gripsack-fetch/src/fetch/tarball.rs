@@ -17,7 +17,12 @@ pub(crate) fn fetch(url: &str, sha256: Option<&str>, dest: &Path) -> Result<Stri
             actual,
         });
     }
-    archive::extract(&bytes, dest)?;
+    let bare_name = url
+        .rsplit('/')
+        .next()
+        .filter(|n| !n.is_empty())
+        .unwrap_or("bin");
+    archive::extract(&bytes, dest, bare_name)?;
     Ok(actual)
 }
 
