@@ -4,9 +4,12 @@
 
 **gripsack — your whole environment in one bag**
 
-**status: alpha (v0.1)** — the core flow works: apply, generations,
-rollback. Fetchers are file/tarball for now; see
-[the plan](plan/) for what's next.
+**status: alpha** — the core flow ships: apply, plan, check,
+generations, rollback, gc, why-owns, init; fetchers for github
+releases, brew, git, tarballs, pixi, and `gripfetch-*` plugins; config
+linters; ownership modes (symlink, tracked copy, managed block,
+template). See [the plan](plan/) and the
+[roadmap](https://gripsack.dev/docs/roadmap.html) for what's next.
 
 [![ci](https://github.com/gripsack-dev/gripsack/actions/workflows/ci.yml/badge.svg)](https://github.com/gripsack-dev/gripsack/actions/workflows/ci.yml)
 [![audit](https://github.com/gripsack-dev/gripsack/actions/workflows/audit.yml/badge.svg)](https://github.com/gripsack-dev/gripsack/actions/workflows/audit.yml)
@@ -81,10 +84,11 @@ your env repo (modules + env.toml + hosts/)
 | package | PyPI `gripsack` | npm `@gripsack/core` |
 | IDE | pyright | tsc (native) |
 | runtime | your python ≥3.10 | your node ≥18 or bun |
+| status | **ships; the default** | ships in-tree as a typed library — eval lands next (roadmap) |
 
-One frontend per env repo, declared in `env.toml`. Both emit the same
-IR — the core never embeds either runtime
-([plan/0005](plan/0005-frontends-and-configuration.md)).
+One frontend per env repo, declared in `env.toml` (`frontend =
+"python"` today). Both emit the same IR — the core never embeds either
+runtime ([plan/0005](plan/0005-frontends-and-configuration.md)).
 
 ## Sourcing
 
