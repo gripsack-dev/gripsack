@@ -107,6 +107,42 @@ SAME plugin IR as `plugin_fetch("apt", ...)`; no side channels, so
 `grip check`, docs, and the lockfile see one truth. The core never
 learns the word "apt".
 
+## The reproducibility ceiling (verdict, from review)
+
+Can gripsack keep the strong word "reproducible"? Decomposed:
+
+- **Pre-built artifacts** (github_release, tarball, brew, pixi — the
+  dominant case): YES, fully, today. Bytes are sha256-pinned in the
+  lockfile, the store is content-addressed, deploy is deterministic.
+  Same lockfile → same bytes → same machine state, bit-for-bit.
+- **Resolution/eval**: the frontend is arbitrary host-reading Python,
+  but its output is pinned by the lockfile; re-resolution is explicit
+  (`grip update`). Pinned, not live-reproducible — the standard
+  lockfile contract (uv.lock, package-lock), and honest.
+- **`shell_step` builds**: the leak. Arbitrary shell observes ambient
+  env, system toolchains, /etc, network, timestamps. Pinning inputs
+  does not pin the build environment. Full hermeticity requires
+  store-provided toolchains + a sandbox — the Nix architecture, which
+  we deliberately reject (daemon, /nix, the language).
+
+So: the strong claim holds where the bytes are pinned; it is an
+INHERENT design boundary for shell builds — not a bug, the price of
+"no daemon, no /nix". Two tightenings raise the bar without becoming
+Nix, both opt-in and deferred to a later plan:
+
+1. env-scrubbed build steps (declared `[eval] env` + minimal PATH, not
+   the ambient environment) — kills the commonest nondeterminism;
+   needs a compatibility story for steps that legitimately use system
+   tools, so it is a declared step option, not a default flip.
+2. `grip build --check` (rebuild and diff store hashes) — MEASURE
+   reproducibility instead of claiming it, reproducible-builds.org
+   style. The honesty feature: pure builds prove themselves; impure
+   ones tell you exactly that.
+
+Site wording (shipped): "pinned inputs, reproducible resolution and
+deployment — not hermetic builds; that guarantee is Nix's, honestly
+theirs."
+
 ## Progress UX (the snake)
 
 Fetch/provision/install progress adopts the retro snake loader rootle
