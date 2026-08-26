@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A04",
+    "severity": "error",
+    "message": "'compile_sass' must be boolean, got string",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 1,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

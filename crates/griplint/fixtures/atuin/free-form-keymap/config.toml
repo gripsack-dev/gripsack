@@ -1,0 +1,3 @@
+[keymap]
+vim_normal = { x = "delete" }
+whatever = "user"

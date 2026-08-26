@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A05",
+    "severity": "error",
+    "message": "[ui] 'color' must be one of 'always', 'never', 'debug', 'auto', got 'sometimes'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

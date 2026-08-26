@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A05",
+    "severity": "error",
+    "message": "[mgr] 'sort_by' must be one of 'none', 'mtime', 'btime', 'extension', 'alphabetical', 'natural', 'size', 'random', got 'color'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

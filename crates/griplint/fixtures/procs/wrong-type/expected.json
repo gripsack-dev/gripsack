@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A04",
+    "severity": "error",
+    "message": "[display] 'show_self' must be boolean, got string",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

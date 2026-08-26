@@ -1,0 +1,18 @@
+# Data pack for glow — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "glow"
+handles = ["glow.yml"]
+format = "yaml"
+supported = ["1.", "2."]
+series = "v0"
+
+[files."glow.yml".rules.""]
+style = { types = ["string"] }
+mouse = { types = ["boolean"] }
+pager = { types = ["boolean"] }
+width = { types = ["integer"] }
+all = { types = ["boolean"] }
+showLineNumbers = { types = ["boolean"] }
+preserveNewLines = { types = ["boolean"] }

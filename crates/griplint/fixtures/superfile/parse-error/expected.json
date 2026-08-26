@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A00",
+    "severity": "error",
+    "message": "invalid TOML: Invalid value (at line 1, column 14)",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 1,
+          "col": 14
+        },
+        "note": "parse stops here"
+      }
+    ]
+  }
+]

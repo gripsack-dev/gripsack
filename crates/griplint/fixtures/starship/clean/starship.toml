@@ -1,0 +1,20 @@
+add_newline = true
+command_timeout = 500
+format = "$directory$git_branch$character"
+palette = "catppuccin_mocha"
+
+[directory]
+truncation_length = 3
+style = "bold blue"
+
+[git_branch]
+format = "on [$symbol$branch]($style) "
+symbol = "🌱 "
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+
+[palettes.catppuccin_mocha]
+rosewater = "#f5e0dc"
+mauve = "#cba6f7"

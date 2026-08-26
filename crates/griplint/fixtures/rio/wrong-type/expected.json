@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A04",
+    "severity": "error",
+    "message": "'scrollback_history_limit' must be integer, got string",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 1,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

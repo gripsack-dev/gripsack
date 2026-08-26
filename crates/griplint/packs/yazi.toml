@@ -1,0 +1,197 @@
+# Data pack for yazi — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "yazi"
+handles = ["keymap.toml", "theme.toml", "yazi.toml"]
+format = "toml"
+supported = ["25.", "26."]
+series = "v0"
+
+[files."keymap.toml".rules."mgr"]
+keymap = { types = ["array"] }
+prepend_keymap = { types = ["array"] }
+append_keymap = { types = ["array"] }
+
+[files."keymap.toml".rules."tasks"]
+keymap = { types = ["array"] }
+prepend_keymap = { types = ["array"] }
+append_keymap = { types = ["array"] }
+
+[files."keymap.toml".rules."select"]
+keymap = { types = ["array"] }
+prepend_keymap = { types = ["array"] }
+append_keymap = { types = ["array"] }
+
+[files."keymap.toml".rules."spot"]
+keymap = { types = ["array"] }
+prepend_keymap = { types = ["array"] }
+append_keymap = { types = ["array"] }
+
+[files."keymap.toml".rules."pick"]
+keymap = { types = ["array"] }
+prepend_keymap = { types = ["array"] }
+append_keymap = { types = ["array"] }
+
+[files."keymap.toml".rules."input"]
+keymap = { types = ["array"] }
+prepend_keymap = { types = ["array"] }
+append_keymap = { types = ["array"] }
+
+[files."keymap.toml".rules."confirm"]
+keymap = { types = ["array"] }
+prepend_keymap = { types = ["array"] }
+append_keymap = { types = ["array"] }
+
+[files."keymap.toml".rules."help"]
+keymap = { types = ["array"] }
+prepend_keymap = { types = ["array"] }
+append_keymap = { types = ["array"] }
+
+[files."theme.toml".rules."mgr"]
+_free = true
+
+[files."theme.toml".rules."tabs"]
+_free = true
+
+[files."theme.toml".rules."mode"]
+_free = true
+
+[files."theme.toml".rules."status"]
+_free = true
+
+[files."theme.toml".rules."help"]
+_free = true
+
+[files."theme.toml".rules."notify"]
+_free = true
+
+[files."theme.toml".rules."pick"]
+_free = true
+
+[files."theme.toml".rules."input"]
+_free = true
+
+[files."theme.toml".rules."confirm"]
+_free = true
+
+[files."theme.toml".rules."completion"]
+_free = true
+
+[files."theme.toml".rules."tasks"]
+_free = true
+
+[files."theme.toml".rules."which"]
+_free = true
+
+[files."theme.toml".rules."filetype"]
+_free = true
+
+[files."yazi.toml".rules."mgr"]
+ratio = { types = ["array"] }
+sort_by = { types = ["string"], choices = ["none", "mtime", "btime", "extension", "alphabetical", "natural", "size", "random"] }
+sort_sensitive = { types = ["boolean"] }
+sort_reverse = { types = ["boolean"] }
+sort_dir_first = { types = ["boolean"] }
+sort_translit = { types = ["boolean"] }
+linemode = { types = ["string"] }
+show_hidden = { types = ["boolean"] }
+show_symlink = { types = ["boolean"] }
+scrolloff = { types = ["integer"] }
+mouse_events = { types = ["array"] }
+
+[files."yazi.toml".rules."preview"]
+wrap = { types = ["string"], choices = ["yes", "no"] }
+tab_size = { types = ["integer"] }
+max_width = { types = ["integer"] }
+max_height = { types = ["integer"] }
+cache_dir = { types = ["string"] }
+image_delay = { types = ["integer"] }
+image_filter = { types = ["string"], choices = ["nearest", "triangle", "catmull-rom", "lanczos3"] }
+image_quality = { types = ["integer"] }
+ueberzug_scale = { types = ["integer", "float"] }
+ueberzug_offset = { types = ["array"] }
+
+[files."yazi.toml".rules."opener"]
+_free = true
+
+[files."yazi.toml".rules."open"]
+rules = { types = ["array"] }
+prepend_rules = { types = ["array"] }
+append_rules = { types = ["array"] }
+
+[files."yazi.toml".rules."tasks"]
+file_workers = { types = ["integer"] }
+plugin_workers = { types = ["integer"] }
+fetch_workers = { types = ["integer"] }
+preload_workers = { types = ["integer"] }
+process_workers = { types = ["integer"] }
+bizarre_retry = { types = ["integer"] }
+suppress_preload = { types = ["boolean"] }
+image_alloc = { types = ["integer"] }
+image_bound = { types = ["array"] }
+
+[files."yazi.toml".rules."plugin"]
+fetchers = { types = ["array"] }
+prepend_fetchers = { types = ["array"] }
+append_fetchers = { types = ["array"] }
+previewers = { types = ["array"] }
+prepend_previewers = { types = ["array"] }
+append_previewers = { types = ["array"] }
+preloaders = { types = ["array"] }
+prepend_preloaders = { types = ["array"] }
+append_preloaders = { types = ["array"] }
+
+[files."yazi.toml".rules."input"]
+cursor_blink = { types = ["boolean"] }
+cd_origin = { types = ["string"] }
+cd_offset = { types = ["array"] }
+cd_title = { types = ["string", "array"] }
+create_origin = { types = ["string"] }
+create_offset = { types = ["array"] }
+create_title = { types = ["string", "array"] }
+rename_origin = { types = ["string"] }
+rename_offset = { types = ["array"] }
+rename_title = { types = ["string", "array"] }
+filter_origin = { types = ["string"] }
+filter_offset = { types = ["array"] }
+filter_title = { types = ["string", "array"] }
+find_origin = { types = ["string"] }
+find_offset = { types = ["array"] }
+find_title = { types = ["string", "array"] }
+search_origin = { types = ["string"] }
+search_offset = { types = ["array"] }
+search_title = { types = ["string", "array"] }
+shell_origin = { types = ["string"] }
+shell_offset = { types = ["array"] }
+shell_title = { types = ["string", "array"] }
+
+[files."yazi.toml".rules."confirm"]
+cursor_blink = { types = ["boolean"] }
+trash_origin = { types = ["string"] }
+trash_offset = { types = ["array"] }
+trash_title = { types = ["string", "array"] }
+delete_origin = { types = ["string"] }
+delete_offset = { types = ["array"] }
+delete_title = { types = ["string", "array"] }
+overwrite_origin = { types = ["string"] }
+overwrite_offset = { types = ["array"] }
+overwrite_title = { types = ["string", "array"] }
+quit_origin = { types = ["string"] }
+quit_offset = { types = ["array"] }
+quit_title = { types = ["string", "array"] }
+
+[files."yazi.toml".rules."pick"]
+cursor_blink = { types = ["boolean"] }
+open_origin = { types = ["string"] }
+open_offset = { types = ["array"] }
+open_title = { types = ["string", "array"] }
+
+[files."yazi.toml".rules."which"]
+sort_by = { types = ["string"], choices = ["none", "key", "desc"] }
+sort_sensitive = { types = ["boolean"] }
+sort_reverse = { types = ["boolean"] }
+sort_translit = { types = ["boolean"] }
+
+[files."yazi.toml".rules."log"]
+_free = true

@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A01",
+    "severity": "error",
+    "message": "unknown key 'unknownGhDashKey'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 1,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

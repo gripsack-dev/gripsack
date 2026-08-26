@@ -1,0 +1,228 @@
+# Data pack for zed — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "zed"
+handles = ["settings.json"]
+format = "json"
+supported = ["0."]
+series = "v0"
+
+[files."settings.json".rules.""]
+"$schema" = { types = ["string"] }
+accessible_mode = { types = ["boolean"] }
+active_pane_modifiers = { types = ["table"] }
+agent = { types = ["table"] }
+agent_buffer_font_family = { types = ["string"] }
+agent_buffer_font_size = { types = ["integer"] }
+agent_servers = "free"
+agent_ui_font_family = { types = ["string"] }
+agent_ui_font_size = { types = ["string"] }
+allow_rewrap = { types = ["string"] }
+always_treat_brackets_as_autoclosed = { types = ["boolean"] }
+audio = { types = ["table"] }
+auto_indent = { types = ["string"] }
+auto_indent_on_paste = { types = ["boolean"] }
+auto_install_extensions = { types = ["table"] }
+auto_signature_help = { types = ["boolean"] }
+auto_update = { types = ["boolean"] }
+autosave = { types = ["string"] }
+autoscroll_on_clicks = { types = ["boolean"] }
+base_keymap = { types = ["string"] }
+bottom_dock_layout = { types = ["string"] }
+buffer_font_fallbacks = { types = ["string"] }
+buffer_font_family = { types = ["string"] }
+buffer_font_features = { types = ["table"] }
+buffer_font_size = { types = ["integer"] }
+buffer_font_weight = { types = ["integer"] }
+buffer_line_height = { types = ["string"] }
+calls = { types = ["table"] }
+centered_layout = { types = ["table"] }
+cli_default_open_behavior = { types = ["string"] }
+close_on_file_delete = { types = ["boolean"] }
+close_panel_on_toggle = { types = ["boolean"] }
+code_actions_on_format = { types = ["table"] }
+code_lens = { types = ["string"] }
+collaboration_panel = { types = ["table"] }
+colorize_brackets = { types = ["boolean"] }
+command_aliases = "free"
+completion_detail_alignment = { types = ["string"] }
+completion_menu_item_kind = { types = ["string"] }
+completion_menu_scrollbar = { types = ["string"] }
+completions = { types = ["table"] }
+confirm_quit = { types = ["boolean"] }
+context_server_timeout = { types = ["integer"] }
+context_servers = "free"
+current_line_highlight = { types = ["string"] }
+cursor_blink = { types = ["boolean"] }
+cursor_shape = { types = ["string"] }
+dap = "free"
+debugger = { types = ["table"] }
+debuggers = { types = ["array"] }
+default_open_behavior = { types = ["string"] }
+dev = { types = ["table"] }
+diagnostics = { types = ["table"] }
+diagnostics_max_severity = { types = ["string"] }
+diff_view_style = { types = ["string"] }
+disable_ai = { types = ["boolean"] }
+document_folding_ranges = { types = ["string"] }
+document_symbols = { types = ["string"] }
+double_click_in_multibuffer = { types = ["string"] }
+drag_and_drop_selection = { types = ["table"] }
+drop_target_size = { types = ["integer", "float"] }
+edit_predictions = { types = ["table"] }
+edit_predictions_disabled_in = { types = ["array"] }
+enable_language_server = { types = ["boolean"] }
+ensure_final_newline_on_save = { types = ["boolean"] }
+excerpt_context_lines = { types = ["integer"] }
+expand_excerpt_lines = { types = ["integer"] }
+extend_comment_on_newline = { types = ["boolean"] }
+extend_list_on_newline = { types = ["boolean"] }
+fast_scroll_sensitivity = { types = ["integer", "float"] }
+file_finder = { types = ["table"] }
+file_scan_depth = { types = ["integer"] }
+file_scan_exclusions = { types = ["array"] }
+file_scan_inclusions = { types = ["array"] }
+file_types = "free"
+focus_follows_mouse = { types = ["table"] }
+format_on_save = { types = ["string"] }
+formatter = { types = ["string"] }
+fullscreen_mode = { types = ["string"] }
+git = { types = ["table"] }
+git_commit_buffer_font_size = { types = ["integer"] }
+git_hosting_providers = { types = ["array"] }
+git_panel = { types = ["table"] }
+global_lsp_settings = { types = ["table"] }
+go_to_definition_fallback = { types = ["string"] }
+go_to_definition_scroll_strategy = { types = ["string"] }
+granted_extension_capabilities = { types = ["array"] }
+gutter = { types = ["table"] }
+hard_tabs = { types = ["boolean"] }
+helix_mode = { types = ["boolean"] }
+hidden_files = { types = ["array"] }
+hide_mouse = { types = ["string"] }
+horizontal_scroll_margin = { types = ["integer"] }
+hover_popover_delay = { types = ["integer"] }
+hover_popover_enabled = { types = ["boolean"] }
+hover_popover_hiding_delay = { types = ["integer"] }
+hover_popover_sticky = { types = ["boolean"] }
+icon_theme = { types = ["string"] }
+image_viewer = { types = ["table"] }
+indent_guides = { types = ["table"] }
+indent_list_on_tab = { types = ["boolean"] }
+inlay_hints = { types = ["table"] }
+inline_code_actions = { types = ["boolean"] }
+instrumentation = { types = ["table"] }
+journal = { types = ["table"] }
+jsx_tag_auto_close = { types = ["table"] }
+jupyter = { types = ["table"] }
+language_models = { types = ["table"] }
+language_servers = { types = ["array"] }
+languages = "free"
+line_ending = { types = ["string"] }
+line_indicator_format = { types = ["string"] }
+linked_edits = { types = ["boolean"] }
+linux = { types = ["table"] }
+load_direnv = { types = ["string"] }
+log = { types = ["table"] }
+lsp = "free"
+lsp_document_colors = { types = ["string"] }
+lsp_document_links = { types = ["boolean"] }
+lsp_highlight_debounce = { types = ["integer"] }
+lsp_results_location = { types = ["string"] }
+macos = { types = ["table"] }
+markdown_preview = { types = ["table"] }
+markdown_preview_code_font_family = { types = ["string"] }
+markdown_preview_font_family = { types = ["string"] }
+markdown_preview_font_size = { types = ["string"] }
+max_tabs = { types = ["string"] }
+middle_click_paste = { types = ["boolean"] }
+minimap = { types = ["table"] }
+minimum_contrast_for_highlights = { types = ["integer"] }
+minimum_split_diff_width = { types = ["integer"] }
+modeline_lines = { types = ["integer"] }
+mouse_wheel_zoom = { types = ["boolean"] }
+multi_cursor_modifier = { types = ["string"] }
+nightly = { types = ["table"] }
+node = { types = ["table"] }
+on_last_window_closed = { types = ["string"] }
+outline_panel = { types = ["table"] }
+pane_split_direction_horizontal = { types = ["string"] }
+pane_split_direction_vertical = { types = ["string"] }
+preferred_line_length = { types = ["integer"] }
+prettier = { types = ["table"] }
+preview = { types = ["table"] }
+preview_tabs = { types = ["table"] }
+private_files = { types = ["array"] }
+profiles = "free"
+project_panel = { types = ["table"] }
+proxy = { types = ["string"] }
+read_only_files = { types = ["array"] }
+read_ssh_config = { types = ["boolean"] }
+redact_private_values = { types = ["boolean"] }
+reduce_motion = { types = ["string"] }
+relative_line_numbers = { types = ["string"] }
+remove_trailing_whitespace_on_save = { types = ["boolean"] }
+repl = { types = ["table"] }
+resize_all_panels_in_dock = { types = ["array"] }
+restore_on_file_reopen = { types = ["boolean"] }
+restore_on_startup = { types = ["string"] }
+rounded_selection = { types = ["boolean"] }
+scan_symlinks = { types = ["string"] }
+scroll_beyond_last_line = { types = ["string"] }
+scroll_sensitivity = { types = ["integer", "float"] }
+scrollbar = { types = ["table"] }
+search = { types = ["table"] }
+search_wrap = { types = ["boolean"] }
+seed_search_query_from_cursor = { types = ["string"] }
+selection_highlight = { types = ["boolean"] }
+semantic_tokens = { types = ["string"] }
+server_url = { types = ["string"] }
+session = { types = ["table"] }
+show_call_status_icon = { types = ["boolean"] }
+show_completion_documentation = { types = ["boolean"] }
+show_completions_on_input = { types = ["boolean"] }
+show_edit_predictions = { types = ["boolean"] }
+show_signature_help_after_edits = { types = ["boolean"] }
+show_whitespaces = { types = ["string"] }
+show_wrap_guides = { types = ["boolean"] }
+snippet_sort_order = { types = ["string"] }
+soft_wrap = { types = ["string"] }
+ssh_connections = { types = ["array"] }
+stable = { types = ["table"] }
+status_bar = { types = ["table"] }
+sticky_scroll = { types = ["table"] }
+tab_bar = { types = ["table"] }
+tab_size = { types = ["integer"] }
+tabs = { types = ["table"] }
+tasks = { types = ["table"] }
+telemetry = { types = ["table"] }
+terminal = { types = ["table"] }
+text_rendering_mode = { types = ["string"] }
+theme = { types = ["table"] }
+title_bar = { types = ["table"] }
+toolbar = { types = ["table"] }
+ui_font_fallbacks = { types = ["string"] }
+ui_font_family = { types = ["string"] }
+ui_font_features = { types = ["table"] }
+ui_font_size = { types = ["integer"] }
+ui_font_weight = { types = ["integer"] }
+unnecessary_code_fade = { types = ["integer", "float"] }
+use_auto_surround = { types = ["boolean"] }
+use_autoclose = { types = ["boolean"] }
+use_on_type_format = { types = ["boolean"] }
+use_smartcase_search = { types = ["boolean"] }
+use_system_path_prompts = { types = ["boolean"] }
+use_system_prompts = { types = ["boolean"] }
+use_system_window_tabs = { types = ["boolean"] }
+vertical_scroll_margin = { types = ["integer"] }
+vim = { types = ["table"] }
+vim_mode = { types = ["boolean"] }
+when_closing_with_no_tabs = { types = ["string"] }
+which_key = { types = ["table"] }
+whitespace_map = { types = ["table"] }
+window_decorations = { types = ["string"] }
+windows = { types = ["table"] }
+word_diff_enabled = { types = ["boolean"] }
+wrap_guides = { types = ["array"] }
+zoomed_padding = { types = ["boolean"] }

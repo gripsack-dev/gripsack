@@ -1,0 +1,17 @@
+default_job = "clippy"
+summary = true
+
+[jobs.clippy]
+command = ["cargo", "clippy", "--all-targets"]
+need_stdout = false
+
+[jobs.exs]
+command = ["cargo", "run", "--example", "simple"]
+need_stdout = true
+
+[keybindings]
+h = "job:clippy"
+ctrl-r = "toggle-raw-output"
+
+[sound]
+enabled = false

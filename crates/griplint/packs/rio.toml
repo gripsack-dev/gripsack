@@ -1,0 +1,149 @@
+# Data pack for rio — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "rio"
+handles = ["config.toml"]
+format = "toml"
+supported = ["0.2"]
+series = "v0"
+
+[files."config.toml".rules.""]
+use_fork = { types = ["boolean"] }
+working_dir = { types = ["string"] }
+line_height = { types = ["integer", "float"] }
+theme = { types = ["string"] }
+env_vars = { types = ["array"] }
+option_as_alt = { types = ["string"] }
+force_theme = { types = ["string"] }
+ignore_selection_fg_color = { types = ["boolean"] }
+confirm_before_quit = { types = ["boolean"] }
+grapheme_clustering = { types = ["boolean"] }
+copy_on_select = { types = ["boolean"] }
+hide_cursor_when_typing = { types = ["boolean"] }
+draw_bold_text_with_light_colors = { types = ["boolean"] }
+enable_scroll_bar = { types = ["boolean"] }
+scrollback_history_limit = { types = ["integer"] }
+bindings = { types = ["array"] }
+
+[files."config.toml".rules."cursor"]
+shape = { types = ["string"] }
+blinking = { types = ["boolean"] }
+blinking_interval = { types = ["integer"] }
+
+[files."config.toml".rules."shell"]
+program = { types = ["string"] }
+args = { types = ["array"] }
+
+[files."config.toml".rules."editor"]
+program = { types = ["string"] }
+args = { types = ["array"] }
+
+[files."config.toml".rules."scroll"]
+multiplier = { types = ["integer", "float"] }
+divider = { types = ["integer", "float"] }
+
+[files."config.toml".rules."developer"]
+enable_fps_counter = { types = ["boolean"] }
+log_level = { types = ["string"] }
+enable_log_file = { types = ["boolean"] }
+
+[files."config.toml".rules."window"]
+width = { types = ["integer"] }
+height = { types = ["integer"] }
+mode = { types = ["string"] }
+opacity = { types = ["integer", "float"] }
+opacity_cells = { types = ["boolean"] }
+blur = { types = ["table"] }
+background_image = { types = ["table"] }
+decorations = { types = ["string"] }
+macos_use_unified_titlebar = { types = ["boolean"] }
+macos_use_shadow = { types = ["boolean"] }
+macos_traffic_light_position_x = { types = ["integer", "float"] }
+macos_traffic_light_position_y = { types = ["integer", "float"] }
+initial_title = { types = ["string"] }
+windows_use_undecorated_shadow = { types = ["boolean"] }
+windows_use_no_redirection_bitmap = { types = ["boolean"] }
+windows_corner_preference = { types = ["string"] }
+colorspace = { types = ["string"] }
+columns = { types = ["integer"] }
+rows = { types = ["integer"] }
+quake_width_percentage = { types = ["integer", "float"] }
+
+[files."config.toml".rules."navigation"]
+program = { types = ["string"] }
+path = { types = ["string"] }
+color = { types = ["array"] }
+mode = { types = ["string"] }
+color_automation = { types = ["array"] }
+clickable = { types = ["boolean"] }
+current_working_directory = { types = ["boolean"] }
+use_terminal_title = { types = ["boolean"] }
+hide_if_single = { types = ["boolean"] }
+use_split = { types = ["boolean"] }
+open_config_with_split = { types = ["boolean"] }
+unfocused_split_opacity = { types = ["integer", "float"] }
+unfocused_split_fill = { types = ["array"] }
+max_tab_width = { types = ["integer", "float"] }
+
+[files."config.toml".rules."renderer"]
+backend = { types = ["string"] }
+disable_unfocused_render = { types = ["boolean"] }
+disable_occluded_render = { types = ["boolean"] }
+filters = { types = ["array"] }
+strategy = { types = ["string"] }
+use_cpu = { types = ["boolean"] }
+
+[files."config.toml".rules."bell"]
+audio = { types = ["boolean"] }
+
+[files."config.toml".rules."hints"]
+alphabet = { types = ["string"] }
+rules = { types = ["array"] }
+regex = { types = ["string"] }
+hyperlinks = { types = ["boolean"] }
+post_processing = { types = ["boolean"] }
+persist = { types = ["boolean"] }
+action = { types = ["string"] }
+mouse = { types = ["table"] }
+binding = { types = ["table"] }
+enabled = { types = ["boolean"] }
+mods = { types = ["array"] }
+key = { types = ["string"] }
+mode = { types = ["array"] }
+
+[files."config.toml".rules."keyboard"]
+disable_ctlseqs_alt = { types = ["boolean"] }
+ime_cursor_positioning = { types = ["boolean"] }
+forward_to_ime_modifier_mask = { types = ["array"] }
+
+[files."config.toml".rules."title"]
+placeholder = { types = ["string"] }
+content = { types = ["string"] }
+
+[files."config.toml".rules."platform"]
+_rule = { types = ["table"] }
+
+[files."config.toml".rules."fonts"]
+_rule = { types = ["table"] }
+
+[files."config.toml".rules."margin"]
+_rule = { types = ["table"] }
+
+[files."config.toml".rules."panel"]
+_rule = { types = ["table"] }
+
+[files."config.toml".rules."effects"]
+_rule = { types = ["table"] }
+
+[files."config.toml".rules."adaptive_theme"]
+_rule = { types = ["table"] }
+
+[files."config.toml".rules."adaptive_colors"]
+_rule = { types = ["table"] }
+
+[files."config.toml".rules."colors"]
+_free = true
+
+[files."config.toml".rules."bindings"]
+_free = true

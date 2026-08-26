@@ -1,0 +1,18 @@
+[
+  {
+    "code": "A01",
+    "severity": "error",
+    "message": "unknown key [settings] 'experimentl'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 1
+        },
+        "note": ""
+      }
+    ],
+    "help": "did you mean 'experimental'?"
+  }
+]

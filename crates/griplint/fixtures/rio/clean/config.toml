@@ -1,0 +1,27 @@
+theme = "catppuccin-mocha"
+confirm_before_quit = false
+hide_cursor_when_typing = true
+line_height = 1.2
+option_as_alt = "Both"
+scrollback_history_limit = 10000
+
+[cursor]
+shape = "beam"
+blinking = true
+
+[window]
+opacity = 0.95
+decorations = "Enabled"
+
+[navigation]
+mode = "Bookmark"
+clickable = true
+
+[shell]
+program = "/bin/zsh"
+args = ["-l"]
+
+[[bindings]]
+key = "q"
+with = "super"
+action = "Quit"

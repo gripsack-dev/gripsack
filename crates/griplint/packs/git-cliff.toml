@@ -1,0 +1,69 @@
+# Data pack for git-cliff — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "git-cliff"
+handles = [".cliff.toml", "cliff.toml"]
+format = "toml"
+supported = ["0."]
+series = "v0"
+
+[files.".cliff.toml".rules."changelog"]
+body = { types = ["string"] }
+header = { types = ["string"] }
+footer = { types = ["string"] }
+trim = { types = ["boolean"] }
+render_always = { types = ["boolean"] }
+postprocessors = { types = ["array"] }
+output = { types = ["string"] }
+
+[files.".cliff.toml".rules."git"]
+conventional_commits = { types = ["boolean"] }
+filter_unconventional = { types = ["boolean"] }
+require_conventional = { types = ["boolean"] }
+split_commits = { types = ["boolean"] }
+commit_preprocessors = { types = ["array"] }
+protect_breaking_commits = { types = ["boolean"] }
+commit_parsers = { types = ["array"] }
+filter_commits = { types = ["boolean"] }
+fail_on_unmatched_commit = { types = ["boolean"] }
+link_parsers = { types = ["array"] }
+use_branch_tags = { types = ["boolean"] }
+topo_order = { types = ["boolean"] }
+topo_order_commits = { types = ["boolean"] }
+sort_commits = { types = ["string"], choices = ["newest", "oldest"] }
+recurse_submodules = { types = ["boolean"] }
+ignore_tags = { types = ["string"] }
+
+[files.".cliff.toml".rules."remote"]
+_free = true
+
+[files."cliff.toml".rules."changelog"]
+body = { types = ["string"] }
+header = { types = ["string"] }
+footer = { types = ["string"] }
+trim = { types = ["boolean"] }
+render_always = { types = ["boolean"] }
+postprocessors = { types = ["array"] }
+output = { types = ["string"] }
+
+[files."cliff.toml".rules."git"]
+conventional_commits = { types = ["boolean"] }
+filter_unconventional = { types = ["boolean"] }
+require_conventional = { types = ["boolean"] }
+split_commits = { types = ["boolean"] }
+commit_preprocessors = { types = ["array"] }
+protect_breaking_commits = { types = ["boolean"] }
+commit_parsers = { types = ["array"] }
+filter_commits = { types = ["boolean"] }
+fail_on_unmatched_commit = { types = ["boolean"] }
+link_parsers = { types = ["array"] }
+use_branch_tags = { types = ["boolean"] }
+topo_order = { types = ["boolean"] }
+topo_order_commits = { types = ["boolean"] }
+sort_commits = { types = ["string"], choices = ["newest", "oldest"] }
+recurse_submodules = { types = ["boolean"] }
+ignore_tags = { types = ["string"] }
+
+[files."cliff.toml".rules."remote"]
+_free = true

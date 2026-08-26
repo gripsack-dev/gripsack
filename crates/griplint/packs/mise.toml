@@ -1,0 +1,373 @@
+# Data pack for mise — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "mise"
+handles = ["config.toml", "mise.toml"]
+format = "toml"
+supported = ["2025", "2026"]
+series = "v0"
+
+[files."config.toml".rules.""]
+alias = "free"
+tool_alias = "free"
+shell_alias = "free"
+env = { types = ["table", "array"] }
+env_file = { types = ["string", "array"] }
+dotenv = { types = ["string", "boolean"] }
+env_path = { types = ["string", "array"] }
+monorepo_root = { types = ["boolean"] }
+monorepo = { types = ["table"] }
+min_version = { types = ["string"] }
+redactions = { types = ["array"] }
+plugins = "free"
+deps = "free"
+oci = { types = ["table"] }
+settings = { types = ["table"] }
+dotfiles = "free"
+bootstrap = { types = ["table"] }
+task_config = { types = ["table"] }
+tool_config = { types = ["table"] }
+tasks = "free"
+task_templates = "free"
+tools = "free"
+hooks = { types = ["table"] }
+vars = "free"
+watch_files = { types = ["array"] }
+_ = "free"
+
+[files."config.toml".rules."settings"]
+activate_aggressive = { types = ["boolean"] }
+age = { types = ["table"] }
+all_compile = { types = ["boolean"] }
+always_keep_download = { types = ["boolean"] }
+always_keep_install = { types = ["boolean"] }
+aqua = { types = ["table"] }
+arch = { types = ["string"] }
+asdf_compat = { types = ["boolean"] }
+auto_env = { types = ["boolean"] }
+auto_install = { types = ["boolean"] }
+auto_install_disable_tools = { types = ["array"] }
+auto_update = { types = ["boolean"] }
+auto_update_check_duration = { types = ["string"] }
+cache_prune_age = { types = ["string"] }
+cargo = { types = ["table"] }
+cd = { types = ["string"] }
+ceiling_paths = { types = ["array"] }
+ci = { types = ["boolean"] }
+color = { types = ["boolean"] }
+color_theme = { types = ["string"] }
+conda = { types = ["table"] }
+debug = { types = ["boolean"] }
+default_config_filename = { types = ["string"] }
+default_tool_versions_filename = { types = ["string"] }
+disable_backends = { types = ["array"] }
+disable_default_registry = { types = ["boolean"] }
+disable_hints = { types = ["array"] }
+disable_tools = { types = ["array"] }
+dotfiles = { types = ["table"] }
+dotnet = { types = ["table"] }
+enable_tools = { types = ["array"] }
+env = { types = ["array"] }
+env_cache = { types = ["boolean"] }
+env_cache_ttl = { types = ["string"] }
+env_conf_d = { types = ["boolean"] }
+env_file = { types = ["string"] }
+env_shell_expand = { types = ["boolean"] }
+erlang = { types = ["table"] }
+exec_auto_install = { types = ["boolean"] }
+experimental = { types = ["boolean"] }
+fetch_remote_versions_cache = { types = ["string"] }
+fetch_remote_versions_timeout = { types = ["string"] }
+forgejo = { types = ["table"] }
+github = { types = ["table"] }
+github_attestations = { types = ["boolean"] }
+gitlab = { types = ["table"] }
+gix = { types = ["boolean"] }
+global_config_file = { types = ["string"] }
+global_config_root = { types = ["string"] }
+go = { types = ["table"] }
+go_default_packages_file = { types = ["string"] }
+go_download_mirror = { types = ["string"] }
+go_repo = { types = ["string"] }
+go_set_gobin = { types = ["boolean"] }
+go_set_gopath = { types = ["boolean"] }
+go_set_goroot = { types = ["boolean"] }
+go_skip_checksum = { types = ["boolean"] }
+gpg_verify = { types = ["boolean"] }
+hook_env = { types = ["table"] }
+http_download_timeout = { types = ["string"] }
+http_retries = { types = ["integer"] }
+http_timeout = { types = ["string"] }
+idiomatic_version_file = { types = ["boolean"] }
+idiomatic_version_file_disable_files = { types = ["array"] }
+idiomatic_version_file_disable_tools = { types = ["array"] }
+idiomatic_version_file_enable_tools = { types = ["array"] }
+idiomatic_version_file_ignore_minimum_versions = { types = ["boolean"] }
+ignored_config_paths = { types = ["array"] }
+install_before = { types = ["string"] }
+java = { types = ["table"] }
+jobs = { types = ["integer"] }
+legacy_version_file = { types = ["boolean"] }
+legacy_version_file_disable_tools = { types = ["array"] }
+libc = { types = ["string"] }
+libgit2 = { types = ["boolean"] }
+locked = { types = ["boolean"] }
+locked_verify_provenance = { types = ["boolean"] }
+lockfile = { types = ["boolean"] }
+lockfile_platforms = { types = ["array"] }
+log_level = { types = ["string"] }
+minimum_release_age = { types = ["string"] }
+minimum_release_age_excludes = { types = ["array"] }
+netrc = { types = ["boolean"] }
+netrc_file = { types = ["string"] }
+no_env = { types = ["boolean"] }
+no_hooks = { types = ["boolean"] }
+node = { types = ["table"] }
+not_found_auto_install = { types = ["boolean"] }
+not_found_system_fallback = { types = ["boolean"] }
+npm = { types = ["table"] }
+oci = { types = ["table"] }
+offline = { types = ["boolean"] }
+os = { types = ["string"] }
+override_config_filenames = { types = ["array"] }
+override_tool_versions_filenames = { types = ["array"] }
+paranoid = { types = ["boolean"] }
+pin = { types = ["boolean"] }
+pipx = { types = ["table"] }
+plugin_autoupdate_last_check_duration = { types = ["string"] }
+prefer_offline = { types = ["boolean"] }
+prereleases = { types = ["boolean"] }
+profile = { types = ["string"] }
+provenance_api_failures_fatal = { types = ["boolean"] }
+python = { types = ["table"] }
+quiet = { types = ["boolean"] }
+raw = { types = ["boolean"] }
+registry_cache_ttl = { types = ["string"] }
+registry_floating = { types = ["boolean"] }
+ruby = { types = ["table"] }
+rust = { types = ["table"] }
+safe = { types = ["boolean"] }
+sandbox = { types = ["table"] }
+shared_install_dirs = { types = ["array"] }
+shorthands_file = { types = ["string"] }
+silent = { types = ["boolean"] }
+slsa = { types = ["boolean"] }
+sops = { types = ["table"] }
+spm = { types = ["table"] }
+status = { types = ["table"] }
+swift = { types = ["table"] }
+system_config_file = { types = ["string"] }
+system_deps = { types = ["string"] }
+system_packages = { types = ["table"] }
+task = { types = ["table"] }
+task_disable_paths = { types = ["array"] }
+task_output = { types = ["string"] }
+task_remote_no_cache = { types = ["boolean"] }
+task_run_auto_install = { types = ["boolean"] }
+task_show_full_cmd = { types = ["boolean"] }
+task_skip = { types = ["array"] }
+task_skip_depends = { types = ["boolean"] }
+task_timeout = { types = ["string"] }
+task_timings = { types = ["boolean"] }
+tera_v1 = { types = ["boolean"] }
+terminal_progress = { types = ["boolean"] }
+trace = { types = ["boolean"] }
+trusted_config_paths = { types = ["array"] }
+unix_default_file_shell_args = { types = ["string"] }
+unix_default_inline_shell_args = { types = ["string"] }
+upgrade = { types = ["table"] }
+url_replacements = "free"
+use_file_shell_for_executable_tasks = { types = ["boolean"] }
+use_versions_host = { types = ["boolean"] }
+use_versions_host_track = { types = ["boolean"] }
+verbose = { types = ["boolean"] }
+windows_default_file_shell_args = { types = ["string"] }
+windows_default_inline_shell_args = { types = ["string"] }
+windows_executable_extensions = { types = ["array"] }
+windows_powershell_no_profile = { types = ["boolean"] }
+windows_shim_mode = { types = ["string"] }
+yes = { types = ["boolean"] }
+zig = { types = ["table"] }
+
+[files."mise.toml".rules.""]
+alias = "free"
+tool_alias = "free"
+shell_alias = "free"
+env = { types = ["table", "array"] }
+env_file = { types = ["string", "array"] }
+dotenv = { types = ["string", "boolean"] }
+env_path = { types = ["string", "array"] }
+monorepo_root = { types = ["boolean"] }
+monorepo = { types = ["table"] }
+min_version = { types = ["string"] }
+redactions = { types = ["array"] }
+plugins = "free"
+deps = "free"
+oci = { types = ["table"] }
+settings = { types = ["table"] }
+dotfiles = "free"
+bootstrap = { types = ["table"] }
+task_config = { types = ["table"] }
+tool_config = { types = ["table"] }
+tasks = "free"
+task_templates = "free"
+tools = "free"
+hooks = { types = ["table"] }
+vars = "free"
+watch_files = { types = ["array"] }
+_ = "free"
+
+[files."mise.toml".rules."settings"]
+activate_aggressive = { types = ["boolean"] }
+age = { types = ["table"] }
+all_compile = { types = ["boolean"] }
+always_keep_download = { types = ["boolean"] }
+always_keep_install = { types = ["boolean"] }
+aqua = { types = ["table"] }
+arch = { types = ["string"] }
+asdf_compat = { types = ["boolean"] }
+auto_env = { types = ["boolean"] }
+auto_install = { types = ["boolean"] }
+auto_install_disable_tools = { types = ["array"] }
+auto_update = { types = ["boolean"] }
+auto_update_check_duration = { types = ["string"] }
+cache_prune_age = { types = ["string"] }
+cargo = { types = ["table"] }
+cd = { types = ["string"] }
+ceiling_paths = { types = ["array"] }
+ci = { types = ["boolean"] }
+color = { types = ["boolean"] }
+color_theme = { types = ["string"] }
+conda = { types = ["table"] }
+debug = { types = ["boolean"] }
+default_config_filename = { types = ["string"] }
+default_tool_versions_filename = { types = ["string"] }
+disable_backends = { types = ["array"] }
+disable_default_registry = { types = ["boolean"] }
+disable_hints = { types = ["array"] }
+disable_tools = { types = ["array"] }
+dotfiles = { types = ["table"] }
+dotnet = { types = ["table"] }
+enable_tools = { types = ["array"] }
+env = { types = ["array"] }
+env_cache = { types = ["boolean"] }
+env_cache_ttl = { types = ["string"] }
+env_conf_d = { types = ["boolean"] }
+env_file = { types = ["string"] }
+env_shell_expand = { types = ["boolean"] }
+erlang = { types = ["table"] }
+exec_auto_install = { types = ["boolean"] }
+experimental = { types = ["boolean"] }
+fetch_remote_versions_cache = { types = ["string"] }
+fetch_remote_versions_timeout = { types = ["string"] }
+forgejo = { types = ["table"] }
+github = { types = ["table"] }
+github_attestations = { types = ["boolean"] }
+gitlab = { types = ["table"] }
+gix = { types = ["boolean"] }
+global_config_file = { types = ["string"] }
+global_config_root = { types = ["string"] }
+go = { types = ["table"] }
+go_default_packages_file = { types = ["string"] }
+go_download_mirror = { types = ["string"] }
+go_repo = { types = ["string"] }
+go_set_gobin = { types = ["boolean"] }
+go_set_gopath = { types = ["boolean"] }
+go_set_goroot = { types = ["boolean"] }
+go_skip_checksum = { types = ["boolean"] }
+gpg_verify = { types = ["boolean"] }
+hook_env = { types = ["table"] }
+http_download_timeout = { types = ["string"] }
+http_retries = { types = ["integer"] }
+http_timeout = { types = ["string"] }
+idiomatic_version_file = { types = ["boolean"] }
+idiomatic_version_file_disable_files = { types = ["array"] }
+idiomatic_version_file_disable_tools = { types = ["array"] }
+idiomatic_version_file_enable_tools = { types = ["array"] }
+idiomatic_version_file_ignore_minimum_versions = { types = ["boolean"] }
+ignored_config_paths = { types = ["array"] }
+install_before = { types = ["string"] }
+java = { types = ["table"] }
+jobs = { types = ["integer"] }
+legacy_version_file = { types = ["boolean"] }
+legacy_version_file_disable_tools = { types = ["array"] }
+libc = { types = ["string"] }
+libgit2 = { types = ["boolean"] }
+locked = { types = ["boolean"] }
+locked_verify_provenance = { types = ["boolean"] }
+lockfile = { types = ["boolean"] }
+lockfile_platforms = { types = ["array"] }
+log_level = { types = ["string"] }
+minimum_release_age = { types = ["string"] }
+minimum_release_age_excludes = { types = ["array"] }
+netrc = { types = ["boolean"] }
+netrc_file = { types = ["string"] }
+no_env = { types = ["boolean"] }
+no_hooks = { types = ["boolean"] }
+node = { types = ["table"] }
+not_found_auto_install = { types = ["boolean"] }
+not_found_system_fallback = { types = ["boolean"] }
+npm = { types = ["table"] }
+oci = { types = ["table"] }
+offline = { types = ["boolean"] }
+os = { types = ["string"] }
+override_config_filenames = { types = ["array"] }
+override_tool_versions_filenames = { types = ["array"] }
+paranoid = { types = ["boolean"] }
+pin = { types = ["boolean"] }
+pipx = { types = ["table"] }
+plugin_autoupdate_last_check_duration = { types = ["string"] }
+prefer_offline = { types = ["boolean"] }
+prereleases = { types = ["boolean"] }
+profile = { types = ["string"] }
+provenance_api_failures_fatal = { types = ["boolean"] }
+python = { types = ["table"] }
+quiet = { types = ["boolean"] }
+raw = { types = ["boolean"] }
+registry_cache_ttl = { types = ["string"] }
+registry_floating = { types = ["boolean"] }
+ruby = { types = ["table"] }
+rust = { types = ["table"] }
+safe = { types = ["boolean"] }
+sandbox = { types = ["table"] }
+shared_install_dirs = { types = ["array"] }
+shorthands_file = { types = ["string"] }
+silent = { types = ["boolean"] }
+slsa = { types = ["boolean"] }
+sops = { types = ["table"] }
+spm = { types = ["table"] }
+status = { types = ["table"] }
+swift = { types = ["table"] }
+system_config_file = { types = ["string"] }
+system_deps = { types = ["string"] }
+system_packages = { types = ["table"] }
+task = { types = ["table"] }
+task_disable_paths = { types = ["array"] }
+task_output = { types = ["string"] }
+task_remote_no_cache = { types = ["boolean"] }
+task_run_auto_install = { types = ["boolean"] }
+task_show_full_cmd = { types = ["boolean"] }
+task_skip = { types = ["array"] }
+task_skip_depends = { types = ["boolean"] }
+task_timeout = { types = ["string"] }
+task_timings = { types = ["boolean"] }
+tera_v1 = { types = ["boolean"] }
+terminal_progress = { types = ["boolean"] }
+trace = { types = ["boolean"] }
+trusted_config_paths = { types = ["array"] }
+unix_default_file_shell_args = { types = ["string"] }
+unix_default_inline_shell_args = { types = ["string"] }
+upgrade = { types = ["table"] }
+url_replacements = "free"
+use_file_shell_for_executable_tasks = { types = ["boolean"] }
+use_versions_host = { types = ["boolean"] }
+use_versions_host_track = { types = ["boolean"] }
+verbose = { types = ["boolean"] }
+windows_default_file_shell_args = { types = ["string"] }
+windows_default_inline_shell_args = { types = ["string"] }
+windows_executable_extensions = { types = ["array"] }
+windows_powershell_no_profile = { types = ["boolean"] }
+windows_shim_mode = { types = ["string"] }
+yes = { types = ["boolean"] }
+zig = { types = ["table"] }

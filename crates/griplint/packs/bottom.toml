@@ -1,0 +1,137 @@
+# Data pack for bottom — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "bottom"
+handles = ["bottom.toml"]
+format = "toml"
+supported = ["0.1"]
+series = "v0"
+
+[files."bottom.toml".rules."cpu"]
+basic_average_cpu_row = { types = ["boolean"] }
+default = { types = ["string"], choices = ["all", "average"] }
+hide_avg_cpu = { types = ["boolean"] }
+left_legend = { types = ["boolean"] }
+show_decimal = { types = ["boolean"] }
+
+[files."bottom.toml".rules."disk"]
+columns = { types = ["array"] }
+default_sort = { types = ["string"] }
+include_unmounted = { types = ["boolean"] }
+mount_filter = { types = ["table"] }
+name_filter = { types = ["table"] }
+sort_order = { types = ["string"], choices = ["Ascending", "Descending"] }
+
+[files."bottom.toml".rules."disk_io_graph"]
+include_unmounted = { types = ["boolean"] }
+legend = { types = ["table"] }
+legend_position = { types = ["string"] }
+name_filter = { types = ["table"] }
+show_read = { types = ["boolean"] }
+show_write = { types = ["boolean"] }
+use_log = { types = ["boolean"] }
+
+[files."bottom.toml".rules."flags"]
+autohide_time = { types = ["boolean"] }
+average_cpu_row = { types = ["boolean"] }
+basic = { types = ["boolean"] }
+battery = { types = ["boolean"] }
+case_sensitive = { types = ["boolean"] }
+cpu_left_legend = { types = ["boolean"] }
+current_usage = { types = ["boolean"] }
+default_time_value = { types = ["integer", "string"] }
+default_widget_count = { types = ["integer"] }
+default_widget_type = { types = ["string"] }
+disable_advanced_kill = { types = ["boolean"] }
+disable_click = { types = ["boolean"] }
+disable_gpu = { types = ["boolean"] }
+disable_keys = { types = ["boolean"] }
+dot_marker = { types = ["boolean"] }
+enable_cache_memory = { types = ["boolean"] }
+expanded = { types = ["boolean"] }
+free_arc = { types = ["boolean"] }
+group_processes = { types = ["boolean"] }
+hide_avg_cpu = { types = ["boolean"] }
+hide_k_threads = { types = ["boolean"] }
+hide_time = { types = ["boolean"] }
+memory_legend = { types = ["string"] }
+network_legend = { types = ["string"] }
+network_use_binary_prefix = { types = ["boolean"] }
+network_use_bytes = { types = ["boolean"] }
+network_use_log = { types = ["boolean"] }
+no_write = { types = ["boolean"] }
+process_command = { types = ["boolean"] }
+process_memory_as_value = { types = ["boolean"] }
+rate = { types = ["integer", "string"] }
+read_only = { types = ["boolean"] }
+regex = { types = ["boolean"] }
+retention = { types = ["integer", "string"] }
+show_table_scroll_bar = { types = ["boolean"] }
+show_table_scroll_position = { types = ["boolean"] }
+table_gap = { types = ["string"], choices = ["none", "space", "line"] }
+temperature_type = { types = ["string"] }
+time_delta = { types = ["integer", "string"] }
+tree = { types = ["boolean"] }
+tree_collapse = { types = ["boolean"] }
+unnormalized_cpu = { types = ["boolean"] }
+use_old_network_legend = { types = ["boolean"] }
+whole_word = { types = ["boolean"] }
+
+[files."bottom.toml".rules."memory_graph"]
+cache_memory = { types = ["boolean"] }
+free_arc = { types = ["boolean"] }
+legend_position = { types = ["string"] }
+short_gpu_names = { types = ["boolean"] }
+
+[files."bottom.toml".rules."network_graph"]
+interface_filter = { types = ["table"] }
+legend_position = { types = ["string"] }
+show_packets = { types = ["boolean"] }
+start_zeroed = { types = ["boolean"] }
+use_binary_prefix = { types = ["boolean"] }
+use_bytes = { types = ["boolean"] }
+use_log = { types = ["boolean"] }
+
+[files."bottom.toml".rules."processes"]
+case_sensitive = { types = ["boolean"] }
+columns = { types = ["array"] }
+current_usage = { types = ["boolean"] }
+default_grouped = { types = ["boolean"] }
+default_memory_value = { types = ["boolean"] }
+default_sort = { types = ["string"] }
+default_tree = { types = ["boolean"] }
+disable_advanced_kill = { types = ["boolean"] }
+get_threads = { types = ["boolean"] }
+hide_k_threads = { types = ["boolean"] }
+process_command = { types = ["boolean"] }
+regex = { types = ["boolean"] }
+sort_order = { types = ["string"], choices = ["Ascending", "Descending"] }
+tree_collapse = { types = ["boolean"] }
+unnormalized_cpu = { types = ["boolean"] }
+whole_word = { types = ["boolean"] }
+
+[files."bottom.toml".rules."row"]
+_free = true
+
+[files."bottom.toml".rules."styles"]
+battery = { types = ["table"] }
+cpu = { types = ["table"] }
+disk_io_graph = { types = ["table"] }
+graphs = { types = ["table"] }
+memory = { types = ["table"] }
+network = { types = ["table"] }
+tables = { types = ["table"] }
+temp_graph = { types = ["table"] }
+theme = { types = ["string"] }
+widgets = { types = ["table"] }
+
+[files."bottom.toml".rules."temperature"]
+default_sort = { types = ["string"] }
+sensor_filter = { types = ["table"] }
+sort_order = { types = ["string"], choices = ["Ascending", "Descending"] }
+
+[files."bottom.toml".rules."temperature_graph"]
+legend_position = { types = ["string"] }
+max_temp = { types = ["integer", "float"] }
+sensor_filter = { types = ["table"] }

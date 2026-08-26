@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A05",
+    "severity": "error",
+    "message": "[flags] 'table_gap' must be one of 'none', 'space', 'line', got 'wide'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

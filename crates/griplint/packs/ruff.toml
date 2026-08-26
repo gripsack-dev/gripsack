@@ -1,0 +1,432 @@
+# Data pack for ruff — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "ruff"
+handles = ["pyproject.toml", "ruff.toml"]
+format = "toml"
+supported = ["0."]
+lenient = ["pyproject.toml"]
+series = "v0"
+
+[files."pyproject.toml".rules."tool.ruff"]
+builtins = { types = ["array"] }
+cache-dir = { types = ["string"] }
+extend = { types = ["string"] }
+extend-exclude = { types = ["array"] }
+exclude = { types = ["array"] }
+fix = { types = ["boolean"] }
+fix-only = { types = ["boolean"] }
+force-exclude = { types = ["boolean"] }
+indent-width = { types = ["integer"] }
+line-length = { types = ["integer"] }
+log-file = { types = ["string"] }
+namespace-packages = { types = ["array"] }
+output-format = { types = ["string"] }
+preview = { types = ["boolean"] }
+required-version = { types = ["string"] }
+respect-gitignore = { types = ["boolean"] }
+src = { types = ["array"] }
+target-version = { types = ["string"] }
+unsafe-fixes = { types = ["boolean"] }
+show-fixes = { types = ["boolean"] }
+extend-safe-fixes = { types = ["array"] }
+
+[files."pyproject.toml".rules."tool.ruff.lint"]
+select = { types = ["array"] }
+ignore = { types = ["array"] }
+extend-select = { types = ["array"] }
+extend-ignore = { types = ["array"] }
+fixable = { types = ["array"] }
+unfixable = { types = ["array"] }
+extend-fixable = { types = ["array"] }
+allowed-confusables = { types = ["array"] }
+dummy-variable-rgx = { types = ["string"] }
+explicit-preview-rules = { types = ["boolean"] }
+extend-safe-fixes = { types = ["array"] }
+extend-unsafe-fixes = { types = ["array"] }
+external = { types = ["array"] }
+ignore-init-module-imports = { types = ["boolean"] }
+logger-objects = { types = ["array"] }
+task-tags = { types = ["array"] }
+typing-modules = { types = ["array"] }
+future-proofing = { types = ["boolean"] }
+
+[files."pyproject.toml".rules."tool.ruff.format"]
+quote-style = { types = ["string"], choices = ["single", "double", "preserve"] }
+indent-style = { types = ["string"], choices = ["space", "tab"] }
+line-ending = { types = ["string"], choices = ["auto", "lf", "crlf", "cr"] }
+skip-magic-trailing-comma = { types = ["boolean"] }
+docstring-code-format = { types = ["boolean"] }
+docstring-code-line-length = { types = ["string", "integer"] }
+preview = { types = ["boolean"] }
+
+[files."pyproject.toml".rules."tool.ruff.extend-per-file-ignores"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.isort"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.pycodestyle"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.pydocstyle"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.pyflakes"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.pylint"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.mccabe"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.pep8-naming"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.pyupgrade"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.per-file-ignores"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-annotations"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-async"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-bandit"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-blind-except"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-boolean-trap"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-bugbear"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-builtins"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-commas"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-comprehensions"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-copyright"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-datetimez"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-debugger"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-errmsg"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-executables"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-future-annotations"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-gettext"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-implicit-str-concat"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-import-conventions"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-logging"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-logging-format"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-no-pep420"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-pie"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-print"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-pytest-style"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-quotes"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-raise"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-retries"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-return"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-self"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-simplify"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-slots"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-tidy-imports"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-todos"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-type-checking"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flake8-use-pathlib"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.fastapi"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.airflow"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.pandas-vet"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.numpy"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.refurb"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.ruff"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.flynt"]
+_free = true
+
+[files."pyproject.toml".rules."tool.ruff.lint.faust"]
+_free = true
+
+[files."ruff.toml".rules.""]
+builtins = { types = ["array"] }
+cache-dir = { types = ["string"] }
+extend = { types = ["string"] }
+extend-exclude = { types = ["array"] }
+exclude = { types = ["array"] }
+fix = { types = ["boolean"] }
+fix-only = { types = ["boolean"] }
+force-exclude = { types = ["boolean"] }
+indent-width = { types = ["integer"] }
+line-length = { types = ["integer"] }
+log-file = { types = ["string"] }
+namespace-packages = { types = ["array"] }
+output-format = { types = ["string"] }
+preview = { types = ["boolean"] }
+required-version = { types = ["string"] }
+respect-gitignore = { types = ["boolean"] }
+src = { types = ["array"] }
+target-version = { types = ["string"] }
+unsafe-fixes = { types = ["boolean"] }
+show-fixes = { types = ["boolean"] }
+extend-safe-fixes = { types = ["array"] }
+
+[files."ruff.toml".rules."lint"]
+select = { types = ["array"] }
+ignore = { types = ["array"] }
+extend-select = { types = ["array"] }
+extend-ignore = { types = ["array"] }
+fixable = { types = ["array"] }
+unfixable = { types = ["array"] }
+extend-fixable = { types = ["array"] }
+allowed-confusables = { types = ["array"] }
+dummy-variable-rgx = { types = ["string"] }
+explicit-preview-rules = { types = ["boolean"] }
+extend-safe-fixes = { types = ["array"] }
+extend-unsafe-fixes = { types = ["array"] }
+external = { types = ["array"] }
+ignore-init-module-imports = { types = ["boolean"] }
+logger-objects = { types = ["array"] }
+task-tags = { types = ["array"] }
+typing-modules = { types = ["array"] }
+future-proofing = { types = ["boolean"] }
+
+[files."ruff.toml".rules."format"]
+quote-style = { types = ["string"], choices = ["single", "double", "preserve"] }
+indent-style = { types = ["string"], choices = ["space", "tab"] }
+line-ending = { types = ["string"], choices = ["auto", "lf", "crlf", "cr"] }
+skip-magic-trailing-comma = { types = ["boolean"] }
+docstring-code-format = { types = ["boolean"] }
+docstring-code-line-length = { types = ["string", "integer"] }
+preview = { types = ["boolean"] }
+
+[files."ruff.toml".rules."extend-per-file-ignores"]
+_free = true
+
+[files."ruff.toml".rules."lint.isort"]
+_free = true
+
+[files."ruff.toml".rules."lint.pycodestyle"]
+_free = true
+
+[files."ruff.toml".rules."lint.pydocstyle"]
+_free = true
+
+[files."ruff.toml".rules."lint.pyflakes"]
+_free = true
+
+[files."ruff.toml".rules."lint.pylint"]
+_free = true
+
+[files."ruff.toml".rules."lint.mccabe"]
+_free = true
+
+[files."ruff.toml".rules."lint.pep8-naming"]
+_free = true
+
+[files."ruff.toml".rules."lint.pyupgrade"]
+_free = true
+
+[files."ruff.toml".rules."lint.per-file-ignores"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-annotations"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-async"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-bandit"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-blind-except"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-boolean-trap"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-bugbear"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-builtins"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-commas"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-comprehensions"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-copyright"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-datetimez"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-debugger"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-errmsg"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-executables"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-future-annotations"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-gettext"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-implicit-str-concat"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-import-conventions"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-logging"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-logging-format"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-no-pep420"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-pie"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-print"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-pytest-style"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-quotes"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-raise"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-retries"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-return"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-self"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-simplify"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-slots"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-tidy-imports"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-todos"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-type-checking"]
+_free = true
+
+[files."ruff.toml".rules."lint.flake8-use-pathlib"]
+_free = true
+
+[files."ruff.toml".rules."lint.fastapi"]
+_free = true
+
+[files."ruff.toml".rules."lint.airflow"]
+_free = true
+
+[files."ruff.toml".rules."lint.pandas-vet"]
+_free = true
+
+[files."ruff.toml".rules."lint.numpy"]
+_free = true
+
+[files."ruff.toml".rules."lint.refurb"]
+_free = true
+
+[files."ruff.toml".rules."lint.ruff"]
+_free = true
+
+[files."ruff.toml".rules."lint.flynt"]
+_free = true
+
+[files."ruff.toml".rules."lint.faust"]
+_free = true

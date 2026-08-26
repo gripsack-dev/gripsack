@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A05",
+    "severity": "error",
+    "message": "[markdown] 'insert_anchor_links' must be one of 'left', 'right', 'heading', 'none', got 'middle'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

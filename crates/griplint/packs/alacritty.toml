@@ -1,0 +1,93 @@
+# Data pack for alacritty — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "alacritty"
+handles = ["alacritty.toml"]
+format = "toml"
+supported = ["0."]
+series = "v0"
+
+[files."alacritty.toml".rules."general"]
+import = { types = ["array"] }
+working_directory = { types = ["string"] }
+live_config_reload = { types = ["boolean"] }
+ipc_socket = { types = ["boolean"] }
+
+[files."alacritty.toml".rules."env"]
+_free = true
+
+[files."alacritty.toml".rules."window"]
+dimensions = { types = ["table"] }
+position = { types = ["table", "string"] }
+padding = { types = ["table"] }
+dynamic_padding = { types = ["boolean"] }
+decorations = { types = ["string"], choices = ["Full", "None", "Transparent", "Buttonless"] }
+opacity = { types = ["float", "integer"] }
+blur = { types = ["boolean"] }
+startup_mode = { types = ["string"], choices = ["Windowed", "Maximized", "Fullscreen", "SimpleFullscreen"] }
+title = { types = ["string"] }
+dynamic_title = { types = ["boolean"] }
+class = { types = ["table"] }
+decorations_theme_variant = { types = ["string"], choices = ["Dark", "Light", "None"] }
+resize_increments = { types = ["boolean"] }
+option_as_alt = { types = ["string"], choices = ["OnlyLeft", "OnlyRight", "Both", "None"] }
+level = { types = ["string"], choices = ["Normal", "AlwaysOnTop"] }
+
+[files."alacritty.toml".rules."scrolling"]
+history = { types = ["integer"] }
+multiplier = { types = ["integer"] }
+
+[files."alacritty.toml".rules."font"]
+normal = { types = ["table"] }
+bold = { types = ["table"] }
+italic = { types = ["table"] }
+bold_italic = { types = ["table"] }
+size = { types = ["float", "integer"] }
+offset = { types = ["table"] }
+glyph_offset = { types = ["table"] }
+builtin_box_drawing = { types = ["boolean"] }
+
+[files."alacritty.toml".rules."colors"]
+_free = true
+
+[files."alacritty.toml".rules."bell"]
+animation = { types = ["string"], choices = ["Ease", "EaseOut", "EaseOutSine", "EaseOutQuad", "EaseOutCubic", "EaseOutQuart", "EaseOutQuint", "EaseOutExpo", "EaseOutCirc", "Linear"] }
+duration = { types = ["integer"] }
+color = { types = ["string"] }
+command = { types = ["table", "string"] }
+
+[files."alacritty.toml".rules."selection"]
+semantic_escape_chars = { types = ["string"] }
+save_to_clipboard = { types = ["boolean"] }
+
+[files."alacritty.toml".rules."cursor"]
+style = { types = ["table"] }
+vi_mode_style = { types = ["table", "string"] }
+blink_interval = { types = ["integer"] }
+blink_timeout = { types = ["integer"] }
+unfocused_hollow = { types = ["boolean"] }
+thickness = { types = ["float", "integer"] }
+
+[files."alacritty.toml".rules."terminal"]
+shell = { types = ["table", "string"] }
+osc52 = { types = ["string"], choices = ["Disabled", "OnlyCopy", "OnlyPaste", "CopyPaste"] }
+
+[files."alacritty.toml".rules."mouse"]
+hide_when_typing = { types = ["boolean"] }
+bindings = { types = ["array"] }
+
+[files."alacritty.toml".rules."hints"]
+alphabet = { types = ["string"] }
+enabled = { types = ["array"] }
+
+[files."alacritty.toml".rules."keyboard"]
+bindings = { types = ["array"] }
+
+[files."alacritty.toml".rules."debug"]
+render_timer = { types = ["boolean"] }
+persistent_logging = { types = ["boolean"] }
+log_level = { types = ["string"] }
+print_events = { types = ["boolean"] }
+highlight_damage = { types = ["boolean"] }
+prefer_egl = { types = ["boolean"] }

@@ -1,0 +1,4 @@
+[remote.gitlab]
+owner = "x"
+repo = "y"
+api_url = "https://gitlab.internal"

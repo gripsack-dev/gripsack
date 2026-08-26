@@ -1,0 +1,54 @@
+# Data pack for superfile — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "superfile"
+handles = ["config.toml"]
+format = "toml"
+supported = ["0."]
+series = "v0"
+
+[files."config.toml".rules.""]
+editor = { types = ["string"] }
+dir_editor = { types = ["string"] }
+auto_check_update = { types = ["boolean"] }
+cd_on_quit = { types = ["boolean"] }
+default_open_file_preview = { types = ["boolean"] }
+show_image_preview = { types = ["boolean"] }
+show_panel_footer_info = { types = ["boolean"] }
+file_size_use_si = { types = ["boolean"] }
+default_directory = { types = ["string"] }
+default_sort_type = { types = ["integer"] }
+sort_order_reversed = { types = ["boolean"] }
+case_sensitive_sort = { types = ["boolean"] }
+shell_close_on_success = { types = ["boolean"] }
+debug = { types = ["boolean"] }
+ignore_missing_fields = { types = ["boolean"] }
+page_scroll_size = { types = ["integer"] }
+file_panel_extra_columns = { types = ["integer"] }
+file_panel_name_percent = { types = ["integer"] }
+theme = { types = ["string"] }
+code_previewer = { types = ["string"], choices = ["", "bat"] }
+nerdfont = { types = ["boolean"] }
+show_select_icons = { types = ["boolean"] }
+transparent_background = { types = ["boolean"] }
+file_preview_width = { types = ["integer"] }
+enable_file_preview_border = { types = ["boolean"] }
+sidebar_width = { types = ["integer"] }
+sidebar_sections = { types = ["array"] }
+border_top = { types = ["string"] }
+border_bottom = { types = ["string"] }
+border_left = { types = ["string"] }
+border_right = { types = ["string"] }
+border_top_left = { types = ["string"] }
+border_top_right = { types = ["string"] }
+border_bottom_left = { types = ["string"] }
+border_bottom_right = { types = ["string"] }
+border_middle_left = { types = ["string"] }
+border_middle_right = { types = ["string"] }
+metadata = { types = ["boolean"] }
+enable_md5_checksum = { types = ["boolean"] }
+zoxide_support = { types = ["boolean"] }
+
+[files."config.toml".rules."open_with"]
+_free = true

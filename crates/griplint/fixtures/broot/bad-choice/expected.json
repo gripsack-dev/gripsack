@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A05",
+    "severity": "error",
+    "message": "'syntax_theme' must be one of 'GitHub', 'SolarizedDark', 'SolarizedLight', 'EightiesDark', 'MochaDark', 'OceanDark', 'OceanLight', got 'Dracula'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 1,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

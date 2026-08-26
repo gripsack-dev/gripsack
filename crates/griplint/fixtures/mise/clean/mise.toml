@@ -1,0 +1,17 @@
+min_version = "2025.1.0"
+env = { EDITOR = "hx" }
+
+[tools]
+python = "3.13"
+node = "lts"
+
+[settings]
+experimental = true
+jobs = 8
+python = { default_packages_file = "requirements.txt" }
+
+[tasks.build]
+run = "cargo build"
+
+[alias]
+node-current = "node:24"

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "W10",
+    "severity": "warning",
+    "message": "key tables are written for yazi 25.x/26.x; this module pins 24.0 \u2014 results may be stale",
+    "labels": []
+  }
+]

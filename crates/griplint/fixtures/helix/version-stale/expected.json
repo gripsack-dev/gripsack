@@ -1,0 +1,1 @@
+[{"code": "W10", "severity": "warning", "message": "key tables are written for helix 25.x; this module pins 24.3 — results may be stale", "labels": []}]

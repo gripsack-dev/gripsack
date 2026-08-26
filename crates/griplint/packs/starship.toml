@@ -1,0 +1,1070 @@
+# Data pack for starship — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "starship"
+handles = ["starship.toml"]
+format = "toml"
+supported = ["1."]
+series = "v0"
+
+[files."starship.toml".rules.""]
+format = { types = ["string"] }
+right_format = { types = ["string"] }
+continuation_prompt = { types = ["string"] }
+scan_timeout = { types = ["integer"] }
+command_timeout = { types = ["integer"] }
+add_newline = { types = ["boolean"] }
+follow_symlinks = { types = ["boolean"] }
+palette = { types = ["string"] }
+
+[files."starship.toml".rules."palettes"]
+_free = true
+
+[files."starship.toml".rules."profiles"]
+_free = true
+
+[files."starship.toml".rules."aws"]
+disabled = { types = ["boolean"] }
+expiration_symbol = { types = ["string"] }
+force_display = { types = ["boolean"] }
+format = { types = ["string"] }
+profile_aliases = { types = ["table"] }
+region_aliases = { types = ["table"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."azure"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+subscription_aliases = { types = ["table"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."battery"]
+charging_symbol = { types = ["string"] }
+disabled = { types = ["boolean"] }
+discharging_symbol = { types = ["string"] }
+display = { types = ["array"] }
+empty_symbol = { types = ["string"] }
+format = { types = ["string"] }
+full_symbol = { types = ["string"] }
+unknown_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."buf"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."bun"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."c"]
+commands = { types = ["array"] }
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."character"]
+disabled = { types = ["boolean"] }
+error_symbol = { types = ["string"] }
+format = { types = ["string"] }
+success_symbol = { types = ["string"] }
+vimcmd_replace_one_symbol = { types = ["string"] }
+vimcmd_replace_symbol = { types = ["string"] }
+vimcmd_symbol = { types = ["string"] }
+vimcmd_visual_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."claude_context"]
+disabled = { types = ["boolean"] }
+display = { types = ["array"] }
+format = { types = ["string"] }
+gauge_empty_symbol = { types = ["string"] }
+gauge_full_symbol = { types = ["string"] }
+gauge_partial_symbol = { types = ["string"] }
+gauge_width = { types = ["integer"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."claude_cost"]
+disabled = { types = ["boolean"] }
+display = { types = ["array"] }
+format = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."claude_model"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+model_aliases = { types = ["table"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."cmake"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."cmd_duration"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+min_time = { types = ["integer"] }
+min_time_to_notify = { types = ["integer"] }
+notification_timeout = { types = ["integer", "string"] }
+show_milliseconds = { types = ["boolean"] }
+show_notifications = { types = ["boolean"] }
+style = { types = ["string"] }
+
+[files."starship.toml".rules."cobol"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."conda"]
+detect_env_vars = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+ignore_base = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+truncation_length = { types = ["integer"] }
+
+[files."starship.toml".rules."container"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."cpp"]
+commands = { types = ["array"] }
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."crystal"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."daml"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."dart"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."deno"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."directory"]
+before_repo_root_style = { types = ["string"] }
+disabled = { types = ["boolean"] }
+fish_style_pwd_dir_length = { types = ["integer"] }
+format = { types = ["string"] }
+home_symbol = { types = ["string"] }
+read_only = { types = ["string"] }
+read_only_style = { types = ["string"] }
+repo_root_format = { types = ["string"] }
+repo_root_style = { types = ["string"] }
+style = { types = ["string"] }
+substitutions = { types = ["table", "array"] }
+truncate_to_repo = { types = ["boolean"] }
+truncation_length = { types = ["integer"] }
+truncation_symbol = { types = ["string"] }
+use_logical_path = { types = ["boolean"] }
+use_os_path_sep = { types = ["boolean"] }
+
+[files."starship.toml".rules."direnv"]
+allowed_msg = { types = ["string"] }
+denied_msg = { types = ["string"] }
+detect_env_vars = { types = ["array"] }
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+loaded_msg = { types = ["string"] }
+not_allowed_msg = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+unloaded_msg = { types = ["string"] }
+
+[files."starship.toml".rules."docker_context"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+only_with_files = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."dotnet"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+heuristic = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."elixir"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."elm"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."env_var"]
+_free = true
+
+[files."starship.toml".rules."erlang"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."fennel"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."fill"]
+disabled = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."fortran"]
+commands = { types = ["array"] }
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."fossil_branch"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+truncation_length = { types = ["integer"] }
+truncation_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."fossil_metrics"]
+added_style = { types = ["string"] }
+deleted_style = { types = ["string"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+only_nonzero_diffs = { types = ["boolean"] }
+
+[files."starship.toml".rules."gcloud"]
+detect_env_vars = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+project_aliases = { types = ["table"] }
+region_aliases = { types = ["table"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."git_branch"]
+always_show_remote = { types = ["boolean"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+ignore_bare_repo = { types = ["boolean"] }
+ignore_branches = { types = ["array"] }
+only_attached = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+truncation_length = { types = ["integer"] }
+truncation_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."git_commit"]
+commit_hash_length = { types = ["integer"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+only_detached = { types = ["boolean"] }
+style = { types = ["string"] }
+tag_disabled = { types = ["boolean"] }
+tag_max_candidates = { types = ["integer"] }
+tag_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."git_metrics"]
+added_style = { types = ["string"] }
+deleted_style = { types = ["string"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+ignore_submodules = { types = ["boolean"] }
+only_nonzero_diffs = { types = ["boolean"] }
+
+[files."starship.toml".rules."git_state"]
+am = { types = ["string"] }
+am_or_rebase = { types = ["string"] }
+bisect = { types = ["string"] }
+cherry_pick = { types = ["string"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+merge = { types = ["string"] }
+rebase = { types = ["string"] }
+revert = { types = ["string"] }
+style = { types = ["string"] }
+
+[files."starship.toml".rules."git_status"]
+ahead = { types = ["string"] }
+behind = { types = ["string"] }
+conflicted = { types = ["string"] }
+deleted = { types = ["string"] }
+disabled = { types = ["boolean"] }
+diverged = { types = ["string"] }
+format = { types = ["string"] }
+ignore_submodules = { types = ["boolean"] }
+index_added = { types = ["string"] }
+index_deleted = { types = ["string"] }
+index_modified = { types = ["string"] }
+index_typechanged = { types = ["string"] }
+modified = { types = ["string"] }
+renamed = { types = ["string"] }
+staged = { types = ["string"] }
+stashed = { types = ["string"] }
+style = { types = ["string"] }
+typechanged = { types = ["string"] }
+untracked = { types = ["string"] }
+up_to_date = { types = ["string"] }
+use_git_executable = { types = ["boolean"] }
+windows_starship = { types = ["string"] }
+worktree_added = { types = ["string"] }
+worktree_deleted = { types = ["string"] }
+worktree_modified = { types = ["string"] }
+worktree_typechanged = { types = ["string"] }
+
+[files."starship.toml".rules."gleam"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."golang"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+not_capable_style = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."gradle"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+recursive = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."guix_shell"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."haskell"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."haxe"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."helm"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."hg_branch"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+truncation_length = { types = ["integer"] }
+truncation_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."hg_state"]
+bisect = { types = ["string"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+graft = { types = ["string"] }
+histedit = { types = ["string"] }
+merge = { types = ["string"] }
+rebase = { types = ["string"] }
+shelve = { types = ["string"] }
+style = { types = ["string"] }
+transplant = { types = ["string"] }
+update = { types = ["string"] }
+
+[files."starship.toml".rules."hostname"]
+aliases = { types = ["table"] }
+detect_env_vars = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+ssh_only = { types = ["boolean"] }
+ssh_symbol = { types = ["string"] }
+style = { types = ["string"] }
+trim_at = { types = ["string"] }
+
+[files."starship.toml".rules."java"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."jj_bookmark"]
+disabled = { types = ["boolean"] }
+diverged_symbol = { types = ["string"] }
+format = { types = ["string"] }
+ignore_names = { types = ["array"] }
+ignore_remotes = { types = ["array"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+truncation_length = { types = ["integer"] }
+truncation_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."jobs"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+number_threshold = { types = ["integer"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+symbol_threshold = { types = ["integer"] }
+threshold = { types = ["integer"] }
+
+[files."starship.toml".rules."julia"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."kotlin"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+kotlin_binary = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."kubernetes"]
+context_aliases = { types = ["table"] }
+contexts = { types = ["array"] }
+detect_env_vars = { types = ["array"] }
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+user_aliases = { types = ["table"] }
+
+[files."starship.toml".rules."line_break"]
+disabled = { types = ["boolean"] }
+
+[files."starship.toml".rules."localip"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+ssh_only = { types = ["boolean"] }
+style = { types = ["string"] }
+
+[files."starship.toml".rules."lua"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+lua_binary = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."maven"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+recursive = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."memory_usage"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+threshold = { types = ["integer"] }
+
+[files."starship.toml".rules."meson"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+truncation_length = { types = ["integer"] }
+truncation_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."mise"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+healthy_symbol = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+unhealthy_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."mojo"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."nats"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."netns"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."nim"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."nix_shell"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+heuristic = { types = ["boolean"] }
+impure_msg = { types = ["string"] }
+pure_msg = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+unknown_msg = { types = ["string"] }
+
+[files."starship.toml".rules."nodejs"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+not_capable_style = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."ocaml"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+global_switch_indicator = { types = ["string"] }
+local_switch_indicator = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."odin"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+show_commit = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."opa"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."openstack"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."os"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbols = { types = ["table"] }
+
+[files."starship.toml".rules."package"]
+disabled = { types = ["boolean"] }
+display_private = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."perl"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."php"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."pijul_channel"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+truncation_length = { types = ["integer"] }
+truncation_symbol = { types = ["string"] }
+
+[files."starship.toml".rules."pixi"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+pixi_binary = { types = ["array", "string"] }
+show_default_environment = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."pulumi"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+search_upwards = { types = ["boolean"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."purescript"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."python"]
+detect_env_vars = { types = ["array"] }
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+generic_venv_names = { types = ["array"] }
+pyenv_prefix = { types = ["string"] }
+pyenv_version_name = { types = ["boolean"] }
+python_binary = { types = ["array", "string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."quarto"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."raku"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."red"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."rlang"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."ruby"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+detect_variables = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."rust"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."scala"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."shell"]
+bash_indicator = { types = ["string"] }
+cmd_indicator = { types = ["string"] }
+disabled = { types = ["boolean"] }
+elvish_indicator = { types = ["string"] }
+fish_indicator = { types = ["string"] }
+format = { types = ["string"] }
+ion_indicator = { types = ["string"] }
+nu_indicator = { types = ["string"] }
+powershell_indicator = { types = ["string"] }
+pwsh_indicator = { types = ["string"] }
+style = { types = ["string"] }
+tcsh_indicator = { types = ["string"] }
+unknown_indicator = { types = ["string"] }
+xonsh_indicator = { types = ["string"] }
+zsh_indicator = { types = ["string"] }
+
+[files."starship.toml".rules."shlvl"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+repeat = { types = ["boolean"] }
+repeat_offset = { types = ["integer"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+threshold = { types = ["integer"] }
+
+[files."starship.toml".rules."singularity"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."solidity"]
+compiler = { types = ["array", "string"] }
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."spack"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+truncation_length = { types = ["integer"] }
+
+[files."starship.toml".rules."status"]
+disabled = { types = ["boolean"] }
+failure_style = { types = ["string"] }
+format = { types = ["string"] }
+map_symbol = { types = ["boolean"] }
+not_executable_symbol = { types = ["string"] }
+not_found_symbol = { types = ["string"] }
+pipestatus = { types = ["boolean"] }
+pipestatus_format = { types = ["string"] }
+pipestatus_segment_format = { types = ["string"] }
+pipestatus_separator = { types = ["string"] }
+recognize_signal_code = { types = ["boolean"] }
+sigint_symbol = { types = ["string"] }
+signal_symbol = { types = ["string"] }
+style = { types = ["string"] }
+success_style = { types = ["string"] }
+success_symbol = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."sudo"]
+allow_windows = { types = ["boolean"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+use_legacy_check = { types = ["boolean"] }
+
+[files."starship.toml".rules."swift"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."terraform"]
+commands = { types = ["array"] }
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."time"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+time_format = { types = ["string"] }
+time_range = { types = ["string"] }
+use_12hr = { types = ["boolean"] }
+utc_time_offset = { types = ["string"] }
+
+[files."starship.toml".rules."typst"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."username"]
+aliases = { types = ["table"] }
+detect_env_vars = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+show_always = { types = ["boolean"] }
+style_root = { types = ["string"] }
+style_user = { types = ["string"] }
+
+[files."starship.toml".rules."vagrant"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."vcs"]
+disabled = { types = ["boolean"] }
+fossil_modules = { types = ["string"] }
+git_modules = { types = ["string"] }
+hg_modules = { types = ["string"] }
+order = { types = ["array"] }
+pijul_modules = { types = ["string"] }
+
+[files."starship.toml".rules."vcsh"]
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+
+[files."starship.toml".rules."vlang"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."xmake"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."zig"]
+detect_extensions = { types = ["array"] }
+detect_files = { types = ["array"] }
+detect_folders = { types = ["array"] }
+disabled = { types = ["boolean"] }
+format = { types = ["string"] }
+style = { types = ["string"] }
+symbol = { types = ["string"] }
+version_format = { types = ["string"] }
+
+[files."starship.toml".rules."custom"]
+_free = true

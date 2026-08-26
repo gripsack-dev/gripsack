@@ -1,0 +1,18 @@
+[
+  {
+    "code": "A01",
+    "severity": "error",
+    "message": "unknown key 'diff_veiw'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 1,
+          "col": 1
+        },
+        "note": ""
+      }
+    ],
+    "help": "did you mean 'diff_view'?"
+  }
+]

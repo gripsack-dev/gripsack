@@ -1,0 +1,21 @@
+base_url = "https://example.com"
+title = "Example"
+compile_sass = true
+taxonomies = [{name = "tags", feed = true}]
+
+[markdown]
+render_emoji = true
+insert_anchor_links = "left"
+
+[markdown.highlighting]
+style = "class"
+theme = "gruvbox-dark"
+
+[slugify]
+paths = "safe"
+
+[search]
+index_format = "fuse_json"
+
+[extra]
+my_custom_thing = { nested = true }

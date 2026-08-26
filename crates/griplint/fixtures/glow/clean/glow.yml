@@ -1,0 +1,8 @@
+# style name or JSON path (default "auto")
+style: "light"
+mouse: true
+pager: false
+width: 80
+all: false
+showLineNumbers: false
+preserveNewLines: false

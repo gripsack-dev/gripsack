@@ -1,0 +1,67 @@
+# Data pack for procs — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "procs"
+handles = ["config.toml"]
+format = "toml"
+supported = ["0."]
+series = "v0"
+
+[files."config.toml".rules.""]
+columns = { types = ["array"] }
+
+[files."config.toml".rules."style"]
+header = { types = ["string"] }
+unit = { types = ["string"] }
+tree = { types = ["string"] }
+
+[files."config.toml".rules."style.by_percentage"]
+color_000 = { types = ["string"] }
+color_025 = { types = ["string"] }
+color_050 = { types = ["string"] }
+color_075 = { types = ["string"] }
+color_100 = { types = ["string"] }
+
+[files."config.toml".rules."style.by_state"]
+color_d = { types = ["string"] }
+color_r = { types = ["string"] }
+color_s = { types = ["string"] }
+color_t = { types = ["string"] }
+color_z = { types = ["string"] }
+color_x = { types = ["string"] }
+color_k = { types = ["string"] }
+color_w = { types = ["string"] }
+color_p = { types = ["string"] }
+
+[files."config.toml".rules."style.by_unit"]
+color_k = { types = ["string"] }
+color_m = { types = ["string"] }
+color_g = { types = ["string"] }
+color_t = { types = ["string"] }
+color_p = { types = ["string"] }
+color_x = { types = ["string"] }
+
+[files."config.toml".rules."search"]
+numeric_search = { types = ["string"], choices = ["Exact", "Partial"] }
+nonnumeric_search = { types = ["string"], choices = ["Exact", "Partial"] }
+logic = { types = ["string"], choices = ["And", "Or"] }
+
+[files."config.toml".rules."display"]
+show_self = { types = ["boolean"] }
+show_thread = { types = ["boolean"] }
+show_thread_in_tree = { types = ["boolean"] }
+cut_to_terminal = { types = ["boolean"] }
+cut_to_pager = { types = ["boolean"] }
+cut_to_pipe = { types = ["boolean"] }
+color_mode = { types = ["string"], choices = ["Auto", "Always", "Never"] }
+
+[files."config.toml".rules."sort"]
+column = { types = ["integer"] }
+order = { types = ["string"], choices = ["Ascending", "Descending"] }
+
+[files."config.toml".rules."docker"]
+path = { types = ["string"] }
+
+[files."config.toml".rules."pager"]
+mode = { types = ["string"] }

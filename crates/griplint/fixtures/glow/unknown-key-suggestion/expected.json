@@ -1,0 +1,18 @@
+[
+  {
+    "code": "A01",
+    "severity": "error",
+    "message": "unknown key 'mous'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 1,
+          "col": 1
+        },
+        "note": ""
+      }
+    ],
+    "help": "did you mean 'mouse'?"
+  }
+]

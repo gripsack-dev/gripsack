@@ -1,0 +1,297 @@
+# Data pack for claude-code — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "claude-code"
+handles = ["settings.json", "settings.local.json"]
+format = "json"
+supported = ["0."]
+series = "v0"
+
+[files."settings.json".rules.""]
+"$schema" = { types = ["string"] }
+advisorModel = { types = ["string"] }
+agent = { types = ["string"] }
+agentPushNotifEnabled = { types = ["boolean"] }
+allowAllClaudeAiMcps = { types = ["boolean"] }
+allowManagedHooksOnly = { types = ["boolean"] }
+allowManagedMcpServersOnly = { types = ["boolean"] }
+allowManagedPermissionRulesOnly = { types = ["boolean"] }
+allowedChannelPlugins = { types = ["array"] }
+allowedHttpHookUrls = { types = ["array"] }
+allowedMcpServers = { types = ["array"] }
+alwaysThinkingEnabled = { types = ["boolean"] }
+apiKeyHelper = { types = ["string"] }
+askUserQuestionTimeout = { types = ["string"] }
+attribution = { types = ["table"] }
+autoCompactEnabled = { types = ["boolean"] }
+autoConnectIde = { types = ["boolean"] }
+autoInstallIdeExtension = { types = ["boolean"] }
+autoMemoryDirectory = { types = ["string"] }
+autoMemoryEnabled = { types = ["boolean"] }
+autoMode = { types = ["table"] }
+autoScrollEnabled = { types = ["boolean"] }
+autoUpdatesChannel = { types = ["string"] }
+availableModels = { types = ["array"] }
+awaySummaryEnabled = { types = ["boolean"] }
+awsAuthRefresh = { types = ["string"] }
+awsCredentialExport = { types = ["string"] }
+axScreenReader = { types = ["boolean"] }
+blockedMarketplaces = { types = ["array"] }
+browserExternalPageTools = { types = ["string"] }
+channelsEnabled = { types = ["boolean"] }
+claudeMd = { types = ["string"] }
+claudeMdExcludes = { types = ["array"] }
+cleanupPeriodDays = { types = ["integer"] }
+companyAnnouncements = { types = ["array"] }
+defaultShell = { types = ["string"] }
+deniedMcpServers = { types = ["array"] }
+diffTool = { types = ["string"] }
+disableAgentView = { types = ["boolean"] }
+disableAllHooks = { types = ["boolean"] }
+disableArtifact = { types = ["boolean"] }
+disableAutoMode = { types = ["string"] }
+disableBrowserExternalNavigation = { types = ["boolean"] }
+disableBundledSkills = { types = ["boolean"] }
+disableClaudeAiConnectors = { types = ["boolean"] }
+disableDeepLinkRegistration = { types = ["string"] }
+disableMobileSimulatorTools = { types = ["boolean"] }
+disableRemoteControl = { types = ["boolean"] }
+disableSideloadFlags = { types = ["boolean"] }
+disableSkillShellExecution = { types = ["boolean"] }
+disableWorkflows = { types = ["boolean"] }
+disabledMcpjsonServers = { types = ["array"] }
+editorMode = { types = ["string"] }
+effortLevel = { types = ["string"] }
+emojiCompletionEnabled = { types = ["boolean"] }
+enableAllProjectMcpServers = { types = ["boolean"] }
+enableArtifact = { types = ["boolean"] }
+enabledMcpjsonServers = { types = ["array"] }
+enabledPlugins = "free"
+enforceAvailableModels = { types = ["boolean"] }
+env = "free"
+externalEditorContext = { types = ["boolean"] }
+extraKnownMarketplaces = "free"
+fallbackModel = { types = ["array"] }
+fastMode = { types = ["boolean"] }
+fastModePerSessionOptIn = { types = ["boolean"] }
+feedbackSurveyRate = { types = ["integer", "float"] }
+fileCheckpointingEnabled = { types = ["boolean"] }
+fileSuggestion = { types = ["table"] }
+footerLinksRegexes = { types = ["array"] }
+forceLoginGatewayUrl = { types = ["string"] }
+forceLoginMethod = { types = ["string"] }
+forceLoginOrgUUID = { types = ["string"] }
+forceRemoteSettingsRefresh = { types = ["boolean"] }
+gcpAuthRefresh = { types = ["string"] }
+hooks = { types = ["table"] }
+httpHookAllowedEnvVars = { types = ["array"] }
+includeCoAuthoredBy = { types = ["boolean"] }
+includeGitInstructions = { types = ["boolean"] }
+inputNeededNotifEnabled = { types = ["boolean"] }
+language = { types = ["string"] }
+managedMcpServers = { types = ["array"] }
+minimumVersion = { types = ["string"] }
+model = { types = ["string"] }
+modelOverrides = "free"
+otelHeadersHelper = { types = ["string"] }
+outputStyle = { types = ["string"] }
+parentSettingsBehavior = { types = ["string"] }
+permissionExplainerEnabled = { types = ["boolean"] }
+permissions = { types = ["table"] }
+plansDirectory = { types = ["string"] }
+pluginConfigs = "free"
+pluginSuggestionMarketplaces = { types = ["array"] }
+pluginTrustMessage = { types = ["string"] }
+policyHelper = { types = ["table"] }
+prUrlTemplate = { types = ["string"] }
+preferredNotifChannel = { types = ["string"] }
+prefersReducedMotion = { types = ["boolean"] }
+processWrapper = { types = ["string"] }
+remoteControlAtStartup = { types = ["boolean"] }
+requireCoworkFullVmSandbox = { types = ["boolean"] }
+requiredMaximumVersion = { types = ["string"] }
+requiredMinimumVersion = { types = ["string"] }
+respectGitignore = { types = ["boolean"] }
+respondToBashCommands = { types = ["boolean"] }
+sandbox = { types = ["table"] }
+showClearContextOnPlanAccept = { types = ["boolean"] }
+showThinkingSummaries = { types = ["boolean"] }
+showTurnDuration = { types = ["boolean"] }
+skillListingBudgetFraction = { types = ["integer", "float"] }
+skillListingMaxDescChars = { types = ["integer"] }
+skillOverrides = "free"
+skipDangerousModePermissionPrompt = { types = ["boolean"] }
+skipWebFetchPreflight = { types = ["boolean"] }
+skippedMarketplaces = { types = ["array"] }
+skippedPlugins = { types = ["array"] }
+spinnerTipsEnabled = { types = ["boolean"] }
+spinnerTipsOverride = { types = ["table"] }
+spinnerVerbs = { types = ["table"] }
+sshConfigs = { types = ["array"] }
+sshHostAllowlist = { types = ["array"] }
+statusLine = { types = ["table"] }
+strictKnownMarketplaces = { types = ["array"] }
+strictPluginOnlyCustomization = { types = ["boolean", "array"] }
+subagentStatusLine = { types = ["table"] }
+syntaxHighlightingDisabled = { types = ["boolean"] }
+teammateDefaultModel = { types = ["string"] }
+teammateMode = { types = ["string"] }
+terminalProgressBarEnabled = { types = ["boolean"] }
+theme = { types = ["string"] }
+tui = { types = ["string"] }
+useAutoModeDuringPlan = { types = ["boolean"] }
+verbose = { types = ["boolean"] }
+viewMode = { types = ["string"] }
+vimInsertModeRemaps = "free"
+voice = { types = ["table"] }
+voiceEnabled = { types = ["boolean"] }
+wheelScrollAccelerationEnabled = { types = ["boolean"] }
+workflowKeywordTriggerEnabled = { types = ["boolean"] }
+workflowSizeGuideline = { types = ["string"] }
+worktree = { types = ["table"] }
+wslInheritsWindowsSettings = { types = ["boolean"] }
+
+[files."settings.local.json".rules.""]
+"$schema" = { types = ["string"] }
+advisorModel = { types = ["string"] }
+agent = { types = ["string"] }
+agentPushNotifEnabled = { types = ["boolean"] }
+allowAllClaudeAiMcps = { types = ["boolean"] }
+allowManagedHooksOnly = { types = ["boolean"] }
+allowManagedMcpServersOnly = { types = ["boolean"] }
+allowManagedPermissionRulesOnly = { types = ["boolean"] }
+allowedChannelPlugins = { types = ["array"] }
+allowedHttpHookUrls = { types = ["array"] }
+allowedMcpServers = { types = ["array"] }
+alwaysThinkingEnabled = { types = ["boolean"] }
+apiKeyHelper = { types = ["string"] }
+askUserQuestionTimeout = { types = ["string"] }
+attribution = { types = ["table"] }
+autoCompactEnabled = { types = ["boolean"] }
+autoConnectIde = { types = ["boolean"] }
+autoInstallIdeExtension = { types = ["boolean"] }
+autoMemoryDirectory = { types = ["string"] }
+autoMemoryEnabled = { types = ["boolean"] }
+autoMode = { types = ["table"] }
+autoScrollEnabled = { types = ["boolean"] }
+autoUpdatesChannel = { types = ["string"] }
+availableModels = { types = ["array"] }
+awaySummaryEnabled = { types = ["boolean"] }
+awsAuthRefresh = { types = ["string"] }
+awsCredentialExport = { types = ["string"] }
+axScreenReader = { types = ["boolean"] }
+blockedMarketplaces = { types = ["array"] }
+browserExternalPageTools = { types = ["string"] }
+channelsEnabled = { types = ["boolean"] }
+claudeMd = { types = ["string"] }
+claudeMdExcludes = { types = ["array"] }
+cleanupPeriodDays = { types = ["integer"] }
+companyAnnouncements = { types = ["array"] }
+defaultShell = { types = ["string"] }
+deniedMcpServers = { types = ["array"] }
+diffTool = { types = ["string"] }
+disableAgentView = { types = ["boolean"] }
+disableAllHooks = { types = ["boolean"] }
+disableArtifact = { types = ["boolean"] }
+disableAutoMode = { types = ["string"] }
+disableBrowserExternalNavigation = { types = ["boolean"] }
+disableBundledSkills = { types = ["boolean"] }
+disableClaudeAiConnectors = { types = ["boolean"] }
+disableDeepLinkRegistration = { types = ["string"] }
+disableMobileSimulatorTools = { types = ["boolean"] }
+disableRemoteControl = { types = ["boolean"] }
+disableSideloadFlags = { types = ["boolean"] }
+disableSkillShellExecution = { types = ["boolean"] }
+disableWorkflows = { types = ["boolean"] }
+disabledMcpjsonServers = { types = ["array"] }
+editorMode = { types = ["string"] }
+effortLevel = { types = ["string"] }
+emojiCompletionEnabled = { types = ["boolean"] }
+enableAllProjectMcpServers = { types = ["boolean"] }
+enableArtifact = { types = ["boolean"] }
+enabledMcpjsonServers = { types = ["array"] }
+enabledPlugins = "free"
+enforceAvailableModels = { types = ["boolean"] }
+env = "free"
+externalEditorContext = { types = ["boolean"] }
+extraKnownMarketplaces = "free"
+fallbackModel = { types = ["array"] }
+fastMode = { types = ["boolean"] }
+fastModePerSessionOptIn = { types = ["boolean"] }
+feedbackSurveyRate = { types = ["integer", "float"] }
+fileCheckpointingEnabled = { types = ["boolean"] }
+fileSuggestion = { types = ["table"] }
+footerLinksRegexes = { types = ["array"] }
+forceLoginGatewayUrl = { types = ["string"] }
+forceLoginMethod = { types = ["string"] }
+forceLoginOrgUUID = { types = ["string"] }
+forceRemoteSettingsRefresh = { types = ["boolean"] }
+gcpAuthRefresh = { types = ["string"] }
+hooks = { types = ["table"] }
+httpHookAllowedEnvVars = { types = ["array"] }
+includeCoAuthoredBy = { types = ["boolean"] }
+includeGitInstructions = { types = ["boolean"] }
+inputNeededNotifEnabled = { types = ["boolean"] }
+language = { types = ["string"] }
+managedMcpServers = { types = ["array"] }
+minimumVersion = { types = ["string"] }
+model = { types = ["string"] }
+modelOverrides = "free"
+otelHeadersHelper = { types = ["string"] }
+outputStyle = { types = ["string"] }
+parentSettingsBehavior = { types = ["string"] }
+permissionExplainerEnabled = { types = ["boolean"] }
+permissions = { types = ["table"] }
+plansDirectory = { types = ["string"] }
+pluginConfigs = "free"
+pluginSuggestionMarketplaces = { types = ["array"] }
+pluginTrustMessage = { types = ["string"] }
+policyHelper = { types = ["table"] }
+prUrlTemplate = { types = ["string"] }
+preferredNotifChannel = { types = ["string"] }
+prefersReducedMotion = { types = ["boolean"] }
+processWrapper = { types = ["string"] }
+remoteControlAtStartup = { types = ["boolean"] }
+requireCoworkFullVmSandbox = { types = ["boolean"] }
+requiredMaximumVersion = { types = ["string"] }
+requiredMinimumVersion = { types = ["string"] }
+respectGitignore = { types = ["boolean"] }
+respondToBashCommands = { types = ["boolean"] }
+sandbox = { types = ["table"] }
+showClearContextOnPlanAccept = { types = ["boolean"] }
+showThinkingSummaries = { types = ["boolean"] }
+showTurnDuration = { types = ["boolean"] }
+skillListingBudgetFraction = { types = ["integer", "float"] }
+skillListingMaxDescChars = { types = ["integer"] }
+skillOverrides = "free"
+skipDangerousModePermissionPrompt = { types = ["boolean"] }
+skipWebFetchPreflight = { types = ["boolean"] }
+skippedMarketplaces = { types = ["array"] }
+skippedPlugins = { types = ["array"] }
+spinnerTipsEnabled = { types = ["boolean"] }
+spinnerTipsOverride = { types = ["table"] }
+spinnerVerbs = { types = ["table"] }
+sshConfigs = { types = ["array"] }
+sshHostAllowlist = { types = ["array"] }
+statusLine = { types = ["table"] }
+strictKnownMarketplaces = { types = ["array"] }
+strictPluginOnlyCustomization = { types = ["boolean", "array"] }
+subagentStatusLine = { types = ["table"] }
+syntaxHighlightingDisabled = { types = ["boolean"] }
+teammateDefaultModel = { types = ["string"] }
+teammateMode = { types = ["string"] }
+terminalProgressBarEnabled = { types = ["boolean"] }
+theme = { types = ["string"] }
+tui = { types = ["string"] }
+useAutoModeDuringPlan = { types = ["boolean"] }
+verbose = { types = ["boolean"] }
+viewMode = { types = ["string"] }
+vimInsertModeRemaps = "free"
+voice = { types = ["table"] }
+voiceEnabled = { types = ["boolean"] }
+wheelScrollAccelerationEnabled = { types = ["boolean"] }
+workflowKeywordTriggerEnabled = { types = ["boolean"] }
+workflowSizeGuideline = { types = ["string"] }
+worktree = { types = ["table"] }
+wslInheritsWindowsSettings = { types = ["boolean"] }

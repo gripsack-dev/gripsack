@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A00",
+    "severity": "error",
+    "message": "invalid JSON: Illegal trailing comma before end of object: line 2 column 19 (char 20)",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 19
+        },
+        "note": "parse stops here"
+      }
+    ]
+  }
+]

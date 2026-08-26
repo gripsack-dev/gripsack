@@ -1,0 +1,164 @@
+# Data pack for jj — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "jj"
+handles = ["config.toml"]
+format = "toml"
+supported = ["0."]
+series = "v0"
+
+[files."config.toml".rules."user"]
+name = { types = ["string"] }
+email = { types = ["string"] }
+
+[files."config.toml".rules."operation"]
+hostname = { types = ["string"] }
+username = { types = ["string"] }
+
+[files."config.toml".rules."ui"]
+default-command = { types = ["string", "array"] }
+color = { types = ["string"], choices = ["always", "never", "debug", "auto"] }
+paginate = { types = ["string"], choices = ["never", "auto"] }
+pager = { types = ["string", "array"] }
+streampager = { types = ["table"] }
+diff-instructions = { types = ["boolean"] }
+graph = { types = ["table"] }
+log-word-wrap = { types = ["boolean"] }
+log-synthetic-elided-nodes = { types = ["boolean"] }
+editor = { types = ["string", "array"] }
+diff-editor = { types = ["string", "array"] }
+diff-formatter = { types = ["string", "array"] }
+merge-editor = { types = ["string", "array"] }
+conflict-marker-style = { types = ["string"] }
+show-cryptographic-signatures = { types = ["boolean"] }
+movement = { types = ["table"] }
+bookmark-list-sort-keys = { types = ["array"] }
+tag-list-sort-keys = { types = ["array"] }
+
+[files."config.toml".rules."fsmonitor"]
+backend = { types = ["string"], choices = ["none", "watchman"] }
+watchman = { types = ["table"] }
+
+[files."config.toml".rules."colors"]
+_free = true
+
+[files."config.toml".rules."diff"]
+color-words = { types = ["table"] }
+git = { types = ["table"] }
+stat = { types = ["table"] }
+
+[files."config.toml".rules."fileset-aliases"]
+_free = true
+
+[files."config.toml".rules."git"]
+abandon-unreachable-commits = { types = ["boolean"] }
+fetch = { types = ["string", "array"] }
+private-commits = { types = ["string"] }
+push = { types = ["string"] }
+record-synthetic-predecessors = { types = ["boolean"] }
+sign-on-push = { types = ["boolean"] }
+track-default-bookmark-on-clone = { types = ["boolean"] }
+write-change-id-header = { types = ["boolean"] }
+executable-path = { types = ["string"] }
+colocate = { types = ["boolean"] }
+object-hash = { types = ["string"], choices = ["sha1", "sha256"] }
+
+[files."config.toml".rules."remotes"]
+_free = true
+
+[files."config.toml".rules."gerrit"]
+default-remote = { types = ["string"] }
+default-remote-branch = { types = ["string"] }
+review-url = { types = ["string"] }
+
+[files."config.toml".rules."merge"]
+hunk-level = { types = ["string"], choices = ["line", "word"] }
+same-change = { types = ["string"], choices = ["keep", "accept"] }
+
+[files."config.toml".rules."merge-tools"]
+_free = true
+
+[files."config.toml".rules."revsets"]
+arrange = { types = ["string"] }
+fix = { types = ["string"] }
+log = { types = ["string"] }
+short-prefixes = { types = ["string"] }
+run = { types = ["string"] }
+simplify-parents = { types = ["string"] }
+sign = { types = ["string"] }
+log-graph-prioritize = { types = ["string"] }
+bookmark-advance-to = { types = ["string"] }
+bookmark-advance-from = { types = ["string"] }
+
+[files."config.toml".rules."revset-aliases"]
+_free = true
+
+[files."config.toml".rules."template-aliases"]
+_free = true
+
+[files."config.toml".rules."aliases"]
+_free = true
+
+[files."config.toml".rules."run"]
+jobs = { types = ["integer"] }
+
+[files."config.toml".rules."snapshot"]
+auto-track = { types = ["string"] }
+auto-update-stale = { types = ["boolean"] }
+max-new-file-size = { types = ["integer", "string"] }
+
+[files."config.toml".rules."experimental-advance-branches"]
+enabled-branches = { types = ["array"] }
+disabled-branches = { types = ["array"] }
+
+[files."config.toml".rules."signing"]
+backend = { types = ["string"], choices = ["gpg", "gpgsm", "none", "ssh"] }
+key = { types = ["string"] }
+behavior = { types = ["string"], choices = ["drop", "keep", "own", "force"] }
+backends = { types = ["table"] }
+
+[files."config.toml".rules."fix"]
+tools = { types = ["table"] }
+
+[files."config.toml".rules."split"]
+legacy-bookmark-behavior = { types = ["boolean"] }
+
+[files."config.toml".rules."hints"]
+_free = true
+
+[files."config.toml".rules."templates"]
+arrange = { types = ["string"] }
+bookmark_list = { types = ["string"] }
+commit_summary = { types = ["string"] }
+commit_trailers = { types = ["string"] }
+file_annotate = { types = ["string"] }
+config_list = { types = ["string"] }
+draft_commit_description = { types = ["string"] }
+evolog = { types = ["string"] }
+file_list = { types = ["string"] }
+file_show = { types = ["string"] }
+git_push_bookmark = { types = ["string"] }
+log = { types = ["string"] }
+op_log = { types = ["string"] }
+op_show = { types = ["string"] }
+op_summary = { types = ["string"] }
+show = { types = ["string"] }
+revert_description = { types = ["string"] }
+tag_list = { types = ["string"] }
+workspace_list = { types = ["string"] }
+
+[files."config.toml".rules."working-copy"]
+eol-conversion = { types = ["string"], choices = ["input", "input-output", "none"] }
+exec-bit-change = { types = ["string"], choices = ["respect", "ignore", "auto"] }
+
+[files."config.toml".rules."--when"]
+repositories = { types = ["array"] }
+hostnames = { types = ["array"] }
+workspaces = { types = ["array"] }
+commands = { types = ["array"] }
+platforms = { types = ["array"] }
+environments = { types = ["array"] }
+
+[files."config.toml".rules."--scope"]
+_free = true

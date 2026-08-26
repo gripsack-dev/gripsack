@@ -1,0 +1,36 @@
+# Data pack for gh-dash — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "gh-dash"
+handles = ["config.yml"]
+format = "yaml"
+supported = ["0."]
+series = "v0"
+
+[files."config.yml".rules.""]
+confirmQuit = { types = ["boolean"] }
+defaults = { types = ["table"] }
+include = { types = ["array"] }
+issuesSections = { types = ["array"] }
+keybindings = "free"
+pager = { types = ["table"] }
+prSections = { types = ["array"] }
+repoPaths = "free"
+showAuthorIcons = { types = ["boolean"] }
+smartFilteringAtLaunch = { types = ["boolean"] }
+theme = { types = ["table"] }
+
+[files."config.yml".rules."defaults"]
+layout = { types = ["table"] }
+prsLimit = { types = ["integer"] }
+issuesLimit = { types = ["integer"] }
+preview = { types = ["table"] }
+refetchIntervalMinutes = { types = ["integer"] }
+dateFormat = { types = ["integer"] }
+view = { types = ["string"] }
+prApproveComment = { types = ["string"] }
+
+[files."config.yml".rules."defaults.preview"]
+open = { types = ["boolean"] }
+width = { types = ["integer", "float"] }

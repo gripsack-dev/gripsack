@@ -1,0 +1,23 @@
+[user]
+name = "Tarek"
+email = "tarek@example.com"
+
+[ui]
+color = "auto"
+editor = ["hx", "-c", "NOINIT"]
+default-command = "log"
+conflict-marker-style = "diff"
+
+[git]
+colocate = true
+abandon-unreachable-commits = true
+
+[signing]
+backend = "ssh"
+behavior = "own"
+
+[aliases]
+l = ["log", "-r", "@"]
+
+[template-aliases]
+"format_short_id(id)" = "id.shortest(12)"

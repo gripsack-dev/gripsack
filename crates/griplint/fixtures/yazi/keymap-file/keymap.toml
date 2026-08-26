@@ -1,0 +1,4 @@
+[[mgr.prepend_keymap]]
+on = ["g", "g"]
+run = "arrow -99999999"
+desc = "Go to top"

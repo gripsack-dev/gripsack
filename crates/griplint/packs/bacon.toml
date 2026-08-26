@@ -1,0 +1,103 @@
+# Data pack for bacon — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "bacon"
+handles = ["bacon.toml", "prefs.toml"]
+format = "toml"
+supported = ["0."]
+series = "v0"
+
+[files."bacon.toml".rules.""]
+default_job = { types = ["string"] }
+additional_alias_args = { types = ["array"] }
+additional_job_args = { types = ["array"] }
+all_features = { types = ["boolean"] }
+features = { types = ["string"] }
+help_line = { types = ["boolean"] }
+no_default_features = { types = ["boolean"] }
+reverse = { types = ["boolean"] }
+summary = { types = ["boolean"] }
+wrap = { types = ["boolean"] }
+listen = { types = ["boolean"] }
+allow_failures = { types = ["boolean"] }
+allow_warnings = { types = ["boolean"] }
+analyzer = { types = ["string"] }
+apply_gitignore = { types = ["boolean"] }
+background = { types = ["boolean"] }
+command = { types = ["array"] }
+default_watch = { types = ["boolean"] }
+env = { types = ["table"] }
+hide_scrollbar = { types = ["boolean"] }
+kill = { types = ["array"] }
+ignore = { types = ["array"] }
+ignored_lines = { types = ["array"] }
+extraneous_args = { types = ["boolean"] }
+need_stdout = { types = ["boolean"] }
+on_change_strategy = { types = ["string"], choices = ["wait_then_restart", "kill_then_restart"] }
+on_success = { types = ["string"] }
+show_command_error_code = { types = ["boolean"] }
+scroll_anchor = { types = ["string"], choices = ["first", "last", "auto"] }
+skin = { types = ["table"] }
+watch = { types = ["array"] }
+workdir = { types = ["string"] }
+
+[files."bacon.toml".rules."jobs"]
+_free = true
+
+[files."bacon.toml".rules."keybindings"]
+_free = true
+
+[files."bacon.toml".rules."exports"]
+_free = true
+
+[files."bacon.toml".rules."sound"]
+enabled = { types = ["boolean"] }
+base_volume = { types = ["string"] }
+
+[files."prefs.toml".rules.""]
+default_job = { types = ["string"] }
+additional_alias_args = { types = ["array"] }
+additional_job_args = { types = ["array"] }
+all_features = { types = ["boolean"] }
+features = { types = ["string"] }
+help_line = { types = ["boolean"] }
+no_default_features = { types = ["boolean"] }
+reverse = { types = ["boolean"] }
+summary = { types = ["boolean"] }
+wrap = { types = ["boolean"] }
+listen = { types = ["boolean"] }
+allow_failures = { types = ["boolean"] }
+allow_warnings = { types = ["boolean"] }
+analyzer = { types = ["string"] }
+apply_gitignore = { types = ["boolean"] }
+background = { types = ["boolean"] }
+command = { types = ["array"] }
+default_watch = { types = ["boolean"] }
+env = { types = ["table"] }
+hide_scrollbar = { types = ["boolean"] }
+kill = { types = ["array"] }
+ignore = { types = ["array"] }
+ignored_lines = { types = ["array"] }
+extraneous_args = { types = ["boolean"] }
+need_stdout = { types = ["boolean"] }
+on_change_strategy = { types = ["string"], choices = ["wait_then_restart", "kill_then_restart"] }
+on_success = { types = ["string"] }
+show_command_error_code = { types = ["boolean"] }
+scroll_anchor = { types = ["string"], choices = ["first", "last", "auto"] }
+skin = { types = ["table"] }
+watch = { types = ["array"] }
+workdir = { types = ["string"] }
+
+[files."prefs.toml".rules."jobs"]
+_free = true
+
+[files."prefs.toml".rules."keybindings"]
+_free = true
+
+[files."prefs.toml".rules."exports"]
+_free = true
+
+[files."prefs.toml".rules."sound"]
+enabled = { types = ["boolean"] }
+base_volume = { types = ["string"] }

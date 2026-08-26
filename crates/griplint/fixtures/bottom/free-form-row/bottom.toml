@@ -1,0 +1,3 @@
+[row]
+children = [{ ratio = 1, type = "cpu" }]
+whatever = true

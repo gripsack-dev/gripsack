@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A01",
+    "severity": "error",
+    "message": "unknown key 'unknown_tuicr_key'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 1,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

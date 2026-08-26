@@ -1,0 +1,13 @@
+[project]
+name = "myproject"
+version = "1.0.0"
+totally-not-a-ruff-key = true
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F"]
+
+[tool.uv]
+dev-dependencies = ["pytest"]

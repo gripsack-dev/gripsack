@@ -1,0 +1,15 @@
+default_flags = "-gh"
+show_selection_mark = true
+syntax_theme = "OceanDark"
+graphics_display = "auto"
+quit_on_last_cancel = true
+update_work_dir = false
+
+cols_order = ["mark", "git", "branch", "permission", "date", "size", "count", "name"]
+
+special_paths = { "/media" = { list = "never", sum = "never" } }
+ext_colors = { rs = "yellow", png = "rgb(255, 128, 75)" }
+
+verbs = [
+    { invocation = "edit", execution = "$EDITOR {file}" },
+]

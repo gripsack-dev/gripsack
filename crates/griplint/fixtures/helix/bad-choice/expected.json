@@ -1,0 +1,1 @@
+[{"code": "A05", "severity": "error", "message": "[editor] 'line-number' must be one of 'absolute', 'relative', got 'sideways'", "labels": [{"span": {"file": "<input>", "line": 2, "col": 1}, "note": ""}]}]

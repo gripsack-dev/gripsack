@@ -1,0 +1,2 @@
+env = ["A=1"]
+env_file = [".env", ".env.local"]

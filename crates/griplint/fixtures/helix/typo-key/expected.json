@@ -1,0 +1,1 @@
+[{"code": "A01", "severity": "error", "message": "unknown key [editor] 'scrollof'", "labels": [{"span": {"file": "<input>", "line": 2, "col": 1}, "note": ""}], "help": "did you mean 'scrolloff'?"}]

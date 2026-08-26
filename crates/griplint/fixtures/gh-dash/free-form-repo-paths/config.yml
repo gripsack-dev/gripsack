@@ -1,0 +1,3 @@
+repoPaths:
+  anything/*: ~/x/*
+  other: ~/y

@@ -1,0 +1,22 @@
+auto_sync = true
+update_check = false
+search_mode = "fuzzy"
+filter_mode = "global"
+style = "compact"
+inline_height = 20
+enter_accept = true
+dialect = "uk"
+
+[stats]
+common_prefix = ["sudo"]
+ignored_commands = ["cd", "ls"]
+
+[daemon]
+enabled = true
+autostart = true
+
+[theme]
+name = "marine"
+
+[keymap]
+emacs = { "C-r" = "history_search" }

@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A00",
+    "severity": "error",
+    "message": "invalid YAML: expected '<document start>', but found '<block mapping start>'\n  in \"<unicode string>\", line 2, column 1:\n    view: prs\n    ^",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 1
+        },
+        "note": "parse stops here"
+      }
+    ]
+  }
+]

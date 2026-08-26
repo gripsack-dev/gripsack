@@ -1,0 +1,77 @@
+# Data pack for helix — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "helix"
+handles = ["config.toml"]
+format = "toml"
+supported = ["25."]
+series = "v25"
+
+[files."config.toml".rules.""]
+theme = { types = ["string"] }
+
+[files."config.toml".rules."editor"]
+scrolloff = { types = ["integer"] }
+mouse = { types = ["boolean"] }
+middle-click-paste = { types = ["boolean"] }
+scroll-lines = { types = ["integer"] }
+shell = { types = ["array"] }
+line-number = { types = ["string"], choices = ["absolute", "relative"] }
+cursorline = { types = ["boolean"] }
+cursorcolumn = { types = ["boolean"] }
+gutters = { types = ["array"] }
+auto-completion = { types = ["boolean"] }
+auto-format = { types = ["boolean"] }
+auto-save = { types = ["boolean"] }
+idle-timeout = { types = ["integer"] }
+completion-trigger-len = { types = ["integer"] }
+completion-replace = { types = ["boolean"] }
+auto-info = { types = ["boolean"] }
+true-color = { types = ["boolean"] }
+rulers = { types = ["array"] }
+bufferline = { types = ["string"], choices = ["always", "never", "multiple"] }
+color-modes = { types = ["boolean"] }
+popup-border = { types = ["string"], choices = ["none", "all", "popup", "menu"] }
+border = { types = ["boolean"] }
+insert-final-newline = { types = ["boolean"] }
+trim-final-newlines = { types = ["boolean"] }
+trim-trailing-whitespace = { types = ["boolean"] }
+hidden = { types = ["boolean"] }
+wrap-indicator = { types = ["string"] }
+jump-label-alphabet = { types = ["string"] }
+
+[files."config.toml".rules."editor.cursor-shape"]
+normal = { types = ["string"], choices = ["block", "bar", "underline", "hidden"] }
+insert = { types = ["string"], choices = ["block", "bar", "underline", "hidden"] }
+select = { types = ["string"], choices = ["block", "bar", "underline", "hidden"] }
+
+[files."config.toml".rules."editor.indent-guides"]
+render = { types = ["boolean"] }
+character = { types = ["string"] }
+skip-levels = { types = ["integer"] }
+
+[files."config.toml".rules."editor.soft-wrap"]
+enable = { types = ["boolean"] }
+max-wrap = { types = ["integer"] }
+max-indent-retain = { types = ["integer"] }
+wrap-indicator = { types = ["string"] }
+wrap-at-text-width = { types = ["boolean"] }
+
+[files."config.toml".rules."editor.statusline"]
+left = { types = ["array"] }
+center = { types = ["array"] }
+right = { types = ["array"] }
+separator = { types = ["string"] }
+mode = "free"
+
+[files."config.toml".rules."editor.file-picker"]
+hidden = { types = ["boolean"] }
+follow-symlinks = { types = ["boolean"] }
+git-ignore = { types = ["boolean"] }
+git-global = { types = ["boolean"] }
+git-exclude = { types = ["boolean"] }
+ignore = { types = ["boolean"] }
+
+[files."config.toml".rules."keys"]
+_free = true

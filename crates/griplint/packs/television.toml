@@ -1,0 +1,77 @@
+# Data pack for television — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "television"
+handles = ["config.toml"]
+format = "toml"
+supported = ["0."]
+series = "v0"
+
+[files."config.toml".rules.""]
+tick_rate = { types = ["integer"] }
+default_channel = { types = ["string"] }
+history_size = { types = ["integer"] }
+global_history = { types = ["boolean"] }
+
+[files."config.toml".rules."ui"]
+ui_scale = { types = ["integer"] }
+orientation = { types = ["string"], choices = ["landscape", "portrait"] }
+theme = { types = ["string"] }
+
+[files."config.toml".rules."ui.input_bar"]
+position = { types = ["string"], choices = ["top", "bottom"] }
+prompt = { types = ["string"] }
+border_type = { types = ["string"] }
+
+[files."config.toml".rules."ui.status_bar"]
+hidden = { types = ["boolean"] }
+
+[files."config.toml".rules."ui.results_panel"]
+border_type = { types = ["string"] }
+
+[files."config.toml".rules."ui.preview_panel"]
+size = { types = ["integer"] }
+scrollbar = { types = ["boolean"] }
+border_type = { types = ["string"] }
+hidden = { types = ["boolean"] }
+
+[files."config.toml".rules."ui.help_panel"]
+show_categories = { types = ["boolean"] }
+hidden = { types = ["boolean"] }
+
+[files."config.toml".rules."ui.remote_control"]
+show_channel_descriptions = { types = ["boolean"] }
+sort_alphabetically = { types = ["boolean"] }
+
+[files."config.toml".rules."ui.theme_overrides"]
+background = { types = ["string"] }
+border_fg = { types = ["string"] }
+text_fg = { types = ["string"] }
+dimmed_text_fg = { types = ["string"] }
+input_text_fg = { types = ["string"] }
+result_count_fg = { types = ["string"] }
+result_name_fg = { types = ["string"] }
+result_line_number_fg = { types = ["string"] }
+result_value_fg = { types = ["string"] }
+selection_bg = { types = ["string"] }
+selection_fg = { types = ["string"] }
+match_fg = { types = ["string"] }
+preview_title_fg = { types = ["string"] }
+channel_mode_fg = { types = ["string"] }
+channel_mode_bg = { types = ["string"] }
+remote_control_mode_fg = { types = ["string"] }
+remote_control_mode_bg = { types = ["string"] }
+
+[files."config.toml".rules."keybindings"]
+_free = true
+
+[files."config.toml".rules."shell_integration"]
+fallback_channel = { types = ["string"] }
+
+[files."config.toml".rules."shell_integration.channel_triggers"]
+_free = true
+
+[files."config.toml".rules."shell_integration.keybindings"]
+smart_autocomplete = { types = ["string"] }
+command_history = { types = ["string"] }

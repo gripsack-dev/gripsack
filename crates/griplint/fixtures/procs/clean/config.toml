@@ -1,0 +1,30 @@
+[[columns]]
+kind = "Pid"
+style = "BrightYellow|Yellow"
+numeric_search = true
+align = "Right"
+
+[[columns]]
+kind = "Command"
+style = "BrightWhite|Black"
+
+[style]
+header = "BrightWhite|Black"
+
+[style.by_state]
+color_d = "BrightRed|Red"
+
+[search]
+numeric_search = "Exact"
+logic = "And"
+
+[display]
+show_self = false
+color_mode = "Auto"
+
+[sort]
+column = 0
+order = "Ascending"
+
+[pager]
+mode = "Auto"

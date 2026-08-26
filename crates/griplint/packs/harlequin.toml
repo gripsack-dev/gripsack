@@ -1,0 +1,14 @@
+# Data pack for harlequin — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "harlequin"
+handles = ["harlequin.toml"]
+format = "toml"
+supported = ["1.", "2."]
+series = "v0"
+
+[files."harlequin.toml".rules.""]
+default_profile = { types = ["string"] }
+profiles = { types = ["table"] }
+keymaps = { types = ["table"] }

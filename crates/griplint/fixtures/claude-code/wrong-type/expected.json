@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A04",
+    "severity": "error",
+    "message": "'cleanupPeriodDays' must be integer, got string",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 3
+        },
+        "note": ""
+      }
+    ]
+  }
+]

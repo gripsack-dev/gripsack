@@ -1,0 +1,4 @@
+[mgr]
+border_symbol = "│"
+syntect_theme = "~/Downloads/mocha.tmTheme"
+any_style_key_the_theme_system_allows = { fg = "blue", bold = true }

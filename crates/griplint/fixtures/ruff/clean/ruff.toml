@@ -1,0 +1,15 @@
+line-length = 100
+target-version = "py313"
+fix = true
+
+[lint]
+select = ["E", "F", "UP", "I"]
+ignore = ["E501"]
+explicit-preview-rules = true
+
+[lint.isort]
+known-first-party = ["myproject"]
+
+[format]
+quote-style = "single"
+indent-style = "space"

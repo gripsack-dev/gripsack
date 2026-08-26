@@ -1,0 +1,3 @@
+[jobs.my-custom-job]
+command = ["make", "test"]
+whatever = "user"

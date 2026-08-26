@@ -1,0 +1,19 @@
+[changelog]
+body = """
+## [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+"""
+trim = true
+render_always = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+sort_commits = "oldest"
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug Fixes" },
+]
+
+[remote.github]
+owner = "gripsack-dev"
+repo = "gripsack"

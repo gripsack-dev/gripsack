@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A00",
+    "severity": "error",
+    "message": "invalid TOML: Expected ']' at the end of a table declaration (at line 1, column 10)",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 1,
+          "col": 10
+        },
+        "note": "parse stops here"
+      }
+    ]
+  }
+]

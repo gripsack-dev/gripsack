@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://gh-dash.dev/schema.json
+prSections:
+  - title: Mine
+    filters: is:open author:@me sort:updated-desc
+issuesSections:
+  - title: Open
+    filters: is:open
+
+defaults:
+  view: prs
+  refetchIntervalMinutes: 5
+  preview:
+    open: true
+    width: 60
+
+repoPaths:
+  dlvhdr/*: ~/code/personal/*
+  my-org/*: ~/work/*
+
+confirmQuit: false
+
+keybindings:
+  universal:
+    - key: g
+      name: lazygit
+      command: cd {{.RepoPath}} && lazygit

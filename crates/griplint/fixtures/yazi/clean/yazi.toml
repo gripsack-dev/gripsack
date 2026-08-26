@@ -1,0 +1,34 @@
+[mgr]
+ratio = [1, 4, 3]
+sort_by = "natural"
+sort_reverse = true
+linemode = "size_and_mtime"
+show_hidden = true
+scrolloff = 5
+
+[preview]
+wrap = "no"
+tab_size = 4
+image_filter = "lanczos3"
+
+[tasks]
+file_workers = 8
+bizarre_retry = 3
+
+[opener]
+edit = [
+    { run = "$EDITOR %s", block = true, for = "unix" },
+]
+
+[open]
+prepend_rules = [
+    { url = "*.json", use = "edit" },
+]
+
+[plugin]
+prepend_previewers = [
+    { mime = "image/heic", run = "heic" },
+]
+
+[which]
+sort_by = "key"

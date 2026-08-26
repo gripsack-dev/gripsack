@@ -1,0 +1,12 @@
+default_profile = "local"
+
+[profiles.local]
+adapter = "duckdb"
+theme = "catppuccin-mocha"
+
+[profiles.prod]
+adapter = "postgres"
+host = "db.internal"
+
+[keymaps.vim]
+"ctrl+q" = "quit"

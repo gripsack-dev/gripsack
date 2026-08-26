@@ -1,0 +1,49 @@
+# Data pack for tuicr — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "tuicr"
+handles = ["config.toml"]
+format = "toml"
+supported = ["0."]
+series = "v0"
+
+[files."config.toml".rules.""]
+theme = { types = ["string"] }
+appearance = { types = ["string"], choices = ["system", "dark", "light"] }
+theme_dark = { types = ["string"] }
+theme_light = { types = ["string"] }
+diff_view = { types = ["string"], choices = ["unified", "side-by-side"] }
+commit_order = { types = ["string"], choices = ["descending", "ascending"] }
+initial_commit_selection = { types = ["string"], choices = ["all", "oldest"] }
+ignore_whitespace = { types = ["boolean"] }
+show_file_list = { types = ["boolean"] }
+show_pr_checks = { types = ["boolean"] }
+show_pr_comments = { types = ["boolean"] }
+show_commits = { types = ["boolean"] }
+show_reviewed = { types = ["boolean"] }
+mouse = { types = ["boolean"] }
+leader = { types = ["string"] }
+comment_vim = { types = ["boolean"] }
+comment_tab_width = { types = ["integer"] }
+wrap = { types = ["boolean"] }
+relative_line_numbers = { types = ["boolean"] }
+cursor_line = { types = ["boolean"] }
+search_highlight = { types = ["boolean"] }
+transparent_background = { types = ["boolean"] }
+scroll_offset = { types = ["integer"] }
+no_update_check = { types = ["boolean"] }
+review_watch_interval_ms = { types = ["integer"] }
+single_file_view = { types = ["boolean"] }
+username = { types = ["string"] }
+diff_watch_interval_ms = { types = ["integer"] }
+backend = { types = ["string"], choices = ["libgit2", "cli"] }
+comment_types = { types = ["array"] }
+comment_type_prefix = { types = ["boolean"] }
+export_legend = { types = ["boolean"] }
+intro = { types = ["string"] }
+scope_line = { types = ["boolean"] }
+pr_metadata = { types = ["boolean"] }
+comments_header = { types = ["string"] }
+remote_comments_header = { types = ["string"] }
+legend = { types = ["boolean"] }

@@ -1,0 +1,19 @@
+[flags]
+basic = true
+rate = "1s"
+temperature_type = "c"
+default_time_value = 30000
+
+[processes]
+columns = ["PID", "Name", "CPU%", "Mem%"]
+sort_order = "Descending"
+
+[cpu]
+default = "average"
+left_legend = true
+
+[styles]
+theme = "gruvbox"
+
+[row]
+children = []

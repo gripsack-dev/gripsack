@@ -1,0 +1,169 @@
+# Data pack for zola — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "zola"
+handles = ["config.toml", "zola.toml"]
+format = "toml"
+supported = ["0."]
+series = "v0"
+
+[files."config.toml".rules.""]
+base_url = { types = ["string"] }
+title = { types = ["string"] }
+description = { types = ["string"] }
+default_language = { types = ["string"] }
+theme = { types = ["string"] }
+output_dir = { types = ["string"] }
+preserve_dotfiles_in_output = { types = ["boolean"] }
+compile_sass = { types = ["boolean"] }
+minify_html = { types = ["boolean"] }
+ignored_content = { types = ["array"] }
+skip_content_templating = { types = ["array"] }
+ignored_static = { types = ["array"] }
+generate_feeds = { types = ["boolean"] }
+exclude_paginated_pages_in_sitemap = { types = ["string"], choices = ["none", "all"] }
+feed_filenames = { types = ["array"] }
+feed_limit = { types = ["integer"] }
+hard_link_static = { types = ["boolean"] }
+author = { types = ["string"] }
+taxonomies = { types = ["array"] }
+taxonomy_root = { types = ["string"] }
+build_search_index = { types = ["boolean"] }
+generate_sitemap = { types = ["boolean"] }
+generate_robots_txt = { types = ["boolean"] }
+
+[files."config.toml".rules."markdown"]
+render_emoji = { types = ["boolean"] }
+external_links_class = { types = ["string"] }
+external_links_target_blank = { types = ["boolean"] }
+external_links_no_follow = { types = ["boolean"] }
+external_links_no_referrer = { types = ["boolean"] }
+external_links_external = { types = ["boolean"] }
+smart_punctuation = { types = ["boolean"] }
+definition_list = { types = ["boolean"] }
+lazy_async_image = { types = ["boolean"] }
+bottom_footnotes = { types = ["boolean"] }
+github_alerts = { types = ["boolean"] }
+insert_anchor_links = { types = ["string"], choices = ["left", "right", "heading", "none"] }
+
+[files."config.toml".rules."markdown.highlighting"]
+error_on_missing_language = { types = ["boolean"] }
+style = { types = ["string"], choices = ["inline", "class"] }
+theme = { types = ["string"] }
+light_theme = { types = ["string"] }
+dark_theme = { types = ["string"] }
+extra_grammars = { types = ["array"] }
+extra_themes = { types = ["array"] }
+data_attr_position = { types = ["string"], choices = ["code", "pre", "both", "none"] }
+add_color_scheme = { types = ["boolean"] }
+
+[files."config.toml".rules."link_checker"]
+skip_prefixes = { types = ["array"] }
+skip_anchor_prefixes = { types = ["array"] }
+internal_level = { types = ["string"], choices = ["error", "warn"] }
+external_level = { types = ["string"], choices = ["error", "warn"] }
+
+[files."config.toml".rules."slugify"]
+paths = { types = ["string"], choices = ["on", "off", "safe"] }
+taxonomies = { types = ["string"], choices = ["on", "off", "safe"] }
+anchors = { types = ["string"], choices = ["on", "off", "safe"] }
+paths_keep_dates = { types = ["boolean"] }
+
+[files."config.toml".rules."search"]
+include_title = { types = ["boolean"] }
+include_description = { types = ["boolean"] }
+include_date = { types = ["boolean"] }
+include_path = { types = ["boolean"] }
+include_content = { types = ["boolean"] }
+truncate_content_length = { types = ["integer"] }
+index_format = { types = ["string"], choices = ["elasticlunr_javascript", "elasticlunr_json", "fuse_javascript", "fuse_json"] }
+
+[files."config.toml".rules."translations"]
+_free = true
+
+[files."config.toml".rules."languages"]
+_free = true
+
+[files."config.toml".rules."extra"]
+_free = true
+
+[files."zola.toml".rules.""]
+base_url = { types = ["string"] }
+title = { types = ["string"] }
+description = { types = ["string"] }
+default_language = { types = ["string"] }
+theme = { types = ["string"] }
+output_dir = { types = ["string"] }
+preserve_dotfiles_in_output = { types = ["boolean"] }
+compile_sass = { types = ["boolean"] }
+minify_html = { types = ["boolean"] }
+ignored_content = { types = ["array"] }
+skip_content_templating = { types = ["array"] }
+ignored_static = { types = ["array"] }
+generate_feeds = { types = ["boolean"] }
+exclude_paginated_pages_in_sitemap = { types = ["string"], choices = ["none", "all"] }
+feed_filenames = { types = ["array"] }
+feed_limit = { types = ["integer"] }
+hard_link_static = { types = ["boolean"] }
+author = { types = ["string"] }
+taxonomies = { types = ["array"] }
+taxonomy_root = { types = ["string"] }
+build_search_index = { types = ["boolean"] }
+generate_sitemap = { types = ["boolean"] }
+generate_robots_txt = { types = ["boolean"] }
+
+[files."zola.toml".rules."markdown"]
+render_emoji = { types = ["boolean"] }
+external_links_class = { types = ["string"] }
+external_links_target_blank = { types = ["boolean"] }
+external_links_no_follow = { types = ["boolean"] }
+external_links_no_referrer = { types = ["boolean"] }
+external_links_external = { types = ["boolean"] }
+smart_punctuation = { types = ["boolean"] }
+definition_list = { types = ["boolean"] }
+lazy_async_image = { types = ["boolean"] }
+bottom_footnotes = { types = ["boolean"] }
+github_alerts = { types = ["boolean"] }
+insert_anchor_links = { types = ["string"], choices = ["left", "right", "heading", "none"] }
+
+[files."zola.toml".rules."markdown.highlighting"]
+error_on_missing_language = { types = ["boolean"] }
+style = { types = ["string"], choices = ["inline", "class"] }
+theme = { types = ["string"] }
+light_theme = { types = ["string"] }
+dark_theme = { types = ["string"] }
+extra_grammars = { types = ["array"] }
+extra_themes = { types = ["array"] }
+data_attr_position = { types = ["string"], choices = ["code", "pre", "both", "none"] }
+add_color_scheme = { types = ["boolean"] }
+
+[files."zola.toml".rules."link_checker"]
+skip_prefixes = { types = ["array"] }
+skip_anchor_prefixes = { types = ["array"] }
+internal_level = { types = ["string"], choices = ["error", "warn"] }
+external_level = { types = ["string"], choices = ["error", "warn"] }
+
+[files."zola.toml".rules."slugify"]
+paths = { types = ["string"], choices = ["on", "off", "safe"] }
+taxonomies = { types = ["string"], choices = ["on", "off", "safe"] }
+anchors = { types = ["string"], choices = ["on", "off", "safe"] }
+paths_keep_dates = { types = ["boolean"] }
+
+[files."zola.toml".rules."search"]
+include_title = { types = ["boolean"] }
+include_description = { types = ["boolean"] }
+include_date = { types = ["boolean"] }
+include_path = { types = ["boolean"] }
+include_content = { types = ["boolean"] }
+truncate_content_length = { types = ["integer"] }
+index_format = { types = ["string"], choices = ["elasticlunr_javascript", "elasticlunr_json", "fuse_javascript", "fuse_json"] }
+
+[files."zola.toml".rules."translations"]
+_free = true
+
+[files."zola.toml".rules."languages"]
+_free = true
+
+[files."zola.toml".rules."extra"]
+_free = true

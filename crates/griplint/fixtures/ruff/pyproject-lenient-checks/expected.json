@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A04",
+    "severity": "error",
+    "message": "[tool.ruff] 'line-length' must be integer, got string",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 5,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

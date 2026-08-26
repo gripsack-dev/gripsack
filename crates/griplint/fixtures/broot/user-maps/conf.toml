@@ -1,0 +1,2 @@
+special_paths = { "/anything" = { show = "always" } }
+ext_colors = { whatever = "red" }

@@ -1,0 +1,133 @@
+# Data pack for atuin — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "atuin"
+handles = ["config.toml"]
+format = "toml"
+supported = ["18."]
+series = "v0"
+
+[files."config.toml".rules.""]
+data_dir = { types = ["string"] }
+dialect = { types = ["string"], choices = ["us", "uk"] }
+timezone = { types = ["string"] }
+style = { types = ["string"], choices = ["auto", "full", "compact"] }
+auto_sync = { types = ["boolean"] }
+update_check = { types = ["boolean"] }
+update_channel = { types = ["string"], choices = ["stable", "nightly"] }
+sync_address = { types = ["string"] }
+sync_protocol = { types = ["string"] }
+sync_frequency = { types = ["string"] }
+db_path = { types = ["string"] }
+record_store_path = { types = ["string"] }
+key_path = { types = ["string"] }
+session_path = { types = ["string"] }
+search_mode = { types = ["string"], choices = ["prefix", "fulltext", "fuzzy", "daemon-fuzzy"] }
+filter_mode = { types = ["string"], choices = ["global", "host", "session", "directory", "workspace", "session-preload"] }
+filter_mode_shell_up_key_binding = { types = ["string"], choices = ["global", "host", "session", "directory", "workspace", "session-preload"] }
+search_mode_shell_up_key_binding = { types = ["string"], choices = ["prefix", "fulltext", "fuzzy", "daemon-fuzzy"] }
+shell_up_key_binding = { types = ["boolean"] }
+inline_height = { types = ["integer"] }
+inline_height_shell_up_key_binding = { types = ["integer"] }
+invert = { types = ["boolean"] }
+show_preview = { types = ["boolean"] }
+max_preview_height = { types = ["integer"] }
+show_help = { types = ["boolean"] }
+show_tabs = { types = ["boolean"] }
+show_numeric_shortcuts = { types = ["boolean"] }
+auto_hide_height = { types = ["integer"] }
+exit_mode = { types = ["string"], choices = ["return-original", "return-query"] }
+keymap_mode = { types = ["string"] }
+keymap_mode_shell = { types = ["string"] }
+keymap_cursor = { types = ["table"] }
+word_jump_mode = { types = ["string"] }
+word_chars = { types = ["string"] }
+scroll_context_lines = { types = ["integer"] }
+history_format = { types = ["string"] }
+strip_trailing_whitespace = { types = ["boolean"] }
+prefers_reduced_motion = { types = ["boolean"] }
+store_failed = { types = ["boolean"] }
+no_mouse = { types = ["boolean"] }
+history_filter = { types = ["array"] }
+cwd_filter = { types = ["array"] }
+secrets_filter = { types = ["boolean"] }
+workspaces = { types = ["boolean"] }
+ctrl_n_shortcuts = { types = ["boolean"] }
+network_connect_timeout = { types = ["integer"] }
+network_timeout = { types = ["integer"] }
+local_timeout = { types = ["integer", "float"] }
+extra_headers = { types = ["table"] }
+enter_accept = { types = ["boolean"] }
+smart_sort = { types = ["boolean"] }
+command_chaining = { types = ["boolean"] }
+
+[files."config.toml".rules."stats"]
+common_prefix = { types = ["array"] }
+common_subcommands = { types = ["array"] }
+ignored_commands = { types = ["array"] }
+
+[files."config.toml".rules."keys"]
+scroll_exits = { types = ["boolean"] }
+exit_past_line_start = { types = ["boolean"] }
+accept_past_line_end = { types = ["boolean"] }
+accept_past_line_start = { types = ["boolean"] }
+accept_with_backspace = { types = ["boolean"] }
+prefix = { types = ["string"] }
+
+[files."config.toml".rules."keymap"]
+_free = true
+
+[files."config.toml".rules."preview"]
+strategy = { types = ["string"] }
+
+[files."config.toml".rules."dotfiles"]
+_rule = { types = ["table"] }
+
+[files."config.toml".rules."daemon"]
+enabled = { types = ["boolean"] }
+socket_path = { types = ["string"] }
+pidfile_path = { types = ["string"] }
+autostart = { types = ["boolean"] }
+
+[files."config.toml".rules."pty_proxy"]
+enabled = { types = ["boolean"] }
+
+[files."config.toml".rules."search"]
+filters = { types = ["array"] }
+recency_score_multiplier = { types = ["integer", "float"] }
+frequency_score_multiplier = { types = ["integer", "float"] }
+frecency_score_multiplier = { types = ["integer", "float"] }
+shells = { types = ["table"] }
+
+[files."config.toml".rules."theme"]
+name = { types = ["string"] }
+debug = { types = ["boolean"] }
+max_depth = { types = ["integer"] }
+
+[files."config.toml".rules."ui"]
+columns = { types = ["array"] }
+syntax_highlight = { types = ["boolean"] }
+
+[files."config.toml".rules."scripts"]
+_free = true
+
+[files."config.toml".rules."kv"]
+_free = true
+
+[files."config.toml".rules."tmux"]
+enabled = { types = ["boolean"] }
+width = { types = ["string"] }
+height = { types = ["string"] }
+
+[files."config.toml".rules."logs"]
+enabled = { types = ["boolean"] }
+dir = { types = ["string"] }
+level = { types = ["string"] }
+retention = { types = ["integer"] }
+search = { types = ["table"] }
+daemon = { types = ["table"] }
+ai = { types = ["table"] }
+
+[files."config.toml".rules."ai"]
+_free = true

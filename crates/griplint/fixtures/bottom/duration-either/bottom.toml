@@ -1,0 +1,3 @@
+[flags]
+rate = 250
+retention = "10m"

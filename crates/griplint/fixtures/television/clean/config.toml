@@ -1,0 +1,26 @@
+tick_rate = 50
+default_channel = "files"
+history_size = 200
+
+[ui]
+ui_scale = 100
+orientation = "landscape"
+theme = "catppuccin"
+
+[ui.input_bar]
+position = "top"
+
+[ui.preview_panel]
+size = 50
+hidden = false
+
+[ui.theme_overrides]
+selection_bg = "#ff0000"
+match_fg = "bright-green"
+
+[keybindings]
+esc = "quit"
+ctrl-y = "copy_entry_to_clipboard"
+
+[shell_integration.keybindings]
+smart_autocomplete = "ctrl-t"

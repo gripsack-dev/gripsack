@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "model": "claude-opus-4-8",
+  "cleanupPeriodDays": 30,
+  "includeCoAuthoredBy": false,
+  "editorMode": "vim",
+  "permissions": {
+    "allow": ["Bash(git status)", "Read(**)"],
+    "deny": ["Bash(rm -rf *)"]
+  },
+  "env": {
+    "SSL_CERT_FILE": "/etc/ssl/certs/company.pem",
+    "ANY_USER_VAR": "x"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "my-statusline"
+  }
+}

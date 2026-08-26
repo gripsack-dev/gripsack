@@ -1,0 +1,13 @@
+editor = "nvim"
+auto_check_update = true
+cd_on_quit = true
+default_sort_type = 0
+theme = "catppuccin-mocha"
+nerdfont = true
+sidebar_sections = ["home", "pinned"]
+border_top = "─"
+zoxide_support = true
+
+[open_with]
+conf = "nvim"
+pdf = "zathura"

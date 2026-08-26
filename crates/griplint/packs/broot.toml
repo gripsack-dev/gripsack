@@ -1,0 +1,37 @@
+# Data pack for broot — ported from griplint-py (plan/0012).
+# Review on upstream releases; the diff *is* the changelog review.
+
+[meta]
+tool = "broot"
+handles = ["conf.toml"]
+format = "toml"
+supported = ["1."]
+series = "v0"
+
+[files."conf.toml".rules.""]
+default_flags = { types = ["string"] }
+show_selection_mark = { types = ["boolean"] }
+cols_order = { types = ["array"] }
+syntax_theme = { types = ["string"], choices = ["GitHub", "SolarizedDark", "SolarizedLight", "EightiesDark", "MochaDark", "OceanDark", "OceanLight"] }
+terminal_title = { types = ["string"] }
+graphics_display = { types = ["string"], choices = ["none", "auto", "kitty", "sixel"] }
+kitty_graphics_transmission = { types = ["string"], choices = ["chunks", "temp_file"] }
+kitty_graphics_display = { types = ["string"], choices = ["none", "auto", "direct", "unicode"] }
+kept_kitty_temp_files = { types = ["integer"] }
+preview_transformers = { types = ["array"] }
+lines_before_match_in_preview = { types = ["integer"] }
+lines_after_match_in_preview = { types = ["integer"] }
+enable_kitty_keyboard = { types = ["boolean"] }
+auto_open_staging_area = { types = ["boolean"] }
+max_staged_count = { types = ["integer"] }
+capture_mouse = { types = ["boolean"] }
+file_sum_threads_count = { types = ["integer"] }
+quit_on_last_cancel = { types = ["boolean"] }
+update_work_dir = { types = ["boolean"] }
+show_matching_characters_on_path_searches = { types = ["boolean"] }
+imports = { types = ["array"] }
+verbs = { types = ["array"] }
+special_paths = { types = ["table"] }
+ext_colors = { types = ["table"] }
+search-modes = { types = ["table"] }
+skin = { types = ["table"] }
