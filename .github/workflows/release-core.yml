@@ -124,7 +124,7 @@ jobs:
           # re-runs tolerate "already exists"; anything else fails loudly.
           failed=""
           for crate in gripsack-ir gripsack-store gripsack-fetch gripsack-config \
-                       gripsack-lint gripsack-trace gripsack-exec gripsack; do
+                       gripsack-lint griplint gripsack-trace gripsack-exec gripsack; do
             ok=""
             for attempt in 1 2 3 4 5; do
               if out="$(cargo publish -p "$crate" 2>&1)"; then
