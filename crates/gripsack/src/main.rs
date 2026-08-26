@@ -177,7 +177,7 @@ fn main() -> ExitCode {
                 Err(code) => return code,
             };
             match commands::eval_repo(&repo, host.as_deref(), palette)
-                .and_then(|json| commands::check_ir(&json, palette))
+                .and_then(|outcome| commands::check_ir(&outcome.ir_json, palette))
             {
                 Ok(ir) => {
                     let waves = gripsack_exec::waves(&ir).unwrap_or_default();

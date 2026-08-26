@@ -1,6 +1,6 @@
 use crate::render::{self, Palette};
 use gripsack_ir::{Ir, Severity};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// The eval wire protocol (0011 §5): the frontend emits the IR plus
@@ -14,9 +14,22 @@ struct EvalEnvelope {
     diagnostics: Vec<gripsack_ir::Diagnostic>,
 }
 
+/// What a successful eval hands back: the IR JSON plus the env config
+/// and the frontend python path — lint registrations resolve their
+/// `package =` console scripts against the latter (0012 §move-1).
+pub struct EvalOutcome {
+    pub ir_json: String,
+    pub env: gripsack_config::EnvConfig,
+    pub python: PathBuf,
+}
+
 /// Evaluate an env repo's frontend into IR JSON (0005 §4). The core
 /// never embeds a runtime — this is a subprocess.
-pub fn eval_repo(repo: &Path, host: Option<&str>, palette: Palette) -> Result<String, ExitCode> {
+pub fn eval_repo(
+    repo: &Path,
+    host: Option<&str>,
+    palette: Palette,
+) -> Result<EvalOutcome, ExitCode> {
     let env_path = repo.join("env.toml");
     if !env_path.exists() {
         eprintln!(
@@ -66,7 +79,7 @@ pub fn eval_repo(repo: &Path, host: Option<&str>, palette: Palette) -> Result<St
             return Err(ExitCode::FAILURE);
         }
     };
-    let mut cmd = std::process::Command::new(python);
+    let mut cmd = std::process::Command::new(&python);
     cmd.arg("-m").arg("gripsack").arg(repo).current_dir(repo);
     let host = host
         .map(str::to_string)
@@ -98,7 +111,11 @@ pub fn eval_repo(repo: &Path, host: Option<&str>, palette: Palette) -> Result<St
         if failed {
             return Err(ExitCode::FAILURE);
         }
-        return Ok(envelope.ir.to_string());
+        return Ok(EvalOutcome {
+            ir_json: envelope.ir.to_string(),
+            env,
+            python,
+        });
     }
     if !out.status.success() {
         // Frontend tracebacks are the frontend's domain (0005 §4) —
@@ -107,7 +124,32 @@ pub fn eval_repo(repo: &Path, host: Option<&str>, palette: Palette) -> Result<St
         eprintln!("grip: frontend eval failed ({host})");
         return Err(ExitCode::FAILURE);
     }
-    Ok(stdout)
+    Ok(EvalOutcome {
+        ir_json: stdout,
+        env,
+        python,
+    })
+}
+
+/// Run registered linters against the IR's modules (0012 §move-1) and
+/// render what comes back; error severity fails the command.
+pub fn run_lints(
+    ir: &Ir,
+    outcome: &EvalOutcome,
+    repo: &Path,
+    host: Option<&str>,
+    palette: Palette,
+) -> Result<(), ExitCode> {
+    let diagnostics =
+        gripsack_lint::run(ir, &outcome.env.linters, repo, host, Some(&outcome.python));
+    if diagnostics.is_empty() {
+        return Ok(());
+    }
+    eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+    if diagnostics.iter().any(|d| d.severity == Severity::Error) {
+        return Err(ExitCode::FAILURE);
+    }
+    Ok(())
 }
 
 /// Parse + validate IR, rendering diagnostics on failure.

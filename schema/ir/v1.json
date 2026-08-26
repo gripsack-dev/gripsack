@@ -117,6 +117,10 @@
           "minimum": 0,
           "description": "Retry count override (0007); default 0 for non-fetch steps"
         },
+        "lint": {
+          "type": "string",
+          "description": "Registered linter for this module's config payloads (0011); the core drives it (0012)"
+        },
         "env": {
           "type": "array",
           "items": {
