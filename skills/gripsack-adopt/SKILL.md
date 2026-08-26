@@ -29,8 +29,7 @@ registry?) The install method decides the fetcher.
   latest? Pinned is the default recommendation; the lockfile makes it
   painless either way.
 - **Which fetcher?** Map from what you found:
-  - GitHub release → `github_release(repo, asset)` (0.2; use
-    `file_fetch` of a downloaded tarball today)
+  - GitHub release → `github_release(repo, asset)`
   - tarball URL → `tarball(url, sha256=...)`
   - git source build → `git(url, rev)` + build step
   - internal registry → a resolver in `lib/` (eval-time code, 0002 §3)
@@ -40,7 +39,10 @@ registry?) The install method decides the fetcher.
   - "Does this app ever rewrite its own config?" (VS Code, most GUI
     apps) → `tracked_copy` (drift is kept, never clobbered)
   - Disciplined read-only tools (helix, git) → `symlink` (owned)
-  - `merge`/`template` don't exist yet — `plan` rejects them (E108).
+  - Files other tools also write (`.bashrc`) → `merge` (gripsack owns
+    one managed block; everything outside the markers is never touched)
+  - Per-host content differences → `template` with `vars` computed from
+    `facts()` (undefined variables fail loudly at apply)
 - **A verify contract**: almost always `verify_binary("bin/<tool>")`.
 - **Payload layouts per fetcher** (what `install={...}` paths look like):
   - `tarball`/`github_release`: the archive's contents, verbatim.

@@ -160,6 +160,30 @@ fn run_linter(
     let mut diagnostics = Vec::new();
     let mut responded = false;
     let deadline = Instant::now() + LINT_TIMEOUT;
+    // stderr must drain concurrently — a chatty linter fills the ~64KB
+    // pipe buffer and blocks before it ever writes its response (the
+    // fetch host learned this as review finding F1; the lint host
+    // inherits the rule)
+    let stderr_thread = {
+        let stderr = child.stderr.take().expect("piped stderr");
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let mut reader = std::io::BufReader::new(stderr);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match reader.read_line(&mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        if buf.len() < 64 * 1024 {
+                            buf.extend_from_slice(line.as_bytes());
+                        }
+                    }
+                }
+            }
+            buf
+        })
+    };
     let mut stdout = std::io::BufReader::new(child.stdout.take().expect("piped stdout"));
     let mut line = String::new();
     loop {
@@ -191,20 +215,16 @@ fn run_linter(
     }
     let status = child.wait().ok();
     if !responded {
-        let mut stderr_tail = String::new();
-        if let Some(mut stderr) = child.stderr.take() {
-            let mut buf = String::new();
-            let _ = std::io::Read::read_to_string(&mut stderr, &mut buf);
-            stderr_tail = buf
-                .lines()
-                .rev()
-                .take(3)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect::<Vec<_>>()
-                .join("\n");
-        }
+        let stderr_buf = stderr_thread.join().unwrap_or_default();
+        let stderr_tail = String::from_utf8_lossy(&stderr_buf)
+            .lines()
+            .rev()
+            .take(3)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
         let mut d = Diagnostic {
             code: std::borrow::Cow::Owned(format!("griplint-{name}/E02")),
             severity: Severity::Warning,

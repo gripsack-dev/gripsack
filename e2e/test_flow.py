@@ -1064,3 +1064,45 @@ module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/de
     assert out.returncode == 0, out.stderr
     assert "griplint-demo/E99" in out.stderr
     assert "warning" in out.stderr.lower()
+
+
+CHATTY_LINTER = """#!/usr/bin/env python3
+import json, sys
+req = json.loads(sys.stdin.readline())
+sys.stderr.write("noise\\n" * 20000)  # >64KB — fills an undrained pipe
+sys.stderr.flush()
+print(json.dumps({"type": "response", "id": 1, "result": {"linted": len(req["paths"])}}))
+"""
+
+
+def test_chatty_linter_does_not_deadlock_the_exchange(sandbox):
+    """0012 host hardening: a linter writing >64KB to stderr fills the
+    pipe; without a concurrent drain the child blocks before its
+    response and the exchange burns the 120s deadline into a false
+    'linter is broken' warning (the fetch host's F1 rule, inherited)."""
+    bindir = sandbox / "bin"
+    bindir.mkdir()
+    linter = bindir / "griplint-demo"
+    linter.write_text(CHATTY_LINTER)
+    linter.chmod(0o755)
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "demo.toml").write_text("good = true\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")},
+       lint="demo")
+""",
+    )
+    with open(repo / "env.toml", "a") as f:
+        f.write(f'\n[linters.demo]\npath = "{linter}"\n')
+    import time
+
+    start = time.monotonic()
+    out = grip("check", "--host", "testhost", cwd=repo)
+    elapsed = time.monotonic() - start
+    assert out.returncode == 0, out.stderr
+    assert elapsed < 30, f"chatty linter took {elapsed:.0f}s — stderr not drained concurrently"
