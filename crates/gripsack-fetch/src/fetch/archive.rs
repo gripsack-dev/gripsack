@@ -16,8 +16,12 @@ pub(crate) fn extract(bytes: &[u8], dest: &Path, bare_name: &str) -> Result<(), 
     const ZIP_MAGIC: &[u8] = b"PK\x03\x04";
     if bytes.starts_with(XZ_MAGIC) {
         let mut archive = tar::Archive::new(xz2::read::XzDecoder::new(bytes));
-        archive.unpack(dest)?;
-        return Ok(());
+        if archive.unpack(dest).is_ok() {
+            return Ok(());
+        }
+        // a single .xz file, not a tar.xz — decompress and stage bare
+        let raw = decompress(xz2::read::XzDecoder::new(bytes))?;
+        return stage_bare(&raw, dest, strip_suffix(bare_name, ".xz"));
     }
     if bytes.starts_with(ZIP_MAGIC) {
         zip::ZipArchive::new(io::Cursor::new(bytes))?.extract(dest)?;
@@ -25,8 +29,14 @@ pub(crate) fn extract(bytes: &[u8], dest: &Path, bare_name: &str) -> Result<(), 
     }
     if bytes.starts_with(&[0x1f, 0x8b]) {
         let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
-        archive.unpack(dest)?;
-        return Ok(());
+        if archive.unpack(dest).is_ok() {
+            return Ok(());
+        }
+        // a single .gz file, not a tar.gz (e.g. tree-sitter's bare
+        // binary) — decompress and stage as one file (finding: the
+        // archive walk failed with 'failed to iterate over archive')
+        let raw = decompress(flate2::read::GzDecoder::new(bytes))?;
+        return stage_bare(&raw, dest, strip_suffix(bare_name, ".gz"));
     }
     if looks_like_tar(bytes) {
         let mut archive = tar::Archive::new(bytes);
@@ -35,6 +45,10 @@ pub(crate) fn extract(bytes: &[u8], dest: &Path, bare_name: &str) -> Result<(), 
     }
     // bare payload: stage as one file named after the asset,
     // executable if it looks like a binary
+    stage_bare(bytes, dest, bare_name)
+}
+
+fn stage_bare(bytes: &[u8], dest: &Path, bare_name: &str) -> Result<(), FetchError> {
     let path = dest.join(bare_name);
     std::fs::write(&path, bytes)?;
     #[cfg(unix)]
@@ -43,6 +57,16 @@ pub(crate) fn extract(bytes: &[u8], dest: &Path, bare_name: &str) -> Result<(), 
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
     }
     Ok(())
+}
+
+fn decompress<R: io::Read>(mut r: R) -> Result<Vec<u8>, FetchError> {
+    let mut out = Vec::new();
+    io::Read::read_to_end(&mut r, &mut out)?;
+    Ok(out)
+}
+
+fn strip_suffix<'a>(name: &'a str, suffix: &str) -> &'a str {
+    name.strip_suffix(suffix).unwrap_or(name)
 }
 
 fn looks_like_tar(bytes: &[u8]) -> bool {
@@ -179,5 +203,30 @@ mod tests {
         let out = dir.path().join("out");
         extract(&std::fs::read(&xz_path).unwrap(), &out, "bin").unwrap();
         assert!(out.join("x.txt").exists());
+    }
+}
+
+#[cfg(test)]
+mod single_file_tests {
+    use super::*;
+    use std::io::Write as _;
+
+    #[test]
+    fn single_gz_file_decompresses_and_stages_bare() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        enc.write_all(b"\x7fELF fake binary").unwrap();
+        let gz = enc.finish().unwrap();
+        extract(&gz, dir.path(), "tree-sitter-linux-x64.gz").unwrap();
+        let staged = dir.path().join("tree-sitter-linux-x64");
+        assert_eq!(std::fs::read(&staged).unwrap(), b"\x7fELF fake binary");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                staged.metadata().unwrap().permissions().mode() & 0o111,
+                0o111
+            );
+        }
     }
 }

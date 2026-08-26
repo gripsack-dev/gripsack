@@ -51,6 +51,17 @@ def main() -> None:
         if host_file.exists():
             host_mod = _exec(host_file, "gripsack_user.host")
             tags = list(getattr(host_mod, "tags", tags))
+        elif (repo / "hosts").is_dir() and list((repo / "hosts").glob("*.py")):
+            # a hosts/ dir with no match must not silently yield empty
+            # tags — every when(tags=[...]) module would silently drop
+            # and the run would report success (enterprise review)
+            have = sorted(p.stem for p in (repo / "hosts").glob("*.py"))
+            print(
+                f"gripsack: no hosts/{args.host}.py (have: {', '.join(have)}) — "
+                "pass --host, set [env] default_host, or add the file",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     if tags:
         from ._facts import _set_tags

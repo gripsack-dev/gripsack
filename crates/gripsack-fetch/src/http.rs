@@ -15,6 +15,27 @@
 
 use std::sync::Arc;
 
+/// The auth header for a URL, if a token is bound to its host. The gh
+/// CLI convention, because it is the ecosystem standard:
+/// `GH_TOKEN`/`GITHUB_TOKEN` only ever go to github.com hosts;
+/// `GH_ENTERPRISE_TOKEN`/`GITHUB_ENTERPRISE_TOKEN` only to enterprise
+/// hosts. A token is NEVER attached outside its binding — a mixed
+/// repo (some modules on GHE, most on public github) must not leak
+/// either credential to the other side (enterprise review finding).
+pub(crate) fn auth_header(url: &str) -> Option<String> {
+    let (host, _) = host_port(url)?;
+    let github_host = host == "api.github.com" || host == "github.com";
+    let (primary, fallback) = if github_host {
+        ("GITHUB_TOKEN", "GH_TOKEN")
+    } else {
+        ("GITHUB_ENTERPRISE_TOKEN", "GH_ENTERPRISE_TOKEN")
+    };
+    std::env::var(primary)
+        .or_else(|_| std::env::var(fallback))
+        .ok()
+        .map(|token| format!("Bearer {token}"))
+}
+
 /// GET `url` through the right agent for the environment: direct when
 /// no_proxy says so, the env-proxy agent otherwise.
 ///
@@ -164,5 +185,90 @@ mod tests {
             std::env::remove_var("NO_PROXY");
         }
         assert!(!proxy_bypassed("https://github.com/x"));
+    }
+}
+
+#[cfg(test)]
+mod auth_tests {
+    use super::auth_header;
+    // env mutation races other env tests in this file — one lock for all
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_env(vars: &[(&str, Option<&str>)], f: impl FnOnce()) {
+        let _g = LOCK.lock().unwrap();
+        let saved: Vec<_> = vars
+            .iter()
+            .map(|(k, _)| (*k, std::env::var(k).ok()))
+            .collect();
+        for (k, v) in vars {
+            unsafe {
+                match v {
+                    Some(v) => std::env::set_var(k, v),
+                    None => std::env::remove_var(k),
+                }
+            }
+        }
+        f();
+        for (k, old) in saved {
+            unsafe {
+                match old {
+                    Some(v) => std::env::set_var(k, v),
+                    None => std::env::remove_var(k),
+                }
+            }
+        }
+    }
+
+    const ALL: [&str; 4] = [
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_ENTERPRISE_TOKEN",
+        "GH_ENTERPRISE_TOKEN",
+    ];
+
+    #[test]
+    fn github_token_only_binds_github_hosts() {
+        with_env(
+            &[
+                (ALL[0], Some("secret")),
+                (ALL[1], None),
+                (ALL[2], None),
+                (ALL[3], None),
+            ],
+            || {
+                assert_eq!(
+                    auth_header("https://api.github.com/repos/x"),
+                    Some("Bearer secret".into())
+                );
+                assert!(auth_header("https://ghe.corp.example/api/v3/repos/x").is_none());
+            },
+        );
+    }
+
+    #[test]
+    fn enterprise_token_only_binds_enterprise_hosts() {
+        with_env(
+            &[
+                (ALL[0], None),
+                (ALL[1], None),
+                (ALL[2], Some("corp")),
+                (ALL[3], None),
+            ],
+            || {
+                assert_eq!(
+                    auth_header("https://ghe.corp.example/api/v3/repos/x"),
+                    Some("Bearer corp".into())
+                );
+                assert!(auth_header("https://api.github.com/repos/x").is_none());
+            },
+        );
+    }
+
+    #[test]
+    fn no_token_no_header() {
+        with_env(&ALL.map(|k| (k, None)), || {
+            assert!(auth_header("https://api.github.com/repos/x").is_none());
+            assert!(auth_header("https://ghe.corp.example/api/v3/repos/x").is_none());
+        });
     }
 }

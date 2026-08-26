@@ -22,6 +22,10 @@ pub struct Resolved {
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// The registry's API asset endpoint — the authenticated download
+    /// path for private releases (github releases).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_url: Option<String>,
 }
 
 /// One module's resolved fetch: the spec plus the pin.
@@ -67,11 +71,13 @@ mod tests {
                 fetch: FetchSpec::Tarball {
                     url: "https://example.invalid/h.tar.xz".into(),
                     sha256: None,
+                    api_url: None,
                 },
                 resolved: Some(Resolved {
                     url: None,
                     version: None,
                     sha256: Some("ab".repeat(32)),
+                    api_url: None,
                 }),
             },
         );

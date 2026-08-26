@@ -47,7 +47,7 @@ pub fn payload_hash(spec: &FetchSpec) -> Result<Option<String>, FetchError> {
         FetchSpec::Tarball {
             sha256: Some(sha), ..
         } => Ok(Some(sha.clone())),
-        FetchSpec::Tarball { url, .. } => tarball::payload_hash(url),
+        FetchSpec::Tarball { url, api_url, .. } => tarball::payload_hash(url, api_url.as_deref()),
         FetchSpec::Brew { formula, .. } => brew::payload_hash(formula),
         _ => Ok(None),
     }
@@ -60,7 +60,11 @@ pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<String, FetchError> {
     std::fs::create_dir_all(dest)?;
     match spec {
         FetchSpec::File { path } => file::fetch(path, dest),
-        FetchSpec::Tarball { url, sha256 } => tarball::fetch(url, sha256.as_deref(), dest),
+        FetchSpec::Tarball {
+            url,
+            sha256,
+            api_url,
+        } => tarball::fetch(url, sha256.as_deref(), api_url.as_deref(), dest),
         FetchSpec::Brew {
             formula, sha256, ..
         } => brew::fetch(formula, sha256.as_deref(), dest),

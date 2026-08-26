@@ -51,8 +51,8 @@ pub fn apply(
         only: modules,
         host: host
             .map(str::to_string)
-            .or_else(|| std::env::var("HOSTNAME").ok())
-            .unwrap_or_else(|| "default".into()),
+            .or_else(|| outcome.env.env.default_host.clone())
+            .unwrap_or_else(crate::commands::hostname),
         take_over,
         jobs: jobs.or_else(|| {
             std::env::var("GRIPSACK_JOBS")

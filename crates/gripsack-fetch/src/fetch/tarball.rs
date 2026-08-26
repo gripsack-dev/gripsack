@@ -5,8 +5,13 @@ use super::archive;
 use std::io::Read as _;
 use std::path::Path;
 
-pub(crate) fn fetch(url: &str, sha256: Option<&str>, dest: &Path) -> Result<String, FetchError> {
-    let bytes = read_url(url)?;
+pub(crate) fn fetch(
+    url: &str,
+    sha256: Option<&str>,
+    api_url: Option<&str>,
+    dest: &Path,
+) -> Result<String, FetchError> {
+    let bytes = read_url_authed(url, api_url)?;
     let actual = archive::sha256(&bytes);
     if let Some(expected) = sha256
         && actual != *expected
@@ -26,8 +31,63 @@ pub(crate) fn fetch(url: &str, sha256: Option<&str>, dest: &Path) -> Result<Stri
     Ok(actual)
 }
 
-pub(crate) fn payload_hash(url: &str) -> Result<Option<String>, FetchError> {
-    Ok(Some(archive::sha256(&read_url(url)?)))
+pub(crate) fn payload_hash(url: &str, api_url: Option<&str>) -> Result<Option<String>, FetchError> {
+    Ok(Some(archive::sha256(&read_url_authed(url, api_url)?)))
+}
+
+/// Download with host-scoped auth. When the spec carries an API asset
+/// endpoint (github releases) AND a token is bound to that host, the
+/// download goes through the API with `Accept: application/octet-stream`
+/// — the browser URL needs a browser session on private/GHE releases
+/// and returns a SAML login page instead of bytes (enterprise finding
+/// #1). A `text/html` response is a login page, never an asset — fail
+/// with the cause, not a misleading hash mismatch.
+pub(crate) fn read_url_authed(url: &str, api_url: Option<&str>) -> Result<Vec<u8>, FetchError> {
+    if url.starts_with("file://") {
+        return read_url(url);
+    }
+    let via_api = api_url
+        .and_then(|api| crate::http::auth_header(api).map(|header| (api.to_string(), header)));
+    let (get_url, accept_octet) = match &via_api {
+        Some((api, _)) => (api.clone(), true),
+        None => (url.to_string(), false),
+    };
+    let mut request = crate::http::get(&get_url);
+    if let Some((_, header)) = &via_api {
+        request = request.set("Authorization", header);
+    } else if let Some(header) = crate::http::auth_header(&get_url) {
+        request = request.set("Authorization", &header);
+    }
+    if accept_octet {
+        request = request.set("Accept", "application/octet-stream");
+    }
+    let response = request.call().map_err(|e| FetchError::Http {
+        url: get_url.clone(),
+        reason: e.to_string(),
+    })?;
+    if response
+        .header("content-type")
+        .unwrap_or_default()
+        .contains("text/html")
+    {
+        return Err(FetchError::Http {
+            url: get_url,
+            reason: "the server returned an HTML page, not an asset — this looks \
+                     like a login/SSO redirect (a private release fetched without \
+                     a bound token?)"
+                .into(),
+        });
+    }
+    let reader = response.into_reader();
+    let mut limited = io::Read::take(reader, 512 * 1024 * 1024);
+    let mut bytes = Vec::new();
+    limited
+        .read_to_end(&mut bytes)
+        .map_err(|e| FetchError::Http {
+            url: get_url,
+            reason: e.to_string(),
+        })?;
+    Ok(bytes)
 }
 
 pub(crate) fn read_url(url: &str) -> Result<Vec<u8>, FetchError> {
@@ -72,6 +132,7 @@ mod tests {
             &FetchSpec::Tarball {
                 url: url.clone(),
                 sha256: Some(good),
+                api_url: None,
             },
             &dest,
         )
@@ -82,6 +143,7 @@ mod tests {
             &FetchSpec::Tarball {
                 url,
                 sha256: Some("0".repeat(64)),
+                api_url: None,
             },
             &dir.path().join("out2"),
         )

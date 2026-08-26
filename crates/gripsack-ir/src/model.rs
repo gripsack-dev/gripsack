@@ -100,6 +100,11 @@ pub enum FetchSpec {
         url: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         sha256: Option<String>,
+        /// The registry's API asset endpoint (github releases) — the
+        /// authenticated download path for private releases. Produced
+        /// by resolution; frontends never set it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        api_url: Option<String>,
     },
     Git {
         url: String,

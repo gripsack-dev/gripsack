@@ -1106,3 +1106,45 @@ module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/de
     elapsed = time.monotonic() - start
     assert out.returncode == 0, out.stderr
     assert elapsed < 30, f"chatty linter took {elapsed:.0f}s — stderr not drained concurrently"
+
+
+def test_unmatched_host_errors_instead_of_empty_tags(sandbox):
+    """A hosts/ dir with no matching file must not silently yield empty
+    tags — every when(tags=[...]) module would drop and the run would
+    report success (enterprise review finding)."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("demo", config={"configs/demo/a": tracked_copy("~/.config/demo/a")})
+""",
+    )
+    (sandbox / "myenv" / "configs" / "demo").mkdir(parents=True)
+    (sandbox / "myenv" / "configs" / "demo" / "a").write_text("a\n")
+    out = grip("check", "--host", "nosuchhost", cwd=repo)
+    assert out.returncode != 0
+    assert "no hosts/nosuchhost.py" in out.stderr
+
+
+def test_default_host_resolves_role_named_entrypoint(sandbox):
+    """[env] default_host: containers with random hostnames still get a
+    deterministic host entrypoint (enterprise review finding)."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("demo", config={"configs/demo/a": tracked_copy("~/.config/demo/a")})
+""",
+    )
+    (sandbox / "myenv" / "configs" / "demo").mkdir(parents=True)
+    (sandbox / "myenv" / "configs" / "demo" / "a").write_text("a\n")
+    (sandbox / "myenv" / "hosts" / "testhost.py").unlink()
+    (sandbox / "myenv" / "hosts" / "role.py").write_text('tags = ["container"]\n')
+    env_toml = repo / "env.toml"
+    env_toml.write_text(env_toml.read_text().replace(
+        '[env]\nname = "fixture"', '[env]\nname = "fixture"\ndefault_host = "role"'))
+    out = grip("check", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "container" in out.stdout

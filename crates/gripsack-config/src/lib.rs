@@ -55,6 +55,12 @@ pub struct EnvSection {
     pub name: Option<String>,
     #[serde(default)]
     pub frontend: Frontend,
+    /// The host entrypoint when no --host is given and the machine's
+    /// hostname matches nothing in hosts/ — for role-named host files
+    /// on ephemeral containers with random hostnames (enterprise
+    /// review finding).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_host: Option<String>,
 }
 
 /// One frontend per env repo (0005 §1) — declared, never sniffed.

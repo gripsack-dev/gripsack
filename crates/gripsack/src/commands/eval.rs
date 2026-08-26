@@ -83,8 +83,8 @@ pub fn eval_repo(
     cmd.arg("-m").arg("gripsack").arg(repo).current_dir(repo);
     let host = host
         .map(str::to_string)
-        .or_else(|| std::env::var("HOSTNAME").ok())
-        .unwrap_or_else(|| "default".into());
+        .or_else(|| env.env.default_host.clone())
+        .unwrap_or_else(crate::commands::hostname);
     cmd.arg("--host").arg(&host);
     let out = cmd.output().map_err(|e| {
         eprintln!("grip: cannot spawn python3: {e} (see `grip doctor`)");

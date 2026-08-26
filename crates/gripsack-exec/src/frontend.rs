@@ -127,6 +127,7 @@ fn ensure_uv(home: &Path) -> io::Result<PathBuf> {
     let (url, sha) = gripsack_fetch::resolve_host_asset(&UV_RELEASE).map_err(io::Error::other)?;
     let spec = gripsack_ir::FetchSpec::Tarball {
         url,
+        api_url: None,
         sha256: Some(sha.to_string()),
     };
     let staging = dir.with_extension("staging");

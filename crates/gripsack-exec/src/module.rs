@@ -244,6 +244,7 @@ impl<'a> ModuleRun<'a> {
                 url: meta.as_ref().map(|m| m.url.clone()),
                 version: meta.as_ref().map(|m| m.version.clone()),
                 sha256: Some(sha),
+                api_url: meta.and_then(|m| m.api_url.clone()),
             }),
         });
         info!(step = %step.id, "fetched");

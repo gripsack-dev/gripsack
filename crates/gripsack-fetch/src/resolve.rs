@@ -36,6 +36,9 @@ impl From<ureq::Error> for ResolveError {
 pub struct ResolvedRelease {
     pub version: String,
     pub url: String,
+    /// The API asset endpoint, when the registry has one (GitHub) —
+    /// the authenticated download path for private releases.
+    pub api_url: Option<String>,
     /// Present when the registry gives us the hash upfront (brew bottles).
     pub sha256: Option<String>,
 }
@@ -50,6 +53,10 @@ struct Release {
 struct Asset {
     name: String,
     browser_download_url: String,
+    /// The API asset endpoint — the only download path that honors a
+    /// token; the browser URL needs a browser session on private/GHE
+    /// releases (enterprise review finding #1).
+    url: String,
 }
 
 /// The asset pattern's `{version}` placeholder, expanded against a tag.
@@ -63,17 +70,19 @@ pub fn expand_asset_pattern(pattern: &str, tag: &str) -> Vec<String> {
 }
 
 /// Match an asset list against a pattern; pure — unit-tested offline.
+/// `assets` is (name, browser URL, API URL).
 pub fn pick_asset(
     repo: &str,
     pattern: &str,
     tag: &str,
-    assets: &[(String, String)],
+    assets: &[(String, String, String)],
 ) -> Result<ResolvedRelease, ResolveError> {
     for candidate in expand_asset_pattern(pattern, tag) {
-        if let Some((_, url)) = assets.iter().find(|(name, _)| *name == candidate) {
+        if let Some((_, url, api_url)) = assets.iter().find(|(name, _, _)| *name == candidate) {
             return Ok(ResolvedRelease {
                 version: tag.to_string(),
                 url: url.clone(),
+                api_url: Some(api_url.clone()),
                 sha256: None,
             });
         }
@@ -81,27 +90,53 @@ pub fn pick_asset(
     Err(ResolveError::NoAsset {
         repo: repo.to_string(),
         asset: pattern.to_string(),
-        available: assets.iter().map(|(n, _)| n.clone()).collect(),
+        available: assets.iter().map(|(n, _, _)| n.clone()).collect(),
     })
 }
 
-/// Resolve the latest release of `repo` to a concrete asset URL.
+/// base_url may be the bare GHE host ("https://ghe.example.com") —
+/// the API lives under /api/v3; normalize instead of failing on the
+/// HTML index page with a JSON parse error (enterprise finding #4).
+fn normalize_base(base_url: Option<&str>) -> String {
+    match base_url {
+        None => "https://api.github.com".to_string(),
+        Some(b) if b.trim_end_matches('/') == "https://api.github.com" => {
+            b.trim_end_matches('/').to_string()
+        }
+        Some(b) => {
+            let b = b.trim_end_matches('/');
+            if b.ends_with("/api/v3") {
+                b.to_string()
+            } else {
+                format!("{b}/api/v3")
+            }
+        }
+    }
+}
+
+/// Resolve a release of `repo` to a concrete asset. `version` pins the
+/// tag (fetched by `/releases/tags/<tag>`); None resolves latest. Auth
+/// is host-scoped (http::auth_header) — tokens never cross hosts.
 pub fn resolve_latest(
     repo: &str,
     asset_pattern: &str,
     base_url: Option<&str>,
+    version: Option<&str>,
 ) -> Result<ResolvedRelease, ResolveError> {
-    let base = base_url.unwrap_or("https://api.github.com");
-    let url = format!("{base}/repos/{repo}/releases/latest");
+    let base = normalize_base(base_url);
+    let url = match version {
+        Some(tag) => format!("{base}/repos/{repo}/releases/tags/{tag}"),
+        None => format!("{base}/repos/{repo}/releases/latest"),
+    };
     let mut request = crate::http::get(&url).set("User-Agent", "gripsack");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN")) {
-        request = request.set("Authorization", &format!("Bearer {token}"));
+    if let Some(header) = crate::http::auth_header(&url) {
+        request = request.set("Authorization", &header);
     }
     let release: Release = request.call()?.into_json()?;
-    let assets: Vec<(String, String)> = release
+    let assets: Vec<(String, String, String)> = release
         .assets
         .into_iter()
-        .map(|a| (a.name, a.browser_download_url))
+        .map(|a| (a.name, a.browser_download_url, a.url))
         .collect();
     pick_asset(repo, asset_pattern, &release.tag_name, &assets)
 }
@@ -110,15 +145,17 @@ pub fn resolve_latest(
 mod tests {
     use super::*;
 
-    fn assets() -> Vec<(String, String)> {
+    fn assets() -> Vec<(String, String, String)> {
         vec![
             (
                 "helix-25.07.1-x86_64-linux.tar.xz".into(),
                 "https://x/linux".into(),
+                "https://api.x/assets/1".into(),
             ),
             (
                 "helix-25.07.1-aarch64-macos.tar.xz".into(),
                 "https://x/macos".into(),
+                "https://api.x/assets/2".into(),
             ),
         ]
     }
@@ -142,7 +179,11 @@ mod tests {
             "r",
             "tool-{version}.tar.gz",
             "v1.2",
-            &[("tool-1.2.tar.gz".into(), "https://x".into())],
+            &[(
+                "tool-1.2.tar.gz".into(),
+                "https://x".into(),
+                "https://api.x/1".into(),
+            )],
         )
         .unwrap();
         assert_eq!(r.url, "https://x");
@@ -233,6 +274,7 @@ pub fn resolve_brew(formula: &str) -> Result<ResolvedRelease, ResolveError> {
     Ok(ResolvedRelease {
         version: f.versions.stable,
         url: file.url.clone(),
+        api_url: None, // brew bottles are CDN downloads, no API path
         sha256: Some(file.sha256.clone()),
     })
 }
@@ -246,4 +288,26 @@ pub fn ghcr_token(scope_repo: &str) -> Result<String, ResolveError> {
     let url = format!("https://ghcr.io/token?scope=repository:{scope_repo}:pull");
     let t: Token = crate::http::get(&url).call()?.into_json()?;
     Ok(t.token)
+}
+
+#[cfg(test)]
+mod base_url_tests {
+    use super::normalize_base;
+
+    #[test]
+    fn bare_ghe_host_gets_api_v3() {
+        assert_eq!(
+            normalize_base(Some("https://ghe.example.com")),
+            "https://ghe.example.com/api/v3"
+        );
+        assert_eq!(
+            normalize_base(Some("https://ghe.example.com/api/v3")),
+            "https://ghe.example.com/api/v3"
+        );
+        assert_eq!(
+            normalize_base(Some("https://ghe.example.com/api/v3/")),
+            "https://ghe.example.com/api/v3"
+        );
+        assert_eq!(normalize_base(None), "https://api.github.com");
+    }
 }

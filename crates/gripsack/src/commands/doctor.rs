@@ -59,11 +59,38 @@ pub fn doctor(palette: Palette) -> ExitCode {
             }
         }
         _ => {
-            println!(
-                "{}  frontend: `import gripsack` failed with {python} — pip install gripsack",
-                mark(false)
-            );
-            ok = false;
+            // the provisioned venv may carry the frontend even when the
+            // system python doesn't — apply works fine in that state,
+            // so a bare MISS reads as a broken install when it isn't
+            let managed = std::fs::read_dir(gripsack_store::gripsack_home().join("frontend"))
+                .ok()
+                .into_iter()
+                .flatten()
+                .filter_map(|e| e.ok())
+                .map(|e| e.path().join("bin/python3"))
+                .find(|p| p.exists())
+                .and_then(|p| {
+                    std::process::Command::new(&p)
+                        .args(["-c", "import gripsack; print(gripsack.__version__)"])
+                        .output()
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| (p, String::from_utf8_lossy(&o.stdout).trim().to_string()))
+                });
+            match managed {
+                Some((path, v)) => println!(
+                    "{}  frontend: gripsack python {v} (provisioned, {})",
+                    mark(true),
+                    path.display()
+                ),
+                None => {
+                    println!(
+                        "{}  frontend: `import gripsack` failed with {python} — pip install gripsack (or let provisioning handle it on first apply)",
+                        mark(false)
+                    );
+                    ok = false;
+                }
+            }
         }
     }
 

@@ -44,6 +44,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                                 url: None,
                                 version: None,
                                 sha256: Some(sha.clone()),
+                                api_url: None,
                             }),
                         },
                     );
@@ -56,18 +57,25 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
             F::GithubRelease {
                 repo,
                 asset,
+                version,
                 base_url,
                 ..
             } => {
-                let release = gripsack_fetch::resolve_latest(repo, asset, base_url.as_deref())
-                    .map_err(|e| ExecError::Step {
-                        module: repo.clone(),
-                        step: "resolve".into(),
-                        detail: e.to_string(),
-                    })?;
+                let release = gripsack_fetch::resolve_latest(
+                    repo,
+                    asset,
+                    base_url.as_deref(),
+                    version.as_deref(),
+                )
+                .map_err(|e| ExecError::Step {
+                    module: repo.clone(),
+                    step: "resolve".into(),
+                    detail: e.to_string(),
+                })?;
                 let sha = gripsack_fetch::payload_hash(&F::Tarball {
                     url: release.url.clone(),
                     sha256: None,
+                    api_url: release.api_url.clone(),
                 })
                 .map_err(ExecError::Fetch)?
                 .expect("tarball hashes");
@@ -95,6 +103,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                                 url: Some(release.url),
                                 version: Some(release.version.clone()),
                                 sha256: Some(sha),
+                                api_url: release.api_url,
                             }),
                         },
                     );

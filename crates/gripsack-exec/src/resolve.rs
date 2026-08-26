@@ -21,6 +21,7 @@ pub(crate) fn resolve_spec(
         F::GithubRelease {
             repo,
             asset,
+            version,
             base_url,
             ..
         } => {
@@ -29,20 +30,27 @@ pub(crate) fn resolve_spec(
                     F::Tarball {
                         url,
                         sha256: resolved.and_then(|r| r.sha256.clone()),
+                        api_url: resolved.and_then(|r| r.api_url.clone()),
                     },
                     None,
                 ));
             }
-            let release = gripsack_fetch::resolve_latest(repo, asset, base_url.as_deref())
-                .map_err(|e| ExecError::Step {
-                    module: repo.clone(),
-                    step: "resolve".into(),
-                    detail: e.to_string(),
-                })?;
+            let release = gripsack_fetch::resolve_latest(
+                repo,
+                asset,
+                base_url.as_deref(),
+                version.as_deref(),
+            )
+            .map_err(|e| ExecError::Step {
+                module: repo.clone(),
+                step: "resolve".into(),
+                detail: e.to_string(),
+            })?;
             Ok((
                 F::Tarball {
                     url: release.url.clone(),
                     sha256: None,
+                    api_url: release.api_url.clone(),
                 },
                 Some(release),
             ))
@@ -111,9 +119,10 @@ fn inject_locked_sha(
         return spec.clone();
     };
     match spec.clone() {
-        gripsack_ir::FetchSpec::Tarball { url, .. } => gripsack_ir::FetchSpec::Tarball {
+        gripsack_ir::FetchSpec::Tarball { url, api_url, .. } => gripsack_ir::FetchSpec::Tarball {
             url,
             sha256: Some(sha.clone()),
+            api_url: api_url.or_else(|| entry.resolved.as_ref().and_then(|r| r.api_url.clone())),
         },
         other => other,
     }

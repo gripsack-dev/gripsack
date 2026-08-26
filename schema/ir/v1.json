@@ -390,6 +390,10 @@
             },
             "sha256": {
               "$ref": "#/$defs/sha256"
+            },
+            "api_url": {
+              "type": "string",
+              "description": "registry API asset endpoint (authenticated download path); produced by resolution, never written by frontends"
             }
           },
           "required": [

@@ -33,6 +33,7 @@ fn ensure_pixi() -> Result<PathBuf, FetchError> {
     let spec = gripsack_ir::FetchSpec::Tarball {
         url,
         sha256: Some(sha.to_string()),
+        api_url: None,
     };
     let staging = dir.with_extension("staging");
     let _ = std::fs::remove_dir_all(&staging);

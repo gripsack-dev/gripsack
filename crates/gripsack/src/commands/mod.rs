@@ -27,6 +27,24 @@ pub use rollback::rollback;
 pub use update::update;
 pub use why_owns::why_owns;
 
+/// The machine's hostname — $HOSTNAME, else the `hostname` command.
+/// init and eval MUST agree on this (a mismatch means init writes
+/// hosts/<cmd-hostname>.py and eval looks for hosts/<env-hostname>.py).
+pub fn hostname() -> String {
+    std::env::var("HOSTNAME")
+        .ok()
+        .filter(|h| !h.is_empty())
+        .or_else(|| {
+            std::process::Command::new("hostname")
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|h| !h.is_empty())
+        })
+        .unwrap_or_else(|| "default".into())
+}
+
 /// `~/...` expands against $HOME; absolute paths pass through.
 pub fn expand_home(to: &str) -> PathBuf {
     if let Some(rest) = to.strip_prefix("~/")

@@ -43,17 +43,7 @@ const TEMPLATE: &[(&str, &str)] = &[
 ];
 
 fn hostname() -> String {
-    let raw = std::env::var("HOSTNAME")
-        .ok()
-        .filter(|h| !h.is_empty())
-        .or_else(|| {
-            std::process::Command::new("hostname")
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        })
-        .unwrap_or_else(|| "myhost".into());
+    let raw = super::hostname();
     // a valid python module name: alnum, dash and underscore
     let clean: String = raw
         .chars()
