@@ -148,6 +148,7 @@ mod tests {
             steps: None,
             verify: None,
             retries: None,
+            lint: None,
             span: None,
         }
     }

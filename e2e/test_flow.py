@@ -1024,3 +1024,43 @@ module("b", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/b
     elapsed = time.monotonic() - start
     assert out.returncode == 0, out.stderr
     assert elapsed < 0.9, f"override not applied — took {elapsed:.2f}s"
+
+
+CRASHY_LINTER = """#!/usr/bin/env python3
+import json, sys
+req = json.loads(sys.stdin.readline())
+print(json.dumps({"type": "diagnostic", "diagnostic": {
+    "code": "griplint-demo/E99", "severity": "error",
+    "message": "linter crashed: boom", "labels": []}}))
+print(json.dumps({"type": "response", "id": 1, "result": {"linted": 0}}))
+"""
+
+
+def test_crash_class_lint_codes_are_warnings_core_side(sandbox):
+    """0012: a linter's self-reported severity for crash-class codes
+    (E99/E02) is not evidence — the CORE host classifies by code,
+    always warning, so lint= never becomes an availability dependency
+    (review finding E, enforcement round)."""
+    bindir = sandbox / "bin"
+    bindir.mkdir()
+    linter = bindir / "griplint-demo"
+    linter.write_text(CRASHY_LINTER)
+    linter.chmod(0o755)
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "demo.toml").write_text("good = true\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")},
+       lint="demo")
+""",
+    )
+    with open(repo / "env.toml", "a") as f:
+        f.write(f'\n[linters.demo]\npath = "{linter}"\n')
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "griplint-demo/E99" in out.stderr
+    assert "warning" in out.stderr.lower()

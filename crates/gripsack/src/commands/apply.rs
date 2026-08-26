@@ -23,12 +23,13 @@ pub fn apply(
         eprintln!("grip: GRIPSACK_JOBS=0 would run zero modules — unset or fix it");
         return ExitCode::from(2);
     }
-    let json = match eval_repo(repo, host, palette) {
-        Ok(j) => j,
+    let outcome = match eval_repo(repo, host, palette) {
+        Ok(o) => o,
         Err(code) => return code,
     };
-    let ir = match check_ir(&json, palette)
+    let ir = match check_ir(&outcome.ir_json, palette)
         .and_then(|ir| crate::commands::validate_sources(&ir, repo, palette).map(|_| ir))
+        .and_then(|ir| crate::commands::run_lints(&ir, &outcome, repo, host, palette).map(|_| ir))
     {
         Ok(ir) => ir,
         Err(code) => return code,

@@ -9,10 +9,11 @@ use std::process::ExitCode;
 /// grip update: re-resolve, rewrite the lockfile, report what moved.
 /// Never deploys — `grip apply` does (0008 §5).
 pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Palette) -> ExitCode {
-    let json = match eval_repo(repo, host, palette) {
-        Ok(j) => j,
+    let outcome = match eval_repo(repo, host, palette) {
+        Ok(o) => o,
         Err(code) => return code,
     };
+    let json = outcome.ir_json.clone();
     let ir = match check_ir(&json, palette) {
         Ok(ir) => ir,
         Err(code) => return code,

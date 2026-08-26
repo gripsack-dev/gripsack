@@ -70,6 +70,11 @@ pub struct Module {
     /// Retry default for this module's steps (0007 §retries).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retries: Option<u32>,
+    /// Registered linter for this module's config payloads (0011).
+    /// Travels in the IR since 0012: the CORE drives the linter, the
+    /// frontend only declares.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lint: Option<String>,
     /// Where this module was declared (0004 §2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,

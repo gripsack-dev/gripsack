@@ -18,8 +18,7 @@ import sys
 import types
 from pathlib import Path
 
-from .graph import emit_ir, registered_modules
-from .lint import run_lints
+from .graph import emit_ir
 
 
 def _exec(path: Path, name: str):
@@ -63,7 +62,8 @@ def main() -> None:
         for f in sorted(modules_dir.glob("*.py")):
             _exec(f, f"gripsack_user.{f.stem}")
 
-    diagnostics = run_lints(repo, args.host, registered_modules())
+    # lint moved core-side (0012): the envelope carries the IR only
+    diagnostics = []
     payload = {
         "ir": json.loads(emit_ir(tags)),
         "diagnostics": [d.to_dict() for d in diagnostics],

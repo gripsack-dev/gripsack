@@ -227,3 +227,18 @@ def test_facts_object_has_tags_after_runner_sets():
 
 def test_version_string_exists():
     assert gripsack.__version__
+
+
+def test_class_style_module_without_lint_emits_no_lint_key():
+    """Regression: a trailing comma on the ModuleData lint default made it
+    the tuple (None,) — truthy — and class-style modules emitted
+    "lint": [null], which the IR schema rightly rejects (0012)."""
+    from gripsack import Module
+
+    class Bare(Module):
+        def install(self):
+            return []
+
+    ir = json.loads(emit_ir())
+    assert "bare" in ir["modules"]
+    assert "lint" not in ir["modules"]["bare"]

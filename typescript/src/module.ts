@@ -29,6 +29,9 @@ export interface ModuleSpec {
   verify?: Verify;
   /** Retry default for this module's steps (0007 §retries). */
   retries?: number;
+  /** Registered linter for this module's config payloads (0011) —
+      the core drives it (0012). */
+  lint?: string;
 }
 
 export interface IrEntry {
@@ -49,6 +52,7 @@ export interface IrModule {
   steps?: Step[];
   verify?: Verify;
   retries?: number;
+  lint?: string;
   span?: Span;
 }
 
@@ -176,6 +180,7 @@ export function module(name: string, spec: ModuleSpec): void {
   if (spec.steps?.length) ir.steps = spec.steps;
   if (spec.verify) ir.verify = spec.verify;
   if (spec.retries !== undefined) ir.retries = spec.retries;
+  if (spec.lint !== undefined) ir.lint = spec.lint;
   const span = callerSpan();
   if (span) ir.span = span;
   register(name, ir);

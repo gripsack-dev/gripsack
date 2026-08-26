@@ -66,7 +66,7 @@ class ModuleData:
     verify: Optional[Verify] = None
     retries: Optional[int] = None
     span: Optional[dict[str, Any]] = None
-    #: Registered linter name (0011) — eval-time only, never in the IR.
+    #: Registered linter name (0011) — the core drives it (0012).
     lint: Optional[str] = None
 
     @staticmethod
@@ -98,6 +98,9 @@ class ModuleData:
             ]
         if self.activate:
             ir["activate"] = [i.to_ir() for i in self.activate]
+        if self.lint:
+            # the core drives the linter (0012) — eval-time only ended
+            ir["lint"] = self.lint
         if self.env:
             ir["env"] = [
                 {"name": name[:-1] if name.endswith("+") else name,
