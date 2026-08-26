@@ -66,8 +66,8 @@ class ModuleData:
     verify: Optional[Verify] = None
     retries: Optional[int] = None
     span: Optional[dict[str, Any]] = None
-        #: Registered linter name (0011) — the core drives it (0012).
-    lint: Optional[str] = None,
+    #: Registered linter name (0011) — the core drives it (0012).
+    lint: Optional[str] = None
 
     @staticmethod
     def _entry_ir(src: str, d: Dest) -> dict[str, Any]:
