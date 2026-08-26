@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Fixture config linter for the check tape — flags BAD_KEY with a
+span-labeled error, like a real griplint-* plugin."""
+import json
+import sys
+
+req = json.loads(sys.stdin.readline())
+for p in req["paths"]:
+    for n, line in enumerate(open(p).read().splitlines(), 1):
+        if "BAD_KEY" in line:
+            print(json.dumps({"type": "diagnostic", "diagnostic": {
+                "code": "griplint-demo/A01", "severity": "error",
+                "message": "unknown key BAD_KEY",
+                "labels": [{"span": {"file": p, "line": n}, "note": "not a real key"}],
+                "help": "remove it"}}))
+print(json.dumps({"type": "response", "id": 1,
+                  "result": {"linted": len(req["paths"])}}))

@@ -1,0 +1,10 @@
+tokyo-night TokyoNight
+gruvbox-dark GruvboxDark
+nord nord
+dracula Dracula
+one-dark OneDark
+solarized-dark Builtin Solarized Dark
+catppuccin-latte Catppuccin Latte
+github-light Github
+one-light AtomOneLight
+solarized-light Builtin Solarized Light

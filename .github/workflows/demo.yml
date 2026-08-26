@@ -58,22 +58,26 @@ jobs:
              && install -m755 /vhs/dist/gripsack-*/grip /usr/local/bin/grip \
              && export PYTHONPATH=/vhs/python \
              && render() { \
-                  sed -e "s|^Output .*|Output demos/$1.gif|" \
-                      -e "s|^Set Theme .*|Set Theme \"$2\"|" \
-                      /vhs/demos/demo.tape > "/tmp/$1.tape" \
-                  && vhs "/tmp/$1.tape"; \
+                  sed -e "s|^Output .*|Output demos/$2.gif|" \
+                      -e "s|^Set Theme .*|Set Theme \"$3\"|" \
+                      "/vhs/demos/$1.tape" > "/tmp/$2.tape" \
+                  && vhs "/tmp/$2.tape"; \
                 } \
-             && render demo "Catppuccin Mocha" \
-             && render demo-tokyo-night "TokyoNight" \
-             && render demo-gruvbox-dark "GruvboxDark" \
-             && render demo-nord "nord" \
-             && render demo-dracula "Dracula" \
-             && render demo-one-dark "OneDark" \
-             && render demo-solarized-dark "Builtin Solarized Dark" \
-             && render demo-catppuccin-latte "Catppuccin Latte" \
-             && render demo-github-light "Github" \
-             && render demo-one-light "AtomOneLight" \
-             && render demo-solarized-light "Builtin Solarized Light"'
+             && for tape in demo init check rollback; do \
+                  out=demo; [ "$tape" = demo ] || out="demo-$tape"; \
+                  render "$tape" "$out" "Catppuccin Mocha"; \
+                done \
+             && for tape in demo init check rollback; do \
+                  out=demo; [ "$tape" = demo ] || out="demo-$tape"; \
+                  render "$tape" "$out" "Catppuccin Mocha"; \
+                done \
+             && while read -r name theme; do \
+                  for tape in demo init check rollback; do \
+                    out="demo-$name"; [ "$tape" = demo ] || out="demo-$tape-$name"; \
+                    render "$tape" "$out" "$theme"; \
+                  done; \
+                done < /vhs/demos/palettes.txt'
+
 
       - uses: actions/upload-artifact@v7
         with:
