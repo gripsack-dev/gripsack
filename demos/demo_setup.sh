@@ -3,6 +3,9 @@
 # see .agents/skills/gripsack-demo-capture).
 set -e
 
+# idempotent renders: one container runs every tape × palette
+rm -rf /tmp/myenv ~/.local/share/gripsack
+
 mkdir -p /tmp/myenv/modules /tmp/myenv/hosts
 
 cat > /tmp/myenv/env.toml <<'EOF'

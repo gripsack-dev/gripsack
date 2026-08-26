@@ -6,7 +6,7 @@ Set Width 900
 Set Height 560
 Set Theme "Catppuccin Mocha"
 
-Type@10ms "cd /tmp && grip init my-env && cd my-env"
+Type@10ms "rm -rf /tmp/my-env ~/.local/share/gripsack && cd /tmp && grip init my-env && cd my-env"
 Enter
 Sleep 2s
 Type@10ms "find . -type f -not -path './.git/*' | sort"

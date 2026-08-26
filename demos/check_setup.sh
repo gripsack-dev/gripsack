@@ -3,9 +3,12 @@
 # the VHS container; see .agents/skills/gripsack-demo-capture).
 set -e
 
-mkdir -p /tmp/myenv/modules /tmp/myenv/hosts /tmp/myenv/configs/demo
+# idempotent renders: one container runs every tape × palette
+rm -rf /tmp/checkenv ~/.local/share/gripsack
 
-cat > /tmp/myenv/env.toml <<'EOF'
+mkdir -p /tmp/checkenv/modules /tmp/checkenv/hosts /tmp/checkenv/configs/demo
+
+cat > /tmp/checkenv/env.toml <<'EOF'
 [env]
 name = "demo"
 
@@ -13,20 +16,21 @@ name = "demo"
 path = "/vhs/demos/fixtures/griplint-demo"
 EOF
 
-cat > /tmp/myenv/hosts/demo.py <<'EOF'
+cat > /tmp/checkenv/hosts/demo.py <<'EOF'
 tags = ["demo"]
 EOF
 
-cat > /tmp/myenv/modules/demo.py <<'EOF'
+cat > /tmp/checkenv/modules/demo.py <<'EOF'
 from gripsack import module, tracked_copy
 
 module(
     "demo",
     config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")},
+    lint="demo",
 )
 EOF
 
-cat > /tmp/myenv/configs/demo/demo.toml <<'EOF'
+cat > /tmp/checkenv/configs/demo/demo.toml <<'EOF'
 theme = "catppuccin-mocha"
 BAD_KEY = 1
 EOF

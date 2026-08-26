@@ -67,10 +67,6 @@ jobs:
                   out=demo; [ "$tape" = demo ] || out="demo-$tape"; \
                   render "$tape" "$out" "Catppuccin Mocha"; \
                 done \
-             && for tape in demo init check rollback; do \
-                  out=demo; [ "$tape" = demo ] || out="demo-$tape"; \
-                  render "$tape" "$out" "Catppuccin Mocha"; \
-                done \
              && while read -r name theme; do \
                   for tape in demo init check rollback; do \
                     out="demo-$name"; [ "$tape" = demo ] || out="demo-$tape-$name"; \

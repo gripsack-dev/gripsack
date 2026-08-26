@@ -7,7 +7,7 @@ Set Width 900
 Set Height 560
 Set Theme "Catppuccin Mocha"
 
-Type@10ms "sh /vhs/demos/check_setup.sh && cd /tmp/myenv"
+Type@10ms "sh /vhs/demos/check_setup.sh && cd /tmp/checkenv"
 Enter
 Sleep 1s
 Type@10ms "grip check"
