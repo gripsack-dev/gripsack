@@ -52,6 +52,31 @@ pub fn eval_repo(
         &env.throttle,
         Some(gripsack_store::gripsack_home().join("throttle.json")),
     );
+    // Declared plugins (0012 §move-2): package = "owner/repo@tag" on a
+    // [fetchers.x] or [linters.x] entry provisions the binary into the
+    // plugin store — declarative, sha256-verified, receipted. Fetchers
+    // and linters both resolve from the store downstream.
+    {
+        let store = gripsack_fetch::plugins::PluginStore::new(&gripsack_store::gripsack_home());
+        for (name, section) in &env.fetchers {
+            if let Some(package) = &section.package {
+                if section.plugin.is_some() {
+                    eprintln!(
+                        "grip: [fetchers.{name}] declares both plugin and package — pick one"
+                    );
+                    return Err(ExitCode::FAILURE);
+                }
+                provision(&store, name, package, "gripfetch")?;
+            }
+        }
+        for (name, section) in &env.linters {
+            if let Some(package) = &section.package
+                && gripsack_fetch::plugins::parse_ref(package).is_some()
+            {
+                provision(&store, name, package, "griplint")?;
+            }
+        }
+    }
     // Build-time env (0001 §3.10 build side): injected for the run's
     // duration so every subprocess — fetchers, build steps, plugins —
     // inherits it. A CLI exits after one run, so process-env is the
@@ -198,4 +223,24 @@ pub fn validate_sources(ir: &Ir, repo: &Path, palette: Palette) -> Result<(), Ex
         eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
         Err(ExitCode::FAILURE)
     }
+}
+
+/// Provision one plugin; the fresh-install line is the trust notice
+/// (a new binary runs with your user rights — name its source).
+fn provision(
+    store: &gripsack_fetch::plugins::PluginStore,
+    name: &str,
+    package: &str,
+    kind: &str,
+) -> Result<(), ExitCode> {
+    let before = store.receipt(&format!("{kind}-{name}"));
+    let bin = store.ensure(name, package, kind).map_err(|e| {
+        eprintln!("grip: cannot provision {kind}-{name} from {package}: {e}");
+        ExitCode::FAILURE
+    })?;
+    let after = store.receipt(&format!("{kind}-{name}"));
+    if before != after {
+        eprintln!("installed {kind}-{name} from {package} → {}", bin.display());
+    }
+    Ok(())
 }

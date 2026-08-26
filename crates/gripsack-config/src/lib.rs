@@ -92,6 +92,11 @@ pub struct FetcherSection {
     /// Fetcher plugin override; default discovery is
     /// `gripfetch-<name>` on PATH.
     pub plugin: Option<String>,
+    /// Provision the fetcher from a GitHub release:
+    /// `owner/repo@tag` — downloaded, sha256-verified, receipted into
+    /// the plugin store (0012 §move-2). Mutually exclusive with plugin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
 }
 /// A named linter (0010 §3, 0011 §7): provisioned from a pinned
 /// package, or an explicit executable path for development.
@@ -120,6 +125,7 @@ pub struct Config {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FetcherSectionView {
     pub plugin: Option<String>,
+    pub package: Option<String>,
 }
 
 /// Parse a repo `env.toml`. Errors are span-labeled diagnostics
@@ -200,6 +206,7 @@ pub fn merge(user: Option<&UserConfig>, repo: &EnvConfig) -> Config {
                 name.clone(),
                 FetcherSectionView {
                     plugin: section.plugin.clone(),
+                    package: section.package.clone(),
                 },
             );
         }
@@ -209,6 +216,7 @@ pub fn merge(user: Option<&UserConfig>, repo: &EnvConfig) -> Config {
             name.clone(),
             FetcherSectionView {
                 plugin: section.plugin.clone(),
+                package: section.package.clone(),
             },
         );
     }

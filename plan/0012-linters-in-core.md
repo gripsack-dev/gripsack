@@ -1,6 +1,6 @@
 # 0012 — Linters in the core, plugins with a lifecycle, and the end of griplint-py
 
-Status: **in progress** (move 1 landed 0.13.0)
+Status: **in progress** (moves 1 and 2 landed, 0.13.0 / 0.14.0)
 
 ## The problem
 

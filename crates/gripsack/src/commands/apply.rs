@@ -38,7 +38,10 @@ pub fn apply(
         let pb = indicatif::ProgressBar::new_spinner();
         pb.set_style(
             indicatif::ProgressStyle::with_template("{spinner:.green} {msg}")
-                .expect("static template"),
+                .expect("static template")
+                // the retro braille snake (rootle's loading eye candy,
+                // adopted): a green coil that never stops looking busy
+                .tick_chars("⣾⣽⣻⢿⡿⣟⣯⣷ "),
         );
         pb.enable_steady_tick(std::time::Duration::from_millis(80));
         Some(pb)

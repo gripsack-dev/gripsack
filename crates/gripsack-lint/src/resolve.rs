@@ -18,6 +18,27 @@ pub(crate) fn resolve_exe(
         (Some(_), Some(_)) => Err(reg_label().with_help("pick one")),
         (Some(path), None) => Ok(PathBuf::from(path)),
         (None, Some(package)) => {
+            // a repo ref (owner/repo@tag) means a provisioned plugin
+            // binary from the store (0012 §move-2) — the wheel meaning
+            // stays for bare package names
+            if gripsack_fetch::plugins::parse_ref(package).is_some() {
+                let store =
+                    gripsack_fetch::plugins::PluginStore::new(&gripsack_store::gripsack_home());
+                let exe = format!("griplint-{name}");
+                return match store.current_binary(&exe) {
+                    Some(bin) => Ok(bin),
+                    None => Err(Diagnostic {
+                        code: std::borrow::Cow::Borrowed(MISSING_EXECUTABLE),
+                        severity: Severity::Error,
+                        message: format!(
+                            "linter {name:?} is declared as {package:?} but {exe} is not \
+                             provisioned — run any grip command to install declared plugins"
+                        ),
+                        labels: Vec::new(),
+                        help: None,
+                    }),
+                };
+            }
             let exe = frontend_python
                 .and_then(|p| p.parent().map(|d| d.join(format!("griplint-{name}"))));
             match exe {

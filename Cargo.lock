@@ -468,6 +468,7 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
  "ureq",
  "webpki-roots 1.0.9",
@@ -489,7 +490,9 @@ name = "gripsack-lint"
 version = "0.13.0"
 dependencies = [
  "gripsack-config",
+ "gripsack-fetch",
  "gripsack-ir",
+ "gripsack-store",
  "serde",
  "serde_json",
 ]

@@ -1148,3 +1148,60 @@ module("demo", config={"configs/demo/a": tracked_copy("~/.config/demo/a")})
     out = grip("check", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert "container" in out.stdout
+
+
+def _seed_plugin_store(sandbox, exe, fixture, tag="1.0"):
+    """Pre-seed the managed plugin store as if a prior provision ran."""
+    home = sandbox / ".local/share/gripsack"
+    bindir = home / "plugins" / exe / tag
+    bindir.mkdir(parents=True)
+    (bindir / exe).write_text(fixture)
+    (bindir / exe).chmod(0o755)
+    (home / "plugins" / exe / "current").symlink_to(f"{tag}/")
+    (home / "plugins" / "receipts").mkdir(parents=True)
+    (home / "plugins" / "receipts" / f"{exe}.toml").write_text(
+        f'source = "acme/{exe}"\ntag = "{tag}"\nsha256 = "ab"\n'
+    )
+
+
+def test_fetcher_package_ref_resolves_from_the_plugin_store(sandbox):
+    """0012 move 2: [fetchers.x] package = "owner/repo@tag" — with the
+    receipt already recording the tag, provisioning is a satisfied
+    no-op (no network) and the fetch runs the store's binary, not PATH."""
+    _seed_plugin_store(sandbox, "gripfetch-demo", FETCH_FIXTURE)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, plugin_fetch, symlink
+
+module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
+""",
+    )
+    with open(repo / "env.toml", "a") as f:
+        f.write('\n[fetchers.demo]\npackage = "acme/gripfetch-demo@1.0"\n')
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".local/bin/demo-a").is_symlink()
+
+
+def test_linter_repo_ref_resolves_from_the_plugin_store(sandbox):
+    """0012 move 2: a repo-ref [linters.x] package resolves the
+    provisioned store binary (the wheel meaning stays for bare names)."""
+    _seed_plugin_store(sandbox, "griplint-demo", LINT_FIXTURE)
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "demo.toml").write_text("BAD_KEY = 1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")},
+       lint="demo")
+""",
+    )
+    with open(repo / "env.toml", "a") as f:
+        f.write('\n[linters.demo]\npackage = "acme/griplint-demo@1.0"\n')
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "griplint-demo/A01" in out.stderr

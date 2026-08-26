@@ -94,6 +94,89 @@ pub fn pick_asset(
     })
 }
 
+/// What a plugin release resolution yields: the tarball download plus
+/// its mandatory checksum (from the `<asset>.sha256` sidecar asset).
+pub struct PluginRelease {
+    pub version: String,
+    pub url: String,
+    pub api_url: Option<String>,
+    pub sha256: String,
+}
+
+/// Resolve a plugin's release: the `<exe>-<tag>-<triple>.tar.gz` asset
+/// for this platform plus its sha256 sidecar (missing sidecar = failed
+/// install, never a warning — krew rule). `tag` pins; None = latest.
+pub fn resolve_plugin_release(
+    repo: &str,
+    exe: &str,
+    tag: Option<&str>,
+) -> Result<PluginRelease, ResolveError> {
+    let target = crate::host::AssetTarget::current().ok_or_else(|| ResolveError::NoAsset {
+        repo: repo.to_string(),
+        asset: "a supported platform".into(),
+        available: vec![],
+    })?;
+    let base = normalize_base(None);
+    let url = match tag {
+        Some(t) => format!("{base}/repos/{repo}/releases/tags/{t}"),
+        None => format!("{base}/repos/{repo}/releases/latest"),
+    };
+    let mut request = crate::http::get(&url).set("User-Agent", "gripsack");
+    if let Some(header) = crate::http::auth_header(&url) {
+        request = request.set("Authorization", &header);
+    }
+    let release: Release = request.call()?.into_json()?;
+    let tag_name = release.tag_name;
+    let bare = tag_name.strip_prefix('v').unwrap_or(&tag_name);
+    let asset_name = format!("{exe}-{bare}-{}.tar.gz", target.triple());
+    let sidecar_name = format!("{asset_name}.sha256");
+    let mut asset = None;
+    let mut sidecar = None;
+    for a in &release.assets {
+        if a.name == asset_name {
+            asset = Some(a);
+        } else if a.name == sidecar_name {
+            sidecar = Some(a);
+        }
+    }
+    let asset = asset.ok_or_else(|| ResolveError::NoAsset {
+        repo: repo.to_string(),
+        asset: asset_name.clone(),
+        available: release.assets.iter().map(|a| a.name.clone()).collect(),
+    })?;
+    let sidecar = sidecar.ok_or_else(|| ResolveError::NoAsset {
+        repo: repo.to_string(),
+        asset: sidecar_name,
+        available: release.assets.iter().map(|a| a.name.clone()).collect(),
+    })?;
+    // the sidecar's first token is the hash
+    let sha_text =
+        crate::fetch::tarball::read_url_authed(&sidecar.browser_download_url, Some(&sidecar.url))
+            .map_err(|e| ResolveError::NoAsset {
+            repo: repo.to_string(),
+            asset: format!("readable sha256 sidecar ({e})"),
+            available: vec![],
+        })?;
+    let sha256 = String::from_utf8_lossy(&sha_text)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(ResolveError::NoAsset {
+            repo: repo.to_string(),
+            asset: format!("a 64-hex sha256 in the sidecar (got {sha256:?})"),
+            available: vec![],
+        });
+    }
+    Ok(PluginRelease {
+        version: tag_name,
+        url: asset.browser_download_url.clone(),
+        api_url: Some(asset.url.clone()),
+        sha256,
+    })
+}
+
 /// base_url may be the bare GHE host ("https://ghe.example.com") —
 /// the API lives under /api/v3; normalize instead of failing on the
 /// HTML index page with a JSON parse error (enterprise finding #4).

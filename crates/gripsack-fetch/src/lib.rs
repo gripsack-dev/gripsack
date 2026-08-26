@@ -16,6 +16,7 @@
 pub mod fetch;
 pub mod host;
 pub(crate) mod http;
+pub mod plugins;
 pub mod resolve;
 pub mod throttle;
 
@@ -36,6 +37,12 @@ pub fn fetcher_exe(name: &str) -> String {
 /// Find a fetcher on `PATH`. Returns the full path to the executable.
 pub fn find_fetcher(name: &str) -> Option<PathBuf> {
     let exe = fetcher_exe(name);
+    // the managed plugin store wins (declared in env.toml, provisioned
+    // at eval — 0012 §move-2); PATH is the unmanaged fallback
+    let store = plugins::PluginStore::new(&gripsack_store::gripsack_home());
+    if let Some(bin) = store.current_binary(&exe) {
+        return Some(bin);
+    }
     let path_var = std::env::var_os("PATH")?;
     std::env::split_paths(&path_var)
         .map(|dir| dir.join(&exe))
