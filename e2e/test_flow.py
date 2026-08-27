@@ -1626,3 +1626,51 @@ def test_dual_frontend_parity_golden_corpus(sandbox):
                       if py_proj["modules"].get(k) != ts_proj["modules"].get(k)},
                      indent=1)[:4000]
     )
+
+
+def test_embedded_frontend_zero_provisioning(sandbox, monkeypatch):
+    """The zero-provisioning bootstrap: a config-only repo applies with
+    no GRIPSACK_PYTHON, no pip-installed frontend, and NO network — the
+    frontend compiled into the binary serves. [eval] deps would still
+    provision on demand; this repo has none."""
+    monkeypatch.delenv("GRIPSACK_PYTHON", raising=False)
+    repo = make_env_repo(
+        sandbox / "env",
+        "from gripsack import module, tracked_copy\n"
+        'module("c", config={"x.toml": tracked_copy("~/.config/x.toml")})\n',
+    )
+    (repo / "x.toml").write_text("embedded = true\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".config/x.toml").read_text() == "embedded = true\n"
+    # no provisioning happened: no uv download, no frontend venv
+    gs = sandbox / ".local/share/gripsack"
+    tools = gs / "tools"
+    assert not tools.exists() or not list(tools.glob("uv-*")), "uv was fetched"
+    frontend = gs / "frontend"
+    for d in frontend.iterdir() if frontend.exists() else []:
+        assert d.name.startswith("embed-"), f"provisioned venv appeared: {d.name}"
+    # prove the embedded path specifically: re-apply with a PATH that
+    # hides the harness venv (whose python3 imports gripsack and would
+    # legitimately win the fast path) — bare system python3 only
+    env = dict(
+        os.environ,
+        PATH="/usr/local/bin:/usr/bin:/bin",
+        HOME=str(sandbox),
+        GRIPSACK_HOME=str(sandbox / ".local/share/gripsack"),
+    )
+    env.pop("VIRTUAL_ENV", None)
+    again = subprocess.run(
+        [str(GRIP.resolve()), "apply", "--host", "testhost"],
+        cwd=repo, env=env, capture_output=True, text=True, timeout=120,
+    )
+    assert again.returncode == 0, again.stderr
+    assert "already satisfied" in again.stdout
+    assert (frontend / f"embed-{_core_version()}" / ".complete").exists()
+
+
+def _core_version() -> str:
+    out = subprocess.run(
+        [str(GRIP.resolve()), "--version"], capture_output=True, text=True
+    )
+    return out.stdout.strip().split()[-1]

@@ -10,6 +10,10 @@ RUN apk add --no-cache musl-dev git \
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+# the exec crate's build.rs embeds python/gripsack as the zero-
+# provisioning frontend — without this COPY the embed is empty and
+# every eval falls back to provisioning (caught by the embedded e2e)
+COPY python ./python
 
 FROM builder AS test
 RUN cargo fmt --check \

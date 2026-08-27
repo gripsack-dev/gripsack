@@ -3,10 +3,15 @@
 //! the user to manage it. uv is one static binary — we fetch it with
 //! our own verified fetcher.
 //!
-//! Fast path first: a `python3` that already imports gripsack wins.
-//! Otherwise provision `$GRIPSACK_HOME/frontend/<hash>/` — a venv keyed
-//! by the package version + deps, so spec changes rebuild and repeats
-//! are free.
+//! Fast paths first, no network anywhere: a `python3` that already
+//! imports gripsack wins; next the embedded frontend — the repo's own
+//! `python/gripsack`, compiled into the binary and materialized as a
+//! directory app (`python3 <dir>`) — so a config-only repo applies with
+//! zero network and zero provisioning ("try gripsack on one dotfile"
+//! must be practically lightweight, not just conceptually). Repos with
+//! `[eval] deps` or packaged linters still provision
+//! `$GRIPSACK_HOME/frontend/<hash>/` — a venv keyed by the package
+//! version + deps, so spec changes rebuild and repeats are free.
 
 use gripsack_config::EnvConfig;
 use std::io;
@@ -14,17 +19,99 @@ use std::path::{Path, PathBuf};
 
 use gripsack_fetch::UV_RELEASE;
 
-/// The python to evaluate with, provisioned if needed. Provisioning
-/// failures are the caller's error to surface — never silently fall
-/// back to a python3 that can't import gripsack.
-pub fn ensure_python(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<PathBuf> {
+mod embedded {
+    include!(concat!(env!("OUT_DIR"), "/frontend_files.rs"));
+}
+
+/// The python command to evaluate with: an interpreter, plus the app
+/// directory when the embedded frontend serves (`python3 <dir>` instead
+/// of `python3 -m gripsack`).
+pub struct FrontendPython {
+    pub program: PathBuf,
+    pub app_dir: Option<PathBuf>,
+}
+
+/// The python to evaluate with, provisioned only when the repo needs
+/// more than the embedded frontend carries. Provisioning failures are
+/// the caller's error to surface — never silently fall back to a
+/// python3 that can't import gripsack.
+pub fn ensure_python(
+    home: &Path,
+    config: &EnvConfig,
+    core_version: &str,
+) -> io::Result<FrontendPython> {
     if let Ok(python) = std::env::var("GRIPSACK_PYTHON") {
-        return Ok(PathBuf::from(python));
+        return Ok(FrontendPython {
+            program: PathBuf::from(python),
+            app_dir: None,
+        });
     }
-    if system_python_works() && config.eval.deps.is_empty() {
-        return Ok(PathBuf::from("python3"));
+    // A venv is only ever needed for repo-declared extras (eval deps,
+    // packaged linters). The embedded frontend carries the DSL itself.
+    let needs_venv =
+        !config.eval.deps.is_empty() || config.linters.values().any(|l| l.package.is_some());
+    if !needs_venv {
+        if system_python_works() {
+            return Ok(FrontendPython {
+                program: PathBuf::from("python3"),
+                app_dir: None,
+            });
+        }
+        if let Some(app) = embedded_frontend(home, core_version)? {
+            return Ok(FrontendPython {
+                program: PathBuf::from("python3"),
+                app_dir: Some(app),
+            });
+        }
     }
-    provision(home, config, core_version)
+    Ok(FrontendPython {
+        program: provision(home, config, core_version)?,
+        app_dir: None,
+    })
+}
+
+/// The embedded frontend, materialized as a directory app under
+/// `$GRIPSACK_HOME/frontend/embed-<version>/` — `python3 <dir>` runs
+/// its `__main__.py`, and the repo's modules import `gripsack` from it
+/// (sys.path[0]). None when this binary lacks the embed (crates.io
+/// builds) or python3 is missing/older than 3.10.
+fn embedded_frontend(home: &Path, core_version: &str) -> io::Result<Option<PathBuf>> {
+    if embedded::FRONTEND_FILES.is_empty() {
+        return Ok(None);
+    }
+    let modern = std::process::Command::new("python3")
+        .args([
+            "-c",
+            "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !modern {
+        return Ok(None);
+    }
+    let dir = home.join("frontend").join(format!("embed-{core_version}"));
+    let marker = dir.join(".complete");
+    if marker.exists() {
+        return Ok(Some(dir));
+    }
+    let pkg = dir.join("gripsack");
+    std::fs::create_dir_all(&pkg)?;
+    // Per-file atomic writes: two concurrent grips can interleave, but
+    // never observe a torn file; the marker lands last, so a partial
+    // materialization is redone next run.
+    for (rel, source) in embedded::FRONTEND_FILES {
+        let name = rel.rsplit('/').next().expect("file name");
+        gripsack_store::atomic_write(&pkg.join(name), source.as_bytes())?;
+    }
+    gripsack_store::atomic_write(
+        &dir.join("__main__.py"),
+        b"from gripsack.__main__ import main\n\nmain()\n",
+    )?;
+    gripsack_store::atomic_write(&marker, b"ok\n")?;
+    Ok(Some(dir))
 }
 
 fn system_python_works() -> bool {
@@ -40,11 +127,13 @@ fn system_python_works() -> bool {
 fn provision(home: &Path, config: &EnvConfig, core_version: &str) -> io::Result<PathBuf> {
     let uv = ensure_uv(home)?;
     // Registered linters are provisioned like eval deps (0010 §3):
-    // pinned packages only — `path` entries need no install.
+    // pinned wheel packages only — `path` entries need no install, and
+    // repo refs (owner/repo@tag) resolve from the plugin store.
     let linter_packages: Vec<&str> = config
         .linters
         .values()
         .filter_map(|l| l.package.as_deref())
+        .filter(|p| gripsack_fetch::plugins::parse_ref(p).is_none())
         .collect();
     let spec = format!(
         "gripsack=={core_version};{};{}",

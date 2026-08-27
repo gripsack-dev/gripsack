@@ -62,7 +62,8 @@ pub fn doctor(palette: Palette) -> ExitCode {
             // the provisioned venv may carry the frontend even when the
             // system python doesn't — apply works fine in that state,
             // so a bare MISS reads as a broken install when it isn't
-            let managed = std::fs::read_dir(gripsack_store::gripsack_home().join("frontend"))
+            let frontend_dir = gripsack_store::gripsack_home().join("frontend");
+            let managed = std::fs::read_dir(&frontend_dir)
                 .ok()
                 .into_iter()
                 .flatten()
@@ -84,11 +85,33 @@ pub fn doctor(palette: Palette) -> ExitCode {
                     path.display()
                 ),
                 None => {
-                    println!(
-                        "{}  frontend: `import gripsack` failed with {python} — pip install gripsack (or let provisioning handle it on first apply)",
-                        mark(false)
-                    );
-                    ok = false;
+                    // the embedded frontend serves config-only repos with
+                    // zero provisioning — a complete embed dir is proof
+                    let embedded = std::fs::read_dir(&frontend_dir)
+                        .ok()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|e| e.ok())
+                        .map(|e| e.path())
+                        .find(|p| {
+                            p.file_name()
+                                .is_some_and(|n| n.to_string_lossy().starts_with("embed-"))
+                                && p.join(".complete").exists()
+                        });
+                    match embedded {
+                        Some(dir) => println!(
+                            "{}  frontend: embedded in grip (materialized at {})",
+                            mark(true),
+                            dir.display()
+                        ),
+                        None => {
+                            println!(
+                                "{}  frontend: `import gripsack` failed with {python} — pip install gripsack (or let provisioning handle it on first apply)",
+                                mark(false)
+                            );
+                            ok = false;
+                        }
+                    }
                 }
             }
         }

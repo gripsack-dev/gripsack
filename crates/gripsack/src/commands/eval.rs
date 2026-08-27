@@ -163,9 +163,18 @@ pub fn eval_repo(
                 return Err(ExitCode::FAILURE);
             }
         };
-        frontend_python = Some(python.clone());
-        let mut cmd = std::process::Command::new(&python);
-        cmd.arg("-m").arg("gripsack").arg(repo).current_dir(repo);
+        frontend_python = Some(python.program.clone());
+        let mut cmd = std::process::Command::new(&python.program);
+        match &python.app_dir {
+            // the embedded frontend: `python3 <dir>` runs its __main__
+            Some(dir) => {
+                cmd.arg(dir).arg(repo);
+            }
+            None => {
+                cmd.arg("-m").arg("gripsack").arg(repo);
+            }
+        }
+        cmd.current_dir(repo);
         cmd
     };
     cmd.arg("--host").arg(&host);
