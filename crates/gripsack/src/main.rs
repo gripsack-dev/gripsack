@@ -1,10 +1,12 @@
 //! `grip` — the gripsack CLI.
 //!
 //! ```text
-//! grip doctor          frontend environment check (python · node · packages)
-//! grip plan --ir FILE  validate IR, print diagnostics + execution waves
-//! grip apply|rollback|generations|gc|why-owns
-//!                      the executor (plan/0001–0008) — in progress
+//! grip init            scaffold an env repo from the embedded template
+//! grip check           eval + sema + linters; the CI gate for your dotfiles repo
+//! grip apply|plan      fetch, build, deploy — one atomic generation per run
+//! grip rollback|generations|gc|why-owns
+//!                      generations, instant rollback, store hygiene
+//! grip update          re-resolve pins into the lockfile
 //! ```
 //!
 //! Colors and source snippets live in [`render`]; they follow the
