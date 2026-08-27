@@ -1281,3 +1281,59 @@ module("demo", {
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert (sandbox / ".config" / "demo" / "demo.toml").exists()
+
+
+def test_fetcher_path_registers_an_offline_executable(sandbox):
+    """[fetchers.x] path = ... registers the executable directly —
+    the offline/air-gapped route, symmetric with [linters.x] path
+    (enterprise review). No PATH lookup, no provisioning."""
+    bindir = sandbox / "bin"
+    bindir.mkdir()
+    fetcher = bindir / "gripfetch-demo"
+    fetcher.write_text(FETCH_FIXTURE)
+    fetcher.chmod(0o755)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, plugin_fetch, symlink
+
+module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
+""",
+    )
+    with open(repo / "env.toml", "a") as f:
+        f.write(f'\n[fetchers.demo]\npath = "{fetcher}"\n')
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".local/bin/demo-a").is_symlink()
+
+
+def test_changed_fetch_spec_re_resolves_instead_of_mirror_blame(sandbox):
+    """A fetch-spec edit must not fail as 'the mirror changed' — the
+    args are the declaration and the pin follows them (enterprise
+    review's stale-plugin-lock papercut)."""
+    _seed_plugin_store(sandbox, "gripfetch-demo", FETCH_FIXTURE)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, plugin_fetch, symlink
+
+module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
+""",
+    )
+    with open(repo / "env.toml", "a") as f:
+        f.write('\n[fetchers.demo]\npackage = "acme/gripfetch-demo@1.0"\n')
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    # same module, now pinned — the lock entry for the OLD args must
+    # not compare against the NEW spec
+    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+        """
+from gripsack import module, plugin_fetch, symlink
+
+module("a", fetch=plugin_fetch("demo", package="hello", version="1.0"),
+       install={"bin/demo": symlink("~/.local/bin/demo-a")})
+"""
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "mirror" not in out.stderr

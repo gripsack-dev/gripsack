@@ -35,8 +35,27 @@ pub fn fetcher_exe(name: &str) -> String {
 }
 
 /// Find a fetcher on `PATH`. Returns the full path to the executable.
+/// Explicit executable paths registered from env.toml (`[fetchers.x]
+/// path = …` or `plugin = …`), consulted before the store and PATH —
+/// the offline/air-gapped route (enterprise review).
+static REGISTERED: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::BTreeMap<String, PathBuf>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::BTreeMap::new()));
+
+pub fn register_fetcher_path(name: &str, path: PathBuf) {
+    REGISTERED
+        .lock()
+        .expect("fetcher registry")
+        .insert(name.to_string(), path);
+}
+
 pub fn find_fetcher(name: &str) -> Option<PathBuf> {
     let exe = fetcher_exe(name);
+    if let Some(path) = REGISTERED.lock().expect("fetcher registry").get(name)
+        && path.is_file()
+    {
+        return Some(path.clone());
+    }
     // the managed plugin store wins (declared in env.toml, provisioned
     // at eval — 0012 §move-2); PATH is the unmanaged fallback
     let store = plugins::PluginStore::new(&gripsack_store::gripsack_home());

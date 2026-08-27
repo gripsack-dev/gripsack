@@ -62,6 +62,22 @@ pub fn eval_repo(
     {
         let store = gripsack_fetch::plugins::PluginStore::new(&gripsack_store::gripsack_home());
         for (name, section) in &env.fetchers {
+            // an explicit executable path (path = the registry-symmetric
+            // name; plugin = its original alias) registers directly —
+            // no provisioning, no network (the offline route)
+            let explicit = section.path.as_ref().or(section.plugin.as_ref());
+            if let Some(exe) = explicit {
+                if section.package.is_some() {
+                    eprintln!(
+                        "grip: [fetchers.{name}] declares an executable path and a package — pick one"
+                    );
+                    return Err(ExitCode::FAILURE);
+                }
+                if exe.contains('/') {
+                    gripsack_fetch::register_fetcher_path(name, exe.into());
+                }
+                continue;
+            }
             if let Some(package) = &section.package {
                 if section.plugin.is_some() {
                     eprintln!(
@@ -128,9 +144,22 @@ pub fn eval_repo(
             Ok(python) => python,
             Err(e) => {
                 eprintln!("grip: frontend provisioning failed: {e}");
-                eprintln!(
-                    "hint: set GRIPSACK_PYTHON to a python with `gripsack` installed to bypass provisioning"
-                );
+                let detail = e.to_string();
+                if detail.contains("certificate") || detail.contains("UnknownIssuer") {
+                    eprintln!(
+                        "hint: behind a TLS-intercepting proxy, set SSL_CERT_FILE to the corporate CA bundle"
+                    );
+                } else if detail.contains("no version") || detail.contains("unsatisfiable") {
+                    eprintln!(
+                        "hint: a corporate default index (uv.toml) may not mirror gripsack — \
+                         set UV_DEFAULT_INDEX=https://pypi.org/simple, or GRIPSACK_PYTHON to a \
+                         python with `gripsack` installed to bypass provisioning"
+                    );
+                } else {
+                    eprintln!(
+                        "hint: set GRIPSACK_PYTHON to a python with `gripsack` installed to bypass provisioning"
+                    );
+                }
                 return Err(ExitCode::FAILURE);
             }
         };

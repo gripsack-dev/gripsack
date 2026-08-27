@@ -101,8 +101,23 @@ pub(crate) fn deploy_entry(
         detail,
     };
     if !source.exists() {
+        // install={} keys are payload-relative — a versioned top-level
+        // dir in the archive must be part of the key; say what IS here
+        let hint = std::fs::read_dir(store_path)
+            .map(|entries| {
+                let names: Vec<_> = entries
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect();
+                if names.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (payload top-level: {})", names.join(", "))
+                }
+            })
+            .unwrap_or_default();
         return Err(fail(format!(
-            "no payload or repo file at {} (from {})",
+            "no payload or repo file at {} (from {}){hint}",
             source.display(),
             entry.from
         )));

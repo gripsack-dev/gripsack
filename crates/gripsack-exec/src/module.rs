@@ -198,17 +198,30 @@ impl<'a> ModuleRun<'a> {
     fn fetch_step(&mut self, step: &Step, spec: &gripsack_ir::FetchSpec) -> Result<(), ExecError> {
         progress(self.ctx, self.name, "fetching");
         let stage = self.staging.get_or_insert_with(|| fresh_staging(self.name));
+        // a changed fetch spec invalidates the lock entry — the args
+        // are the declaration, the pin follows them, never the reverse
+        // (a spec edit must not fail as "the mirror changed", which
+        // costs a confused ten minutes hand-editing the lockfile)
+        let spec_changed = self.locked.is_some_and(|e| e.fetch != *spec);
+        let locked = if spec_changed {
+            tracing::info!(
+                module = self.name,
+                "fetch spec changed — re-resolving the pin"
+            );
+            None
+        } else {
+            self.locked
+        };
         // resolve to a concrete spec — the locked pin wins; else
         // resolve now (trust on first use, 0002 §3)
-        let (concrete, meta) = resolve_spec(spec, self.locked)?;
+        let (concrete, meta) = resolve_spec(spec, locked)?;
         if let Some(m) = &meta {
             self.version = Some(m.version.clone());
         }
         // Plugin fetchers learn the pin — first-fetch (resolve, TOFU)
         // and pinned re-fetch (reproduce) are different code paths for
         // internal registries (0002 §4 `locked`).
-        let locked_json = self
-            .locked
+        let locked_json = locked
             .and_then(|e| e.resolved.as_ref())
             .and_then(|r| serde_json::to_value(r).ok());
         let outcome = gripsack_fetch::fetch_with_locked(&concrete, stage, locked_json.as_ref())
@@ -226,8 +239,7 @@ impl<'a> ModuleRun<'a> {
             self.store_path = store::store_path(&self.ctx.home, self.name, &input);
         }
         // pin enforcement for kinds without download-level verification
-        if let Some(expected) = self
-            .locked
+        if let Some(expected) = locked
             .and_then(|e| e.resolved.as_ref())
             .and_then(|r| r.sha256.as_ref())
             && sha != *expected

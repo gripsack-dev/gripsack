@@ -116,6 +116,42 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                     });
                 }
             }
+            F::Pixi { .. } | F::Plugin { .. } => {
+                // re-resolve into staging and compare the tree hash —
+                // pixi and plugin fetches are resolvable too (the
+                // "skipped" path left graphs unpinned; enterprise review)
+                let staging = ctx.home.join("staging").join(format!(".update-{name}"));
+                let _ = std::fs::remove_dir_all(&staging);
+                std::fs::create_dir_all(&staging)?;
+                let locked_json = None; // resolve fresh, never reproduce
+                let outcome = gripsack_fetch::fetch_with_locked(spec, &staging, locked_json)
+                    .map_err(ExecError::Fetch)?;
+                let sha = outcome.hash;
+                let _ = std::fs::remove_dir_all(&staging);
+                if old.as_deref() == Some(sha.as_str()) {
+                    reports.push(UpdateReport {
+                        module: name.clone(),
+                        status: UpdateStatus::Unchanged,
+                    });
+                } else {
+                    lock.modules.insert(
+                        name.clone(),
+                        crate::lockfile::LockEntry {
+                            fetch: spec.clone(),
+                            resolved: Some(crate::lockfile::Resolved {
+                                url: outcome.plugin_url,
+                                version: outcome.plugin_version,
+                                sha256: Some(sha.clone()),
+                                api_url: None,
+                            }),
+                        },
+                    );
+                    reports.push(UpdateReport {
+                        module: name.clone(),
+                        status: UpdateStatus::Bumped { old, new: sha },
+                    });
+                }
+            }
             _ => {
                 reports.push(UpdateReport {
                     module: name.clone(),
