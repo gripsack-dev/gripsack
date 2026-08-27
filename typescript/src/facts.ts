@@ -1,4 +1,5 @@
 /** Host facts — captured at eval, the only place they exist (0001 §5). */
+import { existsSync } from "node:fs";
 
 export interface HostFacts {
   os: string;
@@ -14,7 +15,12 @@ function detectLibc(): string | undefined {
     | { header?: { glibcVersionRuntime?: string } }
     | undefined;
   const glibc = report?.header?.glibcVersionRuntime;
-  return glibc ? `glibc-${glibc}` : undefined;
+  if (glibc) return `glibc-${glibc}`;
+  // musl (alpine, the e2e gate image): the loader is the tell — bun's
+  // report has no glibcVersionRuntime there. Matches the python
+  // frontend's normalized "musl" (parity corpus, docker gate).
+  if (existsSync(`/lib/ld-musl-${rustArch(process.arch)}.so.1`)) return "musl";
+  return undefined;
 }
 
 /** Node's arch names → the IR's Rust-style names (x86_64, aarch64). */

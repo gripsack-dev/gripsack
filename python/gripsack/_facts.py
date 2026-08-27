@@ -26,6 +26,10 @@ def detect_libc() -> str:
     if sys.platform == "darwin":
         return "darwin"
     name, version = platform.libc_ver()
+    if name == "musl":
+        # normalize: the musl/glibc axis is what asset selection keys
+        # on; version formats differ per probe (parity corpus, docker)
+        return "musl"
     if name:
         return f"{name}-{version}"
     musl_loader = f"/lib/ld-musl-{platform.machine()}.so.1"
