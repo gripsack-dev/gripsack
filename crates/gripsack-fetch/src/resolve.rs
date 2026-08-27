@@ -125,7 +125,34 @@ pub fn resolve_plugin_release(
     if let Some(header) = crate::http::auth_header(&url) {
         request = request.set("Authorization", &header);
     }
-    let release: Release = request.call()?.into_json()?;
+    // tags may be written v1.0 or 1.0 — try the other form on 404
+    // (the same convention pick_asset uses for asset names)
+    let release: Release = match request.call() {
+        Ok(r) => r.into_json()?,
+        Err(e) => {
+            let alternate = tag.and_then(|t| {
+                if e.to_string().contains("404") {
+                    let alt = t
+                        .strip_prefix('v')
+                        .map(|b| b.to_string())
+                        .unwrap_or_else(|| format!("v{t}"));
+                    Some(format!("{base}/repos/{repo}/releases/tags/{alt}"))
+                } else {
+                    None
+                }
+            });
+            match alternate {
+                Some(url) => {
+                    let mut request = crate::http::get(&url).set("User-Agent", "gripsack");
+                    if let Some(header) = crate::http::auth_header(&url) {
+                        request = request.set("Authorization", &header);
+                    }
+                    request.call()?.into_json()?
+                }
+                None => return Err(ResolveError::Http(Box::new(e))),
+            }
+        }
+    };
     let tag_name = release.tag_name;
     let bare = tag_name.strip_prefix('v').unwrap_or(&tag_name);
     let asset_name = format!("{exe}-{bare}-{}.tar.gz", target.triple());
