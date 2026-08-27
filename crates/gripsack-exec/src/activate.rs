@@ -11,6 +11,94 @@ use gripsack_ir::{Action, Module, Trigger};
 use std::collections::BTreeMap;
 use tracing::{info, warn};
 
+/// Run every PostLink intent (fonts / desktop-entry cache refreshes),
+/// deduped across modules — three font modules mean ONE fc-cache,
+/// not three. Runs before PostActivate (trigger order, 0001 §3.8).
+pub(crate) fn run_post_link(
+    order: &[String],
+    modules: &BTreeMap<String, Module>,
+) -> Vec<StepReport> {
+    let mut want_fonts = false;
+    let mut want_desktop = false;
+    for name in order {
+        let module = &modules[name.as_str()];
+        for intent in &module.activate {
+            if intent.trigger == Trigger::PostLink {
+                match intent.action {
+                    Action::Fonts => want_fonts = true,
+                    Action::DesktopEntry => want_desktop = true,
+                    _ => {}
+                }
+            }
+        }
+    }
+    let mut reports = Vec::new();
+    if want_fonts {
+        reports.push(refresh_cache(
+            "fonts",
+            "fc-cache",
+            &["-f"],
+            "fontconfig cache refreshed",
+        ));
+    }
+    if want_desktop {
+        let apps = desktop_applications_dir();
+        let apps_str = apps.to_string_lossy().into_owned();
+        reports.push(refresh_cache(
+            "desktop-entry",
+            "update-desktop-database",
+            &[&apps_str],
+            "desktop database refreshed",
+        ));
+    }
+    reports
+}
+
+fn desktop_applications_dir() -> std::path::PathBuf {
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        return std::path::PathBuf::from(xdg).join("applications");
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return std::path::PathBuf::from(home).join(".local/share/applications");
+    }
+    std::path::PathBuf::from("~/.local/share/applications")
+}
+
+/// A cache-refresh adapter: run the tool if it exists, warn-skip
+/// otherwise. Failures are warnings, never apply errors (the hard rule).
+fn refresh_cache(kind: &str, tool: &str, args: &[&str], ok_msg: &str) -> StepReport {
+    let available = std::process::Command::new(tool)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !available {
+        return StepReport {
+            module: kind.to_string(),
+            summary: format!("{kind} skipped (no {tool})"),
+            kind: ReportKind::Warned,
+        };
+    }
+    let status = std::process::Command::new(tool).args(args).status();
+    match status {
+        Ok(s) if s.success() => StepReport {
+            module: kind.to_string(),
+            summary: format!("{ok_msg} ({tool})"),
+            kind: ReportKind::Configured,
+        },
+        _ => {
+            warn!(tool, "cache refresh failed");
+            StepReport {
+                module: kind.to_string(),
+                summary: format!("{kind} refresh failed ({tool})"),
+                kind: ReportKind::Warned,
+            }
+        }
+    }
+}
+
 /// Run every PostActivate intent of the modules that applied, in
 /// graph order. Returns the reports for the CLI.
 pub(crate) fn run_post_activate(

@@ -1337,3 +1337,53 @@ module("a", fetch=plugin_fetch("demo", package="hello", version="1.0"),
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert "mirror" not in out.stderr
+
+
+def test_fonts_and_desktop_entry_adapters_run_once_per_apply(sandbox, monkeypatch):
+    """PostLink intents: fonts() runs fc-cache, desktop_entry() runs
+    update-desktop-database — deduped across modules, tolerating
+    absence (0001 §3.8)."""
+    bindir = sandbox / "bin"
+    bindir.mkdir()
+    log = sandbox / "calls.log"
+    for tool in ("fc-cache", "update-desktop-database"):
+        (bindir / tool).write_text(f'#!/bin/sh\necho "{tool} $@" >> {log}\n')
+        (bindir / tool).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+    confdir = sandbox / "myenv" / "configs" / "font"
+    confdir.mkdir(parents=True)
+    (confdir / "myfont.ttf").write_text("fake font\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import desktop_entry, fonts, module, symlink
+
+module("font-a", config={"configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf")},
+       activate=[fonts(), desktop_entry()])
+module("font-b", config={"configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont-b.ttf")},
+       activate=[fonts()])
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    calls = log.read_text().splitlines()
+    assert calls.count("fc-cache -f") == 1, calls
+    assert sum(1 for c in calls if "update-desktop-database" in c and "applications" in c) == 1, calls
+
+
+def test_fonts_adapter_skips_cleanly_without_fc_cache(sandbox):
+    """No fc-cache on PATH → a warning, never an apply error."""
+    confdir = sandbox / "myenv" / "configs" / "font"
+    confdir.mkdir(parents=True)
+    (confdir / "myfont.ttf").write_text("fake font\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import fonts, module, symlink
+
+module("font", config={"configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf")},
+       activate=[fonts()])
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
