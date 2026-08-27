@@ -182,12 +182,22 @@ fn run(program: &Path, args: &[&str], home: &Path) -> io::Result<()> {
         Ok(())
     } else {
         let tail = String::from_utf8_lossy(&out.stderr);
+        // the last few lines, trimmed — one raw last line is often a
+        // wrapped sentence fragment or a tool's own hint (review:
+        // "a few lines of tail rather than one, trimmed")
         let tail = tail
             .lines()
-            .last()
-            .unwrap_or("")
+            .rev()
+            .take(3)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" | ")
             .chars()
-            .take(300)
+            .take(400)
             .collect::<String>();
         Err(io::Error::other(format!(
             "{} {:?} exited {}{}",
