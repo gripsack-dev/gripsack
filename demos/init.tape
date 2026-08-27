@@ -1,9 +1,9 @@
 # gripsack CLI demo — first run: grip init scaffolds a working env repo.
 # Local render: see .agents/skills/gripsack-demo-capture.
 Output demos/demo-init.gif
-Set FontSize 14
-Set Width 900
-Set Height 560
+Set FontSize 28
+Set Width 1800
+Set Height 1120
 Set Theme "Catppuccin Mocha"
 
 Type@10ms "rm -rf /tmp/my-env ~/.local/share/gripsack && cd /tmp && grip init my-env && cd my-env"

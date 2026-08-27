@@ -2,9 +2,9 @@
 # snippet, fixed, then green. Zero side effects either way.
 # Local render: see .agents/skills/gripsack-demo-capture.
 Output demos/demo-check.gif
-Set FontSize 14
-Set Width 900
-Set Height 560
+Set FontSize 28
+Set Width 1800
+Set Height 1120
 Set Theme "Catppuccin Mocha"
 
 Type@10ms "sh /vhs/demos/check_setup.sh && cd /tmp/checkenv"
