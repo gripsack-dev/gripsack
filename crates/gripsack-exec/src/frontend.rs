@@ -185,6 +185,90 @@ fn run(program: &Path, args: &[&str], home: &Path) -> io::Result<()> {
     }
 }
 
+// ── TypeScript frontend (bun) ───────────────────────────────────────
+
+/// The bun runtime for the TypeScript frontend: GRIPSACK_BUN wins, a
+/// bun on PATH next, the pinned download last (same precedence as uv —
+/// a site bun with config the pinned one lacks must win).
+pub fn ensure_bun(home: &Path) -> io::Result<PathBuf> {
+    if let Ok(bun) = std::env::var("GRIPSACK_BUN") {
+        return Ok(PathBuf::from(bun));
+    }
+    if std::process::Command::new("bun")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        return Ok(PathBuf::from("bun"));
+    }
+    let dir = home
+        .join("tools")
+        .join(format!("bun-{}", gripsack_fetch::BUN_RELEASE.version));
+    let bun = dir.join("bun");
+    if bun.exists() {
+        return Ok(bun);
+    }
+    let (url, sha) = gripsack_fetch::resolve_host_asset(&gripsack_fetch::BUN_RELEASE)
+        .map_err(io::Error::other)?;
+    let spec = gripsack_ir::FetchSpec::Tarball {
+        url,
+        api_url: None,
+        sha256: Some(sha.to_string()),
+    };
+    let staging = dir.with_extension("staging");
+    let _ = std::fs::remove_dir_all(&staging);
+    gripsack_fetch::fetch(&spec, &staging).map_err(io::Error::other)?;
+    // the zip contains bun-<target>/bun
+    let target = gripsack_fetch::AssetTarget::current()
+        .expect("resolved above")
+        .bun_name();
+    let nested = staging.join(format!("bun-{target}"));
+    std::fs::create_dir_all(&dir)?;
+    std::fs::rename(nested.join("bun"), &bun)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bun, std::fs::Permissions::from_mode(0o755))?;
+    }
+    let _ = std::fs::remove_dir_all(&staging);
+    Ok(bun)
+}
+
+/// The @gripsack/core package for the TypeScript frontend, pinned to
+/// the core's version and installed into a spec-keyed dir — same model
+/// as the python frontend venv.
+pub fn ensure_ts_frontend(home: &Path, core_version: &str) -> io::Result<PathBuf> {
+    // GRIPSACK_TS_FRONTEND: a directory containing node_modules/
+    // @gripsack/core (dev checkouts, air-gapped mirrors) — the same
+    // escape-hatch shape as GRIPSACK_PYTHON/GRIPSACK_UV/GRIPSACK_BUN
+    if let Ok(dir) = std::env::var("GRIPSACK_TS_FRONTEND") {
+        return Ok(PathBuf::from(dir));
+    }
+    let dir = home.join("frontend-ts").join(core_version);
+    let pkg = dir.join("node_modules/@gripsack/core");
+    if pkg.exists() {
+        return Ok(dir);
+    }
+    let bun = ensure_bun(home)?;
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("package.json"),
+        format!(
+            "{{\"name\":\"gripsack-frontend\",\"private\":true,\"dependencies\":{{\"@gripsack/core\":\"{core_version}\"}}}}"
+        ),
+    )?;
+    run(&bun, &["install", "--no-progress"], &dir)?;
+    if !pkg.exists() {
+        return Err(io::Error::other(format!(
+            "bun install did not produce @gripsack/core@{core_version} — is the typescript frontend published?"
+        )));
+    }
+    Ok(dir)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{UV_MIN_VERSION, parse_version};

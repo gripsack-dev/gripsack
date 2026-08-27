@@ -211,8 +211,9 @@ impl<'a> ModuleRun<'a> {
             .locked
             .and_then(|e| e.resolved.as_ref())
             .and_then(|r| serde_json::to_value(r).ok());
-        let sha = gripsack_fetch::fetch_with_locked(&concrete, stage, locked_json.as_ref())
+        let outcome = gripsack_fetch::fetch_with_locked(&concrete, stage, locked_json.as_ref())
             .map_err(ExecError::Fetch)?;
+        let sha = outcome.hash;
         // Finalize a deferred identity (finding C): the first fetch's
         // sha joins the store-path input — identical to what the lock
         // gives every later apply. Presence was never checked against
@@ -241,8 +242,15 @@ impl<'a> ModuleRun<'a> {
         self.lock_entry = Some(lockfile::LockEntry {
             fetch: spec.clone(),
             resolved: Some(lockfile::Resolved {
-                url: meta.as_ref().map(|m| m.url.clone()),
-                version: meta.as_ref().map(|m| m.version.clone()),
+                // a plugin's reported pin (upstream artifact url +
+                // version) is recorded so the next apply's `locked`
+                // tells it exactly what to reproduce; for resolved
+                // kinds, the resolution's own metadata
+                url: meta.as_ref().map(|m| m.url.clone()).or(outcome.plugin_url),
+                version: meta
+                    .as_ref()
+                    .map(|m| m.version.clone())
+                    .or(outcome.plugin_version),
                 sha256: Some(sha),
                 api_url: meta.and_then(|m| m.api_url.clone()),
             }),

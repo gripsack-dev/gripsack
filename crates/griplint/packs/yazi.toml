@@ -7,6 +7,7 @@ handles = ["keymap.toml", "theme.toml", "yazi.toml"]
 format = "toml"
 supported = ["25.", "26."]
 series = "v0"
+coverage_warning = "key tables are written for yazi 25.x/26.x; this module pins {version} — results may be stale"
 
 [files."keymap.toml".rules."mgr"]
 keymap = { types = ["array"] }

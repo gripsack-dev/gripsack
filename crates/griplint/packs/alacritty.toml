@@ -7,6 +7,7 @@ handles = ["alacritty.toml"]
 format = "toml"
 supported = ["0."]
 series = "v0"
+coverage_warning = "key tables are written for TOML-era alacritty (0.13+); this module pins {version} — results may be stale"
 
 [files."alacritty.toml".rules."general"]
 import = { types = ["array"] }

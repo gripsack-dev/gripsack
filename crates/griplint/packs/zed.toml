@@ -7,6 +7,7 @@ handles = ["settings.json"]
 format = "json"
 supported = ["0."]
 series = "v0"
+coverage_warning = "key tables are written for a different major version; this module pins {version} — results may be stale"
 
 [files."settings.json".rules.""]
 "$schema" = { types = ["string"] }

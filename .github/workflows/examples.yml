@@ -67,6 +67,16 @@ jobs:
           repository: gripsack-dev/example-env-typescript
           path: example
 
+      - name: Build grip (static musl)
+        run: docker compose run --build --rm -e VERSION=0.0.0-ci release
+        working-directory: gripsack
+
+      - name: Extract binary
+        run: |
+          mkdir -p /tmp/grip-bin
+          tar -xzf gripsack/dist/gripsack-*.tar.gz -C /tmp/grip-bin
+          echo "GRIP=$(find /tmp/grip-bin -type f -name grip)" >> "$GITHUB_ENV"
+
       - name: Build @gripsack/core
         run: |
           cd gripsack/typescript
@@ -79,3 +89,22 @@ jobs:
           npm pkg delete 'dependencies.@gripsack/core'
           npm install "$GITHUB_WORKSPACE/gripsack/typescript"
           npx tsc
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Apply the example env (typescript frontend, real eval)
+        env:
+          HOME: /tmp/example-home-ts
+          GRIPSACK_HOME: /tmp/example-home-ts/.gs
+          # the driver resolves @gripsack/core from the repo's own
+          # install (just typechecked); the provisioned copy would be
+          # the not-yet-published version during a PR
+          GRIPSACK_TS_FRONTEND: /tmp/ts-frontend
+        run: |
+          mkdir -p /tmp/ts-frontend/node_modules/@gripsack/core
+          cp -r gripsack/typescript/dist gripsack/typescript/package.json \
+            /tmp/ts-frontend/node_modules/@gripsack/core/
+          cd example
+          "$GRIP" check --host laptop
+          "$GRIP" apply --host laptop
+          "$GRIP" apply --host laptop   # satisfied
