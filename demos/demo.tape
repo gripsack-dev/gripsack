@@ -6,21 +6,21 @@ Set Width 1800
 Set Height 1120
 Set Theme "Catppuccin Mocha"
 
-Type@10ms "sh /vhs/demos/demo_setup.sh && cd /tmp/myenv"
+Type@40ms "sh /vhs/demos/demo_setup.sh && cd /tmp/myenv"
 Enter
-Sleep 1s
-Type@10ms "grip apply"
+Sleep 4s
+Type@40ms "grip apply --host demo"
 Enter
-Sleep 3s
-Type@10ms "~/.local/bin/hello"
+Sleep 4s
+Type@40ms "~/.local/bin/hello"
 Enter
-Sleep 1s
-Type@10ms "grip apply"
+Sleep 4s
+Type@40ms "grip apply --host demo"
 Enter
-Sleep 2s
-Type@10ms "grip generations"
+Sleep 4s
+Type@40ms "grip generations"
 Enter
-Sleep 2s
-Type@10ms "grip plan --ir /vhs/demos/fixtures/ir.json"
+Sleep 4s
+Type@40ms "grip plan --ir /vhs/demos/fixtures/ir.json"
 Enter
-Sleep 3s
+Sleep 4s

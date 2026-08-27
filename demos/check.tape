@@ -7,15 +7,15 @@ Set Width 1800
 Set Height 1120
 Set Theme "Catppuccin Mocha"
 
-Type@10ms "sh /vhs/demos/check_setup.sh && cd /tmp/checkenv"
+Type@40ms "sh /vhs/demos/check_setup.sh && cd /tmp/checkenv"
 Enter
-Sleep 1s
-Type@10ms "grip check"
+Sleep 4s
+Type@40ms "grip check --host demo"
 Enter
-Sleep 3s
-Type@10ms "sed -i 's/BAD_KEY/auto_save/' configs/demo/demo.toml"
+Sleep 4s
+Type@40ms "sed -i 's/BAD_KEY/auto_save/' configs/demo/demo.toml"
 Enter
-Sleep 1s
-Type@10ms "grip check"
+Sleep 4s
+Type@40ms "grip check --host demo"
 Enter
-Sleep 3s
+Sleep 4s

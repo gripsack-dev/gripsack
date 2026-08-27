@@ -6,21 +6,21 @@ Set Width 1800
 Set Height 1120
 Set Theme "Catppuccin Mocha"
 
-Type@10ms "rm -rf /tmp/my-env ~/.local/share/gripsack && cd /tmp && grip init my-env && cd my-env"
+Type@40ms "rm -rf /tmp/my-env ~/.local/share/gripsack && cd /tmp && grip init my-env && cd my-env"
 Enter
-Sleep 2s
-Type@10ms "find . -type f -not -path './.git/*' | sort"
+Sleep 4s
+Type@40ms "find . -type f -not -path './.git/*' | sort"
 Enter
-Sleep 1.5s
-Type@10ms "grip check"
+Sleep 4s
+Type@40ms "grip check"
 Enter
-Sleep 3s
-Type@10ms "grip apply"
+Sleep 4s
+Type@40ms "grip apply"
 Enter
-Sleep 3s
-Type@10ms "cat ~/.config/hello/hello.toml"
+Sleep 4s
+Type@40ms "cat ~/.config/hello/hello.toml"
 Enter
-Sleep 2s
-Type@10ms "grip generations"
+Sleep 4s
+Type@40ms "grip generations"
 Enter
-Sleep 2s
+Sleep 4s
