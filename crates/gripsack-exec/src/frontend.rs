@@ -46,10 +46,16 @@ pub fn ensure_python(
             app_dir: None,
         });
     }
-    // A venv is only ever needed for repo-declared extras (eval deps,
-    // packaged linters). The embedded frontend carries the DSL itself.
-    let needs_venv =
-        !config.eval.deps.is_empty() || config.linters.values().any(|l| l.package.is_some());
+    // A venv is only ever needed for repo-declared extras that pip
+    // installs: eval deps and wheel linters. Repo-ref linters
+    // (owner/repo@tag) resolve from the plugin store, not pip — they
+    // must not force provisioning (caught by the linter-repo-ref e2e).
+    let needs_venv = !config.eval.deps.is_empty()
+        || config.linters.values().any(|l| {
+            l.package
+                .as_deref()
+                .is_some_and(|p| gripsack_fetch::plugins::parse_ref(p).is_none())
+        });
     if !needs_venv {
         if system_python_works() {
             return Ok(FrontendPython {
