@@ -41,6 +41,12 @@ struct PluginResult {
     /// which mirror, which credential identity — it lands in the run
     /// log (0009 §2 rule 7).
     provenance: Option<serde_json::Value>,
+    /// The plugin's pin for THIS fetch: the upstream artifact's URL and
+    /// version. Recorded in the lockfile so the next apply's `locked`
+    /// tells the plugin exactly what to reproduce (0002 §4) — without
+    /// this, locked could never arrive (gripfetch-apt review).
+    url: Option<String>,
+    version: Option<String>,
     /// The `capabilities` op payload — declared rate budgets (0002
     /// §throttle), parsed separately from the fetch response.
     capabilities: Option<serde_json::Value>,
@@ -112,12 +118,21 @@ fn capabilities_exchange(exe: &Path) -> Option<Capabilities> {
     result
 }
 
+/// What a plugin fetch yields: the core-computed payload identity plus
+/// the plugin's reported pin (recorded, never trusted — enforcement
+/// stays the core's tree hash).
+pub(crate) struct PluginFetch {
+    pub hash: String,
+    pub url: Option<String>,
+    pub version: Option<String>,
+}
+
 pub(crate) fn fetch(
     name: &str,
     args: &serde_json::Value,
     dest: &Path,
     locked: Option<&serde_json::Value>,
-) -> Result<String, FetchError> {
+) -> Result<PluginFetch, FetchError> {
     let exe = crate::find_fetcher(name).ok_or_else(|| FetchError::Http {
         url: name.to_string(),
         reason: format!("gripfetch-{name} not found on PATH (or declare it in env.toml)"),
@@ -173,6 +188,7 @@ pub(crate) fn fetch(
 
     let deadline = Instant::now() + PLUGIN_TIMEOUT;
     let mut responded = false;
+    let mut pin: (Option<String>, Option<String>) = (None, None);
     let mut error_diagnostics = Vec::new();
     for line in std::io::BufReader::new(stdout).lines() {
         let line = line?;
@@ -195,8 +211,11 @@ pub(crate) fn fetch(
             "progress" => tracing::info!(plugin = name, "{line}"),
             "response" => {
                 responded = true;
-                if let Some(provenance) = message.result.and_then(|r| r.provenance) {
-                    tracing::info!(plugin = name, provenance = %provenance, "provenance");
+                if let Some(result) = message.result {
+                    pin = (result.url, result.version);
+                    if let Some(provenance) = result.provenance {
+                        tracing::info!(plugin = name, provenance = %provenance, "provenance");
+                    }
                 }
             }
             _ => {}
@@ -253,5 +272,9 @@ pub(crate) fn fetch(
         });
     }
     // identity is computed by the core — never the plugin's word
-    Ok(gripsack_store::canonical_tree_hash(dest)?)
+    Ok(PluginFetch {
+        hash: gripsack_store::canonical_tree_hash(dest)?,
+        url: pin.0,
+        version: pin.1,
+    })
 }

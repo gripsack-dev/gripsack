@@ -27,6 +27,16 @@ impl AssetTarget {
         }
     }
 
+    /// bun's asset names follow their own convention (linux-x64, …).
+    pub fn bun_name(&self) -> &'static str {
+        match self {
+            Self::LinuxX86_64Musl => "linux-x64",
+            Self::LinuxAarch64Musl => "linux-aarch64",
+            Self::MacosX86_64 => "darwin-x64",
+            Self::MacosAarch64 => "darwin-aarch64",
+        }
+    }
+
     /// The vendor's asset triple — also the tarball's nested dir name.
     pub fn triple(&self) -> &'static str {
         match self {
@@ -68,7 +78,8 @@ pub fn resolve(release: &ToolRelease) -> Result<(String, &'static str), FetchErr
     let url = release
         .url_template
         .replace("{version}", release.version)
-        .replace("{triple}", target.triple());
+        .replace("{triple}", target.triple())
+        .replace("{buntarget}", target.bun_name());
     Ok((url, sha))
 }
 
@@ -91,6 +102,32 @@ pub const PIXI_RELEASE: ToolRelease = ToolRelease {
         (
             AssetTarget::MacosAarch64,
             "2b1280f11ed058477eb2752baac875615eb9ad48002c0536d8063d4249e853c2",
+        ),
+    ],
+};
+
+/// bun — the TypeScript frontend's runtime (single binary, runs TS
+/// natively; no node+transpile chain). Hashes from bun-v1.4.0's
+/// SHASUMS256.txt.
+pub const BUN_RELEASE: ToolRelease = ToolRelease {
+    version: "1.4.0",
+    url_template: "https://github.com/oven-sh/bun/releases/download/bun-v{version}/bun-{buntarget}.zip",
+    sha256: &[
+        (
+            AssetTarget::LinuxX86_64Musl,
+            "2d03fb5fb83ac8b567aca0a281b2ce1a1a19d488f56c2968d88c3f25e92fe452",
+        ),
+        (
+            AssetTarget::LinuxAarch64Musl,
+            "4b1a332ee861983eb93bcfe6f770fff94e3e31b2c388bdaea3c8ed35e58eed0e",
+        ),
+        (
+            AssetTarget::MacosAarch64,
+            "c669e97f6164e1c96e0701748db98dfa77492908cbd8394c7557134a735de381",
+        ),
+        (
+            AssetTarget::MacosX86_64,
+            "1d0211b8f1dc991182344687ad15e72ee86f154845a5f7fa477994cd341dd9b0",
         ),
     ],
 };

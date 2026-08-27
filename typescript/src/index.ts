@@ -18,7 +18,7 @@ export { currentFacts } from "./facts.js";
 export type { HostFacts } from "./facts.js";
 export { brew, fileFetch, git, githubRelease, pixi, pluginFetch, tarball } from "./fetch.js";
 export type { Fetch } from "./fetch.js";
-export { facts, hasTag, when } from "./conditions.js";
+export { facts, hasTag, setTags, when } from "./conditions.js";
 export type { Condition, Facts } from "./conditions.js";
 export { clearGraph, emitIr, IR_VERSION, register } from "./graph.js";
 export { tree } from "./tree.js";

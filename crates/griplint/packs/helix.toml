@@ -7,6 +7,7 @@ handles = ["config.toml"]
 format = "toml"
 supported = ["25."]
 series = "v25"
+coverage_warning = "key tables are written for helix 25.x; this module pins {version} — results may be stale"
 
 [files."config.toml".rules.""]
 theme = { types = ["string"] }

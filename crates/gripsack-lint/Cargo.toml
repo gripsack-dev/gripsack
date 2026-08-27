@@ -11,5 +11,6 @@ gripsack-ir.workspace = true
 gripsack-config.workspace = true
 gripsack-fetch.workspace = true
 gripsack-store.workspace = true
+griplint.workspace = true
 serde.workspace = true
 serde_json.workspace = true

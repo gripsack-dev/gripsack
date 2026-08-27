@@ -8,6 +8,7 @@ format = "toml"
 supported = ["0."]
 lenient = ["pyproject.toml"]
 series = "v0"
+coverage_warning = "key tables are written for ruff 0.x; this module pins {version} — results may be stale"
 
 [files."pyproject.toml".rules."tool.ruff"]
 builtins = { types = ["array"] }

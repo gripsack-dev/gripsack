@@ -20,7 +20,10 @@ struct EvalEnvelope {
 pub struct EvalOutcome {
     pub ir_json: String,
     pub env: gripsack_config::EnvConfig,
-    pub python: PathBuf,
+    /// The python the frontend ran under — wheel-form linters resolve
+    /// their console script next to it. None under the typescript
+    /// frontend (linters there are path= or provisioned store refs).
+    pub python: Option<PathBuf>,
 }
 
 /// Evaluate an env repo's frontend into IR JSON (0005 §4). The core
@@ -84,32 +87,58 @@ pub fn eval_repo(
     for (name, value) in &env.eval.env {
         unsafe { std::env::set_var(name, value) };
     }
-    if env.env.frontend != gripsack_config::Frontend::Python {
-        eprintln!(
-            "grip: typescript eval is not available yet — set `frontend = \"python\"` for now"
-        );
-        return Err(ExitCode::from(2));
-    }
-    let python = match gripsack_exec::ensure_python(
-        &gripsack_store::gripsack_home(),
-        &env,
-        env!("CARGO_PKG_VERSION"),
-    ) {
-        Ok(python) => python,
-        Err(e) => {
-            eprintln!("grip: frontend provisioning failed: {e}");
-            eprintln!(
-                "hint: set GRIPSACK_PYTHON to a python with `gripsack` installed to bypass provisioning"
-            );
-            return Err(ExitCode::FAILURE);
-        }
-    };
-    let mut cmd = std::process::Command::new(&python);
-    cmd.arg("-m").arg("gripsack").arg(repo).current_dir(repo);
     let host = host
         .map(str::to_string)
         .or_else(|| env.env.default_host.clone())
         .unwrap_or_else(crate::commands::hostname);
+    let mut frontend_python: Option<PathBuf> = None;
+    let mut cmd = if env.env.frontend == gripsack_config::Frontend::Typescript {
+        // bun runs the driver's TS/JS directly — no transpile chain.
+        // NODE_PATH points at the provisioned @gripsack/core so user
+        // modules resolve it from any repo (0005 §1).
+        let home = gripsack_store::gripsack_home();
+        let ts_dir = match gripsack_exec::ensure_ts_frontend(&home, env!("CARGO_PKG_VERSION")) {
+            Ok(dir) => dir,
+            Err(e) => {
+                eprintln!("grip: typescript frontend provisioning failed: {e}");
+                return Err(ExitCode::FAILURE);
+            }
+        };
+        let bun = match gripsack_exec::ensure_bun(&home) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("grip: bun provisioning failed: {e}");
+                eprintln!("hint: set GRIPSACK_BUN to a bun binary to bypass provisioning");
+                return Err(ExitCode::FAILURE);
+            }
+        };
+        let driver = ts_dir.join("node_modules/@gripsack/core/dist/src/cli.js");
+        let mut cmd = std::process::Command::new(bun);
+        cmd.arg(driver)
+            .arg(repo)
+            .current_dir(repo)
+            .env("NODE_PATH", ts_dir.join("node_modules"));
+        cmd
+    } else {
+        let python = match gripsack_exec::ensure_python(
+            &gripsack_store::gripsack_home(),
+            &env,
+            env!("CARGO_PKG_VERSION"),
+        ) {
+            Ok(python) => python,
+            Err(e) => {
+                eprintln!("grip: frontend provisioning failed: {e}");
+                eprintln!(
+                    "hint: set GRIPSACK_PYTHON to a python with `gripsack` installed to bypass provisioning"
+                );
+                return Err(ExitCode::FAILURE);
+            }
+        };
+        frontend_python = Some(python.clone());
+        let mut cmd = std::process::Command::new(&python);
+        cmd.arg("-m").arg("gripsack").arg(repo).current_dir(repo);
+        cmd
+    };
     cmd.arg("--host").arg(&host);
     let out = cmd.output().map_err(|e| {
         eprintln!("grip: cannot spawn python3: {e} (see `grip doctor`)");
@@ -139,7 +168,7 @@ pub fn eval_repo(
         return Ok(EvalOutcome {
             ir_json: envelope.ir.to_string(),
             env,
-            python,
+            python: frontend_python,
         });
     }
     if !out.status.success() {
@@ -152,7 +181,7 @@ pub fn eval_repo(
     Ok(EvalOutcome {
         ir_json: stdout,
         env,
-        python,
+        python: frontend_python,
     })
 }
 
@@ -165,8 +194,13 @@ pub fn run_lints(
     host: Option<&str>,
     palette: Palette,
 ) -> Result<(), ExitCode> {
-    let diagnostics =
-        gripsack_lint::run(ir, &outcome.env.linters, repo, host, Some(&outcome.python));
+    let diagnostics = gripsack_lint::run(
+        ir,
+        &outcome.env.linters,
+        repo,
+        host,
+        outcome.python.as_deref(),
+    );
     if diagnostics.is_empty() {
         return Ok(());
     }

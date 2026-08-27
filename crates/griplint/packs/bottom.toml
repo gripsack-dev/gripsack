@@ -7,6 +7,7 @@ handles = ["bottom.toml"]
 format = "toml"
 supported = ["0.1"]
 series = "v0"
+coverage_warning = "key tables are written for a different major version; this module pins {version} — results may be stale"
 
 [files."bottom.toml".rules."cpu"]
 basic_average_cpu_row = { types = ["boolean"] }

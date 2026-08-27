@@ -75,20 +75,36 @@ pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<String, FetchError> {
         FetchSpec::GithubRelease { .. } => Err(FetchError::Unsupported(
             "github_release resolves to a tarball upstream of fetch (exec::resolve)".into(),
         )),
-        FetchSpec::Plugin { name, args } => plugin::fetch(name, args, dest, None),
+        FetchSpec::Plugin { name, args } => plugin::fetch(name, args, dest, None).map(|f| f.hash),
     }
 }
 
 /// Fetch with the module's lockfile pin, when one exists — plugin
 /// fetchers receive it as `locked` in the request (0002 §4).
+/// What a fetch yields: the payload identity (core-computed, always)
+/// plus the plugin's reported pin for plugin fetches.
+pub struct FetchOutcome {
+    pub hash: String,
+    pub plugin_url: Option<String>,
+    pub plugin_version: Option<String>,
+}
+
 pub fn fetch_with_locked(
     spec: &FetchSpec,
     dest: &Path,
     locked: Option<&serde_json::Value>,
-) -> Result<String, FetchError> {
+) -> Result<FetchOutcome, FetchError> {
     if let FetchSpec::Plugin { name, args } = spec {
         std::fs::create_dir_all(dest)?;
-        return plugin::fetch(name, args, dest, locked);
+        return plugin::fetch(name, args, dest, locked).map(|f| FetchOutcome {
+            hash: f.hash,
+            plugin_url: f.url,
+            plugin_version: f.version,
+        });
     }
-    fetch(spec, dest)
+    fetch(spec, dest).map(|hash| FetchOutcome {
+        hash,
+        plugin_url: None,
+        plugin_version: None,
+    })
 }

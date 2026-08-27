@@ -2,6 +2,9 @@
 same PR that implements them (gripsack-e2e skill)."""
 
 import os
+import shutil
+from pathlib import Path
+
 import pytest
 import subprocess
 
@@ -1205,3 +1208,76 @@ module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/de
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "griplint-demo/A01" in out.stderr
+
+
+def test_builtin_pack_lints_in_process_without_registration(sandbox):
+    """0012 move 3: lint="helix" with NO [linters] entry runs the
+    embedded pack in-process — no venv, no provisioning, no plugin."""
+    confdir = sandbox / "myenv" / "configs" / "helix"
+    confdir.mkdir(parents=True)
+    (confdir / "config.toml").write_text('[editor]\nscrollof = 5\n')
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("helix", config={"configs/helix/config.toml": tracked_copy("~/.config/helix/config.toml")},
+       lint="helix")
+""",
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "A01" in out.stderr
+    assert "scrolloff" in out.stderr
+    # and the satisfied path: the fix goes green
+    (confdir / "config.toml").write_text('[editor]\nscrolloff = 5\n')
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+
+def test_typescript_frontend_evals_and_applies(sandbox):
+    """frontend = "typescript": the provisioned bun runs the driver,
+    modules register through the shared @gripsack/core instance, and
+    apply deploys (0012 — the eval seam lands)."""
+    import shutil
+
+    bun = os.environ.get("GRIPSACK_BUN") or shutil.which("bun")
+    if not bun:
+        pytest.skip("bun not installed (CI's typescript job covers this)")
+    # pre-seed the provisioned frontend: the in-repo build of
+    # @gripsack/core at the core's version (what npm would serve)
+    import gripsack
+
+    core_version = gripsack.__version__
+    pkg = (
+        sandbox
+        / ".local/share/gripsack/frontend-ts"
+        / core_version
+        / "node_modules/@gripsack/core"
+    )
+    pkg.mkdir(parents=True)
+    ts_src = Path(__file__).parent.parent / "typescript"
+    shutil.copytree(ts_src / "dist", pkg / "dist")
+    shutil.copy(ts_src / "package.json", pkg / "package.json")
+
+    repo = sandbox / "tsenv"
+    (repo / "modules").mkdir(parents=True)
+    (repo / "hosts").mkdir()
+    (repo / "configs" / "demo").mkdir(parents=True)
+    (repo / "env.toml").write_text('[env]\nname = "tsenv"\nfrontend = "typescript"\n')
+    (repo / "hosts" / "testhost.ts").write_text('export const tags = ["test"];\n')
+    (repo / "configs" / "demo" / "demo.toml").write_text('greeting = "hi"\n')
+    (repo / "modules" / "demo.ts").write_text(
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+module("demo", {
+  config: { "configs/demo/demo.toml": trackedCopy("~/.config/demo/demo.toml") },
+});
+"""
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".config" / "demo" / "demo.toml").exists()
