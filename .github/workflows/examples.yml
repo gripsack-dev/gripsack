@@ -42,6 +42,9 @@ jobs:
         env:
           HOME: /tmp/example-home
           GRIPSACK_HOME: /tmp/example-home/.gs
+          # provisioning from github releases needs auth on shared runners
+          # (60/hr anonymous is exhausted constantly)
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p "$HOME"
           export PATH="/tmp/fenv/bin:$PATH"
