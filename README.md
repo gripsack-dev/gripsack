@@ -84,7 +84,7 @@ your env repo (modules + env.toml + hosts/)
 | package | PyPI `gripsack` | npm `@gripsack/core` |
 | IDE | pyright | tsc (native) |
 | runtime | your python ≥3.10 | your node ≥18 or bun |
-| status | **ships; the default** | ships in-tree as a typed library — eval lands next (roadmap) |
+| status | **ships; the default** | ships — typed, bun-provisioned eval, same IR |
 
 One frontend per env repo, declared in `env.toml` (`frontend =
 "python"` today). Both emit the same IR — the core never embeds either
