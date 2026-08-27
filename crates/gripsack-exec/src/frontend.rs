@@ -169,18 +169,36 @@ fn uv_on_path() -> io::Result<PathBuf> {
 
 fn run(program: &Path, args: &[&str], home: &Path) -> io::Result<()> {
     // run from $GRIPSACK_HOME, not the env repo — a stray uv.toml or
-    // [tool.uv] in the repo must not silently apply to provisioning
-    let status = std::process::Command::new(program)
+    // [tool.uv] in the repo must not silently apply to provisioning.
+    // stderr comes back on failure — the CLI's corporate-environment
+    // hints (index mirroring, SSL_CERT_FILE) match on it (review:
+    // "I hit both failures and saw neither hint" — the hints never
+    // fired because the error carried only the exit status)
+    let out = std::process::Command::new(program)
         .args(args)
         .current_dir(home)
-        .status()?;
-    if status.success() {
+        .output()?;
+    if out.status.success() {
         Ok(())
     } else {
+        let tail = String::from_utf8_lossy(&out.stderr);
+        let tail = tail
+            .lines()
+            .last()
+            .unwrap_or("")
+            .chars()
+            .take(300)
+            .collect::<String>();
         Err(io::Error::other(format!(
-            "{} {:?} exited {status}",
+            "{} {:?} exited {}{}",
             program.display(),
-            args
+            args,
+            out.status,
+            if tail.is_empty() {
+                String::new()
+            } else {
+                format!(" — {tail}")
+            }
         )))
     }
 }

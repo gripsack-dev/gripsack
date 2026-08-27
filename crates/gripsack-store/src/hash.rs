@@ -132,3 +132,36 @@ mod tests {
         assert_ne!(canonical_tree_hash(dir.path()).unwrap(), before);
     }
 }
+
+#[cfg(test)]
+mod reference_vector {
+    //! The cross-implementation test vector (0012): this exact tree
+    //! must hash to this exact value in EVERY implementation — the
+    //! conformance suite and plugins mirror it. If you change the
+    //! algorithm, all mirrors change with it (don't).
+
+    #[test]
+    fn pinned_tree_vector() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("bin")).unwrap();
+        std::fs::create_dir_all(root.join("share")).unwrap();
+        std::fs::write(root.join("bin/hello"), b"#!/bin/sh\necho hello\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                root.join("bin/hello"),
+                std::fs::Permissions::from_mode(0o755),
+            )
+            .unwrap();
+            std::os::unix::fs::symlink("hello", root.join("bin/hi")).unwrap();
+        }
+        std::fs::write(root.join("share/version.txt"), b"1.0\n").unwrap();
+        let hash = crate::canonical_tree_hash(root).unwrap();
+        assert_eq!(
+            hash,
+            "cce3e9f819b476cc5abed85b83f2f1a01cac2abd4c2eb34f08b76d822739e595"
+        );
+    }
+}

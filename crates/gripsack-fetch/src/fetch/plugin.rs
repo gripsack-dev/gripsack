@@ -47,6 +47,9 @@ struct PluginResult {
     /// this, locked could never arrive (gripfetch-apt review).
     url: Option<String>,
     version: Option<String>,
+    /// The plugin's own tree-hash mirror — verified against the core's
+    /// at write time (never trusted, but disagreement is a loud bug).
+    sha256: Option<String>,
     /// The `capabilities` op payload — declared rate budgets (0002
     /// §throttle), parsed separately from the fetch response.
     capabilities: Option<serde_json::Value>,
@@ -189,6 +192,7 @@ pub(crate) fn fetch(
     let deadline = Instant::now() + PLUGIN_TIMEOUT;
     let mut responded = false;
     let mut pin: (Option<String>, Option<String>) = (None, None);
+    let mut pin_sha: Option<String> = None;
     let mut error_diagnostics = Vec::new();
     for line in std::io::BufReader::new(stdout).lines() {
         let line = line?;
@@ -213,6 +217,7 @@ pub(crate) fn fetch(
                 responded = true;
                 if let Some(result) = message.result {
                     pin = (result.url, result.version);
+                    pin_sha = result.sha256;
                     if let Some(provenance) = result.provenance {
                         tracing::info!(plugin = name, provenance = %provenance, "provenance");
                     }
@@ -272,8 +277,24 @@ pub(crate) fn fetch(
         });
     }
     // identity is computed by the core — never the plugin's word
+    let hash = gripsack_store::canonical_tree_hash(dest)?;
+    // …and a plugin that REPORTS a tree hash must agree with it (the
+    // disagreement class that broke update→apply on cold stores):
+    // fail at write time, not at the next cold apply
+    if let Some(reported) = pin_sha
+        && reported != hash
+    {
+        return Err(FetchError::Http {
+            url: name.to_string(),
+            reason: format!(
+                "plugin-reported tree hash {reported} disagrees with the core's {hash} — \
+                 the plugin's canonical-tree mirror is wrong (see the pinned reference \
+                 vector in the conformance suite)"
+            ),
+        });
+    }
     Ok(PluginFetch {
-        hash: gripsack_store::canonical_tree_hash(dest)?,
+        hash,
         url: pin.0,
         version: pin.1,
     })
