@@ -54,9 +54,9 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
     }
 }
 
-/// keep_generations: the env repo you're INSIDE wins (resolved the
-/// same way as apply's --repo, never cwd-sniffing), then the user
-/// layer (the documented repo-over-user precedence).
+/// keep_generations: an env.toml next to your cwd wins (the same
+/// default apply uses without --repo), then the user layer (the
+/// documented repo-over-user precedence).
 fn user_keep_generations() -> Option<u32> {
     let repo = std::env::current_dir()
         .ok()

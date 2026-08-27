@@ -1571,7 +1571,7 @@ def test_dual_frontend_parity_golden_corpus(sandbox):
 
     bun = os.environ.get("GRIPSACK_BUN") or shutil.which("bun")
     if not bun:
-        pytest.skip("bun not installed (CI's typescript job runs this)")
+        pytest.skip("bun not installed (runs in the required e2e gate, which ships bun; and in examples/typescript-env)")
     fixture_py = Path(__file__).parent / "fixtures" / "parity" / "python"
     fixture_ts = Path(__file__).parent / "fixtures" / "parity" / "ts"
     for repo in (fixture_py, fixture_ts):
@@ -1585,16 +1585,6 @@ def test_dual_frontend_parity_golden_corpus(sandbox):
     shutil.copytree(ts_src / "dist", ts_front / "node_modules/@gripsack/core/dist")
     shutil.copy(ts_src / "package.json", ts_front / "node_modules/@gripsack/core/package.json")
     os.environ["GRIPSACK_TS_FRONTEND"] = str(ts_front)
-
-    def eval_ir(repo: Path) -> dict:
-        out = grip("check", "--host", "testhost", cwd=repo)
-        assert out.returncode == 0, out.stderr
-        # grip check prints no IR — use the eval via a plan run? no:
-        # the frontend's envelope IS the IR; call the frontend the way
-        # the core does, via check's side effect? Cleaner: `grip check`
-        # succeeded for both — now diff via `grip plan --ir`? plan needs
-        # an IR file. The honest diff: run each frontend directly.
-        raise NotImplementedError
 
     import json, subprocess, sys
 

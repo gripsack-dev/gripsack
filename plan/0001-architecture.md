@@ -138,7 +138,7 @@ Dotfiles are where gripsack goes beyond stow (too dumb) and home-manager
 | `owned` | store-owned symlink, read-only; edits go through the module |
 | `tracked-copy` | copied from store; hash recorded; drift detected on next apply (`keep / adopt / restore`) — for apps that mutate their own configs |
 | `merge` | managed block merged into a file other tools also write (`.bashrc`) |
-| `template` | rendered at activation from module variables; rendered output is itself a store path keyed by (template hash, vars hash), so rollback restores exactly what generation N had |
+| `template` | rendered at activation from module variables; each generation's manifest records the resolved vars, so rollback re-renders exactly what generation N had (amended in 0.16.1: vars-in-manifest replaces the store-keyed rendering originally described here — same guarantee, one fewer store artifact) |
 
 Read-only-symlink-everything breaks real apps; `tracked-copy` exists from day
 one for that reason.
