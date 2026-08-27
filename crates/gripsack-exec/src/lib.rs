@@ -32,6 +32,7 @@ pub mod schedule;
 pub mod update;
 pub mod util;
 pub mod verify;
+pub mod verify_store;
 
 pub use apply::apply;
 pub use ctx::{Ctx, ExecError, Outcome, ProgressCallback};

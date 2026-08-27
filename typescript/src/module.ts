@@ -32,6 +32,10 @@ export interface ModuleSpec {
   /** Registered linter for this module's config payloads (0011) —
       the core drives it (0012). */
   lint?: string;
+  /** Environment contributions exported to the shell profile at
+      activation (0001 §3.10) — `{"VAR": "value", "PATH+": "{store}/bin"}`;
+      a trailing `+` prepends to a list var. */
+  env?: Record<string, string>;
 }
 
 export interface IrEntry {
@@ -40,6 +44,12 @@ export interface IrEntry {
   mode: Ownership;
   vars?: Record<string, string>;
   marker?: string;
+}
+
+export interface IrEnvVar {
+  name: string;
+  op: "set" | "prepend";
+  value: string;
 }
 
 export interface IrModule {
@@ -53,6 +63,7 @@ export interface IrModule {
   verify?: Verify;
   retries?: number;
   lint?: string;
+  env?: IrEnvVar[];
   span?: Span;
 }
 
@@ -181,6 +192,13 @@ export function module(name: string, spec: ModuleSpec): void {
   if (spec.verify) ir.verify = spec.verify;
   if (spec.retries !== undefined) ir.retries = spec.retries;
   if (spec.lint !== undefined) ir.lint = spec.lint;
+  if (spec.env !== undefined) {
+    ir.env = Object.entries(spec.env).map(([name, value]) =>
+      name.endsWith("+")
+        ? { name: name.slice(0, -1), op: "prepend" as const, value }
+        : { name, op: "set" as const, value },
+    );
+  }
   const span = callerSpan();
   if (span) ir.span = span;
   register(name, ir);

@@ -99,6 +99,12 @@ enum Command {
     },
     /// Show which module owns a deployed path
     WhyOwns { path: String },
+    /// Re-hash every store path and report corruption (0008 §3)
+    StoreVerify {
+        /// Remove corrupt paths (next apply re-fetches)
+        #[arg(long)]
+        repair: bool,
+    },
     /// Scaffold an env repo (env.toml, hosts, modules, examples)
     Init {
         /// Directory to initialize (default: current directory)
@@ -147,6 +153,7 @@ fn main() -> ExitCode {
         },
         Command::Gc { dry_run } => commands::gc(palette, dry_run),
         Command::WhyOwns { path } => commands::why_owns(&path),
+        Command::StoreVerify { repair } => commands::store_verify(repair, palette),
         Command::Init { dir } => {
             commands::init(&dir.unwrap_or_else(|| PathBuf::from(".")), palette)
         }

@@ -1477,3 +1477,162 @@ module("demo", config={"configs/demo/a.toml": tracked_copy("~/.config/demo/a.tom
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
     assert "- ~/.config/demo/b.toml (prune)" in out.stdout
+
+
+def test_rollback_restores_template_rendered_and_merge_block(sandbox):
+    """rollback through the ONE engine (0001 §3.5, review verification):
+    template destinations get the previous generation's RENDERED bytes
+    (re-rendered with recorded vars), and merge entries re-upsert only
+    the block — the foreign file's other content survives."""
+    confdir = sandbox / "myenv" / "configs" / "app"
+    confdir.mkdir(parents=True)
+    (confdir / "id.toml").write_text('email = "{{ email }}"\n')
+    (confdir / "block.sh").write_text("export A=1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import merge, module, template
+
+module("app", config={
+    "configs/app/id.toml": template("~/.config/app/id.toml", vars={"email": "a@b.c"}),
+    "configs/app/block.sh": merge("~/.bashrc"),
+})
+""",
+    )
+    bashrc = sandbox / ".bashrc"
+    bashrc.write_text("# user stuff\nexport EDITOR=hx\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    # generation 2: new template content and new block content
+    (confdir / "id.toml").write_text('email = "rendered-v2"\nname = "{{ email }}"\n')
+    (confdir / "block.sh").write_text("export A=2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "rendered-v2" in (sandbox / ".config/app/id.toml").read_text()
+    assert "export A=2" in bashrc.read_text()
+
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    # template: back to the previous generation's rendered bytes
+    assert (sandbox / ".config/app/id.toml").read_text() == 'email = "a@b.c"\n'
+    # merge: the block reverted, the foreign content untouched
+    content = bashrc.read_text()
+    assert content.startswith("# user stuff\nexport EDITOR=hx\n")
+    assert "export A=1" in content
+    assert "export A=2" not in content
+
+
+def test_store_verify_detects_and_repairs_corruption(sandbox):
+    """0008 §3 shipped: the re-hash walk catches a tampered payload and
+    --repair removes it; the next apply re-fetches (publish_dir's
+    refusal becomes a republish)."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.txt").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tree
+from gripsack.entries import Ownership
+
+module("demo", config={**tree("configs/demo", "~/.config/demo", mode=Ownership.OWNED)})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("store-verify", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    # tamper with a store path — verify must catch it, repair must
+    # remove it, and the next apply re-fetches
+    store = sandbox / ".local/share/gripsack/store"
+    target = next(store.iterdir())
+    for f in target.rglob("*"):
+        if f.is_file() and not f.is_symlink():
+            f.write_text("tampered\n")
+    out = grip("store-verify", cwd=repo)
+    assert out.returncode != 0
+    assert "corrupt" in out.stdout
+    out = grip("store-verify", "--repair", cwd=repo)
+    assert "removed corrupt" in out.stdout
+    assert not target.exists()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert target.exists()
+
+
+def test_dual_frontend_parity_golden_corpus(sandbox):
+    """plan/0007's conformance test, finally: the same fixture env
+    evaluated through BOTH frontends must emit identical IR modulo
+    provenance (span file/line). Absence-class drift (a missing TS
+    feature) has no shadow to hide in."""
+    import shutil
+
+    bun = os.environ.get("GRIPSACK_BUN") or shutil.which("bun")
+    if not bun:
+        pytest.skip("bun not installed (CI's typescript job runs this)")
+    fixture_py = Path(__file__).parent / "fixtures" / "parity" / "python"
+    fixture_ts = Path(__file__).parent / "fixtures" / "parity" / "ts"
+    for repo in (fixture_py, fixture_ts):
+        shutil.copytree(repo, sandbox / repo.name, dirs_exist_ok=True)
+
+    # the TS eval needs the provisioned frontend, pre-seeded like the
+    # TS e2e (GRIPSACK_TS_FRONTEND escape hatch)
+    ts_front = sandbox / "tsfront"
+    (ts_front / "node_modules/@gripsack/core").mkdir(parents=True)
+    ts_src = Path(__file__).parent.parent / "typescript"
+    shutil.copytree(ts_src / "dist", ts_front / "node_modules/@gripsack/core/dist")
+    shutil.copy(ts_src / "package.json", ts_front / "node_modules/@gripsack/core/package.json")
+    os.environ["GRIPSACK_TS_FRONTEND"] = str(ts_front)
+
+    def eval_ir(repo: Path) -> dict:
+        out = grip("check", "--host", "testhost", cwd=repo)
+        assert out.returncode == 0, out.stderr
+        # grip check prints no IR — use the eval via a plan run? no:
+        # the frontend's envelope IS the IR; call the frontend the way
+        # the core does, via check's side effect? Cleaner: `grip check`
+        # succeeded for both — now diff via `grip plan --ir`? plan needs
+        # an IR file. The honest diff: run each frontend directly.
+        raise NotImplementedError
+
+    import json, subprocess, sys
+
+    py_env = dict(os.environ, PYTHONPATH=str(Path(__file__).parent.parent / "python")
+    )
+    ir_py = json.loads(
+        subprocess.run(
+            [sys.executable, "-m", "gripsack", ".", "--host", "testhost"],
+            cwd=sandbox / "python", env=py_env, capture_output=True, text=True,
+        ).stdout
+    )["ir"]
+    ir_ts = json.loads(
+        subprocess.run(
+            [os.environ["GRIPSACK_BUN"] if os.environ.get("GRIPSACK_BUN") else bun,
+             str(ts_front / "node_modules/@gripsack/core/dist/src/cli.js"),
+             ".", "--host", "testhost"],
+            cwd=sandbox / "ts",
+            env=dict(os.environ, NODE_PATH=str(ts_front / "node_modules")),
+            capture_output=True, text=True,
+        ).stdout
+    )["ir"]
+
+    def strip_provenance(node):
+        if isinstance(node, dict):
+            return {
+                k: strip_provenance(v)
+                for k, v in node.items()
+                if k != "span"
+            }
+        if isinstance(node, list):
+            return [strip_provenance(v) for v in node]
+        return node
+
+    py_proj, ts_proj = strip_provenance(ir_py), strip_provenance(ir_ts)
+    assert py_proj == ts_proj, (
+        "frontend IR drift:\n"
+        + json.dumps({k: {"py": py_proj["modules"].get(k), "ts": ts_proj["modules"].get(k)}
+                      for k in set(py_proj["modules"]) | set(ts_proj["modules"])
+                      if py_proj["modules"].get(k) != ts_proj["modules"].get(k)},
+                     indent=1)[:4000]
+    )

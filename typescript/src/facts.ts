@@ -17,10 +17,17 @@ function detectLibc(): string | undefined {
   return glibc ? `glibc-${glibc}` : undefined;
 }
 
+/** Node's arch names → the IR's Rust-style names (x86_64, aarch64). */
+function rustArch(arch: string): string {
+  if (arch === "x64") return "x86_64";
+  if (arch === "arm64") return "aarch64";
+  return arch;
+}
+
 export function currentFacts(tags: string[] = [], host?: Partial<HostFacts>): HostFacts {
   return {
     os: host?.os ?? process.platform,
-    arch: host?.arch ?? process.arch,
+    arch: host?.arch ?? rustArch(process.arch),
     tags,
     libc: host?.libc ?? detectLibc(),
   };

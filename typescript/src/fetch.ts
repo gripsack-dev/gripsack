@@ -6,7 +6,7 @@ export type Fetch =
   | { kind: "git"; url: string; rev: string }
   | { kind: "file"; path: string }
   | { kind: "plugin"; name: string; args?: Record<string, unknown> }
-  | { kind: "brew"; formula: string; sha256?: string }
+  | { kind: "brew"; formula: string; version?: string; sha256?: string }
   | { kind: "pixi"; package: string; version?: string; sha256?: string };
 
 export function githubRelease(spec: {
@@ -41,9 +41,12 @@ export function pluginFetch(name: string, args?: Record<string, unknown>): Fetch
 }
 
 /** A Homebrew bottle — resolved from the formula JSON, so the pin
- *  needs no download at update time. */
-export function brew(formula: string): Fetch {
-  return { kind: "brew", formula };
+ *  needs no download at update time. `version` is a tripwire: a
+ * mismatch fails at resolve (`grip update` to move), never a range. */
+export function brew(formula: string, version?: string): Fetch {
+  return version === undefined
+    ? { kind: "brew", formula }
+    : { kind: "brew", formula, version };
 }
 
 /** A conda package via pixi, isolated PIXI_HOME, harvested to store. */

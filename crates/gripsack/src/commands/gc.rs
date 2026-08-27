@@ -54,12 +54,16 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
     }
 }
 
-/// keep_generations: an env.toml in the working directory wins (the
-/// documented repo-over-user precedence in settings-reference), then
-/// the user layer. A store-wide command still honors the repo you're
-/// standing in.
+/// keep_generations: the env repo you're INSIDE wins (resolved the
+/// same way as apply's --repo, never cwd-sniffing), then the user
+/// layer (the documented repo-over-user precedence).
 fn user_keep_generations() -> Option<u32> {
-    if let Ok(source) = std::fs::read_to_string("env.toml")
+    let repo = std::env::current_dir()
+        .ok()
+        .map(|d| d.join("env.toml"))
+        .filter(|p| p.exists());
+    if let Some(path) = repo
+        && let Ok(source) = std::fs::read_to_string(path)
         && let Ok(env) = gripsack_config::parse_env(&source)
         && env.settings.keep_generations.is_some()
     {

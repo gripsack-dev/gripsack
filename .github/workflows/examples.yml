@@ -108,3 +108,12 @@ jobs:
           "$GRIP" check --host laptop
           "$GRIP" apply --host laptop
           "$GRIP" apply --host laptop   # satisfied
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Dual-frontend parity ( the golden corpus, plan/0007)
+        env:
+          GRIPSACK_TS_FRONTEND: /tmp/ts-frontend
+        run: |
+          cd gripsack/e2e
+          uv run pytest -q -k parity_golden

@@ -54,6 +54,20 @@ async function main(): Promise<void> {
       tags = [...(mod.tags ?? tags)];
     } catch (e: unknown) {
       if ((e as { code?: string }).code !== "ERR_MODULE_NOT_FOUND") throw e;
+      // a hosts/ dir with no match must not silently yield empty tags —
+      // every when(tags=[...]) module would silently drop (same rule
+      // as the python frontend, enterprise review)
+      const existing = readdirSync(join(repo, "hosts")).filter((f) =>
+        f.endsWith(".ts"),
+      );
+      if (existing.length > 0) {
+        console.error(
+          `gripsack: no hosts/${host}.ts (have: ${existing
+            .map((f) => f.replace(/\.ts$/, ""))
+            .join(", ")}) — pass --host, set [env] default_host, or add the file`,
+        );
+        process.exit(1);
+      }
     }
   }
   setTags(tags);

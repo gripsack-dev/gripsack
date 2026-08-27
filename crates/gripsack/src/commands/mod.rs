@@ -11,6 +11,7 @@ pub mod init;
 pub mod plan;
 pub mod repo;
 pub mod rollback;
+mod store_verify;
 pub mod update;
 pub mod why_owns;
 
@@ -24,6 +25,7 @@ pub use init::init;
 pub use plan::{plan_ir, plan_module};
 pub use repo::resolve as resolve_repo;
 pub use rollback::rollback;
+pub use store_verify::store_verify;
 pub use update::update;
 pub use why_owns::why_owns;
 
