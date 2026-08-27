@@ -6,6 +6,7 @@
 use gripsack_ir::{Diagnostic, Ir, Severity, Span};
 use owo_colors::OwoColorize;
 use std::io::IsTerminal;
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Palette {
@@ -166,6 +167,111 @@ pub fn render_diagnostics(diagnostics: &[Diagnostic], palette: Palette) -> Strin
         .map(|d| render_diagnostic(d, palette))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// `grip plan`'s change section: what apply would do, computed against
+/// the current generation (0004 pass 5 — the diff that sells the
+/// architecture). Config entries hash offline; fetched modules show
+/// their store-path satisfaction without a fetch.
+pub fn diff_section(ir: &Ir, repo: &Path, palette: Palette) -> String {
+    let home = gripsack_store::gripsack_home();
+    let current = gripsack_store::current_generation(&home)
+        .and_then(|n| gripsack_store::read_manifest(&home, n).ok());
+    let c = |s: &str| {
+        if palette.enabled {
+            s.cyan().to_string()
+        } else {
+            s.to_string()
+        }
+    };
+    let mut out = vec![match &current {
+        Some(m) => format!("{} generation {}:", "changes vs".bold(), m.number),
+        None => "changes: no current generation (first apply)"
+            .bold()
+            .to_string(),
+    }];
+    let mut declared: Vec<&str> = Vec::new();
+
+    for (name, module) in &ir.modules {
+        let mut lines = Vec::new();
+        let mut non_config_note = None;
+        for entry in module.install.iter().chain(module.config.iter()) {
+            declared.push(entry.to.as_str());
+            let dest = crate::commands::expand_home(&entry.to);
+            let repo_file = repo.join(&entry.from);
+            if !repo_file.is_file() {
+                // a fetched payload: identity check without fetching
+                non_config_note = Some(if module.fetch.is_some() {
+                    "fetch → deploy (pin-resolved at apply)"
+                } else {
+                    "steps → deploy"
+                });
+                continue;
+            }
+            let new_hash = match gripsack_store::canonical_file_hash(&repo_file) {
+                Ok(h) => h,
+                Err(_) => {
+                    lines.push(format!(
+                        "  ! {} → {} (source missing)",
+                        entry.from, entry.to
+                    ));
+                    continue;
+                }
+            };
+            let recorded = current.as_ref().and_then(|m| {
+                m.modules
+                    .get(name)
+                    .and_then(|s| s.entries.iter().find(|e| e.to == entry.to))
+            });
+            match recorded {
+                Some(rec) if rec.hash == new_hash => {
+                    lines.push(format!("  = {} (satisfied)", entry.to))
+                }
+                Some(_) => lines.push(format!("  ~ {} → {} (update)", entry.from, entry.to)),
+                None => {
+                    let foreign = dest.symlink_metadata().is_ok()
+                        && !std::fs::read_link(&dest)
+                            .map(|t| t.starts_with(&home))
+                            .unwrap_or(false);
+                    if foreign {
+                        lines.push(format!(
+                            "  ! {} exists, not ours — needs --take-over",
+                            entry.to
+                        ));
+                    } else {
+                        lines.push(format!("  + {} → {} (new)", entry.from, entry.to));
+                    }
+                }
+            }
+        }
+        if let Some(note) = non_config_note {
+            lines.push(format!("  · {note}"));
+        }
+        if !lines.is_empty() {
+            out.push(format!("  {}", c(name)));
+            out.extend(lines);
+        }
+    }
+
+    // prunes: recorded destinations no longer declared
+    if let Some(manifest) = &current {
+        for (name, state) in &manifest.modules {
+            let mut prunes: Vec<String> = state
+                .entries
+                .iter()
+                .filter(|e| !declared.contains(&e.to.as_str()))
+                .map(|e| format!("  - {} (prune)", e.to))
+                .collect();
+            if !prunes.is_empty() {
+                out.push(format!("  {}", c(name)));
+                out.append(&mut prunes);
+            }
+        }
+    }
+    if out.len() == 1 {
+        out.push("  nothing would change".into());
+    }
+    out.join("\n")
 }
 
 #[cfg(test)]

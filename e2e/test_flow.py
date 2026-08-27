@@ -1387,3 +1387,93 @@ module("font", config={"configs/font/myfont.ttf": symlink("~/.local/share/fonts/
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
+
+
+def test_tracked_copy_drift_is_kept_never_clobbered(sandbox):
+    """The killer drift policy (0001 §3.7): a user edit inside a
+    tracked_copy destination is detected and KEPT — gripsack never
+    silently overwrites it (review finding G: this path had zero
+    coverage)."""
+    confdir = sandbox / "myenv" / "configs" / "zed"
+    confdir.mkdir(parents=True)
+    (confdir / "settings.json").write_text('{"theme": "mocha"}\n')
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("zed", config={"configs/zed/settings.json": tracked_copy("~/.config/zed/settings.json")})
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config" / "zed" / "settings.json"
+
+    # user edits the deployed file (zed rewrites its own config) — the
+    # next apply detects drift and KEEPS it
+    dest.write_text('{"theme": "nord", "user": true}\n')
+    (confdir / "settings.json").write_text('{"theme": "latte"}\n')
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == '{"theme": "nord", "user": true}\n'
+
+    # drift resolved by hand (dest back to the pinned content): gripsack
+    # can't tell a restore from a new drift, so it keeps once — and the
+    # next apply converges and updates (bounded, no lockfile surgery)
+    dest.write_text('{"theme": "mocha"}\n')
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == '{"theme": "latte"}\n'
+
+
+def test_plan_diffs_against_the_current_generation(sandbox):
+    """plan shows what apply WOULD do: new/update/satisfied/prune, plus
+    the take-over warning for foreign paths (0004 pass 5)."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+from gripsack import module, tracked_copy
+
+module("demo", config={"configs/demo/a.toml": tracked_copy("~/.config/demo/a.toml")})
+""",
+    )
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "+ configs/demo/a.toml" in out.stdout
+
+    grip("apply", "--host", "testhost", cwd=repo)
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert "= ~/.config/demo/a.toml (satisfied)" in out.stdout
+
+    (confdir / "a.toml").write_text("b\n")
+    (confdir / "b.toml").write_text("b\n")
+    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+        """
+from gripsack import module, tracked_copy
+
+module("demo", config={
+    "configs/demo/a.toml": tracked_copy("~/.config/demo/a.toml"),
+    "configs/demo/b.toml": tracked_copy("~/.config/demo/b.toml"),
+})
+"""
+    )
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert "~ configs/demo/a.toml" in out.stdout
+    assert "+ configs/demo/b.toml" in out.stdout
+
+    # apply the two-entry module, then drop b → the next plan prunes it
+    grip("apply", "--host", "testhost", cwd=repo)
+    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+        """
+from gripsack import module, tracked_copy
+
+module("demo", config={"configs/demo/a.toml": tracked_copy("~/.config/demo/a.toml")})
+"""
+    )
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert "- ~/.config/demo/b.toml (prune)" in out.stdout

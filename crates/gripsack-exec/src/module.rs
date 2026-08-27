@@ -38,6 +38,7 @@ pub(crate) struct ModuleOutcome {
 struct ModuleRun<'a> {
     name: &'a str,
     module: &'a gripsack_ir::Module,
+    ir: &'a gripsack_ir::Ir,
     steps: &'a [Step],
     ctx: &'a Ctx,
     prev: Option<&'a store::ModuleState>,
@@ -64,15 +65,16 @@ struct ModuleRun<'a> {
 
 /// Identity errors (new) escape before anything deploys; phase errors
 /// land in `outcome.error` with partial deployments recorded.
-pub(crate) fn run_module(
+pub(crate) fn run_module<'a>(
     name: &str,
-    module: &gripsack_ir::Module,
-    steps: &[Step],
-    ctx: &Ctx,
-    prev: Option<&store::ModuleState>,
-    locked: Option<&lockfile::LockEntry>,
+    module: &'a gripsack_ir::Module,
+    ir: &'a gripsack_ir::Ir,
+    steps: &'a [Step],
+    ctx: &'a Ctx,
+    prev: Option<&'a store::ModuleState>,
+    locked: Option<&'a lockfile::LockEntry>,
 ) -> Result<ModuleOutcome, ExecError> {
-    let mut run = ModuleRun::new(name, module, steps, ctx, prev, locked)?;
+    let mut run = ModuleRun::new(name, module, ir, steps, ctx, prev, locked)?;
     for phase in [
         ModuleRun::produce,
         ModuleRun::publish,
@@ -96,6 +98,7 @@ impl<'a> ModuleRun<'a> {
     fn new(
         name: &'a str,
         module: &'a gripsack_ir::Module,
+        ir: &'a gripsack_ir::Ir,
         steps: &'a [Step],
         ctx: &'a Ctx,
         prev: Option<&'a store::ModuleState>,
@@ -116,8 +119,8 @@ impl<'a> ModuleRun<'a> {
                 spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
             });
         let input = match &resolved {
-            Some(sha) => format!("{}|payload={sha}", module_input(module, &ctx.repo)?),
-            None => module_input(module, &ctx.repo)?,
+            Some(sha) => format!("{}|payload={sha}", module_input(module, &ctx.repo, ir)?),
+            None => module_input(module, &ctx.repo, ir)?,
         };
         let store_path = store::store_path(&ctx.home, name, &input);
         // Deferred identity (finding C): no hash from the lock AND none
@@ -140,6 +143,7 @@ impl<'a> ModuleRun<'a> {
         Ok(ModuleRun {
             name,
             module,
+            ir,
             steps,
             ctx,
             prev,
@@ -189,7 +193,30 @@ impl<'a> ModuleRun<'a> {
                     spec: Build::CustomShell { script },
                 }
                 | StepAction::CustomShell { script, .. } => self.build_step(step, script)?,
-                _ => {}
+                // "not implemented" must be loud, always (the cardinal
+                // rule the docs name: silent skip is the enemy) — a
+                // schema'd kind the core can't execute is an error, not
+                // a no-op (0007 §1, review finding D)
+                StepAction::Build { spec } => {
+                    return Err(ExecError::Step {
+                        module: self.name.to_string(),
+                        step: step.id.clone(),
+                        detail: format!(
+                            "build kind {spec:?} is not executable by this core — \
+                             CustomShell is the implemented build kind today"
+                        ),
+                    });
+                }
+                StepAction::Run { .. } => {
+                    return Err(ExecError::Step {
+                        module: self.name.to_string(),
+                        step: step.id.clone(),
+                        detail: "run steps are not executable by this core yet — \
+                                 use shell_step (the last rung) for now"
+                            .into(),
+                    });
+                }
+                _ => {} // Install/ConfigDeploy/Intent/Verify belong to other phases
             }
         }
         Ok(())
@@ -234,7 +261,7 @@ impl<'a> ModuleRun<'a> {
         if self.identity_pending {
             let input = format!(
                 "{}|payload={sha}",
-                module_input(self.module, &self.ctx.repo)?
+                module_input(self.module, &self.ctx.repo, self.ir)?
             );
             self.store_path = store::store_path(&self.ctx.home, self.name, &input);
         }

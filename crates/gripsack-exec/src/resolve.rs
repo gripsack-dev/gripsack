@@ -129,8 +129,34 @@ fn inject_locked_sha(
 }
 
 /// files, so editing a dotfile changes the identity (0008 §2).
-pub(crate) fn module_input(module: &gripsack_ir::Module, repo: &Path) -> Result<String, ExecError> {
-    let mut input = serde_json::to_string(module)?;
+/// The identity projection (0004 §2, enforced): provenance NEVER
+/// changes identity. A module's store-path input serializes the module
+/// with span removed — a line edit in your module source, or the same
+/// repo cloned at a different absolute path, must not re-fetch the
+/// world. The regression test pins this: two IR documents differing
+/// only in provenance hash identically.
+fn identity_projection(module: &gripsack_ir::Module) -> gripsack_ir::Module {
+    let mut projected = module.clone();
+    projected.span = None;
+    for entry in projected
+        .install
+        .iter_mut()
+        .chain(projected.config.iter_mut())
+    {
+        entry.span = None;
+    }
+    for dep in projected.depends.iter_mut() {
+        dep.span = None;
+    }
+    projected
+}
+
+pub(crate) fn module_input(
+    module: &gripsack_ir::Module,
+    repo: &Path,
+    ir: &gripsack_ir::Ir,
+) -> Result<String, ExecError> {
+    let mut input = serde_json::to_string(&identity_projection(module))?;
     for entry in module.install.iter().chain(module.config.iter()) {
         let repo_file = repo.join(&entry.from);
         if repo_file.exists() {
@@ -140,5 +166,52 @@ pub(crate) fn module_input(module: &gripsack_ir::Module, repo: &Path) -> Result<
             input.push_str(&store::canonical_file_hash(&repo_file)?);
         }
     }
+    // the closure model (0001 §3.4): a dependency's identity joins the
+    // dependent's input, or a rebuilt dep leaves dependents stale
+    for dep in &module.depends {
+        if let Some(dep_module) = ir.modules.get(&dep.module) {
+            input.push_str(&format!(
+                "|dep:{}={}",
+                dep.module,
+                module_input(dep_module, repo, ir)?
+            ));
+        }
+    }
     Ok(input)
+}
+
+#[cfg(test)]
+mod identity_tests {
+    //! 0004 §2, load-bearing: provenance must NEVER change identity.
+
+    #[test]
+    fn provenance_differences_hash_identically() {
+        let json = |span_file: &str, module_line: u32| {
+            format!(
+                r#"{{"fetch": {{"kind": "tarball", "url": "https://x/y.tar.gz"}},
+                 "config": [{{"from": "c.toml", "to": "~/.c.toml",
+                              "span": {{"file": "{span_file}", "line": {module_line}}}}}],
+                 "span": {{"file": "{span_file}", "line": {module_line}}}}}"#
+            )
+        };
+        let a: gripsack_ir::Module =
+            serde_json::from_str(&json("/home/alice/env/modules/m.py", 3)).unwrap();
+        let b: gripsack_ir::Module =
+            serde_json::from_str(&json("/home/bob/dotfiles/modules/m.py", 47)).unwrap();
+        let repo = std::path::Path::new("/nonexistent");
+        let ir = gripsack_ir::Ir {
+            ir_version: 1,
+            host: gripsack_ir::HostFacts {
+                os: "linux".into(),
+                arch: "x86_64".into(),
+                libc: Some("glibc".into()),
+                tags: vec![],
+            },
+            modules: Default::default(),
+            resources: Default::default(),
+        };
+        let ia = super::module_input(&a, repo, &ir).unwrap();
+        let ib = super::module_input(&b, repo, &ir).unwrap();
+        assert_eq!(ia, ib, "span/provenance must not change identity");
+    }
 }

@@ -49,10 +49,16 @@ pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, Exe
         if pruned.contains(&n) {
             continue;
         }
-        if let Ok(manifest) = store::read_manifest(home, n) {
-            for state in manifest.modules.values() {
-                referenced.insert(state.store_path.clone());
-            }
+        // fail CLOSED: an unparseable manifest must abort gc — dropping
+        // its pins would collect referenced store paths and leave
+        // dangling symlinks across the user's home (review finding G)
+        let manifest = store::read_manifest(home, n).map_err(|e| ExecError::Step {
+            module: format!("generation {n}"),
+            step: "gc".into(),
+            detail: format!("manifest is corrupt — refusing to collect: {e}"),
+        })?;
+        for state in manifest.modules.values() {
+            referenced.insert(state.store_path.clone());
         }
     }
     if !dry_run {

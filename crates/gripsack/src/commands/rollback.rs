@@ -32,7 +32,9 @@ pub fn rollback(generation: Option<u64>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // Remove destinations the target generation doesn't know about.
+    // Remove destinations the target generation doesn't know about —
+    // drift-guarded, same rule as apply's prune (user edits are never
+    // deleted; merge entries lose only our block)
     if let Some(c) = current
         && let Ok(current_manifest) = store::read_manifest(&home, c)
     {
@@ -43,22 +45,22 @@ pub fn rollback(generation: Option<u64>) -> ExitCode {
                     .map(|s| s.entries.iter().any(|e| e.to == entry.to))
                     .unwrap_or(false);
                 if !still {
-                    let _ = std::fs::remove_file(expand_home(&entry.to));
+                    let dest = expand_home(&entry.to);
+                    if !gripsack_exec::deploy::remove_entry_deployed(&dest, entry, name) {
+                        tracing::warn!("kept {} — modified since deploy", entry.to);
+                    }
                 }
             }
         }
     }
-    for state in manifest.modules.values() {
+    // restore through the ONE deploy-restore path (0001 §3.5): template
+    // re-renders with the recorded vars, merge re-upserts only the
+    // block — never a naive byte copy
+    for (name, state) in &manifest.modules {
         for entry in &state.entries {
-            let source = state.store_path.join(&entry.from);
             let dest = expand_home(&entry.to);
-            if let Some(parent) = dest.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let result = match entry.mode {
-                gripsack_ir::Ownership::Owned => store::symlink_replace(&dest, &source),
-                _ => std::fs::read(&source).and_then(|bytes| store::atomic_write(&dest, &bytes)),
-            };
+            let result =
+                gripsack_exec::deploy::restore_entry(&dest, entry, &state.store_path, name);
             if let Err(e) = result {
                 eprintln!("grip: rollback failed for {}: {e}", dest.display());
                 return ExitCode::FAILURE;

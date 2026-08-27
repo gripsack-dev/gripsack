@@ -6,6 +6,78 @@ use gripsack_ir::{Entry, Ownership};
 use gripsack_store as store;
 use std::path::{Path, PathBuf};
 
+/// Restore one destination to what a generation's manifest recorded —
+/// the ONE deploy-restore path, shared by run-level rollback and
+/// `grip rollback` (0001 §3.5): every mode gets its correct semantics,
+/// never a naive byte copy (template re-renders with the recorded
+/// vars; merge re-upserts only the block into the foreign file).
+pub fn restore_entry(
+    dest: &Path,
+    entry: &store::DeployedEntry,
+    store_path: &Path,
+    module: &str,
+) -> std::io::Result<()> {
+    let source = store_path.join(&entry.from);
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    match entry.mode {
+        Ownership::Owned => store::symlink_replace(dest, &source),
+        Ownership::Merge => {
+            let payload = std::fs::read_to_string(&source).unwrap_or_default();
+            let existing = std::fs::read_to_string(dest).unwrap_or_default();
+            match crate::render::upsert_block(&existing, module, dest, None, &payload) {
+                Ok(new) => store::atomic_write(dest, new.as_bytes()),
+                Err(_) => Ok(()), // malformed markers: leave the foreign file alone
+            }
+        }
+        Ownership::Template => std::fs::read(&source).and_then(|raw| {
+            crate::render::render_template(&raw, &entry.vars, &entry.from)
+                .map_err(std::io::Error::other)
+                .and_then(|bytes| store::atomic_write(dest, &bytes))
+        }),
+        Ownership::TrackedCopy => {
+            std::fs::read(&source).and_then(|bytes| store::atomic_write(dest, &bytes))
+        }
+    }
+}
+
+/// Remove a destination we deployed, with drift guards (0001 §3.5):
+/// never delete user edits. Returns true if anything was removed.
+/// Merge entries remove only our block from the foreign file.
+pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: &str) -> bool {
+    match entry.mode {
+        Ownership::Owned => {
+            let ours = std::fs::read_link(dest)
+                .map(|t| t.starts_with(store::gripsack_home()))
+                .unwrap_or(false);
+            ours && std::fs::remove_file(dest).is_ok()
+        }
+        Ownership::Merge => {
+            let existing = std::fs::read_to_string(dest).unwrap_or_default();
+            match crate::render::extract_block(&existing, module) {
+                Some(content) if store::canonical_bytes_hash(content.as_bytes()) == entry.hash => {
+                    let new =
+                        crate::render::remove_block(&existing, module).expect("block found above");
+                    if new.trim().is_empty() {
+                        std::fs::remove_file(dest).is_ok()
+                    } else {
+                        store::atomic_write(dest, new.as_bytes()).is_ok()
+                    }
+                }
+                _ => false, // drifted block is the user's now
+            }
+        }
+        _ => {
+            // copy-like: only delete bytes identical to what we wrote
+            let Ok(current) = store::canonical_file_hash(dest) else {
+                return false;
+            };
+            current == entry.hash && std::fs::remove_file(dest).is_ok()
+        }
+    }
+}
+
 /// Run-level rollback (0001 §9, review finding E1): an apply that
 /// fails mid-graph must leave NO half-applied deployment behind —
 /// the generation flip was never reached, so every destination this
@@ -21,56 +93,18 @@ pub(crate) fn run_rollback(
             let dest = expand_home(&entry.to);
             match prev_state.and_then(|p| p.entries.iter().find(|e| e.to == entry.to)) {
                 Some(prev_entry) => {
-                    let source = prev_state
-                        .expect("matched above")
-                        .store_path
-                        .join(&prev_entry.from);
-                    let result = match prev_entry.mode {
-                        Ownership::Owned => store::symlink_replace(&dest, &source),
-                        // a merge entry must never be restored by whole-
-                        // file write — the file is foreign; re-upsert
-                        // the previous generation's block instead
-                        Ownership::Merge => {
-                            let payload = std::fs::read_to_string(&source).unwrap_or_default();
-                            let existing = std::fs::read_to_string(&dest).unwrap_or_default();
-                            match crate::render::upsert_block(
-                                &existing, name, &dest, None, &payload,
-                            ) {
-                                Ok(new) => store::atomic_write(&dest, new.as_bytes()),
-                                Err(_) => Ok(()),
-                            }
-                        }
-                        // template dest holds RENDERED bytes — re-render
-                        // the previous payload with its recorded vars
-                        Ownership::Template => std::fs::read(&source).and_then(|raw| {
-                            crate::render::render_template(&raw, &prev_entry.vars, &prev_entry.from)
-                                .map_err(std::io::Error::other)
-                                .and_then(|bytes| store::atomic_write(&dest, &bytes))
-                        }),
-                        _ => std::fs::read(&source)
-                            .and_then(|bytes| store::atomic_write(&dest, &bytes)),
-                    };
+                    let result = restore_entry(
+                        &dest,
+                        prev_entry,
+                        &prev_state.expect("matched above").store_path,
+                        name,
+                    );
                     if result.is_ok() {
                         tracing::info!("restored {} (run rolled back)", entry.to);
                     }
                 }
                 None => {
-                    // a merge entry with no previous deployment means we
-                    // ADDED a block this run — remove only the block,
-                    // never the foreign file
-                    if entry.mode == Ownership::Merge {
-                        let existing = std::fs::read_to_string(&dest).unwrap_or_default();
-                        if let Some(new) = crate::render::remove_block(&existing, name) {
-                            let removed = if new.trim().is_empty() {
-                                std::fs::remove_file(&dest).is_ok()
-                            } else {
-                                store::atomic_write(&dest, new.as_bytes()).is_ok()
-                            };
-                            if removed {
-                                tracing::info!("removed block in {} (run rolled back)", entry.to);
-                            }
-                        }
-                    } else if std::fs::remove_file(&dest).is_ok() {
+                    if remove_entry_deployed(&dest, entry, name) {
                         tracing::info!("removed {} (run rolled back)", entry.to);
                     }
                 }
@@ -217,7 +251,11 @@ pub(crate) fn deploy_entry(
                         format!("{} drifted — kept", entry.to)
                     };
                     tracing::warn!("{}", note);
-                    (note, ReportKind::Warned, hash)
+                    // the manifest must record what's ACTUALLY deployed
+                    // (the kept content), not the source we declined to
+                    // write — or drift resolution can never converge
+                    // (e2e: drift_is_kept)
+                    (note, ReportKind::Warned, current)
                 }
             } else {
                 if let Some(parent) = dest.parent() {

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Ir {
     pub ir_version: u32,
     #[serde(default)]
@@ -18,12 +19,14 @@ pub struct Ir {
 /// A named, declared resource — a marker closing the namespace so typos
 /// are sema errors, not silent "no mutual exclusion".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Resource {
     pub name: String,
 }
 
 /// Facts resolved at eval time; the core never re-derives them (0001 §5).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HostFacts {
     #[serde(default)]
     pub os: String,
@@ -38,6 +41,7 @@ pub struct HostFacts {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Module {
     /// None for dotfiles-only modules — their content is their config
     /// files (0006 §2 level 1). Mutually exclusive with `steps`
@@ -153,6 +157,7 @@ pub enum Build {
 
 /// A store path mapped to a destination.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Entry {
     pub from: String,
     pub to: String,
@@ -187,6 +192,7 @@ pub enum Ownership {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Dependency {
     pub module: String,
     #[serde(default)]
@@ -218,6 +224,7 @@ pub enum EnvOp {
 
 /// One environment contribution (0001 §3.10).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EnvVar {
     pub name: String,
     #[serde(default)]

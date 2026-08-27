@@ -197,6 +197,7 @@ fn run_one(
     run_module(
         name,
         module,
+        ir,
         steps,
         ctx,
         prev.get(name),

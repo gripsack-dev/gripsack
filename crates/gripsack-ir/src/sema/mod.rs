@@ -344,3 +344,28 @@ mod tests {
         assert!(rendered.contains("= module xyz"));
     }
 }
+
+#[cfg(test)]
+mod contract_tests {
+    use super::check;
+
+    #[test]
+    fn unknown_fields_are_parse_errors_now() {
+        // the contract is load-bearing (review finding B): a camelCase
+        // leak like baseUrl is a hard error, never silent data loss
+        let json = r##"{
+            "ir_version": 1,
+            "modules": {
+                "gh": {
+                    "fetch": {"kind": "github_release", "repo": "a/b",
+                              "asset": "x.tar.gz", "baseUrl": "https://ghe.example.com"}
+                }
+            }
+        }"##;
+        let diagnostics = check(json).unwrap_err();
+        assert!(
+            diagnostics[0].message.contains("baseUrl")
+                || diagnostics[0].message.contains("unknown field")
+        );
+    }
+}

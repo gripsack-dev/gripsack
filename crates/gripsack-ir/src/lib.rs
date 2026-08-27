@@ -27,6 +27,7 @@ pub mod parse;
 pub mod sema;
 pub mod span;
 pub mod step;
+mod tagged;
 
 pub use diagnostic::{Diagnostic, Label, Severity, codes};
 pub use model::*;

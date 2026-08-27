@@ -183,6 +183,9 @@ fn main() -> ExitCode {
             {
                 Ok(ir) => {
                     let waves = gripsack_exec::waves(&ir).unwrap_or_default();
+                    if modules.is_empty() {
+                        println!("{}", render::diff_section(&ir, &repo, palette));
+                    }
                     match modules.first() {
                         Some(name) => {
                             println!("{}", render::render_module(&ir, name, &waves, palette))

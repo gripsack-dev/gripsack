@@ -1,7 +1,7 @@
 /** Typed fetchers (0001 §3.1, 0002 §2). */
 
 export type Fetch =
-  | { kind: "github_release"; repo: string; asset: string; version?: string; sha256?: string; baseUrl?: string }
+  | { kind: "github_release"; repo: string; asset: string; version?: string; sha256?: string; base_url?: string }
   | { kind: "tarball"; url: string; sha256?: string }
   | { kind: "git"; url: string; rev: string }
   | { kind: "file"; path: string }
@@ -14,7 +14,7 @@ export function githubRelease(spec: {
   asset: string;
   version?: string;
   sha256?: string;
-  baseUrl?: string;
+  base_url?: string;
 }): Fetch {
   return { kind: "github_release", ...spec };
 }
