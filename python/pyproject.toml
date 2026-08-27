@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gripsack"
-version = "0.15.2"
+version = "0.15.3"
 description = "gripsack python frontend — typed module DSL, emits IR"
 readme = "README.md"
 requires-python = ">=3.10"
