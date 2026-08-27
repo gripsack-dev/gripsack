@@ -87,8 +87,9 @@ your env repo (modules + env.toml + hosts/)
 | status | **ships; the default** | ships — typed, bun-provisioned eval, same IR |
 
 One frontend per env repo, declared in `env.toml` (`frontend =
-"python"` today). Both emit the same IR — the core never embeds either
-runtime ([plan/0005](plan/0005-frontends-and-configuration.md)).
+"python"` or `"typescript"`). Both emit the same IR — the core never
+embeds either runtime
+([plan/0005](plan/0005-frontends-and-configuration.md)).
 
 ## Sourcing
 
