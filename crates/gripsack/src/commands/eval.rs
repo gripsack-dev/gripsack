@@ -415,7 +415,10 @@ fn deno_command(
     // location or the sandbox blocks the very pin it must honor
     let mut reads = vec![
         repo.to_path_buf(),
-        inputs.parent().unwrap_or_else(|| Path::new(".")).to_path_buf(),
+        inputs
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf(),
         frontend_dir.to_path_buf(),
     ];
     if let Ok(pin) = repo.join("node_modules/@gripsack/core").canonicalize()
