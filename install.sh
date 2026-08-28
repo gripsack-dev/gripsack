@@ -61,6 +61,8 @@ mkdir -p "$DEST"
 install -m755 "$tmp/$pkg/grip" "$DEST/grip"
 
 echo "installed: $DEST/grip ($("$DEST/grip" --version))"
+echo "note: your first eval downloads the pinned Deno runtime (~40MB,"
+echo "hash-verified, cached under \$GRIPSACK_HOME) — eval is sandboxed in it"
 case ":$PATH:" in
     *":$DEST:"*) ;;
     *) echo "note: $DEST is not on your PATH — add it to your shell profile" ;;

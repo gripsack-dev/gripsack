@@ -10,5 +10,6 @@ repository.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 gripsack-ir.workspace = true
+toml.workspace = true
 sha2.workspace = true
 tempfile = "3"

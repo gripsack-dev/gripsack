@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "@gripsack/core": "./src/pin.ts"
+  },
+  "tasks": {
+    "test": "deno test --allow-read --allow-write --allow-run --allow-env test/"
+  }
+}

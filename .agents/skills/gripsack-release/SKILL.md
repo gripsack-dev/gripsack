@@ -6,8 +6,9 @@ description: Cut gripsack releases — two artifacts, two tag namespaces, two re
 # Releasing
 
 Two artifacts ship from this repo (plan/0003 §6): the `grip` binary
-(crates.io `gripsack`) and the Python frontend (PyPI `gripsack`). Versions
-are independent; the IR version is the compatibility contract.
+(crates.io `gripsack`) and the TypeScript frontend (npm
+`@gripsack/core`). Versions are independent; the IR version is the
+compatibility contract.
 
 ## Core (binary)
 
@@ -22,16 +23,17 @@ irreversible artifact; a failure there must not leave a GitHub release
 pointing at nothing. The tag guard fails mistags. Needs
 `CARGO_REGISTRY_TOKEN` in repo secrets.
 
-## Python (frontend)
+## TypeScript (frontend package)
 
 ```bash
-# version must equal python/pyproject.toml
-git tag py-v0.1.0 && git push origin py-v0.1.0
+# version must equal typescript/package.json
+git tag ts-v0.1.0 && git push origin ts-v0.1.0
 ```
 
-Builds the wheel with `uv build` and publishes with `uv publish`. Needs
-`PYPI_API_TOKEN` in repo secrets. (Trusted publishing is the better
-long-term setup — configure it on PyPI and drop the token.)
+Builds with `npm ci && npm test` and publishes with `npm publish`. Needs
+`NPM_TOKEN` in repo secrets. The npm package is for IDE types and the
+deliberate-pin rule (a repo's own install shadows the embedded copy);
+the grip binary embeds the frontend source, so users do not need it.
 
 ## Checklist
 

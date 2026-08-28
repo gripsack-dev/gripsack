@@ -12,7 +12,7 @@ use owo_colors::OwoColorize;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// (repo-relative path, embedded contents). `hosts/myhost.py` is
+/// (repo-relative path, embedded contents). `hosts/myhost.ts` is
 /// renamed to the machine's hostname at write time.
 const TEMPLATE: &[(&str, &str)] = &[
     ("env.toml", include_str!("../../template/env-repo/env.toml")),
@@ -25,16 +25,16 @@ const TEMPLATE: &[(&str, &str)] = &[
         include_str!("../../template/env-repo/README.md"),
     ),
     (
-        "hosts/myhost.py",
-        include_str!("../../template/env-repo/hosts/myhost.py"),
+        "hosts/myhost.ts",
+        include_str!("../../template/env-repo/hosts/myhost.ts"),
     ),
     (
-        "modules/hello.py",
-        include_str!("../../template/env-repo/modules/hello.py"),
+        "modules/hello.ts",
+        include_str!("../../template/env-repo/modules/hello.ts"),
     ),
     (
-        "modules/examples.py",
-        include_str!("../../template/env-repo/modules/examples.py"),
+        "modules/examples.ts",
+        include_str!("../../template/env-repo/modules/examples.ts"),
     ),
     (
         "configs/hello/hello.toml",
@@ -44,7 +44,7 @@ const TEMPLATE: &[(&str, &str)] = &[
 
 fn hostname() -> String {
     let raw = super::hostname();
-    // a valid python module name: alnum, dash and underscore
+    // a valid host file name: alnum, dash and underscore
     let clean: String = raw
         .chars()
         .map(|c| {
@@ -83,8 +83,8 @@ pub fn init(dir: &Path, palette: Palette) -> ExitCode {
     let host = hostname();
     let mut created = Vec::new();
     for (rel, contents) in TEMPLATE {
-        let rel = if *rel == "hosts/myhost.py" {
-            format!("hosts/{host}.py")
+        let rel = if *rel == "hosts/myhost.ts" {
+            format!("hosts/{host}.ts")
         } else {
             rel.to_string()
         };
@@ -122,8 +122,8 @@ pub fn init(dir: &Path, palette: Palette) -> ExitCode {
         let note = match rel.as_str() {
             "env.toml" => "— the environment declaration",
             r if r.starts_with("hosts/") => "— this machine's entrypoint (tags)",
-            "modules/hello.py" => "— a working first module (config-only)",
-            "modules/examples.py" => "— the feature tour, commented",
+            "modules/hello.ts" => "— a working first module (config-only)",
+            "modules/examples.ts" => "— the feature tour, commented",
             _ => "",
         };
         println!("  {rel} {note}");

@@ -1,97 +1,109 @@
-/** Eval driver (plan/0005 §5): `bun run dist/src/cli.js <repo> --host <name>`.
+/** Eval driver (0013 D2/D5): `deno run … src/cli.ts <repo> --inputs <path>`.
  *
- * Imports the env repo's modules and host entrypoint, then prints the
- * eval envelope on stdout: {"ir": {...}, "diagnostics": []}. The core
- * spawns this as a subprocess; it never embeds a runtime. Error
- * diagnostics exit 1 (lints are core-side since 0012).
+ * Runs inside the core's sandbox (no env, no network, no subprocesses,
+ * read-only within the repo + the inputs dir + the embedded frontend).
+ * Imports the repo's host entrypoint, calls its `defineEnv` function
+ * with the core-injected context, and prints the eval envelope on
+ * stdout: {"ir": …, "diagnostics": [], "probe_requests": […]}.
+ * Error diagnostics exit 1 (tracebacks are the frontend's domain; the
+ * core passes stderr through untouched, 0005 §4).
  */
 
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-// one graph instance, always: the driver resolves "@gripsack/core"
-// FROM THE REPO's perspective — the repo's own install wins when it
-// shadows the provisioned copy (the user's deliberate pin), and
-// NODE_PATH lands on the provisioned copy otherwise. Type-only
-// imports stay static; the runtime import is plugin loading.
-import { createRequire } from "node:module";
-import type { emitIr as emitIrT, setTags as setTagsT } from "@gripsack/core";
+import { core, coreUrl } from "./pin.ts";
+import type { Env } from "./graph.ts";
+
+function die(msg: string): never {
+  console.error(`gripsack: ${msg}`);
+  process.exit(1);
+}
 
 async function main(): Promise<void> {
+  if (
+    typeof core.parseInputs !== "function" ||
+    typeof core.createProbeBuilder !== "function" ||
+    typeof core.emitIr !== "function"
+  ) {
+    die(
+      `the pinned @gripsack/core at ${coreUrl} predates the defineEnv frontend ` +
+        `(0013) — update or remove the repo's node_modules/@gripsack/core pin`,
+    );
+  }
+
   const args = process.argv.slice(2);
   const repo = resolve(args[0] ?? ".");
-  // plugin loading: the package instance is runtime-resolved from the
-  // repo's perspective (see the header comment) — never a static import
-  const repoRequire = createRequire(join(repo, "gripsack-eval.ts"));
-  const coreUrl = repoRequire.resolve("@gripsack/core");
-  const core = (await import(pathToFileURL(coreUrl).href)) as {
-    setTags: typeof setTagsT;
-    emitIr: typeof emitIrT;
-  };
-  const { setTags, emitIr } = core;
-  let host: string | undefined;
-  let extraTags: string[] = [];
+  let inputsPath: string | undefined;
   for (let i = 1; i < args.length; i++) {
-    const next = args[i + 1];
-    if (args[i] === "--host" && next !== undefined) {
-      host = next;
-      i++;
-    }
-    if (args[i] === "--tags" && next !== undefined) {
-      extraTags = next.split(",").filter(Boolean);
-      i++;
-    }
+    if (args[i] === "--inputs" && args[i + 1] !== undefined) inputsPath = args[++i];
   }
+  if (inputsPath === undefined) die("--inputs <path> is required (the core always passes it)");
 
-  // host entrypoint first: it declares tags
-  let tags = extraTags;
-  if (host) {
-    const hostFile = join(repo, "hosts", `${host}.ts`);
+  const inputs = core.parseInputs(readFileSync(inputsPath, "utf8"), inputsPath);
+  // host entrypoint: selected by the core (hostname / [env]
+  // default_host / --host), named in the inputs envelope
+  const hostFile = join(repo, "hosts", `${inputs.host}.ts`);
+  // existence is checked up front — deno's failure messages differ
+  // across versions, so an import error must ALWAYS mean a real
+  // defect in the host file (broken import, syntax error) and pass
+  // through as a traceback, never masquerade as a missing host
+  if (!existsSync(hostFile)) {
+    // a hosts/ dir with no match must not silently yield an empty env
+    // — every when(tags=[…]) module would silently drop (same rule as
+    // the python frontend had, enterprise review)
+    let existing: string[] = [];
     try {
-      // plugin loading: the host file is runtime-selected by the user
-      // repo — a static import cannot exist here
-      const mod = await import(pathToFileURL(hostFile).href);
-      tags = [...(mod.tags ?? tags)];
-    } catch (e: unknown) {
-      if ((e as { code?: string }).code !== "ERR_MODULE_NOT_FOUND") throw e;
-      // a hosts/ dir with no match must not silently yield empty tags —
-      // every when(tags=[...]) module would silently drop (same rule
-      // as the python frontend, enterprise review)
-      const existing = readdirSync(join(repo, "hosts")).filter((f) =>
-        f.endsWith(".ts"),
-      );
-      if (existing.length > 0) {
-        console.error(
-          `gripsack: no hosts/${host}.ts (have: ${existing
-            .map((f) => f.replace(/\.ts$/, ""))
-            .join(", ")}) — pass --host, set [env] default_host, or add the file`,
-        );
-        process.exit(1);
-      }
+      existing = readdirSync(join(repo, "hosts")).filter((f) => f.endsWith(".ts"));
+    } catch {
+      // no hosts dir at all
     }
+    const have = existing.map((f) => f.replace(/\.ts$/, "")).join(", ");
+    die(
+      existing.length > 0
+        ? `no hosts/${inputs.host}.ts (have: ${have}) — add the file or change the host selection`
+        : `no hosts/${inputs.host}.ts and no hosts/ directory in ${repo} — add hosts/${inputs.host}.ts`,
+    );
   }
-  setTags(tags);
+  // plugin loading: the host file is runtime-selected by the repo —
+  // a static import cannot exist here
+  const hostMod = (await import(pathToFileURL(hostFile).href)) as { default?: unknown };
 
-  const modulesDir = join(repo, "modules");
-  let files: string[] = [];
-  try {
-    files = readdirSync(modulesDir)
-      .filter((f) => f.endsWith(".ts"))
-      .sort();
-  } catch {
-    // no modules dir — empty graph
-  }
-  for (const f of files) {
-    // plugin loading: module files are discovered in the user repo at
-    // runtime — a static import cannot exist here
-    await import(pathToFileURL(join(modulesDir, f)).href);
+  const envFn = hostMod.default;
+  if (typeof envFn !== "function") {
+    die(
+      `hosts/${inputs.host}.ts must default-export defineEnv((ctx) => ({ tags, modules })) ` +
+        "(0013 D5)",
+    );
   }
 
-  const payload = { ir: JSON.parse(emitIr(tags)), diagnostics: [] };
+  const { probe, requests } = core.createProbeBuilder(inputs.probes);
+  const env = (envFn as (ctx: unknown) => unknown)({
+    facts: inputs.facts,
+    tags: inputs.tags,
+    probe,
+    settings: inputs.settings,
+  }) as Env;
+  if (
+    typeof env !== "object" || env === null || !Array.isArray(env.modules) ||
+    (env.tags !== undefined && !Array.isArray(env.tags))
+  ) {
+    die(
+      `hosts/${inputs.host}.ts must synchronously return { tags?, modules: [...] } ` +
+        `(got ${env instanceof Promise ? "a promise — return the env directly" : typeof env})`,
+    );
+  }
+
+  const tags = core.mergeTags(env.tags, inputs.tags);
+  const payload = {
+    ir: JSON.parse(core.emitIr(env, inputs.facts, tags)),
+    diagnostics: [],
+    probe_requests: requests,
+  };
   process.stdout.write(JSON.stringify(payload) + "\n");
 }
 
-main().catch((e) => {
+main().catch((e: unknown) => {
   // frontend tracebacks are the frontend's domain — the core passes
   // stderr through untouched (0005 §4)
   console.error(e);

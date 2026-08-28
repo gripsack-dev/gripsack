@@ -1,4 +1,4 @@
-//! Host-platform asset resolution for bundled tools (pixi, uv).
+//! Host-platform asset resolution for bundled tools (pixi, deno).
 //!
 //! Each bundled tool release is pinned per platform — a version plus
 //! one sha256 per supported asset. Verification stays exact: a
@@ -10,6 +10,10 @@ use super::FetchError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssetTarget {
+    /// The linux/x86_64 platform slot. Named for the musl-static
+    /// flavor pixi ships (a musl binary runs on glibc too); deno
+    /// maps it to its glibc asset and refuses actual-musl hosts
+    /// upstream in provisioning.
     LinuxX86_64Musl,
     LinuxAarch64Musl,
     MacosX86_64,
@@ -27,16 +31,6 @@ impl AssetTarget {
         }
     }
 
-    /// bun's asset names follow their own convention (linux-x64, …).
-    pub fn bun_name(&self) -> &'static str {
-        match self {
-            Self::LinuxX86_64Musl => "linux-x64",
-            Self::LinuxAarch64Musl => "linux-aarch64",
-            Self::MacosX86_64 => "darwin-x64",
-            Self::MacosAarch64 => "darwin-aarch64",
-        }
-    }
-
     /// The vendor's asset triple — also the tarball's nested dir name.
     pub fn triple(&self) -> &'static str {
         match self {
@@ -46,12 +40,25 @@ impl AssetTarget {
             Self::MacosAarch64 => "aarch64-apple-darwin",
         }
     }
+
+    /// Deno's asset names: glibc builds for Linux — deno ships no
+    /// musl build, so a musl HOST is rejected before the download
+    /// (frontend provisioning), never here.
+    pub fn deno_name(&self) -> &'static str {
+        match self {
+            Self::LinuxX86_64Musl => "x86_64-unknown-linux-gnu",
+            Self::LinuxAarch64Musl => "aarch64-unknown-linux-gnu",
+            Self::MacosX86_64 => "x86_64-apple-darwin",
+            Self::MacosAarch64 => "aarch64-apple-darwin",
+        }
+    }
 }
 
 /// One bundled tool release: version + per-platform asset hashes.
 pub struct ToolRelease {
     pub version: &'static str,
-    /// Download URL with `{version}` and `{triple}` placeholders.
+    /// Download URL with `{version}`, `{triple}`, and `{denotarget}`
+    /// placeholders.
     pub url_template: &'static str,
     pub sha256: &'static [(AssetTarget, &'static str)],
 }
@@ -79,7 +86,7 @@ pub fn resolve(release: &ToolRelease) -> Result<(String, &'static str), FetchErr
         .url_template
         .replace("{version}", release.version)
         .replace("{triple}", target.triple())
-        .replace("{buntarget}", target.bun_name());
+        .replace("{denotarget}", target.deno_name());
     Ok((url, sha))
 }
 
@@ -106,51 +113,30 @@ pub const PIXI_RELEASE: ToolRelease = ToolRelease {
     ],
 };
 
-/// bun — the TypeScript frontend's runtime (single binary, runs TS
-/// natively; no node+transpile chain). Hashes from bun-v1.4.0's
-/// SHASUMS256.txt.
-pub const BUN_RELEASE: ToolRelease = ToolRelease {
-    version: "1.4.0",
-    url_template: "https://github.com/oven-sh/bun/releases/download/bun-v{version}/bun-{buntarget}.zip",
+/// deno — the TypeScript frontend's sandboxed runtime (plan/0013 D2):
+/// the permission model is the reason it exists; nothing else about
+/// the runtime is load-bearing here. Hashes from v2.9.6's per-asset
+/// `.zip.sha256sum` sidecars (fetched once at pin time, verified
+/// against the download — never fetched at runtime).
+pub const DENO_RELEASE: ToolRelease = ToolRelease {
+    version: "2.9.6",
+    url_template: "https://github.com/denoland/deno/releases/download/v{version}/deno-{denotarget}.zip",
     sha256: &[
         (
             AssetTarget::LinuxX86_64Musl,
-            "2d03fb5fb83ac8b567aca0a281b2ce1a1a19d488f56c2968d88c3f25e92fe452",
+            "394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2",
         ),
         (
             AssetTarget::LinuxAarch64Musl,
-            "4b1a332ee861983eb93bcfe6f770fff94e3e31b2c388bdaea3c8ed35e58eed0e",
-        ),
-        (
-            AssetTarget::MacosAarch64,
-            "c669e97f6164e1c96e0701748db98dfa77492908cbd8394c7557134a735de381",
+            "9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c712721c046e",
         ),
         (
             AssetTarget::MacosX86_64,
-            "1d0211b8f1dc991182344687ad15e72ee86f154845a5f7fa477994cd341dd9b0",
-        ),
-    ],
-};
-
-pub const UV_RELEASE: ToolRelease = ToolRelease {
-    version: "0.12.5",
-    url_template: "https://github.com/astral-sh/uv/releases/download/{version}/uv-{triple}.tar.gz",
-    sha256: &[
-        (
-            AssetTarget::LinuxX86_64Musl,
-            "a4742988791c9aeae68c78150d6cba762062ad2a47e53738c2779d2b596bfcdb",
-        ),
-        (
-            AssetTarget::LinuxAarch64Musl,
-            "8767a0e77f2cd45436401b1b42bf7e9ed5a4a91a74a5305d6fe93249d0f6dbc5",
-        ),
-        (
-            AssetTarget::MacosX86_64,
-            "b3b2137477cf96c9686ebfb71524614cec780c673fd73e59bce099aef02e70e8",
+            "7d4524b82bcc557fe020a1a5b56956ed42b992ae5b28026e8ad5d17329533f5f",
         ),
         (
             AssetTarget::MacosAarch64,
-            "5bb0e5fe008a773c3dbcb97ff79cd89e1241464fe9d2f986d52ad8f1b037bd62",
+            "213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472",
         ),
     ],
 };
@@ -168,8 +154,8 @@ mod tests {
     }
 
     #[test]
-    fn uv_and_pixi_have_full_platform_tables() {
-        for release in [&PIXI_RELEASE, &UV_RELEASE] {
+    fn bundled_releases_have_full_platform_tables() {
+        for release in [&PIXI_RELEASE, &DENO_RELEASE] {
             for target in [
                 AssetTarget::LinuxX86_64Musl,
                 AssetTarget::LinuxAarch64Musl,
@@ -184,5 +170,21 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn deno_urls_use_the_glibc_linux_assets() {
+        // deno ships no musl build: the linux slots must resolve to
+        // the gnu assets, never a musl-named download
+        for (target, asset) in [
+            (AssetTarget::LinuxX86_64Musl, "x86_64-unknown-linux-gnu"),
+            (AssetTarget::LinuxAarch64Musl, "aarch64-unknown-linux-gnu"),
+        ] {
+            assert_eq!(target.deno_name(), asset);
+        }
+        let (url, sha) = resolve(&DENO_RELEASE).unwrap();
+        assert!(url.contains("deno-"));
+        assert!(url.ends_with(".zip"));
+        assert_eq!(sha.len(), 64);
     }
 }

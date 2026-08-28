@@ -10,54 +10,6 @@ on:
   pull_request:
 
 jobs:
-  python-env:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: gripsack
-
-      - name: Build grip (static musl)
-        run: docker compose run --build --rm -e VERSION=0.0.0-ci release
-        working-directory: gripsack
-
-      - name: Extract binary
-        # dist/ is root-owned (container mount) — extract elsewhere
-        run: |
-          mkdir -p /tmp/grip-bin
-          tar -xzf gripsack/dist/gripsack-*.tar.gz -C /tmp/grip-bin
-          echo "GRIP=$(find /tmp/grip-bin -type f -name grip)" >> "$GITHUB_ENV"
-
-      - name: Install the python frontend
-        run: |
-          python3 -m venv /tmp/fenv
-          /tmp/fenv/bin/pip install -q ./gripsack/python
-
-      - uses: actions/checkout@v7
-        with:
-          repository: gripsack-dev/example-env-python
-          path: example
-
-      - name: Apply the example env (twice — the second must be satisfied)
-        env:
-          HOME: /tmp/example-home
-          GRIPSACK_HOME: /tmp/example-home/.gs
-          # provisioning from github releases needs auth on shared runners
-          # (60/hr anonymous is exhausted constantly)
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p "$HOME"
-          export PATH="/tmp/fenv/bin:$PATH"
-          cd example
-          "$GRIP" apply --host laptop | tee /tmp/apply1.log
-          grep -q "applied" /tmp/apply1.log
-          "$GRIP" apply --host laptop | tee /tmp/apply2.log
-          grep -q "already satisfied" /tmp/apply2.log
-          "$HOME/.local/bin/hello"
-          "$HOME/.local/bin/hello-patched"
-          grep -q "catppuccin-mocha" "$HOME/.config/editor/editor.toml"
-          "$GRIP" generations | grep -q "→"
-
   typescript-env:
     runs-on: ubuntu-latest
     steps:
@@ -75,6 +27,7 @@ jobs:
         working-directory: gripsack
 
       - name: Extract binary
+        # dist/ is root-owned (container mount) — extract elsewhere
         run: |
           mkdir -p /tmp/grip-bin
           tar -xzf gripsack/dist/gripsack-*.tar.gz -C /tmp/grip-bin
@@ -93,30 +46,22 @@ jobs:
           npm install "$GITHUB_WORKSPACE/gripsack/typescript"
           npx tsc
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
 
-      - name: Apply the example env (typescript frontend, real eval)
+      - name: Apply the example env (real eval, sandboxed Deno)
         env:
           HOME: /tmp/example-home-ts
           GRIPSACK_HOME: /tmp/example-home-ts/.gs
-          # the driver resolves @gripsack/core from the repo's own
-          # install (just typechecked); the provisioned copy would be
-          # the not-yet-published version during a PR
-          GRIPSACK_TS_FRONTEND: /tmp/ts-frontend
+          # the checkout is not a trusted repo and CI has no TTY for
+          # the prompt; the repo is reviewed here instead
+          GRIPSACK_TRUST_ALL: "1"
         run: |
-          mkdir -p /tmp/ts-frontend/node_modules/@gripsack/core
-          cp -r gripsack/typescript/dist gripsack/typescript/package.json \
-            /tmp/ts-frontend/node_modules/@gripsack/core/
+          mkdir -p "$HOME"
+          # the example's own node_modules/@gripsack/core (installed
+          # above for the typecheck) shadows the embedded copy — the
+          # deliberate-pin rule; that's what makes a pre-release PR
+          # exercise the in-repo frontend
           cd example
           "$GRIP" check --host laptop
           "$GRIP" apply --host laptop
           "$GRIP" apply --host laptop   # satisfied
-
-      - uses: astral-sh/setup-uv@v7
-
-      - name: Dual-frontend parity ( the golden corpus, plan/0007)
-        env:
-          GRIPSACK_TS_FRONTEND: /tmp/ts-frontend
-        run: |
-          cd gripsack/e2e
-          uv run pytest -q -k parity_golden

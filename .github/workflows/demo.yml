@@ -45,18 +45,21 @@ jobs:
 
       - name: Render demo GIFs (one per site palette)
         run: |
-          tar -xzf dist/gripsack-*.tar.gz -C dist
-          # the tape runs a real apply: the frontend must be importable.
+          # the tape runs a real apply: eval needs the Deno runtime
+          # (GRIPSACK_DENO/PATH) and a repo the trust gate accepts —
+          # CI has no TTY for the prompt, so trust is granted here.
           # One render per palette the site's picker offers
           # (gripsack-dev.github.io website/index.html palette-bar), so
           # the site can swap the demo to match the picked palette —
           # the rootle.dev pattern. Theme names are VHS built-ins
           # (THEMES.md); demo.tape's own Output/Theme lines are the
           # default-palette render and stay canonical.
-          docker run --rm -v "$PWD:/vhs" -w /vhs --entrypoint sh ghcr.io/charmbracelet/vhs -c '
-            apt-get update -qq && apt-get install -y -qq python3 >/dev/null \
+          docker run --rm -v "$PWD:/vhs" -w /vhs -e GRIPSACK_TRUST_ALL=1 \
+            --entrypoint sh ghcr.io/charmbracelet/vhs -c '
+            apt-get update -qq && apt-get install -y -qq curl unzip >/dev/null \
+             && curl -fsSL https://deno.land/install.sh | sh >/dev/null 2>&1 \
              && install -m755 /vhs/dist/gripsack-*/grip /usr/local/bin/grip \
-             && export PYTHONPATH=/vhs/python \
+             && export PATH="/root/.deno/bin:$PATH" \
              && render() { \
                   sed -e "s|^Output .*|Output demos/$2.gif|" \
                       -e "s|^Set Theme .*|Set Theme \"$3\"|" \

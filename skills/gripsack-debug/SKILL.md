@@ -59,8 +59,9 @@ jq -c 'select([.spans[].name] | index("module:helix"))' "$L"  # one module's eve
 | E104 | `needs` references unknown step | check sibling ids and `module:step` refs |
 | E106 | duplicate or reserved (`done`) step id | rename the step |
 | E107 | undeclared resource | `resource("name")` first, or use a built-in |
+| E112 | probe set unstable — each eval round requested new probes (cap 4) | a probe depending on a probe is an authoring error; restructure the host entrypoint (0013 D6) |
+| E113 | unsupported probe kind | probes are a closed enum: `executable`, `file_exists` |
 
-Codes are stable — match on codes, never on message text.
 
 ## 4. The debugging loop
 

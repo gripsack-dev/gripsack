@@ -6,16 +6,19 @@
 //! ├── store/<input-hash>-<name>/  immutable, content-addressed payloads
 //! ├── generations/<N>/            one complete profile tree per apply
 //! ├── current -> generations/<N>  THE symlink — flipping it is activation
-//! └── locks/                      flock files for named resources (0007 §4)
+//! ├── locks/                      flock files for named resources (0007 §4)
+//! └── trust.toml                  repo trust list — the gate before eval
+//!                                 (0013 D7)
 //! ```
 //!
-//! The three modules divide the concerns:
+//! The modules divide the concerns:
 //!
 //! - [`paths`] — where things live (layout, `$GRIPSACK_HOME` resolution)
 //! - [`hash`] — canonical content identity: type + exec-bit + contents
 //!   (0008 §2); what makes two payloads "the same"
 //! - [`fs`] — how bytes land: atomic writes, atomic symlink flips,
 //!   publish-once directories (0001 §9.2)
+//! - [`trust`] — which repos may be evaluated at all (0013 D7)
 //!
 //! `store` is concerned with content correctness; `fs` guarantees the
 //! mechanics — a reader never sees a partial write, and activation is a
@@ -25,6 +28,7 @@ pub mod fs;
 pub mod generations;
 pub mod hash;
 pub mod paths;
+pub mod trust;
 
 pub use fs::{atomic_write, publish_dir, symlink_replace};
 pub use generations::{
@@ -36,3 +40,4 @@ pub use paths::{
     GENERATIONS_DIR, HASH_LEN, STORE_DIR, current_link, generation_dir, gripsack_home, input_hash,
     store_path,
 };
+pub use trust::{TrustedRepo, ensure_trusted};

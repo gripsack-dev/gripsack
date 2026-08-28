@@ -1,6 +1,6 @@
 {
   "name": "@gripsack/core",
-  "version": "0.16.4",
+  "version": "0.17.0",
   "description": "gripsack typescript frontend \u2014 typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",
@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "tsc && node --test dist/test/*.test.js"
+    "test": "deno test"
   },
   "keywords": [
     "dotfiles",

@@ -7,6 +7,7 @@
 //! grip rollback|generations|gc|why-owns
 //!                      generations, instant rollback, store hygiene
 //! grip update          re-resolve pins into the lockfile
+//! grip trust           repo trust list — the gate before any eval (0013 D7)
 //! ```
 //!
 //! Colors and source snippets live in [`render`]; they follow the
@@ -117,8 +118,15 @@ enum Command {
         /// Directory to initialize (default: current directory)
         dir: Option<PathBuf>,
     },
-    /// Check the frontend environment (python + node + gripsack package)
+    /// Check the frontend environment (deno + the embedded frontend)
     Doctor,
+    /// Manage the repo trust list — the gate before any eval (0013 D7).
+    /// The first eval of an untrusted repo prompts; `GRIPSACK_TRUST_ALL=1`
+    /// is the CI bypass.
+    Trust {
+        #[command(subcommand)]
+        command: commands::TrustCommand,
+    },
 }
 
 fn main() -> ExitCode {
@@ -175,6 +183,7 @@ fn main() -> ExitCode {
             Err(code) => code,
         },
         Command::Rollback { generation } => commands::rollback(generation),
+        Command::Trust { command } => commands::trust(command, palette),
         Command::Plan {
             ir: Some(path),
             modules,
@@ -193,33 +202,44 @@ fn main() -> ExitCode {
                 Ok(r) => r,
                 Err(code) => return code,
             };
-            match commands::eval_repo(&repo, host.as_deref(), palette)
-                .and_then(|outcome| commands::check_ir(&outcome.ir_json, palette))
-            {
-                Ok(ir) => {
-                    let waves = gripsack_exec::waves(&ir).unwrap_or_default();
-                    if modules.is_empty() {
-                        println!("{}", render::diff_section(&ir, &repo, palette));
-                    }
-                    match modules.first() {
-                        Some(name) => {
-                            println!("{}", render::render_module(&ir, name, &waves, palette))
-                        }
-                        None => {
-                            println!("{} {} modules", "plan:".green().bold(), ir.modules.len());
-                            for (i, wave) in waves.iter().enumerate() {
-                                println!(
-                                    "  {} {}",
-                                    format!("wave {i}").blue().bold(),
-                                    wave.join(", ")
-                                );
-                            }
-                        }
-                    }
-                    ExitCode::SUCCESS
-                }
-                Err(code) => code,
+            if let Some(code) = commands::trust_gate(&repo) {
+                return code;
             }
+            let outcome = match commands::eval_repo(&repo, host.as_deref(), palette) {
+                Ok(o) => o,
+                Err(code) => return code,
+            };
+            let ir = match commands::check_ir(&outcome.ir_json, palette) {
+                Ok(ir) => ir,
+                Err(code) => return code,
+            };
+            // host-inputs header (0013 D6): the facts that went in and
+            // the probes the core bound — what keeps hardware-reactive
+            // plans from reading as nondeterminism.
+            println!(
+                "{}",
+                commands::render_host_inputs(&outcome.host_inputs).dimmed()
+            );
+            let waves = gripsack_exec::waves(&ir).unwrap_or_default();
+            if modules.is_empty() {
+                println!("{}", render::diff_section(&ir, &repo, palette));
+            }
+            match modules.first() {
+                Some(name) => {
+                    println!("{}", render::render_module(&ir, name, &waves, palette))
+                }
+                None => {
+                    println!("{} {} modules", "plan:".green().bold(), ir.modules.len());
+                    for (i, wave) in waves.iter().enumerate() {
+                        println!(
+                            "  {} {}",
+                            format!("wave {i}").blue().bold(),
+                            wave.join(", ")
+                        );
+                    }
+                }
+            }
+            ExitCode::SUCCESS
         }
     }
 }

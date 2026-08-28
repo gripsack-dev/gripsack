@@ -3,6 +3,45 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.0] — 2026-08-28
+
+Constrained evaluation ([plan 0013](plan/0013-constrained-evaluation.md)).
+Breaking: the Python frontend, bun, and uv are removed.
+
+### Added
+
+- **Sandboxed eval**: the TypeScript frontend runs under a pinned,
+  hash-verified Deno (2.9.6) with deny-by-default capabilities — no
+  environment variables, no network, no subprocesses, read-only within
+  the repo. First eval downloads the runtime once; `GRIPSACK_DENO`
+  overrides. Eval platforms: glibc Linux and macOS (Deno ships no musl
+  build; `grip doctor` says so plainly there).
+- **Injected facts**: os/arch/libc/hostname are detected in the Rust
+  core and passed to eval in a JSON inputs document — no more
+  frontend-side self-detection.
+- **Probes**: `ctx.probe.executable("nvidia-smi")` /
+  `ctx.probe.file_exists(...)` are symbolic requests the core binds in
+  a two-stage eval (fixpoint-capped, E112 on instability), recorded in
+  the run log and summarized in `grip plan`'s host-inputs header.
+- **Trust gate**: the first eval of an unfamiliar repo prompts before
+  running its code, naming the exact sandbox capabilities. `grip trust
+  list/add/remove` manages the store; `GRIPSACK_TRUST_ALL=1` is the CI
+  bypass.
+- **`defineEnv`**: host entrypoints are functions —
+  `export default defineEnv((ctx) => ({ tags, modules }) )`. `module()`
+  is a pure constructor; falsy module entries drop out. Side-effect
+  registration is gone.
+- The dual-frontend parity corpus is replaced by a golden IR snapshot
+  corpus (fixture envs → IR, byte-exact modulo spans).
+
+### Removed
+
+- The Python frontend (`pip install gripsack`), the embedded
+  zero-provisioning path, `GRIPSACK_PYTHON`, `[eval] deps`, and uv
+  provisioning. `frontend = "python"` in env.toml is an E400 with a
+  migration hint.
+- bun provisioning and `GRIPSACK_BUN`.
+
 ## [0.16.4] — 2026-08-28
 
 ### Fixed

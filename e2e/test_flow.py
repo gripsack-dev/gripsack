@@ -1,14 +1,28 @@
-"""Flow tests (plan/0003 §5). Skipped until the flows land; unskip in the
-same PR that implements them (gripsack-e2e skill)."""
-
+"""Flow tests (plan/0003 §5) against the real binary and the real
+TypeScript frontend (plan/0013): fixture env repos are built by conftest
+under the defineEnv contract — modules/<name>.ts default-exports its
+module value, hosts/<host>.ts returns them from defineEnv."""
 import os
 import shutil
-from pathlib import Path
-
-import pytest
 import subprocess
 
-from conftest import GRIP, grip, make_env_repo, make_tarball
+import pytest
+from conftest import (
+    GRIP,
+    grip,
+    make_env_repo,
+    make_tarball,
+    refresh_host,
+    remove_module,
+)
+
+HELLO_MODULE = """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("hello", {
+  config: { "configs/demo/a": trackedCopy("~/.config/demo/a") },
+});
+"""
 
 
 def test_binary_exists_and_runs():
@@ -19,12 +33,56 @@ def test_binary_exists_and_runs():
 
 def test_doctor_reports_environment(sandbox):
     out = grip("doctor")
-    # exit code depends on whether the sandbox python can import gripsack;
-    # the report itself is the contract.
-    assert "python:" in out.stdout
+    # exit code depends on the sandbox's runtime being acceptable to
+    # doctor; the report itself is the contract.
+    assert "deno:" in out.stdout
     assert "frontend:" in out.stdout
     assert "home:" in out.stdout
     assert str(sandbox) in out.stdout
+
+
+def test_untrusted_repo_fails_closed_without_tty(sandbox, monkeypatch):
+    """The trust gate (0013 D7): first eval of an untrusted repo, no TTY
+    to prompt on → hard error with the escape hatch, never a silent
+    eval of unreviewed repo code."""
+    monkeypatch.delenv("GRIPSACK_TRUST_ALL", raising=False)
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    (repo / "configs" / "demo").mkdir(parents=True)
+    (repo / "configs" / "demo" / "a").write_text("a\n")
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "trust" in out.stderr.lower()
+    assert "grip trust add" in out.stderr
+    # nothing ran: eval never happened
+    assert not (sandbox / ".local/share/gripsack/generations").exists()
+
+
+def test_trust_add_records_and_unblocks_eval(sandbox, monkeypatch):
+    """`grip trust add <path>` records the canonical path; eval then
+    proceeds without the CI bypass; remove re-arms the gate."""
+    monkeypatch.delenv("GRIPSACK_TRUST_ALL", raising=False)
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    (repo / "configs" / "demo").mkdir(parents=True)
+    (repo / "configs" / "demo" / "a").write_text("a\n")
+
+    out = grip("trust", "add", str(repo))
+    assert out.returncode == 0, out.stderr
+    trust = sandbox / ".local/share/gripsack" / "trust.toml"
+    assert "[[repos]]" in trust.read_text()
+    assert str(repo) in trust.read_text()
+
+    listing = grip("trust", "list")
+    assert listing.returncode == 0, listing.stderr
+    assert str(repo) in listing.stdout
+
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    out = grip("trust", "remove", str(repo))
+    assert out.returncode == 0, out.stderr
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "trust" in out.stderr.lower()
 
 
 def test_apply_creates_generation_and_symlinks(sandbox):
@@ -34,13 +92,12 @@ def test_apply_creates_generation_and_symlinks(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, file_fetch, symlink
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module(
-    "hello",
-    fetch=file_fetch("{payload}"),
-    install={{"bin/hello": symlink("~/.local/bin/hello")}},
-)
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -59,9 +116,11 @@ def test_tree_entries_and_prune_on_undeclare(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tree
+import { module, tree } from "@gripsack/core";
 
-module("zed", config={**tree("configs/zed", "~/.config/zed")})
+export default module("zed", {
+  config: { ...tree("configs/zed", "~/.config/zed") },
+});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -110,10 +169,11 @@ def test_owned_prune_on_undeclare(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tree
-from gripsack.entries import Ownership
+import { module, tree } from "@gripsack/core";
 
-module("zed", config={**tree("configs/zed", "~/.config/zed", mode=Ownership.OWNED)})
+export default module("zed", {
+  config: { ...tree("configs/zed", "~/.config/zed", "owned") },
+});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -157,10 +217,9 @@ print(json.dumps({"type": "response", "id": 1, "result": {"linted": len(req["pat
 """
 
 
-def make_lint_repo(sandbox, config_text, lint_decl='lint = "demo"'):
+def make_lint_repo(sandbox, config_text, lint_decl='lint: "demo"'):
     """A repo with one linted config module and the fixture linter on
     a path registration (offline — 0010 §3's path form)."""
-    import os
     import stat
 
     repo = sandbox / "myenv"
@@ -170,21 +229,20 @@ def make_lint_repo(sandbox, config_text, lint_decl='lint = "demo"'):
     exe = sandbox / "griplint-demo"
     exe.write_text(LINT_FIXTURE)
     exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
-    (repo / "modules").mkdir(exist_ok=True)
-    (repo / "hosts").mkdir(exist_ok=True)
+    make_env_repo(
+        repo,
+        f"""
+import {{ module, trackedCopy }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/demo.toml": trackedCopy("~/.config/demo/demo.toml") }},
+  {lint_decl},
+}});
+""",
+    )
     (repo / "env.toml").write_text(
         f'[env]\nname = "fixture"\n\n[linters.demo]\npath = "{exe}"\n'
     )
-    (repo / "modules" / "demo.py").write_text(
-        f"""
-from gripsack import module, tracked_copy
-
-module("demo",
-    config={{"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")}},
-    {lint_decl})
-"""
-    )
-    (repo / "hosts" / "testhost.py").write_text('tags = ["test"]\n')
     return repo
 
 
@@ -215,7 +273,7 @@ def test_lint_clean_config_applies(sandbox):
 
 
 def test_lint_unregistered_name_is_a_hard_eval_error(sandbox):
-    repo = make_lint_repo(sandbox, "good = true\n", lint_decl='lint = "ghost"')
+    repo = make_lint_repo(sandbox, "good = true\n", lint_decl='lint: "ghost"')
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "E501" in out.stderr
@@ -229,13 +287,12 @@ def test_owned_deploy_refuses_foreign_paths_unless_take_over(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, file_fetch, symlink
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module(
-    "hello",
-    fetch=file_fetch("{payload}"),
-    install={{"bin/hello": symlink("~/.local/bin/hello")}},
-)
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
 """,
     )
     foreign = sandbox / ".local" / "bin"
@@ -259,13 +316,12 @@ def test_apply_repo_from_elsewhere(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, file_fetch, symlink
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module(
-    "hello",
-    fetch=file_fetch("{payload}"),
-    install={{"bin/hello": symlink("~/.local/bin/hello")}},
-)
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
 """,
     )
     elsewhere = sandbox / "elsewhere"
@@ -299,15 +355,14 @@ def test_explicit_steps_module_is_satisfied_on_reapply(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, fetch_step, shell_step, tarball
+import {{ fetchStep, module, shellStep, tarball }} from "@gripsack/core";
 
-module(
-    "stepped",
-    steps=[
-        fetch_step(tarball("file://{payload}")),
-        shell_step("true", id="noop", needs=["fetch"]),
-    ],
-)
+export default module("stepped", {{
+  steps: [
+    fetchStep(tarball("file://{payload}")),
+    shellStep("true", "noop", {{ needs: ["fetch"] }}),
+  ],
+}});
 """,
     )
     first = grip("apply", "--host", "testhost", cwd=repo)
@@ -324,13 +379,12 @@ def test_update_rewrites_lockfile_then_apply_deploys(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, file_fetch, symlink
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module(
-    "hello",
-    fetch=file_fetch("{payload}"),
-    install={{"bin/hello": symlink("~/.local/bin/hello")}},
-)
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
 """,
     )
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
@@ -360,10 +414,12 @@ def test_exported_env_profile_tracks_the_generation(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("zed", config={"configs/zed/a": tracked_copy("~/.config/zed/a")},
-    env={"EDITOR": "zed", "PATH+": "{store}/bin"})
+export default module("zed", {
+  config: { "configs/zed/a": trackedCopy("~/.config/zed/a") },
+  env: { EDITOR: "zed", "PATH+": "{store}/bin" },
+});
 """,
     )
     (repo / "configs" / "zed").mkdir(parents=True)
@@ -380,12 +436,14 @@ module("zed", config={"configs/zed/a": tracked_copy("~/.config/zed/a")},
     assert "/store/" in store_bin and "-zed/bin:" in store_bin
 
     # drop the env declaration — the profile must not go stale
-    (repo / "modules" / "hello.py").write_text(
+    (repo / "modules" / "hello.ts").write_text(
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("zed", config={"configs/zed/a": tracked_copy("~/.config/zed/a")})
-""",
+export default module("zed", {
+  config: { "configs/zed/a": trackedCopy("~/.config/zed/a") },
+});
+"""
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
@@ -399,10 +457,12 @@ def test_service_intent_runs_the_adapter_without_failing_apply(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, service, tracked_copy
+import { module, service, trackedCopy } from "@gripsack/core";
 
-module("daemon", config={"configs/daemon/a": tracked_copy("~/.config/daemon/a")},
-    activate=[service("my-daemon.service")])
+export default module("daemon", {
+  config: { "configs/daemon/a": trackedCopy("~/.config/daemon/a") },
+  activate: [service("my-daemon.service")],
+});
 """,
     )
     (repo / "configs" / "daemon").mkdir(parents=True)
@@ -419,10 +479,12 @@ def test_gc_collects_unreferenced_store_paths_and_why_owns(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, file_fetch, symlink
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module("hello", fetch=file_fetch("{payload}"),
-    install={{"bin/hello": symlink("~/.local/bin/hello")}})
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -435,7 +497,7 @@ module("hello", fetch=file_fetch("{payload}"),
     assert len(before) == 1
 
     # drop the module entirely; deployment pruned on the next apply
-    (repo / "modules" / "hello.py").write_text("# empty\n")
+    remove_module(repo, "hello")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert not (sandbox / ".local/bin/hello").exists()
@@ -467,12 +529,22 @@ def test_duplicate_destination_is_a_check_time_error(sandbox):
     (confdir / "same.conf").write_text("x\n")
     repo = make_env_repo(
         sandbox / "myenv",
-        """
-from gripsack import module, tracked_copy
+        {
+            "one": """
+import { module, trackedCopy } from "@gripsack/core";
 
-module("one", config={"configs/x/same.conf": tracked_copy("~/.out/same.conf")})
-module("two", config={"configs/x/same.conf": tracked_copy("~/.out/same.conf")})
+export default module("one", {
+  config: { "configs/x/same.conf": trackedCopy("~/.out/same.conf") },
+});
 """,
+            "two": """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("two", {
+  config: { "configs/x/same.conf": trackedCopy("~/.out/same.conf") },
+});
+""",
+        },
     )
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
@@ -487,12 +559,16 @@ def test_jobs_one_forces_serial_execution(sandbox):
 
     repo = make_env_repo(
         sandbox / "myenv",
-        """
-from gripsack import module
+        {
+            name: f"""
+import {{ module }} from "@gripsack/core";
 
-module("slow-a", build={"kind": "custom_shell", "script": "sleep 2"})
-module("slow-b", build={"kind": "custom_shell", "script": "sleep 2"})
-""",
+export default module("{name}", {{
+  build: {{ kind: "custom_shell", script: "sleep 2" }},
+}});
+"""
+            for name in ("slow-a", "slow-b")
+        },
     )
     start = time.monotonic()
     out = grip("apply", "--host", "testhost", "--jobs", "1", cwd=repo)
@@ -508,14 +584,16 @@ def test_gc_dry_run_previews_without_deleting(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, file_fetch, symlink
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module("hello", fetch=file_fetch("{payload}"),
-    install={{"bin/hello": symlink("~/.local/bin/hello")}})
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
 """,
     )
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
-    (repo / "modules" / "hello.py").write_text("# empty\n")
+    remove_module(repo, "hello")
     assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
     user_conf = sandbox / ".config/gripsack"
     user_conf.mkdir(parents=True)
@@ -536,9 +614,11 @@ def test_eval_env_reaches_build_steps(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, shell_step
+import { module, shellStep } from "@gripsack/core";
 
-module("probe", steps=[shell_step("test \\"$MY_CERT_PATH\\" = \\"/etc/ssl/company.pem\\"", id="probe")])
+export default module("probe", {
+  steps: [shellStep('test "$MY_CERT_PATH" = "/etc/ssl/company.pem"', "probe")],
+});
 """,
     )
     (repo / "env.toml").write_text(
@@ -555,12 +635,16 @@ def test_independent_modules_run_in_parallel(sandbox):
 
     repo = make_env_repo(
         sandbox / "myenv",
-        """
-from gripsack import module
+        {
+            name: f"""
+import {{ module }} from "@gripsack/core";
 
-module("slow-a", build={"kind": "custom_shell", "script": "sleep 2"})
-module("slow-b", build={"kind": "custom_shell", "script": "sleep 2"})
-""",
+export default module("{name}", {{
+  build: {{ kind: "custom_shell", script: "sleep 2" }},
+}});
+"""
+            for name in ("slow-a", "slow-b")
+        },
     )
     start = time.monotonic()
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -575,9 +659,11 @@ def test_check_fails_statically_on_missing_config_source(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("aaa", config={"configs/aaa/MISSING.conf": tracked_copy("~/.out/a.conf")})
+export default module("aaa", {
+  config: { "configs/aaa/MISSING.conf": trackedCopy("~/.out/a.conf") },
+});
 """,
     )
     out = grip("check", "--host", "testhost", cwd=repo)
@@ -596,10 +682,12 @@ def test_owned_deploy_refuses_foreign_symlinks(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, file_fetch, symlink
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module("hello", fetch=file_fetch("{payload}"),
-    install={{"bin/hello": symlink("~/.local/bin/hello")}})
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
 """,
     )
     foreign = sandbox / ".local/bin"
@@ -630,9 +718,11 @@ def test_failed_apply_rolls_back_this_runs_deployments(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("aaa", config={"configs/aaa/a.conf": tracked_copy("~/.out/a.conf")})
+export default module("aaa", {
+  config: { "configs/aaa/a.conf": trackedCopy("~/.out/a.conf") },
+});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -643,14 +733,17 @@ module("aaa", config={"configs/aaa/a.conf": tracked_copy("~/.out/a.conf")})
     # entry — a deploy-time failure E110 can't catch)
     (confdir / "a.conf").write_text("v2\n")
     payload = make_tarball(sandbox / "b.tar.gz", {"bin/b": b"#!/bin/sh\n"})
-    (repo / "modules" / "bbb.py").write_text(
+    (repo / "modules" / "bbb.ts").write_text(
         f"""
-from gripsack import module, file_fetch, symlink
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module("bbb", fetch=file_fetch("{payload}"),
-    install={{"bin/MISSING": symlink("~/.out/b")}})
-""",
+export default module("bbb", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/MISSING": symlink("~/.out/b") }},
+}});
+"""
     )
+    refresh_host(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     # the flip never happened…
@@ -664,25 +757,24 @@ module("bbb", fetch=file_fetch("{payload}"),
 def test_concurrent_applies_serialize_and_lose_nothing(sandbox):
     """Finding A: two applies over disjoint subsets must not lose a
     manifest update — the lifecycle holds apply.flock."""
-    import subprocess
-
     repo = sandbox / "myenv"
     for name in ("amod", "bmod"):
         confdir = repo / "configs" / name
         confdir.mkdir(parents=True)
         (confdir / f"{name}.conf").write_text(f"{name}\n")
-    (repo / "modules").mkdir(parents=True)
-    (repo / "hosts").mkdir()
-    (repo / "env.toml").write_text('[env]\nname = "fixture"\n')
-    (repo / "hosts" / "testhost.py").write_text('tags = ["test"]\n')
-    for name in ("amod", "bmod"):
-        (repo / "modules" / f"{name}.py").write_text(
-            f"""
-from gripsack import module, tracked_copy
+    make_env_repo(
+        repo,
+        {
+            name: f"""
+import {{ module, trackedCopy }} from "@gripsack/core";
 
-module("{name}", config={{"configs/{name}/{name}.conf": tracked_copy("~/.out/{name}.conf")}})
-""",
-        )
+export default module("{name}", {{
+  config: {{ "configs/{name}/{name}.conf": trackedCopy("~/.out/{name}.conf") }},
+}});
+"""
+            for name in ("amod", "bmod")
+        },
+    )
     grip_bin = str(GRIP.resolve())
     p1 = subprocess.Popen(
         [grip_bin, "apply", "--host", "testhost", "amod"],
@@ -716,9 +808,11 @@ def test_jobs_zero_is_rejected(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("a", config={"configs/a/a": tracked_copy("~/.out/a")})
+export default module("a", {
+  config: { "configs/a/a": trackedCopy("~/.out/a") },
+});
 """,
     )
     (repo / "configs" / "a").mkdir(parents=True)
@@ -756,10 +850,12 @@ def test_deferred_identity_is_stable_across_applies(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, git, symlink
+import {{ git, module, symlink }} from "@gripsack/core";
 
-module("tool", fetch=git("file://{remote}", "{rev}"),
-    install={{"bin.txt": symlink("~/.local/bin/tool")}})
+export default module("tool", {{
+  fetch: git("file://{remote}", "{rev}"),
+  install: {{ "bin.txt": symlink("~/.local/bin/tool") }},
+}});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -775,20 +871,19 @@ module("tool", fetch=git("file://{remote}", "{rev}"),
     assert sorted(p.name for p in store.iterdir()) == paths_after_first
 
 
-def test_rollback_restores_previous_generation(sandbox, tmp_path):
+def test_rollback_restores_previous_generation(sandbox):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
     )
     repo = make_env_repo(
         sandbox / "myenv",
         f"""
-from gripsack import module, file_fetch, symlink
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module(
-    "hello",
-    fetch=file_fetch("{payload}"),
-    install={{"bin/hello": symlink("~/.local/bin/hello")}},
-)
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
 """,
     )
     first = grip("apply", "--host", "testhost", cwd=repo)
@@ -801,18 +896,17 @@ module(
     assert not (sandbox / ".local/share/gripsack/generations/2").exists()
 
     # a changed module produces generation 2; rollback restores 1
-    (repo / "modules" / "extra.py").write_text(
-        """
-from gripsack import module, file_fetch, symlink
+    (repo / "modules" / "extra.ts").write_text(
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
 
-module(
-    "extra",
-    fetch=file_fetch("%s"),
-    install={"bin/hello": symlink("~/.local/bin/extra")},
-)
+export default module("extra", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/extra") }},
+}});
 """
-        % payload
     )
+    refresh_host(repo)
     third = grip("apply", "--host", "testhost", cwd=repo)
     assert third.returncode == 0, third.stderr
     assert (sandbox / ".local/bin/extra").is_symlink()
@@ -834,9 +928,11 @@ def test_merge_mode_owns_one_block_in_a_foreign_file(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, merge
+import { merge, module } from "@gripsack/core";
 
-module("shell", config={"configs/shell/block.sh": merge("~/.bashrc")})
+export default module("shell", {
+  config: { "configs/shell/block.sh": merge("~/.bashrc") },
+});
 """,
     )
     # foreign file with pre-existing content
@@ -863,7 +959,7 @@ module("shell", config={"configs/shell/block.sh": merge("~/.bashrc")})
     assert content.endswith("# more user stuff\n")
 
     # undeclare prunes only the block; the foreign file stays
-    (sandbox / "myenv" / "modules" / "hello.py").write_text("")
+    remove_module(repo, "hello")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     content = bashrc.read_text()
@@ -883,12 +979,16 @@ def test_template_mode_renders_vars_at_deploy(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, template
+import { module, template } from "@gripsack/core";
 
-module("git", config={"configs/git/id.toml": template(
-    "~/.config/git/id.toml",
-    vars={"email": "a@b.c", "name": "T"},
-)})
+export default module("git", {
+  config: {
+    "configs/git/id.toml": template("~/.config/git/id.toml", {
+      email: "a@b.c",
+      name: "T",
+    }),
+  },
+});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -897,14 +997,18 @@ module("git", config={"configs/git/id.toml": template(
     assert deployed.read_text() == 'email = "a@b.c"\nname = "T"\nliteral = "{{ keep }}"\n'
 
     # changing a var updates the rendered dest on the next apply
-    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+    (sandbox / "myenv" / "modules" / "hello.ts").write_text(
         """
-from gripsack import module, template
+import { module, template } from "@gripsack/core";
 
-module("git", config={"configs/git/id.toml": template(
-    "~/.config/git/id.toml",
-    vars={"email": "x@y.z", "name": "T"},
-)})
+export default module("git", {
+  config: {
+    "configs/git/id.toml": template("~/.config/git/id.toml", {
+      email: "x@y.z",
+      name: "T",
+    }),
+  },
+});
 """
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -912,14 +1016,17 @@ module("git", config={"configs/git/id.toml": template(
     assert 'email = "x@y.z"' in deployed.read_text()
 
     # an undefined variable fails at apply, never silently empty
-    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+    (sandbox / "myenv" / "modules" / "hello.ts").write_text(
         """
-from gripsack import module, template
+import { module, template } from "@gripsack/core";
 
-module("git", config={"configs/git/id.toml": template(
-    "~/.config/git/id.toml",
-    vars={"email": "x@y.z"},
-)})
+export default module("git", {
+  config: {
+    "configs/git/id.toml": template("~/.config/git/id.toml", {
+      email: "x@y.z",
+    }),
+  },
+});
 """
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -935,10 +1042,10 @@ def test_init_scaffolds_a_working_env_repo(sandbox):
     out = grip("init", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert (repo / "env.toml").exists()
-    assert (repo / "modules" / "hello.py").exists()
-    assert (repo / "modules" / "examples.py").exists()
+    assert (repo / "modules" / "hello.ts").exists()
+    assert (repo / "modules" / "examples.ts").exists()
     assert (repo / "configs" / "hello" / "hello.toml").exists()
-    hosts = list((repo / "hosts").glob("*.py"))
+    hosts = list((repo / "hosts").glob("*.ts"))
     assert len(hosts) == 1
     assert (repo / ".git").is_dir()
 
@@ -970,6 +1077,19 @@ elif req["op"] == "fetch":
 sys.stdout.flush()
 """
 
+PLUGIN_MODULES = {
+    name: """
+import { module, pluginFetch, symlink } from "@gripsack/core";
+
+export default module("%s", {
+  fetch: pluginFetch("demo"),
+  install: { "bin/demo": symlink("~/.local/bin/demo-%s") },
+});
+"""
+    % (name, suffix)
+    for name, suffix in (("a", "a"), ("b", "b"))
+}
+
 
 def test_throttle_token_bucket_serializes_plugin_fetches(sandbox, monkeypatch):
     """[throttle] (0002): a fetcher declares its rate budget via the
@@ -981,15 +1101,7 @@ def test_throttle_token_bucket_serializes_plugin_fetches(sandbox, monkeypatch):
     fetcher.write_text(FETCH_FIXTURE)
     fetcher.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-from gripsack import module, plugin_fetch, symlink
-
-module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
-module("b", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-b")})
-""",
-    )
+    repo = make_env_repo(sandbox / "myenv", PLUGIN_MODULES)
     import time
 
     start = time.monotonic()
@@ -1009,15 +1121,7 @@ def test_throttle_user_override_beats_plugin_budget(sandbox, monkeypatch):
     fetcher.write_text(FETCH_FIXTURE)
     fetcher.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-from gripsack import module, plugin_fetch, symlink
-
-module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
-module("b", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-b")})
-""",
-    )
+    repo = make_env_repo(sandbox / "myenv", PLUGIN_MODULES)
     with open(repo / "env.toml", "a") as f:
         f.write('\n[throttle]\n"demo.local" = "100/s"\n')
     import time
@@ -1055,10 +1159,12 @@ def test_crash_class_lint_codes_are_warnings_core_side(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")},
-       lint="demo")
+export default module("demo", {
+  config: { "configs/demo/demo.toml": trackedCopy("~/.config/demo/demo.toml") },
+  lint: "demo",
+});
 """,
     )
     with open(repo / "env.toml", "a") as f:
@@ -1094,10 +1200,12 @@ def test_chatty_linter_does_not_deadlock_the_exchange(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")},
-       lint="demo")
+export default module("demo", {
+  config: { "configs/demo/demo.toml": trackedCopy("~/.config/demo/demo.toml") },
+  lint: "demo",
+});
 """,
     )
     with open(repo / "env.toml", "a") as f:
@@ -1112,39 +1220,33 @@ module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/de
 
 
 def test_unmatched_host_errors_instead_of_empty_tags(sandbox):
-    """A hosts/ dir with no matching file must not silently yield empty
-    tags — every when(tags=[...]) module would drop and the run would
+    """A hosts/ dir with no matching entrypoint must not silently
+    yield empty tags — every gated module would drop and the run would
     report success (enterprise review finding)."""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-from gripsack import module, tracked_copy
-
-module("demo", config={"configs/demo/a": tracked_copy("~/.config/demo/a")})
-""",
-    )
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
     (sandbox / "myenv" / "configs" / "demo").mkdir(parents=True)
     (sandbox / "myenv" / "configs" / "demo" / "a").write_text("a\n")
     out = grip("check", "--host", "nosuchhost", cwd=repo)
     assert out.returncode != 0
-    assert "no hosts/nosuchhost.py" in out.stderr
+    assert "nosuchhost" in out.stderr
 
 
 def test_default_host_resolves_role_named_entrypoint(sandbox):
     """[env] default_host: containers with random hostnames still get a
     deterministic host entrypoint (enterprise review finding)."""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-from gripsack import module, tracked_copy
-
-module("demo", config={"configs/demo/a": tracked_copy("~/.config/demo/a")})
-""",
-    )
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
     (sandbox / "myenv" / "configs" / "demo").mkdir(parents=True)
     (sandbox / "myenv" / "configs" / "demo" / "a").write_text("a\n")
-    (sandbox / "myenv" / "hosts" / "testhost.py").unlink()
-    (sandbox / "myenv" / "hosts" / "role.py").write_text('tags = ["container"]\n')
+    (sandbox / "myenv" / "hosts" / "testhost.ts").unlink()
+    (sandbox / "myenv" / "hosts" / "role.ts").write_text(
+        'import { defineEnv } from "@gripsack/core";\n'
+        "import hello from \"../modules/hello.ts\";\n"
+        "\n"
+        "export default defineEnv((ctx) => ({\n"
+        '  tags: ["container"],\n'
+        "  modules: [hello],\n"
+        "}));\n"
+    )
     env_toml = repo / "env.toml"
     env_toml.write_text(env_toml.read_text().replace(
         '[env]\nname = "fixture"', '[env]\nname = "fixture"\ndefault_host = "role"'))
@@ -1175,9 +1277,12 @@ def test_fetcher_package_ref_resolves_from_the_plugin_store(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, plugin_fetch, symlink
+import { module, pluginFetch, symlink } from "@gripsack/core";
 
-module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
+export default module("a", {
+  fetch: pluginFetch("demo"),
+  install: { "bin/demo": symlink("~/.local/bin/demo-a") },
+});
 """,
     )
     with open(repo / "env.toml", "a") as f:
@@ -1197,10 +1302,12 @@ def test_linter_repo_ref_resolves_from_the_plugin_store(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("demo", config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")},
-       lint="demo")
+export default module("demo", {
+  config: { "configs/demo/demo.toml": trackedCopy("~/.config/demo/demo.toml") },
+  lint: "demo",
+});
 """,
     )
     with open(repo / "env.toml", "a") as f:
@@ -1219,10 +1326,12 @@ def test_builtin_pack_lints_in_process_without_registration(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("helix", config={"configs/helix/config.toml": tracked_copy("~/.config/helix/config.toml")},
-       lint="helix")
+export default module("helix", {
+  config: { "configs/helix/config.toml": trackedCopy("~/.config/helix/config.toml") },
+  lint: "helix",
+});
 """,
     )
     out = grip("check", "--host", "testhost", cwd=repo)
@@ -1233,54 +1342,6 @@ module("helix", config={"configs/helix/config.toml": tracked_copy("~/.config/hel
     (confdir / "config.toml").write_text('[editor]\nscrolloff = 5\n')
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-
-
-def test_typescript_frontend_evals_and_applies(sandbox):
-    """frontend = "typescript": the provisioned bun runs the driver,
-    modules register through the shared @gripsack/core instance, and
-    apply deploys (0012 — the eval seam lands)."""
-    import shutil
-
-    bun = os.environ.get("GRIPSACK_BUN") or shutil.which("bun")
-    if not bun:
-        pytest.skip("bun not installed (CI's typescript job covers this)")
-    # pre-seed the provisioned frontend: the in-repo build of
-    # @gripsack/core at the core's version (what npm would serve)
-    import gripsack
-
-    core_version = gripsack.__version__
-    pkg = (
-        sandbox
-        / ".local/share/gripsack/frontend-ts"
-        / core_version
-        / "node_modules/@gripsack/core"
-    )
-    pkg.mkdir(parents=True)
-    ts_src = Path(__file__).parent.parent / "typescript"
-    shutil.copytree(ts_src / "dist", pkg / "dist")
-    shutil.copy(ts_src / "package.json", pkg / "package.json")
-
-    repo = sandbox / "tsenv"
-    (repo / "modules").mkdir(parents=True)
-    (repo / "hosts").mkdir()
-    (repo / "configs" / "demo").mkdir(parents=True)
-    (repo / "env.toml").write_text('[env]\nname = "tsenv"\nfrontend = "typescript"\n')
-    (repo / "hosts" / "testhost.ts").write_text('export const tags = ["test"];\n')
-    (repo / "configs" / "demo" / "demo.toml").write_text('greeting = "hi"\n')
-    (repo / "modules" / "demo.ts").write_text(
-        """
-import { module, trackedCopy } from "@gripsack/core";
-
-module("demo", {
-  config: { "configs/demo/demo.toml": trackedCopy("~/.config/demo/demo.toml") },
-});
-"""
-    )
-    out = grip("check", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    assert (sandbox / ".config" / "demo" / "demo.toml").exists()
 
 
 def test_fetcher_path_registers_an_offline_executable(sandbox):
@@ -1295,9 +1356,12 @@ def test_fetcher_path_registers_an_offline_executable(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, plugin_fetch, symlink
+import { module, pluginFetch, symlink } from "@gripsack/core";
 
-module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
+export default module("a", {
+  fetch: pluginFetch("demo"),
+  install: { "bin/demo": symlink("~/.local/bin/demo-a") },
+});
 """,
     )
     with open(repo / "env.toml", "a") as f:
@@ -1315,9 +1379,12 @@ def test_changed_fetch_spec_re_resolves_instead_of_mirror_blame(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, plugin_fetch, symlink
+import { module, pluginFetch, symlink } from "@gripsack/core";
 
-module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/bin/demo-a")})
+export default module("a", {
+  fetch: pluginFetch("demo"),
+  install: { "bin/demo": symlink("~/.local/bin/demo-a") },
+});
 """,
     )
     with open(repo / "env.toml", "a") as f:
@@ -1326,12 +1393,14 @@ module("a", fetch=plugin_fetch("demo"), install={"bin/demo": symlink("~/.local/b
     assert out.returncode == 0, out.stderr
     # same module, now pinned — the lock entry for the OLD args must
     # not compare against the NEW spec
-    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+    (sandbox / "myenv" / "modules" / "hello.ts").write_text(
         """
-from gripsack import module, plugin_fetch, symlink
+import { module, pluginFetch, symlink } from "@gripsack/core";
 
-module("a", fetch=plugin_fetch("demo", package="hello", version="1.0"),
-       install={"bin/demo": symlink("~/.local/bin/demo-a")})
+export default module("a", {
+  fetch: pluginFetch("demo", { package: "hello", version: "1.0" }),
+  install: { "bin/demo": symlink("~/.local/bin/demo-a") },
+});
 """
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -1355,14 +1424,24 @@ def test_fonts_and_desktop_entry_adapters_run_once_per_apply(sandbox, monkeypatc
     (confdir / "myfont.ttf").write_text("fake font\n")
     repo = make_env_repo(
         sandbox / "myenv",
-        """
-from gripsack import desktop_entry, fonts, module, symlink
+        {
+            "font-a": """
+import { desktopEntry, fonts, module, symlink } from "@gripsack/core";
 
-module("font-a", config={"configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf")},
-       activate=[fonts(), desktop_entry()])
-module("font-b", config={"configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont-b.ttf")},
-       activate=[fonts()])
+export default module("font-a", {
+  config: { "configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf") },
+  activate: [fonts(), desktopEntry()],
+});
 """,
+            "font-b": """
+import { fonts, module, symlink } from "@gripsack/core";
+
+export default module("font-b", {
+  config: { "configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont-b.ttf") },
+  activate: [fonts()],
+});
+""",
+        },
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
@@ -1379,10 +1458,12 @@ def test_fonts_adapter_skips_cleanly_without_fc_cache(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import fonts, module, symlink
+import { fonts, module, symlink } from "@gripsack/core";
 
-module("font", config={"configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf")},
-       activate=[fonts()])
+export default module("font", {
+  config: { "configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf") },
+  activate: [fonts()],
+});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -1400,9 +1481,11 @@ def test_tracked_copy_drift_is_kept_never_clobbered(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("zed", config={"configs/zed/settings.json": tracked_copy("~/.config/zed/settings.json")})
+export default module("zed", {
+  config: { "configs/zed/settings.json": trackedCopy("~/.config/zed/settings.json") },
+});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -1437,9 +1520,11 @@ def test_plan_diffs_against_the_current_generation(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("demo", config={"configs/demo/a.toml": tracked_copy("~/.config/demo/a.toml")})
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
 """,
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
@@ -1452,14 +1537,16 @@ module("demo", config={"configs/demo/a.toml": tracked_copy("~/.config/demo/a.tom
 
     (confdir / "a.toml").write_text("b\n")
     (confdir / "b.toml").write_text("b\n")
-    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+    (sandbox / "myenv" / "modules" / "hello.ts").write_text(
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("demo", config={
-    "configs/demo/a.toml": tracked_copy("~/.config/demo/a.toml"),
-    "configs/demo/b.toml": tracked_copy("~/.config/demo/b.toml"),
-})
+export default module("demo", {
+  config: {
+    "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml"),
+    "configs/demo/b.toml": trackedCopy("~/.config/demo/b.toml"),
+  },
+});
 """
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
@@ -1468,11 +1555,13 @@ module("demo", config={
 
     # apply the two-entry module, then drop b → the next plan prunes it
     grip("apply", "--host", "testhost", cwd=repo)
-    (sandbox / "myenv" / "modules" / "hello.py").write_text(
+    (sandbox / "myenv" / "modules" / "hello.ts").write_text(
         """
-from gripsack import module, tracked_copy
+import { module, trackedCopy } from "@gripsack/core";
 
-module("demo", config={"configs/demo/a.toml": tracked_copy("~/.config/demo/a.toml")})
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
 """
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
@@ -1491,12 +1580,14 @@ def test_rollback_restores_template_rendered_and_merge_block(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import merge, module, template
+import { merge, module, template } from "@gripsack/core";
 
-module("app", config={
-    "configs/app/id.toml": template("~/.config/app/id.toml", vars={"email": "a@b.c"}),
+export default module("app", {
+  config: {
+    "configs/app/id.toml": template("~/.config/app/id.toml", { email: "a@b.c" }),
     "configs/app/block.sh": merge("~/.bashrc"),
-})
+  },
+});
 """,
     )
     bashrc = sandbox / ".bashrc"
@@ -1533,10 +1624,11 @@ def test_store_verify_detects_and_repairs_corruption(sandbox):
     repo = make_env_repo(
         sandbox / "myenv",
         """
-from gripsack import module, tree
-from gripsack.entries import Ownership
+import { module, tree } from "@gripsack/core";
 
-module("demo", config={**tree("configs/demo", "~/.config/demo", mode=Ownership.OWNED)})
+export default module("demo", {
+  config: { ...tree("configs/demo", "~/.config/demo", "owned") },
+});
 """,
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
@@ -1562,111 +1654,46 @@ module("demo", config={**tree("configs/demo", "~/.config/demo", mode=Ownership.O
     assert target.exists()
 
 
-def test_dual_frontend_parity_golden_corpus(sandbox):
-    """plan/0007's conformance test, finally: the same fixture env
-    evaluated through BOTH frontends must emit identical IR modulo
-    provenance (span file/line). Absence-class drift (a missing TS
-    feature) has no shadow to hide in."""
-    import shutil
-
-    bun = os.environ.get("GRIPSACK_BUN") or shutil.which("bun")
-    if not bun:
-        pytest.skip("bun not installed (runs in the required e2e gate, which ships bun; and in examples/typescript-env)")
-    fixture_py = Path(__file__).parent / "fixtures" / "parity" / "python"
-    fixture_ts = Path(__file__).parent / "fixtures" / "parity" / "ts"
-    for repo in (fixture_py, fixture_ts):
-        shutil.copytree(repo, sandbox / repo.name, dirs_exist_ok=True)
-
-    # the TS eval needs the provisioned frontend, pre-seeded like the
-    # TS e2e (GRIPSACK_TS_FRONTEND escape hatch)
-    ts_front = sandbox / "tsfront"
-    (ts_front / "node_modules/@gripsack/core").mkdir(parents=True)
-    ts_src = Path(__file__).parent.parent / "typescript"
-    shutil.copytree(ts_src / "dist", ts_front / "node_modules/@gripsack/core/dist")
-    shutil.copy(ts_src / "package.json", ts_front / "node_modules/@gripsack/core/package.json")
-    os.environ["GRIPSACK_TS_FRONTEND"] = str(ts_front)
-
-    import json, subprocess, sys
-
-    py_env = dict(os.environ, PYTHONPATH=str(Path(__file__).parent.parent / "python")
-    )
-    ir_py = json.loads(
-        subprocess.run(
-            [sys.executable, "-m", "gripsack", ".", "--host", "testhost"],
-            cwd=sandbox / "python", env=py_env, capture_output=True, text=True,
-        ).stdout
-    )["ir"]
-    ir_ts = json.loads(
-        subprocess.run(
-            [os.environ["GRIPSACK_BUN"] if os.environ.get("GRIPSACK_BUN") else bun,
-             str(ts_front / "node_modules/@gripsack/core/dist/src/cli.js"),
-             ".", "--host", "testhost"],
-            cwd=sandbox / "ts",
-            env=dict(os.environ, NODE_PATH=str(ts_front / "node_modules")),
-            capture_output=True, text=True,
-        ).stdout
-    )["ir"]
-
-    def strip_provenance(node):
-        if isinstance(node, dict):
-            return {
-                k: strip_provenance(v)
-                for k, v in node.items()
-                if k != "span"
-            }
-        if isinstance(node, list):
-            return [strip_provenance(v) for v in node]
-        return node
-
-    py_proj, ts_proj = strip_provenance(ir_py), strip_provenance(ir_ts)
-    assert py_proj == ts_proj, (
-        "frontend IR drift:\n"
-        + json.dumps({k: {"py": py_proj["modules"].get(k), "ts": ts_proj["modules"].get(k)}
-                      for k in set(py_proj["modules"]) | set(ts_proj["modules"])
-                      if py_proj["modules"].get(k) != ts_proj["modules"].get(k)},
-                     indent=1)[:4000]
-    )
-
-
-def test_embedded_frontend_zero_provisioning(sandbox, monkeypatch):
-    """The zero-provisioning bootstrap: a config-only repo applies with
-    no GRIPSACK_PYTHON, no pip-installed frontend, and NO network — the
-    frontend compiled into the binary serves. [eval] deps would still
-    provision on demand; this repo has none."""
-    monkeypatch.delenv("GRIPSACK_PYTHON", raising=False)
+def test_embedded_frontend_serves_without_node_modules(sandbox):
+    """The frontend source ships in the binary (0013 D3): a repo with
+    NO node_modules evals offline against the embedded copy materialized
+    under $GRIPSACK_HOME/frontend/ts-<version>/. Only the runtime is
+    provisioned — and the sandbox inherits deno from PATH, so nothing
+    downloads (e2e is offline)."""
     repo = make_env_repo(
         sandbox / "env",
-        "from gripsack import module, tracked_copy\n"
-        'module("c", config={"x.toml": tracked_copy("~/.config/x.toml")})\n',
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("c", {
+  config: { "x.toml": trackedCopy("~/.config/x.toml") },
+});
+""",
     )
     (repo / "x.toml").write_text("embedded = true\n")
+    assert not (repo / "node_modules").exists()
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert (sandbox / ".config/x.toml").read_text() == "embedded = true\n"
-    # no provisioning happened: no uv download, no frontend venv
+
+    # the embedded copy was materialized at the core's version…
     gs = sandbox / ".local/share/gripsack"
+    versions = sorted((gs / "frontend").glob("ts-*"))
+    assert versions, "embedded frontend not materialized"
+    assert (versions[-1] / "src" / "cli.ts").exists()
+    # …and no runtime was fetched when deno is external (PATH or
+    # GRIPSACK_DENO — the gate image always provides it; the offline
+    # proof only means anything there)
+    deno_external = os.environ.get("GRIPSACK_DENO") or shutil.which("deno")
     tools = gs / "tools"
-    assert not tools.exists() or not list(tools.glob("uv-*")), "uv was fetched"
-    frontend = gs / "frontend"
-    for d in frontend.iterdir() if frontend.exists() else []:
-        assert d.name.startswith("embed-"), f"provisioned venv appeared: {d.name}"
-    # prove the embedded path specifically: re-apply with a PATH that
-    # hides the harness venv (whose python3 imports gripsack and would
-    # legitimately win the fast path) — bare system python3 only
-    env = dict(
-        os.environ,
-        PATH="/usr/local/bin:/usr/bin:/bin",
-        HOME=str(sandbox),
-        GRIPSACK_HOME=str(sandbox / ".local/share/gripsack"),
-    )
-    env.pop("VIRTUAL_ENV", None)
-    again = subprocess.run(
-        [str(GRIP.resolve()), "apply", "--host", "testhost"],
-        cwd=repo, env=env, capture_output=True, text=True, timeout=120,
-    )
+    if deno_external:
+        assert not tools.exists() or not list(tools.iterdir()), \
+            "deno was external but a tool was downloaded anyway"
+
+    # re-apply is satisfied — the embedded path is stable, not a one-shot
+    again = grip("apply", "--host", "testhost", cwd=repo)
     assert again.returncode == 0, again.stderr
     assert "already satisfied" in again.stdout
-    assert (frontend / f"embed-{_core_version()}" / ".complete").exists()
 
 
 def _core_version() -> str:
