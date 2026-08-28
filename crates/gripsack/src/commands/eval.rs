@@ -409,14 +409,28 @@ fn deno_command(
     frontend_dir: &Path,
     home: &Path,
 ) -> std::process::Command {
+    // the deliberate pin (the repo's own @gripsack/core) may symlink
+    // OUTSIDE the repo — `npm install <path>`, monorepos — and deno
+    // checks permissions against the canonical path; grant the real
+    // location or the sandbox blocks the very pin it must honor
+    let mut reads = vec![
+        repo.to_path_buf(),
+        inputs.parent().unwrap_or_else(|| Path::new(".")).to_path_buf(),
+        frontend_dir.to_path_buf(),
+    ];
+    if let Ok(pin) = repo.join("node_modules/@gripsack/core").canonicalize()
+        && !reads.contains(&pin)
+    {
+        reads.push(pin);
+    }
+    let reads = reads
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(",");
     let mut cmd = std::process::Command::new(deno);
     cmd.args(["run", "--no-remote", "--cached-only", "--no-lock"])
-        .arg(format!(
-            "--allow-read={},{},{}",
-            repo.display(),
-            inputs.parent().unwrap_or_else(|| Path::new(".")).display(),
-            frontend_dir.display(),
-        ))
+        .arg(format!("--allow-read={reads}"))
         .arg(driver)
         .arg(repo)
         .arg("--inputs")
