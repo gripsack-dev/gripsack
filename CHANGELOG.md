@@ -3,6 +3,16 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.16.4] — 2026-08-28
+
+### Fixed
+
+- `grip self-update` finds the binary inside the real release layout
+  (`gripsack-<version>-<triple>/grip`, not a bare root) — 0.16.3's
+  self-update reported "no grip binary" against actual releases; the
+  e2e fixture now nests identically so the gate catches the shape.
+  (0.16.3 self-updaters: run `curl -fsSL https://gripsack.dev/install.sh | sh` once.)
+
 ## [0.16.3] — 2026-08-28
 
 ### Added

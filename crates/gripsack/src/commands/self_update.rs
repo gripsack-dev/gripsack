@@ -115,11 +115,30 @@ fn run(check_only: bool) -> Result<String, String> {
     std::fs::create_dir_all(&staged_dir).map_err(|e| e.to_string())?;
     gripsack_fetch::fetch(&spec, &staged_dir)
         .map_err(|e| format!("download/verify failed: {e}"))?;
-    let new_grip = staged_dir.join("grip");
-    if !new_grip.is_file() {
-        let _ = std::fs::remove_dir_all(&staged_dir);
-        return Err("the release tarball has no grip binary at its root".into());
-    }
+    // the release tarball nests: gripsack-<version>-<triple>/grip
+    let new_grip = {
+        let root = staged_dir.join("grip");
+        if root.is_file() {
+            root
+        } else {
+            let nested: Vec<PathBuf> = std::fs::read_dir(&staged_dir)
+                .map_err(|e| e.to_string())?
+                .filter_map(|e| e.ok())
+                .map(|e| e.path().join("grip"))
+                .filter(|p| p.is_file())
+                .collect();
+            match nested.as_slice() {
+                [one] => one.clone(),
+                _ => {
+                    let _ = std::fs::remove_dir_all(&staged_dir);
+                    return Err(format!(
+                        "the release tarball has no single nested grip binary (found {})",
+                        nested.len()
+                    ));
+                }
+            }
+        }
+    };
     let staged = exe.with_extension("update-tmp");
     std::fs::copy(&new_grip, &staged).map_err(|e| e.to_string())?;
     #[cfg(unix)]

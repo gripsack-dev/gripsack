@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.16.3"
+version = "0.16.4"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/gripsack-dev/gripsack"
@@ -17,11 +17,11 @@ sha2 = "0.11"
 toml = "0.9"
 clap = { version = "4", features = ["derive"] }
 owo-colors = "4"
-gripsack-ir = { version = "0.16.3", path = "crates/gripsack-ir" }
-gripsack-store = { version = "0.16.3", path = "crates/gripsack-store" }
-gripsack-trace = { version = "0.16.3", path = "crates/gripsack-trace" }
-gripsack-config = { version = "0.16.3", path = "crates/gripsack-config" }
-gripsack-exec = { version = "0.16.3", path = "crates/gripsack-exec" }
-gripsack-fetch = { version = "0.16.3", path = "crates/gripsack-fetch" }
-griplint = { version = "0.16.3", path = "crates/griplint" }
-gripsack-lint = { version = "0.16.3", path = "crates/gripsack-lint" }
+gripsack-ir = { version = "0.16.4", path = "crates/gripsack-ir" }
+gripsack-store = { version = "0.16.4", path = "crates/gripsack-store" }
+gripsack-trace = { version = "0.16.4", path = "crates/gripsack-trace" }
+gripsack-config = { version = "0.16.4", path = "crates/gripsack-config" }
+gripsack-exec = { version = "0.16.4", path = "crates/gripsack-exec" }
+gripsack-fetch = { version = "0.16.4", path = "crates/gripsack-fetch" }
+griplint = { version = "0.16.4", path = "crates/griplint" }
+gripsack-lint = { version = "0.16.4", path = "crates/gripsack-lint" }

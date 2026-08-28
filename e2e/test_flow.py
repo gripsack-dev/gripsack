@@ -1690,7 +1690,8 @@ def _fake_release_server(sandbox, latest: str):
     fake = b"#!/bin/sh\necho fake-grip-" + latest.encode() + b"\n"
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        info = tarfile.TarInfo("grip")
+        # the real release layout nests: gripsack-<v>-<triple>/grip
+        info = tarfile.TarInfo(f"gripsack-{latest}-x86_64-unknown-linux-musl/grip")
         info.size = len(fake)
         info.mode = 0o755
         tar.addfile(info, io.BytesIO(fake))

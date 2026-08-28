@@ -1,6 +1,6 @@
 {
   "name": "@gripsack/core",
-  "version": "0.16.3",
+  "version": "0.16.4",
   "description": "gripsack typescript frontend \u2014 typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",
