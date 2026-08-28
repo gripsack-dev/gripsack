@@ -64,9 +64,15 @@ pub fn find_fetcher(name: &str) -> Option<PathBuf> {
     if let Some(bin) = store.current_binary(&exe) {
         return Some(bin);
     }
-    let path_var = std::env::var_os("PATH")?;
+    find_on_path(&exe, std::env::var_os("PATH")?)
+}
+
+/// The PATH half of plugin discovery — split out so tests exercise it
+/// without mutating the process env (a set_var/restore window races
+/// with every parallel test that spawns a subprocess).
+fn find_on_path(exe: &str, path_var: std::ffi::OsString) -> Option<std::path::PathBuf> {
     std::env::split_paths(&path_var)
-        .map(|dir| dir.join(&exe))
+        .map(|dir| dir.join(exe))
         .find(|candidate| is_executable(candidate))
 }
 
@@ -96,7 +102,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn discovers_executable_on_path() {
-        // Single test mutating PATH to avoid cross-test races.
+        // no process-env mutation: PATH is an argument, so this test
+        // can never race a parallel subprocess spawn
         let dir = tempfile::tempdir().unwrap();
         let exe = dir.path().join("gripfetch-internal");
         fs::write(&exe, "#!/bin/sh\n").unwrap();
@@ -108,14 +115,9 @@ mod tests {
         let non_exe = dir.path().join("gripfetch-notexec");
         fs::write(&non_exe, "#!/bin/sh\n").unwrap();
 
-        let original = std::env::var_os("PATH");
-        unsafe { std::env::set_var("PATH", dir.path()) };
-        assert_eq!(find_fetcher("internal"), Some(exe));
-        assert_eq!(find_fetcher("notexec"), None);
-        assert_eq!(find_fetcher("absent"), None);
-        match original {
-            Some(v) => unsafe { std::env::set_var("PATH", v) },
-            None => unsafe { std::env::remove_var("PATH") },
-        }
+        let path = std::ffi::OsString::from(dir.path());
+        assert_eq!(find_on_path("gripfetch-internal", path.clone()), Some(exe));
+        assert_eq!(find_on_path("gripfetch-notexec", path.clone()), None);
+        assert_eq!(find_on_path("gripfetch-absent", path), None);
     }
 }

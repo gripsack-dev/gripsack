@@ -134,6 +134,7 @@ mod tests {
                     hash: "h".into(),
                 }],
                 env: vec![],
+                tree256: None,
             },
         );
         store::Generation { number: n, modules }

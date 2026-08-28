@@ -22,6 +22,11 @@ pub struct Resolved {
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// Canonical tree hash of the published store tree (0014) — the
+    /// content-addressed path key. Distinct from `sha256`, which is the
+    /// transport hash of the raw download.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tree256: Option<String>,
     /// The registry's API asset endpoint — the authenticated download
     /// path for private releases (github releases).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -77,6 +82,7 @@ mod tests {
                     url: None,
                     version: None,
                     sha256: Some("ab".repeat(32)),
+                    tree256: None,
                     api_url: None,
                 }),
             },

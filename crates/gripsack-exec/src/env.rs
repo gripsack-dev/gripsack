@@ -85,6 +85,7 @@ mod tests {
                 hash: "h".into(),
             }],
             env,
+            tree256: None,
         }
     }
 

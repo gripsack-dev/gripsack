@@ -1,8 +1,8 @@
-//! `grip store verify [--repair]` (0008 §3 — the promise shipped):
-//! re-hash every store path and report corruption. The re-hash walk
-//! uses the same canonical tree hash that pinned the payload at fetch
-//! (0.15.2's cross-implementation parity), so a mismatch is proof, not
-//! suspicion.
+//! `grip store verify [--repair]` (0008 §3, corrected by 0014 §1a):
+//! re-hash every store path and report corruption. Per-entry manifest
+//! hashes cover every module kind; content-addressed modules also
+//! carry `tree256` in the manifest, so whole-tree verification needs
+//! no lockfile lookup (and never depends on the ambient hostname).
 
 use crate::ctx::{Ctx, ExecError};
 use crate::report::ReportKind;
@@ -16,10 +16,6 @@ pub fn verify_store(
 ) -> Result<Vec<(String, ReportKind, String)>, ExecError> {
     let mut out = Vec::new();
     let home = &ctx.home;
-    let locks: std::collections::BTreeMap<String, crate::lockfile::LockEntry> =
-        crate::lockfile::read(&ctx.repo, &ctx.host)
-            .map(|l| l.modules)
-            .unwrap_or_default();
     for n in gripsack_store::list_generations(home) {
         let manifest = match gripsack_store::read_manifest(home, n) {
             Ok(m) => m,
@@ -65,26 +61,25 @@ pub fn verify_store(
             if handled {
                 continue; // removed (or reported) — nothing more to hash
             }
-            let actual = gripsack_store::canonical_tree_hash(path)?;
-            let pinned = locks
-                .get(name)
-                .and_then(|e| e.resolved.as_ref())
-                .and_then(|r| r.sha256.clone());
-            if let Some(expected) = pinned
-                && actual != expected
-            {
-                return_corrupt(
-                    &mut out,
-                    repair,
-                    path,
-                    name,
-                    &format!(
-                        "corrupt: {} hashes {} but the lock pins {} — `grip store verify --repair` removes it",
-                        path.display(),
-                        &actual[..16],
-                        &expected[..16]
-                    ),
-                )?;
+            // whole-tree: content-addressed modules (0014) record their
+            // tree256 in the manifest — the expectation travels with
+            // the generation, not with any host's lockfile
+            if let Some(expected) = &state.tree256 {
+                let actual = gripsack_store::canonical_tree_hash(path)?;
+                if actual != *expected {
+                    return_corrupt(
+                        &mut out,
+                        repair,
+                        path,
+                        name,
+                        &format!(
+                            "corrupt: {} hashes {} but the manifest records {} — `grip store verify --repair` removes it",
+                            path.display(),
+                            &actual[..16],
+                            &expected[..16]
+                        ),
+                    )?;
+                }
             }
         }
     }

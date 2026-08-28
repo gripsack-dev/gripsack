@@ -38,6 +38,11 @@ pub struct ModuleState {
     /// activation and rollback (0001 §3.10).
     #[serde(default)]
     pub env: Vec<EnvVar>,
+    /// Content identity of the published tree (0014): present for
+    /// content-addressed modules — store verify compares the live tree
+    /// against this, no lockfile lookup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tree256: Option<String>,
 }
 
 /// A generation: an immutable record of one profile state.
@@ -115,6 +120,7 @@ mod tests {
                     hash: "deadbeef".into(),
                 }],
                 env: vec![],
+                tree256: None,
             },
         );
         Generation { number: n, modules }

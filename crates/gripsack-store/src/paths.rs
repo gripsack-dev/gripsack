@@ -1,4 +1,4 @@
-//! Input-addressed store paths (plan/0001 §3.4).
+//! Store paths (plan/0001 §3.4, hybrid per plan/0014).
 //!
 //! A store path is `<gripsack-home>/store/<input-hash>-<name>` where the
 //! input hash covers the resolved module plan (fetch spec + pinned refs +
@@ -29,6 +29,14 @@ pub fn input_hash(canonical: &str) -> String {
 pub fn store_path(home: &Path, name: &str, canonical: &str) -> PathBuf {
     home.join(STORE_DIR)
         .join(format!("{}-{name}", input_hash(canonical)))
+}
+
+/// Content-addressed store path (0014): the key IS the canonical tree
+/// hash of the published payload — the name is the expectation, so a
+/// path's presence is proof of content. Same width as input hashes.
+pub fn content_path(home: &Path, name: &str, tree256: &str) -> PathBuf {
+    home.join(STORE_DIR)
+        .join(format!("{}-{name}", &tree256[..HASH_LEN * 2]))
 }
 
 /// Base directory for everything gripsack owns: store, generations, and

@@ -162,6 +162,7 @@ pub(crate) fn run_all(
                                         store_path: PathBuf::new(),
                                         entries: vec![],
                                         env: vec![],
+                                        tree256: None,
                                     },
                                 ));
                             }

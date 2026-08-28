@@ -1654,6 +1654,118 @@ export default module("demo", {
     assert target.exists()
 
 
+def only_store_path(sandbox):
+    store = sandbox / ".local/share/gripsack/store"
+    entries = [p.name for p in store.iterdir()]
+    assert len(entries) == 1, f"expected one store path, found {entries}"
+    return entries[0]
+
+
+def test_mirror_swap_proves_then_dedups(sandbox):
+    """0014 §3: the recipe left the store path — a changed fetch spec
+    must re-fetch once to PROVE byte identity, then dedup to the same
+    content path: no second store entry, no redeploy."""
+    payload_a = make_tarball(sandbox / "a.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
+    payload_b = make_tarball(sandbox / "b.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
+    assert payload_a != payload_b
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload_a}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    before = only_store_path(sandbox)
+
+    # the mirror swap: different URL, identical bytes
+    module_ts = repo / "modules" / "hello.ts"
+    module_ts.write_text(module_ts.read_text().replace(str(payload_a), str(payload_b)))
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert only_store_path(sandbox) == before
+    # one fetch to prove identity, then nothing moved: no redeploy, no
+    # new generation
+    assert "fetched" in out.stdout
+    assert "linked" not in out.stdout
+    assert "already satisfied" in out.stdout
+
+
+def test_install_mapping_edit_does_not_refetch(sandbox):
+    """0014 §3: install destinations are deploy concerns, not content —
+    editing the mapping keeps the content path and skips the fetch."""
+    payload = make_tarball(sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    before = only_store_path(sandbox)
+
+    module_ts = repo / "modules" / "hello.ts"
+    module_ts.write_text(
+        module_ts.read_text().replace("~/.local/bin/hello", "~/.local/bin/hello2")
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert only_store_path(sandbox) == before
+    assert "content already in store" in out.stdout
+    assert "fetched" not in out.stdout
+    assert (sandbox / ".local/bin/hello2").is_symlink()
+
+
+def test_store_verify_covers_fetched_modules(sandbox):
+    """0014 §1a: verify used to compare the store TREE hash against the
+    lock's TRANSPORT hash (never matches) under a hostname-keyed lock
+    lookup (usually skipped). The manifest's tree256 is the expectation
+    now — a tampered fetched payload fails verify, hostname-free."""
+    payload = make_tarball(sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("store-verify", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+
+    store = sandbox / ".local/share/gripsack/store"
+    target = next(store.iterdir())
+    for f in target.rglob("*"):
+        if f.is_file() and not f.is_symlink():
+            f.write_text("tampered\n")
+    out = grip("store-verify", cwd=repo)
+    assert out.returncode != 0
+    assert "corrupt" in out.stdout
+    out = grip("store-verify", "--repair", cwd=repo)
+    assert "removed corrupt" in out.stdout
+    # repair removed it; the next apply republishes the SAME path —
+    # the lock's tree256 names the content, and the bytes haven't moved
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert only_store_path(sandbox) == target.name
+
+
 def test_embedded_frontend_serves_without_node_modules(sandbox):
     """The frontend source ships in the binary (0013 D3): a repo with
     NO node_modules evals offline against the embedded copy materialized
