@@ -116,8 +116,8 @@ mod tests {
         fs::write(&non_exe, "#!/bin/sh\n").unwrap();
 
         let path = std::ffi::OsString::from(dir.path());
-        assert_eq!(find_on_path("internal", path.clone()), Some(exe));
-        assert_eq!(find_on_path("notexec", path.clone()), None);
-        assert_eq!(find_on_path("absent", path), None);
+        assert_eq!(find_on_path("gripfetch-internal", path.clone()), Some(exe));
+        assert_eq!(find_on_path("gripfetch-notexec", path.clone()), None);
+        assert_eq!(find_on_path("gripfetch-absent", path), None);
     }
 }
