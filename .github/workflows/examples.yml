@@ -55,6 +55,9 @@ jobs:
           # the checkout is not a trusted repo and CI has no TTY for
           # the prompt; the repo is reviewed here instead
           GRIPSACK_TRUST_ALL: "1"
+          # authenticated api.github.com — anonymous rate limits 403
+          # the gripfetch-apt release lookup on shared runners
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p "$HOME"
           # the example's own node_modules/@gripsack/core (installed
