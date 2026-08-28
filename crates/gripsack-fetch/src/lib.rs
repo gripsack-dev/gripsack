@@ -22,7 +22,9 @@ pub mod throttle;
 
 pub use fetch::{FetchError, fetch, fetch_with_locked, payload_hash};
 pub use host::{AssetTarget, BUN_RELEASE, PIXI_RELEASE, UV_RELEASE, resolve as resolve_host_asset};
-pub use resolve::{ResolvedRelease, resolve_brew, resolve_latest};
+pub use resolve::{
+    ResolvedRelease, SelfRelease, resolve_brew, resolve_latest, resolve_self_release,
+};
 
 use std::path::PathBuf;
 

@@ -11,6 +11,7 @@ pub mod init;
 pub mod plan;
 pub mod repo;
 pub mod rollback;
+pub mod self_update;
 mod store_verify;
 pub mod update;
 pub mod why_owns;

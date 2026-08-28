@@ -1674,3 +1674,120 @@ def _core_version() -> str:
         [str(GRIP.resolve()), "--version"], capture_output=True, text=True
     )
     return out.stdout.strip().split()[-1]
+
+
+def _fake_release_server(sandbox, latest: str):
+    """A loopback GitHub releases API for self-update tests: one core-v
+    release, the platform tarball (a fake `grip`), and its sha256
+    sidecar — served for all four release triples so any host matches."""
+    import hashlib
+    import io
+    import json
+    import tarfile
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    fake = b"#!/bin/sh\necho fake-grip-" + latest.encode() + b"\n"
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        info = tarfile.TarInfo("grip")
+        info.size = len(fake)
+        info.mode = 0o755
+        tar.addfile(info, io.BytesIO(fake))
+    tarball = buf.getvalue()
+    sha = hashlib.sha256(tarball).hexdigest()
+
+    triples = [
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-musl",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin",
+    ]
+    base = "http://127.0.0.1:PORT"
+    assets = [
+        {
+            "name": f"gripsack-{latest}-{t}.tar.gz",
+            "browser_download_url": f"{base}/dl/t.tar.gz",
+            "url": f"{base}/api/t.tar.gz",
+        }
+        for t in triples
+    ] + [
+        {
+            "name": f"gripsack-{latest}-{t}.tar.gz.sha256",
+            "browser_download_url": f"{base}/dl/t.sha256",
+            "url": f"{base}/api/t.sha256",
+        }
+        for t in triples
+    ]
+    listing = json.dumps([
+        {"tag_name": "ts-v99.0.0", "assets": []},
+        {"tag_name": f"core-v{latest}", "assets": assets},
+    ]).encode()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.startswith("/repos/"):
+                body = listing
+            elif self.path.endswith("t.tar.gz"):
+                body = tarball
+            elif self.path.endswith("t.sha256"):
+                body = f"{sha}  gripsack.tar.gz\n".encode()
+            else:
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    listing = listing.replace(b"PORT", str(server.server_port).encode())
+    return server, f"http://127.0.0.1:{server.server_port}"
+
+
+def test_self_update_check_and_swap(sandbox, monkeypatch):
+    """self-update is the package manager dogfood: resolve the newest
+    core-v release (ts-v tags don't fool it), verify the sha256 sidecar,
+    stage, and atomically rename over the running binary."""
+    import shutil
+
+    server, api = _fake_release_server(sandbox, "9.9.9")
+    monkeypatch.setenv("GRIPSACK_UPDATE_API", api)
+    fake_bin = sandbox / "bin"
+    fake_bin.mkdir()
+    exe = fake_bin / "grip"
+    shutil.copy(GRIP.resolve(), exe)
+    exe.chmod(0o755)
+
+    def self_update(*args):
+        return subprocess.run(
+            [str(exe), "self-update", *args], capture_output=True, text=True, timeout=60
+        )
+
+    out = self_update("--check")
+    assert out.returncode == 0, out.stderr
+    assert "9.9.9" in out.stdout and "available" in out.stdout
+    before = exe.read_bytes()
+    out = self_update()
+    assert out.returncode == 0, out.stderr
+    assert "updated" in out.stdout and "9.9.9" in out.stdout
+    assert exe.read_bytes() != before
+    swapped = subprocess.run([str(exe)], capture_output=True, text=True)
+    assert swapped.stdout.strip() == "fake-grip-9.9.9"
+    server.shutdown()
+
+
+def test_self_update_already_current(sandbox, monkeypatch):
+    server, api = _fake_release_server(sandbox, _core_version())
+    monkeypatch.setenv("GRIPSACK_UPDATE_API", api)
+    out = subprocess.run(
+        [str(GRIP.resolve()), "self-update", "--check"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert out.returncode == 0, out.stderr
+    assert "is current" in out.stdout
+    server.shutdown()

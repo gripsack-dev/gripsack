@@ -80,6 +80,13 @@ enum Command {
         /// Generation number (default: the previous one)
         generation: Option<u64>,
     },
+    /// Update grip itself: tarball installs self-update in place;
+    /// brew/cargo/mise installs get their manager's command
+    SelfUpdate {
+        /// Report only, don't write
+        #[arg(long)]
+        check: bool,
+    },
     /// Re-resolve and rewrite the lockfile (never deploys — apply after)
     Update {
         #[arg(long)]
@@ -158,6 +165,7 @@ fn main() -> ExitCode {
             commands::init(&dir.unwrap_or_else(|| PathBuf::from(".")), palette)
         }
         Command::Generations => commands::generations(),
+        Command::SelfUpdate { check } => commands::self_update::self_update(palette, check),
         Command::Update {
             host,
             repo,

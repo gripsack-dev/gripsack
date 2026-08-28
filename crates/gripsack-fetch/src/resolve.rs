@@ -103,6 +103,111 @@ pub struct PluginRelease {
     pub sha256: String,
 }
 
+/// Find `asset_name` and its mandatory `.sha256` sidecar in a release,
+/// returning the asset plus the validated pin (missing sidecar =
+/// failed install, never a warning — krew rule).
+fn asset_with_sidecar<'a>(
+    release: &'a Release,
+    repo: &str,
+    asset_name: &str,
+) -> Result<(&'a Asset, String), ResolveError> {
+    let sidecar_name = format!("{asset_name}.sha256");
+    let mut asset = None;
+    let mut sidecar = None;
+    for a in &release.assets {
+        if a.name == asset_name {
+            asset = Some(a);
+        } else if a.name == sidecar_name {
+            sidecar = Some(a);
+        }
+    }
+    let asset = asset.ok_or_else(|| ResolveError::NoAsset {
+        repo: repo.to_string(),
+        asset: asset_name.to_string(),
+        available: release.assets.iter().map(|a| a.name.clone()).collect(),
+    })?;
+    let sidecar = sidecar.ok_or_else(|| ResolveError::NoAsset {
+        repo: repo.to_string(),
+        asset: sidecar_name,
+        available: release.assets.iter().map(|a| a.name.clone()).collect(),
+    })?;
+    // the sidecar's first token is the hash
+    let sha_text =
+        crate::fetch::tarball::read_url_authed(&sidecar.browser_download_url, Some(&sidecar.url))
+            .map_err(|e| ResolveError::NoAsset {
+            repo: repo.to_string(),
+            asset: format!("readable sha256 sidecar ({e})"),
+            available: vec![],
+        })?;
+    let sha256 = String::from_utf8_lossy(&sha_text)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(ResolveError::NoAsset {
+            repo: repo.to_string(),
+            asset: format!("a 64-hex sha256 in the sidecar (got {sha256:?})"),
+            available: vec![],
+        });
+    }
+    Ok((asset, sha256))
+}
+
+/// A grip self-update resolution: the newest `core-v*` release (py/ts
+/// tags ship alongside, so /releases/latest is NOT the answer), this
+/// platform's `gripsack-<version>-<triple>.tar.gz`, and its sha256.
+pub struct SelfRelease {
+    pub version: String,
+    pub url: String,
+    pub api_url: Option<String>,
+    pub sha256: String,
+}
+
+fn releases_tags(releases: &[Release]) -> Vec<String> {
+    releases.iter().map(|r| r.tag_name.clone()).collect()
+}
+
+pub fn resolve_self_release() -> Result<SelfRelease, ResolveError> {
+    let target = crate::host::AssetTarget::current().ok_or_else(|| ResolveError::NoAsset {
+        repo: "gripsack-dev/gripsack".into(),
+        asset: "a supported platform".into(),
+        available: vec![],
+    })?;
+    // GRIPSACK_UPDATE_API is the test seam: a verbatim base URL for a
+    // loopback fixture server (no /api/v3 normalization).
+    let base = match std::env::var("GRIPSACK_UPDATE_API") {
+        Ok(b) => b.trim_end_matches('/').to_string(),
+        Err(_) => "https://api.github.com".to_string(),
+    };
+    // three tag types (core/py/ts) per version in creation order —
+    // page deep enough that core-v* never falls off
+    let url = format!("{base}/repos/gripsack-dev/gripsack/releases?per_page=100");
+    let mut request = crate::http::get(&url).set("User-Agent", "gripsack");
+    if let Some(header) = crate::http::auth_header(&url) {
+        request = request.set("Authorization", &header);
+    }
+    let releases: Vec<Release> = request.call()?.into_json()?;
+    let tags = releases_tags(&releases);
+    let release = releases
+        .into_iter()
+        .find(|r| r.tag_name.starts_with("core-v"))
+        .ok_or_else(|| ResolveError::NoAsset {
+            repo: "gripsack-dev/gripsack".into(),
+            asset: "a core-v* release".into(),
+            available: tags,
+        })?;
+    let version = release.tag_name.trim_start_matches("core-v").to_string();
+    let asset_name = format!("gripsack-{version}-{}.tar.gz", target.triple());
+    let (asset, sha256) = asset_with_sidecar(&release, "gripsack-dev/gripsack", &asset_name)?;
+    Ok(SelfRelease {
+        version,
+        url: asset.browser_download_url.clone(),
+        api_url: Some(asset.url.clone()),
+        sha256,
+    })
+}
+
 /// Resolve a plugin's release: the `<exe>-<tag>-<triple>.tar.gz` asset
 /// for this platform plus its sha256 sidecar (missing sidecar = failed
 /// install, never a warning — krew rule). `tag` pins; None = latest.
@@ -153,49 +258,10 @@ pub fn resolve_plugin_release(
             }
         }
     };
-    let tag_name = release.tag_name;
+    let tag_name = release.tag_name.clone();
     let bare = tag_name.strip_prefix('v').unwrap_or(&tag_name);
     let asset_name = format!("{exe}-{bare}-{}.tar.gz", target.triple());
-    let sidecar_name = format!("{asset_name}.sha256");
-    let mut asset = None;
-    let mut sidecar = None;
-    for a in &release.assets {
-        if a.name == asset_name {
-            asset = Some(a);
-        } else if a.name == sidecar_name {
-            sidecar = Some(a);
-        }
-    }
-    let asset = asset.ok_or_else(|| ResolveError::NoAsset {
-        repo: repo.to_string(),
-        asset: asset_name.clone(),
-        available: release.assets.iter().map(|a| a.name.clone()).collect(),
-    })?;
-    let sidecar = sidecar.ok_or_else(|| ResolveError::NoAsset {
-        repo: repo.to_string(),
-        asset: sidecar_name,
-        available: release.assets.iter().map(|a| a.name.clone()).collect(),
-    })?;
-    // the sidecar's first token is the hash
-    let sha_text =
-        crate::fetch::tarball::read_url_authed(&sidecar.browser_download_url, Some(&sidecar.url))
-            .map_err(|e| ResolveError::NoAsset {
-            repo: repo.to_string(),
-            asset: format!("readable sha256 sidecar ({e})"),
-            available: vec![],
-        })?;
-    let sha256 = String::from_utf8_lossy(&sha_text)
-        .split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .to_string();
-    if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(ResolveError::NoAsset {
-            repo: repo.to_string(),
-            asset: format!("a 64-hex sha256 in the sidecar (got {sha256:?})"),
-            available: vec![],
-        });
-    }
+    let (asset, sha256) = asset_with_sidecar(&release, repo, &asset_name)?;
     Ok(PluginRelease {
         version: tag_name,
         url: asset.browser_download_url.clone(),
