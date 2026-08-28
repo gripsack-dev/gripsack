@@ -59,8 +59,17 @@ struct ModuleRun<'a> {
     /// isn't knowable up front (pixi, git, plugin — finding C): the
     /// lock-independent path is provisional, and the first fetch's
     /// sha256 completes it — the same path every later apply computes
-    /// from the lockfile.
+    /// from the lockfile. Content-addressed modules (0014) finalize at
+    /// publish instead: the tree needs the merged staging.
     identity_pending: bool,
+    /// 0014 §3: no build/custom/run step → the store path names the
+    /// content itself.
+    content_addressed: bool,
+    /// The content identity: the expected tree hash from the lock (or
+    /// the plan-time overlay for config-only), then the computed tree
+    /// at publish. Recorded into the generation manifest for
+    /// host-independent store verify.
+    tree256: Option<String>,
 }
 
 /// Identity errors (new) escape before anything deploys; phase errors
@@ -104,39 +113,97 @@ impl<'a> ModuleRun<'a> {
         prev: Option<&'a store::ModuleState>,
         locked: Option<&'a lockfile::LockEntry>,
     ) -> Result<Self, ExecError> {
-        let resolved = locked
-            .and_then(|e| e.resolved.as_ref())
-            .and_then(|r| r.sha256.clone())
-            .or_else(|| {
-                // the fetch spec lives in module.fetch (declarative) or
-                // in a fetch step (explicit steps) — check both
-                let spec = module.fetch.as_ref().or_else(|| {
-                    steps.iter().find_map(|s| match &s.action {
-                        StepAction::Fetch { fetch } => Some(fetch),
-                        _ => None,
-                    })
-                });
-                spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
-            });
-        let input = match &resolved {
-            Some(sha) => format!("{}|payload={sha}", module_input(module, &ctx.repo, ir)?),
-            None => module_input(module, &ctx.repo, ir)?,
+        // 0014 §3: content is fully determined before execution unless
+        // a build/custom/run step exists. Fetches pin content via the
+        // lock's tree256; config-only modules hash their repo sources
+        // at plan time. Anything else is input-addressed (recipe-named,
+        // plan-time-computable, not content-guaranteed).
+        let content_addressed = !steps.iter().any(|s| {
+            matches!(
+                s.action,
+                StepAction::Build { .. } | StepAction::CustomShell { .. } | StepAction::Run { .. }
+            )
+        });
+        // the fetch spec lives in module.fetch (declarative) or in a
+        // fetch step (explicit steps) — check both
+        let fetch_spec = module.fetch.as_ref().or_else(|| {
+            steps.iter().find_map(|s| match &s.action {
+                StepAction::Fetch { fetch } => Some(fetch),
+                _ => None,
+            })
+        });
+        // a changed spec cannot trust the locked tree for presence:
+        // the recipe left the path, so one re-fetch must PROVE byte
+        // identity — publish dedups if it matches (the mirror swap)
+        let spec_changed = match (locked, fetch_spec) {
+            (Some(entry), Some(spec)) => entry.fetch != *spec,
+            _ => false,
         };
-        let store_path = store::store_path(&ctx.home, name, &input);
-        // Deferred identity (finding C): no hash from the lock AND none
-        // computable offline — the first fetch's sha will finalize the
-        // path. Presence is meaningless until then: always fetch.
-        let identity_pending = resolved.is_none()
-            && (module.fetch.is_some()
-                || steps
-                    .iter()
-                    .any(|s| matches!(s.action, gripsack_ir::StepAction::Fetch { .. })));
+        let (store_path, identity_pending, tree256) = if content_addressed {
+            let locked_tree = if spec_changed {
+                None
+            } else {
+                locked
+                    .and_then(|e| e.resolved.as_ref())
+                    .and_then(|r| r.tree256.clone())
+            };
+            match locked_tree {
+                Some(tree) => (
+                    store::content_path(&ctx.home, name, &tree),
+                    false,
+                    Some(tree),
+                ),
+                None if fetch_spec.is_none() => {
+                    // config-only: content is the repo's payload sources,
+                    // computable without staging (overlay == staged tree)
+                    let froms: Vec<String> = module
+                        .install
+                        .iter()
+                        .chain(module.config.iter())
+                        .map(|e| e.from.clone())
+                        .collect();
+                    let tree = store::canonical_overlay_hash(&ctx.repo, &froms)?;
+                    (
+                        store::content_path(&ctx.home, name, &tree),
+                        false,
+                        Some(tree),
+                    )
+                }
+                None => {
+                    // deferred: the transport hash cannot name an
+                    // unextracted tree — the first fetch finalizes the
+                    // path at publish (0002 §3 TOFU)
+                    let input = module_input(module, &ctx.repo, ir)?;
+                    (store::store_path(&ctx.home, name, &input), true, None)
+                }
+            }
+        } else {
+            let resolved = locked
+                .and_then(|e| e.resolved.as_ref())
+                .and_then(|r| r.sha256.clone())
+                .or_else(|| {
+                    fetch_spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
+                });
+            let input = match &resolved {
+                Some(sha) => format!("{}|payload={sha}", module_input(module, &ctx.repo, ir)?),
+                None => module_input(module, &ctx.repo, ir)?,
+            };
+            let path = store::store_path(&ctx.home, name, &input);
+            // Deferred identity (finding C): no hash from the lock AND
+            // none computable offline — the first fetch's sha finalizes
+            // the path. Presence is meaningless until then: always fetch.
+            (path, resolved.is_none() && fetch_spec.is_some(), None)
+        };
         let present = store_path.exists() && !identity_pending;
         let mut reports = Vec::new();
         if present {
             reports.push(StepReport {
                 module: name.to_string(),
-                summary: "payload already in store".into(),
+                summary: if content_addressed {
+                    "content already in store".into()
+                } else {
+                    "payload already in store".into()
+                },
                 kind: ReportKind::Satisfied,
             });
         }
@@ -152,6 +219,8 @@ impl<'a> ModuleRun<'a> {
                 .and_then(|e| e.resolved.as_ref())
                 .and_then(|r| r.version.clone()),
             store_path,
+            content_addressed,
+            tree256,
             present,
             identity_pending,
             staging: None,
@@ -258,7 +327,9 @@ impl<'a> ModuleRun<'a> {
         // sha joins the store-path input — identical to what the lock
         // gives every later apply. Presence was never checked against
         // the provisional path, so this is the path publish must use.
-        if self.identity_pending {
+        // Input-addressed only: content-addressed modules (0014)
+        // finalize at publish, where the merged staging's tree exists.
+        if self.identity_pending && !self.content_addressed {
             let input = format!(
                 "{}|payload={sha}",
                 module_input(self.module, &self.ctx.repo, self.ir)?
@@ -281,6 +352,8 @@ impl<'a> ModuleRun<'a> {
         self.lock_entry = Some(lockfile::LockEntry {
             fetch: spec.clone(),
             resolved: Some(lockfile::Resolved {
+                // tree256 lands at publish, with the merged staging
+                tree256: None,
                 // a plugin's reported pin (upstream artifact url +
                 // version) is recorded so the next apply's `locked`
                 // tells it exactly what to reproduce; for resolved
@@ -320,7 +393,9 @@ impl<'a> ModuleRun<'a> {
     }
 
     /// Stage repo-referenced files and publish into the store — once,
-    /// immutably (0001 §9.1).
+    /// immutably (0001 §9.1). Content-addressed modules (0014) name
+    /// the path from the merged staging's tree hash: an existing path
+    /// IS the content, so publishing dedups by construction.
     fn publish(&mut self) -> Result<(), ExecError> {
         if self.present {
             return Ok(());
@@ -344,7 +419,37 @@ impl<'a> ModuleRun<'a> {
                 std::fs::copy(&repo_file, &dest)?;
             }
         }
-        store::publish_dir(&stage, &self.store_path)?;
+        if !self.content_addressed {
+            store::publish_dir(&stage, &self.store_path)?;
+            return Ok(());
+        }
+        let tree = store::canonical_tree_hash(&stage)?;
+        // drift the transport check can't see (plugin fetchers stage
+        // trees directly): a locked identity must match what landed
+        if let Some(expected) = &self.tree256
+            && *expected != tree
+        {
+            return Err(ExecError::Fetch(gripsack_fetch::FetchError::HashMismatch {
+                url: format!("{} store tree", self.name),
+                expected: expected.clone(),
+                actual: tree,
+            }));
+        }
+        let path = store::content_path(&self.ctx.home, self.name, &tree);
+        if path.exists() {
+            // the mirror swap: re-fetch proved byte-identity, the path
+            // is already there — drop staging, keep the store
+            std::fs::remove_dir_all(&stage)?;
+        } else {
+            store::publish_dir(&stage, &path)?;
+        }
+        self.store_path = path;
+        self.tree256 = Some(tree.clone());
+        if let Some(entry) = &mut self.lock_entry
+            && let Some(resolved) = &mut entry.resolved
+        {
+            resolved.tree256 = Some(tree);
+        }
         Ok(())
     }
 
@@ -419,6 +524,7 @@ impl<'a> ModuleRun<'a> {
                 store_path: self.store_path,
                 entries: self.deployed,
                 env: self.module.env.clone(),
+                tree256: self.tree256,
             },
             reports: self.reports,
             lock_entry: self.lock_entry,

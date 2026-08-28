@@ -33,6 +33,27 @@ Breaking: the Python frontend, bun, and uv are removed.
   registration is gone.
 - The dual-frontend parity corpus is replaced by a golden IR snapshot
   corpus (fixture envs → IR, byte-exact modulo spans).
+- **Content-addressed store identity** ([plan 0014](plan/0014-content-addressed-fetches.md)):
+  fetch-only and config-only modules name their store path by the
+  canonical hash of their content; builds stay input-addressed (their
+  output can't be named before it exists — plan-time naming is what
+  keeps `grip plan` complete). A mirror swap or URL edit with identical
+  bytes re-proves once, then dedups to the same path: no store churn,
+  no new generation. Editing an install mapping no longer refetches.
+  The lockfile records both hashes: `sha256` (transport integrity of
+  the download) and `tree256` (store identity).
+- **`grip store verify` is now correct and host-independent**: the
+  whole-tree check previously compared a tree hash against the
+  transport hash (could never match) under a hostname-keyed lock
+  lookup (usually skipped) — the generation manifest now carries
+  `tree256`, and a tampered fetched payload fails verify anywhere.
+- Symlink deploys report "unchanged" when the link already points at
+  the right store path — a re-proved fetch no longer looks like a
+  redeploy.
+
+  Migration note: content-addressed paths differ in shape, so the
+  first apply after upgrading re-stages fetch/config modules once
+  (identical bytes, new names); `grip gc` collects the old paths.
 
 ### Removed
 

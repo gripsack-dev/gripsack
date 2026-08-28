@@ -196,15 +196,33 @@ pub(crate) fn deploy_entry(
                     ),
                 });
             }
-            if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent)?;
+            // idempotent report (0014): a link already pointing at the
+            // right store path is "unchanged", not "linked" — a mirror
+            // swap that re-proves byte identity must not look like a
+            // redeploy
+            let already = std::fs::read_link(&dest)
+                .map(|t| t == source)
+                .unwrap_or(false);
+            if !already {
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                store::symlink_replace(&dest, &source)?;
             }
-            store::symlink_replace(&dest, &source)?;
-            (
-                format!("linked {} → {}", from, entry.to),
-                ReportKind::Installed,
-                store::canonical_file_hash(&source)?,
-            )
+            let hash = store::canonical_file_hash(&source)?;
+            if already {
+                (
+                    format!("{} unchanged", entry.to),
+                    ReportKind::Satisfied,
+                    hash,
+                )
+            } else {
+                (
+                    format!("linked {} → {}", from, entry.to),
+                    ReportKind::Installed,
+                    hash,
+                )
+            }
         }
         Ownership::TrackedCopy | Ownership::Template => {
             let content;

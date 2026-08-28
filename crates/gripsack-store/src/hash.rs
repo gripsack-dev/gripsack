@@ -49,6 +49,44 @@ pub fn canonical_tree_hash(root: &Path) -> std::io::Result<String> {
     Ok(hex(&hasher.finalize()))
 }
 
+/// Canonical tree hash of a NOT-YET-STAGED overlay (0014): repo files
+/// at their `from` relative paths, ancestor dirs synthesized — the same
+/// digest `canonical_tree_hash` gives the staged directory, without
+/// materializing it. Plan-time content identity for config-only
+/// modules.
+pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<String> {
+    let dir_hash = hex(&Sha256::digest(b"dir\0"));
+    let mut entries: Vec<(String, String)> = Vec::new();
+    for from in froms {
+        let source = repo.join(from);
+        if !source.is_file() {
+            continue;
+        }
+        // ancestor dirs are stage entries too (create_dir_all at
+        // publish) — synthesize them or the digests diverge
+        let mut ancestor = Path::new(from.as_str()).parent();
+        while let Some(dir) = ancestor {
+            if dir.as_os_str().is_empty() {
+                break;
+            }
+            let rel = dir.to_string_lossy().into_owned();
+            entries.push((rel, dir_hash.clone()));
+            ancestor = dir.parent();
+        }
+        entries.push((from.clone(), canonical_file_hash(&source)?));
+    }
+    entries.sort();
+    entries.dedup();
+    let mut hasher = Sha256::new();
+    for (rel, hash) in entries {
+        hasher.update(rel.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(hash.as_bytes());
+        hasher.update(b"\0");
+    }
+    Ok(hex(&hasher.finalize()))
+}
+
 fn collect_entries(root: &Path, dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
@@ -118,6 +156,38 @@ mod tests {
             canonical_file_hash(&a).unwrap(),
             canonical_file_hash(&b).unwrap()
         );
+    }
+
+    #[test]
+    fn overlay_hash_matches_materialized_staging() {
+        // 0014's load-bearing invariant: the plan-time overlay hash of
+        // repo sources equals the tree hash of the staging publish
+        // would assemble — ancestor dirs synthesized, exec bit covered
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(repo.join("configs/demo")).unwrap();
+        std::fs::write(repo.join("configs/demo/a.toml"), b"a\n").unwrap();
+        std::fs::write(repo.join("tool.sh"), b"#!/bin/sh\necho hi\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(repo.join("tool.sh"), std::fs::Permissions::from_mode(0o755))
+                .unwrap();
+        }
+        let froms = vec!["configs/demo/a.toml".to_string(), "tool.sh".to_string()];
+        let overlay = canonical_overlay_hash(&repo, &froms).unwrap();
+
+        let stage = dir.path().join("stage");
+        for from in &froms {
+            let dest = stage.join(from);
+            std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+            std::fs::copy(repo.join(from), dest).unwrap();
+        }
+        assert_eq!(overlay, canonical_tree_hash(&stage).unwrap());
+
+        // a content edit moves the overlay hash
+        std::fs::write(repo.join("configs/demo/a.toml"), b"b\n").unwrap();
+        assert_ne!(canonical_overlay_hash(&repo, &froms).unwrap(), overlay);
     }
 
     #[test]

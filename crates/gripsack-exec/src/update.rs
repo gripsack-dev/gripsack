@@ -44,6 +44,10 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                                 url: None,
                                 version: None,
                                 sha256: Some(sha.clone()),
+                                // the new content's tree is known
+                                // only after the next apply fetches
+                                // it — deferred identity (0014 §3)
+                                tree256: None,
                                 api_url: None,
                             }),
                         },
@@ -103,6 +107,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                                 url: Some(release.url),
                                 version: Some(release.version.clone()),
                                 sha256: Some(sha),
+                                tree256: None, // deferred identity (0014 §3)
                                 api_url: release.api_url,
                             }),
                         },
@@ -142,6 +147,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                                 url: outcome.plugin_url,
                                 version: outcome.plugin_version,
                                 sha256: Some(sha.clone()),
+                                tree256: None, // deferred identity (0014 §3)
                                 api_url: None,
                             }),
                         },
