@@ -1,4 +1,4 @@
-use crate::commands::{check_ir, eval_repo};
+use crate::commands::{check_ir, eval_repo, trust_gate};
 use crate::render::Palette;
 use gripsack_exec::{Ctx, Outcome};
 use gripsack_store as store;
@@ -22,6 +22,9 @@ pub fn apply(
     if std::env::var("GRIPSACK_JOBS").ok().as_deref() == Some("0") {
         eprintln!("grip: GRIPSACK_JOBS=0 would run zero modules — unset or fix it");
         return ExitCode::from(2);
+    }
+    if let Some(code) = trust_gate(repo) {
+        return code;
     }
     let outcome = match eval_repo(repo, host, palette) {
         Ok(o) => o,

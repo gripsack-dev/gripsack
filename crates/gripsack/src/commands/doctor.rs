@@ -1,11 +1,12 @@
-//! grip doctor — the frontend environment check (0003 §8).
+//! grip doctor — the eval runtime check (0003 §8, plan/0013 D2).
 
 use crate::render::Palette;
 use owo_colors::OwoColorize;
 use std::process::ExitCode;
 
-/// The frontend contract (plan/0003 §8): a Python with the `gripsack`
-/// package importable; node for TypeScript repos (0005 §1).
+/// The eval contract (plan/0013 D2): a runnable deno — the exact
+/// precedence eval uses (`GRIPSACK_DENO`, deno on PATH, the pinned
+/// provisioned download) — plus the embedded TypeScript frontend.
 pub fn doctor(palette: Palette) -> ExitCode {
     let mut ok = true;
     let colored = palette.enabled;
@@ -20,116 +21,76 @@ pub fn doctor(palette: Palette) -> ExitCode {
         }
     };
 
-    // The same python eval would use (0005 §3): GRIPSACK_PYTHON wins.
-    let python = std::env::var("GRIPSACK_PYTHON").unwrap_or_else(|_| "python3".into());
-    match std::process::Command::new(&python)
-        .arg("--version")
-        .output()
-    {
-        Ok(out) if out.status.success() => {
-            let v = String::from_utf8_lossy(&out.stdout);
-            let v = v.trim();
-            let v = if v.is_empty() {
-                String::from_utf8_lossy(&out.stderr).trim().to_string()
+    let home = gripsack_store::gripsack_home();
+
+    // deno is the eval runtime — required, no fallback exists.
+    match gripsack_exec::ensure_deno(&home) {
+        Ok(deno) => {
+            let version = std::process::Command::new(&deno)
+                .arg("--version")
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| {
+                    String::from_utf8_lossy(&o.stdout)
+                        .lines()
+                        .next()
+                        .unwrap_or("deno (unknown version)")
+                        .to_string()
+                })
+                .unwrap_or_else(|| "deno (unknown version)".into());
+            let source = if std::env::var_os("GRIPSACK_DENO").is_some() {
+                "GRIPSACK_DENO"
+            } else if deno.as_os_str() == "deno" {
+                "on PATH"
             } else {
-                v.to_string()
+                "provisioned"
             };
-            println!("{}  python: {v}", mark(true));
+            println!("{}  deno: {version} ({source})", mark(true));
         }
-        _ => {
-            println!("{}  python: `{python}` not runnable", mark(false));
+        Err(e) => {
+            println!("{}  deno: {e}", mark(false));
+            let reason = e.to_string();
+            if reason.contains("musl") {
+                println!(
+                    "      {} the grip binary itself is musl-static and keeps working — \
+                     only the eval sandbox needs a glibc/macOS host",
+                    "hint:".yellow().bold()
+                );
+            } else {
+                println!(
+                    "      {} set GRIPSACK_DENO to a deno binary to bypass provisioning",
+                    "hint:".yellow().bold()
+                );
+            }
             ok = false;
         }
     }
 
-    let check = std::process::Command::new(&python)
-        .args(["-c", "import gripsack; print(gripsack.__version__)"])
-        .output();
-    match check {
-        Ok(out) if out.status.success() => {
-            let frontend_v = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            println!("{}  frontend: gripsack python {frontend_v}", mark(true));
-            let core_v = env!("CARGO_PKG_VERSION");
-            if frontend_v != core_v {
-                println!(
-                    "{}  core/frontend mismatch: grip {core_v} vs python {frontend_v} — {}",
-                    "warn".yellow().bold(),
-                    "pip install -U gripsack".dimmed()
-                );
-            }
-        }
-        _ => {
-            // the provisioned venv may carry the frontend even when the
-            // system python doesn't — apply works fine in that state,
-            // so a bare MISS reads as a broken install when it isn't
-            let frontend_dir = gripsack_store::gripsack_home().join("frontend");
-            let managed = std::fs::read_dir(&frontend_dir)
-                .ok()
-                .into_iter()
-                .flatten()
-                .filter_map(|e| e.ok())
-                .map(|e| e.path().join("bin/python3"))
-                .find(|p| p.exists())
-                .and_then(|p| {
-                    std::process::Command::new(&p)
-                        .args(["-c", "import gripsack; print(gripsack.__version__)"])
-                        .output()
-                        .ok()
-                        .filter(|o| o.status.success())
-                        .map(|o| (p, String::from_utf8_lossy(&o.stdout).trim().to_string()))
-                });
-            match managed {
-                Some((path, v)) => println!(
-                    "{}  frontend: gripsack python {v} (provisioned, {})",
-                    mark(true),
-                    path.display()
-                ),
-                None => {
-                    // the embedded frontend serves config-only repos with
-                    // zero provisioning — a complete embed dir is proof
-                    let embedded = std::fs::read_dir(&frontend_dir)
-                        .ok()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path())
-                        .find(|p| {
-                            p.file_name()
-                                .is_some_and(|n| n.to_string_lossy().starts_with("embed-"))
-                                && p.join(".complete").exists()
-                        });
-                    match embedded {
-                        Some(dir) => println!(
-                            "{}  frontend: embedded in grip (materialized at {})",
-                            mark(true),
-                            dir.display()
-                        ),
-                        None => {
-                            println!(
-                                "{}  frontend: `import gripsack` failed with {python} — pip install gripsack (or let provisioning handle it on first apply)",
-                                mark(false)
-                            );
-                            ok = false;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // TypeScript frontend (plan/0005 §1): optional.
-    match std::process::Command::new("node").arg("--version").output() {
-        Ok(out) if out.status.success() => {
+    // The frontend source embedded in this binary (plan/0013 D3) —
+    // materializing here is idempotent; a MISS means a build without
+    // the repo's typescript tree (crates.io builds).
+    match gripsack_exec::ensure_ts_frontend(&home, env!("CARGO_PKG_VERSION")) {
+        Ok(Some(dir)) => println!(
+            "{}  frontend: embedded TypeScript {} (materialized at {})",
+            mark(true),
+            env!("CARGO_PKG_VERSION"),
+            dir.display()
+        ),
+        Ok(None) => {
             println!(
-                "{}  node: {} (typescript frontend)",
-                mark(true),
-                String::from_utf8_lossy(&out.stdout).trim()
+                "{}  frontend: this build carries no embedded TypeScript frontend",
+                mark(false)
             );
+            ok = false;
         }
-        _ => println!("info  node: not found — only needed for `frontend = \"typescript\"` repos"),
+        Err(e) => {
+            println!("{}  frontend: materialization failed: {e}", mark(false));
+            ok = false;
+        }
     }
 
-    println!("      home: {}", gripsack_store::gripsack_home().display());
+    println!("      home: {}", home.display());
 
     if ok {
         ExitCode::SUCCESS

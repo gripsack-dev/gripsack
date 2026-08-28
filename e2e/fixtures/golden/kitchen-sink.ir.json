@@ -1,0 +1,165 @@
+{
+  "diagnostics": [],
+  "ir": {
+    "host": {
+      "arch": "x86_64",
+      "libc": "glibc-2.36",
+      "os": "linux",
+      "tags": [
+        "gui"
+      ]
+    },
+    "ir_version": 1,
+    "modules": {
+      "brewed": {
+        "fetch": {
+          "formula": "jq",
+          "kind": "brew",
+          "version": "1.8.0"
+        }
+      },
+      "core": {
+        "activate": [
+          {
+            "kind": "fonts",
+            "trigger": "post_link"
+          },
+          {
+            "kind": "service",
+            "name": "kitchen-sink",
+            "trigger": "post_activate",
+            "user": true
+          },
+          {
+            "kind": "desktop_entry",
+            "trigger": "post_link"
+          }
+        ],
+        "config": [
+          {
+            "from": "configs/demo/a.toml",
+            "mode": "tracked_copy",
+            "to": "~/.config/demo/a.toml"
+          },
+          {
+            "from": "configs/demo/id.toml",
+            "mode": "template",
+            "to": "~/.config/demo/id.toml",
+            "vars": {
+              "email": "a@b.c"
+            }
+          },
+          {
+            "from": "configs/demo/block.sh",
+            "marker": "#",
+            "mode": "merge",
+            "to": "~/.bashrc"
+          }
+        ],
+        "env": [
+          {
+            "name": "SINK_HOME",
+            "op": "set",
+            "value": "{store}"
+          },
+          {
+            "name": "PATH",
+            "op": "prepend",
+            "value": "{store}/bin"
+          }
+        ],
+        "fetch": {
+          "asset": "starship-{version}-x86_64-linux.tar.gz",
+          "base_url": "https://ghe.example.com/api/v3",
+          "kind": "github_release",
+          "repo": "starship/starship",
+          "version": "v1.20.0"
+        },
+        "install": [
+          {
+            "from": "starship",
+            "mode": "owned",
+            "to": "~/.local/bin/starship"
+          }
+        ],
+        "lint": "helix",
+        "retries": 2,
+        "verify": {
+          "args": [
+            "--version"
+          ],
+          "kind": "binary_runs",
+          "path": "starship"
+        }
+      },
+      "nvidia": {
+        "fetch": {
+          "kind": "file",
+          "path": "payloads/nvidia.tar.gz"
+        },
+        "install": [
+          {
+            "from": "bin/nvidia-smi",
+            "mode": "owned",
+            "to": "~/.local/bin/nvidia-smi"
+          }
+        ]
+      },
+      "pixied": {
+        "fetch": {
+          "kind": "pixi",
+          "package": "ripgrep",
+          "version": "15.0.0"
+        }
+      },
+      "plugged": {
+        "fetch": {
+          "args": {
+            "package": "htop",
+            "version": "3.3.0"
+          },
+          "kind": "plugin",
+          "name": "apt"
+        },
+        "verify": {
+          "kind": "file_exists",
+          "path": "bin/htop"
+        }
+      },
+      "tools": {
+        "config": [
+          {
+            "from": "configs/demo/a.toml",
+            "mode": "owned",
+            "to": "~/.config/demo/a.toml"
+          },
+          {
+            "from": "configs/demo/block.sh",
+            "mode": "owned",
+            "to": "~/.config/demo/block.sh"
+          },
+          {
+            "from": "configs/demo/id.toml",
+            "mode": "owned",
+            "to": "~/.config/demo/id.toml"
+          }
+        ],
+        "fetch": {
+          "kind": "tarball",
+          "sha256": "abababababababababababababababababababababababababababababababab",
+          "url": "https://example.invalid/tools.tar.gz"
+        },
+        "verify": {
+          "kind": "shell",
+          "script": "test -f bin/tools"
+        }
+      }
+    }
+  },
+  "probe_requests": [
+    {
+      "kind": "executable",
+      "name": "nvidia-smi"
+    }
+  ]
+}

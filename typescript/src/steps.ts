@@ -8,10 +8,10 @@
  * (E103).
  */
 
-import type { Dest } from "./entries.js";
-import type { Fetch } from "./fetch.js";
-import { validateResourceRefs } from "./resources.js";
-import type { Verify } from "./verify.js";
+import type { Dest } from "./entries.ts";
+import type { Fetch } from "./fetch.ts";
+import { validateResourceRefs } from "./resources.ts";
+import type { Verify } from "./verify.ts";
 
 export type Phase = "fetch" | "build" | "install" | "config" | "verify" | "activate" | "custom";
 

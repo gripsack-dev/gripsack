@@ -11,10 +11,10 @@
 //!     < CLI flags
 //! ```
 //!
-//! `env.toml` declares the frontend, eval-time deps (resolvers/fetcher
-//! libraries), fetcher plugin wiring, throttle domains, and settings.
-//! The user layer only fills gaps — a cloned repo behaves identically
-//! everywhere.
+//! `env.toml` declares build-time env, fetcher plugin wiring,
+//! throttle domains, and settings. The user layer only fills gaps —
+//! a cloned repo behaves identically everywhere.
+
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -28,10 +28,10 @@ pub struct EnvConfig {
     pub env: EnvSection,
     pub eval: EvalSection,
     pub fetchers: BTreeMap<String, FetcherSection>,
-    /// Linter registry (0011 §7): name → pinned package (provisioned
-    /// into the frontend venv) or an explicit executable path. The
-    /// frontend consumes it at eval; the core only parses it and
-    /// feeds `package` entries to provisioning.
+    /// Linter registry (0011 §7): name → plugin-store ref
+    /// (`owner/repo@tag`, provisioned and receipted) or an explicit
+    /// executable path. The core parses it and feeds `package`
+    /// entries to provisioning.
     pub linters: BTreeMap<String, LinterSection>,
     /// Rate limits per throttle domain, e.g. `"api.github.com" = "2/s"`
     /// (0007 §throttling). The core attaches primitives to domains.
@@ -53,8 +53,13 @@ pub struct UserConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct EnvSection {
     pub name: Option<String>,
-    #[serde(default)]
-    pub frontend: Frontend,
+    /// Parsed only so `frontend = "python"` can fail with a migration
+    /// hint instead of a bare unknown-key error: the python frontend
+    /// was removed (plan/0013 D1) and TypeScript is the only frontend
+    /// — declared by nothing, the repo's `hosts/*.ts`/`modules/*.ts`
+    /// ARE it. `frontend = "typescript"` parses as a no-op.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frontend: Option<String>,
     /// The host entrypoint when no --host is given and the machine's
     /// hostname matches nothing in hosts/ — for role-named host files
     /// on ephemeral containers with random hostnames (enterprise
@@ -63,25 +68,12 @@ pub struct EnvSection {
     pub default_host: Option<String>,
 }
 
-/// One frontend per env repo (0005 §1) — declared, never sniffed.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Frontend {
-    #[default]
-    Python,
-    Typescript,
-}
-
-/// Frontend-environment provisioning: packages the modules import at
-/// eval time (resolvers, fetcher libraries — 0002 §3). Content-cached:
-/// same spec, same environment.
+/// Build-time environment injected into the apply process for the
+/// run's duration — build steps, fetchers, and plugins inherit it
+/// (SSL_CERT_FILE is the canonical case).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct EvalSection {
-    pub deps: Vec<String>,
-    /// Environment injected into the apply process for the run's
-    /// duration — build steps, fetchers, and plugins inherit it
-    /// (SSL_CERT_FILE is the canonical case).
     pub env: std::collections::BTreeMap<String, String>,
 }
 
@@ -102,12 +94,14 @@ pub struct FetcherSection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
-/// A named linter (0010 §3, 0011 §7): provisioned from a pinned
-/// package, or an explicit executable path for development.
+/// A named linter (0010 §3, 0011 §7): provisioned from the plugin
+/// store by ref, or an explicit executable path for development.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct LinterSection {
-    /// Pip requirement with an `==` pin, e.g. `griplint-yazi==1.2.0`.
+    /// Plugin-store ref `owner/repo@tag` — downloaded, sha256-verified,
+    /// receipted (the pip-wheel form died with the python frontend,
+    /// plan/0013 D1).
     pub package: Option<String>,
     /// Explicit executable path — wins over `package`, for development.
     pub path: Option<String>,
@@ -136,7 +130,7 @@ pub struct FetcherSectionView {
 /// Parse a repo `env.toml`. Errors are span-labeled diagnostics
 /// pointing at the exact line (0009 §3).
 pub fn parse_env(source: &str) -> Result<EnvConfig, Vec<Diagnostic>> {
-    parse_as(source, "<env.toml>")
+    parse_env_as(source, "<env.toml>")
 }
 
 /// Parse a user config (`~/.config/gripsack/config.toml`).
@@ -152,7 +146,45 @@ pub fn load_env(path: &std::path::Path) -> Result<EnvConfig, Vec<Diagnostic>> {
             format!("cannot read {}: {e}", path.display()),
         )]
     })?;
-    parse_as(&source, &path.display().to_string())
+    parse_env_as(&source, &path.display().to_string())
+}
+
+fn parse_env_as(source: &str, file: &str) -> Result<EnvConfig, Vec<Diagnostic>> {
+    let env: EnvConfig = parse_as(source, file)?;
+    // TypeScript is the only frontend and needs no declaration; the
+    // key parses solely so a stale `frontend = "python"` fails with a
+    // migration hint instead of an unknown-key error (plan/0013 D1).
+    if let Some(frontend) = env.env.frontend.as_deref()
+        && frontend != "typescript"
+    {
+        let (line, col) = source
+            .find("frontend")
+            .map(|offset| line_col(source, offset))
+            .unwrap_or((1, 1));
+        let message = if frontend == "python" {
+            "the python frontend was removed (plan/0013 D1)".to_string()
+        } else {
+            format!("unknown frontend {frontend:?}")
+        };
+        return Err(vec![
+            Diagnostic::error(
+                codes::CONFIG,
+                format!("{message} — TypeScript is the only frontend"),
+            )
+            .with_label(
+                Some(Span {
+                    file: file.to_string(),
+                    line,
+                    col: Some(col),
+                }),
+                "`frontend` declared here",
+            )
+            .with_help(
+                "delete the frontend line — hosts/*.ts and modules/*.ts already are the frontend",
+            ),
+        ]);
+    }
+    Ok(env)
 }
 
 fn parse_as<T: serde::de::DeserializeOwned>(
@@ -240,10 +272,9 @@ mod tests {
     const ENV: &str = r#"
 [env]
 name = "tarek"
-frontend = "typescript"
 
 [eval]
-deps = ["gripsack-fetcher-artifactory==1.2.0"]
+env = { SSL_CERT_FILE = "/etc/corp/ca.pem" }
 
 [fetchers.artifactory]
 plugin = "gripfetch-artifactory"
@@ -256,13 +287,57 @@ keep_generations = 20
     fn parses_env_toml() {
         let env = parse_env(ENV).unwrap();
         assert_eq!(env.env.name.as_deref(), Some("tarek"));
-        assert_eq!(env.env.frontend, Frontend::Typescript);
-        assert_eq!(env.eval.deps.len(), 1);
+        assert_eq!(
+            env.eval.env["SSL_CERT_FILE"], "/etc/corp/ca.pem",
+            "build-time env survives"
+        );
         assert_eq!(
             env.fetchers["artifactory"].plugin.as_deref(),
             Some("gripfetch-artifactory")
         );
         assert_eq!(env.settings.keep_generations, Some(20));
+    }
+
+    #[test]
+    fn python_frontend_is_a_migration_error() {
+        let err = parse_env("[env]\nname = \"x\"\nfrontend = \"python\"\n").unwrap_err();
+        let d = &err[0];
+        assert_eq!(d.code, gripsack_ir::codes::CONFIG);
+        assert!(
+            d.message.contains("python frontend was removed"),
+            "message names the removal: {}",
+            d.message
+        );
+        let span = d.labels[0].span.as_ref().unwrap();
+        assert_eq!(span.line, 3, "span points at the frontend line");
+        assert!(
+            d.help
+                .as_deref()
+                .is_some_and(|h| h.contains("delete the frontend line")),
+            "help carries the migration step"
+        );
+    }
+
+    #[test]
+    fn unknown_frontend_value_errors_the_same_way() {
+        let err = parse_env("[env]\nfrontend = \"wasm\"\n").unwrap_err();
+        assert!(err[0].message.contains("unknown frontend \"wasm\""));
+    }
+
+    #[test]
+    fn typescript_frontend_declaration_is_tolerated() {
+        parse_env("[env]\nfrontend = \"typescript\"\n").unwrap();
+    }
+
+    #[test]
+    fn eval_deps_is_gone() {
+        let err = parse_env("[eval]\ndeps = [\"x\"]\n").unwrap_err();
+        assert_eq!(err[0].code, gripsack_ir::codes::CONFIG);
+        assert!(
+            err[0].message.contains("deps"),
+            "deny_unknown_fields names the dead key: {}",
+            err[0].message
+        );
     }
 
     #[test]
@@ -277,8 +352,7 @@ keep_generations = 20
 
     #[test]
     fn unknown_top_level_key_is_an_error() {
-        let err =
-            parse_env("[env]\nname = \"x\"\n\n[eval]\ndeps = []\n\n[setttings]\n").unwrap_err();
+        let err = parse_env("[env]\nname = \"x\"\n\n[setttings]\n").unwrap_err();
         assert_eq!(err[0].code, gripsack_ir::codes::CONFIG);
     }
 
@@ -291,8 +365,8 @@ keep_generations = 20
     #[test]
     fn defaults_are_sane() {
         let env = parse_env("").unwrap();
-        assert_eq!(env.env.frontend, Frontend::Python);
-        assert!(env.eval.deps.is_empty());
+        assert_eq!(env.env.frontend, None);
+        assert!(env.eval.env.is_empty());
         assert!(env.fetchers.is_empty());
     }
 

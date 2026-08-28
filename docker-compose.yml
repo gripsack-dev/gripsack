@@ -1,6 +1,6 @@
 # gripsack build/test/release services (plan/0003 §3).
 #   docker compose run --build --rm test      # fmt + clippy + cargo test
-#   docker compose run --build --rm pytest    # python frontend tests
+#   docker compose run --build --rm ts-test   # deno test on the frontend
 #   docker compose run --build --rm e2e       # flow tests (offline)
 #   docker compose run --build --rm -e VERSION=x.y.z release   # tarball → ./dist/
 
@@ -19,14 +19,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: ts-test
-    command: 'echo "gate passed: typescript frontend tests"'
-
-  pytest:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: pytest
-    command: 'echo "gate passed: python frontend tests"'
+    command: 'echo "gate passed: typescript frontend tests (deno test)"'
 
   build:
     build:

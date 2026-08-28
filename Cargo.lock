@@ -397,7 +397,7 @@ dependencies = [
 
 [[package]]
 name = "griplint"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -410,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "clap",
  "gripsack-config",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-config"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -440,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-exec"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "gripsack-config",
  "gripsack-fetch",
@@ -449,7 +449,6 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
- "sha2",
  "tempfile",
  "thiserror",
  "tracing",
@@ -457,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fetch"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "flate2",
  "gripsack-ir",
@@ -480,7 +479,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-ir"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -489,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-lint"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "griplint",
  "gripsack-config",
@@ -502,18 +501,19 @@ dependencies = [
 
 [[package]]
 name = "gripsack-store"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "gripsack-ir",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]
 name = "gripsack-trace"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "gripsack-store",
  "tempfile",

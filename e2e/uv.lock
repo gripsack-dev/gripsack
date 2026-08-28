@@ -24,29 +24,15 @@ wheels = [
 ]
 
 [[package]]
-name = "gripsack"
-version = "0.16.4"
-source = { editable = "../python" }
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8" }]
-
-[[package]]
 name = "gripsack-e2e"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "gripsack" },
     { name = "pytest" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "gripsack", editable = "../python" },
-    { name = "pytest", specifier = ">=8" },
-]
+requires-dist = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "iniconfig"

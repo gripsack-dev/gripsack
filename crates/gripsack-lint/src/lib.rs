@@ -31,7 +31,6 @@ pub fn run(
     linters: &BTreeMap<String, LinterSection>,
     repo: &Path,
     host: Option<&str>,
-    frontend_python: Option<&Path>,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let versions = versions::tool_versions(repo, host);
@@ -82,7 +81,7 @@ pub fn run(
                 ),
             )
         };
-        let exe = match resolve::resolve_exe(lint, reg, frontend_python, reg_label) {
+        let exe = match resolve::resolve_exe(lint, reg, reg_label) {
             Ok(exe) => exe,
             Err(mut d) => {
                 if let Some(span) = &module.span {

@@ -10,7 +10,7 @@
 
 import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import type { Dest, Ownership } from "./entries.js";
+import type { Dest, Ownership } from "./entries.ts";
 
 export function tree(
   src: string,

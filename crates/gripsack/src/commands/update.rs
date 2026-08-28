@@ -1,4 +1,4 @@
-use crate::commands::{check_ir, eval_repo};
+use crate::commands::{check_ir, eval_repo, trust_gate};
 use crate::render::Palette;
 use gripsack_exec::Ctx;
 use gripsack_store as store;
@@ -9,6 +9,9 @@ use std::process::ExitCode;
 /// grip update: re-resolve, rewrite the lockfile, report what moved.
 /// Never deploys — `grip apply` does (0008 §5).
 pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Palette) -> ExitCode {
+    if let Some(code) = trust_gate(repo) {
+        return code;
+    }
     let outcome = match eval_repo(repo, host, palette) {
         Ok(o) => o,
         Err(code) => return code,

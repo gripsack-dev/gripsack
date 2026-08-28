@@ -1,12 +1,15 @@
-/** Module declaration and span capture (0004 §2). */
+/** Module declaration and span capture (0004 §2). `module()` and
+ *  `define()` are pure constructors (0013 D5): they build and return a
+ *  {@link ModuleValue}; nothing is registered anywhere. The host
+ *  entrypoint returns the values from `defineEnv`, and the driver
+ *  turns that environment into IR. */
 
-import type { Dependency } from "./deps.js";
-import type { Dest, Ownership } from "./entries.js";
-import type { Fetch } from "./fetch.js";
-import type { Intent } from "./intents.js";
-import type { Step } from "./steps.js";
-import type { Verify } from "./verify.js";
-import { register, registerClass } from "./graph.js";
+import type { Dependency } from "./deps.ts";
+import type { Dest, Ownership } from "./entries.ts";
+import type { Fetch } from "./fetch.ts";
+import type { Intent } from "./intents.ts";
+import type { Step } from "./steps.ts";
+import type { Verify } from "./verify.ts";
 
 export interface Span {
   file: string;
@@ -67,6 +70,18 @@ export interface IrModule {
   span?: Span;
 }
 
+/** A constructed module — the value `module()`/`define()` return and
+ *  `defineEnv` environments carry. The brand distinguishes real
+ *  module values from stray objects in `env.modules` (a plain field,
+ *  deliberately: a repo's own pinned `@gripsack/core` install and the
+ *  embedded copy must agree on it). */
+export interface ModuleValue {
+  /** @internal */
+  readonly __gripsack: "module";
+  name: string;
+  ir: IrModule;
+}
+
 /** Pipeline order for the class style (0007 §verify). */
 const PIPELINE_PHASES = ["fetch", "build", "install", "config", "verify", "activate"] as const;
 
@@ -79,7 +94,8 @@ type StepsResult = Step | Step[] | void;
  * Subclass and override any phase method — each returns a step, a list
  * of steps, or nothing. The pipeline chains phases in order and
  * sequences steps within each phase, filling only *empty* `needs` —
- * explicit `needs` always win. Register with {@link define}.
+ * explicit `needs` always win. Return the class from `defineEnv` via
+ * {@link define}.
  *
  * **Phase methods run at eval time only** — they build IR, they never
  * run while your system is being built.
@@ -94,7 +110,8 @@ type StepsResult = Step | Step[] | void;
  *     return installStep({ "bin/hx": symlink("~/.local/bin/hx") });
  *   }
  * }
- * define(Helix);
+ * // hosts/laptop.ts
+ * export default defineEnv((ctx) => ({ modules: [define(Helix)] }));
  * ```
  */
 export abstract class Module {
@@ -150,10 +167,10 @@ export function collectPipeline(instance: Module): { steps: Step[]; verify?: Ver
   return verify === undefined ? { steps: chained } : { steps: chained, verify };
 }
 
-/** Capture the first stack frame outside the package (V8:
+/** @internal Capture the first stack frame outside the package (V8:
  *  file:line:col) — a helper wrapper in user code must never steal
- *  the span. */
-function callerSpan(): Span | undefined {
+ *  the span. Shared with the probe builder (0013 D6). */
+export function callerSpan(): Span | undefined {
   const pkgDir = new URL(".", import.meta.url).pathname;
   const stack = new Error().stack;
   if (!stack) return undefined;
@@ -167,8 +184,11 @@ function callerSpan(): Span | undefined {
   return undefined;
 }
 
-/** Declare a module from declarative fields (data style). */
-export function module(name: string, spec: ModuleSpec): void {
+/** Declare a module from declarative fields (data style) and return
+ *  it — the host entrypoint puts the value into `defineEnv`'s
+ *  `modules` array; falsy entries (a condition that didn't hold)
+ *  simply drop out. */
+export function module(name: string, spec: ModuleSpec): ModuleValue {
   const ir: IrModule = {};
   if (spec.fetch) ir.fetch = spec.fetch;
   if (spec.build) ir.build = spec.build;
@@ -201,25 +221,18 @@ export function module(name: string, spec: ModuleSpec): void {
   }
   const span = callerSpan();
   if (span) ir.span = span;
-  register(name, ir);
+  return { __gripsack: "module", name, ir };
 }
 
-/** Register a class-style module (see {@link Module}). Instantiation is
- *  deferred to emit time — defining a module never *does* anything. */
-export function define(ctor: new () => Module): void {
+/** Construct a class-style module (see {@link Module}) and return it.
+ *  Phase methods run here, at eval time — they build IR, nothing
+ *  else. */
+export function define(ctor: new () => Module): ModuleValue {
   const named = ctor as unknown as { moduleName?: string };
-  registerClass(named.moduleName ?? ctor.name.toLowerCase(), ctor, callerSpan());
-}
-
-import { when } from "./conditions.js";
-import type { Condition } from "./conditions.js";
-
-/** Data-style module registered only when the condition matches. */
-export function moduleIf(name: string, spec: ModuleSpec, cond: Condition): void {
-  if (when(cond)) module(name, spec);
-}
-
-/** Class-style module registered only when the condition matches. */
-export function defineIf(ctor: new () => Module, cond: Condition): void {
-  if (when(cond)) define(ctor);
+  const { steps, verify } = collectPipeline(new ctor());
+  const ir: IrModule = { steps };
+  if (verify) ir.verify = verify;
+  const span = callerSpan();
+  if (span) ir.span = span;
+  return { __gripsack: "module", name: named.moduleName ?? ctor.name.toLowerCase(), ir };
 }

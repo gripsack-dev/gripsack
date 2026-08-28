@@ -3,6 +3,10 @@
 # rust:alpine's host triple IS x86_64-unknown-linux-musl, so plain
 # `cargo build` already produces a static binary. rustls only — a
 # dependency that drags in openssl is a bug (AGENTS.md hard rules).
+#
+# The eval runtime is deno (plan/0013 D2), which ships no musl build:
+# the grip binary stays musl-static; deno-dependent stages (ts-test,
+# e2e) run on glibc bases, where the static binary works fine.
 
 FROM rust:alpine AS builder
 RUN apk add --no-cache musl-dev git \
@@ -10,55 +14,59 @@ RUN apk add --no-cache musl-dev git \
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
-# the exec crate's build.rs embeds python/gripsack as the zero-
-# provisioning frontend — without this COPY the embed is empty and
-# every eval falls back to provisioning (caught by the embedded e2e)
-COPY python ./python
+# the exec crate's build.rs embeds typescript/src as the frontend —
+# without this COPY the embed is empty and every eval fails with
+# "no embedded frontend"
+COPY typescript ./typescript
 
 FROM builder AS test
 RUN cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
 
-# TypeScript frontend tests (plan/0005 §1). Independent stage — no rust
-# cache needed, builds in parallel with the chain below.
-FROM node:22-alpine AS ts-test
+# The debug binary for stages that need a runnable grip (e2e).
+FROM builder AS bin
+RUN cargo build --locked -p gripsack
+
+# TypeScript frontend tests (plan/0005 §1, plan/0013 D1): `deno test`
+# on the source tree — no transpile chain, no node_modules. The image
+# tag is the same version DENO_RELEASE pins in
+# crates/gripsack-fetch/src/host.rs; bump them together.
+FROM denoland/deno:2.9.6 AS ts-test
 WORKDIR /app
-COPY typescript/package.json typescript/package-lock.json ./typescript/
-RUN cd typescript && npm ci
 COPY typescript ./typescript
-RUN cd typescript && npm test
+# deno install materializes node_modules (@types/node) for the
+# type-checker; build-time network is fine — the runtime eval path
+# stays --cached-only --no-remote.
+RUN cd typescript && deno install && deno task test
 
-# Python frontend tests. FROM test reuses the compiled cache and makes
-# the rust gate a precondition of this stage existing at all.
-FROM test AS pytest
-RUN apk add --no-cache python3 uv
-COPY python ./python
-RUN cd python && uv sync --locked \
-    && uv run --locked --no-sync pytest
-
-# E2E flow tests: real binary + real frontend against fixture env repos
-# in a sandboxed HOME (offline). Binary comes from the gate's cache.
-# Bun (pinned + sha256-verified, musl build) + the built TS frontend
-# make the dual-frontend parity corpus run HERE, in the required gate —
-# not just in the examples canary (final review, 0.16.1).
-FROM pytest AS e2e
-ARG BUN_VERSION=1.4.0
-ARG BUN_SHA256=83b5f12fd258dd8d4fdcaea65ede954366aa717dab399e20093ecab280d54e7a
-RUN apk add --no-cache curl unzip \
-    && curl -fsSL -o /tmp/bun.zip \
-      "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64-musl.zip" \
-    && echo "${BUN_SHA256}  /tmp/bun.zip" | sha256sum -c - \
-    && unzip -q /tmp/bun.zip -d /tmp \
-    && mv /tmp/bun-linux-x64-musl/bun /usr/local/bin/bun \
-    && rm -rf /tmp/bun.zip /tmp/bun-linux-x64-musl
+# E2E flow tests: the real (musl-static, runs-everywhere) binary
+# against fixture env repos in a sandboxed HOME (offline). Base is
+# glibc because the eval runtime (deno) ships no musl build; the
+# harness stays pytest. The pinned deno is prefetched at image build
+# into $GRIPSACK_HOME/tools (checksum-verified, same sha256 as
+# DENO_RELEASE) and GRIPSACK_DENO points at it — e2e never provisions.
+FROM python:3.13-slim AS e2e
+WORKDIR /app
+# git: --repo clone tests and the trust gate's remote/commit probes
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+ARG DENO_VERSION=2.9.6
+ARG DENO_SHA256=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
+ADD --checksum=sha256:${DENO_SHA256} https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno \
+    && mkdir -p /root/.local/share/gripsack/tools/deno-${DENO_VERSION} \
+    && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-${DENO_VERSION}/deno \
+    && chmod 755 /root/.local/share/gripsack/tools/deno-${DENO_VERSION}/deno \
+    && rm -rf /tmp/deno.zip /tmp/deno \
+    && pip install --no-cache-dir uv
+ENV GRIPSACK_DENO=/root/.local/share/gripsack/tools/deno-${DENO_VERSION}/deno
+COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
 COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
-RUN cargo build --locked && cd e2e && uv sync --locked
+RUN cd e2e && uv sync --locked
 COPY e2e ./e2e
-COPY --from=ts-test /app/typescript/dist ./typescript/dist
-COPY typescript/package.json ./typescript/package.json
 ENV GRIPSACK_E2E_IN_DOCKER=1
-ENV GRIPSACK_BIN=/app/target/debug/grip
+ENV GRIPSACK_BIN=/usr/local/bin/grip
 WORKDIR /app/e2e
 CMD ["uv", "run", "--locked", "--no-sync", "pytest"]
 

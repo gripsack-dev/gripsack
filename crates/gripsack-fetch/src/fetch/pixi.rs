@@ -15,8 +15,8 @@ use super::archive;
 use std::path::{Path, PathBuf};
 
 /// The bundled pixi: per-platform pinned + sha256-verified through our
-/// own fetcher into `$GRIPSACK_HOME/tools/` (see host.rs) — same
-/// pattern as uv (0005 §3). Bundling is what makes `grip apply` one
+/// own fetcher into `$GRIPSACK_HOME/tools/` (see host.rs) — the same
+/// provisioning pattern deno uses. Bundling is what makes `grip apply` one
 /// command on a clean machine; the pin also makes the fetcher itself
 /// reproducible, not just the packages.
 use crate::host::PIXI_RELEASE;
@@ -40,7 +40,6 @@ fn ensure_pixi() -> Result<PathBuf, FetchError> {
     crate::fetch::fetch(&spec, &staging)?;
     std::fs::create_dir_all(&dir)?;
     // pixi's tarball is flat: a bare `pixi` binary at the root
-    // (unlike uv's nested uv-<triple>/ layout)
     std::fs::rename(staging.join("pixi"), &pixi)?;
     let _ = std::fs::remove_dir_all(&staging);
     Ok(pixi)

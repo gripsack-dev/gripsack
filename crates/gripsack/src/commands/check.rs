@@ -1,4 +1,4 @@
-use crate::commands::{check_ir, eval_repo, run_lints};
+use crate::commands::{check_ir, eval_repo, run_lints, trust_gate};
 use crate::render::Palette;
 use owo_colors::OwoColorize;
 use std::path::Path;
@@ -8,6 +8,9 @@ use std::process::ExitCode;
 /// side effects — no lockfile writes, no store, no staging. The CI
 /// gate for env repos and the config-editing loop: exit code = validity.
 pub fn check(repo: &Path, host: Option<&str>, palette: Palette) -> ExitCode {
+    if let Some(code) = trust_gate(repo) {
+        return code;
+    }
     let outcome = match eval_repo(repo, host, palette) {
         Ok(o) => o,
         Err(code) => return code,

@@ -21,8 +21,9 @@ description: Author gripsack PRs — template and evidence contract
 <proof the change works — see below>
 
 ## checklist
-- [ ] compose gates green (test, pytest, e2e)
-- [ ] IR touched? schema + rust + python in this PR (gripsack-ir skill)
+- [ ] compose gates green (test, ts-test, e2e)
+- [ ] IR touched? schema + rust + typescript in this PR (gripsack-ir skill)
+      + golden corpus regenerated
 - [ ] new flow? e2e unskipped/added in this PR
 - [ ] plan docs updated in this PR
 ```

@@ -5,7 +5,7 @@
     "helix": {
       "fetch": {"kind": "github_release", "repo": "helix-editor/helix", "asset": "h.tar.xz"},
       "depends": [{"module": "nvim"}],
-      "span": {"file": "/vhs/demos/fixtures/modules/helix.py", "line": 6, "col": 15}
+      "span": {"file": "/vhs/demos/fixtures/modules/helix.ts", "line": 3, "col": 16}
     },
     "git": {
       "fetch": {"kind": "tarball", "url": "https://example.invalid/git.tar.xz"}
