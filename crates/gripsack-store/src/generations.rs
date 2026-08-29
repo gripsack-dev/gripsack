@@ -16,6 +16,29 @@ use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
+/// What a destination was before gripsack took it over (0015 §4) —
+/// recorded on every take-over, restored by rollback and prune instead
+/// of deletion. "your original files have been restored."
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Prior {
+    pub kind: PriorKind,
+    /// File: sha256 of the bytes in the prior blob store.
+    /// Symlink: the link target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// Original permission bits (unix) — a restore is faithful or it
+    /// isn't a restore.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PriorKind {
+    File,
+    Symlink,
+}
+
 /// One deployed file: where it went, how, and its canonical hash at
 /// deploy time (drift detection compares against this — 0008 §3).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -27,6 +50,9 @@ pub struct DeployedEntry {
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub vars: std::collections::BTreeMap<String, String>,
     pub hash: String,
+    /// Pre-take-over state of this destination (0015 §4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior: Option<Prior>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,6 +144,7 @@ mod tests {
                     mode: Ownership::TrackedCopy,
                     vars: Default::default(),
                     hash: "deadbeef".into(),
+                    prior: None,
                 }],
                 env: vec![],
                 tree256: None,

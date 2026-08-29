@@ -2,6 +2,7 @@
 //! `eval` (frontend wiring), `trust_gate` (the eval gate), and
 //! `expand_home`.
 
+pub mod adopt;
 pub mod apply;
 pub mod check;
 pub mod doctor;
@@ -18,7 +19,8 @@ pub mod trust;
 pub mod update;
 pub mod why_owns;
 
-pub use apply::apply;
+pub use adopt::adopt;
+pub use apply::{apply, apply_scoped};
 pub use check::check;
 pub use doctor::doctor;
 pub use eval::{check_ir, eval_repo, render_host_inputs, run_lints, validate_sources};

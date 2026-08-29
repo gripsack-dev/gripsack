@@ -14,6 +14,7 @@ pub fn store_verify(repair: bool, _palette: Palette) -> ExitCode {
         only: Vec::new(),
         host,
         take_over: false,
+        take_over_entries: None,
         jobs: None,
         on_progress: None,
     };

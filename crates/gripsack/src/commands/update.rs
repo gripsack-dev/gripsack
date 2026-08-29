@@ -32,6 +32,7 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
         host: host_name,
         on_progress: None,
         take_over: false,
+        take_over_entries: None,
         jobs: None,
     };
     gripsack_fetch::throttle::save_global();

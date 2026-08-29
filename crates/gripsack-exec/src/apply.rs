@@ -185,30 +185,21 @@ fn prune_undeclared(
                 }
                 continue;
             }
-            if entry.mode == gripsack_ir::Ownership::Owned {
-                // Owned destinations are symlinks into the store; the
-                // recorded hash is the *source content*, so the hash
-                // check below can never match (it would hash the link
-                // target string). "Unmodified" for owned means: still
-                // our symlink — same test deploy uses (0009).
-                let ours = std::fs::read_link(&dest)
-                    .map(|t| t.starts_with(home))
-                    .unwrap_or(false);
-                if ours {
-                    std::fs::remove_file(&dest)?;
-                    info!("pruned {}", entry.to);
-                } else if dest.symlink_metadata().is_ok() {
-                    tracing::warn!("kept {} — replaced since deploy", entry.to);
-                }
-                continue;
-            }
-            let Ok(current) = store::canonical_file_hash(&dest) else {
-                continue; // already gone
-            };
-            if current == entry.hash {
-                std::fs::remove_file(&dest)?;
-                info!("pruned {}", entry.to);
-            } else {
+            // 0015 §4: an entry adopted with take-over (owned or
+            // copy-like) gets its ORIGINAL file/symlink back on prune,
+            // not a deletion; the helper drift-guards and falls back
+            // to removal when no prior was recorded
+            if crate::deploy::remove_or_restore_prior(&dest, entry, name, home) {
+                info!(
+                    "{} {}",
+                    if entry.prior.is_some() {
+                        "restored prior"
+                    } else {
+                        "pruned"
+                    },
+                    entry.to
+                );
+            } else if dest.symlink_metadata().is_ok() {
                 tracing::warn!("kept {} — modified since deploy", entry.to);
             }
         }

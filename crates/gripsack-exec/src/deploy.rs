@@ -78,6 +78,102 @@ pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: 
     }
 }
 
+/// Record what a destination is before a take-over absorbs it (0015
+/// §4): real-file bytes go to the content-addressed prior blob store,
+/// a symlink's target is recorded verbatim. None = nothing there (or
+/// unreadable) — default removal semantics then apply.
+fn capture_prior(dest: &Path, home: &Path) -> Option<store::Prior> {
+    let meta = std::fs::symlink_metadata(dest).ok()?;
+    if meta.file_type().is_symlink() {
+        let target = std::fs::read_link(dest).ok()?;
+        Some(store::Prior {
+            kind: store::PriorKind::Symlink,
+            content: Some(target.to_string_lossy().into_owned()),
+            mode: None,
+        })
+    } else if meta.is_file() {
+        let bytes = std::fs::read(dest).ok()?;
+        let sha = store::store_prior_blob(home, &bytes).ok()?;
+        #[cfg(unix)]
+        let mode = {
+            use std::os::unix::fs::PermissionsExt;
+            Some(meta.permissions().mode() & 0o777)
+        };
+        #[cfg(not(unix))]
+        let mode = None;
+        Some(store::Prior {
+            kind: store::PriorKind::File,
+            content: Some(sha),
+            mode,
+        })
+    } else {
+        None
+    }
+}
+
+/// Write a prior state back to its destination (0015 §4).
+fn restore_prior(dest: &Path, prior: &store::Prior, home: &Path) -> bool {
+    match prior.kind {
+        store::PriorKind::File => {
+            let Some(sha) = &prior.content else {
+                return false;
+            };
+            let Ok(bytes) = std::fs::read(store::prior_blob_path(home, sha)) else {
+                return false;
+            };
+            if let Some(parent) = dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if !store::atomic_write(dest, &bytes).is_ok() {
+                return false;
+            }
+            #[cfg(unix)]
+            if let Some(mode) = prior.mode {
+                use std::os::unix::fs::PermissionsExt;
+                return std::fs::set_permissions(dest, std::fs::Permissions::from_mode(mode))
+                    .is_ok();
+            }
+            true
+        }
+        store::PriorKind::Symlink => {
+            let Some(target) = &prior.content else {
+                return false;
+            };
+            let _ = std::fs::remove_file(dest);
+            #[cfg(unix)]
+            return std::os::unix::fs::symlink(target, dest).is_ok();
+            #[cfg(not(unix))]
+            return false;
+        }
+    }
+}
+
+/// Rollback/prune for a deployed entry (0015 §4): when the destination
+/// is still exactly what gripsack deployed and a prior exists, restore
+/// the original file/symlink — "your original files have been
+/// restored." Drifted destinations and prior-less entries fall back to
+/// the drift-guarded removal.
+pub fn remove_or_restore_prior(
+    dest: &Path,
+    entry: &store::DeployedEntry,
+    module: &str,
+    home: &Path,
+) -> bool {
+    let intact = match entry.mode {
+        Ownership::Owned => std::fs::read_link(dest)
+            .map(|t| t.starts_with(home))
+            .unwrap_or(false),
+        Ownership::Merge => false, // merge never carries a prior
+        _ => store::canonical_file_hash(dest)
+            .map(|h| h == entry.hash)
+            .unwrap_or(false),
+    };
+    if intact && let Some(prior) = &entry.prior {
+        return restore_prior(dest, prior, home);
+    }
+    remove_entry_deployed(dest, entry, module)
+}
+
 /// Run-level rollback (0001 §9, review finding E1): an apply that
 /// fails mid-graph must leave NO half-applied deployment behind —
 /// the generation flip was never reached, so every destination this
@@ -172,7 +268,7 @@ pub(crate) fn deploy_entry(
         )?),
         _ => None,
     };
-    let (summary, kind, hash) = match &entry.mode {
+    let (summary, kind, hash, prior) = match &entry.mode {
         Ownership::Owned => {
             // external satisfaction (0009 critique): never overwrite a
             // path that is neither ours (symlink into the store) nor
@@ -183,10 +279,11 @@ pub(crate) fn deploy_entry(
             let ours = std::fs::read_link(&dest)
                 .map(|t| t.starts_with(&ctx.home))
                 .unwrap_or(false);
+            let take = ctx.takes_over(&entry.to);
             // foreign symlinks refuse too (review finding E4): a stow/
             // chezmoi link is exactly the foreign path this guard is
             // for — absorb it only via --take-over, never silently
-            if dest.symlink_metadata().is_ok() && !ours && !recorded && !ctx.take_over {
+            if dest.symlink_metadata().is_ok() && !ours && !recorded && !take {
                 return Err(ExecError::Step {
                     module: module.to_string(),
                     step: "deploy".into(),
@@ -196,6 +293,12 @@ pub(crate) fn deploy_entry(
                     ),
                 });
             }
+            // 0015 §4: a genuine take-over records what was there first
+            let prior = if take && !ours && !recorded {
+                capture_prior(&dest, &ctx.home)
+            } else {
+                None
+            };
             // idempotent report (0014): a link already pointing at the
             // right store path is "unchanged", not "linked" — a mirror
             // swap that re-proves byte identity must not look like a
@@ -215,12 +318,14 @@ pub(crate) fn deploy_entry(
                     format!("{} unchanged", entry.to),
                     ReportKind::Satisfied,
                     hash,
+                    prior,
                 )
             } else {
                 (
                     format!("linked {} → {}", from, entry.to),
                     ReportKind::Installed,
                     hash,
+                    prior,
                 )
             }
         }
@@ -247,6 +352,7 @@ pub(crate) fn deploy_entry(
                         format!("{} unchanged", entry.to),
                         ReportKind::Satisfied,
                         hash,
+                        None,
                     )
                 } else if prev_hash == Some(current.as_str()) {
                     store::atomic_write(&dest, content)?;
@@ -254,13 +360,17 @@ pub(crate) fn deploy_entry(
                         format!("updated {} → {}", from, entry.to),
                         ReportKind::Configured,
                         hash,
+                        None,
                     )
-                } else if ctx.take_over {
+                } else if ctx.takes_over(&entry.to) {
+                    // 0015 §4: record the foreign bytes before absorbing
+                    let prior = capture_prior(&dest, &ctx.home);
                     store::atomic_write(&dest, content)?;
                     (
                         format!("took over {} → {}", from, entry.to),
                         ReportKind::Configured,
                         hash,
+                        prior,
                     )
                 } else {
                     let note = if prev_hash.is_none() {
@@ -273,7 +383,7 @@ pub(crate) fn deploy_entry(
                     // (the kept content), not the source we declined to
                     // write — or drift resolution can never converge
                     // (e2e: drift_is_kept)
-                    (note, ReportKind::Warned, current)
+                    (note, ReportKind::Warned, current, None)
                 }
             } else {
                 if let Some(parent) = dest.parent() {
@@ -284,6 +394,7 @@ pub(crate) fn deploy_entry(
                     format!("copied {} → {}", from, entry.to),
                     ReportKind::Configured,
                     hash,
+                    None,
                 )
             }
         }
@@ -303,6 +414,7 @@ pub(crate) fn deploy_entry(
                     format!("{} block unchanged", entry.to),
                     ReportKind::Satisfied,
                     hash,
+                    None,
                 )
             } else {
                 let new = crate::render::upsert_block(
@@ -321,6 +433,7 @@ pub(crate) fn deploy_entry(
                     format!("merged {} → {}", from, entry.to),
                     ReportKind::Configured,
                     hash,
+                    None,
                 )
             }
         }
@@ -331,6 +444,7 @@ pub(crate) fn deploy_entry(
         mode: entry.mode.clone(),
         vars: entry.vars.clone(),
         hash,
+        prior,
     });
     Ok((summary, kind))
 }

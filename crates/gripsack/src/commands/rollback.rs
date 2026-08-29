@@ -19,7 +19,8 @@ pub fn rollback(generation: Option<u64>) -> ExitCode {
     let current = store::current_generation(&home);
     let target = match (generation, current) {
         (Some(n), _) => n,
-        (None, Some(c)) if c > 1 => c - 1,
+        // generation 0 exists only as adopt's empty baseline (0015 §4)
+        (None, Some(c)) if c >= 1 && store::read_manifest(&home, c - 1).is_ok() => c - 1,
         (None, _) => {
             eprintln!("grip: nothing to roll back to");
             return ExitCode::FAILURE;
@@ -46,7 +47,9 @@ pub fn rollback(generation: Option<u64>) -> ExitCode {
                     .unwrap_or(false);
                 if !still {
                     let dest = expand_home(&entry.to);
-                    if !gripsack_exec::deploy::remove_entry_deployed(&dest, entry, name) {
+                    // 0015 §4: an entry adopted with take-over gets its
+                    // ORIGINAL file back, not a deletion
+                    if !gripsack_exec::deploy::remove_or_restore_prior(&dest, entry, name, &home) {
                         tracing::warn!("kept {} — modified since deploy", entry.to);
                     }
                 }

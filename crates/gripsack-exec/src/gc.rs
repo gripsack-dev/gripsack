@@ -60,6 +60,18 @@ pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, Exe
         for state in manifest.modules.values() {
             referenced.insert(state.store_path.clone());
         }
+        // 0015 §4: generations pin prior blobs the same way — a prior
+        // is restorable exactly while its generation lives
+        for state in manifest.modules.values() {
+            for entry in &state.entries {
+                if let Some(prior) = &entry.prior
+                    && prior.kind == store::PriorKind::File
+                    && let Some(sha) = &prior.content
+                {
+                    referenced.insert(store::prior_blob_path(home, sha));
+                }
+            }
+        }
     }
     if !dry_run {
         for n in &pruned {
@@ -75,6 +87,20 @@ pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, Exe
                 report.bytes_freed += dir_size(&path)?;
                 if !dry_run {
                     std::fs::remove_dir_all(&path)?;
+                }
+                report.store_removed.push(path);
+            }
+        }
+    }
+    // prior blobs (0015 §4): same reachability rule, flat dir of files
+    let prior_dir = home.join("prior");
+    if prior_dir.is_dir() {
+        for entry in std::fs::read_dir(&prior_dir)? {
+            let path = entry?.path();
+            if !referenced.contains(&path) {
+                report.bytes_freed += dir_size(&path)?;
+                if !dry_run {
+                    std::fs::remove_file(&path)?;
                 }
                 report.store_removed.push(path);
             }
@@ -132,6 +158,7 @@ mod tests {
                     mode: Ownership::TrackedCopy,
                     vars: Default::default(),
                     hash: "h".into(),
+                    prior: None,
                 }],
                 env: vec![],
                 tree256: None,
