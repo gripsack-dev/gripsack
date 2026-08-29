@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "deno test"
+    "test": "deno task test"
   },
   "keywords": [
     "dotfiles",
