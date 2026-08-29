@@ -256,7 +256,10 @@ fn main() -> ExitCode {
             );
             let waves = gripsack_exec::waves(&ir).unwrap_or_default();
             if modules.is_empty() {
-                println!("{}", render::diff_section(&ir, &repo, palette));
+                println!(
+                    "{}",
+                    render::diff_section(&ir, &repo, &Default::default(), palette)
+                );
             }
             match modules.first() {
                 Some(name) => {

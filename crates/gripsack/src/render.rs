@@ -173,7 +173,12 @@ pub fn render_diagnostics(diagnostics: &[Diagnostic], palette: Palette) -> Strin
 /// the current generation (0004 pass 5 — the diff that sells the
 /// architecture). Config entries hash offline; fetched modules show
 /// their store-path satisfaction without a fetch.
-pub fn diff_section(ir: &Ir, repo: &Path, palette: Palette) -> String {
+pub fn diff_section(
+    ir: &Ir,
+    repo: &Path,
+    adopting: &std::collections::BTreeSet<String>,
+    palette: Palette,
+) -> String {
     let home = gripsack_store::gripsack_home();
     let current = gripsack_store::current_generation(&home)
         .and_then(|n| gripsack_store::read_manifest(&home, n).ok());
@@ -233,7 +238,11 @@ pub fn diff_section(ir: &Ir, repo: &Path, palette: Palette) -> String {
                         && !std::fs::read_link(&dest)
                             .map(|t| t.starts_with(&home))
                             .unwrap_or(false);
-                    if foreign {
+                    if adopting.contains(entry.to.as_str()) {
+                        // 0015 §7 S6: this take-over is the point of the
+                        // command — say so, don't demand a flag
+                        lines.push(format!("  ↻ {} will be adopted (prior recorded)", entry.to));
+                    } else if foreign {
                         lines.push(format!(
                             "  ! {} exists, not ours — needs --take-over",
                             entry.to

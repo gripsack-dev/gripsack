@@ -229,6 +229,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dialoguer"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25f104b501bf2364e78d0d3974cbc774f738f5865306ed128e1e0d7499c0ad96"
+dependencies = [
+ "console",
+ "shell-words",
+ "tempfile",
+ "zeroize",
+]
+
+[[package]]
 name = "digest"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -362,7 +374,7 @@ dependencies = [
 
 [[package]]
 name = "griplint"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -375,9 +387,10 @@ dependencies = [
 
 [[package]]
 name = "gripsack"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "clap",
+ "dialoguer",
  "gripsack-config",
  "gripsack-exec",
  "gripsack-fetch",
@@ -396,7 +409,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-config"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -405,7 +418,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-exec"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "gripsack-config",
  "gripsack-fetch",
@@ -421,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fetch"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "flate2",
  "gripsack-ir",
@@ -444,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-ir"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -453,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-lint"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "griplint",
  "gripsack-config",
@@ -466,7 +479,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-store"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -478,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-trace"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "gripsack-store",
  "tempfile",
@@ -1049,6 +1062,12 @@ checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
 ]
+
+[[package]]
+name = "shell-words"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 
 [[package]]
 name = "shlex"
