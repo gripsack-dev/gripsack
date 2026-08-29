@@ -33,13 +33,34 @@ pub fn verify_store(
             }
             // per-entry first: the manifest records every payload file's
             // hash at deploy — tampering with any file shows here, for
-            // every module kind (config-only modules have no lock pin)
+            // every module kind (config-only modules have no lock pin).
+            // The recorded hash is what DEPLOY produced: merge entries
+            // record the trimmed block's bytes hash, templates the
+            // rendered output's — recomputing the same value keeps the
+            // check honest (a raw file hash can never match those).
             let mut handled = false;
             for entry in &state.entries {
                 let src = path.join(&entry.from);
-                if src.is_file()
-                    && !src.is_symlink()
-                    && let Ok(h) = gripsack_store::canonical_file_hash(&src)
+                if !src.is_file() || src.is_symlink() {
+                    continue;
+                }
+                let actual = match entry.mode {
+                    gripsack_ir::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
+                        gripsack_store::canonical_bytes_hash(
+                            String::from_utf8_lossy(&b)
+                                .trim_end_matches('\n')
+                                .as_bytes(),
+                        )
+                    }),
+                    gripsack_ir::Ownership::Template => std::fs::read(&src)
+                        .ok()
+                        .and_then(|b| {
+                            crate::render::render_template(&b, &entry.vars, &entry.from).ok()
+                        })
+                        .map(|r| gripsack_store::canonical_bytes_hash(&r)),
+                    _ => gripsack_store::canonical_file_hash(&src).ok(),
+                };
+                if let Some(h) = actual
                     && h != entry.hash
                 {
                     return_corrupt(

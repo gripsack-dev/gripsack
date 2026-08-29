@@ -139,11 +139,26 @@ pub(crate) fn copy_tree_filtered(from: &Path, to: &Path, skip: &[&str]) -> io::R
             continue;
         }
         let target = to.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            std::fs::create_dir_all(&target)?;
-            copy_tree_filtered(&entry.path(), &target, skip)?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        // io errors carry the path or they're archaeology bait (the
+        // tmux/conda terminfo lesson: `io: the source path is neither
+        // a regular file…` with no path named)
+        let locate = |e: io::Error| io::Error::new(e.kind(), format!("{}: {e}", path.display()));
+        if file_type.is_symlink() {
+            // relink, never follow: a symlink TO A DIRECTORY would be
+            // miscopied (fs::copy rejects non-file sources), and the
+            // canonical identity covers the target anyway
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(std::fs::read_link(&path).map_err(locate)?, &target)
+                .map_err(locate)?;
+            #[cfg(not(unix))]
+            std::fs::copy(&path, &target).map_err(locate)?;
+        } else if file_type.is_dir() {
+            std::fs::create_dir_all(&target).map_err(locate)?;
+            copy_tree_filtered(&path, &target, skip)?;
         } else {
-            std::fs::copy(entry.path(), &target)?;
+            std::fs::copy(&path, &target).map_err(locate)?;
         }
     }
     Ok(())
