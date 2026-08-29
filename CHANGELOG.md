@@ -47,6 +47,22 @@ Breaking: the Python frontend, bun, and uv are removed.
   transport hash (could never match) under a hostname-keyed lock
   lookup (usually skipped) — the generation manifest now carries
   `tree256`, and a tampered fetched payload fails verify anywhere.
+- **`grip adopt <path>`** ([plan 0015](plan/0015-grip-adopt.md)) — the
+  adoption flow as a first-class command: inspects the path,
+  recommends an ownership mode with the reason stated, generates the
+  payload + module + host entry, shows the plan, and touches nothing
+  until confirmed. The apply uses **scoped take-over** (absorbs
+  exactly the adopted destinations; unrelated drift is never
+  clobbered) and records **prior state** for every taken-over
+  destination. Rollback — and undeclaring the module — restores your
+  original files, bytes and permission bits, drift-guarded against
+  your post-adopt edits. On a fresh machine, adopt records an empty
+  **generation 0** first, so adoption is always reversible.
+- Prior blobs live content-addressed under `$GRIPSACK_HOME/prior/`;
+  `gc` collects them with the same reachability rule as store paths.
+- Provisioning is serialized across concurrent `grip` runs — two
+  racing applies could corrupt each other's Deno download or embedded
+  frontend materialization (os error 26/2 under concurrency).
 - Symlink deploys report "unchanged" when the link already points at
   the right store path — a re-proved fetch no longer looks like a
   redeploy.

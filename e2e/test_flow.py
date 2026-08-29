@@ -3,6 +3,7 @@ TypeScript frontend (plan/0013): fixture env repos are built by conftest
 under the defineEnv contract — modules/<name>.ts default-exports its
 module value, hosts/<host>.ts returns them from defineEnv."""
 import os
+import stat
 import shutil
 import subprocess
 
@@ -1764,6 +1765,116 @@ export default module("hello", {{
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert only_store_path(sandbox) == target.name
+
+
+def test_adopt_end_to_end_restores_originals(sandbox):
+    """0015 §6: adopt generates the module, manages the destination,
+    and rollback to the baseline generation restores the ORIGINAL
+    real files — bytes and permission bits."""
+    confdir = sandbox / ".config" / "helix"
+    confdir.mkdir(parents=True)
+    original = confdir / "config.toml"
+    original.write_text('theme = "gruvbox"\n')
+    original_mode = stat.S_IMODE(original.stat().st_mode)
+    (confdir / "languages.toml").write_text("[editor]\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+
+    out = grip("adopt", "~/.config/helix", "--host", "testhost", "--yes", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "owned" in out.stdout
+    assert (repo / "configs/helix/config.toml").read_text() == 'theme = "gruvbox"\n'
+    assert "tree(" in (repo / "modules/helix.ts").read_text()
+    assert "helix" in (repo / "hosts/testhost.ts").read_text()
+    assert original.is_symlink()  # managed now
+
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not original.is_symlink()
+    assert original.read_text() == 'theme = "gruvbox"\n'
+    assert stat.S_IMODE(original.stat().st_mode) == original_mode
+
+
+def test_adopt_recommends_tracked_copy_for_self_rewriting(sandbox):
+    """0015 §2: known self-rewriting apps get tracked_copy with the
+    reason stated; disciplined tools get owned."""
+    zed = sandbox / ".config" / "zed"
+    zed.mkdir(parents=True)
+    (zed / "settings.json").write_text("{}\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip("adopt", "~/.config/zed", "--host", "testhost", "--yes", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "tracked_copy" in out.stdout
+    assert "rewrites its own config" in out.stdout
+    assert '"tracked_copy"' in (repo / "modules/zed.ts").read_text()
+
+
+def test_adopt_shared_shell_file_gets_a_managed_block(sandbox):
+    """0015 §2: .bashrc is foreign — adopt takes one managed block, and
+    rollback strips exactly that block, leaving the original bytes."""
+    bashrc = sandbox / ".bashrc"
+    bashrc.write_text("export EDITOR=hx\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip("adopt", "~/.bashrc", "--host", "testhost", "--yes", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "merge" in out.stdout
+    assert "managed block" in out.stdout
+    assert "EDITOR=hx" in bashrc.read_text()  # content preserved
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert bashrc.read_text() == "export EDITOR=hx\n"
+
+
+def test_adopt_refuses_an_already_managed_path(sandbox):
+    confdir = sandbox / ".config" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.txt").write_text("a\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip("adopt", "~/.config/demo", "--host", "testhost", "--yes", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("adopt", "~/.config/demo", "--host", "testhost", "--yes", cwd=repo)
+    assert out.returncode != 0
+    assert 'already managed by module "demo"' in out.stderr
+
+
+def test_adopt_take_over_is_scoped(sandbox):
+    """0015 §3: the adopt apply may absorb exactly the adopted
+    destinations — unrelated drift is never clobbered."""
+    drifted = sandbox / ".config" / "demo"
+    drifted.mkdir(parents=True)
+    (drifted / "a.txt").write_text("a\n")
+    other = sandbox / ".config" / "other"
+    other.mkdir(parents=True)
+    (other / "b.txt").write_text("b\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip(
+        "adopt", "~/.config/other", "--mode", "tracked_copy",
+        "--host", "testhost", "--yes", cwd=repo,
+    )
+    assert out.returncode == 0, out.stderr
+    # drift the managed copy — with a global --take-over this would be
+    # clobbered; adopt's scoped set contains only the NEW destinations
+    drift_target = sandbox / ".config/other/b.txt"
+    drift_target.write_text("user edits\n")
+    out = grip("adopt", "~/.config/demo", "--host", "testhost", "--yes", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert drift_target.read_text() == "user edits\n"  # drift preserved
+
+
+def test_adopt_rollback_keeps_post_adopt_user_edits(sandbox):
+    """0015 §4's drift guard: a destination the user changed after
+    adopting is theirs — rollback keeps it, prior or not."""
+    confdir = sandbox / ".config" / "helix"
+    confdir.mkdir(parents=True)
+    (confdir / "config.toml").write_text('theme = "gruvbox"\n')
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip("adopt", "~/.config/helix", "--host", "testhost", "--yes", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = confdir / "config.toml"
+    dest.unlink()
+    dest.write_text('theme = "mine now"\n')
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == 'theme = "mine now"\n'
 
 
 def test_embedded_frontend_serves_without_node_modules(sandbox):

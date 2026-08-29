@@ -36,6 +36,26 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Adopt an existing config path into the env — inspect, recommend
+    /// ownership, generate the module, apply with prior-state capture
+    /// (rollback restores your original files, 0015)
+    Adopt {
+        /// Path to adopt (e.g. ~/.config/helix or ~/.gitconfig)
+        path: String,
+        /// Module name (default: derived from the path)
+        #[arg(long)]
+        name: Option<String>,
+        /// Ownership mode: owned | tracked_copy | merge (default:
+        /// recommended from what the path is)
+        #[arg(long)]
+        mode: Option<String>,
+        /// Host entrypoint (default: this machine's hostname)
+        #[arg(long)]
+        host: Option<String>,
+        /// Apply without the confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
     /// Fetch, build, and deploy modules — one new generation per run
     Apply {
         /// Host entrypoint (default: this machine's hostname)
@@ -152,6 +172,20 @@ fn main() -> ExitCode {
     let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());
     match cli.command {
         Command::Doctor => commands::doctor(palette),
+        Command::Adopt {
+            path,
+            name,
+            mode,
+            host,
+            yes,
+        } => commands::adopt(
+            &path,
+            name.as_deref(),
+            mode.as_deref(),
+            host.as_deref(),
+            yes,
+            palette,
+        ),
         Command::Apply {
             host,
             repo,

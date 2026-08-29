@@ -45,6 +45,13 @@ pub fn ensure_deno(home: &Path) -> io::Result<PathBuf> {
     if deno.exists() {
         return Ok(deno);
     }
+    // two concurrent applies may both provision: serialize the
+    // download, then re-check — the loser of the race just uses the
+    // winner's binary (e2e: concurrent applies, os error 26/2)
+    let _provision_lock = crate::util::FlockGuard::acquire(home, "provision-deno")?;
+    if deno.exists() {
+        return Ok(deno);
+    }
     // dogfood: per-platform pinned + sha256-verified through our own
     // fetcher (host.rs)
     let (url, sha) = gripsack_fetch::resolve_host_asset(&DENO_RELEASE).map_err(io::Error::other)?;
@@ -112,6 +119,12 @@ pub fn ensure_ts_frontend(home: &Path, core_version: &str) -> io::Result<Option<
         return Ok(None);
     }
     let dir = home.join("frontend").join(format!("ts-{core_version}"));
+    if dir.join(".complete").exists() {
+        return Ok(Some(dir));
+    }
+    // same concurrent-apply race as ensure_deno: another grip may be
+    // EXECUTING these files while we write them (ETXTBSY)
+    let _materialize_lock = crate::util::FlockGuard::acquire(home, "provision-frontend")?;
     if dir.join(".complete").exists() {
         return Ok(Some(dir));
     }

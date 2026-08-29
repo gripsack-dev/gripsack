@@ -25,6 +25,27 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
     fsync_dir(parent)
 }
 
+/// Store pre-take-over bytes content-addressed (0015 §4): returns the
+/// sha256 the manifest references. Dedup is the point — priors are
+/// small, and identical originals share one blob.
+pub fn store_prior_blob(home: &Path, bytes: &[u8]) -> io::Result<String> {
+    use sha2::{Digest, Sha256};
+    let sha = Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    let path = prior_blob_path(home, &sha);
+    if !path.exists() {
+        atomic_write(&path, bytes)?;
+    }
+    Ok(sha)
+}
+
+/// Where a prior blob lives: `$GRIPSACK_HOME/prior/<sha256>`.
+pub fn prior_blob_path(home: &Path, sha: &str) -> std::path::PathBuf {
+    home.join("prior").join(sha)
+}
+
 /// Atomically point `link` at `target`, replacing any existing link.
 /// This is the generation flip — the single indivisible operation that
 /// activation reduces to (0001 §9.2).

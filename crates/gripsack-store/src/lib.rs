@@ -30,9 +30,9 @@ pub mod hash;
 pub mod paths;
 pub mod trust;
 
-pub use fs::{atomic_write, publish_dir, symlink_replace};
+pub use fs::{atomic_write, prior_blob_path, publish_dir, store_prior_blob, symlink_replace};
 pub use generations::{
-    DeployedEntry, Generation, ModuleState, current as current_generation, flip,
+    DeployedEntry, Generation, ModuleState, Prior, PriorKind, current as current_generation, flip,
     list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{

@@ -15,6 +15,32 @@ pub fn apply(
     jobs: Option<usize>,
     palette: Palette,
 ) -> ExitCode {
+    apply_inner(repo, host, modules, take_over, None, jobs, palette)
+}
+
+/// Apply with scoped take-over (0015 §3): `grip adopt` absorbs exactly
+/// the destinations it generated — unrelated drift is never clobbered.
+pub fn apply_scoped(
+    repo: &Path,
+    host: Option<&str>,
+    modules: Vec<String>,
+    take_over_entries: Option<std::collections::BTreeSet<String>>,
+    jobs: Option<usize>,
+    palette: Palette,
+) -> ExitCode {
+    apply_inner(repo, host, modules, false, take_over_entries, jobs, palette)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_inner(
+    repo: &Path,
+    host: Option<&str>,
+    modules: Vec<String>,
+    take_over: bool,
+    take_over_entries: Option<std::collections::BTreeSet<String>>,
+    jobs: Option<usize>,
+    palette: Palette,
+) -> ExitCode {
     if jobs == Some(0) {
         eprintln!("grip: --jobs 0 would run zero modules — pass a positive count");
         return ExitCode::from(2);
@@ -60,6 +86,7 @@ pub fn apply(
             .or_else(|| outcome.env.env.default_host.clone())
             .unwrap_or_else(crate::commands::hostname),
         take_over,
+        take_over_entries,
         jobs: jobs.or_else(|| {
             std::env::var("GRIPSACK_JOBS")
                 .ok()

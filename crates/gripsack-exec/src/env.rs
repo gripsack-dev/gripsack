@@ -83,6 +83,7 @@ mod tests {
                 mode: Ownership::Owned,
                 vars: Default::default(),
                 hash: "h".into(),
+                prior: None,
             }],
             env,
             tree256: None,

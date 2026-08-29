@@ -24,9 +24,24 @@ pub struct Ctx {
     /// Overwrite foreign/drifted tracked_copy destinations (explicit
     /// user intent — 0009 critique finding 3).
     pub take_over: bool,
+    /// Scoped take-over (0015 §3): only these destinations may be
+    /// absorbed — `grip adopt` passes exactly what it generated, so an
+    /// adopt apply can never clobber unrelated drift.
+    pub take_over_entries: Option<std::collections::BTreeSet<String>>,
     /// Max concurrent modules in the scheduler (0007 §5). None = cores.
     /// `--jobs` on the CLI; GRIPSACK_JOBS for CI.
     pub jobs: Option<usize>,
+}
+
+impl Ctx {
+    /// May this destination be taken over? Global flag or scoped set.
+    pub fn takes_over(&self, to: &str) -> bool {
+        self.take_over
+            || self
+                .take_over_entries
+                .as_ref()
+                .is_some_and(|entries| entries.contains(to))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
