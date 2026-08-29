@@ -56,12 +56,21 @@ pub(crate) fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .try_proxy_from_env(true)
         .tls_config(tls_config())
+        // ureq's default strips Authorization on EVERY redirect; a
+        // transferred repo (301 repos/<name> → repositories/<id>)
+        // then silently re-requests anonymously into the rate-limited
+        // pool. SameHost keeps the token on its bound host only —
+        // cross-host still strips, so the no-leak rule survives.
+        .redirect_auth_headers(ureq::RedirectAuthHeaders::SameHost)
         .build()
 }
 
 /// An agent that never proxies.
 fn direct_agent() -> ureq::Agent {
-    ureq::AgentBuilder::new().tls_config(tls_config()).build()
+    ureq::AgentBuilder::new()
+        .tls_config(tls_config())
+        .redirect_auth_headers(ureq::RedirectAuthHeaders::SameHost)
+        .build()
 }
 
 /// curl-style no_proxy: does this URL bypass the proxy?
