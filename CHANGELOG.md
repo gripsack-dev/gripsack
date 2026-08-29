@@ -3,6 +3,29 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.2] — 2026-08-29
+
+Dogfood fixes — every one of them caught by running gripsack against a
+real, full-sized dotfiles env.
+
+### Fixed
+
+- `store verify` no longer false-positives on `merge` and `template`
+  modules: the manifest records the *deploy-output* hash (trimmed
+  block, rendered bytes), and verify now recomputes exactly that
+  instead of comparing the raw store file (which could never match).
+- Package harvest copies symlinks **as symlinks** instead of following
+  them — a symlink to a directory (conda's `lib/terminfo →
+  share/terminfo`) crashed pixi-module fetches with a pathless io
+  error. Note: pixi payload identity changes with this fix; a
+  `grip update <module>` re-pins deliberately.
+- API auth tokens now survive **same-host redirects** — a transferred
+  GitHub repo (`owner/x` → `new-owner/x`) previously re-requested
+  anonymously into the rate-limited pool and 403'd. Cross-host
+  redirects still strip credentials (the no-leak rule stands).
+- Fetch/copy io errors carry the offending path instead of a bare
+  "the source path is neither a regular file…".
+
 ## [0.17.1] — 2026-08-29
 
 The adopt audit ([plan 0015 §7](plan/0015-grip-adopt.md)): ask, don't
