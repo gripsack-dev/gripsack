@@ -18,6 +18,9 @@ jobs:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
 
+      # npm test IS `deno test` (0013) — the runner has no deno
+      - uses: denoland/setup-deno@v2
+
       # The guard fails a mistagged release instead of publishing the
       # wrong version.
       - name: Guard tag matches package version
