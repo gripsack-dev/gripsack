@@ -3,6 +3,44 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.1] — 2026-08-29
+
+The adopt audit ([plan 0015 §7](plan/0015-grip-adopt.md)): ask, don't
+guess; say exactly what you wrote.
+
+### Changed
+
+- **`grip adopt` no longer guesses ownership.** The hardcoded
+  app-behavior tables are deleted — they presented folk knowledge as
+  detection. Adopt now *asks* with the semantics laid out (arrow-key
+  select): `owned` (read-only link, repo is the only editor),
+  `tracked_copy` (real file, drift kept — the safe default), `merge`
+  (one managed block in a shared file). Non-interactive runs take
+  `tracked_copy` with a loud note; `--mode` is the preseed.
+- Adopt's plan labels destinations it will absorb as
+  "will be adopted (prior recorded)" instead of demanding
+  `--take-over`.
+
+### Fixed
+
+- Adopt no longer follows directory symlinks inside the adopted tree —
+  a link could pull an arbitrary directory tree into your repo. Such
+  links (and broken ones) are skipped and reported.
+- Adopt refuses paths outside `$HOME` (plan compliance) and refuses to
+  overwrite existing `modules/<name>.ts` / `configs/<name>/` — the
+  never-clobber rule covers the repo too.
+- Eval-failure and abort messages list exactly what was written and
+  how to abandon it (the old message claimed the repo was untouched).
+- Host-entrypoint edits are a pure, unit-tested function; a
+  single-line `modules: [a]` insertion produced `[ab, ]` before.
+- Large adoptions (>25MB) warn and name the largest entries.
+
+### Refactored
+
+- `commands/adopt.rs` (500 lines) split into
+  `adopt/{mod,inspect,generate,prompt}.rs` — pure functions at the
+  edges, side effects named. The ownership menu uses dialoguer.
+
 ## [0.17.0] — 2026-08-28
 
 Constrained evaluation ([plan 0013](plan/0013-constrained-evaluation.md)).

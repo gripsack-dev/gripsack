@@ -125,3 +125,94 @@ This closes the last overclaim on the homepage: adoption becomes
 - Scoped take-over: pre-existing drift in an unrelated module is
   preserved through the adopt apply.
 - Post-adopt user edit → rollback keeps the user's file (drift guard).
+
+## 7. Amendment — the ownership question is asked, not guessed
+
+A hostile re-read of the shipped command found nine issues. The
+philosophical one frames the rest: **adopt was being clever where it
+should have been honest.** Every fix below follows one rule — when the
+system can't know, it asks; when it writes, it says exactly what it
+wrote.
+
+### S1 — The heuristic tables are deleted (the smell that started this)
+
+`SELF_REWRITING` and `SHARED_SHELL_FILES` presented folk knowledge as
+detection ("helix doesn't rewrite its config" — a claim no measurement
+backed). No comparable tool maintains such a table: chezmoi sets
+attributes explicitly or *prompts* (`promptChoice`, defaults,
+TTY-gated); debconf made ask-with-defaults-and-preseed the model 25
+years ago. Adopt now **asks**, with the semantics laid out, arrow-key
+select:
+
+```
+how should gripsack own these files?
+  > owned        — read-only symlink into the store; the repo is the
+                   only editor. For tools that never write their config.
+    tracked_copy — a real file, hash-recorded; the app may rewrite it
+                   and your edits are detected, never clobbered. Safe.
+    merge        — one managed block inside a file other tools write.
+```
+
+The default is deliberately `tracked_copy`, not `owned`: a wrong
+tracked_copy costs elegance; a wrong owned lets an app write through
+the symlink into the store (the asymmetric failure tail). `owned` is
+an informed opt-in. Non-interactive (`--yes`, no TTY) takes the safe
+default with a loud note; `--mode` is the preseed. The generated
+module file IS the persisted answer (chezmoi's promptChoiceOnce for
+free).
+
+### S2 — Directory symlinks are no longer followed
+
+`walkdir` used `is_dir()`, which follows links: a symlink inside the
+adopted tree could pull an arbitrary directory tree into the user's
+repo. Directory symlinks are now skipped and listed with their
+targets; broken file symlinks are skipped with a warning.
+
+### S3 — Paths outside $HOME are refused (plan compliance)
+
+Section 2 said it; the code didn't. Adopting `/etc/...` writes
+absolute, non-portable destinations into the repo. Now refused with
+the reason.
+
+### S4 — The repo is never clobbered either
+
+`configs/<name>/` and `modules/<name>.ts` were written unconditionally.
+The tool that refuses to clobber `~/.config` must refuse to clobber
+the repo: both are errors now (name the conflict).
+
+### S5 — Honest failure messages
+
+The eval-failure path claimed "the repo is untouched otherwise" while
+payload, module, and host edit were already written. The message now
+lists exactly what was written and the exact revert steps.
+
+### S6 — Plan/output contradiction
+
+The plan rendered "needs --take-over" for the very destinations adopt
+then took over. Adopted destinations are labeled "adopt (prior
+recorded)" instead.
+
+### S7 — `update_host` is a pure, unit-tested function
+
+Untested string surgery on user code. Extracted, with the happy-path
+matrix pinned by unit tests (single-line array, empty array, multiline
+array, import variants) and a strict bail-to-snippet fallback.
+
+### S8 — Size awareness
+
+Adopting a tree blindly copied any size into the repo. Totals were
+always shown; now >25MB also warns and names the largest entries
+(size is evidence, not a heuristic).
+
+### S9 — Split into components
+
+`commands/adopt.rs` (500 lines, five phases) becomes
+`commands/adopt/{mod,inspect,generate,prompt}.rs` — pure functions at
+the edges, side effects named.
+
+### Deferred to Next
+
+- **Read-only store payloads** (`chmod a-w` on publish): the
+  structural fix for the write-through-symlink failure tail — an app
+  rewriting an owned config gets EACCES instead of silently corrupting
+  the store. Nix's store is read-only for the same reason.
