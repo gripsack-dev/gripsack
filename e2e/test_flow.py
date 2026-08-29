@@ -1767,6 +1767,33 @@ export default module("hello", {{
     assert only_store_path(sandbox) == target.name
 
 
+def test_store_verify_merge_and_template_hashes(sandbox):
+    """Merge and template entries record DEPLOY-OUTPUT hashes (trimmed
+    block, rendered bytes) — verify must recompute the same value, not
+    compare the raw store file (a raw hash can never match)."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "block.sh").write_text("export FROB=1\n")
+    (confdir / "id.toml").write_text('name = "{{ name }}"\n')
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { merge, module, template } from "@gripsack/core";
+
+export default module("demo", {
+  config: {
+    "configs/demo/block.sh": merge("~/.bashrc", "#"),
+    "configs/demo/id.toml": template("~/.config/demo/id.toml", { name: "t" }),
+  },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("store-verify", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+
+
 def test_adopt_end_to_end_restores_originals(sandbox):
     """0015 §6: adopt generates the module, manages the destination,
     and rollback to the baseline generation restores the ORIGINAL
