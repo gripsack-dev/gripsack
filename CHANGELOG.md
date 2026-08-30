@@ -24,6 +24,19 @@ The beautiful-errors sweep (0004 §3 pushed through the stack).
 - Probe diagnostic codes (E112/E113) moved into the central codes
   module — the placeholder code is E114, no collision.
 
+### Added (path validation — 0016 §D4)
+
+- **E115 — path shape**: source and destination paths validate at
+  check time with spans — payload-relative sources reject absolute
+  forms, `..`/`.`/empty segments, trailing slashes, backslashes;
+  destinations reject `..` escapes and bare `~`/`/`. Placeholders
+  validate as opaque single-segment atoms (their values are
+  single-segment by construction).
+- **Tar traversal is a loud error**: hostile entries (absolute paths,
+  `..` escapes) fail extraction naming the entry — the tar crate's
+  unpack_in skips them silently otherwise, stranding a partial payload
+  (zip extraction was already sanitizing).
+
 ## [0.17.3] — 2026-08-30
 
 Platform facts, floating git, and a hardened store

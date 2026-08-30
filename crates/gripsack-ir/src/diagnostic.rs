@@ -30,6 +30,8 @@ pub mod codes {
     pub const EXEC_VERIFY: &str = "E302";
     /// Unknown `{placeholder}` in a fetch/install/verify string (0016 §D1).
     pub const UNKNOWN_PLACEHOLDER: &str = "E114";
+    /// A source or destination path with an illegal shape (0016 §D4).
+    pub const BAD_PATH: &str = "E115";
 }
 
 // ---------------------------------------------------------------- diagnostics

@@ -72,6 +72,36 @@ ours is the user-scoped version:
   one walk at publish plus e2e proving the EACCES and that
   repair/gc/rollback are unaffected.
 
+## 3a. D4 — Path validation is a sema pass, not a language construct
+
+Asked during review: should paths get a typed `path()` construct, and
+must placeholders hydrate before validation?
+
+**Validate the symbolic form; never hydrate to validate.** A typed
+`path()` in the IR buys nothing — the IR is strings either way, and
+frontend-side constructors duplicate a check every other frontend
+would miss. The answer is a sema pass over the strings, with spans:
+
+- `from` (payload-relative): reject absolute paths, `~`, `..`/`.`
+  segments, empty segments, trailing slashes, backslashes.
+- `to`: `~/…` or absolute only (E102's territory — extended with
+  `~/../` escapes and bare-home rejections).
+- `{placeholders}` validate as opaque single-segment atoms. This is
+  sound by construction: platform placeholder values come from a
+  static table (never contain separators), and `{version}` values are
+  git refnames (git forbids `..`). Documented here, defended at
+  expansion.
+- Precedents: Bazel labels (strict segment validation at parse),
+  chezmoi (targets must not escape home), zip-slip defenses in every
+  archive extractor.
+
+**Archive extraction audit result**: our tar crate (0.4.46) already
+routes `Archive::unpack` through per-entry `unpack_in` (traversal-safe
+— hostile entries are skipped), and zip 8.x sanitizes by construction.
+Remaining hardening: a silent skip is a partial payload that fails
+later with an obscure "no payload at …" — extraction now pre-scans
+entry names and hard-errors on a traversal attempt, naming the entry.
+
 ## 4. Chores (same batch, no design content)
 
 - **Linter audit against a real corpus**: the dotfiles env deploys
