@@ -7,6 +7,35 @@ use sha2::{Digest, Sha256};
 use std::io;
 use std::path::Path;
 
+// Hard-error on tar traversal attempts (0016 §D4): tar's unpack_in
+// silently SKIPS hostile entries, leaving a partial payload that
+// fails later as an obscure "no payload at …" — name the entry
+// instead. Absolute paths and `..` segments are the zip-slip class.
+fn assert_no_traversal(bytes: &[u8]) -> Result<(), FetchError> {
+    let mut archive = tar::Archive::new(bytes);
+    let entries = archive.entries().map_err(FetchError::Io)?;
+    for entry in entries {
+        let entry = entry.map_err(FetchError::Io)?;
+        let name = String::from_utf8_lossy(&entry.path_bytes()).into_owned();
+        let absolute = name.starts_with('/');
+        let escapes = name.split('/').any(|seg| seg == "..");
+        if absolute || escapes {
+            return Err(FetchError::Http {
+                url: "tar payload".into(),
+                reason: format!(
+                    "refusing to extract: entry {name:?} {} the payload root",
+                    if absolute {
+                        "is absolute, outside"
+                    } else {
+                        "escapes via .."
+                    }
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// `bare_name` names the staged file when the payload isn't an
 /// archive — the asset's filename from the URL (falling back to
 /// "bin"), never a hardcoded name that collides with tarball bin/
@@ -15,12 +44,15 @@ pub(crate) fn extract(bytes: &[u8], dest: &Path, bare_name: &str) -> Result<(), 
     const XZ_MAGIC: &[u8] = b"\xfd7zXZ\x00";
     const ZIP_MAGIC: &[u8] = b"PK\x03\x04";
     if bytes.starts_with(XZ_MAGIC) {
-        let mut archive = tar::Archive::new(xz2::read::XzDecoder::new(bytes));
-        if archive.unpack(dest).is_ok() {
+        // decompress first — the traversal scan reads the TAR stream,
+        // not the compressed bytes
+        let raw = decompress(xz2::read::XzDecoder::new(bytes))?;
+        if looks_like_tar(&raw) {
+            assert_no_traversal(&raw)?;
+            tar::Archive::new(raw.as_slice()).unpack(dest)?;
             return Ok(());
         }
-        // a single .xz file, not a tar.xz — decompress and stage bare
-        let raw = decompress(xz2::read::XzDecoder::new(bytes))?;
+        // a single .xz file, not a tar.xz — stage bare
         return stage_bare(&raw, dest, strip_suffix(bare_name, ".xz"));
     }
     if bytes.starts_with(ZIP_MAGIC) {
@@ -28,17 +60,18 @@ pub(crate) fn extract(bytes: &[u8], dest: &Path, bare_name: &str) -> Result<(), 
         return Ok(());
     }
     if bytes.starts_with(&[0x1f, 0x8b]) {
-        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
-        if archive.unpack(dest).is_ok() {
+        let raw = decompress(flate2::read::GzDecoder::new(bytes))?;
+        if looks_like_tar(&raw) {
+            assert_no_traversal(&raw)?;
+            tar::Archive::new(raw.as_slice()).unpack(dest)?;
             return Ok(());
         }
         // a single .gz file, not a tar.gz (e.g. tree-sitter's bare
-        // binary) — decompress and stage as one file (finding: the
-        // archive walk failed with 'failed to iterate over archive')
-        let raw = decompress(flate2::read::GzDecoder::new(bytes))?;
+        // binary) — decompress and stage as one file
         return stage_bare(&raw, dest, strip_suffix(bare_name, ".gz"));
     }
     if looks_like_tar(bytes) {
+        assert_no_traversal(bytes)?;
         let mut archive = tar::Archive::new(bytes);
         archive.unpack(dest)?;
         return Ok(());
@@ -243,5 +276,39 @@ mod single_file_tests {
                 0o111
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod traversal_tests {
+    use super::*;
+
+    fn tar_with(names: &[&str]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(Vec::new());
+        for name in names {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(1);
+            header.set_mode(0o644);
+            if name.contains("..") || name.starts_with('/') {
+                // the safe Builder API refuses hostile names — write the
+                // name bytes directly (that's the point of the fixture)
+                let bytes = name.as_bytes();
+                header.as_old_mut().name[..bytes.len()].copy_from_slice(bytes);
+                header.set_cksum();
+                builder.append(&header, &b"x"[..]).unwrap();
+            } else {
+                header.set_cksum();
+                builder.append_data(&mut header, name, &b"x"[..]).unwrap();
+            }
+        }
+        builder.into_inner().unwrap()
+    }
+
+    #[test]
+    fn traversal_is_named_and_refused() {
+        let bytes = tar_with(&["ok.txt", "../escape.txt"]);
+        let err = assert_no_traversal(&bytes).unwrap_err();
+        assert!(err.to_string().contains("../escape.txt"), "{err}");
+        assert!(assert_no_traversal(&tar_with(&["ok.txt", "dir/nested.txt"])).is_ok());
     }
 }

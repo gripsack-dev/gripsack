@@ -8,6 +8,7 @@
 
 mod deps;
 mod destinations;
+mod paths;
 mod placeholders;
 mod resources;
 mod steps;
@@ -25,6 +26,7 @@ const PASSES: &[fn(&Ir, &mut Vec<Diagnostic>)] = &[
     resources::check,
     verify_paths::check,
     placeholders::check,
+    paths::check,
 ];
 
 /// Pass 2 — run every sema pass, collecting all diagnostics.
