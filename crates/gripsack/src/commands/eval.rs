@@ -1,17 +1,9 @@
 use crate::render::{self, Palette};
+use gripsack_ir::diagnostic::codes;
 use gripsack_ir::{Diagnostic, Ir, Severity};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-
-/// E112 (0013 D6): probe binding must reach a fixpoint within the
-/// round cap — a probe whose request depends on another probe's
-/// result is an authoring error, not a fixpoint.
-const PROBE_UNSTABLE: &str = "E112";
-/// E113: the frontend requested a probe this grip cannot answer —
-/// the kind enum is closed on purpose (core-side binding is what
-/// makes probes inspectable).
-const PROBE_UNSUPPORTED: &str = "E113";
 
 /// Two-stage eval's round cap (0013 D6): eval → bind → re-eval, at
 /// most this many frontend runs before the set is declared unstable.
@@ -348,7 +340,7 @@ pub fn eval_repo(
                 .collect::<Vec<_>>()
                 .join(", ");
             let diagnostic = Diagnostic::error(
-                PROBE_UNSTABLE,
+                codes::PROBE_UNSTABLE,
                 format!(
                     "probe set unstable: new probe requests still appearing after {PROBE_ROUNDS} eval rounds ({names})"
                 ),
@@ -357,7 +349,7 @@ pub fn eval_repo(
                 "a probe depending on a probe is an authoring error — call ctx.probe.* \
                  unconditionally, not behind another probe's result",
             );
-            tracing::error!(code = PROBE_UNSTABLE, "{names}");
+            tracing::error!(code = codes::PROBE_UNSTABLE, "{names}");
             eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
             return Err(ExitCode::FAILURE);
         }
@@ -368,9 +360,9 @@ pub fn eval_repo(
                     bound.insert(req.key(), value);
                 }
                 Err(message) => {
-                    let diagnostic = Diagnostic::error(PROBE_UNSUPPORTED, message)
+                    let diagnostic = Diagnostic::error(codes::PROBE_UNSUPPORTED, message)
                         .with_label(req.span.clone(), "probe requested here");
-                    tracing::error!(code = PROBE_UNSUPPORTED, "{}", req.key());
+                    tracing::error!(code = codes::PROBE_UNSUPPORTED, "{}", req.key());
                     eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
                     return Err(ExitCode::FAILURE);
                 }

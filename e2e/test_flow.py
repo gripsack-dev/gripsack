@@ -1770,6 +1770,28 @@ export default module("hello", {{
     assert only_store_path(sandbox) == target.name
 
 
+def test_exec_failures_render_with_codes_and_spans(sandbox):
+    """0004 §3 across the stack: a fetch failure at apply is a coded,
+    span-labeled diagnostic pointing at the module — never a bare
+    `error:` line. (The placeholder E114 path is unit-tested in
+    gripsack-ir; this covers the apply renderer.)"""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, tarball } from "@gripsack/core";
+
+export default module("demo", {
+  fetch: tarball("http://127.0.0.1:1/never-there.tar.gz"),
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "E301" in out.stderr
+    assert "modules/hello.ts" in out.stderr  # make_env_repo's default filename
+    assert "raised here" in out.stderr
+
+
 def test_fetch_placeholders_expand_from_host_facts(sandbox):
     """0016 §D1: {system}/{target}/{arch}/{arch.go}/{os} in a fetch URL
     expand from the machine's facts — one spec serves every platform."""

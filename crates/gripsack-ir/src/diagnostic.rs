@@ -18,6 +18,18 @@ pub mod codes {
     pub const VERIFY_PATH_SHAPE: &str = "E109";
     pub const MISSING_SOURCE: &str = "E110";
     pub const DUPLICATE_DESTINATION: &str = "E111";
+    /// Probe binding never reached a fixpoint (0013 D6).
+    pub const PROBE_UNSTABLE: &str = "E112";
+    /// The frontend requested a probe kind this grip cannot answer.
+    pub const PROBE_UNSUPPORTED: &str = "E113";
+    /// Fetch/resolution failed at apply (registry, network, hash drift).
+    pub const EXEC_FETCH: &str = "E201";
+    /// An execution step failed (build, deploy, install).
+    pub const EXEC_STEP: &str = "E301";
+    /// A module's verify contract failed.
+    pub const EXEC_VERIFY: &str = "E302";
+    /// Unknown `{placeholder}` in a fetch/install/verify string (0016 §D1).
+    pub const UNKNOWN_PLACEHOLDER: &str = "E114";
 }
 
 // ---------------------------------------------------------------- diagnostics

@@ -3,6 +3,27 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.4] — 2026-08-30
+
+The beautiful-errors sweep (0004 §3 pushed through the stack).
+
+### Added
+
+- **E114 — unknown placeholder**: a mistyped `{sytem}` in a fetch,
+  install, or verify string now fails `grip check` with a span at the
+  module and an edit-distance suggestion ("did you mean '{system}'?"),
+  instead of a 404 at fetch time.
+
+### Fixed
+
+- Apply-time failures are coded, span-labeled diagnostics: a fetch or
+  build step failing now renders `error[E301]`/`E302` pointing at the
+  module line ("raised here"), replacing bare `error:` lines.
+- Resolution errors name the gripsack module, not the registry string
+  ("step resolve failed in fish", not "in fish-shell/fish-shell").
+- Probe diagnostic codes (E112/E113) moved into the central codes
+  module — the placeholder code is E114, no collision.
+
 ## [0.17.3] — 2026-08-30
 
 Platform facts, floating git, and a hardened store

@@ -310,7 +310,7 @@ impl<'a> ModuleRun<'a> {
         };
         // resolve to a concrete spec — the locked pin wins; else
         // resolve now (trust on first use, 0002 §3)
-        let (concrete, meta) = resolve_spec(spec, locked)?;
+        let (concrete, meta) = resolve_spec(self.name, spec, locked)?;
         if let Some(m) = &meta {
             self.version = Some(m.version.clone());
         }
@@ -321,7 +321,18 @@ impl<'a> ModuleRun<'a> {
             .and_then(|e| e.resolved.as_ref())
             .and_then(|r| serde_json::to_value(r).ok());
         let outcome = gripsack_fetch::fetch_with_locked(&concrete, stage, locked_json.as_ref())
-            .map_err(ExecError::Fetch)?;
+            .map_err(|e| match e {
+                // plugin diagnostics keep their envelope (0009 §2 —
+                // they render through the one renderer at apply)
+                gripsack_fetch::FetchError::Diagnostics(_) => ExecError::Fetch(e),
+                // everything else becomes a step error so the apply
+                // renderer can point at the module line (0004 §3)
+                other => ExecError::Step {
+                    module: self.name.to_string(),
+                    step: step.id.clone(),
+                    detail: other.to_string(),
+                },
+            })?;
         let sha = outcome.hash;
         // Finalize a deferred identity (finding C): the first fetch's
         // sha joins the store-path input — identical to what the lock
