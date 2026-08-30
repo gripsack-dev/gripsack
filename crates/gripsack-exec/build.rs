@@ -42,12 +42,19 @@ fn main() {
         println!("cargo:rerun-if-changed={}", src.display());
         walk(&src, &src, &mut entries);
     }
-    // the frontend's deno.json (import map + tasks) is the package
-    // metadata — optional, embedded at the materialized root
-    let deno_json = ts.join("deno.json");
-    if deno_json.is_file() {
-        println!("cargo:rerun-if-changed={}", deno_json.display());
-        entries.push(("deno.json".into(), deno_json));
+    // the frontend's deno.json (import map + tasks) and package.json
+    // are the package metadata — optional, embedded at the
+    // materialized root. package.json is what flips deno into BYONM
+    // (bring-your-own-node-modules) so env repos can declare npm
+    // dependencies in their own package.json (0013 D2's sandbox
+    // permits read-only repo access — the deps eval under the same
+    // deny-everything rules as repo code).
+    for meta in ["deno.json", "package.json"] {
+        let file = ts.join(meta);
+        if file.is_file() {
+            println!("cargo:rerun-if-changed={}", file.display());
+            entries.push((meta.into(), file));
+        }
     }
     entries.sort();
 

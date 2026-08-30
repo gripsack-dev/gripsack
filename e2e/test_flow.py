@@ -1047,6 +1047,10 @@ def test_init_scaffolds_a_working_env_repo(sandbox):
     assert (repo / "modules" / "hello.ts").exists()
     assert (repo / "modules" / "examples.ts").exists()
     assert (repo / "configs" / "hello" / "hello.toml").exists()
+    assert (repo / "package.json").exists()
+    assert '"@gripsack/core"' in (repo / "package.json").read_text()
+    assert (repo / "tsconfig.json").exists()
+    assert "node_modules/" in (repo / ".gitignore").read_text()
     hosts = list((repo / "hosts").glob("*.ts"))
     assert len(hosts) == 1
     assert (repo / ".git").is_dir()
@@ -2154,6 +2158,44 @@ def test_adopt_rollback_keeps_post_adopt_user_edits(sandbox):
     out = grip("rollback", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert dest.read_text() == 'theme = "mine now"\n'
+
+
+def test_third_party_npm_deps_resolve_in_module_code(sandbox):
+    """Repo npm dependencies work in module code: the eval sandbox is
+    read-only within the repo (node_modules included), and the pin map
+    is applied via --import-map (not deno.json discovery) so BYONM
+    still engages. Repos without package.json keep the embedded copy."""
+    repo = make_env_repo(sandbox / "myenv", {})
+    pkg = repo / "node_modules/tinypkg"
+    pkg.mkdir(parents=True)
+    (pkg / "package.json").write_text(
+        '{"name": "tinypkg", "version": "1.0.0", "type": "module", "main": "index.js"}'
+    )
+    (pkg / "index.js").write_text('export const answer = 42;\n')
+    (repo / "package.json").write_text(
+        '{"name": "fixture", "private": true, "type": "module",'
+        ' "dependencies": {"tinypkg": "1.0.0"}}'
+    )
+    (repo / "modules" / "usesdep.ts").write_text(
+        'import { answer } from "tinypkg";\n'
+        'import { module, tree } from "@gripsack/core";\n'
+        'export default module("usesdep", {\n'
+        '  config: tree("configs/demo", "~/.config/demo", answer === 42 ? "owned" : "merge"),\n'
+        '});\n'
+    )
+    confdir = repo / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.txt").write_text("a\n")
+    # rewrite the host to include the new module
+    host = repo / "hosts" / "testhost.ts"
+    src = host.read_text().replace("modules: []", "modules: [usesdep]")
+    src = src.replace(
+        'import { defineEnv } from "@gripsack/core";',
+        'import { defineEnv } from "@gripsack/core";\nimport usesdep from "../modules/usesdep.ts";',
+    )
+    host.write_text(src)
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
 
 
 def test_embedded_frontend_serves_without_node_modules(sandbox):

@@ -423,8 +423,19 @@ fn deno_command(
         .map(|p| p.display().to_string())
         .collect::<Vec<_>>()
         .join(",");
+    // --import-map, NOT deno.json discovery: a discovered deno.json
+    // puts deno in project mode where BYONM (the repo's npm-managed
+    // node_modules) never engages — third-party bare imports in module
+    // code would fail. The flag applies the pin map without creating a
+    // project, so env repos get BOTH the deliberate-pin rule and npm
+    // dependencies (documented: install them in the repo, they're
+    // read-only under the sandbox).
     let mut cmd = std::process::Command::new(deno);
     cmd.args(["run", "--no-remote", "--cached-only", "--no-lock"])
+        .arg(format!(
+            "--import-map={}",
+            frontend_dir.join("deno.json").display()
+        ))
         .arg(format!("--allow-read={reads}"))
         .arg(driver)
         .arg(repo)
