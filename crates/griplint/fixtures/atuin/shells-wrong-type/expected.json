@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A04",
+    "severity": "error",
+    "message": "[search] 'shells' must be string or array, got table",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

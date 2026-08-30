@@ -158,6 +158,52 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                     });
                 }
             }
+            // git with an inline rev is pinned deliberately — skipped;
+            // floating git re-resolves the remote's HEAD (0016 §D2)
+            F::Git { url, rev } => match rev {
+                Some(_) => reports.push(UpdateReport {
+                    module: name.clone(),
+                    status: UpdateStatus::Skipped,
+                }),
+                None => {
+                    let head =
+                        gripsack_fetch::resolve_git_head(url).map_err(|e| ExecError::Step {
+                            module: name.clone(),
+                            step: "update".into(),
+                            detail: e.to_string(),
+                        })?;
+                    // the float's pin is the lock's `version` (0016 §D2)
+                    let old = lock
+                        .modules
+                        .get(name.as_str())
+                        .and_then(|e| e.resolved.as_ref())
+                        .and_then(|r| r.version.clone());
+                    if old.as_deref() == Some(head.as_str()) {
+                        reports.push(UpdateReport {
+                            module: name.clone(),
+                            status: UpdateStatus::Unchanged,
+                        });
+                    } else {
+                        lock.modules.insert(
+                            name.clone(),
+                            crate::lockfile::LockEntry {
+                                fetch: spec.clone(),
+                                resolved: Some(crate::lockfile::Resolved {
+                                    url: None,
+                                    version: Some(head.clone()),
+                                    sha256: None,
+                                    tree256: None,
+                                    api_url: None,
+                                }),
+                            },
+                        );
+                        reports.push(UpdateReport {
+                            module: name.clone(),
+                            status: UpdateStatus::Bumped { old, new: head },
+                        });
+                    }
+                }
+            },
             _ => {
                 reports.push(UpdateReport {
                     module: name.clone(),

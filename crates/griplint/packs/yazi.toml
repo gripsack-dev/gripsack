@@ -5,7 +5,9 @@
 tool = "yazi"
 handles = ["keymap.toml", "theme.toml", "yazi.toml"]
 format = "toml"
-supported = ["25.", "26."]
+# "v25."/"v26." because host lockfiles pin tag-style versions
+# ("v26.8.15")
+supported = ["25.", "26.", "v25.", "v26."]
 series = "v0"
 coverage_warning = "key tables are written for yazi 25.x/26.x; this module pins {version} — results may be stale"
 
@@ -49,6 +51,18 @@ keymap = { types = ["array"] }
 prepend_keymap = { types = ["array"] }
 append_keymap = { types = ["array"] }
 
+# theme.toml sections, yazi-rs.github.io docs/configuration/theme
+# (25.x/26.x). Style-map sections are FREE_FORM: their keys are Style
+# tables ({ fg, bg, bold, ... }) or symbol pairs the theme engine owns.
+[files."theme.toml".rules."flavor"]
+# 0.4.0+ form: dark/light flavor names ("use" was removed).
+dark = { types = ["string"] }
+light = { types = ["string"] }
+
+[files."theme.toml".rules."app"]
+# 25.5+: overall terminal background via OSC 11.
+_free = true
+
 [files."theme.toml".rules."mgr"]
 _free = true
 
@@ -76,6 +90,7 @@ _free = true
 [files."theme.toml".rules."confirm"]
 _free = true
 
+# renamed [cmp] in 25.2.26 (#2399); kept for 25.1.x configs
 [files."theme.toml".rules."completion"]
 _free = true
 
@@ -86,6 +101,19 @@ _free = true
 _free = true
 
 [files."theme.toml".rules."filetype"]
+_free = true
+
+[files."theme.toml".rules."cmp"]
+_free = true
+
+[files."theme.toml".rules."spot"]
+_free = true
+
+[files."theme.toml".rules."icon"]
+# icon rule arrays (globs/dirs/files/exts/conds + prepend_/append_)
+_free = true
+
+[files."theme.toml".rules."indicator"]
 _free = true
 
 [files."yazi.toml".rules."mgr"]

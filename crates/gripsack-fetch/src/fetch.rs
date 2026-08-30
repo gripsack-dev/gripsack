@@ -10,6 +10,8 @@ pub(crate) mod archive;
 pub(crate) mod brew;
 pub(crate) mod file;
 pub(crate) mod git;
+
+pub use git::resolve_head as resolve_git_head;
 pub(crate) mod pixi;
 pub(crate) mod plugin;
 pub(crate) mod tarball;
@@ -47,7 +49,9 @@ pub fn payload_hash(spec: &FetchSpec) -> Result<Option<String>, FetchError> {
         FetchSpec::Tarball {
             sha256: Some(sha), ..
         } => Ok(Some(sha.clone())),
-        FetchSpec::Tarball { url, api_url, .. } => tarball::payload_hash(url, api_url.as_deref()),
+        FetchSpec::Tarball { url, api_url, .. } => {
+            tarball::payload_hash(&crate::resolve::expand_platform(url), api_url.as_deref())
+        }
         FetchSpec::Brew { formula, .. } => brew::payload_hash(formula),
         _ => Ok(None),
     }
@@ -64,14 +68,26 @@ pub fn fetch(spec: &FetchSpec, dest: &Path) -> Result<String, FetchError> {
             url,
             sha256,
             api_url,
-        } => tarball::fetch(url, sha256.as_deref(), api_url.as_deref(), dest),
+        } => tarball::fetch(
+            &crate::resolve::expand_platform(url),
+            sha256.as_deref(),
+            api_url.as_deref(),
+            dest,
+        ),
         FetchSpec::Brew {
             formula, sha256, ..
         } => brew::fetch(formula, sha256.as_deref(), dest),
         FetchSpec::Pixi {
             package, version, ..
         } => pixi::fetch(package, version.as_deref(), dest),
-        FetchSpec::Git { url, rev } => git::fetch(url, rev, dest),
+        FetchSpec::Git { url, rev } => match rev {
+            Some(rev) => git::fetch(url, rev, dest),
+            // resolve fills the rev before dispatch (0016 §D2) — a
+            // rev-less spec reaching fetch is a pipeline bug, say so
+            None => Err(FetchError::Unsupported(
+                "git float needs resolution first (git ls-remote) — this is a core bug".into(),
+            )),
+        },
         FetchSpec::GithubRelease { .. } => Err(FetchError::Unsupported(
             "github_release resolves to a tarball upstream of fetch (exec::resolve)".into(),
         )),

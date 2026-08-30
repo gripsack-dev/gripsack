@@ -59,13 +59,27 @@ struct Asset {
     url: String,
 }
 
+/// Expand the platform placeholders (0016 §D1) against this machine's
+/// target. Unknown platforms leave the pattern untouched — the failure
+/// surfaces as a no-matching-asset error naming what IS available.
+pub fn expand_platform(pattern: &str) -> String {
+    let mut out = pattern.to_string();
+    if let Some(target) = crate::host::AssetTarget::current() {
+        for (placeholder, value) in target.placeholders() {
+            out = out.replace(placeholder, &value);
+        }
+    }
+    out
+}
+
 /// The asset pattern's `{version}` placeholder, expanded against a tag.
 /// `v25.07` and `25.07` both match.
 pub fn expand_asset_pattern(pattern: &str, tag: &str) -> Vec<String> {
     let bare = tag.strip_prefix('v').unwrap_or(tag);
+    let platform = expand_platform(pattern);
     vec![
-        pattern.replace("{version}", tag),
-        pattern.replace("{version}", bare),
+        platform.replace("{version}", tag),
+        platform.replace("{version}", bare),
     ]
 }
 

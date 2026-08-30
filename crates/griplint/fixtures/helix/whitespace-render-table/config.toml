@@ -1,0 +1,12 @@
+[editor.whitespace.render]
+space = "all"
+tab = "all"
+nbsp = "none"
+nnbsp = "none"
+newline = "none"
+
+[editor.whitespace.characters]
+space = "·"
+tab = "→"
+newline = "⏎"
+tabpad = "·"

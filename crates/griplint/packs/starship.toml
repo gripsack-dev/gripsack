@@ -5,11 +5,14 @@
 tool = "starship"
 handles = ["starship.toml"]
 format = "toml"
-supported = ["1."]
+# tables current for starship 1.x; "v1." because host lockfiles pin
+# tag-style versions ("v1.26.0")
+supported = ["1.", "v1."]
 series = "v0"
 coverage_warning = "key tables are written for a different major version; this module pins {version} — results may be stale"
 
 [files."starship.toml".rules.""]
+"$schema" = { types = ["string"] }
 format = { types = ["string"] }
 right_format = { types = ["string"] }
 continuation_prompt = { types = ["string"] }

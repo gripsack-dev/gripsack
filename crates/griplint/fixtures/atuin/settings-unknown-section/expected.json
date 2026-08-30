@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A02",
+    "severity": "error",
+    "message": "unknown section [settings]",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 3,
+          "col": 1
+        },
+        "note": ""
+      }
+    ]
+  }
+]

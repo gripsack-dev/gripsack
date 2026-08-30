@@ -152,7 +152,7 @@ fn describe_fetch(fetch: &gripsack_ir::FetchSpec) -> String {
     match fetch {
         F::GithubRelease { repo, asset, .. } => format!("github-release {repo} · {asset}"),
         F::Tarball { url, .. } => format!("tarball {url}"),
-        F::Git { url, rev } => format!("git {url} @ {rev}"),
+        F::Git { url, rev } => format!("git {url} @ {}", rev.as_deref().unwrap_or("HEAD (float)")),
         F::File { path } => format!("file {path}"),
         F::Plugin { name, .. } => format!("plugin gripfetch-{name}"),
         F::Brew { formula, .. } => format!("brew {formula}"),

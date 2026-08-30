@@ -5,7 +5,8 @@
 tool = "helix"
 handles = ["config.toml"]
 format = "toml"
-supported = ["25."]
+# "v25." because host lockfiles pin tag-style versions ("v25.7")
+supported = ["25.", "v25."]
 series = "v25"
 coverage_warning = "key tables are written for helix 25.x; this module pins {version} — results may be stale"
 
@@ -26,6 +27,7 @@ auto-completion = { types = ["boolean"] }
 auto-format = { types = ["boolean"] }
 auto-save = { types = ["boolean"] }
 idle-timeout = { types = ["integer"] }
+completion-timeout = { types = ["integer"] }
 completion-trigger-len = { types = ["integer"] }
 completion-replace = { types = ["boolean"] }
 auto-info = { types = ["boolean"] }
@@ -74,5 +76,27 @@ git-global = { types = ["boolean"] }
 git-exclude = { types = ["boolean"] }
 ignore = { types = ["boolean"] }
 
+[files."config.toml".rules."editor.whitespace"]
+# docs.helix-editor.com/editor.html #[editor.whitespace]: render is
+# "all"/"none" or a per-character table (space/nbsp/nnbsp/tab/newline);
+# choices are omitted because the table form is legal TOML here.
+render = { types = ["string", "table"] }
+characters = { types = ["table"] }
+
+[files."config.toml".rules."editor.lsp"]
+# docs.helix-editor.com/editor.html #[editor.lsp] (25.x): all boolean
+# except inlay-hints-length-limit.
+enable = { types = ["boolean"] }
+display-messages = { types = ["boolean"] }
+display-progress-messages = { types = ["boolean"] }
+auto-signature-help = { types = ["boolean"] }
+display-inlay-hints = { types = ["boolean"] }
+inlay-hints-length-limit = { types = ["integer"] }
+display-color-swatches = { types = ["boolean"] }
+display-signature-help-docs = { types = ["boolean"] }
+snippets = { types = ["boolean"] }
+goto-reference-include-declaration = { types = ["boolean"] }
+
 [files."config.toml".rules."keys"]
+# user-defined mode tables (normal/insert/select/…) — anything goes
 _free = true

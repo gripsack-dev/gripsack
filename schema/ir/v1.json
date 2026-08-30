@@ -416,8 +416,7 @@
           },
           "required": [
             "kind",
-            "url",
-            "rev"
+            "url"
           ]
         },
         {

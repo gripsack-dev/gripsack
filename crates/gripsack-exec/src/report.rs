@@ -33,7 +33,7 @@ pub(crate) fn describe_fetch(spec: &gripsack_ir::FetchSpec) -> String {
     match spec {
         F::GithubRelease { repo, asset, .. } => format!("github-release {repo} · {asset}"),
         F::Tarball { url, .. } => format!("tarball {url}"),
-        F::Git { url, rev } => format!("git {url} @ {rev}"),
+        F::Git { url, rev } => format!("git {url} @ {}", rev.as_deref().unwrap_or("HEAD (float)")),
         F::File { path } => format!("file {path}"),
         F::Plugin { name, .. } => format!("plugin gripfetch-{name}"),
         F::Brew { formula, .. } => format!("brew {formula}"),
@@ -42,9 +42,14 @@ pub(crate) fn describe_fetch(spec: &gripsack_ir::FetchSpec) -> String {
 }
 
 pub(crate) fn describe_verify(verify: &Verify, version: Option<&str>) -> String {
-    let sub = |path: &str| match version {
-        Some(v) => path.replace("{version}", v),
-        None => path.to_string(),
+    // show the path as it ACTUALLY ran: platform placeholders (0016
+    // §D1) plus the locked tag — same substitution as verify/deploy
+    let sub = |path: &str| {
+        let expanded = gripsack_fetch::expand_platform(path);
+        match version {
+            Some(v) => expanded.replace("{version}", v),
+            None => expanded,
+        }
     };
     match verify {
         Verify::BinaryRuns { path, .. } => format!("verified {} runs", sub(path)),

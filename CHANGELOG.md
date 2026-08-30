@@ -3,6 +3,42 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.3] — 2026-08-30
+
+Platform facts, floating git, and a hardened store
+([plan 0016](plan/0016-platform-facts-floating-git-readonly-store.md)).
+
+### Added
+
+- **Platform placeholders in fetch specs**: `{system}` (flake-style
+  `x86_64-linux`), `{target}` (rust triple, musl on linux), `{arch}`,
+  `{arch.go}` (goreleaser `amd64`), `{os}` — expanded by the core from
+  the machine's facts in asset patterns, tarball URLs, and install and
+  verify keys. One module now serves every platform; per-host locks
+  keep every machine honest.
+- **Floating git fetcher**: `git(url)` without a rev resolves the
+  remote's default-branch HEAD at lock time, pins the sha into the
+  lockfile, and `grip update` moves it — the same float-and-pin
+  semantics every other fetcher already had. Inline revs still pin.
+- **Read-only store payloads**: files publish with write bits dropped
+  — an app rewriting an `owned` config through its symlink gets
+  EACCES instead of silently corrupting the store. Directories stay
+  writable, so repair/gc/rollback are unaffected.
+- Linter packs: yazi theme sections ([app], [indicator], [cmp],
+  [spot], [icon], [flavor], …), helix `completion-timeout` +
+  `[editor.whitespace]` + `[editor.lsp]`, starship `$schema`, atuin
+  `[daemon]` keys — all sourced from current upstream docs.
+
+### Fixed
+
+- Linter diagnostics for unknown sub-tables named the section and
+  pointed at the right header line (they said "unknown key" at line 1).
+- Version-skew warnings (W10) no longer fire on current versions —
+  host lockfiles pin tag-style versions (`v18.20.1`) while packs
+  carried bare prefixes (`18.`); packs now carry both forms.
+- atuin `search.shells` accepts the documented string default (was a
+  live false-positive A04).
+
 ## [0.17.2] — 2026-08-29
 
 Dogfood fixes — every one of them caught by running gripsack against a

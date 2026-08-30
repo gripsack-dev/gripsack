@@ -14,9 +14,17 @@ ignored_commands = ["cd", "ls"]
 [daemon]
 enabled = true
 autostart = true
+sync_frequency = 300
+systemd_socket = false
+tcp_port = 8889
 
 [theme]
 name = "marine"
+debug = false
+max_depth = 10
+
+[search]
+shells = "auto"
 
 [keymap]
 emacs = { "C-r" = "history_search" }

@@ -3,8 +3,9 @@ TypeScript frontend (plan/0013): fixture env repos are built by conftest
 under the defineEnv contract — modules/<name>.ts default-exports its
 module value, hosts/<host>.ts returns them from defineEnv."""
 import os
-import stat
 import shutil
+import stat
+import sys
 import subprocess
 
 import pytest
@@ -1643,6 +1644,7 @@ export default module("demo", {
     target = next(store.iterdir())
     for f in target.rglob("*"):
         if f.is_file() and not f.is_symlink():
+            f.chmod(0o644)  # store payloads are read-only (0016 §D3)
             f.write_text("tampered\n")
     out = grip("store-verify", cwd=repo)
     assert out.returncode != 0
@@ -1754,6 +1756,7 @@ export default module("hello", {{
     target = next(store.iterdir())
     for f in target.rglob("*"):
         if f.is_file() and not f.is_symlink():
+            f.chmod(0o644)  # store payloads are read-only (0016 §D3)
             f.write_text("tampered\n")
     out = grip("store-verify", cwd=repo)
     assert out.returncode != 0
@@ -1765,6 +1768,160 @@ export default module("hello", {{
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert only_store_path(sandbox) == target.name
+
+
+def test_fetch_placeholders_expand_from_host_facts(sandbox):
+    """0016 §D1: {system}/{target}/{arch}/{arch.go}/{os} in a fetch URL
+    expand from the machine's facts — one spec serves every platform."""
+    import hashlib
+    import io
+    import tarfile
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    payload = make_tarball(sandbox / "pkg.tar.gz", {"bin/demo": b"#!/bin/sh\necho demo\n"})
+    blob = payload.read_bytes()
+    sha = hashlib.sha256(blob).hexdigest()
+
+    # {system} on this host, per 0016 §D1's table
+    machine = {"x86_64": "x86_64", "aarch64": "aarch64", "arm64": "aarch64"}[os.uname().machine]
+    system = f"{machine}-{'darwin' if sys.platform == 'darwin' else 'linux'}"
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == f"/pkg-{system}.tar.gz":
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(blob)))
+                self.end_headers()
+                self.wfile.write(blob)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ module, symlink, tarball }} from "@gripsack/core";
+
+export default module("demo", {{
+  fetch: tarball("http://127.0.0.1:{port}/pkg-{{system}}.tar.gz"),
+  install: {{ "bin/demo": symlink("~/.local/bin/demo") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    server.shutdown()
+    # the server only answers the EXPANDED name — a 200 proves the
+    # placeholder expanded from host facts
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".local/bin/demo").is_symlink()
+    # the lock records the spec verbatim and pins the CONTENT (hash);
+    # per-host locks (0001 §5) expand per machine at fetch time
+    lock = (repo / "locks/testhost.lock").read_text()
+    assert sha in lock
+
+
+def test_git_fetch_floats_and_the_lock_pins_head(sandbox):
+    """0016 §D2: git(url) without a rev floats to the remote's HEAD —
+    pinned into the lockfile at first apply; a new upstream commit does
+    NOT move an apply; `grip update` moves it deliberately."""
+    git_env = {
+        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+    }
+    remote = sandbox / "remote"
+    remote.mkdir()
+    for args in (["init", "-q"], ["add", "-A"]):
+        subprocess.run(["git", *args], cwd=remote, env=git_env, check=True)
+    (remote / "file.txt").write_text("v1\n")
+    subprocess.run(["git", "add", "-A"], cwd=remote, env=git_env, check=True)
+    subprocess.run(["git", "commit", "-qm", "v1"], cwd=remote, env=git_env, check=True)
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ git, module, symlink }} from "@gripsack/core";
+
+export default module("tool", {{
+  fetch: git("{remote}"),
+  install: {{ "file.txt": symlink("~/.local/share/tool/file.txt") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    deployed = sandbox / ".local/share/tool/file.txt"
+    assert deployed.read_text() == "v1\n"
+
+    # upstream moves; an apply must NOT follow (the lock pins HEAD)
+    (remote / "file.txt").write_text("v2\n")
+    subprocess.run(["git", "commit", "-qam", "v2"], cwd=remote, env=git_env, check=True)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert deployed.read_text() == "v1\n"
+
+    # update re-resolves HEAD and moves the pin
+    out = grip("update", "tool", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert deployed.read_text() == "v2\n"
+
+
+def test_store_payloads_are_read_only(sandbox):
+    """0016 §D3: payload files land a-w at publish — an app writing
+    through an owned symlink gets EACCES, the store stays verifiable,
+    and repair/gc (which unlink via writable parent dirs) still work."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.txt").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, tree } from "@gripsack/core";
+
+export default module("demo", {
+  config: { ...tree("configs/demo", "~/.config/demo", "owned") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    store = sandbox / ".local/share/gripsack/store"
+    payload = next(store.iterdir()) / "configs/demo/a.txt"
+    assert payload.exists()
+    # mode bits are the assertion that works everywhere (e2e's docker
+    # stage runs as root, and root's CAP_DAC_OVERRIDE bypasses them)
+    assert stat.S_IMODE(payload.stat().st_mode) & 0o222 == 0, "payload file must be read-only"
+
+    # the app-write-through-the-symlink path: EACCES, not corruption
+    if os.geteuid() != 0:
+        deployed = sandbox / ".config/demo/a.txt"
+        try:
+            deployed.write_text("corrupt\n")
+            raise AssertionError("write through an owned symlink must fail")
+        except PermissionError:
+            pass
+
+    out = grip("store-verify", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+
+    # repair still collects (unlink needs a writable parent, not file)
+    for f in next(store.iterdir()).rglob("*"):
+        if f.is_file() and not f.is_symlink():
+            os.chmod(f, 0o644)
+            f.chmod(0o644)  # store payloads are read-only (0016 §D3)
+            f.write_text("tampered\n")
+    out = grip("store-verify", "--repair", cwd=repo)
+    assert "removed corrupt" in out.stdout
 
 
 def test_store_verify_merge_and_template_hashes(sandbox):

@@ -15,9 +15,15 @@ pub(crate) fn run_verify(
         module: name.to_string(),
         detail,
     };
-    let subst = |p: &String| match version {
-        Some(v) => p.replace("{version}", v),
-        None => p.clone(),
+    // {version} is the locked tag; the platform placeholders (0016 §D1)
+    // come from this machine's facts — one substitution surface for
+    // verify keys and deploy's install keys
+    let subst = |p: &String| {
+        let expanded = gripsack_fetch::expand_platform(p);
+        match version {
+            Some(v) => expanded.replace("{version}", v),
+            None => expanded,
+        }
     };
     match verify {
         Verify::BinaryRuns { path, args } => {

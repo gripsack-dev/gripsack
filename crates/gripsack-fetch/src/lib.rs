@@ -20,10 +20,11 @@ pub mod plugins;
 pub mod resolve;
 pub mod throttle;
 
-pub use fetch::{FetchError, fetch, fetch_with_locked, payload_hash};
+pub use fetch::{FetchError, fetch, fetch_with_locked, payload_hash, resolve_git_head};
 pub use host::{AssetTarget, DENO_RELEASE, PIXI_RELEASE, resolve as resolve_host_asset};
 pub use resolve::{
-    ResolvedRelease, SelfRelease, resolve_brew, resolve_latest, resolve_self_release,
+    ResolvedRelease, SelfRelease, expand_platform, resolve_brew, resolve_latest,
+    resolve_self_release,
 };
 
 use std::path::PathBuf;

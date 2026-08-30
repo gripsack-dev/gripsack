@@ -5,9 +5,11 @@
 tool = "gh-dash"
 handles = ["config.yml"]
 format = "yaml"
-supported = ["0."]
+# tables verified against the v4.x surface (latest v4.25.2, 2026-08);
+# "v4." because host lockfiles pin tag-style versions ("v4.25.2")
+supported = ["4.", "v4."]
 series = "v0"
-coverage_warning = "key tables are written for a different major version; this module pins {version} — results may be stale"
+coverage_warning = "key tables are written for gh-dash 4.x; this module pins {version} — results may be stale"
 
 [files."config.yml".rules.""]
 confirmQuit = { types = ["boolean"] }

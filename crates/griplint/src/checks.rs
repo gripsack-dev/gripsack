@@ -53,7 +53,25 @@ fn check_key(
     } else {
         format!("[{section}] ")
     };
-    let (span, col, note) = doc.label(section, key, "");
+    // a TABLE-valued entry is a section header, not a key — blame the
+    // [section.key] header line; the (section, key) probe misses those
+    // (the scanner records headers flattened), which silently fell back
+    // to line 1:1 before
+    let (span, col, note) = if matches!(val, Value::Table(_)) {
+        let dotted = if section.is_empty() {
+            key.to_string()
+        } else {
+            format!("{section}.{key}")
+        };
+        let header = doc.label(SECTION, &dotted, "");
+        if header.0.line == 1 && header.0.col == 1 {
+            doc.label(section, key, "")
+        } else {
+            header
+        }
+    } else {
+        doc.label(section, key, "")
+    };
     let label = gripsack_ir::Label {
         span: Some(gripsack_ir::Span {
             file: doc.path.clone(),
@@ -65,10 +83,22 @@ fn check_key(
     let rule = rules.get(key);
     let Some(rule) = rule else {
         let suggestion = suggest(key, known_keys(rules));
+        // a table we have no rules for is an unknown SECTION, not an
+        // unknown key — name it that way
+        let message = if matches!(val, Value::Table(_)) {
+            let dotted = if section.is_empty() {
+                key.to_string()
+            } else {
+                format!("{section}.{key}")
+            };
+            format!("unknown section [{dotted}]")
+        } else {
+            format!("unknown key {where_}'{key}'")
+        };
         return vec![Diagnostic {
             code: "A01".into(),
             severity: Severity::Error,
-            message: format!("unknown key {where_}'{key}'"),
+            message,
             labels: vec![label],
             help: suggestion.map(|s| format!("did you mean '{s}'?")),
         }];

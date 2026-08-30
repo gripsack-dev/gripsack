@@ -5,6 +5,30 @@
 use super::FetchError;
 use std::path::Path;
 
+/// The remote's default-branch HEAD — the float resolution for a
+/// rev-less git spec (0016 §D2). Runs at lock/update time; the sha it
+/// returns is what every apply fetches until `grip update`.
+pub fn resolve_head(url: &str) -> Result<String, FetchError> {
+    let out = std::process::Command::new("git")
+        .args(["ls-remote", url, "HEAD"])
+        .output()?;
+    if !out.status.success() {
+        return Err(FetchError::Http {
+            url: url.to_string(),
+            reason: format!("git ls-remote exited {}", out.status),
+        });
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let sha = text.split_whitespace().next().unwrap_or("");
+    if sha.len() != 40 && sha.len() != 64 {
+        return Err(FetchError::Http {
+            url: url.to_string(),
+            reason: format!("git ls-remote returned no HEAD sha (got {sha:?})"),
+        });
+    }
+    Ok(sha.to_string())
+}
+
 pub(crate) fn fetch(url: &str, rev: &str, dest: &Path) -> Result<String, FetchError> {
     let git = |args: &[&str]| {
         let status = std::process::Command::new("git")
@@ -71,7 +95,7 @@ mod tests {
         let hash = fetch(
             &FetchSpec::Git {
                 url: remote.to_string_lossy().into_owned(),
-                rev,
+                rev: Some(rev),
             },
             &dest,
         )

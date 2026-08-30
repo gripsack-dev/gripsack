@@ -1,0 +1,4 @@
+# atuin has no [settings] table — its keys are top-level; this was a
+# real-world false nesting the linter must keep catching.
+[settings]
+name = "catppuccin-mocha-mauve"

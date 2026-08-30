@@ -66,6 +66,10 @@ pub fn symlink_replace(link: &Path, target: &Path) -> io::Result<()> {
 
 /// Publish a fully built directory into place. Fails if `dest` exists —
 /// generations and store paths are immutable; publishing twice is a bug.
+/// Payload FILES land read-only (0016 §D3): an app writing through an
+/// owned symlink gets EACCES instead of silently corrupting the store.
+/// Directories stay writable so repair/gc can unlink (unlink needs a
+/// writable parent, not a writable file).
 pub fn publish_dir(staging: &Path, dest: &Path) -> io::Result<()> {
     if dest.exists() {
         return Err(io::Error::new(
@@ -76,10 +80,37 @@ pub fn publish_dir(staging: &Path, dest: &Path) -> io::Result<()> {
             ),
         ));
     }
+    read_only_files(staging)?;
     let parent = dest.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(parent)?;
     std::fs::rename(staging, dest)?;
     fsync_dir(parent)
+}
+
+/// chmod every regular file under `dir` to drop write bits, keeping
+/// exec (0016 §D3). Symlinks untouched (their target carries perms).
+#[cfg(unix)]
+fn read_only_files(dir: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        let meta = std::fs::symlink_metadata(&path)?;
+        if meta.file_type().is_symlink() {
+            continue;
+        }
+        if meta.is_dir() {
+            read_only_files(&path)?;
+        } else {
+            let mode = meta.permissions().mode();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode & !0o222))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn read_only_files(_dir: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 /// fsync a directory so renames into it are durable.

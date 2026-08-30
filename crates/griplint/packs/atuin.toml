@@ -5,7 +5,10 @@
 tool = "atuin"
 handles = ["config.toml"]
 format = "toml"
-supported = ["18."]
+# tables verified against the 18.20 config surface (docs.atuin.sh pins
+# its docs to 18.20); "v18." because host lockfiles pin tag-style
+# versions ("v18.20.1")
+supported = ["18.", "v18."]
 series = "v0"
 coverage_warning = "key tables are written for a different major version; this module pins {version} — results may be stale"
 
@@ -87,9 +90,12 @@ _rule = { types = ["table"] }
 
 [files."config.toml".rules."daemon"]
 enabled = { types = ["boolean"] }
+autostart = { types = ["boolean"] }
+sync_frequency = { types = ["integer"] }
 socket_path = { types = ["string"] }
 pidfile_path = { types = ["string"] }
-autostart = { types = ["boolean"] }
+systemd_socket = { types = ["boolean"] }
+tcp_port = { types = ["integer"] }
 
 [files."config.toml".rules."pty_proxy"]
 enabled = { types = ["boolean"] }
@@ -99,8 +105,11 @@ filters = { types = ["array"] }
 recency_score_multiplier = { types = ["integer", "float"] }
 frequency_score_multiplier = { types = ["integer", "float"] }
 frecency_score_multiplier = { types = ["integer", "float"] }
-shells = { types = ["table"] }
+# docs.atuin.sh config (18.20) + settings/shells.rs: "auto"/"all" or a
+# list of shell names — choices omitted because the list form is legal.
+shells = { types = ["string", "array"] }
 
+# docs.atuin.sh configuration/config/ (18.20) §theme: the whole table.
 [files."config.toml".rules."theme"]
 name = { types = ["string"] }
 debug = { types = ["boolean"] }
