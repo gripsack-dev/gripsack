@@ -3,6 +3,15 @@ theme = "mocha"
 [editor]
 scrolloff = 5
 line-number = "relative"
+idle-timeout = 250
+completion-timeout = 5
+
+[editor.lsp]
+display-messages = true
+display-inlay-hints = true
+
+[editor.whitespace]
+render = "none"
 
 [editor.cursor-shape]
 insert = "bar"

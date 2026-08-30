@@ -41,6 +41,26 @@ impl AssetTarget {
         }
     }
 
+    /// Fetch-spec placeholders (0016 §D1): `{system}` flake-style,
+    /// `{target}` the rust triple, `{arch}`, `{arch.go}` goreleaser,
+    /// `{os}`. Naming conventions upstream are a swamp — a small
+    /// explicit set, not a pretend-universal one.
+    pub fn placeholders(&self) -> [(&'static str, String); 5] {
+        let (system, arch, arch_go, os) = match self {
+            Self::LinuxX86_64Musl => ("x86_64-linux", "x86_64", "amd64", "linux"),
+            Self::LinuxAarch64Musl => ("aarch64-linux", "aarch64", "arm64", "linux"),
+            Self::MacosX86_64 => ("x86_64-darwin", "x86_64", "amd64", "darwin"),
+            Self::MacosAarch64 => ("aarch64-darwin", "aarch64", "arm64", "darwin"),
+        };
+        [
+            ("{system}", system.into()),
+            ("{target}", self.triple().into()),
+            ("{arch}", arch.into()),
+            ("{arch.go}", arch_go.into()),
+            ("{os}", os.into()),
+        ]
+    }
+
     /// Deno's asset names: glibc builds for Linux — deno ships no
     /// musl build, so a musl HOST is rejected before the download
     /// (frontend provisioning), never here.
@@ -144,6 +164,61 @@ pub const DENO_RELEASE: ToolRelease = ToolRelease {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn placeholder_table_covers_every_convention() {
+        // 0016 §D1's table, pinned per target — the asset-naming swamp
+        // is upstream's, so the mapping is exhaustively testable here
+        let expect: [(AssetTarget, [&str; 5]); 4] = [
+            (
+                AssetTarget::LinuxX86_64Musl,
+                [
+                    "x86_64-linux",
+                    "x86_64-unknown-linux-musl",
+                    "x86_64",
+                    "amd64",
+                    "linux",
+                ],
+            ),
+            (
+                AssetTarget::LinuxAarch64Musl,
+                [
+                    "aarch64-linux",
+                    "aarch64-unknown-linux-musl",
+                    "aarch64",
+                    "arm64",
+                    "linux",
+                ],
+            ),
+            (
+                AssetTarget::MacosX86_64,
+                [
+                    "x86_64-darwin",
+                    "x86_64-apple-darwin",
+                    "x86_64",
+                    "amd64",
+                    "darwin",
+                ],
+            ),
+            (
+                AssetTarget::MacosAarch64,
+                [
+                    "aarch64-darwin",
+                    "aarch64-apple-darwin",
+                    "aarch64",
+                    "arm64",
+                    "darwin",
+                ],
+            ),
+        ];
+        for (target, values) in expect {
+            let placeholders = target.placeholders();
+            assert_eq!(placeholders.len(), values.len());
+            for ((_, got), want) in placeholders.iter().zip(values) {
+                assert_eq!(got, want, "{target:?}");
+            }
+        }
+    }
 
     #[test]
     fn resolves_the_host_asset() {

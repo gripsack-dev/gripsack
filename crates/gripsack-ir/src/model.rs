@@ -112,7 +112,10 @@ pub enum FetchSpec {
     },
     Git {
         url: String,
-        rev: String,
+        /// Absent = float: the core pins the default branch's HEAD into
+        /// the lockfile at resolve time (0016 §D2).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rev: Option<String>,
     },
     File {
         path: String,

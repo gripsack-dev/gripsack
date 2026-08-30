@@ -103,6 +103,29 @@ pub(crate) fn resolve_spec(
                 None,
             ))
         }
+        // rev-less git floats (0016 §D2): the locked pin wins; else
+        // resolve the remote's default-branch HEAD and pin it. The
+        // concrete spec always carries the rev into fetch.
+        F::Git { url, rev } => {
+            let pinned = match (rev.clone(), resolved.and_then(|r| r.version.clone())) {
+                (Some(r), _) => r,
+                (None, Some(locked_rev)) => locked_rev,
+                (None, None) => {
+                    gripsack_fetch::resolve_git_head(url).map_err(|e| ExecError::Step {
+                        module: url.clone(),
+                        step: "resolve".into(),
+                        detail: e.to_string(),
+                    })?
+                }
+            };
+            Ok((
+                F::Git {
+                    url: url.clone(),
+                    rev: Some(pinned),
+                },
+                None,
+            ))
+        }
         other => Ok((inject_locked_sha(other, locked), None)),
     }
 }

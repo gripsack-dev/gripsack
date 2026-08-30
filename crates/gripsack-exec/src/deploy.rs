@@ -220,8 +220,10 @@ pub(crate) fn deploy_entry(
     version: Option<&str>,
 ) -> Result<(String, ReportKind), ExecError> {
     let from = match version {
-        Some(v) => entry.from.replace("{version}", v),
-        None => entry.from.clone(),
+        // install keys substitute {version} (the locked tag) AND the
+        // platform placeholders (0016 §D1) — same surface as verify
+        Some(v) => gripsack_fetch::expand_platform(&entry.from).replace("{version}", v),
+        None => gripsack_fetch::expand_platform(&entry.from),
     };
     let source = resolve_source(store_path, &from, &ctx.repo);
     let dest = expand_home(&entry.to);

@@ -1,4 +1,36 @@
+[flavor]
+dark = "catppuccin-mocha"
+light = "catppuccin-latte"
+
+[app]
+overall = { bg = "#1e1e2e" }
+
 [mgr]
 border_symbol = "│"
 syntect_theme = "~/Downloads/mocha.tmTheme"
 any_style_key_the_theme_system_allows = { fg = "blue", bold = true }
+
+[indicator]
+parent = { fg = "#1e1e2e", bg = "#cdd6f4" }
+padding = { open = "▐", close = "▌" }
+
+[cmp]
+border = { fg = "#cba6f7" }
+icon_file = ""
+icon_folder = ""
+icon_command = ""
+
+[spot]
+border = { fg = "#cba6f7" }
+tbl_cell = { fg = "#cba6f7", reversed = true }
+
+[icon]
+dirs = [
+    { name = ".config", text = "", fg = "#cba6f7" },
+]
+prepend_exts = [
+    { name = "mp3", text = "", fg = "#00afff" },
+]
+conds = [
+    { if = "dir", text = "📁" },
+]

@@ -359,10 +359,16 @@ impl<'a> ModuleRun<'a> {
                 // tells it exactly what to reproduce; for resolved
                 // kinds, the resolution's own metadata
                 url: meta.as_ref().map(|m| m.url.clone()).or(outcome.plugin_url),
+                // git floats pin the resolved rev as the lock's version
+                // (0016 §D2) — the float re-reads it on every apply
                 version: meta
                     .as_ref()
                     .map(|m| m.version.clone())
-                    .or(outcome.plugin_version),
+                    .or(outcome.plugin_version)
+                    .or_else(|| match &concrete {
+                        gripsack_ir::FetchSpec::Git { rev, .. } => rev.clone(),
+                        _ => None,
+                    }),
                 sha256: Some(sha),
                 api_url: meta.and_then(|m| m.api_url.clone()),
             }),
