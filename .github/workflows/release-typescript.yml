@@ -34,6 +34,14 @@ jobs:
           cd typescript
           npm ci
           npm test
+          # dist is the published artifact — "test only" used to publish
+          # an EMPTY package (main/types point at dist; nobody consumed
+          # the registry copy until the dotfiles repo installed it)
+          npm run build
+          # the package must contain the compiled frontend + types
+          tar tzf "$(npm pack --silent)" | grep -q "dist/src/index.js" || {
+            echo "::error::npm tarball has no dist/src/index.js — publish would ship an empty package"
+            exit 1; }
 
       - name: Publish to npm
         env:
