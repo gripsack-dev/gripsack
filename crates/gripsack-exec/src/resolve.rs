@@ -6,6 +6,7 @@ use std::path::Path;
 
 /// pin wins; github_release resolves through the API (0002 §8).
 pub(crate) fn resolve_spec(
+    name: &str,
     spec: &gripsack_ir::FetchSpec,
     locked: Option<&crate::lockfile::LockEntry>,
 ) -> Result<
@@ -42,7 +43,7 @@ pub(crate) fn resolve_spec(
                 version.as_deref(),
             )
             .map_err(|e| ExecError::Step {
-                module: repo.clone(),
+                module: name.to_string(),
                 step: "resolve".into(),
                 detail: e.to_string(),
             })?;
@@ -59,7 +60,7 @@ pub(crate) fn resolve_spec(
             formula, version, ..
         } => {
             let meta = gripsack_fetch::resolve_brew(formula).map_err(|e| ExecError::Step {
-                module: formula.clone(),
+                module: name.to_string(),
                 step: "resolve".into(),
                 detail: e.to_string(),
             })?;
@@ -71,7 +72,7 @@ pub(crate) fn resolve_spec(
                 && meta.version != *want
             {
                 return Err(ExecError::Step {
-                    module: formula.clone(),
+                    module: name.to_string(),
                     step: "resolve".into(),
                     detail: format!(
                         "brew serves {formula} {stable}, but the module pins {want} — \
@@ -112,7 +113,7 @@ pub(crate) fn resolve_spec(
                 (None, Some(locked_rev)) => locked_rev,
                 (None, None) => {
                     gripsack_fetch::resolve_git_head(url).map_err(|e| ExecError::Step {
-                        module: url.clone(),
+                        module: name.to_string(),
                         step: "resolve".into(),
                         detail: e.to_string(),
                     })?

@@ -137,7 +137,26 @@ fn apply_inner(
             ExitCode::FAILURE
         }
         Err(e) => {
-            eprintln!("{}", format!("error: {e}").red().bold());
+            // exec failures get the same span-labeled treatment as
+            // sema errors (0004 §3): step/verify errors name a module,
+            // and the module's span is in the IR
+            let (code, module) = match &e {
+                gripsack_exec::ExecError::Step { module, .. } => {
+                    (gripsack_ir::codes::EXEC_STEP, Some(module.as_str()))
+                }
+                gripsack_exec::ExecError::Verify { module, .. } => {
+                    (gripsack_ir::codes::EXEC_VERIFY, Some(module.as_str()))
+                }
+                _ => (gripsack_ir::codes::EXEC_FETCH, None),
+            };
+            let span = module
+                .and_then(|name| ir.modules.get(name))
+                .and_then(|m| m.span.clone());
+            let mut d = gripsack_ir::Diagnostic::error(code, e.to_string());
+            if let Some(span) = span {
+                d = d.with_label(Some(span), "raised here");
+            }
+            eprintln!("{}", crate::render::render_diagnostics(&[d], palette));
             ExitCode::FAILURE
         }
     }
