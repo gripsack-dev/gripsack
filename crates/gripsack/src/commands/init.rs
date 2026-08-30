@@ -40,7 +40,35 @@ const TEMPLATE: &[(&str, &str)] = &[
         "configs/hello/hello.toml",
         include_str!("../../template/env-repo/configs/hello/hello.toml"),
     ),
+    (
+        "tsconfig.json",
+        include_str!("../../template/env-repo/tsconfig.json"),
+    ),
 ];
+
+/// package.json for the IDE story: the frontend's types as a devDep so
+/// editors give autocomplete + inline errors on module code. Also the
+/// deliberate pin (0013 D3) — the repo's install shadows the embedded
+/// frontend, so it must shadow a COMPATIBLE version: pin to this
+/// grip's major.minor, floating the patch.
+fn package_json() -> String {
+    let version = env!("CARGO_PKG_VERSION")
+        .rsplit_once('.')
+        .map(|(major_minor, _)| major_minor)
+        .unwrap_or(env!("CARGO_PKG_VERSION"));
+    format!(
+        r#"{{
+  "name": "my-env",
+  "private": true,
+  "type": "module",
+  "devDependencies": {{
+    "@gripsack/core": "^{version}",
+    "typescript": "^7"
+  }}
+}}
+"#
+    )
+}
 
 fn hostname() -> String {
     let raw = super::hostname();
@@ -105,6 +133,18 @@ pub fn init(dir: &Path, palette: Palette) -> ExitCode {
         }
         created.push(rel);
     }
+    // package.json is version-dynamic (the pin must be compatible with
+    // this grip), so it's generated, not included
+    let pkg_rel = "package.json".to_string();
+    let pkg_path = dir.join(&pkg_rel);
+    if pkg_path.exists() {
+        eprintln!("  {} {pkg_rel} (exists — kept)", "skip".yellow());
+    } else if let Err(e) = std::fs::write(&pkg_path, package_json()) {
+        eprintln!("grip: cannot write {}: {e}", pkg_path.display());
+        return ExitCode::FAILURE;
+    } else {
+        created.push(pkg_rel);
+    }
     let git = if dir.join(".git").exists() {
         "already a git repository — kept"
     } else {
@@ -121,6 +161,8 @@ pub fn init(dir: &Path, palette: Palette) -> ExitCode {
     for rel in &created {
         let note = match rel.as_str() {
             "env.toml" => "— the environment declaration",
+            "package.json" => "— the IDE story + deliberate pin",
+            "tsconfig.json" => "— editor typechecking",
             r if r.starts_with("hosts/") => "— this machine's entrypoint (tags)",
             "modules/hello.ts" => "— a working first module (config-only)",
             "modules/examples.ts" => "— the feature tour, commented",

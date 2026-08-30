@@ -3,6 +3,28 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.6] — 2026-08-30
+
+### Added
+
+- **npm dependencies in env repos**: module code can import packages
+  from the repo's own `package.json` + `node_modules` (BYONM) —
+  installed by you, evaluated read-only under the same sandbox as
+  module code (no env, no network, no subprocesses, no filesystem
+  outside the repo). A dependency needing an effect fails loudly at
+  eval; that effect belongs in a probe or a fetcher.
+- **`grip init` scaffolds the IDE story**: `package.json` (with
+  `@gripsack/core` pinned to a compatible major.minor — types for your
+  editor and the deliberate pin), `tsconfig.json`, `node_modules/` in
+  `.gitignore`, and a fresh `git init`, cargo-init style.
+
+### Fixed
+
+- The eval spawn applies the pin map via `--import-map` instead of
+  relying on deno.json discovery — a discovered deno.json project
+  would have blocked BYONM forever (and the embedded frontend now
+  carries its `package.json`, which is what flips BYONM on).
+
 ## [0.17.4] — 2026-08-30
 
 The beautiful-errors sweep (0004 §3 pushed through the stack).
