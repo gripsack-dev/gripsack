@@ -3,6 +3,23 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.8] — 2026-08-30
+
+Dead-IR audit: nothing in the schema may exist without an executor.
+
+### Added
+
+- **`run` steps are executable** (0007 §3's middle rung): structured
+  argv/env/cwd as data, no shell interpretation, declared outputs
+  checked after the run. Previously declared-but-refused — the
+  phantom-class the cargo_install removal started.
+- **`{arch.x64}` placeholder** (node-style: x64 / arm64) for upstreams
+  whose assets use the node naming family.
+- Step-form intents execute through the activation adapters — the
+  adapters now read the expanded steps (the single source of truth),
+  so declarative `activate` fields and class-style intents take the
+  same path, exactly once.
+
 ## [0.17.6] — 2026-08-30
 
 ### Added

@@ -43,20 +43,21 @@ impl AssetTarget {
 
     /// Fetch-spec placeholders (0016 §D1): `{system}` flake-style,
     /// `{target}` the rust triple, `{arch}`, `{arch.go}` goreleaser,
-    /// `{os}`. Naming conventions upstream are a swamp — a small
-    /// explicit set, not a pretend-universal one.
-    pub fn placeholders(&self) -> [(&'static str, String); 5] {
-        let (system, arch, arch_go, os) = match self {
-            Self::LinuxX86_64Musl => ("x86_64-linux", "x86_64", "amd64", "linux"),
-            Self::LinuxAarch64Musl => ("aarch64-linux", "aarch64", "arm64", "linux"),
-            Self::MacosX86_64 => ("x86_64-darwin", "x86_64", "amd64", "darwin"),
-            Self::MacosAarch64 => ("aarch64-darwin", "aarch64", "arm64", "darwin"),
+    /// `{arch.x64}` node-style, `{os}`. Naming conventions upstream are
+    /// a swamp — a small explicit set, not a pretend-universal one.
+    pub fn placeholders(&self) -> [(&'static str, String); 6] {
+        let (system, arch, arch_go, arch_x64, os) = match self {
+            Self::LinuxX86_64Musl => ("x86_64-linux", "x86_64", "amd64", "x64", "linux"),
+            Self::LinuxAarch64Musl => ("aarch64-linux", "aarch64", "arm64", "arm64", "linux"),
+            Self::MacosX86_64 => ("x86_64-darwin", "x86_64", "amd64", "x64", "darwin"),
+            Self::MacosAarch64 => ("aarch64-darwin", "aarch64", "arm64", "arm64", "darwin"),
         };
         [
             ("{system}", system.into()),
             ("{target}", self.triple().into()),
             ("{arch}", arch.into()),
             ("{arch.go}", arch_go.into()),
+            ("{arch.x64}", arch_x64.into()),
             ("{os}", os.into()),
         ]
     }
@@ -169,7 +170,7 @@ mod tests {
     fn placeholder_table_covers_every_convention() {
         // 0016 §D1's table, pinned per target — the asset-naming swamp
         // is upstream's, so the mapping is exhaustively testable here
-        let expect: [(AssetTarget, [&str; 5]); 4] = [
+        let expect: [(AssetTarget, [&str; 6]); 4] = [
             (
                 AssetTarget::LinuxX86_64Musl,
                 [
@@ -177,6 +178,7 @@ mod tests {
                     "x86_64-unknown-linux-musl",
                     "x86_64",
                     "amd64",
+                    "x64",
                     "linux",
                 ],
             ),
@@ -186,6 +188,7 @@ mod tests {
                     "aarch64-linux",
                     "aarch64-unknown-linux-musl",
                     "aarch64",
+                    "arm64",
                     "arm64",
                     "linux",
                 ],
@@ -197,6 +200,7 @@ mod tests {
                     "x86_64-apple-darwin",
                     "x86_64",
                     "amd64",
+                    "x64",
                     "darwin",
                 ],
             ),
@@ -206,6 +210,7 @@ mod tests {
                     "aarch64-darwin",
                     "aarch64-apple-darwin",
                     "aarch64",
+                    "arm64",
                     "arm64",
                     "darwin",
                 ],

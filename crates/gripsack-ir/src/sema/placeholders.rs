@@ -11,7 +11,9 @@ use crate::step::StepAction;
 
 /// The placeholder contract (0016 §D1) — validated here, expanded in
 /// gripsack-fetch (`host::AssetTarget::placeholders`).
-const KNOWN: &[&str] = &["version", "system", "target", "arch", "arch.go", "os"];
+const KNOWN: &[&str] = &[
+    "version", "system", "target", "arch", "arch.go", "arch.x64", "os",
+];
 
 /// `{...}` runs in a string, as raw names.
 fn placeholders(text: &str) -> Vec<&str> {

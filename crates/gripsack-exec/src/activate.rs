@@ -7,7 +7,23 @@
 //! are warnings in the report, never apply errors, never rollbacks.
 
 use crate::report::{ReportKind, StepReport};
-use gripsack_ir::{Action, Module, Trigger};
+use gripsack_ir::Action;
+use gripsack_ir::step::{Step, StepAction};
+
+/// Step-form intents from the EXPANDED steps (declarative `activate`
+/// fields expand into these — the IR's module.steps field is empty
+/// for declarative modules, so this MUST be the expand output). No
+/// trigger on the step form: kind routes the adapter phase (caches
+/// post-link, service/custom post-activate).
+fn step_intents(steps: &[Step]) -> Vec<&Action> {
+    steps
+        .iter()
+        .filter_map(|s| match &s.action {
+            StepAction::Intent { action } => Some(action.as_ref()),
+            _ => None,
+        })
+        .collect()
+}
 use std::collections::BTreeMap;
 use tracing::{info, warn};
 
@@ -16,19 +32,19 @@ use tracing::{info, warn};
 /// not three. Runs before PostActivate (trigger order, 0001 §3.8).
 pub(crate) fn run_post_link(
     order: &[String],
-    modules: &BTreeMap<String, Module>,
+    steps_by_module: &BTreeMap<String, Vec<Step>>,
 ) -> Vec<StepReport> {
     let mut want_fonts = false;
     let mut want_desktop = false;
     for name in order {
-        let module = &modules[name.as_str()];
-        for intent in &module.activate {
-            if intent.trigger == Trigger::PostLink {
-                match intent.action {
-                    Action::Fonts => want_fonts = true,
-                    Action::DesktopEntry => want_desktop = true,
-                    _ => {}
-                }
+        // step-form intents — cache kinds are post-link (declarative
+        // activate fields expand into these too, so this is the ONLY
+        // place they execute)
+        for action in step_intents(&steps_by_module[name.as_str()]) {
+            match action {
+                Action::Fonts => want_fonts = true,
+                Action::DesktopEntry => want_desktop = true,
+                _ => {}
             }
         }
     }
@@ -103,17 +119,14 @@ fn refresh_cache(kind: &str, tool: &str, args: &[&str], ok_msg: &str) -> StepRep
 /// graph order. Returns the reports for the CLI.
 pub(crate) fn run_post_activate(
     order: &[String],
-    modules: &BTreeMap<String, Module>,
+    steps_by_module: &BTreeMap<String, Vec<Step>>,
 ) -> Vec<StepReport> {
     let mut reports = Vec::new();
     for name in order {
-        let module = &modules[name.as_str()];
-        for intent in &module.activate {
-            if intent.trigger != Trigger::PostActivate {
-                info!(?intent.action, "intent recorded (runs in a later phase)");
-                continue;
-            }
-            match &intent.action {
+        // step-form intents — service/custom are post-activate
+        // (single execution path, see run_post_link)
+        for action in step_intents(&steps_by_module[name.as_str()]) {
+            match action {
                 Action::Service { name: svc, user } => {
                     reports.push(service(name, svc, *user));
                 }

@@ -108,8 +108,8 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     store::write_manifest(&ctx.home, &generation)?;
     store::flip(&ctx.home, next)?;
     render_env_file(&ctx.home, &generation.modules)?;
-    reports.extend(crate::activate::run_post_link(&order, &ir.modules));
-    reports.extend(crate::activate::run_post_activate(&order, &ir.modules));
+    reports.extend(crate::activate::run_post_link(&order, &steps_by_module));
+    reports.extend(crate::activate::run_post_activate(&order, &steps_by_module));
     if lock_dirty {
         crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
     }
