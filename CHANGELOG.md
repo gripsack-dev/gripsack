@@ -37,6 +37,14 @@ The beautiful-errors sweep (0004 §3 pushed through the stack).
   unpack_in skips them silently otherwise, stranding a partial payload
   (zip extraction was already sanitizing).
 
+## [0.17.5] — 2026-08-30
+
+### Fixed
+
+- E115 path validation now covers explicit-steps modules
+  (`installStep`/`configStep` entries) and verify paths — the
+  declarative-only pass could be routed around by `steps = [...]`.
+
 ## [0.17.3] — 2026-08-30
 
 Platform facts, floating git, and a hardened store
