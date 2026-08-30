@@ -9,7 +9,8 @@
 //!   or `/` (the whole home or the filesystem root as a destination).
 
 use crate::diagnostic::{Diagnostic, codes};
-use crate::model::Ir;
+use crate::model::{Entry, Ir, Verify};
+use crate::step::StepAction;
 
 /// Split on `/`, placeholders scrubbed to an opaque atom FIRST — they
 /// appear inline (`bat-{version}-{target}/bat`), so splitting before
@@ -54,7 +55,19 @@ fn bad_segments(path: &str) -> Option<String> {
 
 pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
     for (name, module) in &ir.modules {
-        for entry in module.install.iter().chain(module.config.iter()) {
+        // declarative fields AND explicit steps carry entries — both
+        // (a steps-style module must not route around the pass)
+        let mut entries: Vec<&Entry> = module.install.iter().chain(module.config.iter()).collect();
+        if let Some(steps) = &module.steps {
+            for step in steps {
+                match &step.action {
+                    StepAction::Install { entries: e }
+                    | StepAction::ConfigDeploy { entries: e } => entries.extend(e.iter()),
+                    _ => {}
+                }
+            }
+        }
+        for entry in entries {
             let span = entry.span.clone().or_else(|| module.span.clone());
             // the empty `from` is the whole-payload form (an owned
             // symlink of the payload root) — nothing to validate
@@ -105,6 +118,37 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                     )
                     .with_label(span, "entry declared here"),
                 );
+            }
+        }
+        // verify paths are payload-relative too — same rules as `from`
+        // (a `../` there reads outside the store path)
+        let mut verify_paths: Vec<&Verify> = Vec::new();
+        if let Some(v) = &module.verify {
+            verify_paths.push(v);
+        }
+        if let Some(steps) = &module.steps {
+            verify_paths.extend(steps.iter().filter_map(|s| s.verify.as_ref()));
+        }
+        for verify in verify_paths {
+            let path = match verify {
+                Verify::BinaryRuns { path, .. } | Verify::FileExists { path } => Some(path),
+                _ => None,
+            };
+            if let Some(path) = path {
+                let bad = if path.starts_with('/') || path.starts_with('~') {
+                    None // E109's shape rule owns that error
+                } else {
+                    bad_segments(path)
+                };
+                if let Some(why) = bad {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            codes::BAD_PATH,
+                            format!("module {name:?}: verify path {path:?} — {why}"),
+                        )
+                        .with_label(module.span.clone(), "verify declared here"),
+                    );
+                }
             }
         }
     }
