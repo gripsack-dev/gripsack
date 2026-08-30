@@ -21,7 +21,7 @@ export interface ModuleSpec {
   /** Optional for dotfiles-only modules (0006 §2 level 1). Mutually
    *  exclusive with `steps` (0007 §1). */
   fetch?: Fetch;
-  build?: { kind: "none" | "cargo_install" | "make" } | { kind: "custom_shell"; script: string };
+  build?: { kind: "none" } | { kind: "custom_shell"; script: string };
   install?: Record<string, Dest>;
   config?: Record<string, Dest>;
   depends?: Dependency[];

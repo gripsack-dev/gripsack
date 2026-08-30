@@ -54,6 +54,11 @@ The unit of description. A module declares:
 - **sources** — typed fetchers: `github_release`, `tarball`, `git`, `cargo`,
   `apt`/`dnf` (later), … Platform-conditional sources are allowed (see §7).
 - **build** — `none | cargo_install | make | cmake | custom_shell` (flagged).
+  (Amended 0.17.7: `cargo_install`/`make`/`cmake` were removed from the
+  IR before ever being executable — declared-but-unexecutable kinds are
+  a phantom contract. `custom_shell` plus an ephemeral toolchain module
+  covers the same ground; reusable build logic belongs to builder
+  plugins (0002 §7) when reality demands them.)
 - **install** — mapping of produced paths → destinations, ownership mode per
   path.
 - **config** — files/templates → destinations, ownership mode per file.

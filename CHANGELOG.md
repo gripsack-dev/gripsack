@@ -25,6 +25,18 @@ User-visible changes per release. Design archaeology lives in
   would have blocked BYONM forever (and the embedded frontend now
   carries its `package.json`, which is what flips BYONM on).
 
+## [0.17.7] — 2026-08-30
+
+### Removed
+
+- **`cargo_install` and `make` build kinds** — declared but never
+  executable, which is a phantom contract (valid IR the core refuses
+  at apply). The IR now carries only what it executes: `custom_shell`
+  plus an ephemeral toolchain module covers the same ground;
+  `cargo install --locked` in a custom step with declared outputs is
+  the documented rust-build form. Reusable build logic belongs to
+  builder plugins when reality demands it (0001 §3.1 amended).
+
 ## [0.17.4] — 2026-08-30
 
 The beautiful-errors sweep (0004 §3 pushed through the stack).
