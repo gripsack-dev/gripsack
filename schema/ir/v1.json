@@ -139,8 +139,6 @@
         "kind": {
           "enum": [
             "none",
-            "cargo_install",
-            "make",
             "custom_shell"
           ]
         },

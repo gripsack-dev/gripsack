@@ -150,12 +150,8 @@ pub enum FetchSpec {
 pub enum Build {
     #[default]
     None,
-    CargoInstall,
-    Make,
     /// Escape hatch — flagged, busts fine-grained caching (0001 §2).
-    CustomShell {
-        script: String,
-    },
+    CustomShell { script: String },
 }
 
 /// A store path mapped to a destination.
