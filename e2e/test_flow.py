@@ -2160,6 +2160,51 @@ def test_adopt_rollback_keeps_post_adopt_user_edits(sandbox):
     assert dest.read_text() == 'theme = "mine now"\n'
 
 
+def test_run_steps_execute_with_declared_outputs(sandbox):
+    """run steps (0007 §3 rung 2): structured argv, no shell — declared
+    outputs are the contract and a missing one is a step error."""
+    payload = make_tarball(sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fetchStep, installStep, module, runStep, symlink, tarball }} from "@gripsack/core";
+
+export default module("hello", {{
+  steps: [
+    fetchStep(tarball("file://{payload}")),
+    runStep(["cp", "bin/hello", "bin/hello-copy"], "copy", {{ outputs: ["bin/hello-copy"] }}),
+    installStep({{ "bin/hello-copy": symlink("~/.local/bin/hello-copy") }}),
+  ],
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".local/bin/hello-copy").is_symlink()
+
+
+def test_step_form_intents_run_through_adapters(sandbox):
+    """Step-form intents (class-style) execute via the activation
+    adapters — a custom hook's post-activate script really runs."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { customHook, module, symlink } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.txt": symlink("~/.config/demo/a.txt") },
+  activate: [customHook("echo post-activate > ~/hook-ran")],
+});
+""",
+    )
+    confdir = repo / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.txt").write_text("a\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / "hook-ran").read_text() == "post-activate\n"
+
+
 def test_third_party_npm_deps_resolve_in_module_code(sandbox):
     """Repo npm dependencies work in module code: the eval sandbox is
     read-only within the repo (node_modules included), and the pin map

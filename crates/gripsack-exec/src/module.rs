@@ -276,15 +276,12 @@ impl<'a> ModuleRun<'a> {
                         ),
                     });
                 }
-                StepAction::Run { .. } => {
-                    return Err(ExecError::Step {
-                        module: self.name.to_string(),
-                        step: step.id.clone(),
-                        detail: "run steps are not executable by this core yet — \
-                                 use shell_step (the last rung) for now"
-                            .into(),
-                    });
-                }
+                StepAction::Run {
+                    argv,
+                    env,
+                    cwd,
+                    outputs,
+                } => self.run_step(step, argv, env, cwd.as_deref(), outputs)?,
                 _ => {} // Install/ConfigDeploy/Intent/Verify belong to other phases
             }
         }
@@ -393,6 +390,53 @@ impl<'a> ModuleRun<'a> {
         Ok(())
     }
 
+    /// A structured action (0007 §3 rung 2): spawn argv in the staging
+    /// dir — no shell, no quoting bugs — with declared env overrides;
+    /// declared outputs are the contract, checked after the run.
+    fn run_step(
+        &mut self,
+        step: &Step,
+        argv: &[String],
+        env: &std::collections::BTreeMap<String, String>,
+        cwd: Option<&str>,
+        outputs: &[String],
+    ) -> Result<(), ExecError> {
+        progress(self.ctx, self.name, "running");
+        let fail = |detail: String| ExecError::Step {
+            module: self.name.to_string(),
+            step: step.id.clone(),
+            detail,
+        };
+        let (program, args) = argv
+            .split_first()
+            .ok_or_else(|| fail("run step needs argv (empty array)".into()))?;
+        let dir = self
+            .staging
+            .clone()
+            .unwrap_or_else(|| fresh_staging(self.name));
+        std::fs::create_dir_all(&dir)?;
+        let workdir = cwd.map(|c| dir.join(c)).unwrap_or_else(|| dir.clone());
+        let status = std::process::Command::new(program)
+            .args(args)
+            .current_dir(&workdir)
+            .envs(env)
+            .status()
+            .map_err(|e| fail(format!("cannot spawn {program}: {e}")))?;
+        if !status.success() {
+            return Err(fail(format!("{program} exited {status}")));
+        }
+        // declared outputs are the contract (0008 §4): run produced
+        // exactly these, no more guessing
+        for output in outputs {
+            if !dir.join(output).exists() {
+                return Err(fail(format!(
+                    "declared output {output:?} missing after {program} ran"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn build_step(&mut self, step: &Step, script: &str) -> Result<(), ExecError> {
         progress(self.ctx, self.name, "building");
         let dir = self
@@ -497,9 +541,10 @@ impl<'a> ModuleRun<'a> {
                     }
                 }
                 StepAction::Intent { action } => {
-                    // Activation adapters are not yet executed (0001 §3.8); declared
-                    // intents are recorded, not yet executed.
-                    info!(?action, "intent declared (not yet executed)");
+                    // step-form intents run through the activation
+                    // adapters after the flip (routed by kind —
+                    // activate.rs step_intents)
+                    info!(?action, "intent declared (runs via activation adapters)");
                 }
                 _ => {}
             }
