@@ -50,6 +50,10 @@ pub(crate) fn fetch(url: &str, rev: &str, dest: &Path) -> Result<String, FetchEr
     git(&["remote", "add", "origin", url])?;
     git(&["fetch", "--quiet", "--depth", "1", "origin", rev])?;
     git(&["checkout", "--quiet", "FETCH_HEAD"])?;
+    // the checkout is the payload; .git is fetch machinery — pack
+    // layout differs per fetch (non-deterministic hash, every apply
+    // re-pinned) and it must never reach the store
+    std::fs::remove_dir_all(dest.join(".git"))?;
     // the rev is the pin; the tree hash is the payload identity
     Ok(gripsack_store::canonical_tree_hash(dest)?)
 }
@@ -95,7 +99,7 @@ mod tests {
         let hash = fetch(
             &FetchSpec::Git {
                 url: remote.to_string_lossy().into_owned(),
-                rev: Some(rev),
+                rev: Some(rev.clone()),
             },
             &dest,
         )
@@ -105,5 +109,20 @@ mod tests {
             "v1\n"
         );
         assert!(!hash.is_empty());
+
+        // the checkout is the payload: no .git reaches the store, and
+        // the same rev hashes identically on every fetch (a mismatch
+        // per fetch made every apply fail its pin check)
+        assert!(!dest.join(".git").exists());
+        let dest2 = dir.path().join("out2");
+        let hash2 = fetch(
+            &FetchSpec::Git {
+                url: remote.to_string_lossy().into_owned(),
+                rev: Some(rev),
+            },
+            &dest2,
+        )
+        .unwrap();
+        assert_eq!(hash, hash2, "same rev must hash identically");
     }
 }
