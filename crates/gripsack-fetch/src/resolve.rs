@@ -194,6 +194,91 @@ pub fn resolve_self_release() -> Result<SelfRelease, ResolveError> {
         Ok(b) => b.trim_end_matches('/').to_string(),
         Err(_) => "https://api.github.com".to_string(),
     };
+    // The unauthenticated API rate-limits by source IP — shared-egress
+    // NATs get 403 while plain release downloads over the same
+    // connection work. Fall back to the web tier (releases.atom, no
+    // API involved) when the API fails. Never under the test seam: a
+    // loopback fixture's error is the assertion, not a rate limit.
+    if base == "https://api.github.com" {
+        return match self_release_via_api(target, &base) {
+            Ok(r) => Ok(r),
+            Err(api_err) => self_release_via_atom(target).map_err(|_| api_err),
+        };
+    }
+    self_release_via_api(target, &base)
+}
+
+/// The web-tier fallback: `releases.atom` lists recent tags
+/// newest-first and is not rate-limited like the API; the tag names
+/// the version, and plain `releases/download` URLs need no API.
+fn self_release_via_atom(target: crate::host::AssetTarget) -> Result<SelfRelease, ResolveError> {
+    let feed = crate::http::get("https://github.com/gripsack-dev/gripsack/releases.atom")
+        .set("User-Agent", "gripsack")
+        .call()?
+        .into_string()?;
+    let tag = core_tag_from_atom(&feed).ok_or_else(|| ResolveError::NoAsset {
+        repo: "gripsack-dev/gripsack".into(),
+        asset: "a core-v* release in releases.atom".into(),
+        available: vec![],
+    })?;
+    let version = tag.trim_start_matches("core-v").to_string();
+    let asset = format!("gripsack-{version}-{}.tar.gz", target.triple());
+    let url = format!("https://github.com/gripsack-dev/gripsack/releases/download/{tag}/{asset}");
+    let sha_text =
+        crate::fetch::tarball::read_url_authed(&format!("{url}.sha256"), None).map_err(|e| {
+            ResolveError::NoAsset {
+                repo: "gripsack-dev/gripsack".into(),
+                asset: format!("readable sha256 sidecar ({e})"),
+                available: vec![],
+            }
+        })?;
+    let sha256 = String::from_utf8_lossy(&sha_text)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(ResolveError::NoAsset {
+            repo: "gripsack-dev/gripsack".into(),
+            asset: format!("a 64-hex sha256 in the sidecar (got {sha256:?})"),
+            available: vec![],
+        });
+    }
+    Ok(SelfRelease {
+        version,
+        url,
+        api_url: None,
+        sha256,
+    })
+}
+
+/// The newest core-v* tag in a releases.atom feed (py/ts tags ship
+/// alongside, so the first core-v match — the feed is newest-first —
+/// is the answer, never /releases/latest).
+fn core_tag_from_atom(feed: &str) -> Option<String> {
+    let mut rest = feed;
+    while let Some(i) = rest.find("releases/tag/") {
+        rest = &rest[i + "releases/tag/".len()..];
+        let tag: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+            .collect();
+        if let Some(version) = tag.strip_prefix("core-v")
+            && !version.is_empty()
+            && version
+                .split('.')
+                .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+        {
+            return Some(tag);
+        }
+    }
+    None
+}
+
+fn self_release_via_api(
+    target: crate::host::AssetTarget,
+    base: &str,
+) -> Result<SelfRelease, ResolveError> {
     // three tag types (core/py/ts) per version in creation order —
     // page deep enough that core-v* never falls off
     let url = format!("{base}/repos/gripsack-dev/gripsack/releases?per_page=100");
@@ -499,5 +584,30 @@ mod base_url_tests {
             "https://ghe.example.com/api/v3"
         );
         assert_eq!(normalize_base(None), "https://api.github.com");
+    }
+}
+
+#[cfg(test)]
+mod atom_tests {
+    use super::core_tag_from_atom;
+
+    #[test]
+    fn picks_the_newest_core_tag_among_mixed_namespaces() {
+        let feed = r#"<feed>
+  <entry><id>tag:github.com,2008:Repository/1/ts-v0.17.9</id>
+    <link href="https://github.com/gripsack-dev/gripsack/releases/tag/ts-v0.17.9"/></entry>
+  <entry><id>tag:github.com,2008:Repository/1/core-v0.17.9</id>
+    <link href="https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.17.9"/></entry>
+  <entry><id>tag:github.com,2008:Repository/1/core-v0.17.8</id>
+    <link href="https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.17.8"/></entry>
+</feed>"#;
+        assert_eq!(core_tag_from_atom(feed).as_deref(), Some("core-v0.17.9"));
+    }
+
+    #[test]
+    fn no_core_tag_is_none_and_malformed_versions_skip() {
+        let feed = r#"<entry><link href="/gripsack-dev/gripsack/releases/tag/ts-v0.17.9"/></entry>
+<entry><link href="/gripsack-dev/gripsack/releases/tag/core-vNEXT"/></entry>"#;
+        assert_eq!(core_tag_from_atom(feed), None);
     }
 }
