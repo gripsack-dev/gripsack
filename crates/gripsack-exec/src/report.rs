@@ -74,6 +74,9 @@ pub enum UpdateStatus {
         old: Option<String>,
         new: String,
     },
-    /// Resolution for this fetch kind is not supported yet (github_release, git).
-    Skipped,
+    /// Resolution is not applicable — the reason says why (an inline
+    /// git rev IS the pin; anything else the core can't resolve yet).
+    Skipped {
+        reason: &'static str,
+    },
 }

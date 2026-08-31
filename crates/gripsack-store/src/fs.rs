@@ -59,8 +59,18 @@ pub fn symlink_replace(link: &Path, target: &Path) -> io::Result<()> {
             .unwrap_or_default()
     ));
     let _ = std::fs::remove_file(&tmp);
-    std::os::unix::fs::symlink(target, &tmp)?;
-    std::fs::rename(&tmp, link)?;
+    std::os::unix::fs::symlink(target, &tmp).map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!("symlink {} -> {}: {e}", tmp.display(), target.display()),
+        )
+    })?;
+    std::fs::rename(&tmp, link).map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!("link {} -> {}: {e}", link.display(), target.display()),
+        )
+    })?;
     fsync_dir(parent)
 }
 
@@ -83,8 +93,41 @@ pub fn publish_dir(staging: &Path, dest: &Path) -> io::Result<()> {
     read_only_files(staging)?;
     let parent = dest.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(parent)?;
-    std::fs::rename(staging, dest)?;
+    if let Err(e) = std::fs::rename(staging, dest) {
+        // staging lives in $TMPDIR, the store under $GRIPSACK_HOME —
+        // on containers /tmp is routinely a tmpfs, so EXDEV is a
+        // layout fact, not a user error: fall back to a copy
+        if e.kind() != io::ErrorKind::CrossesDevices {
+            return Err(io::Error::new(
+                e.kind(),
+                format!("publish {} -> {}: {e}", staging.display(), dest.display()),
+            ));
+        }
+        copy_dir(staging, dest)?;
+        let _ = std::fs::remove_dir_all(staging);
+    }
     fsync_dir(parent)
+}
+
+/// Recursively copy a directory tree: directories, regular files, and
+/// symlinks (recreated, never followed). The destination is created —
+/// or merged into — so a repo overlay can land on a fetched payload.
+pub fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir(&entry.path(), &to)?;
+        } else if ty.is_symlink() {
+            let target = std::fs::read_link(entry.path())?;
+            std::os::unix::fs::symlink(target, &to)?;
+        } else {
+            std::fs::copy(entry.path(), &to)?;
+        }
+    }
+    Ok(())
 }
 
 /// chmod every regular file under `dir` to drop write bits, keeping
@@ -167,5 +210,24 @@ mod tests {
         std::fs::create_dir_all(&staging2).unwrap();
         let err = publish_dir(&staging2, &dest).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+    }
+
+    #[test]
+    fn copy_dir_preserves_symlinks_and_merges() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("sub/f"), b"bytes").unwrap();
+        std::os::unix::fs::symlink("f", src.join("sub/link")).unwrap();
+        // merge: the destination already holds a fetched payload dir
+        let dst = dir.path().join("dst");
+        std::fs::create_dir_all(dst.join("sub")).unwrap();
+        std::fs::write(dst.join("sub/payload"), b"fetched").unwrap();
+        copy_dir(&src, &dst).unwrap();
+        assert_eq!(std::fs::read(dst.join("sub/f")).unwrap(), b"bytes");
+        assert_eq!(std::fs::read(dst.join("sub/payload")).unwrap(), b"fetched");
+        let link = dst.join("sub/link");
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_link(link).unwrap(), Path::new("f"));
     }
 }

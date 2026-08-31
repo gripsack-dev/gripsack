@@ -3,6 +3,43 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.9] — 2026-08-31
+
+Hardening from a real two-host migration report.
+
+### Fixed
+
+- **A fetched apply no longer drops pin metadata from the lockfile.**
+  Re-fetching against a locked pin rewrote the entry with only the
+  content hash, losing `version`, `url`, and `api_url` — the next
+  warm-store deploy then failed with an unexpanded `{version}` in
+  install keys, and a cold store had to re-resolve through the
+  registry API (breaking private GitHub Enterprise mirrors behind
+  shared egress).
+- **Store publish falls back to a copy across filesystems.** Staging
+  lives in `$TMPDIR`; on containers that's routinely a tmpfs while
+  the store sits on the overlay, and the hard rename died with a bare
+  `Cross-device link`. Publish now copies when rename returns EXDEV,
+  and store io errors name both paths.
+- **Deploy refuses destinations that resolve inside the env repo.** A
+  symlinked destination directory (e.g. a leftover from another
+  provisioner) used to land the write inside the checkout — the
+  module overwrote its own source.
+- **A config tree that gains a file re-pins instead of going stale.**
+  The lockfile records the repo overlay hash (`repo256`) alongside
+  the tree hash: presence checks compare it, `grip update` reports
+  the move as a bump, and deploy no longer falls back to linking the
+  repo checkout for sources the store never published (0014 §4).
+- **`grip update` resolve errors name the module**, not the registry
+  string; pinned git modules report `skipped (pinned by rev)` instead
+  of "resolution not supported yet".
+- **helix linter pack** knows `[editor.inline-diagnostics]` (24.07+).
+
+### Added
+
+- Probe docs say to gate on a stable system path, never the tool's
+  own installed presence (which oscillates).
+
 ## [0.17.8] — 2026-08-30
 
 Dead-IR audit: nothing in the schema may exist without an executor.

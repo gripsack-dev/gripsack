@@ -175,6 +175,29 @@ fn identity_projection(module: &gripsack_ir::Module) -> gripsack_ir::Module {
     projected
 }
 
+/// The repo-overlay half of a module's content identity: the canonical
+/// hash of the install/config `from`s that exist in the repo (a
+/// payload `from` never does). None when nothing is repo-sourced.
+/// Compared against the lock's repo256 by presence checks and
+/// `grip update` — a config tree that gains a file moves this without
+/// moving the transport pin.
+pub(crate) fn repo_overlay(
+    module: &gripsack_ir::Module,
+    repo: &Path,
+) -> Result<Option<String>, ExecError> {
+    let froms: Vec<String> = module
+        .install
+        .iter()
+        .chain(module.config.iter())
+        .map(|e| e.from.clone())
+        .filter(|f| repo.join(f).exists())
+        .collect();
+    if froms.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(store::canonical_overlay_hash(repo, &froms)?))
+}
+
 pub(crate) fn module_input(
     module: &gripsack_ir::Module,
     repo: &Path,

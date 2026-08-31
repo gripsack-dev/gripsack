@@ -1,0 +1,18 @@
+[
+  {
+    "code": "A01",
+    "severity": "error",
+    "message": "unknown key [editor.inline-diagnostics] 'cursor-lin'",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 3,
+          "col": 1
+        },
+        "note": ""
+      }
+    ],
+    "help": "did you mean 'cursor-line'?"
+  }
+]

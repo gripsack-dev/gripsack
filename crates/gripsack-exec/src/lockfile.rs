@@ -27,6 +27,13 @@ pub struct Resolved {
     /// transport hash of the raw download.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree256: Option<String>,
+    /// Canonical overlay hash of the repo-sourced `from` files: a
+    /// config tree that gains a file moves this WITHOUT moving the
+    /// transport pin — presence checks and `grip update` compare it so
+    /// a stale tree256 is never trusted. None when no entry's `from`
+    /// exists in the repo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo256: Option<String>,
     /// The registry's API asset endpoint — the authenticated download
     /// path for private releases (github releases).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -83,6 +90,7 @@ mod tests {
                     version: None,
                     sha256: Some("ab".repeat(32)),
                     tree256: None,
+                    repo256: Some("cd".repeat(32)),
                     api_url: None,
                 }),
             },

@@ -15,3 +15,6 @@ render = "none"
 
 [editor.cursor-shape]
 insert = "bar"
+
+[editor.inline-diagnostics]
+cursor-line = "warning"

@@ -18,7 +18,13 @@ export interface ProbeRequest {
   span?: Span;
 }
 
-/** What `defineEnv` receives via `ctx.probe`. */
+/** What `defineEnv` receives via `ctx.probe`.
+ *
+ * Probe a STABLE reference, never the tool's own installed presence:
+ * `!probe.executable("node") && nodeModule` oscillates — installing
+ * the tool makes the next eval drop the module. Probe the specific
+ * system path you must not overwrite instead
+ * (`probe.file_exists("/opt/vendor/bin/node")`). */
 export interface ProbeBuilder {
   /** Is `<name>` an executable on PATH? */
   executable(name: string): boolean;

@@ -39,6 +39,12 @@ absolute-path stat) and re-runs eval with the answers bound — a
 fixpoint, capped at 4 rounds. Probe results re-evaluate every run:
 plug in a GPU and the next plan changes with zero repo changes.
 
+Probe a *stable* reference, never the tool's own installed presence —
+`!ctx.probe.executable("node") && node` oscillates, because installing
+the tool makes the next eval drop the module. Gate on the specific
+system path you must not overwrite:
+`!ctx.probe.file_exists("/opt/vendor/bin/node") && node`.
+
 ## Evaluation
 
 The core spawns the embedded driver under Deno with deny-by-default

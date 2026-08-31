@@ -124,6 +124,15 @@ legible.
   non-goal, §3.)
 - **`grip plan`** can distinguish "content already in store" from
   "will fetch" precisely, per module, before any network.
+- **The repo overlay is part of the pin** (0.17.9): `tree256` names
+  the MERGED staging — payload plus the repo's config files — so a
+  config tree that gains a file moves nothing the transport hash can
+  see. The lock records `resolved.repo256` (the canonical overlay
+  hash of the repo-sourced `from`s); presence checks distrust a
+  `tree256` whose `repo256` doesn't match the checkout, and
+  `grip update` reports the move as a bump. Deploy never falls back
+  to the repo checkout for a source the store doesn't hold — a store
+  miss on a declared source is an integrity failure.
 - **GC and generations** are untouched: generations reference store
   paths regardless of addressing regime.
 - **Store sharing/sync (future)** may replicate content-addressed paths
