@@ -104,7 +104,12 @@ pub fn update_host(src: &str, name: &str) -> Option<String> {
 
 fn insert_module_entry(src: &str, ident: &str) -> Option<String> {
     let mut lines: Vec<String> = src.lines().map(str::to_string).collect();
-    let pos = lines.iter().position(|l| l.contains("modules: ["))?;
+    // the LAST match — the init template documents a `modules: [`
+    // example inside its header comment; the first match inserts into
+    // the comment and the dangling comma breaks eval
+    let pos = lines
+        .iter()
+        .rposition(|l| l.contains("modules: [") && !l.trim_start().starts_with("//"))?;
     if lines[pos].contains(']') {
         // single-line array — insert before the closing bracket
         let close = lines[pos].rfind(']')?;
@@ -197,6 +202,21 @@ mod tests {
             out.contains("modules: [hello, helix]") || out.contains("helix, ]"),
             "{out}"
         );
+    }
+
+    #[test]
+    fn update_host_ignores_the_template_header_comment() {
+        // the init template documents a `modules: [` example inside
+        // its // header comment — inserting there broke eval with a
+        // dangling comma (the comment's example swallowed the import)
+        let template = include_str!("../../../template/env-repo/hosts/myhost.ts");
+        let out = update_host(template, "zed").unwrap();
+        assert!(
+            out.contains("modules: [hello, zed]"),
+            "entry lands in the real array, not the comment:\n{out}"
+        );
+        // and the comment example is untouched
+        assert!(out.contains("//       hello,"));
     }
 
     #[test]
