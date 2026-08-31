@@ -2408,3 +2408,122 @@ def test_self_update_already_current(sandbox, monkeypatch):
     assert out.returncode == 0, out.stderr
     assert "is current" in out.stdout
     server.shutdown()
+
+
+def test_config_tree_gain_repins_and_deploys_from_store(sandbox):
+    """A config tree that gains a file under an unmoved transport pin:
+    `grip update` moves the pin, a warm-store apply deploys the new
+    file FROM THE STORE (never a link into the repo checkout), and a
+    cold store re-pins instead of dying on the stale tree hash."""
+    payload = make_tarball(sandbox / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\n"})
+    confdir = sandbox / "myenv" / "configs" / "tool"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink, tree }} from "@gripsack/core";
+
+export default module("tool", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/tool": symlink("~/.local/bin/tool") }},
+  config: {{ ...tree("configs/tool", "~/.config/tool", "owned") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    store = sandbox / ".local/share/gripsack/store"
+    deployed_a = sandbox / ".config" / "tool" / "a.conf"
+    assert deployed_a.is_symlink()
+    assert str(deployed_a.readlink()).startswith(str(store))
+
+    # the tree gains a file: update reports the move, apply deploys it
+    (confdir / "b.conf").write_text("b\n")
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "bumped" in out.stdout, out.stdout
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    deployed_b = sandbox / ".config" / "tool" / "b.conf"
+    assert deployed_b.is_symlink()
+    target = str(deployed_b.readlink())
+    assert target.startswith(str(store)), f"new file deployed from the repo checkout: {target}"
+
+    # cold store: the pin moved, so this re-pins instead of failing
+    shutil.rmtree(store)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".config" / "tool" / "b.conf").exists()
+
+
+def test_deploy_refuses_destination_resolving_into_repo(sandbox):
+    """A destination whose ancestor is a symlink into the env repo
+    turns a deploy into a delete of the module's own source — refuse."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("scripts", {
+  config: { ".claude/scripts/deploy.sh": trackedCopy("~/.claude-config/scripts/deploy.sh") },
+});
+""",
+    )
+    source = repo / ".claude" / "scripts"
+    source.mkdir(parents=True)
+    (source / "deploy.sh").write_text("#!/bin/sh\necho real\n")
+    (sandbox / ".claude-config").symlink_to(repo / ".claude")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, out.stdout
+    assert "resolves inside the env repo" in out.stderr
+    # the module's source survived untouched
+    assert (source / "deploy.sh").read_text() == "#!/bin/sh\necho real\n"
+
+
+def test_pinned_git_lock_survives_apply_and_update_says_pinned(sandbox):
+    """A git rev IS the pin: apply records it as the lock's version
+    (and keeps it across re-applies), and `grip update` says so."""
+    remote = sandbox / "remote"
+    remote.mkdir()
+    env = dict(
+        GIT_AUTHOR_NAME="t",
+        GIT_AUTHOR_EMAIL="t@t",
+        GIT_COMMITTER_NAME="t",
+        GIT_COMMITTER_EMAIL="t@t",
+        PATH="/usr/bin:/bin:/usr/local/bin",
+        HOME=str(sandbox),
+    )
+    subprocess.run(["git", "init", "--quiet"], cwd=remote, env=env, check=True)
+    (remote / "bin.txt").write_text("payload\n")
+    subprocess.run(["git", "add", "."], cwd=remote, env=env, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "init"], cwd=remote, env=env, check=True)
+    rev = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=remote, env=env, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ git, module, symlink }} from "@gripsack/core";
+
+export default module("tpm", {{
+  fetch: git("file://{remote}", "{rev}"),
+  install: {{ "bin.txt": symlink("~/.local/bin/tpm") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    lock = repo / "locks" / "testhost.lock"
+    assert f'"version": "{rev}"' in lock.read_text()
+    # a warm re-apply must not drop the pin
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert f'"version": "{rev}"' in lock.read_text()
+
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "pinned by rev" in out.stdout
+    assert "not supported" not in out.stdout
