@@ -6,21 +6,36 @@ Set Width 1800
 Set Height 1120
 Set Theme "Catppuccin Mocha"
 
+Type@40ms "# the fixture env again - applied once"
+Enter
+Sleep 3s
 Type@40ms "sh /vhs/demos/demo_setup.sh && cd /tmp/myenv"
 Enter
 Sleep 4s
 Type@40ms "grip apply --host demo"
 Enter
 Sleep 4s
+Type@40ms "# edit a config and apply - generation 2"
+Enter
+Sleep 2s
 Type@40ms "sed -i 's/catppuccin-mocha/nord/' editor.toml && grip apply --host demo"
 Enter
 Sleep 4s
+Type@40ms "# the deployed file has the new value"
+Enter
+Sleep 2s
 Type@40ms "cat ~/.config/editor/editor.toml"
 Enter
 Sleep 4s
+Type@40ms "# roll back one generation"
+Enter
+Sleep 2s
 Type@40ms "grip rollback"
 Enter
 Sleep 4s
+Type@40ms "# the old value is back"
+Enter
+Sleep 2s
 Type@40ms "cat ~/.config/editor/editor.toml"
 Enter
 Sleep 4s
