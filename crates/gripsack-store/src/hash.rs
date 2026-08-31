@@ -59,6 +59,32 @@ pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<
     let mut entries: Vec<(String, String)> = Vec::new();
     for from in froms {
         let source = repo.join(from);
+        if source.is_dir() && !source.symlink_metadata()?.file_type().is_symlink() {
+            // a directory `from` stages recursively at publish — hash
+            // the same closure here or plan-time and publish-time
+            // identity diverge
+            let mut ancestor = Path::new(from.as_str()).parent();
+            while let Some(dir) = ancestor {
+                if dir.as_os_str().is_empty() {
+                    break;
+                }
+                entries.push((dir.to_string_lossy().into_owned(), dir_hash.clone()));
+                ancestor = dir.parent();
+            }
+            entries.push((from.clone(), dir_hash.clone()));
+            let mut rels = Vec::new();
+            collect_entries(&source, &source, &mut rels)?;
+            for rel in rels {
+                let rel_path = format!("{from}/{rel}");
+                let hash = if source.join(&rel).is_dir() && !source.join(&rel).is_symlink() {
+                    dir_hash.clone()
+                } else {
+                    canonical_file_hash(&source.join(&rel))?
+                };
+                entries.push((rel_path, hash));
+            }
+            continue;
+        }
         if !source.is_file() {
             continue;
         }
@@ -188,6 +214,26 @@ mod tests {
         // a content edit moves the overlay hash
         std::fs::write(repo.join("configs/demo/a.toml"), b"b\n").unwrap();
         assert_ne!(canonical_overlay_hash(&repo, &froms).unwrap(), overlay);
+    }
+
+    #[test]
+    fn overlay_hash_of_dir_source_matches_staged_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(repo.join("configs/app/nested")).unwrap();
+        std::fs::write(repo.join("configs/app/a.toml"), b"a\n").unwrap();
+        std::fs::write(repo.join("configs/app/nested/b.toml"), b"b\n").unwrap();
+        std::os::unix::fs::symlink("a.toml", repo.join("configs/app/link")).unwrap();
+        let froms = vec!["configs/app".to_string()];
+        let overlay = canonical_overlay_hash(&repo, &froms).unwrap();
+        // what publish stages: the dir copied under its from path
+        let staged = dir.path().join("staged");
+        crate::fs::copy_dir(&repo.join("configs/app"), &staged.join("configs/app")).unwrap();
+        assert_eq!(
+            overlay,
+            canonical_tree_hash(&staged).unwrap(),
+            "plan-time overlay and staged tree must agree or the pinned tree check false-fires"
+        );
     }
 
     #[test]

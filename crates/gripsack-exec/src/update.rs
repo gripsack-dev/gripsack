@@ -24,13 +24,23 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
             .get(name.as_str())
             .and_then(|e| e.resolved.as_ref())
             .and_then(|r| r.sha256.clone());
+        // the repo-overlay half of the pin — a config tree that gains
+        // a file moves this WITHOUT moving any transport hash, and the
+        // tree256 it invalidates must be re-pinned at the next apply
+        let repo256 = crate::resolve::repo_overlay(module, &ctx.repo)?;
+        let old_repo = lock
+            .modules
+            .get(name.as_str())
+            .and_then(|e| e.resolved.as_ref())
+            .and_then(|r| r.repo256.clone());
+        let repo_moved = old_repo != repo256;
         match spec {
             gripsack_ir::FetchSpec::File { .. } | gripsack_ir::FetchSpec::Tarball { .. } => {
                 // resolve the payload hash without deploying
                 let sha = gripsack_fetch::payload_hash(spec)
                     .map_err(ExecError::Fetch)?
                     .expect("file/tarball always hash");
-                if old.as_deref() == Some(sha.as_str()) {
+                if old.as_deref() == Some(sha.as_str()) && !repo_moved {
                     reports.push(UpdateReport {
                         module: name.clone(),
                         status: UpdateStatus::Unchanged,
@@ -49,6 +59,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                                 // it — deferred identity (0014 §3)
                                 tree256: None,
                                 api_url: None,
+                                repo256: repo256.clone(),
                             }),
                         },
                     );
@@ -72,7 +83,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                     version.as_deref(),
                 )
                 .map_err(|e| ExecError::Step {
-                    module: repo.clone(),
+                    module: name.clone(),
                     step: "resolve".into(),
                     detail: e.to_string(),
                 })?;
@@ -93,12 +104,22 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                     .get(name.as_str())
                     .and_then(|e| e.resolved.as_ref())
                     .and_then(|r| r.sha256.clone());
-                if old_sha.as_deref() == Some(sha.as_str()) {
+                // Heal a pin whose metadata an older apply dropped
+                // (url/version/api_url are re-recorded from this
+                // resolution — the sha didn't move, so this is not a
+                // bump)
+                let metadata_missing = lock
+                    .modules
+                    .get(name.as_str())
+                    .and_then(|e| e.resolved.as_ref())
+                    .is_some_and(|r| r.url.is_none() || r.version.is_none());
+                if old_sha.as_deref() == Some(sha.as_str()) && !repo_moved && !metadata_missing {
                     reports.push(UpdateReport {
                         module: name.clone(),
                         status: UpdateStatus::Unchanged,
                     });
                 } else {
+                    let moved = old_sha.as_deref() != Some(sha.as_str()) || repo_moved;
                     lock.modules.insert(
                         name.clone(),
                         crate::lockfile::LockEntry {
@@ -109,14 +130,19 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                                 sha256: Some(sha),
                                 tree256: None, // deferred identity (0014 §3)
                                 api_url: release.api_url,
+                                repo256: repo256.clone(),
                             }),
                         },
                     );
                     reports.push(UpdateReport {
                         module: name.clone(),
-                        status: UpdateStatus::Bumped {
-                            old: old_v.or(old_sha),
-                            new: release.version,
+                        status: if moved {
+                            UpdateStatus::Bumped {
+                                old: old_v.or(old_sha),
+                                new: release.version,
+                            }
+                        } else {
+                            UpdateStatus::Unchanged
                         },
                     });
                 }
@@ -133,7 +159,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                     .map_err(ExecError::Fetch)?;
                 let sha = outcome.hash;
                 let _ = std::fs::remove_dir_all(&staging);
-                if old.as_deref() == Some(sha.as_str()) {
+                if old.as_deref() == Some(sha.as_str()) && !repo_moved {
                     reports.push(UpdateReport {
                         module: name.clone(),
                         status: UpdateStatus::Unchanged,
@@ -149,6 +175,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                                 sha256: Some(sha.clone()),
                                 tree256: None, // deferred identity (0014 §3)
                                 api_url: None,
+                                repo256: repo256.clone(),
                             }),
                         },
                     );
@@ -161,9 +188,12 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
             // git with an inline rev is pinned deliberately — skipped;
             // floating git re-resolves the remote's HEAD (0016 §D2)
             F::Git { url, rev } => match rev {
+                // the rev IS the pin — nothing to resolve
                 Some(_) => reports.push(UpdateReport {
                     module: name.clone(),
-                    status: UpdateStatus::Skipped,
+                    status: UpdateStatus::Skipped {
+                        reason: "pinned by rev",
+                    },
                 }),
                 None => {
                     let head =
@@ -178,7 +208,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                         .get(name.as_str())
                         .and_then(|e| e.resolved.as_ref())
                         .and_then(|r| r.version.clone());
-                    if old.as_deref() == Some(head.as_str()) {
+                    if old.as_deref() == Some(head.as_str()) && !repo_moved {
                         reports.push(UpdateReport {
                             module: name.clone(),
                             status: UpdateStatus::Unchanged,
@@ -194,6 +224,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                                     sha256: None,
                                     tree256: None,
                                     api_url: None,
+                                    repo256: repo256.clone(),
                                 }),
                             },
                         );
@@ -207,7 +238,9 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
             _ => {
                 reports.push(UpdateReport {
                     module: name.clone(),
-                    status: UpdateStatus::Skipped,
+                    status: UpdateStatus::Skipped {
+                        reason: "resolution not supported yet",
+                    },
                 });
             }
         }

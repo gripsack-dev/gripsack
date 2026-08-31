@@ -139,8 +139,26 @@ impl<'a> ModuleRun<'a> {
             (Some(entry), Some(spec)) => entry.fetch != *spec,
             _ => false,
         };
+        // Repo-overlay drift: the locked tree256 names the MERGED
+        // staging (fetch payload + repo config files), so a config tree
+        // that gains a file moves nothing the transport pin can see.
+        // Compare the overlay half or a warm store would deploy stale
+        // content. Locks predating repo256 with repo-sourced froms
+        // drift once and heal at the next publish.
+        let pinned = locked.and_then(|e| e.resolved.as_ref());
+        let repo_drift = !spec_changed
+            && pinned.is_some_and(|r| r.tree256.is_some())
+            && match (
+                crate::resolve::repo_overlay(module, &ctx.repo)?,
+                pinned.and_then(|r| r.repo256.as_ref()),
+            ) {
+                (Some(current), Some(lock)) => current != *lock,
+                // an old lock can't vouch for the overlay — distrust
+                (Some(_), None) => true,
+                (None, _) => false,
+            };
         let (store_path, identity_pending, tree256) = if content_addressed {
-            let locked_tree = if spec_changed {
+            let locked_tree = if spec_changed || repo_drift {
                 None
             } else {
                 locked
@@ -330,7 +348,7 @@ impl<'a> ModuleRun<'a> {
                     detail: other.to_string(),
                 },
             })?;
-        let sha = outcome.hash;
+        let sha = outcome.hash.clone();
         // Finalize a deferred identity (finding C): the first fetch's
         // sha joins the store-path input — identical to what the lock
         // gives every later apply. Presence was never checked against
@@ -357,29 +375,17 @@ impl<'a> ModuleRun<'a> {
                 actual: sha,
             }));
         }
+        let pin = locked.and_then(|e| e.resolved.as_ref());
         self.lock_entry = Some(lockfile::LockEntry {
             fetch: spec.clone(),
-            resolved: Some(lockfile::Resolved {
-                // tree256 lands at publish, with the merged staging
-                tree256: None,
-                // a plugin's reported pin (upstream artifact url +
-                // version) is recorded so the next apply's `locked`
-                // tells it exactly what to reproduce; for resolved
-                // kinds, the resolution's own metadata
-                url: meta.as_ref().map(|m| m.url.clone()).or(outcome.plugin_url),
-                // git floats pin the resolved rev as the lock's version
-                // (0016 §D2) — the float re-reads it on every apply
-                version: meta
-                    .as_ref()
-                    .map(|m| m.version.clone())
-                    .or(outcome.plugin_version)
-                    .or_else(|| match &concrete {
-                        gripsack_ir::FetchSpec::Git { rev, .. } => rev.clone(),
-                        _ => None,
-                    }),
-                sha256: Some(sha),
-                api_url: meta.and_then(|m| m.api_url.clone()),
-            }),
+            resolved: Some(fetched_pin(
+                meta.as_ref(),
+                &outcome,
+                &concrete,
+                pin,
+                sha,
+                crate::resolve::repo_overlay(self.module, &self.ctx.repo)?,
+            )),
         });
         info!(step = %step.id, "fetched");
         self.reports.push(StepReport {
@@ -472,7 +478,14 @@ impl<'a> ModuleRun<'a> {
         std::fs::create_dir_all(&stage)?;
         for entry in self.module.install.iter().chain(self.module.config.iter()) {
             let repo_file = self.ctx.repo.join(&entry.from);
-            if repo_file.is_file() {
+            let is_real_dir =
+                repo_file.is_dir() && !repo_file.symlink_metadata()?.file_type().is_symlink();
+            if is_real_dir {
+                // a directory `from` stages recursively (symlinks
+                // recreated, matching canonical_overlay_hash) — deploy
+                // must never link the repo checkout itself
+                store::copy_dir(&repo_file, &stage.join(&entry.from))?;
+            } else if repo_file.is_file() {
                 let dest = stage.join(&entry.from);
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
@@ -592,5 +605,133 @@ impl<'a> ModuleRun<'a> {
             lock_entry: self.lock_entry,
             error: self.error,
         }
+    }
+}
+
+/// Build the pin a fetch records. `meta` is a fresh resolution — None
+/// on a pinned re-fetch, where the lock's own fields ARE the pin and
+/// must survive the rewrite: dropping version breaks {version}
+/// substitution on the next warm-store deploy, and dropping
+/// url/api_url forces a re-resolve through the registry API on the
+/// next cold store.
+fn fetched_pin(
+    meta: Option<&gripsack_fetch::ResolvedRelease>,
+    outcome: &gripsack_fetch::fetch::FetchOutcome,
+    concrete: &gripsack_ir::FetchSpec,
+    pin: Option<&lockfile::Resolved>,
+    sha: String,
+    repo256: Option<String>,
+) -> lockfile::Resolved {
+    lockfile::Resolved {
+        // tree256 lands at publish, with the merged staging — never
+        // carried over from the old pin
+        tree256: None,
+        // a plugin's reported pin (upstream artifact url + version) is
+        // recorded so the next apply's `locked` tells it exactly what
+        // to reproduce; for resolved kinds, the resolution's own
+        // metadata; else the surviving lock fields
+        url: meta
+            .map(|m| m.url.clone())
+            .or_else(|| outcome.plugin_url.clone())
+            .or_else(|| pin.and_then(|r| r.url.clone())),
+        // git floats pin the resolved rev as the lock's version
+        // (0016 §D2) — the float re-reads it on every apply
+        version: meta
+            .map(|m| m.version.clone())
+            .or_else(|| outcome.plugin_version.clone())
+            .or_else(|| match concrete {
+                gripsack_ir::FetchSpec::Git { rev, .. } => rev.clone(),
+                _ => None,
+            })
+            .or_else(|| pin.and_then(|r| r.version.clone())),
+        sha256: Some(sha),
+        api_url: meta
+            .and_then(|m| m.api_url.clone())
+            .or_else(|| pin.and_then(|r| r.api_url.clone())),
+        // the repo-overlay half of the merged tree — presence checks
+        // and `grip update` compare it to catch config trees that
+        // change under an unmoved transport pin
+        repo256,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn locked_pin() -> lockfile::Resolved {
+        lockfile::Resolved {
+            url: Some("https://ghe.invalid/rel/asset.tar.gz".into()),
+            version: Some("15.2.0".into()),
+            sha256: Some("ab".repeat(32)),
+            tree256: Some("ef".repeat(32)),
+            api_url: Some("https://ghe.invalid/api/asset/1".into()),
+            repo256: None,
+        }
+    }
+
+    fn outcome() -> gripsack_fetch::fetch::FetchOutcome {
+        gripsack_fetch::fetch::FetchOutcome {
+            hash: "ab".repeat(32),
+            plugin_url: None,
+            plugin_version: None,
+        }
+    }
+
+    #[test]
+    fn pinned_refetch_preserves_the_locks_pin_fields() {
+        let locked = locked_pin();
+        let concrete = gripsack_ir::FetchSpec::Tarball {
+            url: locked.url.clone().unwrap(),
+            sha256: locked.sha256.clone(),
+            api_url: locked.api_url.clone(),
+        };
+        let got = fetched_pin(
+            None,
+            &outcome(),
+            &concrete,
+            Some(&locked),
+            "ab".repeat(32),
+            Some("cd".repeat(32)),
+        );
+        assert_eq!(got.url, locked.url);
+        assert_eq!(got.version, locked.version);
+        assert_eq!(got.api_url, locked.api_url);
+        assert_eq!(got.repo256, Some("cd".repeat(32)));
+        // the tree belongs to the OLD merge — publish re-pins it
+        assert_eq!(got.tree256, None);
+    }
+
+    #[test]
+    fn fresh_resolution_wins_over_the_lock() {
+        let locked = locked_pin();
+        let meta = gripsack_fetch::ResolvedRelease {
+            version: "16.0.0".into(),
+            url: "https://ghe.invalid/rel/new.tar.gz".into(),
+            api_url: Some("https://ghe.invalid/api/asset/2".into()),
+            sha256: None,
+        };
+        let concrete = gripsack_ir::FetchSpec::Tarball {
+            url: meta.url.clone(),
+            sha256: None,
+            api_url: meta.api_url.clone(),
+        };
+        let got = fetched_pin(
+            Some(&meta),
+            &outcome(),
+            &concrete,
+            Some(&locked),
+            "ab".repeat(32),
+            None,
+        );
+        assert_eq!(
+            got.url.as_deref(),
+            Some("https://ghe.invalid/rel/new.tar.gz")
+        );
+        assert_eq!(got.version.as_deref(), Some("16.0.0"));
+        assert_eq!(
+            got.api_url.as_deref(),
+            Some("https://ghe.invalid/api/asset/2")
+        );
     }
 }

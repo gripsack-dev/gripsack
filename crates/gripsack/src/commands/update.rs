@@ -49,10 +49,10 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
                     gripsack_exec::UpdateStatus::Bumped { .. } => {
                         println!("  {} {}", r.module.cyan(), "bumped".yellow().bold())
                     }
-                    gripsack_exec::UpdateStatus::Skipped => println!(
+                    gripsack_exec::UpdateStatus::Skipped { reason } => println!(
                         "  {} {}",
                         r.module.cyan(),
-                        "skipped (resolution not supported yet)".dimmed()
+                        format!("skipped ({reason})").dimmed()
                     ),
                 }
             }
