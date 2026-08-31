@@ -3,6 +3,29 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.10] — 2026-08-31
+
+Regression fixes for 0.17.9, from the same migration report.
+
+### Fixed
+
+- **`git()` fetches are deterministic.** The payload hash covered the
+  whole clone including `.git` — whose index caches working-tree
+  mtimes — so the same rev hashed differently on every fetch and
+  every cold-store apply failed its pin check. The checkout alone is
+  the payload now; `.git` never reaches the store.
+- **A failed apply no longer leaves placeholder-literal links.** The
+  generation manifest recorded the RAW install key, so the mid-graph
+  rollback restored destinations to paths like
+  `ripgrep-{version}-{target}/rg`. The manifest records the expanded
+  key, deploy refuses a key that still contains a placeholder after
+  expansion (invariant violation, not a path), and restore never
+  writes a dangling symlink.
+- **`grip self-update` works on shared egress.** The unauthenticated
+  GitHub API rate-limits by source IP; when it fails, self-update
+  falls back to the web tier (`releases.atom` → plain download URLs)
+  — the same path plain release downloads already take.
+
 ## [0.17.9] — 2026-08-31
 
 Hardening from a real two-host migration report.
