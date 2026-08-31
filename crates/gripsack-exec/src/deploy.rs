@@ -225,13 +225,30 @@ pub(crate) fn deploy_entry(
         Some(v) => gripsack_fetch::expand_platform(&entry.from).replace("{version}", v),
         None => gripsack_fetch::expand_platform(&entry.from),
     };
-    let source = resolve_source(store_path, &from, &ctx.repo);
+    // Entry content is the store payload — always. The publish step
+    // stages every repo-referenced `from` into the store, so a store
+    // miss means a stale store (e.g. a config tree that gained a file
+    // under an unmoved pin): that is an integrity failure, never a
+    // reason to reach into the repo checkout and deploy a path the
+    // store never published.
+    let source = store_path.join(&from);
     let dest = expand_home(&entry.to);
     let fail = |detail: String| ExecError::Step {
         module: module.to_string(),
         step: "deploy".into(),
         detail,
     };
+    // A destination resolving INTO the env repo turns a deploy into a
+    // delete: a symlinked ancestor dir (a leftover from another
+    // provisioner) lands the write inside the checkout and the module
+    // eats its own source. The repo is never a legitimate target.
+    if dest_resolves_into(&dest, &ctx.repo) {
+        return Err(fail(format!(
+            "{} resolves inside the env repo ({}) — refusing to deploy into the source checkout",
+            entry.to,
+            ctx.repo.display()
+        )));
+    }
     if !source.exists() {
         // install={} keys are payload-relative — a versioned top-level
         // dir in the archive must be part of the key; say what IS here
@@ -451,15 +468,25 @@ pub(crate) fn deploy_entry(
     Ok((summary, kind))
 }
 
-/// Entry content lives in the store payload if present, else in the
-/// repo (config files travel with the env repo — 0006).
-fn resolve_source(store_path: &Path, from: &str, repo: &Path) -> PathBuf {
-    let in_store = store_path.join(from);
-    if in_store.exists() {
-        in_store
-    } else {
-        repo.join(from)
+/// Does `dest` resolve inside `repo`? Canonicalize the deepest
+/// existing ancestor — a symlinked intermediate directory resolves
+/// THROUGH to its target — then re-append the not-yet-existing tail.
+fn dest_resolves_into(dest: &Path, repo: &Path) -> bool {
+    let Ok(repo_canon) = std::fs::canonicalize(repo) else {
+        return false;
+    };
+    let mut ancestor = dest;
+    while ancestor.symlink_metadata().is_err() {
+        let Some(parent) = ancestor.parent() else {
+            return false;
+        };
+        ancestor = parent;
     }
+    let Ok(ancestor_canon) = std::fs::canonicalize(ancestor) else {
+        return false;
+    };
+    let tail = dest.strip_prefix(ancestor).expect("ancestor is a prefix");
+    ancestor_canon.join(tail).starts_with(&repo_canon)
 }
 
 pub(crate) fn expand_home(to: &str) -> PathBuf {
@@ -469,4 +496,30 @@ pub(crate) fn expand_home(to: &str) -> PathBuf {
         return PathBuf::from(home).join(rest);
     }
     PathBuf::from(to)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn symlinked_ancestor_into_repo_is_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("dotfiles");
+        std::fs::create_dir_all(repo.join(".claude/scripts")).unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        // the migration landmine: a leftover symlink pointing back
+        // into the env repo
+        std::os::unix::fs::symlink(repo.join(".claude/scripts"), home.join("scripts")).unwrap();
+        assert!(dest_resolves_into(&home.join("scripts/deploy.sh"), &repo));
+        // the repo path itself, and a not-yet-existing path under it
+        assert!(dest_resolves_into(&repo.join("new/dir/file"), &repo));
+        // ordinary destinations nowhere near the repo pass
+        assert!(!dest_resolves_into(
+            &home.join(".config/app/conf.toml"),
+            &repo
+        ));
+        assert!(!dest_resolves_into(&home.join("scripts2/x"), &repo));
+    }
 }
