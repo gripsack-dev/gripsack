@@ -2527,3 +2527,45 @@ export default module("tpm", {{
     assert out.returncode == 0, out.stderr
     assert "pinned by rev" in out.stdout
     assert "not supported" not in out.stdout
+
+
+def test_failed_apply_rollback_leaves_no_placeholder_links(sandbox):
+    """A mid-graph failure rolls this run's deploys back to the
+    previous generation — restored links must be the EXPANDED paths
+    the generation actually deployed, never placeholder-literal."""
+    payload = make_tarball(sandbox / "a.tar.gz", {"linux/a.txt": b"a\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("aa", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "{{os}}/a.txt": symlink("~/.local/bin/aa") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    link = sandbox / ".local/bin/aa"
+    assert "{" not in str(link.readlink())
+
+    # add a module whose fetch fails -> the apply aborts mid-graph and
+    # rolls back aa's redeploy to the previous generation
+    (repo / "modules" / "zz.ts").write_text(
+        """
+import { fileFetch, module, symlink } from "@gripsack/core";
+
+export default module("zz", {
+  fetch: fileFetch("%s/does-not-exist.tar.gz"),
+  install: { "x": symlink("~/.local/bin/zz") },
+});
+"""
+        % sandbox
+    )
+    refresh_host(repo)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, out.stdout
+    target = str(link.readlink())
+    assert "{" not in target, f"rollback wrote a placeholder-literal link: {target}"
+    assert link.exists(), f"rollback left a dangling link: {target}"

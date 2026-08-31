@@ -22,7 +22,19 @@ pub fn restore_entry(
         std::fs::create_dir_all(parent)?;
     }
     match entry.mode {
-        Ownership::Owned => store::symlink_replace(dest, &source),
+        Ownership::Owned => {
+            // never write a dangling link: a missing source is a stale
+            // manifest entry (e.g. a pre-0.17.10 raw placeholder key),
+            // and a broken symlink is worse than an absent destination
+            if !source.exists() {
+                tracing::warn!(
+                    ?source,
+                    "restore source missing — leaving destination as-is"
+                );
+                return Ok(());
+            }
+            store::symlink_replace(dest, &source)
+        }
         Ownership::Merge => {
             let payload = std::fs::read_to_string(&source).unwrap_or_default();
             let existing = std::fs::read_to_string(dest).unwrap_or_default();
@@ -249,6 +261,15 @@ pub(crate) fn deploy_entry(
             ctx.repo.display()
         )));
     }
+    // Expansion is total: a placeholder surviving to deploy means a
+    // {version} with no locked tag or a substitution bug — never a
+    // path worth linking
+    if from.contains('{') {
+        return Err(fail(format!(
+            "{} still contains a placeholder after expansion (from {})",
+            from, entry.from
+        )));
+    }
     if !source.exists() {
         // install={} keys are payload-relative — a versioned top-level
         // dir in the archive must be part of the key; say what IS here
@@ -458,7 +479,10 @@ pub(crate) fn deploy_entry(
         }
     };
     out.push(store::DeployedEntry {
-        from: entry.from.clone(),
+        // the EXPANDED key — rollback (restore_entry) and store verify
+        // re-join it against the store path verbatim; recording the
+        // raw key would write placeholder-literal links on a rollback
+        from: from.clone(),
         to: entry.to.clone(),
         mode: entry.mode.clone(),
         vars: entry.vars.clone(),
@@ -501,6 +525,30 @@ pub(crate) fn expand_home(to: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restore_never_writes_a_dangling_owned_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let store_path = dir.path().join("store/abc-m");
+        std::fs::create_dir_all(&store_path).unwrap();
+        let dest = dir.path().join("home/.local/bin/m");
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        // a stale manifest entry: a raw, unexpanded placeholder key
+        // (what pre-fix generations recorded)
+        let entry = store::DeployedEntry {
+            from: "m-{version}-{target}/m".into(),
+            to: dest.to_string_lossy().into_owned(),
+            mode: Ownership::Owned,
+            vars: Default::default(),
+            hash: "x".repeat(64),
+            prior: None,
+        };
+        restore_entry(&dest, &entry, &store_path, "m").unwrap();
+        assert!(
+            dest.symlink_metadata().is_err(),
+            "a missing restore source must leave the destination absent, not dangling"
+        );
+    }
 
     #[test]
     fn symlinked_ancestor_into_repo_is_detected() {
