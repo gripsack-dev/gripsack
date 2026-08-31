@@ -16,18 +16,23 @@ name = "demo"
 path = "/vhs/demos/fixtures/griplint-demo"
 EOF
 
-cat > /tmp/checkenv/hosts/demo.py <<'EOF'
-tags = ["demo"]
+cat > /tmp/checkenv/hosts/demo.ts <<'EOF'
+import { defineEnv } from "@gripsack/core";
+import demo from "../modules/demo.ts";
+
+export default defineEnv(() => ({
+  tags: ["demo"],
+  modules: [demo],
+}));
 EOF
 
-cat > /tmp/checkenv/modules/demo.py <<'EOF'
-from gripsack import module, tracked_copy
+cat > /tmp/checkenv/modules/demo.ts <<'EOF'
+import { module, trackedCopy } from "@gripsack/core";
 
-module(
-    "demo",
-    config={"configs/demo/demo.toml": tracked_copy("~/.config/demo/demo.toml")},
-    lint="demo",
-)
+export default module("demo", {
+  config: { "configs/demo/demo.toml": trackedCopy("~/.config/demo/demo.toml") },
+  lint: "demo",
+});
 EOF
 
 cat > /tmp/checkenv/configs/demo/demo.toml <<'EOF'

@@ -12,7 +12,7 @@ Sleep 4s
 Type@40ms "grip apply --host demo"
 Enter
 Sleep 4s
-Type@40ms "sed -i 's/catppuccin-mocha/nord/' editor.toml && grip apply"
+Type@40ms "sed -i 's/catppuccin-mocha/nord/' editor.toml && grip apply --host demo"
 Enter
 Sleep 4s
 Type@40ms "cat ~/.config/editor/editor.toml"

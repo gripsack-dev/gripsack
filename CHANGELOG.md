@@ -3,6 +3,23 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.11] — 2026-08-31
+
+### Fixed
+
+- **`grip adopt` on a fresh `grip init` repo generated a host file
+  that didn't eval.** The host updater matched the `modules: [`
+  example inside the template's header comment and inserted the new
+  module entry there; the dangling comma swallowed the import below
+  ("Import is not allowed here") and adopt's self-check refused its
+  own output. The updater targets the real array now, with a
+  regression test against the shipped template.
+- The demo tapes run again: fixtures moved off the retired Python
+  frontend, the rollback tape passes `--host`, and the demo workflow
+  extracts the release tarball before installing it. Demos now
+  re-render on every CLI change (path triggers on), including the new
+  adopt demo.
+
 ## [0.17.10] — 2026-08-31
 
 Regression fixes for 0.17.9, from the same migration report.

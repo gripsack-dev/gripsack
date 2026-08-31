@@ -1,18 +1,16 @@
 name: demo
 
 # Re-render the demo GIF when the CLI or the demo tooling changes, so the
-# README always shows the current look. Trigger is dispatch-only until
-# `grip apply` lands (plan/0004+) — the tape exercises what exists.
+# README always shows the current look.
 on:
   workflow_dispatch:
-  # Enable when apply lands:
-  # push:
-  #   branches: [main]
-  #   paths:
-  #     - "crates/**"
-  #     - "demos/**"
-  #     - "Cargo.toml"
-  #     - "Cargo.lock"
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "demos/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
 
 permissions:
   contents: write
@@ -58,6 +56,7 @@ jobs:
             --entrypoint sh ghcr.io/charmbracelet/vhs -c '
             apt-get update -qq && apt-get install -y -qq curl unzip >/dev/null \
              && curl -fsSL https://deno.land/install.sh | sh >/dev/null 2>&1 \
+             && tar -xzf /vhs/dist/gripsack-*.tar.gz -C /vhs/dist \
              && install -m755 /vhs/dist/gripsack-*/grip /usr/local/bin/grip \
              && export PATH="/root/.deno/bin:$PATH" \
              && render() { \
@@ -66,12 +65,12 @@ jobs:
                       "/vhs/demos/$1.tape" > "/tmp/$2.tape" \
                   && vhs "/tmp/$2.tape"; \
                 } \
-             && for tape in demo init check rollback; do \
+             && for tape in demo adopt init check rollback; do \
                   out=demo; [ "$tape" = demo ] || out="demo-$tape"; \
                   render "$tape" "$out" "Catppuccin Mocha"; \
                 done \
              && while read -r name theme; do \
-                  for tape in demo init check rollback; do \
+                  for tape in demo adopt init check rollback; do \
                     out="demo-$name"; [ "$tape" = demo ] || out="demo-$tape-$name"; \
                     render "$tape" "$out" "$theme"; \
                   done; \
