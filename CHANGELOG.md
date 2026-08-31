@@ -80,6 +80,18 @@ Dead-IR audit: nothing in the schema may exist without an executor.
   so declarative `activate` fields and class-style intents take the
   same path, exactly once.
 
+## [0.17.7] — 2026-08-30
+
+### Removed
+
+- **`cargo_install` and `make` build kinds** — declared but never
+  executable, which is a phantom contract (valid IR the core refuses
+  at apply). The IR now carries only what it executes: `custom_shell`
+  plus an ephemeral toolchain module covers the same ground;
+  `cargo install --locked` in a custom step with declared outputs is
+  the documented rust-build form. Reusable build logic belongs to
+  builder plugins when reality demands it (0001 §3.1 amended).
+
 ## [0.17.6] — 2026-08-30
 
 ### Added
@@ -102,17 +114,13 @@ Dead-IR audit: nothing in the schema may exist without an executor.
   would have blocked BYONM forever (and the embedded frontend now
   carries its `package.json`, which is what flips BYONM on).
 
-## [0.17.7] — 2026-08-30
+## [0.17.5] — 2026-08-30
 
-### Removed
+### Fixed
 
-- **`cargo_install` and `make` build kinds** — declared but never
-  executable, which is a phantom contract (valid IR the core refuses
-  at apply). The IR now carries only what it executes: `custom_shell`
-  plus an ephemeral toolchain module covers the same ground;
-  `cargo install --locked` in a custom step with declared outputs is
-  the documented rust-build form. Reusable build logic belongs to
-  builder plugins when reality demands it (0001 §3.1 amended).
+- E115 path validation now covers explicit-steps modules
+  (`installStep`/`configStep` entries) and verify paths — the
+  declarative-only pass could be routed around by `steps = [...]`.
 
 ## [0.17.4] — 2026-08-30
 
@@ -147,14 +155,6 @@ The beautiful-errors sweep (0004 §3 pushed through the stack).
   `..` escapes) fail extraction naming the entry — the tar crate's
   unpack_in skips them silently otherwise, stranding a partial payload
   (zip extraction was already sanitizing).
-
-## [0.17.5] — 2026-08-30
-
-### Fixed
-
-- E115 path validation now covers explicit-steps modules
-  (`installStep`/`configStep` entries) and verify paths — the
-  declarative-only pass could be routed around by `steps = [...]`.
 
 ## [0.17.3] — 2026-08-30
 

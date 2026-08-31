@@ -1,4 +1,4 @@
-//! E112 — unknown placeholder in a fetch/install/verify string. The
+//! E114 — unknown placeholder in a fetch/install/verify string. The
 //! placeholder set is the contract (0016 §D1): `{version}` and the
 //! platform facts (`{system}`, `{target}`, `{arch}`, `{arch.go}`,
 //! `{os}`). A typo otherwise sails through check and dies as a 404 at
