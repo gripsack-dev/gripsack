@@ -13,8 +13,15 @@ cat > /tmp/myenv/env.toml <<'EOF'
 name = "demo"
 EOF
 
-cat > /tmp/myenv/hosts/demo.py <<'EOF'
-tags = ["demo"]
+cat > /tmp/myenv/hosts/demo.ts <<'EOF'
+import { defineEnv } from "@gripsack/core";
+import hello from "../modules/hello.ts";
+import editor from "../modules/editor.ts";
+
+export default defineEnv(() => ({
+  tags: ["demo"],
+  modules: [hello, editor],
+}));
 EOF
 
 mkdir -p /tmp/payload/bin
@@ -22,24 +29,22 @@ printf '#!/bin/sh\necho "hello from gripsack"\n' > /tmp/payload/bin/hello
 chmod +x /tmp/payload/bin/hello
 tar -czf /tmp/myenv/hello.tar.gz -C /tmp/payload bin
 
-cat > /tmp/myenv/modules/hello.py <<'EOF'
-from gripsack import module, file_fetch, symlink, verify_binary
+cat > /tmp/myenv/modules/hello.ts <<'EOF'
+import { fileFetch, module, symlink, verifyBinary } from "@gripsack/core";
 
-module(
-    "hello",
-    fetch=file_fetch("/tmp/myenv/hello.tar.gz"),
-    install={"bin/hello": symlink("~/.local/bin/hello")},
-    verify=verify_binary("bin/hello"),
-)
+export default module("hello", {
+  fetch: fileFetch("/tmp/myenv/hello.tar.gz"),
+  install: { "bin/hello": symlink("~/.local/bin/hello") },
+  verify: verifyBinary("bin/hello"),
+});
 EOF
 
-cat > /tmp/myenv/modules/dotfiles.py <<'EOF'
-from gripsack import module, tracked_copy
+cat > /tmp/myenv/modules/editor.ts <<'EOF'
+import { module, trackedCopy } from "@gripsack/core";
 
-module(
-    "editor",
-    config={"editor.toml": tracked_copy("~/.config/editor/editor.toml")},
-)
+export default module("editor", {
+  config: { "editor.toml": trackedCopy("~/.config/editor/editor.toml") },
+});
 EOF
 
 cat > /tmp/myenv/editor.toml <<'EOF'
