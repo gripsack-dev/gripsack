@@ -1,0 +1,3 @@
+[editor.inline-diagnostics]
+cursor-line = "warning"
+cursor-lin = "error"

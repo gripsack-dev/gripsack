@@ -97,6 +97,20 @@ display-signature-help-docs = { types = ["boolean"] }
 snippets = { types = ["boolean"] }
 goto-reference-include-declaration = { types = ["boolean"] }
 
+[files."config.toml".rules."editor.inline-diagnostics"]
+# docs.helix-editor.com/editor.html #[editor.inline-diagnostics] (25.07);
+# key set verified against helix-view/src/annotations/diagnostics.rs
+# (tag 25.07): InlineDiagnosticsConfig is deny_unknown_fields — typos are
+# hard errors in helix itself. min-diagnostic-width is parsed by the
+# source but undocumented in the book. No `enable` key: diagnostics are
+# switched on via cursor-line/other-lines != "disable".
+cursor-line = { types = ["string"], choices = ["disable", "hint", "info", "warning", "error"] }
+other-lines = { types = ["string"], choices = ["disable", "hint", "info", "warning", "error"] }
+min-diagnostic-width = { types = ["integer"] }
+prefix-len = { types = ["integer"] }
+max-wrap = { types = ["integer"] }
+max-diagnostics = { types = ["integer"] }
+
 [files."config.toml".rules."keys"]
 # user-defined mode tables (normal/insert/select/…) — anything goes
 _free = true
