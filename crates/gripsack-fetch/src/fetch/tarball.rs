@@ -2,7 +2,7 @@
 
 use super::FetchError;
 use super::archive;
-use std::io::Read as _;
+use std::io;
 use std::path::Path;
 
 pub(crate) fn fetch(
@@ -78,16 +78,7 @@ pub(crate) fn read_url_authed(url: &str, api_url: Option<&str>) -> Result<Vec<u8
                 .into(),
         });
     }
-    let reader = response.into_reader();
-    let mut limited = io::Read::take(reader, 512 * 1024 * 1024);
-    let mut bytes = Vec::new();
-    limited
-        .read_to_end(&mut bytes)
-        .map_err(|e| FetchError::Http {
-            url: get_url,
-            reason: e.to_string(),
-        })?;
-    Ok(bytes)
+    read_body(response.into_reader(), &get_url)
 }
 
 pub(crate) fn read_url(url: &str) -> Result<Vec<u8>, FetchError> {
@@ -98,19 +89,30 @@ pub(crate) fn read_url(url: &str) -> Result<Vec<u8>, FetchError> {
         url: url.to_string(),
         reason: e.to_string(),
     })?;
-    let reader = response.into_reader();
-    let mut limited = io::Read::take(reader, 512 * 1024 * 1024);
-    let mut bytes = Vec::new();
-    limited
-        .read_to_end(&mut bytes)
-        .map_err(|e| FetchError::Http {
-            url: url.to_string(),
-            reason: e.to_string(),
-        })?;
-    Ok(bytes)
+    read_body(response.into_reader(), url)
 }
 
-use std::io;
+/// One download cap for every body: 512 MiB, and hitting it is an
+/// error, not a truncation — `take(cap)` alone returns Ok at
+/// exactly the limit, and an unpinned tarball would then extract a
+/// silently partial payload.
+pub(crate) fn read_body<R: io::Read>(reader: R, url: &str) -> Result<Vec<u8>, FetchError> {
+    const CAP: u64 = 512 * 1024 * 1024;
+    let mut bytes = Vec::new();
+    io::Read::read_to_end(&mut io::Read::take(reader, CAP + 1), &mut bytes).map_err(|e| {
+        FetchError::Http {
+            url: url.to_string(),
+            reason: e.to_string(),
+        }
+    })?;
+    if bytes.len() as u64 > CAP {
+        return Err(FetchError::PayloadTooLarge {
+            what: format!("body of {url}"),
+            limit: CAP,
+        });
+    }
+    Ok(bytes)
+}
 
 #[cfg(test)]
 mod tests {

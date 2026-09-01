@@ -45,14 +45,14 @@ pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, Exe
     }
 
     let mut referenced = std::collections::BTreeSet::new();
-    for n in store::list_generations(home) {
-        if pruned.contains(&n) {
+    for n in &generations {
+        if pruned.contains(n) {
             continue;
         }
         // fail CLOSED: an unparseable manifest must abort gc — dropping
         // its pins would collect referenced store paths and leave
         // dangling symlinks across the user's home (review finding G)
-        let manifest = store::read_manifest(home, n).map_err(|e| ExecError::Step {
+        let manifest = store::read_manifest(home, *n).map_err(|e| ExecError::Step {
             module: format!("generation {n}"),
             step: "gc".into(),
             detail: format!("manifest is corrupt — refusing to collect: {e}"),

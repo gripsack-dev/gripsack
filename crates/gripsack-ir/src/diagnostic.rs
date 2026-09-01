@@ -32,6 +32,10 @@ pub mod codes {
     pub const UNKNOWN_PLACEHOLDER: &str = "E114";
     /// A source or destination path with an illegal shape (0016 §D4).
     pub const BAD_PATH: &str = "E115";
+    /// Module name that would escape its store segment or break refs.
+    pub const INVALID_MODULE_NAME: &str = "E116";
+    /// Env var name that is not a shell identifier.
+    pub const INVALID_ENV_NAME: &str = "E117";
 }
 
 // ---------------------------------------------------------------- diagnostics

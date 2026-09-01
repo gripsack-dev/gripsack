@@ -12,8 +12,8 @@
 //! ctx.rs       Ctx / Outcome / ExecError · report.rs — CLI reports
 //! ```
 //!
-//! Currently: sequential execution in DAG order. The ready-queue scheduler
-//! with resource locks replaces the loop without changing semantics.
+//! Execution is a ready-queue scheduler (schedule.rs): modules run as
+//! their dependencies finish, N workers, named flock resources.
 
 pub mod activate;
 pub mod apply;
@@ -49,8 +49,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PlanError {
-    #[error("dependency cycle involving: {}", .0.join(", "))]
+    #[error("dependency cycle involving: {0:?}")]
     Cycle(Vec<String>),
+    #[error("module {0:?} depends on unknown module {1:?}")]
+    UnknownDep(String, String),
 }
 
 /// Module names in dependency-first order. Deterministic: among modules
@@ -61,14 +63,19 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
     let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for (name, module) in &ir.modules {
         for dep in &module.depends {
-            // Unknown deps are a sema error (E101), not a scheduling one.
-            if let Some(n) = indegree.get_mut(name.as_str()) {
-                *n += 1;
-                dependents
-                    .entry(dep.module.as_str())
-                    .or_default()
-                    .push(name);
+            // sema (E101) catches this first; exec still refuses
+            // honestly instead of misreporting a missing module as a
+            // cycle (it would never enter `ready` and stick below)
+            if !indegree.contains_key(dep.module.as_str()) {
+                return Err(PlanError::UnknownDep(name.clone(), dep.module.clone()));
             }
+            *indegree
+                .get_mut(name.as_str())
+                .expect("name is a graph key") += 1;
+            dependents
+                .entry(dep.module.as_str())
+                .or_default()
+                .push(name);
         }
     }
     let mut ready: BTreeSet<&str> = indegree

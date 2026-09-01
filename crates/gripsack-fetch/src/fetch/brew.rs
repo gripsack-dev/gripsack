@@ -4,7 +4,6 @@
 
 use super::FetchError;
 use super::archive;
-use std::io;
 use std::path::Path;
 
 pub(crate) fn fetch(
@@ -30,11 +29,7 @@ pub(crate) fn fetch(
             reason: e.to_string(),
         })?
         .into_reader();
-    let mut bytes_vec = Vec::new();
-    io::Read::read_to_end(
-        &mut io::Read::take(bytes, 512 * 1024 * 1024),
-        &mut bytes_vec,
-    )?;
+    let bytes_vec = super::tarball::read_body(bytes, &resolved.url)?;
     let actual = archive::sha256(&bytes_vec);
     // the lock pin wins over the formula's own hash (0002 §3)
     let expected = sha256.or(resolved.sha256.as_deref());

@@ -58,9 +58,62 @@ pub fn path(repo: &Path, host: &str) -> PathBuf {
     repo.join("locks").join(format!("{host}.lock"))
 }
 
-pub fn read(repo: &Path, host: &str) -> Option<Lockfile> {
-    let raw = std::fs::read(path(repo, host)).ok()?;
-    serde_json::from_slice(&raw).ok()
+/// Why a lockfile could not be read: absent (first run — pinning is
+/// TOFU by design) vs present-but-unusable. A corrupt lock must never
+/// read as "no lock": update would rewrite the whole file from nothing
+/// and silently erase every other module's pin.
+#[derive(Debug)]
+pub enum LockRead {
+    Missing,
+    Corrupt(String),
+    Parsed(Lockfile),
+}
+
+/// Hash-shaped pin fields: 64 lowercase hex chars. Anything else means
+/// a hand-edited or truncated lock — refuse it before the values flow
+/// into store paths (a short `tree256` used to panic the slice).
+fn pin_is_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+fn validate_pins(lock: &Lockfile) -> Result<(), String> {
+    for (name, entry) in &lock.modules {
+        let Some(resolved) = &entry.resolved else {
+            continue;
+        };
+        for (field, value) in [
+            ("sha256", &resolved.sha256),
+            ("tree256", &resolved.tree256),
+            ("repo256", &resolved.repo256),
+        ] {
+            if let Some(v) = value
+                && !pin_is_hex(v)
+            {
+                return Err(format!(
+                    "module {name}: resolved.{field} is not a sha256 hex string"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn read(repo: &Path, host: &str) -> LockRead {
+    let raw = match std::fs::read(path(repo, host)) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return LockRead::Missing,
+        Err(e) => return LockRead::Corrupt(format!("io: {e}")),
+    };
+    match serde_json::from_slice::<Lockfile>(&raw) {
+        Ok(lock) => match validate_pins(&lock) {
+            Ok(()) => LockRead::Parsed(lock),
+            Err(why) => LockRead::Corrupt(why),
+        },
+        Err(e) => LockRead::Corrupt(format!("invalid JSON: {e}")),
+    }
 }
 
 pub fn write(repo: &Path, host: &str, lockfile: &Lockfile) -> io::Result<()> {
@@ -96,8 +149,24 @@ mod tests {
             },
         );
         write(dir.path(), "laptop", &lock).unwrap();
-        let read_back = read(dir.path(), "laptop").unwrap();
+        let LockRead::Parsed(read_back) = read(dir.path(), "laptop") else {
+            panic!("expected a parsed lockfile");
+        };
         assert_eq!(lock, read_back);
-        assert!(read(dir.path(), "otherhost").is_none());
+        assert!(matches!(read(dir.path(), "otherhost"), LockRead::Missing));
+        // a corrupt lock is not a missing one — update would erase pins
+        std::fs::write(dir.path().join("locks/laptop.lock"), b"{ truncated").unwrap();
+        assert!(matches!(read(dir.path(), "laptop"), LockRead::Corrupt(_)));
+        // non-hex pins are corrupt too, not silent wrong paths
+        let mut bad = lock.clone();
+        bad.modules
+            .get_mut("helix")
+            .unwrap()
+            .resolved
+            .as_mut()
+            .unwrap()
+            .tree256 = Some("ab".into());
+        write(dir.path(), "badhost", &bad).unwrap();
+        assert!(matches!(read(dir.path(), "badhost"), LockRead::Corrupt(_)));
     }
 }

@@ -20,6 +20,9 @@ pub enum Value {
     /// Insertion order preserved — fixtures compare diagnostics in
     /// document order (python dict order), so no BTreeMap here.
     Table(Vec<(String, Value)>),
+    /// JSON/YAML null (TOML has no null) — a type of its own, not a
+    /// blank string, so A04 can name it.
+    Null,
 }
 
 impl Value {
@@ -31,6 +34,7 @@ impl Value {
             Value::Float(_) => "float",
             Value::Array(_) => "array",
             Value::Table(_) => "table",
+            Value::Null => "null",
         }
     }
 
@@ -69,6 +73,7 @@ impl Value {
                 out.push('}');
                 out
             }
+            Value::Null => "None".to_string(),
         }
     }
 
@@ -80,6 +85,29 @@ impl Value {
             return types.iter().any(|t| t == "boolean");
         }
         types.iter().any(|t| t == self.type_name())
+    }
+
+    /// python ==: numbers compare by value across int/float (1 == 1.0),
+    /// recursively through containers. The derived PartialEq stays
+    /// shape-exact for structural uses; bool never equals a number
+    /// here — the engine already treats booleans as their own type.
+    pub fn py_eq(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Int(a), Value::Float(b)) | (Value::Float(b), Value::Int(a)) => *a as f64 == *b,
+            (Value::Array(a), Value::Array(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.py_eq(y))
+            }
+            // dicts compare by contents, not pair order
+            (Value::Table(a), Value::Table(b)) => {
+                a.len() == b.len()
+                    && a.iter().all(|(k, v)| {
+                        b.iter()
+                            .find(|(bk, _)| bk == k)
+                            .is_some_and(|(_, bv)| v.py_eq(bv))
+                    })
+            }
+            _ => self == other,
+        }
     }
 }
 
@@ -101,7 +129,31 @@ impl From<serde_json::Value> for Value {
             serde_json::Value::Object(map) => {
                 Value::Table(map.into_iter().map(|(k, v)| (k, Value::from(v))).collect())
             }
-            serde_json::Value::Null => Value::Str(String::new()),
+            serde_json::Value::Null => Value::Null,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn null_is_its_own_type() {
+        assert_eq!(Value::Null.type_name(), "null");
+        assert_eq!(Value::Null.pyrepr(), "None");
+        assert!(!Value::Null.matches(&["string".into()]));
+    }
+
+    #[test]
+    fn numbers_compare_across_int_and_float() {
+        assert!(Value::Int(1).py_eq(&Value::Float(1.0)));
+        assert!(!Value::Int(1).py_eq(&Value::Float(1.5)));
+        // the derived == stays shape-exact
+        assert_ne!(Value::Int(1), Value::Float(1.0));
+        // recursive, and dict order does not matter
+        assert!(Value::Array(vec![Value::Int(1)]).py_eq(&Value::Array(vec![Value::Float(1.0)])));
+        assert!(Value::Null.py_eq(&Value::Null));
+        assert!(!Value::Bool(true).py_eq(&Value::Int(1)));
     }
 }

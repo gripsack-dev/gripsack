@@ -6,7 +6,6 @@
 //! resolved inputs produce the same path on any machine of the same
 //! platform — that is what makes store sharing a trivial later feature.
 
-use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 pub const STORE_DIR: &str = "store";
@@ -17,12 +16,7 @@ pub const HASH_LEN: usize = 16;
 /// Hex sha256 prefix of the canonical serialized module plan. `canonical`
 /// must be a stable serialization (serde struct field order is).
 pub fn input_hash(canonical: &str) -> String {
-    let digest = Sha256::digest(canonical.as_bytes());
-    digest
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .take(HASH_LEN)
-        .collect()
+    crate::hash::hex_sha256(canonical.as_bytes())[..HASH_LEN * 2].to_string()
 }
 
 /// The store path for a module with the given resolved plan.
@@ -34,9 +28,11 @@ pub fn store_path(home: &Path, name: &str, canonical: &str) -> PathBuf {
 /// Content-addressed store path (0014): the key IS the canonical tree
 /// hash of the published payload — the name is the expectation, so a
 /// path's presence is proof of content. Same width as input hashes.
+/// `tree256` arrives from lockfiles and manifests (disk state): a
+/// short or malformed value must miss the store, never panic.
 pub fn content_path(home: &Path, name: &str, tree256: &str) -> PathBuf {
-    home.join(STORE_DIR)
-        .join(format!("{}-{name}", &tree256[..HASH_LEN * 2]))
+    let prefix = tree256.get(..HASH_LEN * 2).unwrap_or(tree256);
+    home.join(STORE_DIR).join(format!("{prefix}-{name}"))
 }
 
 /// Base directory for everything gripsack owns: store, generations, and

@@ -28,6 +28,11 @@ pub enum FetchError {
     },
     #[error("http error fetching {url}: {reason}")]
     Http { url: String, reason: String },
+    /// A body or decompressed payload exceeded its size cap — a
+    /// truncated accept is worse than an error: a short read at the
+    /// cap used to extract whatever arrived.
+    #[error("{what} exceeds the {limit} byte cap — refusing to truncate silently")]
+    PayloadTooLarge { what: String, limit: u64 },
     #[error("zip extract: {0}")]
     Zip(#[from] zip::result::ZipError),
     /// Error-severity diagnostics from a plugin (0009 §2 rule 1) —

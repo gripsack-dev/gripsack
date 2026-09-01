@@ -12,7 +12,23 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
     let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
     use gripsack_ir::FetchSpec as F;
     let order = scoped_order(ir, &ctx.only)?;
-    let mut lock = crate::lockfile::read(&ctx.repo, &ctx.host).unwrap_or_default();
+    let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
+        crate::lockfile::LockRead::Parsed(lock) => lock,
+        crate::lockfile::LockRead::Missing => Default::default(),
+        // update is the lockfile's only mutator: starting from an
+        // empty parse of a corrupt file would erase every module's
+        // pin but the ones this run touches
+        crate::lockfile::LockRead::Corrupt(why) => {
+            return Err(ExecError::Step {
+                module: "*".into(),
+                step: "lockfile".into(),
+                detail: format!(
+                    "{} is corrupt ({why}) — delete it to re-pin from scratch",
+                    crate::lockfile::path(&ctx.repo, &ctx.host).display()
+                ),
+            });
+        }
+    };
     let mut reports = Vec::new();
     for name in &order {
         let module = &ir.modules[name.as_str()];
