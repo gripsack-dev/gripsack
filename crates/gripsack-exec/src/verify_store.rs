@@ -19,7 +19,16 @@ pub fn verify_store(
     for n in gripsack_store::list_generations(home) {
         let manifest = match gripsack_store::read_manifest(home, n) {
             Ok(m) => m,
-            Err(_) => continue, // gc's fail-closed rule is gc's, not verify's
+            Err(e) => {
+                // a corrupt generation must surface, not read as "ok" —
+                // gc fails closed; verify at least says what it skipped
+                out.push((
+                    "*".into(),
+                    ReportKind::Warned,
+                    format!("generation {n} manifest unreadable: {e}"),
+                ));
+                continue;
+            }
         };
         for (name, state) in &manifest.modules {
             let path = &state.store_path;
@@ -60,19 +69,20 @@ pub fn verify_store(
                         .map(|r| gripsack_store::canonical_bytes_hash(&r)),
                     _ => gripsack_store::canonical_file_hash(&src).ok(),
                 };
-                if let Some(h) = actual
-                    && h != entry.hash
+                if let Some(h) = &actual
+                    && *h != entry.hash
                 {
                     return_corrupt(
                         &mut out,
                         repair,
+                        home,
                         path,
                         name,
                         &format!(
                             "corrupt: {} tampered (recorded {} ≠ {})",
                             src.display(),
-                            &entry.hash[..16],
-                            &h[..16]
+                            hex_head(&entry.hash),
+                            hex_head(h)
                         ),
                     )?;
                     handled = true;
@@ -91,13 +101,14 @@ pub fn verify_store(
                     return_corrupt(
                         &mut out,
                         repair,
+                        home,
                         path,
                         name,
                         &format!(
                             "corrupt: {} hashes {} but the manifest records {} — `grip store verify --repair` removes it",
                             path.display(),
-                            &actual[..16],
-                            &expected[..16]
+                            hex_head(&actual),
+                            hex_head(expected)
                         ),
                     )?;
                 }
@@ -106,17 +117,38 @@ pub fn verify_store(
     }
     Ok(out)
 }
-
 /// Report (or repair) a corrupt store path. Repair removes it — the
-/// next apply re-fetches from the pin.
+/// next apply re-fetches from the pin. The path comes from a manifest,
+/// which is disk state, not memory: repair refuses to remove anything
+/// that does not sit inside `$home/store` — a tampered manifest must
+/// not turn `--repair` into an arbitrary directory delete.
 fn return_corrupt(
     out: &mut Vec<(String, ReportKind, String)>,
     repair: bool,
+    home: &std::path::Path,
     path: &std::path::Path,
     name: &str,
     summary: &str,
 ) -> Result<(), ExecError> {
     if repair {
+        let contained = home
+            .join(gripsack_store::STORE_DIR)
+            .canonicalize()
+            .ok()
+            .and_then(|root| path.canonicalize().ok().map(|p| p.starts_with(&root)))
+            .unwrap_or(false);
+        if !contained {
+            out.push((
+                name.to_string(),
+                ReportKind::Warned,
+                format!(
+                    "refusing to repair {}: outside {}",
+                    path.display(),
+                    home.join(gripsack_store::STORE_DIR).display()
+                ),
+            ));
+            return Ok(());
+        }
         std::fs::remove_dir_all(path)?;
         out.push((
             name.to_string(),
@@ -127,4 +159,13 @@ fn return_corrupt(
         out.push((name.to_string(), ReportKind::Warned, summary.to_string()));
     }
     Ok(())
+}
+
+/// First 16 chars of a hash string — manifests are disk state, and a
+/// tampered short hash must not panic the slice.
+fn hex_head(hash: &str) -> &str {
+    match hash.get(..16) {
+        Some(head) => head,
+        None => hash,
+    }
 }

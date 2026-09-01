@@ -1,0 +1,17 @@
+[
+  {
+    "code": "A04",
+    "severity": "error",
+    "message": "'buffer_font_size' must be integer, got null",
+    "labels": [
+      {
+        "span": {
+          "file": "<input>",
+          "line": 2,
+          "col": 3
+        },
+        "note": ""
+      }
+    ]
+  }
+]

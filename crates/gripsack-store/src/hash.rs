@@ -142,7 +142,22 @@ fn exec_byte(_meta: &std::fs::Metadata) -> u8 {
 }
 
 fn hex(digest: &[u8]) -> String {
-    digest.iter().map(|b| format!("{b:02x}")).collect()
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(digest.len() * 2);
+    for &b in digest {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0xf) as usize] as char);
+    }
+    out
+}
+
+/// sha256 of raw bytes as lowercase hex — the one true encoder for
+/// digests in this crate (paths and blobs used to roll their own).
+pub fn hex_sha256(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex(&hasher.finalize())
 }
 
 #[cfg(test)]

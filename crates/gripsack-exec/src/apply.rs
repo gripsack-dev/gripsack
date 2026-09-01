@@ -20,15 +20,34 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     let order = scoped_order(ir, &ctx.only)?;
     let steps_by_module = expand::expand_all(&ir.modules);
     let mut reports = Vec::new();
-    let mut lock = crate::lockfile::read(&ctx.repo, &ctx.host).unwrap_or_default();
+    let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
+        crate::lockfile::LockRead::Parsed(lock) => lock,
+        crate::lockfile::LockRead::Missing => Default::default(),
+        crate::lockfile::LockRead::Corrupt(why) => {
+            // never silently re-pin from a corrupt lock: the file is
+            // the tamper signal (lockfile.rs header). deleting it is
+            // the user's deliberate re-pin.
+            return Err(ExecError::Step {
+                module: "*".into(),
+                step: "lockfile".into(),
+                detail: format!(
+                    "{} is corrupt ({why}) — delete it to re-pin from scratch",
+                    crate::lockfile::path(&ctx.repo, &ctx.host).display()
+                ),
+            });
+        }
+    };
     let mut lock_dirty = false;
 
     // The previous generation's state, for drift detection — distinct
-    // from the manifest being built (see below).
+    // from the manifest being built. Read once: prune and the
+    // satisfied comparison below reuse it.
     let current_gen = store::current_generation(&ctx.home);
-    let prev_modules: BTreeMap<String, store::ModuleState> = current_gen
-        .and_then(|n| store::read_manifest(&ctx.home, n).ok())
-        .map(|g| g.modules)
+    let prev_manifest: Option<store::Generation> =
+        current_gen.and_then(|n| store::read_manifest(&ctx.home, n).ok());
+    let prev_modules: BTreeMap<String, store::ModuleState> = prev_manifest
+        .as_ref()
+        .map(|g| g.modules.clone())
         .unwrap_or_default();
     // A subset apply starts from the current generation's manifest and
     // replaces only the modules it touches (0001 §3.6). A full apply
@@ -60,7 +79,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         // generation's state — no half-applied deployment exists.
         let mut touched = outcome.modules;
         touched.insert(name, failed_state);
-        crate::deploy::run_rollback(&touched, &prev_modules);
+        crate::deploy::run_rollback(&touched, &prev_modules, &ctx.home);
         return Err(error);
     }
     for (name, module_reports) in outcome.reports {
@@ -74,26 +93,26 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             lock_dirty = true;
         }
     }
+    // pins are fetch outcomes — they must land before anything can
+    // short-circuit later (the satisfied early-return used to skip
+    // the write, so a mirror-swap re-fetch never refreshed its pin
+    // and every later apply re-resolved)
+    if lock_dirty {
+        crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
+    }
     modules.extend(outcome.modules);
 
     // Prune-on-undeclare (0006 critique): destinations in the previous
     // manifest but gone now are removed — only if the file still matches
     // the recorded hash (user edits are never deleted).
-    if let Some(n) = current_gen
-        && let Ok(prev) = store::read_manifest(&ctx.home, n)
-    {
-        prune_undeclared(&prev, &modules, &ctx.home)?;
+    if let Some(prev) = &prev_manifest {
+        prune_undeclared(prev, &modules, &ctx.home)?;
     }
 
     // Satisfied = the module states are identical (the generation
     // number is not part of the comparison — 0008 §3).
     let next = current_gen.unwrap_or(0) + 1;
-    if current_gen
-        .and_then(|n| store::read_manifest(&ctx.home, n).ok())
-        .map(|g| g.modules)
-        .as_ref()
-        == Some(&modules)
-    {
+    if prev_manifest.as_ref().map(|g| &g.modules) == Some(&modules) {
         return Ok(ApplyResult {
             outcome: Outcome::Satisfied {
                 generation: current_gen,
@@ -110,9 +129,6 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     render_env_file(&ctx.home, &generation.modules)?;
     reports.extend(crate::activate::run_post_link(&order, &steps_by_module));
     reports.extend(crate::activate::run_post_activate(&order, &steps_by_module));
-    if lock_dirty {
-        crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
-    }
     info!(generation = next, "activated");
     Ok(ApplyResult {
         outcome: Outcome::Applied { generation: next },

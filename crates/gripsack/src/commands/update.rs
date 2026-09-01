@@ -42,18 +42,32 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
                 println!("nothing to resolve yet — no resolvable fetches in the graph");
             }
             for r in &reports {
-                match &r.status {
-                    gripsack_exec::UpdateStatus::Unchanged => {
-                        println!("  {} {}", r.module.cyan(), "unchanged".dimmed())
+                if palette.enabled {
+                    match &r.status {
+                        gripsack_exec::UpdateStatus::Unchanged => {
+                            println!("  {} {}", r.module.cyan(), "unchanged".dimmed())
+                        }
+                        gripsack_exec::UpdateStatus::Bumped { .. } => {
+                            println!("  {} {}", r.module.cyan(), "bumped".yellow().bold())
+                        }
+                        gripsack_exec::UpdateStatus::Skipped { reason } => println!(
+                            "  {} {}",
+                            r.module.cyan(),
+                            format!("skipped ({reason})").dimmed()
+                        ),
                     }
-                    gripsack_exec::UpdateStatus::Bumped { .. } => {
-                        println!("  {} {}", r.module.cyan(), "bumped".yellow().bold())
+                } else {
+                    match &r.status {
+                        gripsack_exec::UpdateStatus::Unchanged => {
+                            println!("  {} unchanged", r.module)
+                        }
+                        gripsack_exec::UpdateStatus::Bumped { .. } => {
+                            println!("  {} bumped", r.module)
+                        }
+                        gripsack_exec::UpdateStatus::Skipped { reason } => {
+                            println!("  {} skipped ({reason})", r.module)
+                        }
                     }
-                    gripsack_exec::UpdateStatus::Skipped { reason } => println!(
-                        "  {} {}",
-                        r.module.cyan(),
-                        format!("skipped ({reason})").dimmed()
-                    ),
                 }
             }
             if reports
@@ -65,7 +79,13 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("{}", format!("error: {e}").red().bold());
+            // colors follow the terminal (main.rs): piped output stays
+            // plain
+            if palette.enabled {
+                eprintln!("{}", format!("error: {e}").red().bold());
+            } else {
+                eprintln!("error: {e}");
+            }
             ExitCode::FAILURE
         }
     }

@@ -77,10 +77,19 @@ fn scan_toml_spans(text: &str) -> HashMap<(String, String), KeySpan> {
             let key: String = trimmed.chars().take(key_len).collect();
             let after = trimmed[key.len()..].trim_start();
             if after.starts_with('=') {
+                // the whole token after optional whitespace — the old
+                // per-char position() only ever matched 1-char keys.
+                // Keys are ascii, so match offsets are char boundaries.
                 let col = raw
-                    .chars()
-                    .position(|c| c.to_string() == key)
-                    .map(|p| p + 1)
+                    .match_indices(&key)
+                    .find(|(i, _)| {
+                        raw[..*i].chars().all(char::is_whitespace)
+                            && raw[i + key.len()..]
+                                .chars()
+                                .next()
+                                .is_none_or(|c| !is_key_start(c))
+                    })
+                    .map(|(i, _)| raw[..i].chars().count() + 1)
                     .unwrap_or(1);
                 spans
                     .entry((section.clone(), key))
@@ -96,7 +105,10 @@ fn toml_error_span(text: &str, span: Option<std::ops::Range<usize>>) -> (usize, 
     let Some(span) = span else { return (1, 1) };
     let mut line = 1;
     let mut col = 1;
-    for (i, c) in text.chars().enumerate() {
+    // toml_edit spans are byte offsets; char_indices maps them to
+    // code-point columns (chars().enumerate() drifted on multibyte
+    // input — byte offsets ran past the char count)
+    for (i, c) in text.char_indices() {
         if i >= span.start {
             break;
         }
@@ -396,7 +408,7 @@ pub fn parse_yaml(path: &str, text: &str) -> Result<Document, (String, usize, us
 
 fn yaml_value(v: serde_yaml::Value) -> Value {
     match v {
-        serde_yaml::Value::Null => Value::Str(String::new()),
+        serde_yaml::Value::Null => Value::Null,
         serde_yaml::Value::Bool(b) => Value::Bool(b),
         serde_yaml::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
@@ -418,5 +430,36 @@ fn yaml_value(v: serde_yaml::Value) -> Value {
                 .collect(),
         ),
         serde_yaml::Value::Tagged(t) => yaml_value(t.value),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn indented_multichar_keys_get_real_columns() {
+        let spans = scan_toml_spans("[editor]\n  scrolloff = 5");
+        let span = &spans[&("editor".to_string(), "scrolloff".to_string())];
+        assert_eq!((span.line, span.col), (2, 3));
+    }
+
+    #[test]
+    fn json_and_yaml_null_stay_null() {
+        let json = parse_json("f", r#"{"a": null}"#).unwrap();
+        assert_eq!(json.data[0].1, Value::Null);
+        let yaml = parse_yaml("f", "a:\n").unwrap();
+        assert_eq!(yaml.data[0].1, Value::Null);
+    }
+
+    #[test]
+    fn error_spans_map_bytes_to_code_point_columns() {
+        // line 1 is 15 bytes / 9 chars; byte 16 = 'b' (line 2, col 1)
+        let text = "a = \"日本語\"\nbad";
+        assert_eq!(toml_error_span(text, Some(16..16)), (2, 1));
+        assert_eq!(toml_error_span(text, Some(17..17)), (2, 2));
+        // byte 8 = '本', char 7 (1-based)
+        assert_eq!(toml_error_span(text, Some(8..8)), (1, 7));
+        assert_eq!(toml_error_span(text, None), (1, 1));
     }
 }

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "W10",
+    "severity": "warning",
+    "message": "key tables are written for a different major version; this module pins 0.10 — results may be stale",
+    "labels": []
+  }
+]

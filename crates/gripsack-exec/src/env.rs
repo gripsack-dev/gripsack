@@ -26,6 +26,17 @@ pub fn render_env_file(
     let mut any = false;
     for state in modules.values() {
         for var in &state.env {
+            // manifests are disk state: a name that is not a shell
+            // identifier would inject into every shell that sources
+            // this profile. sema rejects these at eval; this guard is
+            // for the hand-edited manifest.
+            if !is_identifier(&var.name) {
+                eprintln!(
+                    "grip: skipping env var with invalid name {:?} in module state",
+                    var.name
+                );
+                continue;
+            }
             let resolved = var
                 .value
                 .replace("{store}", &state.store_path.to_string_lossy());
@@ -57,6 +68,14 @@ pub fn render_env_file(
     }
     store::atomic_write(&path, lines.join("\n").as_bytes())?;
     Ok(path)
+}
+
+/// A shell-safe env var name: POSIX identifier rules. The value side
+/// is quoted; the name side cannot be, so it is validated instead.
+fn is_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// Escape backslash, quote, and backtick (the caller adds the double

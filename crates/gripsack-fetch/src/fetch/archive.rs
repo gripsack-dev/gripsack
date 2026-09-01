@@ -93,8 +93,18 @@ fn stage_bare(bytes: &[u8], dest: &Path, bare_name: &str) -> Result<(), FetchErr
 }
 
 fn decompress<R: io::Read>(mut r: R) -> Result<Vec<u8>, FetchError> {
+    // a few-KB xz bomb expands to GBs in RAM before the traversal
+    // scan ever runs — the download cap bounds compressed bytes only
+    const CAP: u64 = 4 * 1024 * 1024 * 1024;
     let mut out = Vec::new();
-    io::Read::read_to_end(&mut r, &mut out)?;
+    let mut limited = io::Read::take(&mut r, CAP + 1);
+    io::Read::read_to_end(&mut limited, &mut out)?;
+    if out.len() as u64 > CAP {
+        return Err(FetchError::PayloadTooLarge {
+            what: "decompressed payload".into(),
+            limit: CAP,
+        });
+    }
     Ok(out)
 }
 

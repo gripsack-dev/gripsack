@@ -29,13 +29,15 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
 /// sha256 the manifest references. Dedup is the point — priors are
 /// small, and identical originals share one blob.
 pub fn store_prior_blob(home: &Path, bytes: &[u8]) -> io::Result<String> {
-    use sha2::{Digest, Sha256};
-    let sha = Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
+    let sha = crate::hash::hex_sha256(bytes);
     let path = prior_blob_path(home, &sha);
-    if !path.exists() {
+    // exists() follows symlinks: a planted `prior/<sha>` symlink would
+    // skip the write and later restore THROUGH it. Skip only a real
+    // regular file; anything else is replaced by the atomic rename.
+    let present = std::fs::symlink_metadata(&path)
+        .map(|m| m.is_file())
+        .unwrap_or(false);
+    if !present {
         atomic_write(&path, bytes)?;
     }
     Ok(sha)

@@ -8,6 +8,7 @@
 
 mod deps;
 mod destinations;
+mod names;
 mod paths;
 mod placeholders;
 mod resources;
@@ -18,8 +19,8 @@ use crate::diagnostic::{Diagnostic, Severity};
 use crate::model::Ir;
 use crate::parse::parse;
 
-/// The passes, in execution order.
 const PASSES: &[fn(&Ir, &mut Vec<Diagnostic>)] = &[
+    names::check,
     steps::check,
     deps::check,
     destinations::check,

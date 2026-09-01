@@ -18,16 +18,27 @@ use std::sync::Arc;
 /// The auth header for a URL, if a token is bound to its host. The gh
 /// CLI convention, because it is the ecosystem standard:
 /// `GH_TOKEN`/`GITHUB_TOKEN` only ever go to github.com hosts;
-/// `GH_ENTERPRISE_TOKEN`/`GITHUB_ENTERPRISE_TOKEN` only to enterprise
-/// hosts. A token is NEVER attached outside its binding — a mixed
-/// repo (some modules on GHE, most on public github) must not leak
-/// either credential to the other side (enterprise review finding).
+/// `GH_ENTERPRISE_TOKEN`/`GITHUB_ENTERPRISE_TOKEN` only to the ONE
+/// enterprise host `GH_HOST`/`GITHUB_HOST` names. A token is NEVER
+/// attached outside its binding — a mixed repo (some modules on GHE,
+/// most on public github) must not leak either credential to the
+/// other side (enterprise review finding). "Any non-github host"
+/// cannot be the enterprise binding here, unlike in gh: one gripsack
+/// run fetches from every host the modules name.
 pub(crate) fn auth_header(url: &str) -> Option<String> {
     let (host, _) = host_port(url)?;
     let github_host = host == "api.github.com" || host == "github.com";
     let (primary, fallback) = if github_host {
         ("GITHUB_TOKEN", "GH_TOKEN")
     } else {
+        let bound = std::env::var("GH_HOST")
+            .or_else(|_| std::env::var("GITHUB_HOST"))
+            .ok()?
+            .trim()
+            .to_lowercase();
+        if host != bound {
+            return None;
+        }
         ("GITHUB_ENTERPRISE_TOKEN", "GH_ENTERPRISE_TOKEN")
     };
     std::env::var(primary)
@@ -201,10 +212,10 @@ mod tests {
 mod auth_tests {
     use super::auth_header;
     // env mutation races other env tests in this file — one lock for all
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    static LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
     fn with_env(vars: &[(&str, Option<&str>)], f: impl FnOnce()) {
-        let _g = LOCK.lock().unwrap();
+        let _g = LOCK.lock();
         let saved: Vec<_> = vars
             .iter()
             .map(|(k, _)| (*k, std::env::var(k).ok()))
@@ -228,11 +239,13 @@ mod auth_tests {
         }
     }
 
-    const ALL: [&str; 4] = [
+    const ALL: [&str; 6] = [
         "GITHUB_TOKEN",
         "GH_TOKEN",
         "GITHUB_ENTERPRISE_TOKEN",
         "GH_ENTERPRISE_TOKEN",
+        "GH_HOST",
+        "GITHUB_HOST",
     ];
 
     #[test]
@@ -255,13 +268,15 @@ mod auth_tests {
     }
 
     #[test]
-    fn enterprise_token_only_binds_enterprise_hosts() {
+    fn enterprise_token_binds_only_gh_host() {
         with_env(
             &[
                 (ALL[0], None),
                 (ALL[1], None),
                 (ALL[2], Some("corp")),
                 (ALL[3], None),
+                (ALL[4], Some("ghe.corp.example")),
+                (ALL[5], None),
             ],
             || {
                 assert_eq!(
@@ -269,6 +284,29 @@ mod auth_tests {
                     Some("Bearer corp".into())
                 );
                 assert!(auth_header("https://api.github.com/repos/x").is_none());
+                // the leak this guard exists for: a module tarball on a
+                // third-party host must never see the enterprise token
+                assert!(auth_header("https://evil.example/tools.tar.gz").is_none());
+            },
+        );
+    }
+
+    #[test]
+    fn enterprise_token_without_gh_host_attaches_nowhere() {
+        with_env(
+            &[
+                (ALL[0], None),
+                (ALL[1], None),
+                (ALL[2], Some("corp")),
+                (ALL[3], None),
+                (ALL[4], None),
+                (ALL[5], None),
+            ],
+            || {
+                // no binding named → we cannot know the enterprise
+                // host; fail safe rather than exfiltrate
+                assert!(auth_header("https://ghe.corp.example/api/v3/repos/x").is_none());
+                assert!(auth_header("https://evil.example/tools.tar.gz").is_none());
             },
         );
     }

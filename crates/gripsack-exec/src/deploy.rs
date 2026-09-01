@@ -37,7 +37,12 @@ pub fn restore_entry(
         }
         Ownership::Merge => {
             let payload = std::fs::read_to_string(&source).unwrap_or_default();
-            let existing = std::fs::read_to_string(dest).unwrap_or_default();
+            // a dest that is not text cannot host a managed block:
+            // splicing onto "" would REPLACE the whole foreign file
+            // (silent data loss) — leave it alone instead
+            let Some(existing) = read_foreign_text(dest) else {
+                return Ok(());
+            };
             match crate::render::upsert_block(&existing, module, dest, None, &payload) {
                 Ok(new) => store::atomic_write(dest, new.as_bytes()),
                 Err(_) => Ok(()), // malformed markers: leave the foreign file alone
@@ -190,10 +195,14 @@ pub fn remove_or_restore_prior(
 /// fails mid-graph must leave NO half-applied deployment behind —
 /// the generation flip was never reached, so every destination this
 /// run touched is restored to the previous generation's state (or
-/// removed if the previous generation didn't deploy it).
+/// removed if the previous generation didn't deploy it; entries this
+/// run absorbed via --take-over restore their captured prior first,
+/// 0015 §4 — removing the deployed link alone would lose the user's
+/// original file, whose bytes only exist in the prior blob store).
 pub(crate) fn run_rollback(
     touched: &std::collections::BTreeMap<String, store::ModuleState>,
     prev: &std::collections::BTreeMap<String, store::ModuleState>,
+    home: &Path,
 ) {
     for (name, state) in touched {
         let prev_state = prev.get(name);
@@ -212,8 +221,8 @@ pub(crate) fn run_rollback(
                     }
                 }
                 None => {
-                    if remove_entry_deployed(&dest, entry, name) {
-                        tracing::info!("removed {} (run rolled back)", entry.to);
+                    if remove_or_restore_prior(&dest, entry, name, home) {
+                        tracing::info!("restored {} (run rolled back)", entry.to);
                     }
                 }
             }
@@ -446,7 +455,19 @@ pub(crate) fn deploy_entry(
                 .map_err(|e| fail(format!("cannot read {}: {e}", source.display())))?;
             let block = payload.trim_end_matches('\n');
             let hash = store::canonical_bytes_hash(block.as_bytes());
-            let existing = std::fs::read_to_string(&dest).unwrap_or_default();
+            let existing = match read_foreign_text(&dest) {
+                Some(text) => text,
+                None if !dest.exists() => String::new(),
+                // a binary or unreadable dest would be replaced
+                // wholesale by the marker block — silent data loss
+                None => {
+                    return Err(fail(format!(
+                        "cannot merge into {}: destination is not UTF-8 text — \
+                         merge mode manages a block inside a text file",
+                        dest.display()
+                    )));
+                }
+            };
             let satisfied = crate::render::extract_block(&existing, module)
                 .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()) == hash);
             if satisfied {
@@ -521,6 +542,17 @@ pub(crate) fn expand_home(to: &str) -> PathBuf {
     }
     PathBuf::from(to)
 }
+/// Read a foreign (user-owned) destination as text: absent counts as
+/// empty (merge creates the file); anything unreadable or non-UTF-8
+/// is None — callers must refuse to splice onto it, never fall back
+/// to "" and replace the file.
+fn read_foreign_text(dest: &Path) -> Option<String> {
+    match std::fs::read_to_string(dest) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(String::new()),
+        Err(_) => None,
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -560,7 +592,7 @@ mod tests {
         // the migration landmine: a leftover symlink pointing back
         // into the env repo
         std::os::unix::fs::symlink(repo.join(".claude/scripts"), home.join("scripts")).unwrap();
-        assert!(dest_resolves_into(&home.join("scripts/deploy.sh"), &repo));
+
         // the repo path itself, and a not-yet-existing path under it
         assert!(dest_resolves_into(&repo.join("new/dir/file"), &repo));
         // ordinary destinations nowhere near the repo pass

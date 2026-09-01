@@ -127,10 +127,7 @@ fn check_key(
         }];
     }
     if let Some(choices) = &rule.choices {
-        let in_choices = choices.iter().any(|c| {
-            let cv = Value::from(c.clone());
-            cv == *val
-        });
+        let in_choices = choices.iter().any(|c| Value::from(c.clone()).py_eq(val));
         if !in_choices {
             let allowed = choices
                 .iter()
@@ -212,7 +209,25 @@ pub fn table_check(doc: &Document, table: &FileTable, strict: bool) -> Vec<Diagn
     }
 
     for (key, value) in &doc.data {
-        if let Value::Table(entries) = value {
+        // section-shaped top levels: a [key] table, or a [[key]]
+        // array-of-tables (parses as Value::Array — invisible to the
+        // section dispatch, and so to A02, until now)
+        let section_tables: Vec<&Vec<(String, Value)>> = match value {
+            Value::Table(entries) => vec![entries],
+            Value::Array(items)
+                if !items.is_empty() && items.iter().all(|v| matches!(v, Value::Table(_))) =>
+            {
+                items
+                    .iter()
+                    .filter_map(|v| match v {
+                        Value::Table(entries) => Some(entries),
+                        _ => None,
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
+        if !section_tables.is_empty() {
             if let Some(entry) = table.rules.get(key) {
                 match section_kind(Some(entry)) {
                     SectionKind::Free => continue,
@@ -243,7 +258,9 @@ pub fn table_check(doc: &Document, table: &FileTable, strict: bool) -> Vec<Diagn
                         continue;
                     }
                     SectionKind::Keys(_) => {
-                        walk(doc, table, &mut out, key, entries, strict);
+                        for entries in &section_tables {
+                            walk(doc, table, &mut out, key, entries, strict);
+                        }
                         continue;
                     }
                 }
@@ -253,11 +270,14 @@ pub fn table_check(doc: &Document, table: &FileTable, strict: bool) -> Vec<Diagn
                 .keys()
                 .any(|t| t.starts_with(&format!("{key}.")))
             {
-                walk(doc, table, &mut out, key, entries, strict);
+                for entries in &section_tables {
+                    walk(doc, table, &mut out, key, entries, strict);
+                }
                 continue;
             }
-            // a dict-valued bare key declared in the "" table is not a
-            // section — check it before complaining (profiles = {...})
+            // a tabled/array-valued bare key declared in the "" table
+            // is not a section — check it before complaining
+            // (profiles = {...}, [[columns]])
             if let Some(SectionRules::Keys(bare)) = table.rules.get("")
                 && bare.get(key).is_some()
             {
@@ -300,6 +320,31 @@ pub fn table_check(doc: &Document, table: &FileTable, strict: bool) -> Vec<Diagn
     out
 }
 
+/// Dotted-numeric prefix coverage for W10: "0.14" covers 0.14.3 but
+/// not 0.140, and "0.1" does not cover 0.14 — a text starts_with got
+/// both wrong. Segments compare numerically (missing = 0); a leading
+/// v and prerelease suffixes ("1.2.0-beta") are ignored.
+fn version_covered(version: &str, prefix: &str) -> bool {
+    let segments = |s: &str| -> Vec<i64> {
+        s.trim_start_matches(['v', 'V'])
+            .split('.')
+            .filter(|seg| !seg.is_empty())
+            .map(|seg| {
+                seg.chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0)
+            })
+            .collect()
+    };
+    let version = segments(version);
+    segments(prefix)
+        .iter()
+        .enumerate()
+        .all(|(i, n)| version.get(i).copied().unwrap_or(0) == *n)
+}
+
 /// Lint one file against a pack (0012 §move-3): basename dispatch,
 /// version coverage warning (W10), parse (A00), then the rule walk.
 pub fn lint_file(
@@ -316,14 +361,14 @@ pub fn lint_file(
         return vec![];
     };
     let mut out = Vec::new();
-    // W10: the pinned version is outside the table's supported prefixes
+    // W10: the pinned version is outside the table's supported ranges
     if let Some(version) = tool_version
         && !version.is_empty()
         && !pack
             .meta
             .supported
             .iter()
-            .any(|p| version.starts_with(p.as_str()))
+            .any(|p| version_covered(version, p))
     {
         let message = pack
             .meta
@@ -376,4 +421,28 @@ pub fn lint_file(
     let strict = !pack.meta.lenient.iter().any(|b| b == basename);
     out.extend(table_check(&doc, file, strict));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::version_covered;
+
+    #[test]
+    fn version_coverage_is_numeric_not_textual() {
+        assert!(version_covered("0.14", "0.14"));
+        assert!(version_covered("0.14.3", "0.14"));
+        assert!(version_covered("0.1.7", "0.1"));
+        // the overreach starts_with allowed
+        assert!(!version_covered("0.140", "0.14"));
+        assert!(!version_covered("0.14.2", "0.1"));
+        assert!(!version_covered("0.10", "0.1"));
+        // series prefixes, v-spelled pins, prereleases, year majors
+        assert!(version_covered("0.14.2", "0."));
+        assert!(version_covered("v25.3", "25."));
+        assert!(version_covered("25.3", "v25."));
+        assert!(version_covered("1.2.0-beta.4", "1.2"));
+        assert!(version_covered("2025.3", "2025"));
+        assert!(!version_covered("2024.1", "2025"));
+        assert!(!version_covered("17.9", "18."));
+    }
 }
