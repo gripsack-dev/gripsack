@@ -11,7 +11,16 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
     // same lifecycle lock (finding F, closed alongside D)
     let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
     use gripsack_ir::FetchSpec as F;
-    let order = scoped_order(ir, &ctx.only)?;
+    let (order, missing) = scoped_order(ir, &ctx.only)?;
+    let mut reports = missing
+        .into_iter()
+        .map(|module| UpdateReport {
+            module,
+            status: UpdateStatus::Skipped {
+                reason: "not in this host's graph",
+            },
+        })
+        .collect::<Vec<_>>();
     let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
         crate::lockfile::LockRead::Parsed(lock) => lock,
         crate::lockfile::LockRead::Missing => Default::default(),
@@ -29,10 +38,14 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
             });
         }
     };
-    let mut reports = Vec::new();
     for name in &order {
         let module = &ir.modules[name.as_str()];
-        let Some(spec) = &module.fetch else {
+        // the spec lives in module.fetch OR in the module's (single,
+        // E118-enforced) fetch step — update used to see only the
+        // declarative field, so steps-style modules applied unpinned
+        // with check/plan/update all silent about it
+        let steps = crate::expand::steps_of(module);
+        let Some(spec) = crate::identity::fetch_spec(module, &steps) else {
             continue;
         };
         let old = lock

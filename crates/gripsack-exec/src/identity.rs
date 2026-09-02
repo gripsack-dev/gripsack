@@ -74,14 +74,9 @@ pub(crate) fn resolve(
         )
     });
     // the fetch spec lives in module.fetch (declarative) or in a
-    // fetch step (explicit steps) — check both
-    let fetch_spec = module.fetch.as_ref().or_else(|| {
-        steps.iter().find_map(|s| match &s.action {
-            StepAction::Fetch { fetch } => Some(fetch),
-            _ => None,
-        })
-    });
-    // a changed spec cannot trust the locked tree for presence:
+    // fetch step (explicit steps) — one source of truth for identity
+    // and the lockfile resolver alike
+    let fetch_spec = fetch_spec(module, steps);
     // the recipe left the path, so one re-fetch must PROVE byte
     // identity — publish dedups if it matches (the mirror swap)
     let spec_changed = match (locked, fetch_spec) {
@@ -166,5 +161,21 @@ pub(crate) fn resolve(
         identity_pending,
         tree256,
         present,
+    })
+}
+
+/// A module's fetch spec wherever it was declared: the declarative
+/// `fetch` field, or the (single, E118-enforced) fetch step. The
+/// lockfile resolver and the identity resolution must see the same
+/// spec or steps-style modules pin differently than they resolve.
+pub(crate) fn fetch_spec<'a>(
+    module: &'a Module,
+    steps: &'a [Step],
+) -> Option<&'a gripsack_ir::FetchSpec> {
+    module.fetch.as_ref().or_else(|| {
+        steps.iter().find_map(|s| match &s.action {
+            StepAction::Fetch { fetch } => Some(fetch),
+            _ => None,
+        })
     })
 }

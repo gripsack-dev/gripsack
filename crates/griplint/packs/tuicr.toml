@@ -5,11 +5,11 @@
 tool = "tuicr"
 handles = ["config.toml"]
 format = "toml"
-# tables verified against the 0.2x surface (latest v0.24.0, 2026-08);
+# tables verified against the 0.2.x surface (latest v0.24.0, 2026-08);
 # "v0.2" because host lockfiles pin tag-style versions ("v0.24.0")
 supported = ["0.2", "v0.2"]
 series = "v0"
-coverage_warning = "key tables are written for tuicr 0.2x; this module pins {version} — results may be stale"
+coverage_warning = "key tables are written for tuicr 0.2.x; this module pins {version} — results may be stale"
 
 [files."config.toml".rules.""]
 theme = { types = ["string"] }

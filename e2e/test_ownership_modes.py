@@ -300,3 +300,78 @@ export default module("scripts", {
     assert "resolves inside the env repo" in out.stderr
     # the module's source survived untouched
     assert (source / "deploy.sh").read_text() == "#!/bin/sh\necho real\n"
+
+
+def test_owned_replaces_a_stale_symlink_into_the_repo(sandbox):
+    """F2 regression: an `owned` destination that is itself a symlink
+    into the repo — an artifact of an older gripsack that deployed
+    config straight from the checkout — is prior state gripsack may
+    replace (nothing is written THROUGH it). The containment guard
+    used to refuse forever with an error that pointed at the module
+    instead of the stale link: a hard stop on the first apply after
+    upgrading, with no in-product way out."""
+    payload = make_tarball(
+        sandbox / "owned.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("m", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/tool": symlink("~/.local/bin/tool") }},
+}});
+""",
+    )
+    # the stale artifact: an owned destination pointing INTO the repo,
+    # as an old gripsack would have written it
+    dest = sandbox / ".local/bin/tool"
+    dest.parent.mkdir(parents=True)
+    (repo / "stale-target").write_text("old checkout artifact\n")
+    dest.symlink_to(repo / "stale-target")
+
+    # without --take-over the normal owned drift guard answers — with
+    # the mechanism and the way out named, not the containment error
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "not deployed by gripsack" in out.stderr
+    assert "take-over" in out.stderr
+    assert dest.is_symlink() and dest.resolve() == (repo / "stale-target")
+
+    # with --take-over the stale link is prior state: replaced by the
+    # store link, original target untouched
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.is_symlink(), "owned semantics replace the link, not follow it"
+    assert "store" in str(dest.resolve()), out.stdout
+    assert (repo / "stale-target").read_text() == "old checkout artifact\n"
+
+
+def test_write_through_mode_refuses_repo_symlink_with_a_hint(sandbox):
+    """The same stale link under a write-THROUGH mode (tracked_copy)
+    still refuses — writing would land in the checkout — but the error
+    names the mechanism and the way out."""
+    confdir = sandbox / "myenv" / "configs" / "app"
+    confdir.mkdir(parents=True)
+    (confdir / "app.conf").write_text("key = 1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("m", {
+  config: { "configs/app/app.conf": trackedCopy("~/.config/app/app.conf") },
+});
+""",
+    )
+    dest = sandbox / ".config/app/app.conf"
+    dest.parent.mkdir(parents=True)
+    (repo / "stale-conf").write_text("stale\n")
+    dest.symlink_to(repo / "stale-conf")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "resolves inside the env repo" in out.stderr
+    assert "symlink into the repo" in out.stderr, out.stderr
+    assert (repo / "stale-conf").read_text() == "stale\n"

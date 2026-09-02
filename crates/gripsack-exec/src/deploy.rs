@@ -264,9 +264,30 @@ pub(crate) fn deploy_entry(
     // delete: a symlinked ancestor dir (a leftover from another
     // provisioner) lands the write inside the checkout and the module
     // eats its own source. The repo is never a legitimate target.
-    if dest_resolves_into(&dest, &ctx.repo) {
+    //
+    // One exception: an `owned` destination that is ITSELF a symlink
+    // into the repo — almost certainly an artifact an older gripsack
+    // wrote when config deployed straight from the checkout. Owned
+    // semantics replace the link (nothing is ever written THROUGH
+    // it), so swapping it for a store link is safe and is the only
+    // migration path forward; refusing here stranded every config
+    // module that predates the store (first apply after upgrade,
+    // forever, with an error that pointed at the module instead of
+    // the stale link).
+    let dest_is_symlink = dest
+        .symlink_metadata()
+        .is_ok_and(|m| m.file_type().is_symlink());
+    let owned_replace_ok = matches!(entry.mode, Ownership::Owned) && dest_is_symlink;
+    if dest_resolves_into(&dest, &ctx.repo) && !owned_replace_ok {
+        let hint = if dest_is_symlink {
+            "\n  hint: the destination is a symlink into the repo — likely left by an \
+             older gripsack that deployed config from the checkout; remove it and \
+             re-apply, or declare the entry `owned` so gripsack replaces it"
+        } else {
+            ""
+        };
         return Err(fail(format!(
-            "{} resolves inside the env repo ({}) — refusing to deploy into the source checkout",
+            "{} resolves inside the env repo ({}) — refusing to deploy into the source checkout{hint}",
             entry.to,
             ctx.repo.display()
         )));

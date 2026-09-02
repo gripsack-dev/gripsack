@@ -3,6 +3,70 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.14] — 2026-09-02
+
+From a real two-host migration report and an external review. New
+diagnostic E118; no IR schema change.
+
+### Fixed
+
+- **A `steps`-style module was invisible to the lockfile resolver.**
+  Converting a module from the declarative style to the class/`steps`
+  style — changing nothing else — silently dropped it out of `grip
+  update` ("nothing to resolve yet"): it applied unpinned while
+  `check`, `plan` and `update` all stayed quiet. The resolver now
+  sees a module's single fetch step exactly like its declarative
+  `fetch` field, and **E118** refuses a module with several fetch
+  steps at check time (the lockfile pins one fetch per module) with
+  a hint to split into modules — same-wave modules fetch in
+  parallel, so nothing is lost. One consequence of E118: the
+  auto-chained multi-fetch DAGs whose install edges could mis-wire
+  can no longer be authored silently either.
+- **A stale symlink left by an older gripsack blocked the first
+  apply after upgrading, forever.** Config deployed straight from
+  the checkout in old versions; the containment guard then refused
+  any owned destination that still pointed into the repo, with an
+  error naming the module instead of the link. An `owned` destination
+  that is itself a symlink into the repo is now treated as prior
+  state: the normal owned drift guard answers (use `--take-over` to
+  replace; the original target is captured as a prior and never
+  touched). Write-through modes still refuse — writing would land in
+  the checkout — but the error now names the mechanism and the way
+  out.
+- **`grip update` silently dropped modules outside the host's
+  graph.** A probe-gated (or typo'd) name in `grip update a b c`
+  vanished — eight asked, seven answered, exit 0. Out-of-graph names
+  now report `skipped (not in this host's graph)`; `grip apply`
+  refuses them outright.
+- **The pinned Deno runtime is now the default.** Resolution used to
+  prefer a deno on PATH over the pinned, sha256-verified download —
+  two "identical" machines could evaluate through different runtimes
+  because one happened to have deno installed. Precedence is now
+  `GRIPSACK_DENO` → pinned → PATH (≥ 2, with a run-log warning) only
+  when the pinned one is unavailable (musl host, failed download).
+  `grip doctor` labels which one answered. Site-managed denos: set
+  `GRIPSACK_DENO`.
+- **`apply` no longer reports failure after activating.** The
+  exported-env profile (`env/profile.sh`) rendered after the
+  generation flip; an I/O error there said apply-failed while the
+  new generation was already active. It renders before the flip — a
+  failure now leaves nothing activated.
+- W10's tuicr coverage message says `0.2.x`, not `0.2x` (the latter
+  reads as covering anything starting `0.2`).
+
+### Notes
+
+- `update` records `sha256`; `tree256` (the extracted tree's hash)
+  is necessarily recorded at the first `apply` on that host — it
+  cannot be known before extraction. Split-resolution setups (one
+  host resolves, another applies) will see the apply add the field.
+- Stranded on ≤ 0.17.9 behind shared egress where `self-update`
+  cannot reach the API? Fetch the release tarball directly — the
+  same egress allows it:
+  `curl -LO https://github.com/gripsack-dev/gripsack/releases/latest/download/gripsack-<version>-<target>.tar.gz`
+  (this is also how the 0.17.10+ self-update fix can be reached).
+
+
 ## [0.17.13] — 2026-09-02
 
 Round two: a fresh fuzzing campaign (5,200+ IR mutations, 2,700 argv

@@ -98,6 +98,14 @@ pub fn expand_all(
         .collect()
 }
 
+/// A module's effective steps: declared ones pass through, declarative
+/// fields expand — the same view expand_all gives the scheduler.
+/// Anything walking module structure (the lockfile resolver) must see
+/// this or explicit-steps modules become invisible to it.
+pub fn steps_of(module: &Module) -> Vec<Step> {
+    module.steps.clone().unwrap_or_else(|| expand(module))
+}
+
 /// Module dependency edges as (dependent, dependency) pairs — used by
 /// the executor to scope subset applies (0001 §3.6).
 pub fn dep_edges(modules: &std::collections::BTreeMap<String, Module>) -> Vec<(String, String)> {
