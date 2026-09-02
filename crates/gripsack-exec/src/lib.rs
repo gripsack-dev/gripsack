@@ -24,6 +24,7 @@ pub mod expand;
 pub mod facts;
 pub mod frontend;
 pub mod gc;
+pub mod identity;
 pub mod lockfile;
 pub mod module;
 pub mod report;
