@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import {
   clearResources,
   configStep,
-  define,
   dep,
   emitIr,
   fetchStep,
@@ -14,7 +13,6 @@ import {
   hasTag,
   installStep,
   mergeTags,
-  Module,
   module,
   parseInputs,
   resource,
@@ -152,33 +150,6 @@ Deno.test("runStep emits structured argv actions with outputs", () => {
   assert.deepEqual(action.outputs, ["bin/hx"]);
 });
 
-Deno.test("class modules chain the pipeline", () => {
-  clearResources();
-  class Helix extends Module {
-    override fetch() {
-      return fetchStep(tarball("https://example.invalid/h.tar.xz"));
-    }
-    override install() {
-      return installStep({ "bin/hx": symlink("~/.local/bin/hx") });
-    }
-    override config() {
-      return configStep({ "config.toml": trackedCopy("~/.config/helix/config.toml") });
-    }
-  }
-  const value = define(Helix);
-  assert.equal(value.name, "helix");
-  const helix = emit({ modules: [value] }).modules.helix;
-  assert.deepEqual(
-    helix.steps.map((s: { id: string }) => s.id),
-    ["fetch", "install", "config"],
-  );
-  assert.equal(helix.steps[0].needs, undefined);
-  assert.deepEqual(helix.steps[1].needs, ["fetch"]);
-  assert.deepEqual(helix.steps[2].needs, ["install"]);
-  assert.equal(helix.steps[2].phase, "config");
-  assert.match(helix.span.file, /index\.test\.ts$/);
-});
-
 Deno.test("build-only deps keep their edge", () => {
   clearResources();
   const src = module("helix-src", {
@@ -199,7 +170,7 @@ Deno.test("stray objects in modules throw with what they are", () => {
   clearResources();
   assert.throws(
     () => emit({ modules: [{ name: "fake" } as never] }),
-    /must be module\(\)\/define\(\) values/,
+    /must be module\(\) values/,
   );
   assert.throws(
     () => emit({ modules: [["nope"] as never] }),

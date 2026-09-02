@@ -23,7 +23,7 @@ export type { Condition, FactView } from "./conditions.ts";
 export { defineEnv, emitIr, IR_VERSION, mergeTags } from "./graph.ts";
 export type { Env, EnvContext, EnvFn } from "./graph.ts";
 export { tree } from "./tree.ts";
-export { define, Module, module } from "./module.ts";
+export { module } from "./module.ts";
 export type { IrEntry, IrModule, ModuleSpec, ModuleValue, Span } from "./module.ts";
 export { customHook, desktopEntry, fonts, service } from "./intents.ts";
 export type { Intent, Trigger } from "./intents.ts";

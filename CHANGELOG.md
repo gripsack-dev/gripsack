@@ -3,6 +3,34 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.18.0] — 2026-09-02
+
+**Breaking (frontend DSL): the class authoring style is removed.**
+`class X extends Module` / `define(X)` is gone; the data style
+(`module("name", { ... })`) is the way to author modules, with
+explicit `steps:` for what declarative fields cannot say. For
+parameterized families — the one thing subclassing offered —
+**use a factory function**; it keeps modules values, keeps the
+lockfile-visible declarative fields, and keeps spans pointing at
+the call site:
+
+```ts
+function langServer(name: string, repo: string) {
+  return module(name, {
+    fetch: githubRelease({ repo, asset: `${name}-{version}.tar.gz` }),
+    install: { [`bin/${name}`]: symlink(`~/.local/bin/${name}`) },
+  });
+}
+```
+
+Why: the class style lowered to step-shaped IR that hid its module
+from the lockfile resolver (0.17.14's first migration finding), and
+it was a third surface to keep consistent with every pinning,
+plan-rendering, and diagnostics change. Modules are values; compose
+them. Companion decision: no grouping/alias feature — cosmetic
+grouping is a `const` array in your host file, and operational
+grouping (when it ships) will be tags, which already gate.
+
 ## [0.17.14] — 2026-09-02
 
 From a real two-host migration report and an external review. New
