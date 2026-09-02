@@ -441,3 +441,34 @@ export default module("tpm", {{
     assert out.returncode == 0, out.stderr
     assert "pinned by rev" in out.stdout
     assert "not supported" not in out.stdout
+
+
+def test_update_resolves_a_fetch_step_module(sandbox):
+    """F1 regression: a steps-style module with one fetch step pins
+    exactly like the declarative style — update used to walk only
+    module.fetch, so converting a module to the class style silently
+    dropped it out of the lockfile resolver ("nothing to resolve yet")
+    while check/plan stayed quiet."""
+    payload = make_tarball(
+        sandbox / "p.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("stepped", {{
+  steps: [{{
+    id: "fetch",
+    action: {{ kind: "fetch", fetch: fileFetch("{payload}") }},
+  }}],
+}});
+""",
+    )
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "nothing to resolve" not in out.stdout, (
+        "a fetch step must reach the lockfile resolver"
+    )
+    lock = (repo / "locks" / "testhost.lock").read_text()
+    assert "stepped" in lock, out.stdout

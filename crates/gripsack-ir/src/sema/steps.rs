@@ -1,8 +1,9 @@
-//! E103/E106/E104 — step shape, ids, and refs (0007 §6).
+//! E103/E106/E104/E118 — step shape, ids, refs, and pinnability
+//! (0007 §6).
 
 use crate::diagnostic::{Diagnostic, codes};
 use crate::model::{Build, Ir};
-use crate::step::{BARRIER_STEP_ID, SYNTHESIZED_STEP_IDS};
+use crate::step::{BARRIER_STEP_ID, SYNTHESIZED_STEP_IDS, StepAction};
 
 pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
     for (name, module) in &ir.modules {
@@ -26,6 +27,33 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                 )
                 .with_label(module.span.clone(), "module declared here")
                 .with_help("pick one shape: fields (expanded for you) or explicit steps"),
+            );
+        }
+        // E118: pinnability. The lockfile pins one fetch per module —
+        // a module with several fetch steps applies unpinned (update
+        // cannot resolve it) with check/plan silent about the loss.
+        // One fetch step pins exactly like the declarative style;
+        // more is an authoring error, not a silent downgrade.
+        let fetch_steps: Vec<&str> = steps
+            .iter()
+            .filter(|s| matches!(s.action, StepAction::Fetch { .. }))
+            .map(|s| s.id.as_str())
+            .collect();
+        if fetch_steps.len() > 1 {
+            diagnostics.push(
+                Diagnostic::error(
+                    codes::UNPINNABLE_STEPS,
+                    format!(
+                        "module {name:?} declares {} fetch steps ({}) — the lockfile \
+                         pins one fetch per module",
+                        fetch_steps.len(),
+                        fetch_steps.join(", ")
+                    ),
+                )
+                .with_label(module.span.clone(), "module declared here")
+                .with_help(
+                    "split into one module per fetch — modules in the same wave fetch in parallel",
+                ),
             );
         }
         let mut seen = std::collections::BTreeSet::new();
@@ -85,5 +113,66 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Module;
+    use crate::step::{Step, StepAction};
+
+    fn fetch_step(id: &str) -> Step {
+        Step {
+            id: id.into(),
+            action: StepAction::Fetch {
+                fetch: crate::model::FetchSpec::File {
+                    path: "payloads/p.tar.gz".into(),
+                },
+            },
+            needs: vec![],
+            resources: vec![],
+            phase: None,
+            verify: None,
+            retries: None,
+            span: None,
+        }
+    }
+
+    fn ir_with_steps(steps: Vec<Step>) -> Ir {
+        Ir {
+            ir_version: 1,
+            host: Default::default(),
+            resources: vec![],
+            modules: [(
+                "m".to_string(),
+                Module {
+                    steps: Some(steps),
+                    ..Default::default()
+                },
+            )]
+            .into_iter()
+            .collect(),
+        }
+    }
+
+    #[test]
+    fn single_fetch_step_pins_multiple_refused() {
+        // one fetch step: pinnable, no diagnostic
+        let mut diags = Vec::new();
+        check(&ir_with_steps(vec![fetch_step("fetch")]), &mut diags);
+        assert!(diags.is_empty());
+
+        // two fetch steps: the lockfile pins one fetch per module
+        let mut diags = Vec::new();
+        check(
+            &ir_with_steps(vec![fetch_step("fetch-a"), fetch_step("fetch-b")]),
+            &mut diags,
+        );
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code.as_ref() == codes::UNPINNABLE_STEPS)
+        );
     }
 }

@@ -2,7 +2,7 @@
   {
     "code": "W10",
     "severity": "warning",
-    "message": "key tables are written for tuicr 0.2x; this module pins 9.9 — results may be stale",
+    "message": "key tables are written for tuicr 0.2.x; this module pins 9.9 — results may be stale",
     "labels": []
   }
 ]

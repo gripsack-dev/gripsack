@@ -4,8 +4,8 @@ use crate::render::Palette;
 use std::process::ExitCode;
 
 /// The eval contract (plan/0013 D2): a runnable deno — the exact
-/// precedence eval uses (`GRIPSACK_DENO`, deno on PATH, the pinned
-/// provisioned download) — plus the embedded TypeScript frontend.
+/// precedence eval uses (`GRIPSACK_DENO`, the pinned runtime, a PATH
+/// deno only as a loud last resort).
 pub fn doctor(palette: Palette) -> ExitCode {
     let mut ok = true;
     let mark = |good: bool| {
@@ -37,9 +37,11 @@ pub fn doctor(palette: Palette) -> ExitCode {
             let source = if std::env::var_os("GRIPSACK_DENO").is_some() {
                 "GRIPSACK_DENO"
             } else if deno.as_os_str() == "deno" {
-                "on PATH"
+                // last-resort fallback — the pinned runtime was
+                // unavailable (musl host or failed download)
+                "on PATH — pinned unavailable"
             } else {
-                "provisioned"
+                "provisioned (pinned)"
             };
             println!("{}  deno: {version} ({source})", mark(true));
         }

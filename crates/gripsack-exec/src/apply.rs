@@ -17,7 +17,20 @@ use tracing::{info, info_span};
 /// never lose a manifest update.
 pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
-    let order = scoped_order(ir, &ctx.only)?;
+    let (order, missing) = scoped_order(ir, &ctx.only)?;
+    if !missing.is_empty() {
+        // a typo'd or host-gated name must not vanish — an apply that
+        // "succeeded" while ignoring part of the request lies
+        return Err(ExecError::Step {
+            module: "*".into(),
+            step: "scope".into(),
+            detail: format!(
+                "not in this host's graph: {} (the host entrypoint does not declare {} them)",
+                missing.join(", "),
+                if missing.len() == 1 { "it" } else { "all of" },
+            ),
+        });
+    }
     let steps_by_module = expand::expand_all(&ir.modules);
     let mut reports = Vec::new();
     let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
@@ -125,8 +138,12 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         modules,
     };
     store::write_manifest(&ctx.home, &generation)?;
-    store::flip(&ctx.home, next)?;
+    // the exported-env profile renders BEFORE the flip: it names
+    // store paths (already published), not the `current` link, so a
+    // failure here leaves nothing activated — after the flip an
+    // error would report apply-failed while the generation IS active
     render_env_file(&ctx.home, &generation.modules)?;
+    store::flip(&ctx.home, next)?;
     reports.extend(crate::activate::run_post_link(&order, &steps_by_module));
     reports.extend(crate::activate::run_post_activate(&order, &steps_by_module));
     info!(generation = next, "activated");
@@ -137,10 +154,13 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
 }
 
 /// DAG order restricted to `only` + their transitive dependencies.
-pub(crate) fn scoped_order(ir: &Ir, only: &[String]) -> Result<Vec<String>, ExecError> {
+pub(crate) fn scoped_order(
+    ir: &Ir,
+    only: &[String],
+) -> Result<(Vec<String>, Vec<String>), ExecError> {
     let order = crate::build_order(ir)?;
     if only.is_empty() {
-        return Ok(order);
+        return Ok((order, Vec::new()));
     }
     let mut wanted: BTreeSet<&str> = only.iter().map(String::as_str).collect();
     let mut frontier: Vec<&str> = only.iter().map(String::as_str).collect();
@@ -153,10 +173,22 @@ pub(crate) fn scoped_order(ir: &Ir, only: &[String]) -> Result<Vec<String>, Exec
             }
         }
     }
-    Ok(order
-        .into_iter()
-        .filter(|n| wanted.contains(n.as_str()))
-        .collect())
+    // names the caller asked for that this host's graph does not
+    // declare — probe-gated modules and typos used to vanish
+    // silently ("I asked for eight and got seven")
+    let declared: BTreeSet<&str> = ir.modules.keys().map(String::as_str).collect();
+    let missing: Vec<String> = only
+        .iter()
+        .filter(|n| !declared.contains(n.as_str()))
+        .cloned()
+        .collect();
+    Ok((
+        order
+            .into_iter()
+            .filter(|n| wanted.contains(n.as_str()))
+            .collect(),
+        missing,
+    ))
 }
 
 /// Remove destinations the new manifest no longer declares, iff the

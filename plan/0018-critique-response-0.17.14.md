@@ -155,3 +155,42 @@ Evening scope: the plan doc + test-harness sketch only.
 → admin merge → tag `core-v0.17.14` → release workflow → crates.io →
 website auto-sync. P0-C is repo-settings, P1-A website repo push,
 P1-B/P2 are docs/decisions.
+
+---
+
+## Amendment (executed 2026-09-02, evening): folded migration-report findings
+
+A real two-host migration report (WSL Ubuntu 24.04 + RHEL 8.10 behind
+a TLS-intercepting proxy, 38 modules) landed after this plan was
+written; its findings were verified against the code and folded into
+the same 0.17.14 cut:
+
+- **F1 steps-style modules invisible to the lockfile resolver** —
+  [VERIFIED: update.rs walked only `module.fetch`]. Fixed: the
+  resolver sees a module's single fetch step (shared
+  `identity::fetch_spec` + `expand::steps_of` — the same view the
+  scheduler gets); new **E118** refuses multiple fetch steps at check
+  time (which also closes the silent auto-chain mis-wiring case).
+  e2e: `test_update_resolves_a_fetch_step_module`. unit: E118 in
+  sema/steps.rs.
+- **F2 stale repo-symlink stranded the first post-upgrade apply** —
+  [VERIFIED: containment guard fired for owned symlinks]. Fixed:
+  owned + symlink-into-repo passes the containment check and meets
+  the normal owned drift guard (`--take-over` replaces it, prior
+  captured, original target untouched); write-through modes still
+  refuse but the error names the mechanism and the remediation.
+  e2e: both paths pinned in test_ownership_modes.py.
+- **F3 update silently dropped out-of-graph names** — [VERIFIED:
+  scoped_order filtered them away]. Fixed: update reports
+  `skipped (not in this host's graph)`; apply refuses. e2e ×2.
+- **W10 "0.2x" wording** → `0.2.x` (+ fixture).
+- **Docs-of-record**: tree256-recorded-at-apply note and the
+  out-of-band self-update fetch line in the 0.17.14 Notes section.
+
+Execution status of the original plan: P0-A deno flip DONE (frontend.rs
++ doctor labels; e2e unaffected — image sets GRIPSACK_DENO). P0-B
+pre-flip env render DONE. P0-C: repo settings verified open
+(has_issues=true, no interaction limits — the critic's banner was
+GitHub's signed-out prompt). P1-A website copy: riding this release's
+website push. P1-B linter long-tail: still a decision memo for Tarek.
+P2 journal: plan/0019 not yet written — next session.

@@ -17,18 +17,44 @@ mod embedded {
     include!(concat!(env!("OUT_DIR"), "/frontend_files.rs"));
 }
 
-/// The deno runtime for the frontend: `GRIPSACK_DENO` wins, a deno on
-/// PATH next, the pinned download last — the same precedence shape
-/// provisioning always had (a site deno with config the pinned one
-/// lacks must win; the pinned download is the fallback, never the
-/// default).
+/// The deno runtime for the frontend. Precedence:
+///
+/// 1. `GRIPSACK_DENO` — the deliberate override (site denos with
+///    config the pinned download lacks; the doctor reports it);
+/// 2. the pinned, sha256-verified download — the DEFAULT. Two
+///    "identical" machines must eval through the same runtime; a
+///    PATH deno used to win here silently, skewing exactly the
+///    piece the pin exists to constrain;
+/// 3. a deno on PATH (major ≥ 2) — last-resort fallback, used only
+///    when the pinned one is unavailable (musl host, failed
+///    download), and LOUD: a run-log warning, never a silent skew.
 pub fn ensure_deno(home: &Path) -> io::Result<PathBuf> {
     if let Ok(deno) = std::env::var("GRIPSACK_DENO") {
         return Ok(PathBuf::from(deno));
     }
-    if let Some(deno) = deno_on_path() {
+    if let Some(deno) = pinned_deno(home)? {
         return Ok(deno);
     }
+    if let Some((deno, version)) = deno_on_path() {
+        tracing::warn!(
+            runtime = %version,
+            "pinned deno unavailable — using deno {version} from PATH; \
+             set GRIPSACK_DENO to make this deliberate"
+        );
+        return Ok(deno);
+    }
+    Err(io::Error::other(
+        "no usable deno: the pinned runtime is unavailable on this platform and \
+         none is on PATH — set GRIPSACK_DENO to point at one (see `grip doctor`)",
+    ))
+}
+
+/// The pinned runtime: already provisioned, or downloaded (flock'd,
+/// sha256-verified). Ok(None) when this platform can't have it
+/// (musl) or the download failed and a caller fallback should get a
+/// chance — the download error is preserved for the no-fallback case
+/// by the caller re-trying and surfacing it.
+fn pinned_deno(home: &Path) -> io::Result<Option<PathBuf>> {
     // deno ships glibc + macOS builds only: a downloaded binary on a
     // musl host (alpine, …) would fail at exec with an opaque loader
     // error — fail before the network round-trip, with the fix named
@@ -43,14 +69,14 @@ pub fn ensure_deno(home: &Path) -> io::Result<PathBuf> {
         .join(format!("deno-{}", DENO_RELEASE.version));
     let deno = dir.join("deno");
     if deno.exists() {
-        return Ok(deno);
+        return Ok(Some(deno));
     }
     // two concurrent applies may both provision: serialize the
     // download, then re-check — the loser of the race just uses the
     // winner's binary (e2e: concurrent applies, os error 26/2)
     let _provision_lock = crate::util::FlockGuard::acquire(home, "provision-deno")?;
     if deno.exists() {
-        return Ok(deno);
+        return Ok(Some(deno));
     }
     // dogfood: per-platform pinned + sha256-verified through our own
     // fetcher (host.rs)
@@ -60,30 +86,44 @@ pub fn ensure_deno(home: &Path) -> io::Result<PathBuf> {
         api_url: None,
         sha256: Some(sha.to_string()),
     };
-    let staging = dir.with_extension("staging");
+    let staging = dir.with_file_name(format!(
+        "{}.staging",
+        dir.file_name().unwrap_or_default().to_string_lossy()
+    ));
     let _ = std::fs::remove_dir_all(&staging);
-    gripsack_fetch::fetch(&spec, &staging).map_err(io::Error::other)?;
-    // the zip holds `deno` at the root (verified against the v2.9.6
-    // asset layout at pin time)
-    std::fs::create_dir_all(&dir)?;
-    std::fs::rename(staging.join("deno"), &deno)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&deno, std::fs::Permissions::from_mode(0o755))?;
+    match gripsack_fetch::fetch(&spec, &staging).map_err(io::Error::other) {
+        Ok(_) => {
+            // the zip holds `deno` at the root (verified against the
+            // v2.9.6 asset layout at pin time)
+            std::fs::create_dir_all(&dir)?;
+            std::fs::rename(staging.join("deno"), &deno)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&deno, std::fs::Permissions::from_mode(0o755))?;
+            }
+            let _ = std::fs::remove_dir_all(&staging);
+            Ok(Some(deno))
+        }
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&staging);
+            // the caller falls back to a PATH deno (loudly); if there
+            // is none, this error is the real cause — re-surface it
+            if deno_on_path().is_some() {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        }
     }
-    let _ = std::fs::remove_dir_all(&staging);
-    Ok(deno)
 }
 
-/// The minimum deno major a PATH deno must report to be preferred
-/// over the pinned download — skew protection: too old is a bug
-/// (missing flags/semantics), and the spawn contract is written
-/// against deno 2.
+/// The minimum deno major a PATH fallback must report — the spawn
+/// contract is written against deno 2.
 const DENO_MIN_MAJOR: u64 = 2;
-
-/// A runnable deno on PATH reporting a version >= DENO_MIN_MAJOR.
-fn deno_on_path() -> Option<PathBuf> {
+/// A runnable deno on PATH reporting a version >= DENO_MIN_MAJOR,
+/// with that version string for the fallback warning.
+fn deno_on_path() -> Option<(PathBuf, String)> {
     let out = std::process::Command::new("deno")
         .arg("--version")
         .stdout(std::process::Stdio::piped())
@@ -94,16 +134,13 @@ fn deno_on_path() -> Option<PathBuf> {
         return None;
     }
     // "deno 2.9.6 (release, …)" — the token after the name
-    let major = String::from_utf8_lossy(&out.stdout)
+    let version = String::from_utf8_lossy(&out.stdout)
         .lines()
         .next()
         .and_then(|l| l.split_whitespace().nth(1))
-        .and_then(|v| v.split('.').next())
-        .and_then(|m| m.parse::<u64>().ok());
-    match major {
-        Some(m) if m >= DENO_MIN_MAJOR => Some(PathBuf::from("deno")),
-        _ => None,
-    }
+        .map(str::to_string)?;
+    let major = version.split('.').next()?.parse::<u64>().ok()?;
+    (major >= DENO_MIN_MAJOR).then_some((PathBuf::from("deno"), version))
 }
 
 /// The embedded frontend, materialized under

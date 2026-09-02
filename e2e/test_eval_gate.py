@@ -521,3 +521,39 @@ def test_self_update_already_current(sandbox, monkeypatch):
     assert out.returncode == 0, out.stderr
     assert "is current" in out.stdout
     server.shutdown()
+
+
+def test_update_reports_modules_outside_the_hosts_graph(sandbox):
+    """F3 regression: a name passed to `grip update` that this host's
+    graph does not declare (probe-gated or typo) used to vanish
+    silently — eight asked, seven answered, exit 0."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module } from "@gripsack/core";
+
+export default module("present", { install: [] });
+""",
+    )
+    out = grip("update", "present", "ghost", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    lines = out.stdout
+    assert "ghost" in lines, out.stdout
+    assert "not in this host's graph" in lines, out.stdout
+
+
+def test_apply_refuses_unknown_module_names(sandbox):
+    """The same silence on apply would be worse — an apply that
+    'succeeded' while ignoring part of the request lies."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module } from "@gripsack/core";
+
+export default module("present", { install: [] });
+""",
+    )
+    out = grip("apply", "ghost", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "not in this host's graph" in out.stderr, out.stderr
+    assert "ghost" in out.stderr
