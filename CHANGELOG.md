@@ -3,6 +3,28 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.18.1] — 2026-09-02
+
+**Crash recovery for destination mutations (plan/0019).** `apply`
+mutates real destinations — owned links, tracked copies, templates,
+merge blocks — before the generation flip; a `kill -9` or power loss
+in that window used to leave the filesystem between generations with
+no record of what to undo. Every deploy mutation is now journaled
+(prior state backed up, fsync'd, before the write) and the next
+`apply` restores it before doing anything else:
+
+```
+  * ⚠ recovered 1 destination(s) from an interrupted run
+  a · ~/.config/a/conf.txt unchanged
+already satisfied (generation 1)
+```
+
+The flip is the commit point — everything it recorded is owned by the
+new generation and the journal clears. The drift guard applies on
+recovery exactly as everywhere else: a file edited after the crash
+keeps the user's bytes (`kept …: changed since the interrupted run —
+your edit stands`). Design: plan/0019.
+
 ## [0.18.0] — 2026-09-02
 
 **Breaking (frontend DSL): the class authoring style is removed.**
