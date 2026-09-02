@@ -191,13 +191,17 @@ impl Throttle {
     }
 
     pub fn save(&self) {
-        let Some(path) = &self.persist else { return };
-        let buckets = self.buckets.lock().expect("throttle mutex");
-        let saved: BTreeMap<&str, serde_json::Value> = buckets
+        let Some(path) = &self.persist else {
+            return;
+        };
+        let saved: BTreeMap<String, serde_json::Value> = self
+            .buckets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
             .iter()
             .map(|(domain, b)| {
                 (
-                    domain.as_str(),
+                    domain.clone(),
                     serde_json::json!({
                         "tokens": b.tokens,
                         "updated": b.updated.duration_since(UNIX_EPOCH)
@@ -206,26 +210,19 @@ impl Throttle {
                 )
             })
             .collect();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let tmp = path.with_extension("tmp");
-        if std::fs::write(&tmp, serde_json::to_string(&saved).unwrap_or_default()).is_ok() {
-            let _ = std::fs::rename(&tmp, path);
+        // the store's atomic write (temp + fsync + rename): a hand-
+        // rolled tmp+rename could persist a torn file on crash
+        if let Ok(json) = serde_json::to_string(&saved) {
+            let _ = gripsack_store::fs::atomic_write(path, json.as_bytes());
         }
     }
 }
 
-/// scheme://[user@]host[:port][/...] → lowercase host.
+/// scheme://[user@]host[:port][/...] → lowercase host. Delegates to
+/// the http crate's IPv6-aware parser — one URL grammar, not two
+/// (the local one used to chop `[::1]:8443` to `[`).
 fn url_host(url: &str) -> Option<String> {
-    let (_, rest) = url.split_once("://")?;
-    let authority = rest.split('/').next()?;
-    let host = authority.rsplit('@').next()?.split(':').next()?;
-    if host.is_empty() {
-        None
-    } else {
-        Some(host.to_lowercase())
-    }
+    crate::http::host_port(url).map(|(host, _)| host)
 }
 
 static GLOBAL: OnceLock<Throttle> = OnceLock::new();

@@ -8,24 +8,40 @@ use std::path::Path;
 
 pub(crate) fn fetch(path: &str, dest: &Path) -> Result<String, FetchError> {
     let path = Path::new(path);
-    if path.is_dir() {
+    // metadata (follows): a symlink to a real payload is a payload.
+    // The TYPE gate is what keeps fifos/devices out — reading one
+    // blocks forever.
+    let ty = std::fs::metadata(path).map_err(FetchError::Io)?.file_type();
+    if ty.is_dir() {
         archive::copy_tree(path, dest).map_err(FetchError::Io)?;
         Ok(gripsack_store::canonical_tree_hash(path)?)
-    } else {
+    } else if ty.is_file() {
         let bytes = std::fs::read(path)?;
         let hash = archive::sha256(&bytes);
         let bare_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("bin");
         archive::extract(&bytes, dest, bare_name)?;
         Ok(hash)
+    } else {
+        // a fifo or device node would block the read forever
+        Err(FetchError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} is not a regular file or directory", path.display()),
+        )))
     }
 }
 
 pub(crate) fn payload_hash(path: &str) -> Result<Option<String>, FetchError> {
     let path = Path::new(path);
-    if path.is_dir() {
+    let ty = std::fs::metadata(path).map_err(FetchError::Io)?.file_type();
+    if ty.is_dir() {
         Ok(Some(gripsack_store::canonical_tree_hash(path)?))
-    } else {
+    } else if ty.is_file() {
         Ok(Some(archive::sha256(&std::fs::read(path)?)))
+    } else {
+        Err(FetchError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} is not a regular file or directory", path.display()),
+        )))
     }
 }
 

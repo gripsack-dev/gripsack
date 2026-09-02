@@ -1,8 +1,8 @@
 //! Verify: smoke contracts, pre-flip (0007 §verify).
 
 use crate::ctx::ExecError;
-use crate::deploy::expand_home;
 use gripsack_ir::Verify;
+use gripsack_store::expand_home;
 use std::path::Path;
 
 pub(crate) fn run_verify(

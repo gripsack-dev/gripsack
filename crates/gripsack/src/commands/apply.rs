@@ -1,4 +1,4 @@
-use crate::commands::{check_ir, eval_repo, trust_gate};
+use crate::commands::{eval_repo, trust_gate};
 use crate::render::Palette;
 use gripsack_exec::{Ctx, Outcome};
 use gripsack_store as store;
@@ -6,60 +6,68 @@ use owo_colors::OwoColorize;
 use std::path::Path;
 use std::process::ExitCode;
 
+/// What an apply run varies by — named, not positional (the CLI flag
+/// surface, the adopt scoping, and the concurrency hint travel
+/// together into the executor).
+pub struct ApplyOptions {
+    pub host: Option<String>,
+    pub modules: Vec<String>,
+    pub take_over: bool,
+    pub take_over_entries: Option<std::collections::BTreeSet<String>>,
+    pub jobs: Option<usize>,
+}
+
+impl ApplyOptions {
+    fn scoped(
+        entries: std::collections::BTreeSet<String>,
+        host: Option<&str>,
+        jobs: Option<usize>,
+    ) -> Self {
+        ApplyOptions {
+            host: host.map(str::to_string),
+            modules: vec![],
+            take_over: false,
+            take_over_entries: Some(entries),
+            jobs,
+        }
+    }
+}
+
 /// grip apply: eval → validate → execute → new generation (or satisfied).
-pub fn apply(
-    repo: &Path,
-    host: Option<&str>,
-    modules: Vec<String>,
-    take_over: bool,
-    jobs: Option<usize>,
-    palette: Palette,
-) -> ExitCode {
-    apply_inner(repo, host, modules, take_over, None, jobs, palette)
+pub fn apply(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
+    apply_inner(repo, opts, palette)
 }
 
 /// Apply with scoped take-over (0015 §3): `grip adopt` absorbs exactly
 /// the destinations it generated — unrelated drift is never clobbered.
 pub fn apply_scoped(
     repo: &Path,
+    entries: std::collections::BTreeSet<String>,
     host: Option<&str>,
-    modules: Vec<String>,
-    take_over_entries: Option<std::collections::BTreeSet<String>>,
     jobs: Option<usize>,
     palette: Palette,
 ) -> ExitCode {
-    apply_inner(repo, host, modules, false, take_over_entries, jobs, palette)
+    apply_inner(repo, ApplyOptions::scoped(entries, host, jobs), palette)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn apply_inner(
-    repo: &Path,
-    host: Option<&str>,
-    modules: Vec<String>,
-    take_over: bool,
-    take_over_entries: Option<std::collections::BTreeSet<String>>,
-    jobs: Option<usize>,
-    palette: Palette,
-) -> ExitCode {
-    if jobs == Some(0) {
+fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
+    if opts.jobs == Some(0) {
         eprintln!("grip: --jobs 0 would run zero modules — pass a positive count");
         return ExitCode::from(2);
     }
-    if std::env::var("GRIPSACK_JOBS").ok().as_deref() == Some("0") {
+    if opts.jobs.is_none() && std::env::var("GRIPSACK_JOBS").ok().as_deref() == Some("0") {
         eprintln!("grip: GRIPSACK_JOBS=0 would run zero modules — unset or fix it");
         return ExitCode::from(2);
     }
     if let Some(code) = trust_gate(repo) {
         return code;
     }
+    let host = opts.host.as_deref();
     let outcome = match eval_repo(repo, host, palette) {
         Ok(o) => o,
         Err(code) => return code,
     };
-    let ir = match check_ir(&outcome.ir_json, palette)
-        .and_then(|ir| crate::commands::validate_sources(&ir, repo, palette).map(|_| ir))
-        .and_then(|ir| crate::commands::run_lints(&ir, &outcome, repo, host, palette).map(|_| ir))
-    {
+    let ir = match crate::commands::validated_ir(&outcome, repo, host, palette) {
         Ok(ir) => ir,
         Err(code) => return code,
     };
@@ -80,14 +88,11 @@ fn apply_inner(
     let ctx = Ctx {
         home: store::gripsack_home(),
         repo: repo.to_path_buf(),
-        only: modules,
-        host: host
-            .map(str::to_string)
-            .or_else(|| outcome.env.env.default_host.clone())
-            .unwrap_or_else(crate::commands::hostname),
-        take_over,
-        take_over_entries,
-        jobs: jobs.or_else(|| {
+        only: opts.modules,
+        host: outcome.host.clone(),
+        take_over: opts.take_over,
+        take_over_entries: opts.take_over_entries,
+        jobs: opts.jobs.or_else(|| {
             std::env::var("GRIPSACK_JOBS")
                 .ok()
                 .and_then(|v| v.parse().ok())

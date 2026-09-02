@@ -120,12 +120,22 @@ pub fn current(home: &Path) -> Option<u64> {
 }
 
 /// Flip `current` to a generation — the single indivisible activation
-/// operation (0001 §9.2).
+/// operation (0001 §9.2). The target must exist first: a `current`
+/// pointing at nothing reads as "no generations" everywhere
+/// downstream (list/current swallow that as None) while looking
+/// deployed to anything that inspects the link.
 pub fn flip(home: &Path, generation: u64) -> io::Result<()> {
-    fs::symlink_replace(
-        &crate::paths::current_link(home),
-        &crate::paths::generation_dir(home, generation),
-    )
+    let dir = crate::paths::generation_dir(home, generation);
+    if !dir.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "cannot activate generation {generation}: {} is missing",
+                dir.display()
+            ),
+        ));
+    }
+    fs::symlink_replace(&crate::paths::current_link(home), &dir)
 }
 
 #[cfg(test)]

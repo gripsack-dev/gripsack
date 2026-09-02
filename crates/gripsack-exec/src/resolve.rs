@@ -152,7 +152,6 @@ fn inject_locked_sha(
     }
 }
 
-/// files, so editing a dotfile changes the identity (0008 §2).
 /// The identity projection (0004 §2, enforced): provenance NEVER
 /// changes identity. A module's store-path input serializes the module
 /// with span removed — a line edit in your module source, or the same

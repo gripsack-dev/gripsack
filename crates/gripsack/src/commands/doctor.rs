@@ -1,7 +1,6 @@
 //! grip doctor — the eval runtime check (0003 §8, plan/0013 D2).
 
 use crate::render::Palette;
-use owo_colors::OwoColorize;
 use std::process::ExitCode;
 
 /// The eval contract (plan/0013 D2): a runnable deno — the exact
@@ -9,15 +8,11 @@ use std::process::ExitCode;
 /// provisioned download) — plus the embedded TypeScript frontend.
 pub fn doctor(palette: Palette) -> ExitCode {
     let mut ok = true;
-    let colored = palette.enabled;
     let mark = |good: bool| {
-        if !colored {
-            return if good { "ok  " } else { "MISS" }.to_string();
-        }
         if good {
-            "ok  ".green().bold().to_string()
+            palette.good("ok  ")
         } else {
-            "MISS".red().bold().to_string()
+            palette.error("MISS")
         }
     };
 
@@ -55,12 +50,12 @@ pub fn doctor(palette: Palette) -> ExitCode {
                 println!(
                     "      {} the grip binary itself is musl-static and keeps working — \
                      only the eval sandbox needs a glibc/macOS host",
-                    "hint:".yellow().bold()
+                    palette.warn("hint:")
                 );
             } else {
                 println!(
                     "      {} set GRIPSACK_DENO to a deno binary to bypass provisioning",
-                    "hint:".yellow().bold()
+                    palette.warn("hint:")
                 );
             }
             ok = false;

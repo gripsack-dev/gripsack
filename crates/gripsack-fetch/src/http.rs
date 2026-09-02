@@ -103,7 +103,9 @@ fn proxy_bypassed(url: &str) -> bool {
 
 /// (host, port) out of a URL — scheme://[user@]host[:port][/...].
 /// Returns lowercase host; port as the explicit string if present.
-fn host_port(url: &str) -> Option<(String, Option<String>)> {
+/// IPv6-literal aware (`[::1]:8443`); shared by auth binding, proxy
+/// bypass, and the throttle's per-host buckets.
+pub(crate) fn host_port(url: &str) -> Option<(String, Option<String>)> {
     let (_, after_scheme) = url.split_once("://")?;
     let authority = after_scheme.split(['/', '?', '#']).next()?;
     let hostport = authority.rsplit('@').next()?;
@@ -162,6 +164,11 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
 mod tests {
     use super::*;
 
+    // env mutation under the same lock as auth_tests — a parallel
+    // test that spawns a subprocess would otherwise inherit a
+    // half-set NO_PROXY
+    static ENV_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
     #[test]
     fn host_port_parses_common_shapes() {
         assert_eq!(
@@ -193,6 +200,7 @@ mod tests {
 
     #[test]
     fn bypass_reads_the_env() {
+        let _g = ENV_LOCK.lock();
         unsafe {
             std::env::set_var("NO_PROXY", "github.com, .internal:81");
         }

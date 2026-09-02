@@ -7,10 +7,12 @@ pub mod apply;
 pub mod check;
 pub mod doctor;
 pub mod eval;
+pub mod frontend;
 pub mod gc;
 pub mod generations;
 pub mod init;
 pub mod plan;
+pub mod probe;
 pub mod repo;
 pub mod rollback;
 pub mod self_update;
@@ -20,10 +22,10 @@ pub mod update;
 pub mod why_owns;
 
 pub use adopt::adopt;
-pub use apply::{apply, apply_scoped};
+pub use apply::{ApplyOptions, apply, apply_scoped};
 pub use check::check;
 pub use doctor::doctor;
-pub use eval::{check_ir, eval_repo, render_host_inputs, run_lints, validate_sources};
+pub use eval::{check_ir, eval_repo, render_host_inputs, validate_sources, validated_ir};
 pub use gc::gc;
 pub use generations::generations;
 pub use init::init;
@@ -43,7 +45,7 @@ pub fn trust_gate(repo: &Path) -> Option<ExitCode> {
     match gripsack_store::trust::ensure_trusted(repo) {
         Ok(()) => None,
         Err(e) => {
-            eprintln!("{}", format!("error: {e}").red().bold());
+            eprintln!("{}", Palette::detect().error(&format!("error: {e}")));
             Some(ExitCode::FAILURE)
         }
     }
@@ -69,13 +71,8 @@ pub fn hostname() -> String {
 
 /// `~/...` expands against $HOME; absolute paths pass through.
 pub fn expand_home(to: &str) -> PathBuf {
-    if let Some(rest) = to.strip_prefix("~/")
-        && let Some(home) = std::env::var_os("HOME")
-    {
-        return PathBuf::from(home).join(rest);
-    }
-    PathBuf::from(to)
+    gripsack_store::expand_home(to)
 }
-use owo_colors::OwoColorize;
+use crate::render::Palette;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

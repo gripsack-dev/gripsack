@@ -24,6 +24,41 @@ impl Palette {
     pub fn plain() -> Self {
         Palette::default()
     }
+
+    /// Styling helpers: colors follow the terminal (main.rs doc) —
+    /// piped output is plain. Every ad-hoc `.green()` at a call site
+    /// was a leak of that contract; these make the gate structural.
+    pub fn good(&self, text: &str) -> String {
+        self.style(text, |t| t.green().bold().to_string())
+    }
+
+    pub fn warn(&self, text: &str) -> String {
+        self.style(text, |t| t.yellow().bold().to_string())
+    }
+
+    pub fn badge(&self, text: &str) -> String {
+        self.style(text, |t| t.blue().bold().to_string())
+    }
+
+    pub fn cyan(&self, text: &str) -> String {
+        self.style(text, |t| t.cyan().to_string())
+    }
+
+    pub fn dim(&self, text: &str) -> String {
+        self.style(text, |t| t.dimmed().to_string())
+    }
+
+    pub fn error(&self, text: &str) -> String {
+        self.style(text, |t| t.red().bold().to_string())
+    }
+
+    fn style(&self, text: &str, styled: impl FnOnce(&str) -> String) -> String {
+        if self.enabled {
+            styled(text)
+        } else {
+            text.to_string()
+        }
+    }
 }
 
 /// Render one diagnostic, with a source snippet for every span whose
@@ -106,7 +141,10 @@ pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palett
     };
 
     if let Some(fetch) = &module.fetch {
-        out.push_str(&format!("\n  fetch    {}", describe_fetch(fetch)));
+        out.push_str(&format!(
+            "\n  fetch    {}",
+            gripsack_exec::report::describe_fetch(fetch)
+        ));
     }
     for entry in module.install.iter() {
         out.push_str(&format!(
@@ -146,20 +184,6 @@ pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palett
     out
 }
 
-/// One-line fetch summary for the module view.
-fn describe_fetch(fetch: &gripsack_ir::FetchSpec) -> String {
-    use gripsack_ir::FetchSpec as F;
-    match fetch {
-        F::GithubRelease { repo, asset, .. } => format!("github-release {repo} · {asset}"),
-        F::Tarball { url, .. } => format!("tarball {url}"),
-        F::Git { url, rev } => format!("git {url} @ {}", rev.as_deref().unwrap_or("HEAD (float)")),
-        F::File { path } => format!("file {path}"),
-        F::Plugin { name, .. } => format!("plugin gripfetch-{name}"),
-        F::Brew { formula, .. } => format!("brew {formula}"),
-        F::Pixi { package, .. } => format!("pixi {package}"),
-    }
-}
-
 /// Render all diagnostics, warnings first-class but non-fatal.
 pub fn render_diagnostics(diagnostics: &[Diagnostic], palette: Palette) -> String {
     diagnostics
@@ -189,11 +213,16 @@ pub fn diff_section(
             s.to_string()
         }
     };
+    let b = |s: &str| {
+        if palette.enabled {
+            s.bold().to_string()
+        } else {
+            s.to_string()
+        }
+    };
     let mut out = vec![match &current {
-        Some(m) => format!("{} generation {}:", "changes vs".bold(), m.number),
-        None => "changes: no current generation (first apply)"
-            .bold()
-            .to_string(),
+        Some(m) => format!("{} generation {}:", b("changes vs"), m.number),
+        None => b("changes: no current generation (first apply)"),
     }];
     let mut declared: Vec<&str> = Vec::new();
 

@@ -1,19 +1,19 @@
-use owo_colors::OwoColorize;
+use crate::render::Palette;
 use std::process::ExitCode;
 
 /// grip why-owns <path>: which module owns a deployed path, per the
 /// current generation's manifest.
-pub fn why_owns(path: &str) -> ExitCode {
+pub fn why_owns(path: &str, palette: Palette) -> ExitCode {
     let home = gripsack_store::gripsack_home();
     match gripsack_exec::why_owns(&home, path) {
         Ok(Some((module, entry))) => {
             println!(
                 "{} {} ({} → {}, {})",
-                module.green().bold(),
+                palette.good(&module),
                 path,
                 entry.from,
                 entry.to,
-                format!("{:?}", entry.mode).dimmed()
+                palette.dim(&format!("{:?}", entry.mode))
             );
             ExitCode::SUCCESS
         }

@@ -4,7 +4,8 @@ use crate::ctx::{Ctx, ExecError};
 use crate::report::ReportKind;
 use gripsack_ir::{Entry, Ownership};
 use gripsack_store as store;
-use std::path::{Path, PathBuf};
+use gripsack_store::expand_home;
+use std::path::Path;
 
 /// Restore one destination to what a generation's manifest recorded —
 /// the ONE deploy-restore path, shared by run-level rollback and
@@ -43,13 +44,13 @@ pub fn restore_entry(
             let Some(existing) = read_foreign_text(dest) else {
                 return Ok(());
             };
-            match crate::render::upsert_block(&existing, module, dest, None, &payload) {
+            match crate::template::upsert_block(&existing, module, dest, None, &payload) {
                 Ok(new) => store::atomic_write(dest, new.as_bytes()),
                 Err(_) => Ok(()), // malformed markers: leave the foreign file alone
             }
         }
         Ownership::Template => std::fs::read(&source).and_then(|raw| {
-            crate::render::render_template(&raw, &entry.vars, &entry.from)
+            crate::template::render_template(&raw, &entry.vars, &entry.from)
                 .map_err(std::io::Error::other)
                 .and_then(|bytes| store::atomic_write(dest, &bytes))
         }),
@@ -72,10 +73,10 @@ pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: 
         }
         Ownership::Merge => {
             let existing = std::fs::read_to_string(dest).unwrap_or_default();
-            match crate::render::extract_block(&existing, module) {
+            match crate::template::extract_block(&existing, module) {
                 Some(content) if store::canonical_bytes_hash(content.as_bytes()) == entry.hash => {
-                    let new =
-                        crate::render::remove_block(&existing, module).expect("block found above");
+                    let new = crate::template::remove_block(&existing, module)
+                        .expect("block found above");
                     if new.trim().is_empty() {
                         std::fs::remove_file(dest).is_ok()
                     } else {
@@ -310,7 +311,7 @@ pub(crate) fn deploy_entry(
     // template payloads render at deploy time — the vars were computed
     // by the frontend at eval; the core only substitutes (0001 §3.7)
     let rendered = match &entry.mode {
-        Ownership::Template => Some(crate::render::render_template(
+        Ownership::Template => Some(crate::template::render_template(
             &std::fs::read(&source)?,
             &entry.vars,
             &entry.from,
@@ -468,7 +469,7 @@ pub(crate) fn deploy_entry(
                     )));
                 }
             };
-            let satisfied = crate::render::extract_block(&existing, module)
+            let satisfied = crate::template::extract_block(&existing, module)
                 .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()) == hash);
             if satisfied {
                 (
@@ -478,7 +479,7 @@ pub(crate) fn deploy_entry(
                     None,
                 )
             } else {
-                let new = crate::render::upsert_block(
+                let new = crate::template::upsert_block(
                     &existing,
                     module,
                     &dest,
@@ -534,14 +535,6 @@ fn dest_resolves_into(dest: &Path, repo: &Path) -> bool {
     ancestor_canon.join(tail).starts_with(&repo_canon)
 }
 
-pub(crate) fn expand_home(to: &str) -> PathBuf {
-    if let Some(rest) = to.strip_prefix("~/")
-        && let Some(home) = std::env::var_os("HOME")
-    {
-        return PathBuf::from(home).join(rest);
-    }
-    PathBuf::from(to)
-}
 /// Read a foreign (user-owned) destination as text: absent counts as
 /// empty (merge creates the file); anything unreadable or non-UTF-8
 /// is None — callers must refuse to splice onto it, never fall back

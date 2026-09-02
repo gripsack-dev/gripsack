@@ -109,6 +109,31 @@ export default module("hello", {{
     assert (home / "current").is_symlink()
     assert (sandbox / ".local/bin/hello").is_symlink()
 
+def test_fetchless_build_outputs_reach_the_store(sandbox):
+    """A module whose content is a build step (no fetch) must keep
+    its outputs: publish used to hand-roll a fresh staging dir and
+    wipe what the step had just produced — apply "succeeded" with an
+    empty store path."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module } from "@gripsack/core";
+
+export default module("built", {
+  steps: [{
+    id: "build",
+    action: { kind: "custom_shell", script: "echo hello-artifact > artifact.txt" },
+  }],
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    home = sandbox / ".local/share/gripsack"
+    artifacts = list((home / "store").glob("*-built/artifact.txt"))
+    assert artifacts, "build step output missing from the store path"
+    assert artifacts[0].read_text().strip() == "hello-artifact"
+
 
 def test_tree_entries_and_prune_on_undeclare(sandbox):
     confdir = sandbox / "myenv" / "configs" / "zed"
@@ -630,6 +655,51 @@ export default module("probe", {
     assert out.returncode == 0, out.stderr
 
 
+def test_probe_fixpoint_converges_in_two_rounds(sandbox):
+    """The probe loop (0013 D6) is bounded demand-driven re-eval: a
+    healthy frontend requests its probes in round 1, sees them bound
+    in round 2, and requests nothing new — exactly 2 frontend runs.
+    More means probe caching broke (every eval paying 4 rounds would
+    be a silent 2x slowdown); the round cap is for non-convergence,
+    not the happy path."""
+    import json
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "hosted": """
+import { module } from "@gripsack/core";
+
+export default module("hosted", { install: [] });
+"""
+        },
+    )
+    # a host that actually calls ctx.probe
+    (repo / "hosts" / "testhost.ts").write_text(
+        'import { defineEnv } from "@gripsack/core";\n'
+        'import hosted from "../modules/hosted.ts";\n\n'
+        "export default defineEnv((ctx) => ({\n"
+        '  tags: ["probe"],\n'
+        "  modules: [ctx.probe.executable(\"sh\") && hosted],\n"
+        "}));\n"
+    )
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    runs = sandbox / ".local/share/gripsack/runs"
+    latest = (runs / "latest").resolve()
+    rounds = []
+    for line in latest.read_text().splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get("message") == "frontend eval" or "frontend eval" in str(
+            event.get("fields", {}).get("message", "")
+ ):
+            fields = event.get("fields", event)
+            rounds.append(fields.get("round"))
+    assert rounds == [1, 2], f"expected exactly two eval rounds, got {rounds}"
+
 def test_independent_modules_run_in_parallel(sandbox):
     """Two independent 2s builds finish in ~2s, not 4s (0007 §5 —
     the ready-queue scheduler runs N = cores)."""
@@ -947,7 +1017,7 @@ export default module("shell", {
     assert content.startswith("# user stuff\nexport EDITOR=hx\n")
     assert "# >>> gripsack module=shell >>>" in content
     assert 'export PATH="$HOME/.local/bin:$PATH"' in content
-    assert "# <<< gripsack <<<" in content
+    assert "# <<< gripsack module=shell <<<" in content
 
     # re-apply is satisfied; user drift INSIDE the block self-heals,
     # user content outside is untouched

@@ -1,6 +1,5 @@
-use crate::commands::{check_ir, eval_repo, run_lints, trust_gate};
+use crate::commands::{eval_repo, trust_gate, validated_ir};
 use crate::render::Palette;
-use owo_colors::OwoColorize;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -15,15 +14,12 @@ pub fn check(repo: &Path, host: Option<&str>, palette: Palette) -> ExitCode {
         Ok(o) => o,
         Err(code) => return code,
     };
-    match check_ir(&outcome.ir_json, palette)
-        .and_then(|ir| crate::commands::validate_sources(&ir, repo, palette).map(|_| ir))
-        .and_then(|ir| run_lints(&ir, &outcome, repo, host, palette).map(|_| ir))
-    {
+    match validated_ir(&outcome, repo, host, palette) {
         Ok(ir) => {
             let host = &ir.host;
             println!(
                 "{} {} modules · host {}/{} · tags: {}",
-                "check: ok".green().bold(),
+                palette.good("check: ok"),
                 ir.modules.len(),
                 host.os,
                 host.arch,

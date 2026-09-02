@@ -164,6 +164,20 @@ pub fn write_payload(
         } else {
             dest.to_path_buf()
         };
+        // copy on a fifo/device blocks forever — inventory already
+        // refuses them; this is the belt to that braces
+        if !std::fs::metadata(&source)
+            .map(|m| m.file_type().is_file())
+            .unwrap_or(false)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "{} is not a regular file — refusing to adopt it",
+                    source.display()
+                ),
+            ));
+        }
         let out = payload.join(rel);
         if let Some(parent) = out.parent() {
             std::fs::create_dir_all(parent)?;

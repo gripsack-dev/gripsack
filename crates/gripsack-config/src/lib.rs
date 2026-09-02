@@ -149,6 +149,15 @@ pub fn load_env(path: &std::path::Path) -> Result<EnvConfig, Vec<Diagnostic>> {
     parse_env_as(&source, &path.display().to_string())
 }
 
+/// The user layer (~/.config/gripsack/config.toml). A missing file is
+/// an empty layer, not an error.
+pub fn load_user(path: &std::path::Path) -> Result<UserConfig, Vec<Diagnostic>> {
+    let Ok(source) = std::fs::read_to_string(path) else {
+        return Ok(UserConfig::default());
+    };
+    parse_user(&source)
+}
+
 fn parse_env_as(source: &str, file: &str) -> Result<EnvConfig, Vec<Diagnostic>> {
     let env: EnvConfig = parse_as(source, file)?;
     // TypeScript is the only frontend and needs no declaration; the

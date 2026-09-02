@@ -64,7 +64,7 @@ pub fn verify_store(
                     gripsack_ir::Ownership::Template => std::fs::read(&src)
                         .ok()
                         .and_then(|b| {
-                            crate::render::render_template(&b, &entry.vars, &entry.from).ok()
+                            crate::template::render_template(&b, &entry.vars, &entry.from).ok()
                         })
                         .map(|r| gripsack_store::canonical_bytes_hash(&r)),
                     _ => gripsack_store::canonical_file_hash(&src).ok(),

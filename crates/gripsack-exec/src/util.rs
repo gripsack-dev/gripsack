@@ -6,58 +6,15 @@ use std::path::{Path, PathBuf};
 
 /// An exclusive flock on `$GRIPSACK_HOME/locks/<name>.flock` — held
 /// for one step's duration (0007 §4), dropped on scope exit. Two
-/// concurrent `grip` runs serialize on the same file.
-pub struct FlockGuard(std::fs::File);
+/// concurrent `grip` runs serialize on the same file. The primitive
+/// lives in gripsack-store (fs::FlockGuard) — one implementation for
+/// apply, trust, and tool provisioning.
+pub use gripsack_store::fs::FlockGuard;
 
 /// Hold the apply lifecycle lock (`apply.flock`) — the public handle
 /// for apply and rollback.
 pub fn acquire_lifecycle_lock(home: &Path) -> io::Result<FlockGuard> {
-    FlockGuard::acquire(home, "apply")
-}
-
-impl FlockGuard {
-    pub(crate) fn acquire(home: &Path, name: &str) -> io::Result<Self> {
-        let dir = home.join("locks");
-        std::fs::create_dir_all(&dir)?;
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(dir.join(format!("{name}.flock")))?;
-        flock(&file, true)?;
-        Ok(Self(file))
-    }
-}
-
-impl Drop for FlockGuard {
-    fn drop(&mut self) {
-        let _ = flock(&self.0, false);
-    }
-}
-
-#[cfg(unix)]
-fn flock(file: &std::fs::File, exclusive: bool) -> io::Result<()> {
-    use std::os::unix::io::AsRawFd;
-    let op = if exclusive {
-        libc::LOCK_EX
-    } else {
-        libc::LOCK_UN
-    };
-    if unsafe { libc::flock(file.as_raw_fd(), op) } == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
-
-/// Non-unix platforms get an error, never a silent no-op lock (N5) —
-/// a lock primitive that pretends is worse than none.
-#[cfg(not(unix))]
-fn flock(_file: &std::fs::File, _exclusive: bool) -> io::Result<()> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "flock is not supported on this platform",
-    ))
+    gripsack_store::fs::FlockGuard::acquire(&home.join("locks"), "apply")
 }
 
 pub(crate) fn progress(ctx: &Ctx, module: &str, verb: &str) {
