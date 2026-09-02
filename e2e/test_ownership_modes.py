@@ -1,0 +1,302 @@
+"""Ownership-mode e2e: owned/tracked_copy/template/merge — foreign-path
+refusals and take-over, drift policy, priors on rollback — split from
+test_flow.py; fixture repos come from conftest."""
+
+
+
+from conftest import (
+    grip,
+    make_env_repo,
+    make_tarball,
+    remove_module,
+)
+
+
+
+def test_owned_deploy_refuses_foreign_paths_unless_take_over(sandbox):
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+    )
+    foreign = sandbox / ".local" / "bin"
+    foreign.mkdir(parents=True)
+    (foreign / "hello").write_text("system binary\n")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "not deployed by gripsack" in out.stderr
+
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (foreign / "hello").is_symlink()
+
+
+def test_owned_deploy_refuses_foreign_symlinks(sandbox):
+    """Review finding E4: a stow-style foreign symlink is exactly the
+    path the guard is for — refuse unless --take-over."""
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+    )
+    foreign = sandbox / ".local/bin"
+    foreign.mkdir(parents=True)
+    stow_target = sandbox / "elsewhere/real-hello"
+    stow_target.parent.mkdir(parents=True)
+    stow_target.write_text("#!/bin/sh\necho stow\n")
+    (foreign / "hello").symlink_to(stow_target)
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "not deployed by gripsack" in out.stderr
+    assert (foreign / "hello").readlink() == stow_target  # untouched
+
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert str(foreign / "hello").endswith("hello")
+
+
+def test_merge_mode_owns_one_block_in_a_foreign_file(sandbox):
+    """merge: gripsack owns exactly one delimited block; everything
+    outside the markers is never touched (0001 §3.7)."""
+    confdir = sandbox / "myenv" / "configs" / "shell"
+    confdir.mkdir(parents=True)
+    (confdir / "block.sh").write_text('export PATH="$HOME/.local/bin:$PATH"\n')
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { merge, module } from "@gripsack/core";
+
+export default module("shell", {
+  config: { "configs/shell/block.sh": merge("~/.bashrc") },
+});
+""",
+    )
+    # foreign file with pre-existing content
+    bashrc = sandbox / ".bashrc"
+    bashrc.write_text("# user stuff\nexport EDITOR=hx\n")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    content = bashrc.read_text()
+    assert content.startswith("# user stuff\nexport EDITOR=hx\n")
+    assert "# >>> gripsack module=shell >>>" in content
+    assert 'export PATH="$HOME/.local/bin:$PATH"' in content
+    assert "# <<< gripsack module=shell <<<" in content
+
+    # re-apply is satisfied; user drift INSIDE the block self-heals,
+    # user content outside is untouched
+    healed = content.replace("export PATH", "# user edited\nexport PATH")
+    bashrc.write_text(healed + "\n# more user stuff\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    content = bashrc.read_text()
+    assert content.count("# >>> gripsack module=shell >>>") == 1
+    assert "# user edited" not in content
+    assert content.endswith("# more user stuff\n")
+
+    # undeclare prunes only the block; the foreign file stays
+    remove_module(repo, "hello")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    content = bashrc.read_text()
+    assert "gripsack" not in content
+    assert "# user stuff" in content
+    assert "# more user stuff" in content
+
+
+def test_template_mode_renders_vars_at_deploy(sandbox):
+    """template: {{ name }} placeholders render from entry vars at
+    deploy time; undefined variables fail loudly (0001 §3.7)."""
+    confdir = sandbox / "myenv" / "configs" / "git"
+    confdir.mkdir(parents=True)
+    (confdir / "id.toml").write_text(
+        'email = "{{ email }}"\nname = "{{ name }}"\nliteral = "{{{{ keep }}"\n'
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, template } from "@gripsack/core";
+
+export default module("git", {
+  config: {
+    "configs/git/id.toml": template("~/.config/git/id.toml", {
+      email: "a@b.c",
+      name: "T",
+    }),
+  },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    deployed = sandbox / ".config" / "git" / "id.toml"
+    assert deployed.read_text() == 'email = "a@b.c"\nname = "T"\nliteral = "{{ keep }}"\n'
+
+    # changing a var updates the rendered dest on the next apply
+    (sandbox / "myenv" / "modules" / "hello.ts").write_text(
+        """
+import { module, template } from "@gripsack/core";
+
+export default module("git", {
+  config: {
+    "configs/git/id.toml": template("~/.config/git/id.toml", {
+      email: "x@y.z",
+      name: "T",
+    }),
+  },
+});
+"""
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert 'email = "x@y.z"' in deployed.read_text()
+
+    # an undefined variable fails at apply, never silently empty
+    (sandbox / "myenv" / "modules" / "hello.ts").write_text(
+        """
+import { module, template } from "@gripsack/core";
+
+export default module("git", {
+  config: {
+    "configs/git/id.toml": template("~/.config/git/id.toml", {
+      email: "x@y.z",
+    }),
+  },
+});
+"""
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "undefined variable" in out.stderr
+
+
+def test_tracked_copy_drift_is_kept_never_clobbered(sandbox):
+    """The killer drift policy (0001 §3.7): a user edit inside a
+    tracked_copy destination is detected and KEPT — gripsack never
+    silently overwrites it (review finding G: this path had zero
+    coverage)."""
+    confdir = sandbox / "myenv" / "configs" / "zed"
+    confdir.mkdir(parents=True)
+    (confdir / "settings.json").write_text('{"theme": "mocha"}\n')
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("zed", {
+  config: { "configs/zed/settings.json": trackedCopy("~/.config/zed/settings.json") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config" / "zed" / "settings.json"
+
+    # user edits the deployed file (zed rewrites its own config) — the
+    # next apply detects drift and KEEPS it
+    dest.write_text('{"theme": "nord", "user": true}\n')
+    (confdir / "settings.json").write_text('{"theme": "latte"}\n')
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == '{"theme": "nord", "user": true}\n'
+
+    # drift resolved by hand (dest back to the pinned content): gripsack
+    # can't tell a restore from a new drift, so it keeps once — and the
+    # next apply converges and updates (bounded, no lockfile surgery)
+    dest.write_text('{"theme": "mocha"}\n')
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == '{"theme": "latte"}\n'
+
+
+def test_rollback_restores_template_rendered_and_merge_block(sandbox):
+    """rollback through the ONE engine (0001 §3.5, review verification):
+    template destinations get the previous generation's RENDERED bytes
+    (re-rendered with recorded vars), and merge entries re-upsert only
+    the block — the foreign file's other content survives."""
+    confdir = sandbox / "myenv" / "configs" / "app"
+    confdir.mkdir(parents=True)
+    (confdir / "id.toml").write_text('email = "{{ email }}"\n')
+    (confdir / "block.sh").write_text("export A=1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { merge, module, template } from "@gripsack/core";
+
+export default module("app", {
+  config: {
+    "configs/app/id.toml": template("~/.config/app/id.toml", { email: "a@b.c" }),
+    "configs/app/block.sh": merge("~/.bashrc"),
+  },
+});
+""",
+    )
+    bashrc = sandbox / ".bashrc"
+    bashrc.write_text("# user stuff\nexport EDITOR=hx\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    # generation 2: new template content and new block content
+    (confdir / "id.toml").write_text('email = "rendered-v2"\nname = "{{ email }}"\n')
+    (confdir / "block.sh").write_text("export A=2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "rendered-v2" in (sandbox / ".config/app/id.toml").read_text()
+    assert "export A=2" in bashrc.read_text()
+
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    # template: back to the previous generation's rendered bytes
+    assert (sandbox / ".config/app/id.toml").read_text() == 'email = "a@b.c"\n'
+    # merge: the block reverted, the foreign content untouched
+    content = bashrc.read_text()
+    assert content.startswith("# user stuff\nexport EDITOR=hx\n")
+    assert "export A=1" in content
+    assert "export A=2" not in content
+
+
+def test_deploy_refuses_destination_resolving_into_repo(sandbox):
+    """A destination whose ancestor is a symlink into the env repo
+    turns a deploy into a delete of the module's own source — refuse."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("scripts", {
+  config: { ".claude/scripts/deploy.sh": trackedCopy("~/.claude-config/scripts/deploy.sh") },
+});
+""",
+    )
+    source = repo / ".claude" / "scripts"
+    source.mkdir(parents=True)
+    (source / "deploy.sh").write_text("#!/bin/sh\necho real\n")
+    (sandbox / ".claude-config").symlink_to(repo / ".claude")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, out.stdout
+    assert "resolves inside the env repo" in out.stderr
+    # the module's source survived untouched
+    assert (source / "deploy.sh").read_text() == "#!/bin/sh\necho real\n"
