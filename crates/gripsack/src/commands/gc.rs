@@ -1,5 +1,4 @@
 use crate::render::Palette;
-use owo_colors::OwoColorize;
 use std::process::ExitCode;
 
 /// grip gc: collect store paths no generation references, and prune
@@ -21,15 +20,15 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
     match gripsack_exec::gc(&home, keep, dry_run) {
         Ok(report) => {
             if dry_run {
-                println!("{}", "gc (dry run): nothing deleted".dimmed());
+                println!("{}", palette.dim("gc (dry run): nothing deleted"));
             }
             if report.generations_removed.is_empty() && report.store_removed.is_empty() {
-                println!("{}", "gc: nothing to collect".dimmed());
+                println!("{}", palette.dim("gc: nothing to collect"));
             } else {
                 if !report.generations_removed.is_empty() {
                     println!(
                         "{} pruned generations {}",
-                        "gc:".green().bold(),
+                        palette.good("gc:"),
                         report
                             .generations_removed
                             .iter()
@@ -39,44 +38,36 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
                     );
                 }
                 for path in &report.store_removed {
-                    println!("{} collected {}", "gc:".green().bold(), path.display());
+                    println!("{} collected {}", palette.good("gc:"), path.display());
                 }
-                if palette.enabled || !report.store_removed.is_empty() {
+                if report.bytes_freed > 0 {
                     println!("{} freed", format_size(report.bytes_freed));
                 }
             }
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("{}", format!("error: {e}").red().bold());
+            eprintln!("{}", palette.error(&format!("error: {e}")));
             ExitCode::FAILURE
         }
     }
 }
 
-/// keep_generations: an env.toml next to your cwd wins (the same
-/// default apply uses without --repo), then the user layer (the
-/// documented repo-over-user precedence).
+/// keep_generations via the shared config layering (0005 §2): an
+/// env.toml next to your cwd wins (the same default apply uses
+/// without --repo), then the user layer — one merge, not a re-impl.
 fn user_keep_generations() -> Option<u32> {
     let repo = std::env::current_dir()
         .ok()
         .map(|d| d.join("env.toml"))
-        .filter(|p| p.exists());
-    if let Some(path) = repo
-        && let Ok(source) = std::fs::read_to_string(path)
-        && let Ok(env) = gripsack_config::parse_env(&source)
-        && env.settings.keep_generations.is_some()
-    {
-        return env.settings.keep_generations;
-    }
-    let path = std::env::var_os("HOME")
+        .filter(|p| p.exists())
+        .and_then(|p| gripsack_config::load_env(&p).ok());
+    let user = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
-        .map(|h| h.join(".config/gripsack/config.toml"))?;
-    let source = std::fs::read_to_string(path).ok()?;
-    gripsack_config::parse_user(&source)
-        .ok()?
-        .settings
-        .keep_generations
+        .map(|h| h.join(".config/gripsack/config.toml"))
+        .and_then(|p| gripsack_config::load_user(&p).ok());
+    let merged = gripsack_config::merge(user.as_ref(), &repo.unwrap_or_default());
+    merged.settings.keep_generations
 }
 
 fn format_size(bytes: u64) -> String {

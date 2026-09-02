@@ -118,7 +118,7 @@ pub fn init(dir: &Path, palette: Palette) -> ExitCode {
         };
         let path: PathBuf = dir.join(&rel);
         if path.exists() {
-            eprintln!("  {} {rel} (exists — kept)", "skip".yellow());
+            eprintln!("  {} {rel} (exists — kept)", palette.warn("skip"));
             continue;
         }
         if let Some(parent) = path.parent()
@@ -138,7 +138,7 @@ pub fn init(dir: &Path, palette: Palette) -> ExitCode {
     let pkg_rel = "package.json".to_string();
     let pkg_path = dir.join(&pkg_rel);
     if pkg_path.exists() {
-        eprintln!("  {} {pkg_rel} (exists — kept)", "skip".yellow());
+        eprintln!("  {} {pkg_rel} (exists — kept)", palette.warn("skip"));
     } else if let Err(e) = std::fs::write(&pkg_path, package_json()) {
         eprintln!("grip: cannot write {}: {e}", pkg_path.display());
         return ExitCode::FAILURE;

@@ -193,7 +193,17 @@ fn main() -> ExitCode {
             take_over,
             jobs,
         } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::apply(&repo, host.as_deref(), modules, take_over, jobs, palette),
+            Ok(repo) => commands::apply(
+                &repo,
+                commands::ApplyOptions {
+                    host,
+                    modules,
+                    take_over,
+                    take_over_entries: None,
+                    jobs,
+                },
+                palette,
+            ),
             Err(code) => code,
         },
         Command::Check { host, repo } => match commands::resolve_repo(repo.as_deref()) {
@@ -201,7 +211,7 @@ fn main() -> ExitCode {
             Err(code) => code,
         },
         Command::Gc { dry_run } => commands::gc(palette, dry_run),
-        Command::WhyOwns { path } => commands::why_owns(&path),
+        Command::WhyOwns { path } => commands::why_owns(&path, palette),
         Command::StoreVerify { repair } => commands::store_verify(repair, palette),
         Command::Init { dir } => {
             commands::init(&dir.unwrap_or_else(|| PathBuf::from(".")), palette)
@@ -216,7 +226,7 @@ fn main() -> ExitCode {
             Ok(repo) => commands::update(&repo, host.as_deref(), modules, palette),
             Err(code) => code,
         },
-        Command::Rollback { generation } => commands::rollback(generation),
+        Command::Rollback { generation } => commands::rollback(generation, palette),
         Command::Trust { command } => commands::trust(command, palette),
         Command::Plan {
             ir: Some(path),
@@ -252,7 +262,7 @@ fn main() -> ExitCode {
             // plans from reading as nondeterminism.
             println!(
                 "{}",
-                commands::render_host_inputs(&outcome.host_inputs).dimmed()
+                palette.dim(&commands::render_host_inputs(&outcome.host_inputs))
             );
             let waves = gripsack_exec::waves(&ir).unwrap_or_default();
             if modules.is_empty() {
@@ -266,11 +276,11 @@ fn main() -> ExitCode {
                     println!("{}", render::render_module(&ir, name, &waves, palette))
                 }
                 None => {
-                    println!("{} {} modules", "plan:".green().bold(), ir.modules.len());
+                    println!("{} {} modules", palette.good("plan:"), ir.modules.len());
                     for (i, wave) in waves.iter().enumerate() {
                         println!(
                             "  {} {}",
-                            format!("wave {i}").blue().bold(),
+                            palette.badge(&format!("wave {i}")),
                             wave.join(", ")
                         );
                     }

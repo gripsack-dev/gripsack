@@ -57,7 +57,6 @@ struct TrustFile {
 /// before the first eval; it is idempotent — once a TTY prompt
 /// records the repo, later gates are a file lookup.
 ///
-/// `GRIPSACK_TRUST_ALL=1` is the documented CI escape hatch.
 pub fn ensure_trusted(repo: &Path) -> io::Result<()> {
     if std::env::var_os("GRIPSACK_TRUST_ALL").is_some_and(|v| v == *"1") {
         return Ok(());
@@ -65,9 +64,19 @@ pub fn ensure_trusted(repo: &Path) -> io::Result<()> {
     ensure_trusted_at(&gripsack_home(), repo, stdin_and_stdout_are_tty())
 }
 
+/// Exclusive lock over every trust-file mutation (fs::FlockGuard):
+/// the gate prompts for as long as the user stares at it, then
+/// rewrites the WHOLE file — two concurrent first-evals used to
+/// erase each other's entry (last writer wins). One lock,
+/// load-through-save.
+fn lock_trust(home: &Path) -> io::Result<crate::fs::FlockGuard> {
+    crate::fs::FlockGuard::acquire(&home.join("locks"), "trust")
+}
+
 /// Testable core of [`ensure_trusted`]: gate `repo` against the
 /// trust list in `home`, prompting only when `interactive`.
 fn ensure_trusted_at(home: &Path, repo: &Path, interactive: bool) -> io::Result<()> {
+    let _lock = lock_trust(home)?;
     let key = canonical_key(repo);
     let mut file = load(home)?;
     if file.repos.iter().any(|r| Path::new(&r.path) == key) {
@@ -98,10 +107,8 @@ pub fn list(home: &Path) -> io::Result<Vec<TrustedRepo>> {
     Ok(load(home)?.repos)
 }
 
-/// Record `repo` as trusted. Upsert: re-adding refreshes remote,
-/// commit, and timestamp instead of duplicating. Returns the entry
-/// written — the canonical path is in `entry.path`.
 pub fn add(home: &Path, repo: &Path) -> io::Result<TrustedRepo> {
+    let _lock = lock_trust(home)?;
     let mut file = load(home)?;
     let entry = entry_for(&canonical_key(repo), remote_of(repo), head_of(repo));
     record(&mut file, entry.clone());
@@ -112,6 +119,7 @@ pub fn add(home: &Path, repo: &Path) -> io::Result<TrustedRepo> {
 /// Forget `repo` (by canonical path). `true` when an entry was
 /// removed; `false` when it was never trusted.
 pub fn remove(home: &Path, repo: &Path) -> io::Result<bool> {
+    let _lock = lock_trust(home)?;
     let mut file = load(home)?;
     let key = canonical_key(repo);
     let before = file.repos.len();
@@ -188,12 +196,22 @@ fn prompt_tty(key: &Path, remote: &Option<String>, commit: &Option<String>) -> i
     let mut out = io::stdout().lock();
     let _ = writeln!(out, "first eval of this repo — trust it?");
     let _ = writeln!(out);
-    let _ = writeln!(out, "  path:    {}", key.display());
-    let _ = writeln!(out, "  remote:  {}", remote.as_deref().unwrap_or("(none)"));
+    let _ = writeln!(out, "  path:    {}", tame(key.display().to_string()));
+    let _ = writeln!(
+        out,
+        "  remote:  {}",
+        tame(remote.clone().unwrap_or_else(|| "(none)".into()))
+    );
     let _ = writeln!(
         out,
         "  commit:  {}",
-        commit.as_deref().map(short_sha).unwrap_or("(none)")
+        tame(
+            commit
+                .as_deref()
+                .map(short_sha)
+                .unwrap_or("(none)")
+                .to_string()
+        )
     );
     let _ = writeln!(out);
     let _ = writeln!(out, "{}", wrap_indent(SANDBOX_SUMMARY, 62));
@@ -203,6 +221,18 @@ fn prompt_tty(key: &Path, remote: &Option<String>, commit: &Option<String>) -> i
     let mut answer = String::new();
     io::stdin().read_line(&mut answer)?;
     Ok(answer.trim().eq_ignore_ascii_case("y"))
+}
+
+/// A security prompt prints what it is asked about verbatim — a repo
+/// path (or git remote) carrying newlines or ANSI escapes could forge
+/// prompt lines, including a second "trust this repo? [y/N]". Values
+/// with control characters are shown escaped instead.
+fn tame(value: String) -> String {
+    if value.chars().any(|c| c.is_control()) {
+        format!("{value:?}")
+    } else {
+        value
+    }
 }
 
 fn stdin_and_stdout_are_tty() -> bool {
@@ -303,6 +333,34 @@ mod tests {
         let p = home.join(name);
         std::fs::create_dir_all(&p).expect("mkdir");
         p
+    }
+    #[test]
+    fn prompt_values_with_control_chars_are_escaped() {
+        // a path forging a second prompt line must not print raw
+        assert!(tame("/tmp/x\n  trust this repo? [y/N] ".into()).contains("\\n"));
+        assert_eq!(tame("/tmp/plain".into()), "/tmp/plain");
+    }
+
+    #[test]
+    fn concurrent_adds_keep_both_entries() {
+        let home = new_home();
+        let repo_a = dir_under(home.path(), "env-a");
+        let repo_b = dir_under(home.path(), "env-b");
+        // serialize two upserts through the lock the hard way: the
+        // lock itself is the unit — both entries survive
+        let h = home.path().to_path_buf();
+        let h2 = h.clone();
+        let (a, b) = (repo_a.clone(), repo_b.clone());
+        let t1 = std::thread::spawn(move || add(&h, &a).is_ok());
+        let t2 = std::thread::spawn(move || add(&h2, &b).is_ok());
+        assert!(t1.join().unwrap() && t2.join().unwrap());
+        let paths: Vec<String> = list(home.path())
+            .unwrap()
+            .into_iter()
+            .map(|r| r.path)
+            .collect();
+        assert!(paths.contains(&repo_a.display().to_string()));
+        assert!(paths.contains(&repo_b.display().to_string()));
     }
 
     #[test]

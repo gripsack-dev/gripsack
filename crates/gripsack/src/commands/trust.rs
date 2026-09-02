@@ -4,7 +4,6 @@
 use crate::commands::expand_home;
 use crate::render::Palette;
 use clap::Subcommand;
-use owo_colors::OwoColorize;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -44,7 +43,7 @@ fn repo_path(spec: Option<String>) -> PathBuf {
     }
 }
 
-fn list(home: &Path, _palette: Palette) -> ExitCode {
+fn list(home: &Path, palette: Palette) -> ExitCode {
     match gripsack_store::trust::list(home) {
         Ok(repos) if repos.is_empty() => {
             println!("no trusted repos — the first eval of a repo prompts to trust it");
@@ -60,54 +59,55 @@ fn list(home: &Path, _palette: Palette) -> ExitCode {
                     .unwrap_or_else(|| "???????".into());
                 println!(
                     "{} {} {} {}",
-                    r.path.cyan(),
-                    remote.dimmed(),
-                    commit.yellow().dimmed(),
-                    format!("trusted {}", r.trusted_at).dimmed()
+                    palette.cyan(&r.path),
+                    palette.dim(remote),
+                    palette.dim(&commit),
+                    palette.dim(&format!("trusted {}", r.trusted_at))
                 );
             }
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("{}", format!("error: {e}").red().bold());
+            eprintln!("{}", palette.error(&format!("error: {e}")));
             ExitCode::FAILURE
         }
     }
 }
 
-fn add(home: &Path, path: &Path, _palette: Palette) -> ExitCode {
+fn add(home: &Path, path: &Path, palette: Palette) -> ExitCode {
     match gripsack_store::trust::add(home, path) {
         Ok(entry) => {
-            println!("{} {}", "trusted:".green().bold(), entry.path.cyan());
+            println!("{} {}", palette.good("trusted:"), palette.cyan(&entry.path));
             println!(
                 "  remote:  {}",
-                entry.remote.as_deref().unwrap_or("(none)").dimmed()
+                palette.dim(entry.remote.as_deref().unwrap_or("(none)"))
             );
             println!(
                 "  commit:  {}",
-                entry
-                    .commit
-                    .as_deref()
-                    .map(|c| c.chars().take(7).collect::<String>())
-                    .unwrap_or_else(|| "(none)".into())
-                    .dimmed()
+                palette.dim(
+                    &entry
+                        .commit
+                        .as_deref()
+                        .map(|c| c.chars().take(7).collect::<String>())
+                        .unwrap_or_else(|| "(none)".into())
+                )
             );
-            println!("  at:      {}", entry.trusted_at.dimmed());
+            println!("  at:      {}", palette.dim(&entry.trusted_at));
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("{}", format!("error: {e}").red().bold());
+            eprintln!("{}", palette.error(&format!("error: {e}")));
             ExitCode::FAILURE
         }
     }
 }
 
-fn remove(home: &Path, path: &Path, _palette: Palette) -> ExitCode {
+fn remove(home: &Path, path: &Path, palette: Palette) -> ExitCode {
     match gripsack_store::trust::remove(home, path) {
         Ok(true) => {
             println!(
                 "{} {}",
-                "removed:".green().bold(),
+                palette.good("removed:"),
                 gripsack_store::trust::canonical_key(path).display()
             );
             ExitCode::SUCCESS
@@ -120,7 +120,7 @@ fn remove(home: &Path, path: &Path, _palette: Palette) -> ExitCode {
             ExitCode::FAILURE
         }
         Err(e) => {
-            eprintln!("{}", format!("error: {e}").red().bold());
+            eprintln!("{}", palette.error(&format!("error: {e}")));
             ExitCode::FAILURE
         }
     }

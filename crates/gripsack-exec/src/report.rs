@@ -28,7 +28,7 @@ pub struct ApplyResult {
     pub reports: Vec<StepReport>,
 }
 
-pub(crate) fn describe_fetch(spec: &gripsack_ir::FetchSpec) -> String {
+pub fn describe_fetch(spec: &gripsack_ir::FetchSpec) -> String {
     use gripsack_ir::FetchSpec as F;
     match spec {
         F::GithubRelease { repo, asset, .. } => format!("github-release {repo} · {asset}"),

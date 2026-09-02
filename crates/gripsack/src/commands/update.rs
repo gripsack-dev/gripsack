@@ -16,15 +16,11 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
         Ok(o) => o,
         Err(code) => return code,
     };
-    let json = outcome.ir_json.clone();
-    let ir = match check_ir(&json, palette) {
+    let ir = match check_ir(&outcome.ir_json, palette) {
         Ok(ir) => ir,
         Err(code) => return code,
     };
-    let host_name = host
-        .map(str::to_string)
-        .or_else(|| std::env::var("HOSTNAME").ok())
-        .unwrap_or_else(|| "default".into());
+    let host_name = outcome.host.clone();
     let ctx = Ctx {
         home: store::gripsack_home(),
         repo: repo.to_path_buf(),

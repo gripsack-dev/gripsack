@@ -22,12 +22,20 @@ use std::path::{Path, PathBuf};
 use crate::host::PIXI_RELEASE;
 
 fn ensure_pixi() -> Result<PathBuf, FetchError> {
-    let dir = gripsack_store::gripsack_home()
+    let home = gripsack_store::gripsack_home();
+    let dir = home
         .join("tools")
         .join(format!("pixi-{}", PIXI_RELEASE.version));
     let pixi = dir.join("pixi");
     if pixi.exists() {
         return Ok(pixi);
+    }
+    // two concurrent applies provisioning pixi on a clean machine race
+    // the download/rename into the same staging path — the same flock
+    // discipline deno's provisioning uses
+    let _lock = gripsack_store::fs::FlockGuard::acquire(&home.join("locks"), "pixi")?;
+    if pixi.exists() {
+        return Ok(pixi); // lost the race — the winner installed it
     }
     let (url, sha) = crate::host::resolve(&PIXI_RELEASE)?;
     let spec = gripsack_ir::FetchSpec::Tarball {
@@ -35,7 +43,12 @@ fn ensure_pixi() -> Result<PathBuf, FetchError> {
         sha256: Some(sha.to_string()),
         api_url: None,
     };
-    let staging = dir.with_extension("staging");
+    // append, never with_extension: it eats version digits
+    // (pixi-0.77.1 → pixi-0.77) and collides across patch releases
+    let staging = dir.with_file_name(format!(
+        "{}.staging",
+        dir.file_name().unwrap_or_default().to_string_lossy()
+    ));
     let _ = std::fs::remove_dir_all(&staging);
     crate::fetch::fetch(&spec, &staging)?;
     std::fs::create_dir_all(&dir)?;

@@ -1,100 +1,22 @@
+use super::frontend::Frontend;
+use super::probe::InputsFile;
 use crate::render::{self, Palette};
-use gripsack_ir::diagnostic::codes;
-use gripsack_ir::{Diagnostic, Ir, Severity};
+use gripsack_ir::{Ir, Severity};
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
-
-/// Two-stage eval's round cap (0013 D6): eval → bind → re-eval, at
-/// most this many frontend runs before the set is declared unstable.
-const PROBE_ROUNDS: usize = 4;
 
 /// The eval wire protocol (0011 §5, 0013 D6): the frontend emits the
 /// IR plus any diagnostics (lint results, frontend-side validation)
 /// and its symbolic probe requests — the sandbox cannot run probes,
 /// so `ctx.probe.*` can only ever record a request here.
 #[derive(serde::Deserialize)]
-struct EvalEnvelope {
-    ir: serde_json::Value,
+pub(super) struct EvalEnvelope {
+    pub(super) ir: serde_json::Value,
     #[serde(default)]
-    diagnostics: Vec<gripsack_ir::Diagnostic>,
+    pub(super) diagnostics: Vec<gripsack_ir::Diagnostic>,
     #[serde(default)]
-    probe_requests: Vec<ProbeRequest>,
-}
-
-/// One symbolic probe request: the effect the frontend wants, the
-/// core's to answer (executable: PATH lookup; file_exists:
-/// absolute-path stat).
-#[derive(Debug, Clone, serde::Deserialize)]
-struct ProbeRequest {
-    kind: String,
-    /// `executable`'s argument: a bare name to look up on PATH.
-    name: Option<String>,
-    /// `file_exists`'s argument: an absolute path to stat.
-    path: Option<String>,
-    span: Option<gripsack_ir::Span>,
-}
-
-impl ProbeRequest {
-    fn arg(&self) -> &str {
-        self.name.as_deref().or(self.path.as_deref()).unwrap_or("")
-    }
-    /// The probes-map key: "executable:nvidia-smi".
-    fn key(&self) -> String {
-        format!("{}:{}", self.kind, self.arg())
-    }
-}
-
-/// The inputs envelope (0013 D4): everything the frontend may observe
-/// about the host, detected here in the core and injected via file —
-/// never argv (world-visible in `ps`), never env (leaks to children).
-#[derive(serde::Serialize)]
-struct InputsEnvelope<'a> {
-    version: u32,
-    host: &'a str,
-    facts: &'a gripsack_exec::facts::HostFacts,
-    /// CLI --tags ∪ host-entrypoint tags. Empty for now: no --tags
-    /// flag exists yet, and entrypoint tags are produced by the
-    /// entrypoint itself — the core has nothing to add at stage 1.
-    tags: &'a [String],
-    /// "kind:arg" → bound value, from the previous round. Stage 1
-    /// runs with it empty; probe calls return false until bound.
-    probes: &'a BTreeMap<String, bool>,
-    settings: &'a serde_json::Map<String, serde_json::Value>,
-}
-
-/// The inputs file: JSON under `$GRIPSACK_HOME/inputs/`, removed when
-/// the guard drops — the run log keeps the facts and probe bindings
-/// it carried, so a deleted file loses nothing.
-struct InputsFile {
-    path: PathBuf,
-}
-
-impl InputsFile {
-    fn create(home: &Path) -> std::io::Result<Self> {
-        let dir = home.join("inputs");
-        std::fs::create_dir_all(&dir)?;
-        Ok(Self {
-            path: dir.join(format!("{}.json", gripsack_trace::new_run_id())),
-        })
-    }
-
-    fn write(&self, envelope: &InputsEnvelope<'_>) -> Result<(), ExitCode> {
-        let json = serde_json::to_string(envelope).map_err(|e| {
-            eprintln!("grip: cannot serialize host inputs: {e}");
-            ExitCode::FAILURE
-        })?;
-        gripsack_store::atomic_write(&self.path, json.as_bytes()).map_err(|e| {
-            eprintln!("grip: cannot write {}: {e}", self.path.display());
-            ExitCode::FAILURE
-        })
-    }
-}
-
-impl Drop for InputsFile {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
-    }
+    pub(super) probe_requests: Vec<super::probe::ProbeRequest>,
 }
 
 /// Host inputs an eval ran with (0013 D6) — what `grip plan`'s
@@ -130,6 +52,13 @@ pub struct EvalOutcome {
     pub ir_json: String,
     pub env: gripsack_config::EnvConfig,
     pub host_inputs: HostInputs,
+    /// The host entrypoint actually evaluated — the same resolution
+    /// (--host > env.toml default_host > detected hostname) every
+    /// post-eval command must key its lockfile and generations by.
+    /// Commands used to re-derive it with drifting rules (`update`
+    /// read $HOSTNAME, a bash-ism POSIX sh does not export) and pick
+    /// a different lockfile than the eval that preceded them.
+    pub host: String,
 }
 
 /// Evaluate an env repo's frontend into IR JSON (0005 §4). The core
@@ -166,47 +95,7 @@ pub fn eval_repo(
         &env.throttle,
         Some(gripsack_store::gripsack_home().join("throttle.json")),
     );
-    // Declared plugins (0012 §move-2): package = "owner/repo@tag" on a
-    // [fetchers.x] or [linters.x] entry provisions the binary into the
-    // plugin store — declarative, sha256-verified, receipted. Fetchers
-    // and linters both resolve from the store downstream.
-    {
-        let store = gripsack_fetch::plugins::PluginStore::new(&gripsack_store::gripsack_home());
-        for (name, section) in &env.fetchers {
-            // an explicit executable path (path = the registry-symmetric
-            // name; plugin = its original alias) registers directly —
-            // no provisioning, no network (the offline route)
-            let explicit = section.path.as_ref().or(section.plugin.as_ref());
-            if let Some(exe) = explicit {
-                if section.package.is_some() {
-                    eprintln!(
-                        "grip: [fetchers.{name}] declares an executable path and a package — pick one"
-                    );
-                    return Err(ExitCode::FAILURE);
-                }
-                if exe.contains('/') {
-                    gripsack_fetch::register_fetcher_path(name, exe.into());
-                }
-                continue;
-            }
-            if let Some(package) = &section.package {
-                if section.plugin.is_some() {
-                    eprintln!(
-                        "grip: [fetchers.{name}] declares both plugin and package — pick one"
-                    );
-                    return Err(ExitCode::FAILURE);
-                }
-                provision(&store, name, package, "gripfetch")?;
-            }
-        }
-        for (name, section) in &env.linters {
-            if let Some(package) = &section.package
-                && gripsack_fetch::plugins::parse_ref(package).is_some()
-            {
-                provision(&store, name, package, "griplint")?;
-            }
-        }
-    }
+    provision_plugins(&env)?;
     // Build-time env (0001 §3.10 build side): injected for the run's
     // duration so every subprocess — fetchers, build steps, plugins —
     // inherits it. A CLI exits after one run, so process-env is the
@@ -259,117 +148,15 @@ pub fn eval_repo(
         );
         ExitCode::FAILURE
     })?;
-    let empty_settings = serde_json::Map::new();
-    let no_tags: [String; 0] = [];
-    let mut bound: BTreeMap<String, bool> = BTreeMap::new();
-    let mut envelope: Option<EvalEnvelope> = None;
-
-    for round in 1..=PROBE_ROUNDS {
-        inputs.write(&InputsEnvelope {
-            version: 1,
-            host: &host,
-            facts,
-            tags: &no_tags,
-            probes: &bound,
-            settings: &empty_settings,
-        })?;
-        tracing::info!(round, probes_bound = bound.len(), "frontend eval");
-        let out = deno_command(&deno, repo, &driver, &inputs.path, &frontend_dir, &home)
-            .output()
-            .map_err(|e| {
-                eprintln!("grip: cannot spawn deno: {e} (see `grip doctor`)");
-                ExitCode::FAILURE
-            })?;
-        let stdout = String::from_utf8(out.stdout.clone()).map_err(|_| {
-            eprintln!("grip: frontend emitted non-utf8 output — this is a frontend bug");
-            ExitCode::FAILURE
-        })?;
-        let parsed = match serde_json::from_str::<EvalEnvelope>(&stdout) {
-            Ok(envelope) => envelope,
-            Err(_) => {
-                // frontend errors are the frontend's domain (0005 §4) —
-                // pass the stderr through untouched.
-                if !out.status.success() {
-                    eprint!("{}", String::from_utf8_lossy(&out.stderr));
-                    eprintln!("grip: frontend eval failed ({host})");
-                } else {
-                    eprintln!(
-                        "grip: frontend emitted a malformed envelope — this is a frontend bug"
-                    );
-                    eprintln!("hint: stdout was {} bytes, not JSON", stdout.len());
-                }
-                return Err(ExitCode::FAILURE);
-            }
-        };
-        let failed = !out.status.success()
-            || parsed
-                .diagnostics
-                .iter()
-                .any(|d| d.severity == Severity::Error);
-        if failed {
-            if !parsed.diagnostics.is_empty() {
-                eprintln!(
-                    "{}",
-                    render::render_diagnostics(&parsed.diagnostics, palette)
-                );
-            }
-            if !out.status.success() {
-                eprint!("{}", String::from_utf8_lossy(&out.stderr));
-                eprintln!("grip: frontend eval failed ({host})");
-            }
-            return Err(ExitCode::FAILURE);
-        }
-        // requests already bound are answered by the inputs file —
-        // only NEW kinds/args force another round (0013 D6)
-        let mut seen = std::collections::BTreeSet::new();
-        let fresh: Vec<ProbeRequest> = parsed
-            .probe_requests
-            .iter()
-            .filter(|req| !bound.contains_key(&req.key()))
-            .filter(|req| seen.insert(req.key()))
-            .cloned()
-            .collect();
-        envelope = Some(parsed);
-        if fresh.is_empty() {
-            break;
-        }
-        if round == PROBE_ROUNDS {
-            let names = fresh
-                .iter()
-                .map(ProbeRequest::key)
-                .collect::<Vec<_>>()
-                .join(", ");
-            let diagnostic = Diagnostic::error(
-                codes::PROBE_UNSTABLE,
-                format!(
-                    "probe set unstable: new probe requests still appearing after {PROBE_ROUNDS} eval rounds ({names})"
-                ),
-            )
-            .with_help(
-                "a probe depending on a probe is an authoring error — call ctx.probe.* \
-                 unconditionally, not behind another probe's result",
-            );
-            tracing::error!(code = codes::PROBE_UNSTABLE, "{names}");
-            eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
-            return Err(ExitCode::FAILURE);
-        }
-        for req in &fresh {
-            match bind_probe(req) {
-                Ok(value) => {
-                    tracing::info!(probe = %req.key(), result = value, "probe bound");
-                    bound.insert(req.key(), value);
-                }
-                Err(message) => {
-                    let diagnostic = Diagnostic::error(codes::PROBE_UNSUPPORTED, message)
-                        .with_label(req.span.clone(), "probe requested here");
-                    tracing::error!(code = codes::PROBE_UNSUPPORTED, "{}", req.key());
-                    eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
-                    return Err(ExitCode::FAILURE);
-                }
-            }
-        }
-    }
-    let envelope = envelope.expect("the loop runs at least once");
+    let frontend = Frontend {
+        deno: &deno,
+        repo,
+        driver: &driver,
+        frontend_dir: &frontend_dir,
+        home: &home,
+    };
+    let (envelope, bound) =
+        super::probe::eval_to_fixpoint(&frontend, &host, facts, &inputs, palette)?;
     if !envelope.diagnostics.is_empty() {
         eprintln!(
             "{}",
@@ -379,6 +166,7 @@ pub fn eval_repo(
     Ok(EvalOutcome {
         ir_json: envelope.ir.to_string(),
         env,
+        host,
         host_inputs: HostInputs {
             facts: facts.clone(),
             probes: bound,
@@ -386,125 +174,10 @@ pub fn eval_repo(
     })
 }
 
-/// The sandboxed spawn (0013 D2): read is the ONLY grant — no env, no
-/// net, no run, no ffi, no sys, denied by the absence of their flags.
-/// `--cached-only --no-remote --no-lock`: nothing downloads, nothing
-/// writes a lockfile; the frontend is embedded files and relative
-/// imports. DENO_DIR points the cache under $GRIPSACK_HOME — never
-/// $HOME, so a sandboxed-HOME run can neither poison nor depend on
-/// the user's deno cache.
-fn deno_command(
-    deno: &Path,
-    repo: &Path,
-    driver: &Path,
-    inputs: &Path,
-    frontend_dir: &Path,
-    home: &Path,
-) -> std::process::Command {
-    // the deliberate pin (the repo's own @gripsack/core) may symlink
-    // OUTSIDE the repo — `npm install <path>`, monorepos — and deno
-    // checks permissions against the canonical path; grant the real
-    // location or the sandbox blocks the very pin it must honor
-    let mut reads = vec![
-        repo.to_path_buf(),
-        inputs
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .to_path_buf(),
-        frontend_dir.to_path_buf(),
-    ];
-    if let Ok(pin) = repo.join("node_modules/@gripsack/core").canonicalize()
-        && !reads.contains(&pin)
-    {
-        reads.push(pin);
-    }
-    let reads = reads
-        .iter()
-        .map(|p| p.display().to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    // --import-map, NOT deno.json discovery: a discovered deno.json
-    // puts deno in project mode where BYONM (the repo's npm-managed
-    // node_modules) never engages — third-party bare imports in module
-    // code would fail. The flag applies the pin map without creating a
-    // project, so env repos get BOTH the deliberate-pin rule and npm
-    // dependencies (documented: install them in the repo, they're
-    // read-only under the sandbox).
-    let mut cmd = std::process::Command::new(deno);
-    cmd.args(["run", "--no-remote", "--cached-only", "--no-lock"])
-        .arg(format!(
-            "--import-map={}",
-            frontend_dir.join("deno.json").display()
-        ))
-        .arg(format!("--allow-read={reads}"))
-        .arg(driver)
-        .arg(repo)
-        .arg("--inputs")
-        .arg(inputs)
-        .current_dir(repo)
-        .env("DENO_DIR", home.join("deno-cache"));
-    cmd
-}
-
 /// Bind one probe request (0013 D6): the closed enum lives in the
 /// core on purpose — binding here, on the frontend's side of the
 /// boundary with core-supplied data, is what keeps the emitted IR
 /// fully concrete.
-fn bind_probe(req: &ProbeRequest) -> Result<bool, String> {
-    match req.kind.as_str() {
-        "executable" => {
-            let name = req
-                .name
-                .as_deref()
-                .filter(|n| !n.is_empty() && !n.contains('/'))
-                .ok_or_else(|| {
-                    format!(
-                        "executable probe needs a bare name to look up on PATH, got {:?}",
-                        req.arg()
-                    )
-                })?;
-            Ok(executable_on_path(name))
-        }
-        "file_exists" => {
-            let path = req
-                .path
-                .as_deref()
-                .or(req.name.as_deref())
-                .filter(|p| !p.is_empty())
-                .ok_or_else(|| "file_exists probe needs a path".to_string())?;
-            if !Path::new(path).is_absolute() {
-                // relative would resolve against the core's CWD — a
-                // silent lie about which file was meant
-                tracing::warn!(probe = %req.key(), "file_exists probe is not absolute — bound false");
-                return Ok(false);
-            }
-            Ok(Path::new(path).exists())
-        }
-        other => Err(format!(
-            "unsupported probe kind {other:?} (this grip answers: executable, file_exists)"
-        )),
-    }
-}
-
-fn executable_on_path(name: &str) -> bool {
-    std::env::var_os("PATH")
-        .map(|paths| std::env::split_paths(&paths).any(|dir| is_executable_file(&dir.join(name))))
-        .unwrap_or(false)
-}
-
-#[cfg(unix)]
-fn is_executable_file(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn is_executable_file(path: &Path) -> bool {
-    path.is_file()
-}
-
 /// Run registered linters against the IR's modules (0012 §move-1) and
 /// render what comes back; error severity fails the command.
 pub fn run_lints(
@@ -523,6 +196,22 @@ pub fn run_lints(
         return Err(ExitCode::FAILURE);
     }
     Ok(())
+}
+
+/// The post-eval validation pipeline every content command runs:
+/// IR sema → module source validation → linters (0011 §9). One
+/// implementation — check and apply used to carry identical
+/// and_then chains that could drift.
+pub fn validated_ir(
+    outcome: &EvalOutcome,
+    repo: &Path,
+    host: Option<&str>,
+    palette: Palette,
+) -> Result<Ir, ExitCode> {
+    let ir = check_ir(&outcome.ir_json, palette)?;
+    crate::commands::validate_sources(&ir, repo, palette)?;
+    run_lints(&ir, outcome, repo, host, palette)?;
+    Ok(ir)
 }
 
 /// Parse + validate IR, rendering diagnostics on failure.
@@ -575,6 +264,47 @@ pub fn validate_sources(ir: &Ir, repo: &Path, palette: Palette) -> Result<(), Ex
 
 /// Provision one plugin; the fresh-install line is the trust notice
 /// (a new binary runs with your user rights — name its source).
+/// Stage: declared plugins (0012 §move-2). `package = "owner/repo@tag"`
+/// on a [fetchers.x] or [linters.x] entry provisions the binary into
+/// the plugin store — declarative, sha256-verified, receipted.
+/// Fetchers and linters both resolve from the store downstream.
+fn provision_plugins(env: &gripsack_config::EnvConfig) -> Result<(), ExitCode> {
+    let store = gripsack_fetch::plugins::PluginStore::new(&gripsack_store::gripsack_home());
+    for (name, section) in &env.fetchers {
+        // an explicit executable path (path = the registry-symmetric
+        // name; plugin = its original alias) registers directly —
+        // no provisioning, no network (the offline route)
+        let explicit = section.path.as_ref().or(section.plugin.as_ref());
+        if let Some(exe) = explicit {
+            if section.package.is_some() {
+                eprintln!(
+                    "grip: [fetchers.{name}] declares an executable path and a package — pick one"
+                );
+                return Err(ExitCode::FAILURE);
+            }
+            if exe.contains('/') {
+                gripsack_fetch::register_fetcher_path(name, exe.into());
+            }
+            continue;
+        }
+        if let Some(package) = &section.package {
+            if section.plugin.is_some() {
+                eprintln!("grip: [fetchers.{name}] declares both plugin and package — pick one");
+                return Err(ExitCode::FAILURE);
+            }
+            provision(&store, name, package, "gripfetch")?;
+        }
+    }
+    for (name, section) in &env.linters {
+        if let Some(package) = &section.package
+            && gripsack_fetch::plugins::parse_ref(package).is_some()
+        {
+            provision(&store, name, package, "griplint")?;
+        }
+    }
+    Ok(())
+}
+
 fn provision(
     store: &gripsack_fetch::plugins::PluginStore,
     name: &str,

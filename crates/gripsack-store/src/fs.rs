@@ -163,6 +163,52 @@ fn fsync_dir(dir: &Path) -> io::Result<()> {
     std::fs::File::open(dir)?.sync_all()
 }
 
+/// An exclusive flock held until the guard drops. The ONE lock
+/// primitive for the whole workspace (apply lifecycle, step
+/// resources, trust-file mutations, tool provisioning): the trust
+/// gate prompts for as long as the user stares at it before
+/// rewriting a whole file — every load-through-save needs this.
+pub struct FlockGuard(std::fs::File);
+
+impl FlockGuard {
+    /// Lock `<dir>/<name>.flock` exclusively, creating as needed.
+    pub fn acquire(dir: &Path, name: &str) -> io::Result<Self> {
+        std::fs::create_dir_all(dir)?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(dir.join(format!("{name}.flock")))?;
+        flock(&file, libc::LOCK_EX)?;
+        Ok(Self(file))
+    }
+}
+
+impl Drop for FlockGuard {
+    fn drop(&mut self) {
+        let _ = flock(&self.0, libc::LOCK_UN);
+    }
+}
+
+#[cfg(unix)]
+fn flock(file: &std::fs::File, op: i32) -> io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+    if unsafe { libc::flock(file.as_raw_fd(), op) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(unix))]
+fn flock(_file: &std::fs::File, _op: i32) -> io::Result<()> {
+    // a lock primitive that pretends is worse than none (N5)
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "flock is not supported on this platform",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

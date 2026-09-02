@@ -1,11 +1,10 @@
 use crate::render::{self, Palette};
-use owo_colors::OwoColorize;
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::ExitCode;
 
 /// Validate an IR file and show the execution waves (0004 §4, 0007 §5).
 #[tracing::instrument(name = "plan", skip(palette), fields(file = %path.display()))]
-pub fn plan_ir(path: &PathBuf, palette: Palette) -> ExitCode {
+pub fn plan_ir(path: &Path, palette: Palette) -> ExitCode {
     let json = match std::fs::read_to_string(path) {
         Ok(j) => j,
         Err(e) => {
@@ -27,7 +26,7 @@ pub fn plan_ir(path: &PathBuf, palette: Palette) -> ExitCode {
     let host = &ir.host;
     println!(
         "{} {} modules · host {}/{} · tags: {}",
-        "plan:".green().bold(),
+        palette.good("plan:"),
         ir.modules.len(),
         host.os,
         host.arch,
@@ -42,21 +41,21 @@ pub fn plan_ir(path: &PathBuf, palette: Palette) -> ExitCode {
             for (i, wave) in waves.iter().enumerate() {
                 println!(
                     "  {} {}",
-                    format!("wave {i}").blue().bold(),
+                    palette.badge(&format!("wave {i}")),
                     wave.join(", ")
                 );
             }
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("{}", format!("error: {e}").red().bold());
+            eprintln!("{}", palette.error(&format!("error: {e}")));
             ExitCode::FAILURE
         }
     }
 }
 
 /// Module-scoped view: `grip plan --ir FILE <module>` (0007 §5).
-pub fn plan_module(path: &PathBuf, name: &str, palette: Palette) -> ExitCode {
+pub fn plan_module(path: &Path, name: &str, palette: Palette) -> ExitCode {
     let json = match std::fs::read_to_string(path) {
         Ok(j) => j,
         Err(e) => {

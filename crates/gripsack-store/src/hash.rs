@@ -15,10 +15,20 @@ pub fn canonical_file_hash(path: &Path) -> std::io::Result<String> {
         hasher.update(std::fs::read_link(path)?.as_os_str().as_encoded_bytes());
     } else if meta.is_dir() {
         hasher.update(b"dir\0");
-    } else {
+    } else if meta.is_file() {
         hasher.update(b"file\0");
         hasher.update([exec_byte(&meta)]);
         hasher.update(std::fs::read(path)?);
+    } else {
+        // fifos, sockets, device nodes: reading one blocks forever (or
+        // OOMs on /dev/zero) — a store entry is a regular file
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "{} is not a regular file, directory, or symlink",
+                path.display()
+            ),
+        ));
     }
     Ok(hex(&hasher.finalize()))
 }

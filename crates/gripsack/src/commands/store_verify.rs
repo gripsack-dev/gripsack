@@ -2,10 +2,9 @@
 
 use crate::render::Palette;
 use gripsack_exec::Ctx;
-use owo_colors::OwoColorize;
 use std::process::ExitCode;
 
-pub fn store_verify(repair: bool, _palette: Palette) -> ExitCode {
+pub fn store_verify(repair: bool, palette: Palette) -> ExitCode {
     let home = gripsack_store::gripsack_home();
     // repair deletes store paths — the same lifecycle lock as apply/gc/
     // rollback, so an in-flight apply's just-published path can't vanish
@@ -31,12 +30,12 @@ pub fn store_verify(repair: bool, _palette: Palette) -> ExitCode {
     };
     match gripsack_exec::verify_store::verify_store(&ctx, repair) {
         Ok(reports) if reports.is_empty() => {
-            println!("{}", "store: ok".green().bold());
+            println!("{}", palette.good("store: ok"));
             ExitCode::SUCCESS
         }
         Ok(reports) => {
             for (module, _kind, summary) in &reports {
-                println!("  {} {}", module.yellow().bold(), summary);
+                println!("  {} {}", palette.warn(module), summary);
             }
             ExitCode::FAILURE
         }

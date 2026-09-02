@@ -1,11 +1,11 @@
 use crate::commands::expand_home;
+use crate::render::Palette;
 use gripsack_store as store;
-use owo_colors::OwoColorize;
 use std::process::ExitCode;
 use tracing::info;
 
 /// grip rollback: restore a generation's deployment, then flip back.
-pub fn rollback(generation: Option<u64>) -> ExitCode {
+pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
     let home = store::gripsack_home();
     // rollback rewrites deployments and flips — same lifecycle race as
     // apply, so it holds the same lock (finding A)
@@ -80,6 +80,6 @@ pub fn rollback(generation: Option<u64>) -> ExitCode {
         return ExitCode::FAILURE;
     }
     info!(generation = target, "rolled back");
-    println!("{} generation {}", "rolled back to".green().bold(), target);
+    println!("{} generation {}", palette.good("rolled back to"), target);
     ExitCode::SUCCESS
 }

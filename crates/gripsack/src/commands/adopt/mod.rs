@@ -14,7 +14,6 @@ use crate::commands::{eval_repo, expand_home, hostname, trust_gate};
 use crate::render::{self, Palette};
 
 use gripsack_store as store;
-use owo_colors::OwoColorize;
 use std::io::IsTerminal as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -94,7 +93,7 @@ pub fn adopt(
     }
     println!(
         "{} {target} — {} file{}, {}{}",
-        "adopting".green().bold(),
+        palette.good("adopting"),
         inv.files.len(),
         if inv.files.len() == 1 { "" } else { "s" },
         inspect::fmt_kib(inv.total_bytes),
@@ -107,8 +106,8 @@ pub fn adopt(
     for skipped in &inv.skipped {
         println!(
             "  {} {}",
-            "skip".yellow(),
-            format!("{} ({})", skipped.rel, skipped.reason).dimmed()
+            palette.warn("skip"),
+            palette.dim(&format!("{} ({})", skipped.rel, skipped.reason))
         );
     }
     if inv.total_bytes > inspect::SIZE_WARN_BYTES {
@@ -119,7 +118,7 @@ pub fn adopt(
             .join(", ");
         println!(
             "  {} this is large for a config repo — largest: {largest}",
-            "note".yellow()
+            palette.warn("note")
         );
     }
 
@@ -132,7 +131,7 @@ pub fn adopt(
         eprintln!("grip: merge owns one block inside a single file — it cannot adopt a directory");
         return ExitCode::FAILURE;
     }
-    println!("  {}", prompt::mode_line(&mode).dimmed());
+    println!("  {}", palette.dim(&prompt::mode_line(&mode)));
 
     // ── generate ───────────────────────────────────────────────────
     let rel_files: Vec<String> = inv.files.iter().map(|f| f.rel.clone()).collect();
@@ -192,7 +191,7 @@ pub fn adopt(
     }
     println!(
         "  {} configs/{name}/ · modules/{name}.ts · {host_rel}",
-        "wrote".green()
+        palette.good("wrote")
     );
 
     // ── plan ───────────────────────────────────────────────────────
@@ -217,7 +216,7 @@ pub fn adopt(
     println!("{}", render::diff_section(&ir, &repo, &adopting, palette));
     println!(
         "  {}",
-        "prior state will be recorded — rollback restores your original files".dimmed()
+        palette.dim("prior state will be recorded — rollback restores your original files")
     );
 
     // ── confirm & apply ────────────────────────────────────────────
@@ -226,7 +225,7 @@ pub fn adopt(
             eprintln!("grip: non-interactive — pass --yes to apply, or run the shown plan first");
             return ExitCode::FAILURE;
         }
-        if !prompt::confirm_apply() {
+        if !prompt::confirm_apply(palette) {
             eprintln!(
                 "not applied — repo files stay; remove configs/{name}, modules/{name}.ts and the {host_rel} entry to abandon"
             );
@@ -250,14 +249,7 @@ pub fn adopt(
         eprintln!("grip: cannot record the baseline generation: {e}");
         return ExitCode::FAILURE;
     }
-    crate::commands::apply_scoped(
-        &repo,
-        Some(&host_name),
-        Vec::new(),
-        Some(adopting),
-        None,
-        palette,
-    )
+    crate::commands::apply_scoped(&repo, adopting, Some(&host_name), None, palette)
 }
 
 /// Which module already manages a destination under this path.

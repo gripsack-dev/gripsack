@@ -41,13 +41,19 @@ pub fn inspect(dest: &Path, is_dir: bool) -> Inventory {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         match std::fs::metadata(dest) {
-            Ok(meta) => {
+            Ok(meta) if meta.file_type().is_file() => {
                 inv.total_bytes += meta.len();
                 inv.files.push(InventoriedFile {
                     rel,
                     size: meta.len(),
                 });
             }
+            Ok(_) => inv.skipped.push(Skipped {
+                rel,
+                reason:
+                    "not a regular file (fifo, device, or socket) — reading it would never return"
+                        .into(),
+            }),
             Err(_) => inv.skipped.push(Skipped {
                 rel,
                 reason: "broken symlink".into(),

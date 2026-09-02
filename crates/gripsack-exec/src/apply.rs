@@ -175,17 +175,17 @@ fn prune_undeclared(
             if declared.contains(entry.to.as_str()) {
                 continue;
             }
-            let dest = crate::deploy::expand_home(&entry.to);
+            let dest = gripsack_store::expand_home(&entry.to);
             if entry.mode == gripsack_ir::Ownership::Merge {
                 // the file is foreign — prune removes only our block,
                 // and only if the block content is still what we
                 // deployed (a drifted block is the user's now)
                 let existing = std::fs::read_to_string(&dest).unwrap_or_default();
-                match crate::render::extract_block(&existing, name) {
+                match crate::template::extract_block(&existing, name) {
                     Some(content)
                         if store::canonical_bytes_hash(content.as_bytes()) == entry.hash =>
                     {
-                        let new = crate::render::remove_block(&existing, name)
+                        let new = crate::template::remove_block(&existing, name)
                             .expect("block found above");
                         if new.trim().is_empty() {
                             std::fs::remove_file(&dest)?;

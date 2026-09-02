@@ -7,7 +7,6 @@
 use crate::render::Palette;
 use dialoguer::Select;
 use dialoguer::theme::ColorfulTheme;
-use owo_colors::OwoColorize;
 use std::io::IsTerminal;
 
 pub const DEFAULT_MODE: &str = super::generate::MODE_TRACKED_COPY;
@@ -47,11 +46,10 @@ pub fn ask_mode(preseed: Option<&str>, palette: Palette) -> Result<String, ()> {
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
         eprintln!(
             "{}",
-            format!(
+            palette.warn(&format!(
                 "ownership: {DEFAULT_MODE} — the safe default (no TTY to ask; \
                  --mode owned|merge overrides)"
-            )
-            .yellow()
+            ))
         );
         return Ok(DEFAULT_MODE.to_string());
     }
@@ -61,8 +59,8 @@ pub fn ask_mode(preseed: Option<&str>, palette: Palette) -> Result<String, ()> {
             if palette.enabled {
                 format!(
                     "{}{}",
-                    format!("{mode:<12}").green().bold(),
-                    semantics.dimmed()
+                    palette.good(&format!("{mode:<12}")),
+                    palette.dim(semantics)
                 )
             } else {
                 format!("{mode:<12} {semantics}")
@@ -99,9 +97,9 @@ pub fn mode_line(mode: &str) -> String {
 }
 
 /// The final go/no-go before apply. Returns false to abort.
-pub fn confirm_apply() -> bool {
+pub fn confirm_apply(palette: Palette) -> bool {
     use std::io::Write;
-    eprint!("{}", "apply? [y/N] ".cyan().bold());
+    eprint!("{}", palette.cyan("apply? [y/N] "));
     let _ = std::io::stderr().flush();
     let mut answer = String::new();
     std::io::stdin().read_line(&mut answer).is_ok() && matches!(answer.trim(), "y" | "Y")

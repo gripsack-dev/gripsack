@@ -418,8 +418,8 @@ impl<'a> ModuleRun<'a> {
             .ok_or_else(|| fail("run step needs argv (empty array)".into()))?;
         let dir = self
             .staging
-            .clone()
-            .unwrap_or_else(|| fresh_staging(self.name));
+            .get_or_insert_with(|| fresh_staging(self.name))
+            .clone();
         std::fs::create_dir_all(&dir)?;
         let workdir = cwd.map(|c| dir.join(c)).unwrap_or_else(|| dir.clone());
         let status = std::process::Command::new(program)
@@ -447,10 +447,10 @@ impl<'a> ModuleRun<'a> {
         progress(self.ctx, self.name, "building");
         let dir = self
             .staging
-            .clone()
-            .unwrap_or_else(|| fresh_staging(self.name));
-        // fresh_staging only *clears* the path — a build with no fetch
-        // step before it has no staging yet.
+            .get_or_insert_with(|| fresh_staging(self.name))
+            .clone();
+        // get_or_insert persists the dir: publish's fresh_staging must
+        // never wipe what a fetchless build/run step just produced
         std::fs::create_dir_all(&dir)?;
         run_shell(script, &dir).map_err(|detail| ExecError::Step {
             module: self.name.to_string(),

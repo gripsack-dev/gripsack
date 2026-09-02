@@ -100,6 +100,18 @@ impl PluginStore {
                     reason: e.to_string(),
                 }
             })?;
+        // the tag names the on-disk version dir and the `current`
+        // symlink target — it arrives from a network response, so a
+        // `a/../../evil` tag must not walk out of the plugin store
+        if !safe_segment(&release.version) {
+            return Err(FetchError::Http {
+                url: repo.clone(),
+                reason: format!(
+                    "release tag {:?} is not a safe version directory name",
+                    release.version
+                ),
+            });
+        }
 
         let staging = self.home.join("plugins").join(format!(".staging-{exe}"));
         let _ = std::fs::remove_dir_all(&staging);
@@ -150,19 +162,19 @@ impl PluginStore {
         };
         let receipt_dir = self.receipt_path(&exe);
         std::fs::create_dir_all(receipt_dir.parent().expect("receipts dir"))?;
-        std::fs::write(
+        gripsack_store::fs::atomic_write(
             &receipt_dir,
-            toml::to_string(&receipt).map_err(|e| FetchError::Http {
-                url: repo.clone(),
-                reason: e.to_string(),
-            })?,
+            toml::to_string(&receipt)
+                .map_err(|e| FetchError::Http {
+                    url: repo.clone(),
+                    reason: e.to_string(),
+                })?
+                .as_bytes(),
         )?;
-        // re-point current atomically (symlink swap on the same dir)
+        // re-point current atomically (the store's symlink swap —
+        // same primitive as the generation flip)
         let current = self.exe_dir(&exe).join("current");
-        let tmp = self.exe_dir(&exe).join(".current.tmp");
-        let _ = std::fs::remove_file(&tmp);
-        std::os::unix::fs::symlink(format!("{}/", release.version), &tmp)?;
-        std::fs::rename(&tmp, &current)?;
+        gripsack_store::fs::symlink_replace(&current, &self.exe_dir(&exe).join(&release.version))?;
 
         tracing::info!(
             plugin = exe,
@@ -171,6 +183,39 @@ impl PluginStore {
             "provisioned plugin"
         );
         Ok(version_dir.join(&exe))
+    }
+}
+/// A tag/version that names exactly one directory level: nonempty,
+/// no separators, no `.`/`..`, no control characters. Network-derived
+/// names must never widen into a path.
+fn safe_segment(tag: &str) -> bool {
+    !tag.is_empty()
+        && !tag.starts_with('.')
+        && tag
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+        && !tag.contains("..")
+}
+
+#[cfg(test)]
+mod segment_tests {
+    #[test]
+    fn traversal_tags_are_refused() {
+        assert!(super::safe_segment("v1.2.3"));
+        assert!(super::safe_segment("release-2026-09-01"));
+        for bad in [
+            "a/../../evil",
+            "..",
+            ".",
+            "v1/x",
+            "",
+            "a\\b",
+            "ta\u{1b}g",
+            ".hidden",
+            "v..2",
+        ] {
+            assert!(!super::safe_segment(bad), "{bad:?} must be refused");
+        }
     }
 }
 
@@ -200,6 +245,7 @@ mod tests {
         let bin = store.exe_dir(exe).join("v1").join(exe);
         std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
         std::fs::write(&bin, b"#!/bin/sh\n").unwrap();
+
         std::os::unix::fs::symlink("v1/", store.exe_dir(exe).join("current")).unwrap();
         assert_eq!(store.current_binary(exe), Some(bin));
 

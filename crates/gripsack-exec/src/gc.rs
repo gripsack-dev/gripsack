@@ -110,10 +110,14 @@ pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, Exe
 }
 
 fn dir_size(path: &Path) -> io::Result<u64> {
-    let mut total = 0;
-    if path.is_file() {
-        return Ok(path.metadata()?.len());
+    let meta = std::fs::symlink_metadata(path)?;
+    if meta.is_file() {
+        return Ok(meta.len());
     }
+    if !meta.is_dir() {
+        return Ok(0); // symlink/fifo/socket: size is not content
+    }
+    let mut total = 0;
     for entry in std::fs::read_dir(path)? {
         total += dir_size(&entry?.path())?;
     }
@@ -132,7 +136,8 @@ pub fn why_owns(
     let manifest = store::read_manifest(home, n)?;
     for (name, state) in &manifest.modules {
         for entry in &state.entries {
-            if entry.to == path || crate::deploy::expand_home(&entry.to).to_string_lossy() == path {
+            if entry.to == path || gripsack_store::expand_home(&entry.to).to_string_lossy() == path
+            {
                 return Ok(Some((name.clone(), entry.clone())));
             }
         }
@@ -231,7 +236,7 @@ mod tests {
         let (name, entry) = why_owns(home, "~/.config/m/a").unwrap().unwrap();
         assert_eq!(name, "m");
         assert_eq!(entry.mode, Ownership::TrackedCopy);
-        let absolute = crate::deploy::expand_home("~/.config/m/a");
+        let absolute = gripsack_store::expand_home("~/.config/m/a");
         assert!(
             why_owns(home, &absolute.to_string_lossy())
                 .unwrap()

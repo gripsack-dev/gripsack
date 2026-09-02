@@ -31,10 +31,9 @@ pub fn render_env_file(
             // this profile. sema rejects these at eval; this guard is
             // for the hand-edited manifest.
             if !is_identifier(&var.name) {
-                eprintln!(
-                    "grip: skipping env var with invalid name {:?} in module state",
-                    var.name
-                );
+                // data up, rendering at the edge: lower crates never
+                // print — this surfaces in the run log instead
+                tracing::warn!(name = %var.name, "skipping env var with an invalid name");
                 continue;
             }
             let resolved = var

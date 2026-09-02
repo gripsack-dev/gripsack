@@ -30,6 +30,19 @@ pub fn resolve_head(url: &str) -> Result<String, FetchError> {
 }
 
 pub(crate) fn fetch(url: &str, rev: &str, dest: &Path) -> Result<String, FetchError> {
+    // rev flows into `git fetch origin <rev>` as an argument: a value
+    // like `--upload-pack=<cmd>` is option injection, not a rev.
+    // Shas and plain ref names are all hex/dots/slashes/alnum.
+    if !rev
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/'))
+        || rev.is_empty()
+    {
+        return Err(FetchError::Http {
+            url: url.to_string(),
+            reason: format!("invalid rev {rev:?}: expected a sha or ref name"),
+        });
+    }
     let git = |args: &[&str]| {
         let status = std::process::Command::new("git")
             .args(args)

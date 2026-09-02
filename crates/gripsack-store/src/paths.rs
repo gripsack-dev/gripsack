@@ -39,14 +39,36 @@ pub fn content_path(home: &Path, name: &str, tree256: &str) -> PathBuf {
 /// the `current` symlink. `$GRIPSACK_HOME` wins, then
 /// `$XDG_DATA_HOME/gripsack`, then `~/.local/share/gripsack`.
 pub fn gripsack_home() -> PathBuf {
-    if let Some(dir) = std::env::var_os("GRIPSACK_HOME") {
+    // empty-string vars count as unset: honoring `GRIPSACK_HOME=""`
+    // would make every store path relative to the CWD
+    if let Some(dir) = std::env::var_os("GRIPSACK_HOME")
+        && !dir.is_empty()
+    {
         return PathBuf::from(dir);
     }
-    if let Some(data) = std::env::var_os("XDG_DATA_HOME") {
+    if let Some(data) = std::env::var_os("XDG_DATA_HOME")
+        && !data.is_empty()
+    {
         return PathBuf::from(data).join("gripsack");
     }
-    let home = std::env::var_os("HOME").expect("HOME is not set");
-    PathBuf::from(home).join(".local/share/gripsack")
+    // no HOME and no override: there is no defensible location, and
+    // inventing one (cwd, /tmp) would scatter the store. Say it.
+    std::env::var_os("HOME").map_or_else(
+        || panic!("grip needs HOME, GRIPSACK_HOME, or XDG_DATA_HOME to place its store"),
+        |home| PathBuf::from(home).join(".local/share/gripsack"),
+    )
+}
+
+/// `~/x` → `$HOME/x`; anything else verbatim. The one expansion rule
+/// shared by deploy, rollback, and why-owns — it lives with the other
+/// path rules so the CLI and the executor cannot drift on it.
+pub fn expand_home(to: &str) -> PathBuf {
+    if let Some(rest) = to.strip_prefix("~/")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        return PathBuf::from(home).join(rest);
+    }
+    PathBuf::from(to)
 }
 
 /// The `current` symlink — flipping it IS activation (0001 §9.2).

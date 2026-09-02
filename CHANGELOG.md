@@ -3,6 +3,80 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.17.13] — 2026-09-02
+
+Round two: a fresh fuzzing campaign (5,200+ IR mutations, 2,700 argv
+runs, eval/store/adopt/tar campaigns), a code-quality review, and
+the refactors it justified. No IR schema change.
+
+### Fixed
+
+- **merge blocks could silently corrupt the file they manage.** Block
+  detection matched the close marker by substring, so a payload line
+  that merely quoted `<<< gripsack <<<` read as the end of the
+  block: rollback left the block behind (sometimes with a false
+  "modified since deploy" warning), prune appended strays, and every
+  re-apply grew the file by another line — unbounded, all rc=0.
+  Close markers now carry the module name, marker lines must BE
+  marker lines (a quoted marker in content no longer matches), and
+  payload lines quoting the banner text no longer fall out of the
+  block hash. Existing blocks are found and rewritten with scoped
+  markers on the next apply.
+- **`grip adopt` on a fifo hung forever** (it "adopted" the fifo,
+  then blocked reading it). Special files are refused at inventory
+  and at copy: "not a regular file".
+- **`fileFetch` on a fifo or a symlink to `/dev/zero` hung the
+  read** with no bound. The file fetcher and the canonical hasher
+  now refuse non-regular files; symlinked payloads still work.
+- **`grip update` could pick a different lockfile than `grip
+  apply`.** It re-derived the host from `$HOSTNAME` — a bash-ism
+  POSIX sh does not export — ignoring env.toml's `default_host`.
+  The evaluated host now travels with the eval outcome and every
+  command reuses it.
+- **A module whose content was only a build/run step published an
+  empty store path.** Publish staged a fresh directory and wiped
+  what the step had just produced — apply "succeeded" with the
+  artifact gone. Step staging persists now (e2e regression added).
+- **The trust gate could erase concurrent trust decisions** (the
+  prompt window rewrote the whole file from a pre-prompt snapshot)
+  and printed repo paths raw — a path carrying newlines or ANSI
+  escapes could forge prompt lines. Trust mutations serialize on a
+  flock; prompt values with control characters print escaped.
+- A malicious plugin release tag (`a/../../evil`) could walk out of
+  the plugin store; tags must be a safe single path segment now.
+  `git:` revs are validated before they reach
+  `git fetch` (option injection). The throttle's host parser is
+  IPv6-literal-aware and shared with the HTTP layer (one URL
+  grammar, not two). Downloaded throttle state and plugin receipts
+  write through the store's atomic primitives. pixi provisioning
+  takes the same flock deno does, and its staging path no longer
+  collides across patch releases.
+- `grip gc` printed "0.0 B freed" on color terminals but omitted a
+  real number when piped; `dir_size` no longer follows symlink
+  cycles (a hostile tarball could stack-overflow it); `grip update`
+  colors follow the terminal like every other command; empty
+  `GRIPSACK_HOME`/`XDG_DATA_HOME` no longer produce CWD-relative
+  store paths; a missing generation dir is a loud flip error, not a
+  `current` symlink pointing at nothing.
+
+### Changed
+
+- Colors follow the terminal everywhere: the remaining unguarded
+  ANSI sites (trust, why-owns, doctor, plan, rollback, init, adopt,
+  check, store-verify) route through the palette; piped output is
+  plain by construction, not per-call-site discipline.
+- Internals, no behavior change: `eval` split into its stages
+  (`probe::eval_to_fixpoint`, `frontend::Frontend`,
+  `provision_plugins`), the validate pipeline is one function
+  (`validated_ir`) shared by check/apply, `apply` takes an options
+  struct instead of seven positional arguments, `expand_home` and
+  the flock primitive live in gripsack-store (one implementation
+  each instead of two/three), and the CLI/exec `render.rs` name
+  collision is gone (exec's is `template.rs` — it renders file
+  content, not consoles). Lower crates never print: one stray
+  eprintln became a run-log warning.
+
+
 ## [0.17.12] — 2026-09-01
 
 A hardening pass: a fuzzing campaign over every CLI flow (IR

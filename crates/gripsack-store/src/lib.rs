@@ -41,7 +41,7 @@ pub use hash::{
     canonical_bytes_hash, canonical_file_hash, canonical_overlay_hash, canonical_tree_hash,
 };
 pub use paths::{
-    GENERATIONS_DIR, HASH_LEN, STORE_DIR, content_path, current_link, generation_dir,
+    GENERATIONS_DIR, HASH_LEN, STORE_DIR, content_path, current_link, expand_home, generation_dir,
     gripsack_home, input_hash, store_path,
 };
 pub use trust::{TrustedRepo, ensure_trusted};
