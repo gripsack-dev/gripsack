@@ -1,0 +1,740 @@
+"""Apply lifecycle e2e: generations, satisfied re-applies, subsets and
+prune, concurrency, and rollback of failed runs — split from
+test_flow.py (plan/0003 §5); fixture repos come from conftest."""
+
+
+
+import os
+import shutil
+import subprocess
+
+from conftest import (
+    GRIP,
+    grip,
+    make_env_repo,
+    make_tarball,
+    refresh_host,
+)
+
+
+
+def test_apply_creates_generation_and_symlinks(sandbox):
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    home = sandbox / ".local/share/gripsack"
+    assert (home / "generations/1").is_dir()
+    assert (home / "current").is_symlink()
+    assert (sandbox / ".local/bin/hello").is_symlink()
+
+
+def test_fetchless_build_outputs_reach_the_store(sandbox):
+    """A module whose content is a build step (no fetch) must keep
+    its outputs: publish used to hand-roll a fresh staging dir and
+    wipe what the step had just produced — apply "succeeded" with an
+    empty store path."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module } from "@gripsack/core";
+
+export default module("built", {
+  steps: [{
+    id: "build",
+    action: { kind: "custom_shell", script: "echo hello-artifact > artifact.txt" },
+  }],
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    home = sandbox / ".local/share/gripsack"
+    artifacts = list((home / "store").glob("*-built/artifact.txt"))
+    assert artifacts, "build step output missing from the store path"
+    assert artifacts[0].read_text().strip() == "hello-artifact"
+
+
+def test_tree_entries_and_prune_on_undeclare(sandbox):
+    confdir = sandbox / "myenv" / "configs" / "zed"
+    confdir.mkdir(parents=True)
+    (confdir / "settings.json").write_text('{"theme": "mocha"}\n')
+    (confdir / "keymap.json").write_text("[]\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, tree } from "@gripsack/core";
+
+export default module("zed", {
+  config: { ...tree("configs/zed", "~/.config/zed") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    deployed = sandbox / ".config" / "zed"
+    assert (deployed / "settings.json").exists()
+    assert (deployed / "keymap.json").exists()
+
+    # drop a file from the tree -> pruned on next apply
+    (confdir / "keymap.json").unlink()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (deployed / "settings.json").exists()
+    assert not (deployed / "keymap.json").exists()
+
+
+def test_owned_prune_on_undeclare(sandbox):
+    """Regression: prune-on-undeclare must work for owned symlinks too —
+    the recorded hash is the source content, so the tracked_copy hash
+    check can never match a symlink (gripsack-exec apply.rs)."""
+    confdir = sandbox / "myenv" / "configs" / "zed"
+    confdir.mkdir(parents=True)
+    (confdir / "a.txt").write_text("a\n")
+    (confdir / "b.txt").write_text("b\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, tree } from "@gripsack/core";
+
+export default module("zed", {
+  config: { ...tree("configs/zed", "~/.config/zed", "owned") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    deployed = sandbox / ".config" / "zed"
+    assert (deployed / "a.txt").is_symlink()
+    assert (deployed / "b.txt").is_symlink()
+
+    (confdir / "b.txt").unlink()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (deployed / "a.txt").is_symlink()
+    assert not (deployed / "b.txt").exists()
+
+    # a user file replacing our symlink is never pruned
+    (deployed / "a.txt").unlink()
+    (deployed / "a.txt").write_text("user edit\n")
+    (confdir / "a.txt").unlink()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (deployed / "a.txt").read_text() == "user edit\n"
+
+
+def test_apply_repo_from_elsewhere(sandbox):
+    """The bootstrap story: apply a repo that isn't the cwd."""
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+    )
+    elsewhere = sandbox / "elsewhere"
+    elsewhere.mkdir()
+    out = grip("apply", "--host", "testhost", "--repo", str(repo), cwd=elsewhere)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".local/bin/hello").is_symlink()
+
+    # git URL form (a local path is a valid clone source)
+    git_env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "PATH": os.environ["PATH"],
+    }
+    subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True, env=git_env)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=git_env)
+    subprocess.run(["git", "commit", "--quiet", "-m", "init"], cwd=repo, check=True, env=git_env)
+    bare = sandbox / "myenv-remote"
+    subprocess.run(["git", "clone", "--quiet", str(repo), str(bare)], check=True, env=git_env)
+    out = grip("apply", "--host", "testhost", "--repo", str(bare), cwd=elsewhere)
+    assert out.returncode == 0, out.stderr
+
+
+def test_explicit_steps_module_is_satisfied_on_reapply(sandbox):
+    """Class/explicit-steps modules keep fetch specs in steps, not
+    module.fetch — their store path must still be stable (canary-caught)."""
+    payload = sandbox / "hello.tar.gz"
+    make_tarball(payload, {"bin/x": b"#!/bin/sh\necho x\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fetchStep, module, shellStep, tarball }} from "@gripsack/core";
+
+export default module("stepped", {{
+  steps: [
+    fetchStep(tarball("file://{payload}")),
+    shellStep("true", "noop", {{ needs: ["fetch"] }}),
+  ],
+}});
+""",
+    )
+    first = grip("apply", "--host", "testhost", cwd=repo)
+    assert first.returncode == 0, first.stderr
+    second = grip("apply", "--host", "testhost", cwd=repo)
+    assert second.returncode == 0, second.stderr
+    assert "already satisfied" in second.stdout
+
+
+def test_update_rewrites_lockfile_then_apply_deploys(sandbox):
+    """The flake cycle: update moves the lockfile, apply executes it."""
+    payload = sandbox / "hello.tar.gz"
+    make_tarball(payload, {"bin/hello": b"#!/bin/sh\necho v1\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+    )
+    assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
+    lock = repo / "locks" / "testhost.lock"
+    assert lock.exists()
+    first_pin = lock.read_text()
+
+    # no movement -> unchanged
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "unchanged" in out.stdout
+    assert lock.read_text() == first_pin
+
+    # payload changes -> update bumps the pin, apply deploys it
+    make_tarball(payload, {"bin/hello": b"#!/bin/sh\necho v2\n"})
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "bumped" in out.stdout
+    assert lock.read_text() != first_pin
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "applied" in out.stdout
+
+
+def test_exported_env_profile_tracks_the_generation(sandbox):
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("zed", {
+  config: { "configs/zed/a": trackedCopy("~/.config/zed/a") },
+  env: { EDITOR: "zed", "PATH+": "{store}/bin" },
+});
+""",
+    )
+    (repo / "configs" / "zed").mkdir(parents=True)
+    (repo / "configs" / "zed" / "a").write_text("a\n")
+    profile = sandbox / ".local/share/gripsack/env/profile.sh"
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    text = profile.read_text()
+    assert 'export EDITOR="zed"' in text
+    store_bin = next(
+        line for line in text.splitlines() if line.startswith("export PATH=")
+    )
+    assert "/bin:${PATH}" in store_bin
+    assert "/store/" in store_bin and "-zed/bin:" in store_bin
+
+    # drop the env declaration — the profile must not go stale
+    (repo / "modules" / "hello.ts").write_text(
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("zed", {
+  config: { "configs/zed/a": trackedCopy("~/.config/zed/a") },
+});
+"""
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not profile.exists()
+
+
+def test_service_intent_runs_the_adapter_without_failing_apply(sandbox):
+    """systemd-user adapter: no systemctl/user bus in the sandbox —
+    the intent must degrade to a warning, never a failed apply
+    (0001 §3.8: never roll back on post-activation failure)."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, service, trackedCopy } from "@gripsack/core";
+
+export default module("daemon", {
+  config: { "configs/daemon/a": trackedCopy("~/.config/daemon/a") },
+  activate: [service("my-daemon.service")],
+});
+""",
+    )
+    (repo / "configs" / "daemon").mkdir(parents=True)
+    (repo / "configs" / "daemon" / "a").write_text("a\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "my-daemon.service" in out.stdout
+
+
+def test_duplicate_destination_is_a_check_time_error(sandbox):
+    """E111 (N2): two modules may not declare the same destination —
+    a deploy race in parallel and a lie for why-owns."""
+    confdir = sandbox / "myenv" / "configs" / "x"
+    confdir.mkdir(parents=True)
+    (confdir / "same.conf").write_text("x\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "one": """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("one", {
+  config: { "configs/x/same.conf": trackedCopy("~/.out/same.conf") },
+});
+""",
+            "two": """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("two", {
+  config: { "configs/x/same.conf": trackedCopy("~/.out/same.conf") },
+});
+""",
+        },
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "E111" in out.stderr
+    assert "same.conf" in out.stderr
+
+
+def test_jobs_one_forces_serial_execution(sandbox):
+    """--jobs bounds the scheduler (N3): the 2x2s parallel proof
+    inverted — with --jobs 1 it must take serial time."""
+    import time
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            name: f"""
+import {{ module }} from "@gripsack/core";
+
+export default module("{name}", {{
+  build: {{ kind: "custom_shell", script: "sleep 2" }},
+}});
+"""
+            for name in ("slow-a", "slow-b")
+        },
+    )
+    start = time.monotonic()
+    out = grip("apply", "--host", "testhost", "--jobs", "1", cwd=repo)
+    elapsed = time.monotonic() - start
+    assert out.returncode == 0, out.stderr
+    assert elapsed >= 3.5, f"--jobs 1 not respected: {elapsed:.1f}s"
+
+
+def test_independent_modules_run_in_parallel(sandbox):
+    """Two independent 2s builds finish in ~2s, not 4s (0007 §5 —
+    the ready-queue scheduler runs N = cores)."""
+    import time
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            name: f"""
+import {{ module }} from "@gripsack/core";
+
+export default module("{name}", {{
+  build: {{ kind: "custom_shell", script: "sleep 2" }},
+}});
+"""
+            for name in ("slow-a", "slow-b")
+        },
+    )
+    start = time.monotonic()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    elapsed = time.monotonic() - start
+    assert out.returncode == 0, out.stderr
+    assert elapsed < 3.5, f"serial execution suspected: {elapsed:.1f}s"
+
+
+def test_failed_apply_rolls_back_this_runs_deployments(sandbox):
+    """0001 §9 / review finding E1: a mid-graph failure must leave no
+    half-applied deployment — the flip never happens, and every
+    destination the failed run touched returns to the previous
+    generation's state."""
+    confdir = sandbox / "myenv" / "configs" / "aaa"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("v1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("aaa", {
+  config: { "configs/aaa/a.conf": trackedCopy("~/.out/a.conf") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".out/a.conf").read_text() == "v1\n"
+
+    # v2 of aaa + a module that fails at deploy (payload lacks the
+    # entry — a deploy-time failure E110 can't catch)
+    (confdir / "a.conf").write_text("v2\n")
+    payload = make_tarball(sandbox / "b.tar.gz", {"bin/b": b"#!/bin/sh\n"})
+    (repo / "modules" / "bbb.ts").write_text(
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("bbb", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/MISSING": symlink("~/.out/b") }},
+}});
+"""
+    )
+    refresh_host(repo)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    # the flip never happened…
+    generations = sandbox / ".local/share/gripsack/generations"
+    assert [p.name for p in generations.iterdir()] == ["1"]
+    # …and this run's deployments are rolled back exactly
+    assert (sandbox / ".out/a.conf").read_text() == "v1\n"
+    assert not (sandbox / ".out/b").exists()
+
+
+def test_concurrent_applies_serialize_and_lose_nothing(sandbox):
+    """Finding A: two applies over disjoint subsets must not lose a
+    manifest update — the lifecycle holds apply.flock."""
+    repo = sandbox / "myenv"
+    for name in ("amod", "bmod"):
+        confdir = repo / "configs" / name
+        confdir.mkdir(parents=True)
+        (confdir / f"{name}.conf").write_text(f"{name}\n")
+    make_env_repo(
+        repo,
+        {
+            name: f"""
+import {{ module, trackedCopy }} from "@gripsack/core";
+
+export default module("{name}", {{
+  config: {{ "configs/{name}/{name}.conf": trackedCopy("~/.out/{name}.conf") }},
+}});
+"""
+            for name in ("amod", "bmod")
+        },
+    )
+    grip_bin = str(GRIP.resolve())
+    p1 = subprocess.Popen(
+        [grip_bin, "apply", "--host", "testhost", "amod"],
+        cwd=repo,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    p2 = subprocess.Popen(
+        [grip_bin, "apply", "--host", "testhost", "bmod"],
+        cwd=repo,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    o1, e1 = p1.communicate(timeout=60)
+    o2, e2 = p2.communicate(timeout=60)
+    assert p1.returncode == 0, e1
+    assert p2.returncode == 0, e2
+    out = grip("why-owns", "~/.out/amod.conf", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "amod" in out.stdout
+    out = grip("why-owns", "~/.out/bmod.conf", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "bmod" in out.stdout
+
+
+def test_jobs_zero_is_rejected(sandbox):
+    """Finding B: --jobs 0 / GRIPSACK_JOBS=0 must fail loudly, never
+    silently unmanage the environment."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("a", {
+  config: { "configs/a/a": trackedCopy("~/.out/a") },
+});
+""",
+    )
+    (repo / "configs" / "a").mkdir(parents=True)
+    (repo / "configs" / "a" / "a").write_text("a\n")
+    out = grip("apply", "--host", "testhost", "--jobs", "0", cwd=repo)
+    assert out.returncode != 0
+    assert "--jobs 0" in out.stderr
+    assert not (sandbox / ".local/share/gripsack/generations").exists()
+
+
+def test_rollback_restores_previous_generation(sandbox):
+    payload = make_tarball(
+        sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+    )
+    first = grip("apply", "--host", "testhost", cwd=repo)
+    assert first.returncode == 0, first.stderr
+
+    # a no-op apply creates no generation (0008 §3)
+    second = grip("apply", "--host", "testhost", cwd=repo)
+    assert second.returncode == 0, second.stderr
+    assert "already satisfied" in second.stdout
+    assert not (sandbox / ".local/share/gripsack/generations/2").exists()
+
+    # a changed module produces generation 2; rollback restores 1
+    (repo / "modules" / "extra.ts").write_text(
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("extra", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/extra") }},
+}});
+"""
+    )
+    refresh_host(repo)
+    third = grip("apply", "--host", "testhost", cwd=repo)
+    assert third.returncode == 0, third.stderr
+    assert (sandbox / ".local/bin/extra").is_symlink()
+
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    current = sandbox / ".local/share/gripsack/current"
+    assert current.resolve().name == "1"
+    # the extra module's destination is gone after rollback
+    assert not (sandbox / ".local/bin/extra").exists()
+
+
+def test_fonts_and_desktop_entry_adapters_run_once_per_apply(sandbox, monkeypatch):
+    """PostLink intents: fonts() runs fc-cache, desktop_entry() runs
+    update-desktop-database — deduped across modules, tolerating
+    absence (0001 §3.8)."""
+    bindir = sandbox / "bin"
+    bindir.mkdir()
+    log = sandbox / "calls.log"
+    for tool in ("fc-cache", "update-desktop-database"):
+        (bindir / tool).write_text(f'#!/bin/sh\necho "{tool} $@" >> {log}\n')
+        (bindir / tool).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+    confdir = sandbox / "myenv" / "configs" / "font"
+    confdir.mkdir(parents=True)
+    (confdir / "myfont.ttf").write_text("fake font\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "font-a": """
+import { desktopEntry, fonts, module, symlink } from "@gripsack/core";
+
+export default module("font-a", {
+  config: { "configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf") },
+  activate: [fonts(), desktopEntry()],
+});
+""",
+            "font-b": """
+import { fonts, module, symlink } from "@gripsack/core";
+
+export default module("font-b", {
+  config: { "configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont-b.ttf") },
+  activate: [fonts()],
+});
+""",
+        },
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    calls = log.read_text().splitlines()
+    assert calls.count("fc-cache -f") == 1, calls
+    assert sum(1 for c in calls if "update-desktop-database" in c and "applications" in c) == 1, calls
+
+
+def test_fonts_adapter_skips_cleanly_without_fc_cache(sandbox):
+    """No fc-cache on PATH → a warning, never an apply error."""
+    confdir = sandbox / "myenv" / "configs" / "font"
+    confdir.mkdir(parents=True)
+    (confdir / "myfont.ttf").write_text("fake font\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { fonts, module, symlink } from "@gripsack/core";
+
+export default module("font", {
+  config: { "configs/font/myfont.ttf": symlink("~/.local/share/fonts/myfont.ttf") },
+  activate: [fonts()],
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+
+def test_run_steps_execute_with_declared_outputs(sandbox):
+    """run steps (0007 §3 rung 2): structured argv, no shell — declared
+    outputs are the contract and a missing one is a step error."""
+    payload = make_tarball(sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hello\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fetchStep, installStep, module, runStep, symlink, tarball }} from "@gripsack/core";
+
+export default module("hello", {{
+  steps: [
+    fetchStep(tarball("file://{payload}")),
+    runStep(["cp", "bin/hello", "bin/hello-copy"], "copy", {{ outputs: ["bin/hello-copy"] }}),
+    installStep({{ "bin/hello-copy": symlink("~/.local/bin/hello-copy") }}),
+  ],
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".local/bin/hello-copy").is_symlink()
+
+
+def test_step_form_intents_run_through_adapters(sandbox):
+    """Step-form intents (class-style) execute via the activation
+    adapters — a custom hook's post-activate script really runs."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { customHook, module, symlink } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.txt": symlink("~/.config/demo/a.txt") },
+  activate: [customHook("echo post-activate > ~/hook-ran")],
+});
+""",
+    )
+    confdir = repo / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.txt").write_text("a\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / "hook-ran").read_text() == "post-activate\n"
+
+
+def test_config_tree_gain_repins_and_deploys_from_store(sandbox):
+    """A config tree that gains a file under an unmoved transport pin:
+    `grip update` moves the pin, a warm-store apply deploys the new
+    file FROM THE STORE (never a link into the repo checkout), and a
+    cold store re-pins instead of dying on the stale tree hash."""
+    payload = make_tarball(sandbox / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\n"})
+    confdir = sandbox / "myenv" / "configs" / "tool"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink, tree }} from "@gripsack/core";
+
+export default module("tool", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/tool": symlink("~/.local/bin/tool") }},
+  config: {{ ...tree("configs/tool", "~/.config/tool", "owned") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    store = sandbox / ".local/share/gripsack/store"
+    deployed_a = sandbox / ".config" / "tool" / "a.conf"
+    assert deployed_a.is_symlink()
+    assert str(deployed_a.readlink()).startswith(str(store))
+
+    # the tree gains a file: update reports the move, apply deploys it
+    (confdir / "b.conf").write_text("b\n")
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "bumped" in out.stdout, out.stdout
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    deployed_b = sandbox / ".config" / "tool" / "b.conf"
+    assert deployed_b.is_symlink()
+    target = str(deployed_b.readlink())
+    assert target.startswith(str(store)), f"new file deployed from the repo checkout: {target}"
+
+    # cold store: the pin moved, so this re-pins instead of failing
+    shutil.rmtree(store)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".config" / "tool" / "b.conf").exists()
+
+
+def test_failed_apply_rollback_leaves_no_placeholder_links(sandbox):
+    """A mid-graph failure rolls this run's deploys back to the
+    previous generation — restored links must be the EXPANDED paths
+    the generation actually deployed, never placeholder-literal."""
+    payload = make_tarball(sandbox / "a.tar.gz", {"linux/a.txt": b"a\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("aa", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "{{os}}/a.txt": symlink("~/.local/bin/aa") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    link = sandbox / ".local/bin/aa"
+    assert "{" not in str(link.readlink())
+
+    # add a module whose fetch fails -> the apply aborts mid-graph and
+    # rolls back aa's redeploy to the previous generation
+    (repo / "modules" / "zz.ts").write_text(
+        """
+import { fileFetch, module, symlink } from "@gripsack/core";
+
+export default module("zz", {
+  fetch: fileFetch("%s/does-not-exist.tar.gz"),
+  install: { "x": symlink("~/.local/bin/zz") },
+});
+"""
+        % sandbox
+    )
+    refresh_host(repo)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, out.stdout
+    target = str(link.readlink())
+    assert "{" not in target, f"rollback wrote a placeholder-literal link: {target}"
+    assert link.exists(), f"rollback left a dangling link: {target}"

@@ -113,3 +113,24 @@ def grip(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
         text=True,
         timeout=120,
     )
+
+
+def _seed_plugin_store(sandbox, exe, fixture, tag="1.0"):
+    """Pre-seed the managed plugin store as if a prior provision ran."""
+    home = sandbox / ".local/share/gripsack"
+    bindir = home / "plugins" / exe / tag
+    bindir.mkdir(parents=True)
+    (bindir / exe).write_text(fixture)
+    (bindir / exe).chmod(0o755)
+    (home / "plugins" / exe / "current").symlink_to(f"{tag}/")
+    (home / "plugins" / "receipts").mkdir(parents=True)
+    (home / "plugins" / "receipts" / f"{exe}.toml").write_text(
+        f'source = "acme/{exe}"\ntag = "{tag}"\nsha256 = "ab"\n'
+    )
+
+
+def only_store_path(sandbox):
+    store = sandbox / ".local/share/gripsack/store"
+    entries = [p.name for p in store.iterdir()]
+    assert len(entries) == 1, f"expected one store path, found {entries}"
+    return entries[0]
