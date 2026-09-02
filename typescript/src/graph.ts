@@ -77,7 +77,7 @@ export function emitIr(env: Env, facts: HostFacts, tags: string[]): string {
     if (!m) continue;
     if (typeof m !== "object" || m.__gripsack !== "module") {
       throw new Error(
-        `env.modules entries must be module()/define() values — got ${JSON.stringify(
+        `env.modules entries must be module() values — got ${JSON.stringify(
           Array.isArray(m) ? "an array" : typeof m,
         )}`,
       );
