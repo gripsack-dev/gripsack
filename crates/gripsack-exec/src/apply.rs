@@ -17,22 +17,25 @@ use tracing::{info, info_span};
 /// never lose a manifest update.
 pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
-    let (order, missing) = scoped_order(ir, &ctx.only)?;
-    if !missing.is_empty() {
-        // a typo'd or host-gated name must not vanish — an apply that
-        // "succeeded" while ignoring part of the request lies
-        return Err(ExecError::Step {
-            module: "*".into(),
-            step: "scope".into(),
-            detail: format!(
-                "not in this host's graph: {} (the host entrypoint does not declare {} them)",
-                missing.join(", "),
-                if missing.len() == 1 { "it" } else { "all of" },
-            ),
-        });
-    }
-    let steps_by_module = expand::expand_all(&ir.modules);
+    // crash recovery (0019): a previous run killed between a deploy
+    // mutation and the flip left uncommitted journal entries — the
+    // filesystem sits between generations. Restore the priors before
+    // deploying anything; the run then proceeds from a clean floor.
+    let recovered = store::journal::reconcile(&ctx.home)?;
     let mut reports = Vec::new();
+    if !recovered.is_empty() {
+        reports.push(crate::report::StepReport {
+            module: "*".into(),
+            summary: format!(
+                "recovered {} destination(s) from an interrupted run",
+                recovered.len()
+            ),
+            kind: crate::report::ReportKind::Warned,
+        });
+        for line in &recovered {
+            tracing::warn!("{line}");
+        }
+    }
     let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
         crate::lockfile::LockRead::Parsed(lock) => lock,
         crate::lockfile::LockRead::Missing => Default::default(),
@@ -71,10 +74,24 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     } else {
         prev_modules.clone()
     };
-
     // The ready-queue scheduler (0007 §5): modules run as their
     // dependencies finish, N = cores, resources via flock. The flip
     // below stays the single barrier.
+    let (order, missing) = scoped_order(ir, &ctx.only)?;
+    if !missing.is_empty() {
+        // a typo'd or host-gated name must not vanish — an apply that
+        // "succeeded" while ignoring part of the request lies
+        return Err(ExecError::Step {
+            module: "*".into(),
+            step: "scope".into(),
+            detail: format!(
+                "not in this host's graph: {} (the host entrypoint does not declare {} them)",
+                missing.join(", "),
+                if missing.len() == 1 { "it" } else { "all of" },
+            ),
+        });
+    }
+    let steps_by_module = expand::expand_all(&ir.modules);
     let outcome =
         crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)?;
     // An empty result set must be a deliberate empty declaration,
@@ -144,6 +161,10 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // error would report apply-failed while the generation IS active
     render_env_file(&ctx.home, &generation.modules)?;
     store::flip(&ctx.home, next)?;
+    // the flip is the run's commit point: everything the journal
+    // recorded is now owned by the new generation — the crash window
+    // closes here
+    store::journal::commit_run(&ctx.home)?;
     reports.extend(crate::activate::run_post_link(&order, &steps_by_module));
     reports.extend(crate::activate::run_post_activate(&order, &steps_by_module));
     info!(generation = next, "activated");

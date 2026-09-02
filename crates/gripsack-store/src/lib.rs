@@ -27,6 +27,7 @@
 pub mod fs;
 pub mod generations;
 pub mod hash;
+pub mod journal;
 pub mod paths;
 pub mod trust;
 
@@ -40,6 +41,7 @@ pub use generations::{
 pub use hash::{
     canonical_bytes_hash, canonical_file_hash, canonical_overlay_hash, canonical_tree_hash,
 };
+pub use journal::{Entry as JournalEntry, Prior as JournalPrior, reconcile, record};
 pub use paths::{
     GENERATIONS_DIR, HASH_LEN, STORE_DIR, content_path, current_link, expand_home, generation_dir,
     gripsack_home, input_hash, store_path,

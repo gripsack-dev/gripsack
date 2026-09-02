@@ -738,3 +738,109 @@ export default module("zz", {
     target = str(link.readlink())
     assert "{" not in target, f"rollback wrote a placeholder-literal link: {target}"
     assert link.exists(), f"rollback left a dangling link: {target}"
+
+
+def test_apply_recovers_from_an_interrupted_run(sandbox):
+    """Crash recovery (0019): a run killed between a deploy mutation
+    and the flip leaves an uncommitted journal entry — the next apply
+    restores the prior before redeploying, reports it, drains the
+    journal at the flip, and a user edit made after the crash wins
+    (the drift guard). The crashed state is crafted exactly as a kill
+    between record/mutate and commit_run would leave it."""
+    import hashlib
+    import json
+
+    payload = make_tarball(
+        sandbox / "a.tar.gz", {"conf.txt": b"v=new\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, trackedCopy }} from "@gripsack/core";
+
+export default module("a", {{
+  fetch: fileFetch("{payload}"),
+  config: {{ "conf.txt": trackedCopy("~/.config/a/conf.txt") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    conf = sandbox / ".config/a/conf.txt"
+    assert conf.read_text() == "v=new\n"
+
+    home = sandbox / ".local/share/gripsack"
+    journal = home / "journal"
+    journal.mkdir(parents=True, exist_ok=True)
+    prior_bytes = b"v=new\n"
+    prior_sha = hashlib.sha256(prior_bytes).hexdigest()
+    (home / "prior").mkdir(exist_ok=True)
+    (home / "prior" / prior_sha).write_bytes(prior_bytes)
+    half = b"v=newer (half-deployed)\n"
+    conf.write_bytes(half)
+    dest = str(conf)
+    entry = {
+        "dest": dest,
+        "prior": {"kind": "file", "hash": prior_sha},
+        "after": hashlib.sha256(half).hexdigest(),
+    }
+    (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
+        json.dumps(entry)
+    )
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "recovered 1 destination(s)" in out.stdout, out.stdout
+    # the prior was restored, then the (unchanged) module redeployed it
+    assert conf.read_text() == "v=new\n"
+    assert not list(journal.glob("*.json")), "journal must drain at the flip"
+
+    # an apply is satisfied afterwards — no half-state lingers
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert "satisfied" in out.stdout, out.stdout
+
+
+def test_recovery_leaves_user_edits_alone(sandbox):
+    """The same interrupted-run entry, but the user edited the file
+    after the crash: the drift guard keeps their bytes."""
+    import hashlib
+    import json
+
+    payload = make_tarball(sandbox / "a.tar.gz", {"conf.txt": b"v=new\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, trackedCopy }} from "@gripsack/core";
+
+export default module("a", {{
+  fetch: fileFetch("{payload}"),
+  config: {{ "conf.txt": trackedCopy("~/.config/a/conf.txt") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    conf = sandbox / ".config/a/conf.txt"
+
+    home = sandbox / ".local/share/gripsack"
+    journal = home / "journal"
+    journal.mkdir(parents=True, exist_ok=True)
+    prior_sha = hashlib.sha256(b"v=new\n").hexdigest()
+    (home / "prior").mkdir(exist_ok=True)
+    (home / "prior" / prior_sha).write_bytes(b"v=new\n")
+    dest = str(conf)
+    entry = {
+        "dest": dest,
+        "prior": {"kind": "file", "hash": prior_sha},
+        "after": hashlib.sha256(b"half\n").hexdigest(),
+    }
+    (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
+        json.dumps(entry)
+    )
+    # the user's edit AFTER the crash — not the half-deployed content
+    conf.write_text("my own edit\n")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "kept" in out.stdout, out.stdout
+    assert conf.read_text() == "my own edit\n"

@@ -231,6 +231,24 @@ pub(crate) fn run_rollback(
     }
 }
 
+/// One destination mutation, journaled for crash recovery (0019):
+/// the prior state is recorded (file bytes into the prior blob
+/// store) BEFORE the write and the post-mutation identity noted
+/// after — a kill anywhere in between leaves an uncommitted entry
+/// the next run's reconcile restores. The entry clears when the run
+/// commits (the flip); per-entry there is no commit, matching the
+/// run-level rollback's all-or-nothing semantics.
+fn journaled(
+    home: &Path,
+    dest: &Path,
+    after: String,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let prior = gripsack_store::journal::capture(dest, home)?;
+    gripsack_store::journal::record(home, dest, &prior)?;
+    mutate()?;
+    gripsack_store::journal::mark_after(home, dest, &after)
+}
 /// never silently overwrite.
 pub(crate) fn deploy_entry(
     out: &mut Vec<store::DeployedEntry>,
@@ -381,7 +399,10 @@ pub(crate) fn deploy_entry(
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                store::symlink_replace(&dest, &source)?;
+                let target = source.to_string_lossy().into_owned();
+                journaled(&ctx.home, &dest, target, || {
+                    store::symlink_replace(&dest, &source)
+                })?;
             }
             let hash = store::canonical_file_hash(&source)?;
             if already {
@@ -426,7 +447,10 @@ pub(crate) fn deploy_entry(
                         None,
                     )
                 } else if prev_hash == Some(current.as_str()) {
-                    store::atomic_write(&dest, content)?;
+                    let after = store::canonical_bytes_hash(content);
+                    journaled(&ctx.home, &dest, after, || {
+                        store::atomic_write(&dest, content)
+                    })?;
                     (
                         format!("updated {} → {}", from, entry.to),
                         ReportKind::Configured,
@@ -436,7 +460,10 @@ pub(crate) fn deploy_entry(
                 } else if ctx.takes_over(&entry.to) {
                     // 0015 §4: record the foreign bytes before absorbing
                     let prior = capture_prior(&dest, &ctx.home);
-                    store::atomic_write(&dest, content)?;
+                    let after = store::canonical_bytes_hash(content);
+                    journaled(&ctx.home, &dest, after, || {
+                        store::atomic_write(&dest, content)
+                    })?;
                     (
                         format!("took over {} → {}", from, entry.to),
                         ReportKind::Configured,
@@ -460,7 +487,10 @@ pub(crate) fn deploy_entry(
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                store::atomic_write(&dest, content)?;
+                let after = store::canonical_bytes_hash(content);
+                journaled(&ctx.home, &dest, after, || {
+                    store::atomic_write(&dest, content)
+                })?;
                 (
                     format!("copied {} → {}", from, entry.to),
                     ReportKind::Configured,
@@ -511,7 +541,10 @@ pub(crate) fn deploy_entry(
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                store::atomic_write(&dest, new.as_bytes())?;
+                let after = store::canonical_bytes_hash(new.as_bytes());
+                journaled(&ctx.home, &dest, after, || {
+                    store::atomic_write(&dest, new.as_bytes())
+                })?;
                 (
                     format!("merged {} → {}", from, entry.to),
                     ReportKind::Configured,
