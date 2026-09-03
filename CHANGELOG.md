@@ -3,6 +3,55 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.19.1] — 2026-09-03
+
+From an external architecture review — every source-level finding was
+verified against the code before fixing (plan/0020 records the full
+adopt/reject triage).
+
+### Fixed
+
+- **Crash between the flip and journal cleanup read as a crash before
+  it.** The journal had no notion of the generation it belonged to:
+  killed after `current` flipped but before cleanup, the next apply
+  restored priors the committed generation already owned — a hybrid
+  state, the exact invariant the journal exists to prevent. Runs now
+  declare their target generation before the first mutation
+  (`journal/run.json`); recovery compares it against `current`:
+  committed → clean up and the deployed state stands, uncommitted →
+  restore. Unit tests pin both crash positions.
+- **Corrupt recovery metadata failed open.** An unparseable journal
+  entry was silently deleted ("archaeology"). Now it moves to
+  `journal/quarantine/` and blocks mutation with the path and the
+  remediation in the error — the one structure that recovers user
+  files is never shrugged off.
+- **A permission error on a destination read as "absent."** Only
+  `NotFound` means absent now; recovery could previously have REMOVED
+  a destination it could not even read. Non-UTF-8 symlink targets are
+  refused loudly instead of recorded lossily (they would have
+  restored as a different link).
+- **Cross-filesystem store publication copied into the final name.**
+  A crash mid-copy left a partial "immutable" path every later publish
+  refused. The EXDEV fallback now copies to a temp sibling under the
+  store parent (same filesystem) and renames — publish is atomic on
+  both paths.
+- install.sh resolved the latest release by minor+patch only — 0.99.0
+  would have beaten 1.0.0. Major sorts first now.
+- Docs: the plugin trust model said a malicious plugin's worst outcome
+  is a failed apply — true for the STORE, not the host (plugins run
+  with your privileges); "the core never sees credentials" narrowed to
+  the actual boundary (evaluation sees none; fetching necessarily
+  can).
+
+### Changed
+
+- **`grip plan` labels every mutation's reversibility** (review §10):
+  installs/configs print `[reversible: prior state recorded]`,
+  activation intents `[best-effort: adapter re-runs, no automatic
+  inverse]`, and run/custom-shell steps `[no automatic inverse: runs
+  custom code]`. A plan that says what it will do now also says what
+  undoing it means.
+
 ## [0.19.0] — 2026-09-03
 
 From the third migration report (two hosts, 79 modules — the 0.18.0

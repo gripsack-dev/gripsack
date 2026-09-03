@@ -123,7 +123,9 @@ fn snippet(span: &Span, note: &str, palette: Palette) -> String {
 }
 
 /// Render one module's plan (0007 §5): what it fetches, deploys, needs,
-/// and which wave it lands in.
+/// which wave it lands in — and how reversible each mutation is
+/// (review 0020 §10): a plan that says what it will do should also
+/// say what undoing it means.
 pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palette) -> String {
     let Some(module) = ir.modules.get(name) else {
         return format!("no module {name:?}");
@@ -148,13 +150,13 @@ pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palett
     }
     for entry in module.install.iter() {
         out.push_str(&format!(
-            "\n  install  {} → {} ({:?})",
+            "\n  install  {} → {} ({:?}) [reversible: prior state recorded]",
             entry.from, entry.to, entry.mode
         ));
     }
     for entry in module.config.iter() {
         out.push_str(&format!(
-            "\n  config   {} → {} ({:?})",
+            "\n  config   {} → {} ({:?}) [reversible: prior state recorded]",
             entry.from, entry.to, entry.mode
         ));
     }
@@ -170,6 +172,12 @@ pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palett
     if !dependents.is_empty() {
         out.push_str(&format!("\n  blocks   {}", dependents.join(", ")));
     }
+    for intent in module.activate.iter() {
+        out.push_str(&format!(
+            "\n  activate {:?} [best-effort: adapter re-runs, no automatic inverse]",
+            intent.action
+        ));
+    }
     if let Some(steps) = &module.steps {
         out.push_str("\n  steps");
         for step in steps {
@@ -178,7 +186,22 @@ pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palett
             } else {
                 format!(" ← {}", step.needs.join(", "))
             };
-            out.push_str(&format!("\n    {}{needs}", step.id));
+            let risk = match &step.action {
+                // deploy steps record priors — the journal covers them
+                gripsack_ir::step::StepAction::Install { .. }
+                | gripsack_ir::step::StepAction::ConfigDeploy { .. } => "",
+                gripsack_ir::step::StepAction::Fetch { .. } => "",
+                // custom code runs with your privileges; undoing it
+                // needs its own inverse, which gripsack cannot know
+                gripsack_ir::step::StepAction::Run { .. }
+                | gripsack_ir::step::StepAction::CustomShell { .. }
+                | gripsack_ir::step::StepAction::Build { .. } => {
+                    "  [no automatic inverse: runs custom code]"
+                }
+                gripsack_ir::step::StepAction::Intent { .. } => "  [best-effort: adapter re-runs]",
+                _ => "",
+            };
+            out.push_str(&format!("\n    {}{needs}{risk}", step.id));
         }
     }
     out

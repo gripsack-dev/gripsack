@@ -98,14 +98,35 @@ pub fn publish_dir(staging: &Path, dest: &Path) -> io::Result<()> {
     if let Err(e) = std::fs::rename(staging, dest) {
         // staging lives in $TMPDIR, the store under $GRIPSACK_HOME —
         // on containers /tmp is routinely a tmpfs, so EXDEV is a
-        // layout fact, not a user error: fall back to a copy
+        // layout fact, not a user error. The copy must still be
+        // atomic: a crash mid-copy into the FINAL name would leave a
+        // partial "immutable" path that every later publish refuses
+        // (AlreadyExists). Copy to a temp sibling under the store
+        // parent — same filesystem as dest — then rename.
         if e.kind() != io::ErrorKind::CrossesDevices {
             return Err(io::Error::new(
                 e.kind(),
                 format!("publish {} -> {}: {e}", staging.display(), dest.display()),
             ));
         }
-        copy_dir(staging, dest)?;
+        let sibling = parent.join(format!(
+            ".publish-{}-{}",
+            std::process::id(),
+            dest.file_name().unwrap_or_default().to_string_lossy()
+        ));
+        let _ = std::fs::remove_dir_all(&sibling);
+        copy_dir(staging, &sibling)?;
+        if let Err(rename_err) = std::fs::rename(&sibling, dest) {
+            let _ = std::fs::remove_dir_all(&sibling);
+            return Err(io::Error::new(
+                rename_err.kind(),
+                format!(
+                    "publish {} -> {}: {rename_err}",
+                    staging.display(),
+                    dest.display()
+                ),
+            ));
+        }
         let _ = std::fs::remove_dir_all(staging);
     }
     fsync_dir(parent)
