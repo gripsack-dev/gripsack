@@ -102,68 +102,94 @@ fn comment_style(dest: &Path, marker: Option<&str>) -> (Cow<'static, str>, &'sta
     }
 }
 
-/// The generated marker lines for a module's block. The close marker
-/// carries the module name too: block detection used to match
-/// `<<< gripsack <<<` by substring, so a payload line QUOTING that
-/// text read as the end of the block — rollback then left the block
-/// behind and every re-apply appended another stray marker.
-pub fn block_markers(module: &str, dest: &Path, marker: Option<&str>) -> (String, String) {
-    let (pre, suf) = comment_style(dest, marker);
-    (
-        format!("{pre} >>> gripsack module={module} >>>{suf}"),
-        format!("{pre} <<< gripsack module={module} <<<{suf}"),
-    )
+/// The generated marker lines for a module's block, as text:
+///
+/// `{pre} >>> gripsack module={m} sha={16hex} >>>{suf}` / banner /
+/// content / `{pre} <<< gripsack module={m} <<<{suf}`.
+///
+/// Both markers carry the module name (a payload line quoting marker
+/// text is never mistaken for one — the 0.17.13 corruption class),
+/// and the open marker carries the block's content hash: the block is
+/// self-describing, so "edited since deploy" is detectable from the
+/// file alone, without the generation manifest.
+fn open_marker(module: &str, sha: &str, pre: &str, suf: &str) -> String {
+    format!("{pre} >>> gripsack module={module} sha={sha} >>>{suf}")
 }
 
-/// Is this line THE marker line for `key`? Tolerant of comment style
-/// (any single-token prefix, html `-->` tail) but never of content
-/// around the key: `echo "<<< gripsack <<<"` is a payload line, not
-/// a marker.
-fn line_is_marker(line: &str, key: &str) -> bool {
+fn close_marker(module: &str, pre: &str, suf: &str) -> String {
+    format!("{pre} <<< gripsack module={module} <<<{suf}")
+}
+
+/// The `sha=<hex>` recorded in a module's open marker — the content
+/// hash at deploy time. A mismatch with the block's current hash
+/// means someone edited inside the markers since.
+pub fn marker_sha(existing: &str, module: &str) -> Option<String> {
+    let (open, _) = find_block(existing, module)?;
+    let line = existing.lines().nth(open)?;
+    let after = line.split("sha=").nth(1)?;
+    let sha = after.split_whitespace().next()?;
+    Some(sha.trim_end_matches(['>', '-']).to_string())
+}
+
+/// Is this line THE close-marker line for `module`? Tolerant of
+/// comment style (any single-token prefix, html `-->` tail) but never
+/// of content around the key.
+fn line_is_close_marker(line: &str, module: &str) -> bool {
+    let key = format!("<<< gripsack module={module} <<<");
+    line_has_shape(line, &key, false)
+}
+
+/// Is this line the open marker for `module`? The key is the module
+/// prefix; the tail must be `sha=<hex> >>>`.
+fn line_is_open_marker(line: &str, module: &str) -> bool {
+    let prefix = format!(">>> gripsack module={module}");
+    line_has_shape(line, &prefix, true)
+}
+
+/// Marker-line shape check: `key` appears verbatim, nothing but a
+/// comment prefix before it, and the tail after it is empty or `-->`
+/// (close markers), or `sha=<hex> >>>` (open markers).
+fn line_has_shape(line: &str, key: &str, open_marker: bool) -> bool {
     let trimmed = line.trim();
     let Some(idx) = trimmed.find(key) else {
         return false;
     };
     let before = trimmed[..idx].trim();
-    let after = trimmed[idx + key.len()..].trim();
+    let tail = trimmed[idx + key.len()..].trim();
     let prefix_ok = before.is_empty() || before.split_whitespace().count() == 1;
-    let suffix_ok = after.is_empty() || after == "-->";
-    prefix_ok && suffix_ok
+    let tail_ok = if !open_marker {
+        tail.is_empty() || tail == "-->"
+    } else {
+        // `sha=<hex> >>>` — the hash, the comment closer, nothing else
+        let Some(rest) = tail.strip_prefix("sha=") else {
+            return false;
+        };
+        let mut tokens = rest.split_whitespace();
+        let hex = tokens.next().unwrap_or_default();
+        let end = tokens.next().unwrap_or_default();
+        !hex.is_empty() && (end == ">>>" || end == "-->") && tokens.next().is_none()
+    };
+    prefix_ok && tail_ok
 }
 
-fn banner(dest: &Path, marker: Option<&str>) -> String {
-    let (pre, suf) = comment_style(dest, marker);
-    format!("{pre} !! managed by gripsack — edit the module, not this block !!{suf}")
-}
-
-/// Locate a module's block by content, tolerant of indentation and
-/// comment style (so a changed `marker` override between generations
-/// still finds the old block). Returns (open line, close line).
-/// Blocks written before 0.17.13 carry an unscoped close marker —
-/// matched by the same strict rule, and rewritten scoped on the next
-/// upsert.
+/// Locate a module's block: (open line, close line), zero-based.
 fn find_block(existing: &str, module: &str) -> Option<(usize, usize)> {
-    let open_key = format!(">>> gripsack module={module} >>>");
-    let close_key = format!("<<< gripsack module={module} <<<");
-    const LEGACY_CLOSE: &str = "<<< gripsack <<<";
     let lines: Vec<&str> = existing.lines().collect();
-    let open = lines.iter().position(|l| line_is_marker(l, &open_key))?;
+    let open = lines.iter().position(|l| line_is_open_marker(l, module))?;
     let close = lines[open + 1..]
         .iter()
-        .position(|l| line_is_marker(l, &close_key) || line_is_marker(l, LEGACY_CLOSE))
+        .position(|l| line_is_close_marker(l, module))
         .map(|i| open + 1 + i)?;
     Some((open, close))
 }
 
-/// The block's current content (between banner/markers), normalized
-/// for hashing: lines joined, no trailing newline.
+/// The block's current content (between the banner and the close
+/// marker), normalized for hashing: lines joined, no trailing newline.
 pub fn extract_block(existing: &str, module: &str) -> Option<String> {
     let lines: Vec<&str> = existing.lines().collect();
     let (open, close) = find_block(existing, module)?;
     // the banner is generated as the FIRST line after the open
-    // marker — skip exactly that one. A substring filter used to drop
-    // any payload line that happened to quote the banner text, so its
-    // hash never matched and every apply churned the file.
+    // marker — skip exactly that one
     let start = if lines
         .get(open + 1)
         .is_some_and(|l| l.contains("!! managed by gripsack"))
@@ -178,7 +204,7 @@ pub fn extract_block(existing: &str, module: &str) -> Option<String> {
 /// Insert or replace the module's managed block. Regenerates the
 /// whole block (conda's replace-not-merge: content drift inside the
 /// markers self-heals on the next apply) and strips duplicate blocks
-/// of the same module (conda's open TODO, closed here).
+/// of the same module that accumulated behind the first.
 pub fn upsert_block(
     existing: &str,
     module: &str,
@@ -186,12 +212,16 @@ pub fn upsert_block(
     marker: Option<&str>,
     block: &str,
 ) -> Result<String, String> {
-    let (open, close) = block_markers(module, dest, marker);
-    let banner = banner(dest, marker);
+    let (pre, suf) = comment_style(dest, marker);
+    let block = block.trim_end_matches('\n');
+    let sha = &gripsack_store::canonical_bytes_hash(block.as_bytes())[..16];
+    let open = open_marker(module, sha, &pre, suf);
+    let close = close_marker(module, &pre, suf);
+    let banner = format!("{pre} !! managed by gripsack — edit the module, not this block !!{suf}");
     let crlf = existing.contains("\r\n");
     let generated: Vec<&str> = std::iter::once(open.as_str())
         .chain(std::iter::once(banner.as_str()))
-        .chain(block.trim_end_matches('\n').lines())
+        .chain(block.lines())
         .chain(std::iter::once(close.as_str()))
         .collect();
 
@@ -202,15 +232,12 @@ pub fn upsert_block(
         out.extend(generated.iter().copied());
         out.extend_from_slice(&lines[c + 1..]);
         // strip duplicate blocks of the same module that accumulated
-        // behind the first (conda's TODO — duplicates never survive)
-        let open_key = format!(">>> gripsack module={module} >>>");
-        let close_key = format!("<<< gripsack module={module} <<<");
-        const LEGACY_CLOSE: &str = "<<< gripsack <<<";
+        // behind the first — duplicates never survive
         let mut cleaned: Vec<&str> = Vec::with_capacity(out.len());
         let mut kept_first = false;
         let mut skipping = false;
         for line in out {
-            if !skipping && line_is_marker(line, &open_key) {
+            if !skipping && line_is_open_marker(line, module) {
                 if kept_first {
                     skipping = true;
                     continue;
@@ -218,7 +245,7 @@ pub fn upsert_block(
                 kept_first = true;
             }
             if skipping {
-                if line_is_marker(line, &close_key) || line_is_marker(line, LEGACY_CLOSE) {
+                if line_is_close_marker(line, module) {
                     skipping = false;
                 }
                 continue;
@@ -310,7 +337,7 @@ mod tests {
         )
         .unwrap();
         assert!(out.starts_with("# user stuff\nexport EDITOR=hx\n"));
-        assert!(out.contains("# >>> gripsack module=shell >>>\n"));
+        assert!(out.contains(">>> gripsack module=shell sha="));
         assert!(out.contains("# !! managed by gripsack"));
         assert!(out.contains("export PATH=\"$HOME/.local/bin:$PATH\"\n"));
         assert!(out.ends_with("# <<< gripsack module=shell <<<\n"));
@@ -333,7 +360,7 @@ mod tests {
         let first = upsert_block("", "shell", &dest, None, "one\n").unwrap();
         let doubled = format!("{first}{first}");
         let out = upsert_block(&doubled, "shell", &dest, None, "one\n").unwrap();
-        assert_eq!(out.matches(">>> gripsack module=shell >>>").count(), 1);
+        assert_eq!(out.matches(">>> gripsack module=shell sha=").count(), 1);
     }
 
     #[test]
@@ -351,22 +378,24 @@ mod tests {
 
     #[test]
     fn merge_comment_style_follows_the_destination() {
-        assert_eq!(
-            block_markers("m", &PathBuf::from("/u/.config/x.jsonc"), None).0,
-            "// >>> gripsack module=m >>>"
+        // upsert produces the markers; assert their comment style and
+        // grammar (open carries sha, close does not)
+        let out = upsert_block("", "m", &PathBuf::from("/u/.config/x.jsonc"), None, "x\n").unwrap();
+        assert!(out.starts_with("// >>> gripsack module=m sha="), "{out}");
+        assert!(
+            out.ends_with("<<< gripsack module=m <<<\n")
+                || out.contains("<<< gripsack module=m <<< -->")
         );
-        assert_eq!(
-            block_markers("m", &PathBuf::from("/u/.vimrc"), None).0,
-            "\" >>> gripsack module=m >>>"
-        );
-        assert_eq!(
-            block_markers("m", &PathBuf::from("/u/x.html"), None).1,
-            "<!-- <<< gripsack module=m <<< -->"
-        );
-        assert_eq!(
-            block_markers("m", &PathBuf::from("/u/x.weird"), Some("#!")).0,
-            "#! >>> gripsack module=m >>>"
-        );
+
+        let out = upsert_block("", "m", &PathBuf::from("/u/.vimrc"), None, "x\n").unwrap();
+        assert!(out.starts_with("\" >>> gripsack module=m sha="));
+
+        let out = upsert_block("", "m", &PathBuf::from("/u/x.html"), None, "x\n").unwrap();
+        assert!(out.starts_with("<!-- >>> gripsack module=m sha="));
+        assert!(out.contains("<<< gripsack module=m <<< -->"));
+
+        let out = upsert_block("", "m", &PathBuf::from("/u/x.weird"), Some("#!"), "x\n").unwrap();
+        assert!(out.starts_with("#! >>> gripsack module=m sha="));
     }
 
     #[test]
@@ -374,7 +403,7 @@ mod tests {
         let dest = PathBuf::from("/u/.bashrc");
         let out = upsert_block("line one\r\n", "shell", &dest, None, "two\n").unwrap();
         assert!(out.contains("line one\r\n"));
-        assert!(out.contains("# >>> gripsack module=shell >>>\r\n"));
+        assert!(out.contains(">>> gripsack module=shell sha="));
     }
 
     #[test]
@@ -384,7 +413,7 @@ mod tests {
         // block detection must not read it as the end of the block
         let payload = "echo 'docs say <<< gripsack <<< ends a block'\n";
         let out = upsert_block("# rc\n", "m", &dest, None, payload).unwrap();
-        assert_eq!(out.matches(">>> gripsack module=m >>>").count(), 1);
+        assert_eq!(out.matches(">>> gripsack module=m sha=").count(), 1);
         // re-apply is idempotent, not appending strays forever
         let again = upsert_block(&out, "m", &dest, None, payload).unwrap();
         assert_eq!(again, out, "second apply must not grow the file");
@@ -399,14 +428,26 @@ mod tests {
     }
 
     #[test]
-    fn legacy_unscoped_close_marker_is_found_and_upgraded() {
+    fn marker_sha_detects_hand_edits() {
         let dest = PathBuf::from("/home/u/.bashrc");
-        let legacy = "# before\n# >>> gripsack module=old >>>\ncontent\n# <<< gripsack <<<\n";
-        let out = upsert_block(legacy, "old", &dest, None, "content\n").unwrap();
-        // found via the legacy close, rewritten with the scoped one
-        assert!(out.contains("<<< gripsack module=old <<<"));
-        assert!(!out.contains("<<< gripsack <<<\n#") || !out.contains(" <<< gripsack <<<\n"));
-        assert_eq!(remove_block(&out, "old").unwrap(), "# before\n");
+        let out = upsert_block("", "m", &dest, None, "original\n").unwrap();
+        let sha = marker_sha(&out, "m").expect("marker carries the sha");
+        assert_eq!(sha.len(), 16);
+        assert_eq!(
+            sha,
+            &gripsack_store::canonical_bytes_hash(b"original")[..16]
+        );
+
+        // a hand edit inside the markers: the content moves, the
+        // recorded sha does not — the mismatch is detectable from the
+        // file alone
+        let edited = out.replace("original", "hand-edited");
+        assert_eq!(marker_sha(&edited, "m").as_deref(), Some(sha.as_str()));
+        assert_ne!(
+            &gripsack_store::canonical_bytes_hash(extract_block(&edited, "m").unwrap().as_bytes())
+                [..16],
+            sha.as_str()
+        );
     }
 
     #[test]
@@ -420,6 +461,7 @@ mod tests {
             "payload quoting the banner must stay in the block hash"
         );
     }
+
     #[test]
     fn extract_and_remove_roundtrip() {
         let dest = PathBuf::from("/u/.bashrc");

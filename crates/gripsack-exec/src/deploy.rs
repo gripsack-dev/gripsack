@@ -24,9 +24,9 @@ pub fn restore_entry(
     }
     match entry.mode {
         Ownership::Owned => {
-            // never write a dangling link: a missing source is a stale
-            // manifest entry (e.g. a pre-0.17.10 raw placeholder key),
-            // and a broken symlink is worse than an absent destination
+            // never write a dangling link: a missing source means the
+            // manifest is stale, and a broken symlink is worse than
+            // an absent destination
             if !source.exists() {
                 tracing::warn!(
                     ?source,
@@ -520,7 +520,9 @@ pub(crate) fn deploy_entry(
                     )));
                 }
             };
-            let satisfied = crate::template::extract_block(&existing, module)
+            let extracted = crate::template::extract_block(&existing, module);
+            let satisfied = extracted
+                .as_deref()
                 .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()) == hash);
             if satisfied {
                 (
@@ -530,6 +532,20 @@ pub(crate) fn deploy_entry(
                     None,
                 )
             } else {
+                // the open marker's sha is the content hash at deploy
+                // time — a mismatch means the block was hand-edited
+                // since (visible from the file alone, no manifest
+                // needed); the block regenerates either way
+                let hand_edited = extracted.as_deref().is_some_and(|content| {
+                    crate::template::marker_sha(&existing, module).is_some_and(|recorded| {
+                        recorded != store::canonical_bytes_hash(content.as_bytes())[..16]
+                    })
+                });
+                let note = if hand_edited {
+                    " (hand-edited block regenerated)"
+                } else {
+                    ""
+                };
                 let new = crate::template::upsert_block(
                     &existing,
                     module,
@@ -546,7 +562,7 @@ pub(crate) fn deploy_entry(
                     store::atomic_write(&dest, new.as_bytes())
                 })?;
                 (
-                    format!("merged {} → {}", from, entry.to),
+                    format!("merged {} → {}{note}", from, entry.to),
                     ReportKind::Configured,
                     hash,
                     None,

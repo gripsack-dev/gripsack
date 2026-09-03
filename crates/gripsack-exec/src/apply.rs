@@ -140,9 +140,22 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     }
 
     // Satisfied = the module states are identical (the generation
-    // number is not part of the comparison — 0008 §3).
+    // number is not part of the comparison — 0008 §3) AND nothing
+    // touched the filesystem. A run that repaired a destination —
+    // an owned link swapped back to the store after drift, a stale
+    // pre-store link replaced — changes disk state the manifest
+    // cannot see; "already satisfied" and "I modified your
+    // filesystem" must never both be true of one run (migration
+    // report 0.18.1: a repaired symlink cut no generation, so
+    // rollback could not undo it).
+    let touched_disk = reports.iter().any(|r| {
+        matches!(
+            r.kind,
+            crate::report::ReportKind::Installed | crate::report::ReportKind::Configured
+        )
+    });
     let next = current_gen.unwrap_or(0) + 1;
-    if prev_manifest.as_ref().map(|g| &g.modules) == Some(&modules) {
+    if prev_manifest.as_ref().map(|g| &g.modules) == Some(&modules) && !touched_disk {
         return Ok(ApplyResult {
             outcome: Outcome::Satisfied {
                 generation: current_gen,
@@ -157,8 +170,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     store::write_manifest(&ctx.home, &generation)?;
     // the exported-env profile renders BEFORE the flip: it names
     // store paths (already published), not the `current` link, so a
-    // failure here leaves nothing activated — after the flip an
-    // error would report apply-failed while the generation IS active
+    // failure here leaves nothing activated
     render_env_file(&ctx.home, &generation.modules)?;
     store::flip(&ctx.home, next)?;
     // the flip is the run's commit point: everything the journal

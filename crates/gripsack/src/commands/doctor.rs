@@ -87,11 +87,74 @@ pub fn doctor(palette: Palette) -> ExitCode {
         }
     }
 
+    // The repo's own @gripsack/core pin (the deliberate-pin rule:
+    // node_modules shadows the embedded copy when present). It does
+    // not change what RUNS — but it is what the editor and tsc
+    // typecheck against, and a stale pin happily accepts authoring
+    // styles the current frontend removed (migration report 0.18.1:
+    // a ^0.17.5 pin typechecked a call the 0.18.x DSL rejects).
+    let repo = std::env::current_dir().unwrap_or_else(|_| ".".into());
+    if let Some(pin) = core_pin(&repo) {
+        let embedded = env!("CARGO_PKG_VERSION");
+        if pin_is_behind(&pin, embedded) {
+            println!(
+                "{}  repo pin: package.json pins @gripsack/core {pin}; the embedded \
+                 frontend is {embedded} — your editor typechecks against the older \
+                 types (npm i -D @gripsack/core@^{embedded})",
+                mark(true).replace('\u{2713}', "!")
+            );
+        } else {
+            println!("      repo pin: @gripsack/core {pin} (matches the embedded {embedded})");
+        }
+    }
     println!("      home: {}", home.display());
 
     if ok {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
+    }
+}
+
+/// The repo's `@gripsack/core` version spec from package.json
+/// (dependencies or devDependencies), verbatim — `^0.17.5`, `~0.18`,
+/// a URL, anything. None when the repo declares no pin or has no
+/// package.json (dotfiles-only setups).
+fn core_pin(repo: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(repo.join("package.json")).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    for section in ["dependencies", "devDependencies"] {
+        if let Some(s) = json
+            .get(section)
+            .and_then(|d| d.get("@gripsack/core"))
+            .and_then(serde_json::Value::as_str)
+        {
+            return Some(s.to_string());
+        }
+    }
+    None
+}
+
+/// Is a version spec meaningfully behind the embedded version? Only
+/// major.minor counts — `^0.18.0` against embedded `0.18.1` is the
+/// normal npm reality (patch releases don't always publish); a
+/// `^0.17.x` pin against `0.18.x` is the drift that matters.
+fn pin_is_behind(spec: &str, embedded: &str) -> bool {
+    let parse = |v: &str| -> Option<(u64, u64)> {
+        let digits: String = v
+            .trim_start_matches(['^', '~', '>', '=', ' '])
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let mut it = digits.split('.').map(str::parse::<u64>);
+        match (it.next(), it.next()) {
+            (Some(Ok(a)), Some(Ok(b))) => Some((a, b)),
+            _ => None,
+        }
+    };
+    match (parse(spec), parse(embedded)) {
+        (Some(pin), Some(emb)) => pin < emb,
+        // unparseable spec (git URL, workspace:) — don't guess
+        (Some(_), None) | (None, _) => false,
     }
 }

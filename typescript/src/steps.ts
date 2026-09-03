@@ -50,24 +50,42 @@ export function step(id: string, action: StepAction, opts?: StepOpts): Step {
  *  (pixi → `pixi-lock`, …) — `resources` is for your own shared
  *  state (0007 §4). Fetch steps retry by default. */
 export function fetchStep(fetch: Fetch, id = "fetch", opts?: StepOpts): Step {
+  // runtime shape guard: an argument-order slip here would otherwise
+  // surface as a byte-offset E000 from the core's deserializer, with
+  // no module named — catch it at the call site instead (the eval
+  // stack names file:line)
+  if (typeof fetch !== "object" || fetch === null || typeof fetch.kind !== "string") {
+    throw new TypeError(
+      `fetchStep(fetch, id?) — the first argument must be a fetch spec from ` +
+        `githubRelease()/tarball()/fileFetch()/git()/brew()/pixi()/pluginFetch(); ` +
+        `got ${describe(fetch)} (arguments swapped?)`,
+    );
+  }
   validateResourceRefs(opts?.resources ?? [], `step '${id}'`);
   return { id, action: { kind: "fetch", fetch }, phase: "fetch", ...opts };
 }
 
-export function buildStep(
-  spec: Record<string, unknown>,
-  id = "build",
-  opts?: StepOpts,
-): Step {
-  return { id, action: { kind: "build", spec }, phase: "build", ...opts };
+/** A one-phrase description of what actually arrived, for guard
+ * messages — the type name is enough to spot a swapped argument. */
+function describe(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return `the string ${JSON.stringify(value)}`;
+  if (Array.isArray(value)) return "an array";
+  if (typeof value === "object") return "an object";
+  return `a ${typeof value}`;
 }
 
-/** Deploy built artifacts to their destinations. */
 export function installStep(
   entries: Record<string, Dest>,
   id = "install",
   opts?: StepOpts,
 ): Step {
+  if (typeof entries !== "object" || entries === null || Array.isArray(entries)) {
+    throw new TypeError(
+      `installStep(entries, id?) — the first argument must be the entries object ` +
+        `{ "payload/path": symlink(…) }; got ${describe(entries)} (arguments swapped?)`,
+    );
+  }
   return {
     id,
     action: {
@@ -85,12 +103,26 @@ export function installStep(
   };
 }
 
+export function buildStep(
+  spec: Record<string, unknown>,
+  id = "build",
+  opts?: StepOpts,
+): Step {
+  return { id, action: { kind: "build", spec }, phase: "build", ...opts };
+}
+
 /** Deploy config files per their ownership modes (0001 §3.7). */
 export function configStep(
   entries: Record<string, Dest>,
   id = "config",
   opts?: StepOpts,
 ): Step {
+  if (typeof entries !== "object" || entries === null || Array.isArray(entries)) {
+    throw new TypeError(
+      `configStep(entries, id?) — the first argument must be the entries object ` +
+        `{ "repo/path": trackedCopy(…) }; got ${describe(entries)} (arguments swapped?)`,
+    );
+  }
   return {
     id,
     action: {
