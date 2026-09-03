@@ -3,6 +3,50 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.19.0] — 2026-09-03
+
+From the third migration report (two hosts, 79 modules — the 0.18.0
+breaking upgrade itself was a non-event: every module `already
+satisfied`, nothing edited) plus a design addition. **Breaking** (no
+legacy format tolerance — alpha, per the no-users policy).
+
+### Fixed
+
+- **E000 now names the module.** A type slip in a module's fields
+  (e.g. `fetchStep(id, fetch)` — arguments swapped) surfaced as
+  `invalid IR JSON: … at line 1 column 37202` with "this is a
+  frontend bug" as the help — no module named, a byte offset nobody
+  can act on, and the wrong blame. The parser now re-walks the
+  modules individually and reports `invalid IR in module(s) "x",
+  "y": …`, with help that points at call sites and the
+  `@gripsack/core` pin first. The step builders also gained runtime
+  argument guards — a swapped argument throws at the call site with
+  the signature and what actually arrived, and the eval stack names
+  file:line.
+- **`grip doctor` compares the repo's `@gripsack/core` pin against
+  the embedded frontend.** The pin doesn't change what runs (the
+  deliberate-pin rule) but it is what the editor and `tsc` typecheck
+  against — a `^0.17.5` pin happily accepted authoring styles 0.18
+  removed. Doctor warns with the exact upgrade command when the pin's
+  major.minor is behind (patch drift is npm-normal and stays quiet).
+- **A run that repairs a destination now cuts a generation.** An
+  owned link swapped back to the store after drift reported real
+  work ("✓ linked …") and then summarized `already satisfied` — disk
+  changed, no generation, rollback couldn't undo it. Satisfied now
+  requires that nothing touched the filesystem.
+
+### Changed
+
+- **Breaking: merge blocks carry their content hash.** The open
+  marker is now `# >>> gripsack module=x sha=<16hex> >>>` — the block
+  is self-describing: hand-edits inside the markers are detectable
+  from the file alone (no generation manifest needed), and the deploy
+  report says so: `merged … (hand-edited block regenerated)`. Marker
+  matching is one strict grammar (both markers scoped by module, open
+  with sha); blocks written by earlier versions are no longer
+  recognized and will be re-appended — remove them or re-apply with
+  `--take-over`. There is no legacy path: alpha, no users to carry.
+
 ## [0.18.1] — 2026-09-02
 
 **Crash recovery for destination mutations (plan/0019).** `apply`

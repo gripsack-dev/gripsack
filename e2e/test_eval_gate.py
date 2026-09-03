@@ -557,3 +557,26 @@ export default module("present", { install: [] });
     assert out.returncode != 0
     assert "not in this host's graph" in out.stderr, out.stderr
     assert "ghost" in out.stderr
+
+
+def test_doctor_warns_on_a_stale_core_pin(sandbox):
+    """The repo's package.json @gripsack/core pin is what the editor
+    and tsc typecheck against (the deliberate-pin rule); a stale one
+    silently accepts authoring styles the embedded frontend removed.
+    Doctor compares major.minor and names the upgrade command."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module } from "@gripsack/core";
+
+export default module("a", { install: [] });
+""",
+    )
+    (repo / "package.json").write_text(
+        '{"devDependencies": {"@gripsack/core": "^0.17.5"}}\n'
+    )
+    out = grip("doctor", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "repo pin:" in out.stdout, out.stdout
+    assert "@gripsack/core ^0.17.5" in out.stdout
+    assert "npm i -D @gripsack/core@" in out.stdout

@@ -99,7 +99,7 @@ export default module("shell", {
     assert out.returncode == 0, out.stderr
     content = bashrc.read_text()
     assert content.startswith("# user stuff\nexport EDITOR=hx\n")
-    assert "# >>> gripsack module=shell >>>" in content
+    assert ">>> gripsack module=shell sha=" in content
     assert 'export PATH="$HOME/.local/bin:$PATH"' in content
     assert "# <<< gripsack module=shell <<<" in content
 
@@ -110,7 +110,7 @@ export default module("shell", {
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     content = bashrc.read_text()
-    assert content.count("# >>> gripsack module=shell >>>") == 1
+    assert content.count(">>> gripsack module=shell sha=") == 1
     assert "# user edited" not in content
     assert content.endswith("# more user stuff\n")
 
@@ -375,3 +375,35 @@ export default module("m", {
     assert "resolves inside the env repo" in out.stderr
     assert "symlink into the repo" in out.stderr, out.stderr
     assert (repo / "stale-conf").read_text() == "stale\n"
+
+
+def test_merge_block_carries_its_content_hash(sandbox):
+    """The open marker embeds the block's content sha: hand-edits
+    inside the markers are detectable from the file alone, and the
+    re-apply says so while self-healing the block."""
+    confdir = sandbox / "myenv" / "configs" / "shell"
+    confdir.mkdir(parents=True)
+    (confdir / "block.sh").write_text('export SINK=1\n')
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { merge, module } from "@gripsack/core";
+
+export default module("shell", {
+  config: { "configs/shell/block.sh": merge("~/.bashrc") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    bashrc = sandbox / ".bashrc"
+    content = bashrc.read_text()
+    assert "sha=" in content and ">>> gripsack module=shell sha=" in content
+
+    # a hand edit inside the markers — the sha no longer describes
+    # the content; the next apply regenerates and says so
+    bashrc.write_text(content.replace("SINK=1", "SINK=2"))
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "hand-edited block regenerated" in out.stdout, out.stdout
+    assert "SINK=1" in bashrc.read_text(), "the block self-heals"

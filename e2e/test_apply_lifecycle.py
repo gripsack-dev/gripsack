@@ -844,3 +844,39 @@ export default module("a", {{
     assert out.returncode == 0, out.stderr
     assert "kept" in out.stdout, out.stdout
     assert conf.read_text() == "my own edit\n"
+
+
+def test_a_repaired_destination_cuts_a_generation(sandbox):
+    """Satisfied means nothing changed on disk. An owned link that
+    drifted (or a stale pre-store link replaced) is real filesystem
+    work — the run must cut a generation so rollback can undo it,
+    not summarize 'already satisfied' over a modified machine."""
+    payload = make_tarball(
+        sandbox / "tool.tar.gz", {"bin/tool": b"#!/bin/sh\necho tool\n"}
+    )
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("m", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/tool": symlink("~/.local/bin/tool") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".local/bin/tool"
+    assert dest.is_symlink()
+
+    # the link drifts to a foreign target
+    dest.unlink()
+    dest.symlink_to("/usr/bin/false")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "generation 2" in out.stdout, out.stdout
+    assert "store" in str(dest.resolve())
+    # and it is undoable: rollback returns to generation 1's link
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
