@@ -394,11 +394,16 @@ mod tests {
     use super::*;
 
     /// an executable /bin/sh script under a pid-scoped temp path (no
-    /// tempfile dev-dep in this crate; std is enough)
+    /// tempfile dev-dep in this crate; std is enough). Each call
+    /// gets a unique file (atomic counter): rewriting a path a
+    /// previous child is still executing yields ETXTBSY ("Text file
+    /// busy"), which CI hit as a flake.
     fn script(name: &str, body: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let unique = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "gripsack-lint-exchange-{name}-{}.sh",
+            "gripsack-lint-exchange-{name}-{}-{unique}.sh",
             std::process::id()
         ));
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();

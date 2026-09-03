@@ -98,11 +98,32 @@ fn entry_path(home: &Path, dest: &Path) -> PathBuf {
 pub fn capture(dest: &Path, home: &Path) -> io::Result<Prior> {
     let meta = match std::fs::symlink_metadata(dest) {
         Ok(meta) => meta,
-        Err(_) => return Ok(Prior::Absent),
+        // only NotFound means absent — a permission error or I/O
+        // failure recorded as Absent would make recovery REMOVE a
+        // destination it could not even read (review finding)
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Prior::Absent),
+        Err(e) => {
+            return Err(io::Error::other(format!(
+                "cannot inspect {} to journal its prior state: {e}",
+                dest.display()
+            )));
+        }
     };
     if meta.file_type().is_symlink() {
+        let target = std::fs::read_link(dest)?;
+        let Some(target) = target.to_str() else {
+            // a non-UTF-8 target lossily recorded would re-create a
+            // DIFFERENT link on recovery — refuse the mutation
+            // instead of corrupting it on undo
+            return Err(io::Error::other(format!(
+                "{} is a symlink with a non-UTF-8 target ({} bytes) — gripsack \
+                 cannot journal it for recovery; remove or adopt it by hand",
+                dest.display(),
+                target.as_os_str().len()
+            )));
+        };
         return Ok(Prior::Symlink {
-            target: std::fs::read_link(dest)?.to_string_lossy().into_owned(),
+            target: target.to_string(),
         });
     }
     if meta.is_file() {
@@ -148,8 +169,33 @@ pub fn mark_after(home: &Path, dest: &Path, after: &str) -> io::Result<()> {
     )
 }
 
+/// The run marker: which generation this journal's entries belong to.
+/// Written before the first mutation; the flip makes it true.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct RunMarker {
+    target_generation: u64,
+}
+
+fn run_marker_path(home: &Path) -> PathBuf {
+    dir(home).join("run.json")
+}
+
+/// Declare the generation this run is building, BEFORE any mutation:
+/// recovery compares it against `current` — a crash between the flip
+/// and journal cleanup must NOT restore priors the committed
+/// generation now owns (the post-commit window, review finding 5.1).
+pub fn begin_run(home: &Path, target_generation: u64) -> io::Result<()> {
+    let marker = RunMarker { target_generation };
+    fs::atomic_write(
+        &run_marker_path(home),
+        serde_json::to_string(&marker)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+            .as_bytes(),
+    )
+}
+
 /// The run completed and the generation flipped: nothing left to
-/// recover. Entries from this run and any stragglers are gone.
+/// recover. Entries, stragglers, and the run marker are gone.
 pub fn commit_run(home: &Path) -> io::Result<()> {
     let dir = dir(home);
     if !dir.is_dir() {
@@ -164,6 +210,16 @@ pub fn commit_run(home: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// The run ended without mutating anything (satisfied, empty graph):
+/// the marker declared by `begin_run` must not linger — a stale
+/// marker with no entries is harmless but noisy, and a marker whose
+/// target generation is later than `current` would misread the NEXT
+/// crash window.
+pub fn end_run(home: &Path) -> io::Result<()> {
+    let _ = std::fs::remove_file(run_marker_path(home));
+    Ok(())
+}
+
 /// What an uncommitted entry asks for, once resolved against the
 /// current filesystem.
 enum Recovery {
@@ -173,14 +229,34 @@ enum Recovery {
     Keep(String),
 }
 
-/// Restore every uncommitted entry to its prior state (the run that
-/// wrote them never flipped a generation). Returns one human line per
-/// entry for the apply report. Must run under the lifecycle lock.
+/// Resolve uncommitted journal entries from an interrupted run:
+/// committed runs (the flip landed) are cleaned up, their content
+/// stands; uncommitted runs are restored to their priors. Returns one
+/// human line per decision for the apply report. Must run under the
+/// lifecycle lock.
 pub fn reconcile(home: &Path) -> io::Result<Vec<String>> {
     let Some(entries) = read_uncommitted(home)? else {
         return Ok(Vec::new());
     };
+    // the commit decision: a run whose target generation is current
+    // (or older than current — later runs happened) COMMITTED. Only a
+    // run whose target is still ahead restored.
+    let committed = run_marker(home)?.is_some_and(|target| {
+        crate::current_generation(home).is_some_and(|current| current >= target)
+    });
     let mut lines = Vec::new();
+    if committed {
+        for (path, _) in &entries {
+            std::fs::remove_file(path)?;
+        }
+        let _ = std::fs::remove_file(run_marker_path(home));
+        lines.push(
+            "interrupted run's generation had already activated — journal \
+             cleared, deployed state stands"
+                .to_string(),
+        );
+        return Ok(lines);
+    }
     for (path, entry) in entries {
         let dest = PathBuf::from(&entry.dest);
         match decide(&dest, &entry) {
@@ -194,32 +270,63 @@ pub fn reconcile(home: &Path) -> io::Result<Vec<String>> {
         }
         std::fs::remove_file(&path)?;
     }
+    let _ = std::fs::remove_file(run_marker_path(home));
     Ok(lines)
 }
 
+fn run_marker(home: &Path) -> io::Result<Option<u64>> {
+    let Ok(bytes) = std::fs::read(run_marker_path(home)) else {
+        return Ok(None);
+    };
+    serde_json::from_slice::<RunMarker>(&bytes)
+        .map(|m| Some(m.target_generation))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+/// Entries on disk, with the run marker if any. Malformed recovery
+/// metadata FAILS CLOSED: the file moves to `journal/quarantine/`
+/// and reconcile errors — the one structure responsible for
+/// recovering user files must never be shrugged off as archaeology
+/// (review finding 5.2). Inspect and delete the quarantine to
+/// proceed.
 fn read_uncommitted(home: &Path) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
     let dir = dir(home);
     if !dir.is_dir() {
         return Ok(None);
     }
     let mut out = Vec::new();
+    let mut quarantined = 0usize;
     for entry in std::fs::read_dir(&dir)? {
         let path = entry?.path();
+        if path.file_name().is_some_and(|n| n == "run.json") {
+            continue;
+        }
         if path.extension().is_some_and(|e| e != "json") {
             continue;
         }
-        // an unreadable entry is archaeology, not a crash window —
-        // drop it rather than block every future apply
-        let Ok(bytes) = std::fs::read(&path) else {
-            let _ = std::fs::remove_file(&path);
-            continue;
-        };
-        match serde_json::from_slice::<Entry>(&bytes) {
+        match std::fs::read(&path).and_then(|b| {
+            serde_json::from_slice::<Entry>(&b)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        }) {
             Ok(parsed) => out.push((path, parsed)),
             Err(_) => {
-                let _ = std::fs::remove_file(&path);
+                let quarantine = dir.join("quarantine");
+                std::fs::create_dir_all(&quarantine)?;
+                let name = path.file_name().unwrap_or_default();
+                let _ = std::fs::rename(&path, quarantine.join(name));
+                quarantined += 1;
             }
         }
+    }
+    if quarantined > 0 {
+        return Err(io::Error::other(format!(
+            "{} journal entr{} could not be parsed — moved to {}/quarantine; \
+             inspect and remove them to continue (recovery metadata is \
+             never ignored)",
+            quarantined,
+            if quarantined == 1 { "y" } else { "ies" },
+            dir.display()
+        )));
     }
     Ok(Some(out))
 }
@@ -376,6 +483,66 @@ mod tests {
             std::fs::read_link(&link).unwrap().to_string_lossy(),
             "/original/target"
         );
+    }
+
+    #[test]
+    fn crash_after_flip_but_before_cleanup_reads_committed() {
+        // review 5.1: the crash lands between the flip and journal
+        // cleanup. The run marker names the target generation and
+        // `current` reached it — the deployed content STANDS.
+        let home = home();
+        let dest = home.path().join("config");
+        std::fs::write(&dest, b"old\n").unwrap();
+
+        begin_run(home.path(), 1).unwrap();
+        let prior = capture(&dest, home.path()).unwrap();
+        record(home.path(), &dest, &prior).unwrap();
+        std::fs::write(&dest, b"deployed\n").unwrap();
+        mark_after(home.path(), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
+        // the flip: generation 1 becomes current; commit_run never ran
+        let manifest = crate::generations::Generation {
+            number: 1,
+            modules: Default::default(),
+        };
+        crate::generations::write_manifest(home.path(), &manifest).unwrap();
+        crate::generations::flip(home.path(), 1).unwrap();
+
+        let lines = reconcile(home.path()).unwrap();
+        assert!(
+            lines.iter().any(|l| l.contains("already activated")),
+            "{lines:?}"
+        );
+        // the committed generation's content is NOT rolled back
+        assert_eq!(std::fs::read(&dest).unwrap(), b"deployed\n");
+    }
+
+    #[test]
+    fn crash_before_flip_restores() {
+        // the mirror case: the marker names generation 1 but current
+        // is still nothing — restore the prior
+        let home = home();
+        let dest = home.path().join("config");
+        std::fs::write(&dest, b"old\n").unwrap();
+        begin_run(home.path(), 1).unwrap();
+        let prior = capture(&dest, home.path()).unwrap();
+        record(home.path(), &dest, &prior).unwrap();
+        std::fs::write(&dest, b"half\n").unwrap();
+        mark_after(home.path(), &dest, &crate::hash::hex_sha256(b"half\n")).unwrap();
+
+        reconcile(home.path()).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
+    }
+
+    #[test]
+    fn malformed_entries_fail_closed_into_quarantine() {
+        // review 5.2: corrupt recovery metadata is quarantined and
+        // BLOCKS mutation — never silently deleted
+        let home = home();
+        std::fs::create_dir_all(dir(home.path())).unwrap();
+        std::fs::write(dir(home.path()).join("deadbeef.json"), b"{ not json").unwrap();
+        let err = reconcile(home.path()).unwrap_err();
+        assert!(err.to_string().contains("quarantine"), "{err}");
+        assert!(dir(home.path()).join("quarantine/deadbeef.json").exists());
     }
 
     #[test]

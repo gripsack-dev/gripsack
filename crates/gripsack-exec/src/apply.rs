@@ -92,6 +92,11 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         });
     }
     let steps_by_module = expand::expand_all(&ir.modules);
+    // declare the generation this run builds BEFORE any mutation:
+    // recovery compares the marker against `current` — a crash after
+    // the flip but before journal cleanup must read as COMMITTED,
+    // never restore priors the new generation owns (review 5.1)
+    store::journal::begin_run(&ctx.home, current_gen.unwrap_or(0) + 1)?;
     let outcome =
         crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)?;
     // An empty result set must be a deliberate empty declaration,
@@ -156,6 +161,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     });
     let next = current_gen.unwrap_or(0) + 1;
     if prev_manifest.as_ref().map(|g| &g.modules) == Some(&modules) && !touched_disk {
+        // vacuous run: nothing journaled, nothing flipped — the
+        // marker begin_run wrote must not linger
+        store::journal::end_run(&ctx.home)?;
         return Ok(ApplyResult {
             outcome: Outcome::Satisfied {
                 generation: current_gen,

@@ -30,7 +30,7 @@ esac
 # resolve the HIGHEST core-v* git tag by semver instead
 latest="$(curl -fsSL "https://api.github.com/repos/$REPO/git/matching-refs/tags/core-v" \
     | sed -n 's|.*"ref": *"refs/tags/core-v\([^"]*\)".*|\1|p' \
-    | sort -t. -k2,2nr -k3,3nr | head -1)"
+    | sort -t. -k1,1nr -k2,2nr -k3,3nr | head -1)"
 if [ -z "$latest" ]; then
     echo "gripsack: could not determine the latest core release" >&2
     exit 1
