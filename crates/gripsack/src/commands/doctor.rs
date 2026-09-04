@@ -100,11 +100,17 @@ pub fn doctor(palette: Palette) -> ExitCode {
             // a stale pin is a WARNING, not a pass: `mark(true)`
             // renders "ok" in green, and the old `.replace('✓', "!")`
             // was a no-op on that string — the warning read as a pass
-            // (0.21.1 review)
+            // (0.21.1 review).
+            // advise the minor LINE (^M.m.0), not the exact embedded
+            // patch: ^0.21.1 cannot resolve to a published 0.21.0, and
+            // the frontend doesn't re-publish on every core patch
+            // (0.21.1 review). With the lockstep rule (release skill),
+            // the latest published M.m.x carries the current types.
+            let minor_line: String = embedded.split('.').take(2).collect::<Vec<_>>().join(".");
             println!(
                 "{}  repo pin: package.json pins @gripsack/core {pin}; the embedded \
                  frontend is {embedded} — your editor typechecks against the older \
-                 types (npm i -D @gripsack/core@^{embedded})",
+                 types (npm i -D @gripsack/core@^{minor_line}.0)",
                 palette.warn("warn")
             );
         } else {

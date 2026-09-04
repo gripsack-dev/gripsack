@@ -627,3 +627,7 @@ export default module("a", { install: [] });
     assert pin_line.startswith("warn"), pin_line
     assert "@gripsack/core ^0.17.5" in out.stdout
     assert "npm i -D @gripsack/core@" in out.stdout
+    # the advice pins the minor LINE (^M.m.0): ^0.21.1 cannot resolve
+    # when npm's latest is 0.21.0, and the frontend doesn't republish
+    # on every core patch
+    assert "@^{}.{}.0)".format(*out.stdout.split("frontend is ")[1].split(" —")[0].split(".")[:2]) in out.stdout, out.stdout

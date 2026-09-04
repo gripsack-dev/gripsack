@@ -91,6 +91,15 @@ store-verify re-hashes deployed destinations (checked README, skills,
 site settings reference — all say store paths); the expectation came
 from a paraphrase, not the text.
 
+## Amendment (same day): 0.21.2
+
+Smoke-testing the SHIPPED 0.21.1 binary caught a residual in finding
+2's fix: the advice interpolated the exact embedded patch
+(`^0.21.1`), which cannot resolve while npm's latest is 0.21.0 — the
+same ETARGET one patch later. The advice now pins the minor line
+(`^M.m.0`), which any published patch satisfies. Verified on the
+shipped 0.21.2 binary.
+
 ## Carried, not re-examined
 
 - The update→apply sha256/tree256 two-commit dance and the pixi hash

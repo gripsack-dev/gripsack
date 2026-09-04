@@ -3,6 +3,16 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.21.2] — 2026-09-04
+
+### Fixed
+
+- **`doctor`'s upgrade advice pins the minor line**
+  (`@gripsack/core@^0.21.0`), not the exact embedded patch —
+  `^0.21.1` cannot resolve when npm's latest is 0.21.0, and the
+  frontend doesn't republish on every core patch (plan/0024,
+  follow-up caught by smoke-testing the shipped 0.21.1 binary).
+
 ## [0.21.1] — 2026-09-04
 
 Review-round fixes (plan/0024) from a real 0.18.1→0.21.0 migration
