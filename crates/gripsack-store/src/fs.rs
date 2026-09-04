@@ -1,6 +1,10 @@
-//! Atomic filesystem primitives (0001 §9.2).
+//! Atomic filesystem primitives (0001 §9.2) — MIGRATION WRAPPERS
+//! (plan/0021).
 //!
-//! Everything the store writes goes through here. The rules:
+//! The mechanics now live in `gripsack-fs`, capability-based. These
+//! string-path wrappers exist so callers migrate phase by phase;
+//! phase 5 deletes this module entirely and callers use `gripsack-fs`
+//! directly. The rules the wrappers preserve:
 //!
 //! - writes are staged in the same directory and renamed into place —
 //!   a reader never sees a partial file;
@@ -13,16 +17,12 @@
 use std::io;
 use std::path::Path;
 
+pub use gripsack_fs::FlockGuard;
+
 /// Write `contents` to `path` atomically: temp file in the same
 /// directory, fsync, rename over, fsync the parent.
 pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
-    io::Write::write_all(&mut tmp, contents)?;
-    tmp.as_file().sync_all()?;
-    tmp.persist(path).map_err(|e| e.error)?;
-    fsync_dir(parent)
+    gripsack_fs::atomic_write_at(path, contents)
 }
 
 /// Store pre-take-over bytes content-addressed (0015 §4): returns the
@@ -52,28 +52,7 @@ pub fn prior_blob_path(home: &Path, sha: &str) -> std::path::PathBuf {
 /// This is the generation flip — the single indivisible operation that
 /// activation reduces to (0001 §9.2).
 pub fn symlink_replace(link: &Path, target: &Path) -> io::Result<()> {
-    let parent = link.parent().unwrap_or_else(|| Path::new("."));
-    let tmp = parent.join(format!(
-        ".tmp-link-{}-{}",
-        std::process::id(),
-        link.file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    ));
-    let _ = std::fs::remove_file(&tmp);
-    std::os::unix::fs::symlink(target, &tmp).map_err(|e| {
-        io::Error::new(
-            e.kind(),
-            format!("symlink {} -> {}: {e}", tmp.display(), target.display()),
-        )
-    })?;
-    std::fs::rename(&tmp, link).map_err(|e| {
-        io::Error::new(
-            e.kind(),
-            format!("link {} -> {}: {e}", link.display(), target.display()),
-        )
-    })?;
-    fsync_dir(parent)
+    gripsack_fs::symlink_replace_at(link, target)
 }
 
 /// Publish a fully built directory into place. Fails if `dest` exists —
@@ -83,151 +62,20 @@ pub fn symlink_replace(link: &Path, target: &Path) -> io::Result<()> {
 /// Directories stay writable so repair/gc can unlink (unlink needs a
 /// writable parent, not a writable file).
 pub fn publish_dir(staging: &Path, dest: &Path) -> io::Result<()> {
-    if dest.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            format!(
-                "{} already exists — store paths are immutable",
-                dest.display()
-            ),
-        ));
-    }
-    read_only_files(staging)?;
-    let parent = dest.parent().unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    if let Err(e) = std::fs::rename(staging, dest) {
-        // staging lives in $TMPDIR, the store under $GRIPSACK_HOME —
-        // on containers /tmp is routinely a tmpfs, so EXDEV is a
-        // layout fact, not a user error. The copy must still be
-        // atomic: a crash mid-copy into the FINAL name would leave a
-        // partial "immutable" path that every later publish refuses
-        // (AlreadyExists). Copy to a temp sibling under the store
-        // parent — same filesystem as dest — then rename.
-        if e.kind() != io::ErrorKind::CrossesDevices {
-            return Err(io::Error::new(
-                e.kind(),
-                format!("publish {} -> {}: {e}", staging.display(), dest.display()),
-            ));
-        }
-        let sibling = parent.join(format!(
-            ".publish-{}-{}",
-            std::process::id(),
-            dest.file_name().unwrap_or_default().to_string_lossy()
-        ));
-        let _ = std::fs::remove_dir_all(&sibling);
-        copy_dir(staging, &sibling)?;
-        if let Err(rename_err) = std::fs::rename(&sibling, dest) {
-            let _ = std::fs::remove_dir_all(&sibling);
-            return Err(io::Error::new(
-                rename_err.kind(),
-                format!(
-                    "publish {} -> {}: {rename_err}",
-                    staging.display(),
-                    dest.display()
-                ),
-            ));
-        }
-        let _ = std::fs::remove_dir_all(staging);
-    }
-    fsync_dir(parent)
+    gripsack_fs::publish_dir_at(staging, dest)
 }
 
 /// Recursively copy a directory tree: directories, regular files, and
 /// symlinks (recreated, never followed). The destination is created —
 /// or merged into — so a repo overlay can land on a fetched payload.
 pub fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        let to = dst.join(entry.file_name());
-        if ty.is_dir() {
-            copy_dir(&entry.path(), &to)?;
-        } else if ty.is_symlink() {
-            let target = std::fs::read_link(entry.path())?;
-            std::os::unix::fs::symlink(target, &to)?;
-        } else {
-            std::fs::copy(entry.path(), &to)?;
-        }
-    }
-    Ok(())
-}
-
-/// chmod every regular file under `dir` to drop write bits, keeping
-/// exec (0016 §D3). Symlinks untouched (their target carries perms).
-#[cfg(unix)]
-fn read_only_files(dir: &Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    for entry in std::fs::read_dir(dir)? {
-        let path = entry?.path();
-        let meta = std::fs::symlink_metadata(&path)?;
-        if meta.file_type().is_symlink() {
-            continue;
-        }
-        if meta.is_dir() {
-            read_only_files(&path)?;
-        } else {
-            let mode = meta.permissions().mode();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode & !0o222))?;
-        }
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn read_only_files(_dir: &Path) -> io::Result<()> {
-    Ok(())
+    gripsack_fs::copy_dir(src, dst)
 }
 
 /// fsync a directory so renames into it are durable.
 pub(crate) fn fsync_dir(dir: &Path) -> io::Result<()> {
-    std::fs::File::open(dir)?.sync_all()
-}
-
-/// An exclusive flock held until the guard drops. The ONE lock
-/// primitive for the whole workspace (apply lifecycle, step
-/// resources, trust-file mutations, tool provisioning): the trust
-/// gate prompts for as long as the user stares at it before
-/// rewriting a whole file — every load-through-save needs this.
-pub struct FlockGuard(std::fs::File);
-
-impl FlockGuard {
-    /// Lock `<dir>/<name>.flock` exclusively, creating as needed.
-    pub fn acquire(dir: &Path, name: &str) -> io::Result<Self> {
-        std::fs::create_dir_all(dir)?;
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(dir.join(format!("{name}.flock")))?;
-        flock(&file, libc::LOCK_EX)?;
-        Ok(Self(file))
-    }
-}
-
-impl Drop for FlockGuard {
-    fn drop(&mut self) {
-        let _ = flock(&self.0, libc::LOCK_UN);
-    }
-}
-
-#[cfg(unix)]
-fn flock(file: &std::fs::File, op: i32) -> io::Result<()> {
-    use std::os::unix::io::AsRawFd;
-    if unsafe { libc::flock(file.as_raw_fd(), op) } == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
-
-#[cfg(not(unix))]
-fn flock(_file: &std::fs::File, _op: i32) -> io::Result<()> {
-    // a lock primitive that pretends is worse than none (N5)
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "flock is not supported on this platform",
-    ))
+    let cap = gripsack_fs::open(dir)?;
+    gripsack_fs::fsync_dir(&cap, Path::new("."))
 }
 
 #[cfg(test)]

@@ -18,6 +18,7 @@ toml = "0.9"
 clap = { version = "4", features = ["derive"] }
 owo-colors = "4"
 dialoguer = "0.12"
+gripsack-fs = { version = "0.20.0", path = "crates/gripsack-fs" }
 gripsack-ir = { version = "0.20.0", path = "crates/gripsack-ir" }
 gripsack-store = { version = "0.20.0", path = "crates/gripsack-store" }
 gripsack-trace = { version = "0.20.0", path = "crates/gripsack-trace" }
