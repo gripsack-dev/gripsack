@@ -103,3 +103,43 @@ damaged.
 3. cap-std/openat fs layer (when the recovery core soaks)
 4. Signed update-channel manifest + installer verification
 5. SBOM (SPDX) per release
+
+---
+
+## Amendment (2026-09-04): the fsync point, adopted after all
+
+Answering "did we take the transaction protocol?" surfaced the one
+line of §5.1's protocol that 0.19.1 skipped: deletions must be
+followed by an fsync of the journal directory. Without it, a power
+loss mid-cleanup could resurrect an entry whose sibling run-marker
+deletion WAS durable — reconcile would read no marker and restore a
+committed generation's priors. Shipped in 0.19.2.
+
+With that, the protocol comparison is complete: run marker
+(= their meta.json, minus the dead-weight UUID and unused
+previous_generation), per-destination entries (= their operations/),
+current-vs-target commit decision (= their three-way, with the
+ambiguous case ruled out by the lifecycle flock), durable
+record-before-mutate and durable delete-after-commit. Nothing of
+theirs remains unadopted except the field-for-field shape, which
+carries no semantics we use.
+
+## Amendment (2026-09-04): cap-std/openat, the decision restated
+
+Asked directly whether we're taking the directory-capability
+filesystem libraries: **no, not now — and the reason is evidence,
+not taste.** Three hardening rounds and two external reviews have
+produced ~30 fixed bugs; the classes were crash-consistency,
+validation, panics, and hang paths. Zero were fd-relative TOCTOU
+races. cap-std is the right *eventual* shape for the write paths
+(one capability-scoped `Dir` per roots, `O_NOFOLLOW` opens,
+byte-preserving `OsStr`), but it is a wholesale rewrite of the fs
+layer — the most sensitive code, days after its crash-recovery
+protocol landed — and taking it piecemeal is the worst option:
+half-capability, half-string-paths is false confidence. Trigger for
+adoption, recorded so it survives us: the macOS behavioral suite
+passing plus either one real TOCTOU report or the approach of 1.0.
+Queued in the list below; nothing about this deferral weakens the
+current guards (deploy refuses destinations resolving into the repo,
+the journal refuses non-regular files and non-UTF-8 symlink
+targets, prior blobs are content-addressed and write-once).

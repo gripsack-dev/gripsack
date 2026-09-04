@@ -207,7 +207,12 @@ pub fn commit_run(home: &Path) -> io::Result<()> {
             std::fs::remove_file(&path)?;
         }
     }
-    Ok(())
+    // deletions are durable before we return: a power loss after
+    // cleanup must not resurrect entries whose sibling run-marker
+    // deletion WAS durable — reconcile would then read no marker and
+    // restore a committed generation's priors (review: fsync the
+    // journal directory after deletion)
+    fs::fsync_dir(&dir)
 }
 
 /// The run ended without mutating anything (satisfied, empty graph):
@@ -217,6 +222,7 @@ pub fn commit_run(home: &Path) -> io::Result<()> {
 /// crash window.
 pub fn end_run(home: &Path) -> io::Result<()> {
     let _ = std::fs::remove_file(run_marker_path(home));
+    let _ = fs::fsync_dir(&dir(home));
     Ok(())
 }
 
