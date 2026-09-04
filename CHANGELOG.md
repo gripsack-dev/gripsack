@@ -3,6 +3,58 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.22.0] — 2026-09-04
+
+Transaction coverage for everything that mutates a destination
+(plan/0025, fresh-eyes review of 0.21.1).
+
+### Changed
+
+- **The exported env profile is generation-local** — it now lives at
+  `generations/<N>/env/profile.sh`, sourced through
+  `$GRIPSACK_HOME/current/env/profile.sh`, so it activates with the
+  generation flip on apply AND rollback (previously two asymmetric
+  windows existed either side of the flip). **If your rc file sources
+  the old `env/profile.sh` path, update it to
+  `current/env/profile.sh`** — the old file is removed on the next
+  apply. The rc-side path stays stable; it just resolves through
+  `current` now.
+
+### Fixed
+
+- **`grip rollback` runs the same journaled transaction as apply** —
+  run marker (with an op kind; a rollback's commit condition
+  inverts), per-destination entries, flip, commit. A kill mid-
+  rollback is recovered by the next run; an ordinary failure restores
+  the pre-rollback state before returning.
+- **Prune-on-undeclare mutations are journaled.** A kill between
+  prune and the flip previously left pruned destinations removed
+  under the old generation with no record; reconcile now restores
+  them before the run proceeds.
+- **The journal drift guard actually matches now.** `decide` compared
+  `mark_after`'s identity against the raw sha256 of the destination,
+  but deploy has always recorded the canonical bytes hash — the two
+  never matched, so recovery *kept* every file entry instead of
+  restoring it. Latent since 0.19.0; the unit and e2e tests pinned
+  the same wrong pairing, which is why it survived. Found by this
+  round's kill-point e2e (real SIGABRT windows, not crafted state).
+- **Failed applies and rollbacks compensate through one path** — the
+  journal's own reconcile — covering lockfile/prune/manifest/env
+  errors after the scheduler, not just scheduler failures.
+- **Take-over prior capture fails closed.** `capture_prior` collapsed
+  permission/I/O/UTF-8 errors into "no prior existed"; only NotFound
+  means absent now, and non-UTF-8 symlink targets refuse the
+  take-over (matching the journal's rule). The pre-adoption state is
+  the product's central promise; it is never silently unrecoverable.
+- **Journal reconcile fsyncs its deletions and fails closed on
+  unreadable commit evidence** (run marker, `current`) — permission
+  and I/O errors are not "absent" in recovery code.
+- **Cross-filesystem (EXDEV) store publishes preserve permissions**
+  — the 0.21.0 capability copy path re-created files with default
+  modes, dropping exec bits and the store's read-only policy, and
+  skipped file/dir fsyncs. Covered by a real two-filesystem test
+  (tmpfs → disk).
+
 ## [0.21.2] — 2026-09-04
 
 ### Fixed
