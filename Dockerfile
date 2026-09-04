@@ -9,8 +9,25 @@
 # e2e) run on glibc bases, where the static binary works fine.
 
 FROM rust:alpine AS builder
-RUN apk add --no-cache musl-dev git \
+RUN apk add --no-cache musl-dev git curl xz \
     && rustup component add clippy rustfmt
+# cargo-auditable embeds the dependency tree into the release binary
+# (plan/0022) — the SBOM travels with grip. Prebuilt + sha256-pinned:
+# from-source tool installs break on new toolchains (the cargo-audit
+# lesson, audit.yml). Debug/e2e builds stay plain cargo.
+ARG CARGO_AUDITABLE_VERSION=0.7.5
+RUN set -e; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;; \
+      aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v${CARGO_AUDITABLE_VERSION}/cargo-auditable-${arch}-unknown-linux-musl.tar.xz"; \
+    echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -; \
+    mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca; \
+    mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable; \
+    rm -rf /tmp/ca /tmp/ca.tar.xz
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
@@ -72,7 +89,7 @@ CMD ["uv", "run", "--locked", "--no-sync", "pytest"]
 
 # Stripped static release binary.
 FROM builder AS release
-RUN cargo build --release --locked -p gripsack \
+RUN cargo auditable build --release --locked -p gripsack \
     && strip target/release/grip \
     && ldd target/release/grip 2>&1 | grep -q "Not a valid dynamic program\|not a dynamic executable" \
     && echo "static: ok"

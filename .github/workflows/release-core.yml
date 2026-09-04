@@ -36,6 +36,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # plan/0022: shipped binaries embed their dependency tree
+      # (cargo-auditable); the verify step below audits the SHIPPED
+      # binary itself (cargo audit bin), proving the embed landed on
+      # the exact artifact users download. Prebuilt installs only —
+      # from-source tool builds break on new toolchains (audit.yml's
+      # lesson).
+      - uses: taiki-e/install-action@v2
+        if: "!matrix.docker"
+        with:
+          tool: cargo-auditable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
       - name: Build (linux musl, docker)
         if: matrix.docker
         run: |
@@ -47,7 +60,7 @@ jobs:
         if: "!matrix.docker"
         run: |
           rustup target add ${{ matrix.target }}
-          cargo build --release --locked --target ${{ matrix.target }} -p gripsack
+          cargo auditable build --release --locked --target ${{ matrix.target }} -p gripsack
           VERSION="${GITHUB_REF_NAME#core-v}"
           PKG="gripsack-$VERSION-${{ matrix.target }}"
           staging="$(mktemp -d)"
@@ -68,6 +81,9 @@ jobs:
           file "$bin"
           ! ldd "$bin" 2>&1 | grep -q "=>"
           "$bin" --version
+          # fails the release if the SBOM embed is missing or the
+          # shipped tree hits an advisory (plan/0022 §2)
+          cargo audit bin "$bin"
 
       - name: "Verify binary (macOS: system libs only)"
         if: "!matrix.docker"
@@ -81,6 +97,7 @@ jobs:
           otool -L "$bin"
           ! otool -L "$bin" | grep -qvE "libSystem|libiconv|CoreFoundation|Security|SystemConfiguration"
           "$bin" --version
+          cargo audit bin "$bin"
 
       - uses: actions/upload-artifact@v7
         with:

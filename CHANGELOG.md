@@ -17,6 +17,15 @@ Capability-based filesystem writes (plan/0021), an in-binary SBOM
   Mac (case-insensitive filesystems treat `~/Foo` and `~/foo` as one
   file). Case-variant destinations were ~always typos anyway.
 
+### Added
+
+- **In-binary SBOM on every release binary** — release builds now go
+  through `cargo auditable`, embedding the full dependency tree into
+  `grip` itself. Audit any installed binary directly: `cargo audit
+  bin "$(which grip)"`. The release workflow audits the shipped,
+  stripped tarball binary and fails the release if the embed is
+  missing or an advisory matches.
+
 ## [0.20.0] — 2026-09-04
 
 The macOS hardening round + release attestations (plan/0020's two
