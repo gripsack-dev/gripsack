@@ -43,6 +43,24 @@ the use cannot observe different filesystems.
 > The quality bar is high: modular, readable, why-comments where
 > the code surprises. The acceptance criteria below are the floor.
 
+## Crate decision: gripsack-fs IS the migration seam
+
+Do NOT split fs.rs into its own crate as a standalone refactor —
+280 lines, no payoff, churn. INSTEAD, as phase 1 of the migration:
+create `crates/gripsack-fs` holding the new capability API
+(`Dir`-relative atomic_write/symlink_replace/publish + the rustix
+mechanics), while `gripsack-store::fs` keeps the old string-path
+API as the migration wrapper (store re-exports from gripsack-fs
+where semantics are identical). Callers migrate onto gripsack-fs
+across phases 2–4; phase 5 ("delete the wrappers") then DELETES
+store::fs.rs entirely — gripsack-store depends on gripsack-fs,
+and gripsack-fetch switches its atomic_write/symlink_replace uses
+to gripsack-fs directly (dropping its only store dependency that
+isn't hash/canonicalization — that dishonest edge already exists).
+hash.rs and paths.rs STAY in store: they are identity and layout,
+not mechanics. Result: the crate boundary is the migration's
+checkpoint, and gripsack-fs earns its existence by the end.
+
 ## Migration order (each phase ships green independently)
 
 1. **journal.rs + prior blobs** (smallest, newest, best-tested —
