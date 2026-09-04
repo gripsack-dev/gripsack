@@ -486,6 +486,7 @@ name = "gripsack-fetch"
 version = "0.20.0"
 dependencies = [
  "flate2",
+ "gripsack-fs",
  "gripsack-ir",
  "gripsack-store",
  "parking_lot",
@@ -554,6 +555,7 @@ dependencies = [
 name = "gripsack-trace"
 version = "0.20.0"
 dependencies = [
+ "gripsack-fs",
  "gripsack-store",
  "tempfile",
  "tracing",

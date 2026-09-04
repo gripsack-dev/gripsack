@@ -29,7 +29,6 @@
 //! or between mutation and the after-mark) restores unconditionally —
 //! the same choice the in-process rollback makes on failure.
 
-use crate::fs;
 use gripsack_fs::Dir;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -83,6 +82,33 @@ impl From<&Prior> for PriorSerde {
 /// Where the journal lives.
 pub fn dir(home: &Path) -> PathBuf {
     home.join("journal")
+}
+
+/// A prior blob's path relative to the home capability:
+/// `prior/<sha256>`.
+pub fn prior_blob_rel(sha: &str) -> PathBuf {
+    Path::new("prior").join(sha)
+}
+
+/// Store pre-take-over bytes content-addressed (0015 §4): returns the
+/// sha256 the manifest references. Dedup is the point — priors are
+/// small, and identical originals share one blob. Written through the
+/// home capability (plan/0021).
+pub fn store_prior_blob_in(home: &Dir, bytes: &[u8]) -> io::Result<String> {
+    let sha = crate::hash::hex_sha256(bytes);
+    let rel = prior_blob_rel(&sha);
+    // symlink_metadata does not follow links: a planted `prior/<sha>`
+    // symlink would skip the write and later restore THROUGH it. Skip
+    // only a real regular file; anything else is replaced by the
+    // atomic rename.
+    let present = home
+        .symlink_metadata(&rel)
+        .map(|m| m.is_file())
+        .unwrap_or(false);
+    if !present {
+        gripsack_fs::atomic_write(home, &rel, bytes)?;
+    }
+    Ok(sha)
 }
 
 /// An entry's path relative to the home capability: the journal's
@@ -142,7 +168,7 @@ pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io:
     }
     if meta.is_file() {
         let bytes = dest_dir.read(dest_name)?;
-        let hash = fs::store_prior_blob_in(home, &bytes)?;
+        let hash = store_prior_blob_in(home, &bytes)?;
         return Ok(Prior::File { hash });
     }
     // directories/fifos/devices are refused by deploy's guards; if
@@ -409,7 +435,7 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
             let _ = dest_dir.remove_file(dest_name);
         }
         PriorSerde::File { hash } => {
-            let bytes = home.read(fs::prior_blob_rel(hash))?;
+            let bytes = home.read(prior_blob_rel(hash))?;
             gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?;
         }
         PriorSerde::Symlink { target } => {

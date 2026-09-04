@@ -34,7 +34,8 @@ pub fn restore_entry(
                 );
                 return Ok(());
             }
-            store::symlink_replace(dest, &source)
+            let (dest_dir, dest_name) = dest_capability(dest)?;
+            gripsack_fs::symlink_replace(&dest_dir, &dest_name, &source)
         }
         Ownership::Merge => {
             let payload = std::fs::read_to_string(&source).unwrap_or_default();
@@ -45,18 +46,25 @@ pub fn restore_entry(
                 return Ok(());
             };
             match crate::template::upsert_block(&existing, module, dest, None, &payload) {
-                Ok(new) => store::atomic_write(dest, new.as_bytes()),
+                Ok(new) => {
+                    let (dest_dir, dest_name) = dest_capability(dest)?;
+                    gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
+                }
                 Err(_) => Ok(()), // malformed markers: leave the foreign file alone
             }
         }
         Ownership::Template => std::fs::read(&source).and_then(|raw| {
             crate::template::render_template(&raw, &entry.vars, &entry.from)
                 .map_err(std::io::Error::other)
-                .and_then(|bytes| store::atomic_write(dest, &bytes))
+                .and_then(|bytes| {
+                    let (dest_dir, dest_name) = dest_capability(dest)?;
+                    gripsack_fs::atomic_write(&dest_dir, &dest_name, &bytes)
+                })
         }),
-        Ownership::TrackedCopy => {
-            std::fs::read(&source).and_then(|bytes| store::atomic_write(dest, &bytes))
-        }
+        Ownership::TrackedCopy => std::fs::read(&source).and_then(|bytes| {
+            let (dest_dir, dest_name) = dest_capability(dest)?;
+            gripsack_fs::atomic_write(&dest_dir, &dest_name, &bytes)
+        }),
     }
 }
 
@@ -80,7 +88,9 @@ pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: 
                     if new.trim().is_empty() {
                         std::fs::remove_file(dest).is_ok()
                     } else {
-                        store::atomic_write(dest, new.as_bytes()).is_ok()
+                        dest_capability(dest)
+                            .and_then(|(d, n)| gripsack_fs::atomic_write(&d, &n, new.as_bytes()))
+                            .is_ok()
                     }
                 }
                 _ => false, // drifted block is the user's now
@@ -115,7 +125,7 @@ fn capture_prior(
         })
     } else if meta.is_file() {
         let bytes = dest_dir.read(dest_name).ok()?;
-        let sha = store::fs::store_prior_blob_in(home, &bytes).ok()?;
+        let sha = store::journal::store_prior_blob_in(home, &bytes).ok()?;
         #[cfg(unix)]
         let mode = {
             use gripsack_fs::cap_std::fs::MetadataExt;
@@ -143,10 +153,10 @@ fn restore_prior(dest: &Path, prior: &store::Prior, home: &Path) -> bool {
             let Ok(bytes) = std::fs::read(store::prior_blob_path(home, sha)) else {
                 return false;
             };
-            if let Some(parent) = dest.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if !store::atomic_write(dest, &bytes).is_ok() {
+            if !dest_capability(dest)
+                .and_then(|(d, n)| gripsack_fs::atomic_write(&d, &n, &bytes))
+                .is_ok()
+            {
                 return false;
             }
             #[cfg(unix)]
@@ -161,11 +171,11 @@ fn restore_prior(dest: &Path, prior: &store::Prior, home: &Path) -> bool {
             let Some(target) = &prior.content else {
                 return false;
             };
-            let _ = std::fs::remove_file(dest);
-            #[cfg(unix)]
-            return std::os::unix::fs::symlink(target, dest).is_ok();
-            #[cfg(not(unix))]
-            return false;
+            // symlink_replace over remove+create: the swap is atomic
+            // and parent-fsync'd (strictly stronger than the old pair)
+            dest_capability(dest)
+                .and_then(|(d, n)| gripsack_fs::symlink_replace(&d, &n, Path::new(target)))
+                .is_ok()
         }
     }
 }
@@ -262,7 +272,9 @@ fn journaled(
 /// all resolve relative to it — a parent symlink swapped in after
 /// `dest_resolves_into` ran cannot redirect the write (plan/0021
 /// phase 2).
-fn dest_capability(dest: &Path) -> std::io::Result<(gripsack_fs::Dir, std::path::PathBuf)> {
+pub(crate) fn dest_capability(
+    dest: &Path,
+) -> std::io::Result<(gripsack_fs::Dir, std::path::PathBuf)> {
     let parent = dest.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(parent)?;
     let dir = gripsack_fs::open(parent)?;

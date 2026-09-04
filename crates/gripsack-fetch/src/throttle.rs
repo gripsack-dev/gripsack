@@ -213,7 +213,7 @@ impl Throttle {
         // the store's atomic write (temp + fsync + rename): a hand-
         // rolled tmp+rename could persist a torn file on crash
         if let Ok(json) = serde_json::to_string(&saved) {
-            let _ = gripsack_store::fs::atomic_write(path, json.as_bytes());
+            let _ = gripsack_fs::atomic_write_at(path, json.as_bytes());
         }
     }
 }

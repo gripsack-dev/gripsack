@@ -9,12 +9,12 @@ use std::path::{Path, PathBuf};
 /// concurrent `grip` runs serialize on the same file. The primitive
 /// lives in gripsack-store (fs::FlockGuard) — one implementation for
 /// apply, trust, and tool provisioning.
-pub use gripsack_store::fs::FlockGuard;
+pub use gripsack_fs::FlockGuard;
 
 /// Hold the apply lifecycle lock (`apply.flock`) — the public handle
 /// for apply and rollback.
 pub fn acquire_lifecycle_lock(home: &Path) -> io::Result<FlockGuard> {
-    gripsack_store::fs::FlockGuard::acquire(&home.join("locks"), "apply")
+    gripsack_fs::FlockGuard::acquire(&home.join("locks"), "apply")
 }
 
 pub(crate) fn progress(ctx: &Ctx, module: &str, verb: &str) {

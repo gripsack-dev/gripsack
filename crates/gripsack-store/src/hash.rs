@@ -289,7 +289,7 @@ mod tests {
         let overlay = canonical_overlay_hash(&repo, &froms).unwrap();
         // what publish stages: the dir copied under its from path
         let staged = dir.path().join("staged");
-        crate::fs::copy_dir(&repo.join("configs/app"), &staged.join("configs/app")).unwrap();
+        gripsack_fs::copy_dir(&repo.join("configs/app"), &staged.join("configs/app")).unwrap();
         assert_eq!(
             overlay,
             canonical_tree_hash(&staged).unwrap(),

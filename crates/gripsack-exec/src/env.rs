@@ -65,7 +65,7 @@ pub fn render_env_file(
         let _ = std::fs::remove_file(&path);
         return Ok(path);
     }
-    store::atomic_write(&path, lines.join("\n").as_bytes())?;
+    gripsack_fs::atomic_write_at(&path, lines.join("\n").as_bytes())?;
     Ok(path)
 }
 

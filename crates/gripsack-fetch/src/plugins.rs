@@ -162,7 +162,7 @@ impl PluginStore {
         };
         let receipt_dir = self.receipt_path(&exe);
         std::fs::create_dir_all(receipt_dir.parent().expect("receipts dir"))?;
-        gripsack_store::fs::atomic_write(
+        gripsack_fs::atomic_write_at(
             &receipt_dir,
             toml::to_string(&receipt)
                 .map_err(|e| FetchError::Http {
@@ -174,7 +174,7 @@ impl PluginStore {
         // re-point current atomically (the store's symlink swap —
         // same primitive as the generation flip)
         let current = self.exe_dir(&exe).join("current");
-        gripsack_store::fs::symlink_replace(&current, &self.exe_dir(&exe).join(&release.version))?;
+        gripsack_fs::symlink_replace_at(&current, &self.exe_dir(&exe).join(&release.version))?;
 
         tracing::info!(
             plugin = exe,

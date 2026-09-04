@@ -80,7 +80,7 @@ impl InputsFile {
             eprintln!("grip: cannot serialize host inputs: {e}");
             ExitCode::FAILURE
         })?;
-        gripsack_store::atomic_write(&self.path, json.as_bytes()).map_err(|e| {
+        gripsack_fs::atomic_write_at(&self.path, json.as_bytes()).map_err(|e| {
             eprintln!("grip: cannot write {}: {e}", self.path.display());
             ExitCode::FAILURE
         })

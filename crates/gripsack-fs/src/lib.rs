@@ -440,6 +440,25 @@ mod tests {
         assert_eq!(meta.permissions().mode() & 0o222, 0);
     }
 
+    #[test]
+    fn copy_dir_preserves_symlinks_and_merges() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("sub/f"), b"bytes").unwrap();
+        std::os::unix::fs::symlink("f", src.join("sub/link")).unwrap();
+        // merge: the destination already holds a fetched payload dir
+        let dst = dir.path().join("dst");
+        std::fs::create_dir_all(dst.join("sub")).unwrap();
+        std::fs::write(dst.join("sub/payload"), b"fetched").unwrap();
+        copy_dir(&src, &dst).unwrap();
+        assert_eq!(std::fs::read(dst.join("sub/f")).unwrap(), b"bytes");
+        assert_eq!(std::fs::read(dst.join("sub/payload")).unwrap(), b"fetched");
+        let link = dst.join("sub/link");
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_link(link).unwrap(), Path::new("f"));
+    }
+
     /// The adversary the migration exists for (plan/0021 acceptance):
     /// a thread flips the `parent` PATH between a real directory and a
     /// symlink to `evil` while writes land through a capability opened

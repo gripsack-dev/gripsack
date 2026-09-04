@@ -399,7 +399,7 @@ impl<'a> ModuleRun<'a> {
                 // a directory `from` stages recursively (symlinks
                 // recreated, matching canonical_overlay_hash) — deploy
                 // must never link the repo checkout itself
-                store::copy_dir(&repo_file, &stage.join(&entry.from))?;
+                gripsack_fs::copy_dir(&repo_file, &stage.join(&entry.from))?;
             } else if repo_file.is_file() {
                 let dest = stage.join(&entry.from);
                 if let Some(parent) = dest.parent() {

@@ -263,7 +263,8 @@ fn prune_undeclared(
                         if new.trim().is_empty() {
                             std::fs::remove_file(&dest)?;
                         } else {
-                            store::atomic_write(&dest, new.as_bytes())?;
+                            let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
+                            gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())?;
                         }
                         info!("pruned {} (block)", entry.to);
                     }
