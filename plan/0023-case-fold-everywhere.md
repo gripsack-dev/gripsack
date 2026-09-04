@@ -49,6 +49,21 @@ Rationale (owner-approved):
    (case-insensitive filesystems treat variants as one file)."
 6. Docker gates, PR (normal flow), merge, tag `core-v0.20.1`.
 
+## Working agreements for the implementing session
+
+- **Breaking changes are allowed** — this is pre-1.0 alpha with no
+  users to carry (the owner's standing policy; 0.18.0 removed an
+  entire authoring style on this basis). If a backward-incompatible
+  change makes the code simpler or the behavior more consistent,
+  take it: bump the minor version and write the changelog entry.
+- **Code quality bar**: high — readable over clever, modular over
+  monolithic, no 800-line files unless the domain genuinely demands
+  it, no terse conditions/types that are easy to write and hard to
+  read. The codebase's existing style (why-comments at the point of
+  surprise, one concern per file/pass) is the floor, not the target.
+- Every behavior change lands with its regression test; every fix
+  at the root, never the symptom.
+
 ## Sequencing for the fresh session
 
 Do this **first** — it's an afternoon and it lands a decision the
