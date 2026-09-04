@@ -180,7 +180,7 @@ fn read_only_files(_dir: &Path) -> io::Result<()> {
 }
 
 /// fsync a directory so renames into it are durable.
-fn fsync_dir(dir: &Path) -> io::Result<()> {
+pub(crate) fn fsync_dir(dir: &Path) -> io::Result<()> {
     std::fs::File::open(dir)?.sync_all()
 }
 

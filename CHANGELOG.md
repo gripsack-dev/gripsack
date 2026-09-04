@@ -3,6 +3,16 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.19.2] — 2026-09-04
+
+- **Journal cleanup is now durable.** `commit_run`/`end_run` fsync the
+  journal directory after deletions: a power loss mid-cleanup could
+  previously resurrect an entry whose sibling run-marker deletion WAS
+  durable — reconcile would then read no marker and restore a
+  committed generation's priors. Edge of an edge, but it is the
+  invariant (review's fsync point, the one line of the transaction
+  protocol 0.19.1 skipped).
+
 ## [0.19.1] — 2026-09-03
 
 From an external architecture review — every source-level finding was
