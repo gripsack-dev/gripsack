@@ -119,23 +119,37 @@ def test_throttle_token_bucket_serializes_plugin_fetches(sandbox, monkeypatch):
 
 
 def test_throttle_user_override_beats_plugin_budget(sandbox, monkeypatch):
-    """env.toml [throttle] outranks the fetcher's own declaration."""
+    """env.toml [throttle] outranks the fetcher's own declaration.
+    Self-relative: the budget-limited run (1/s across two fetches)
+    sets this machine's baseline; the overridden run must beat it by
+    the budget delay — wall-clock absolutes flake on slow runners."""
     bindir = sandbox / "bin"
     bindir.mkdir()
     fetcher = bindir / "gripfetch-demo"
     fetcher.write_text(FETCH_FIXTURE)
     fetcher.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
-    repo = make_env_repo(sandbox / "myenv", PLUGIN_MODULES)
-    with open(repo / "env.toml", "a") as f:
-        f.write('\n[throttle]\n"demo.local" = "100/s"\n')
     import time
 
+    # baseline: the plugin's own 1/s budget delays the second fetch
+    repo = make_env_repo(sandbox / "budgeted", PLUGIN_MODULES)
     start = time.monotonic()
     out = grip("apply", "--host", "testhost", cwd=repo)
-    elapsed = time.monotonic() - start
+    budgeted = time.monotonic() - start
     assert out.returncode == 0, out.stderr
-    assert elapsed < 0.9, f"override not applied — took {elapsed:.2f}s"
+
+    # override: 100/s in env.toml outranks the declaration
+    repo = make_env_repo(sandbox / "overridden", PLUGIN_MODULES)
+    with open(repo / "env.toml", "a") as f:
+        f.write('\n[throttle]\n"demo.local" = "100/s"\n')
+    start = time.monotonic()
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    overridden = time.monotonic() - start
+    assert out.returncode == 0, out.stderr
+    assert overridden < budgeted - 0.5, (
+        f"override not applied: budgeted {budgeted:.2f}s, "
+        f"overridden {overridden:.2f}s"
+    )
 
 
 def test_fetcher_package_ref_resolves_from_the_plugin_store(sandbox):

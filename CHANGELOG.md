@@ -3,6 +3,46 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.20.0] — 2026-09-04
+
+The macOS hardening round + release attestations (plan/0020's two
+queued items), plus an e2e harness rebuilt for cross-platform CI.
+
+### Added
+
+- **macOS behavioral CI** — the full 93-test flow suite now runs
+  natively on a macOS runner every push (not just release builds):
+  APFS rename/symlink semantics, case-insensitive filesystems, and
+  Gatekeeper behavior get exercised per-commit, where findings are
+  cheap.
+- **Signed release attestations** — every release tarball carries
+  GitHub build provenance, verifiable with `gh attestation verify
+  <tarball> -R gripsack-dev/gripsack`.
+- **E111 folds case on macOS hosts** — APFS is case-insensitive by
+  default: `~/Foo` and `~/foo` are the same file but distinct
+  strings, so two modules could claim one destination and race in
+  parallel deploy. The duplicate-destination pass now case-folds
+  when the host reports `os: macos` (and says so in the message).
+
+### Fixed
+
+- **Provisioned Deno is Gatekeeper-safe** — the pinned runtime
+  download lands with a quarantine xattr on macOS (downloaded
+  archive), which can kill or translocate the binary at exec. The
+  attribute is stripped best-effort after the sha256 verification
+  that already proves the bytes.
+- **The e2e timing tests no longer flake on slow runners** — both
+  wall-clock assertions (`elapsed < 0.9`, `elapsed < 3.5`) are now
+  self-relative: each test measures its own baseline (serial, or
+  budget-limited) in the same sandbox and asserts the delta. A slow
+  machine slows both sides equally. Both passed on the WSL2 host
+  that used to flake them.
+- **e2e failures print the grip run log** — the sandbox fixture now
+  tails the last 25 JSONL lines of the failed run's log into the
+  pytest output (bazel keeps per-test logs for the same reason):
+  CI failures on a platform you can't run locally are debuggable
+  from the log, not archaeology.
+
 ## [0.19.2] — 2026-09-04
 
 - **Journal cleanup is now durable.** `commit_run`/`end_run` fsync the

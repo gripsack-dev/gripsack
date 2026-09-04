@@ -3,9 +3,12 @@ name: release-core
 on:
   push:
     tags: ["core-v*"]
-
 permissions:
   contents: write
+  # artifact attestations (plan/0020 §5.8): the release tarballs get
+  # a signed provenance statement GitHub can verify client-side
+  id-token: write
+  attestations: write
 
 # Two core tags cut at once (0.4.1 + 0.5.0) raced the homebrew-tap
 # push and one lost — serialize; the newer tag waits.
@@ -105,6 +108,12 @@ jobs:
           count="$(ls dist/gripsack-*.tar.gz | wc -l)"
           test "$count" -eq 4 || {
             echo "::error::expected 4 platform tarballs, got $count"; exit 1; }
+
+      # signed build provenance for every tarball (plan/0020 §5.8):
+      # verifiable with `gh attestation verify <file> -R gripsack-dev/gripsack`
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/gripsack-*.tar.gz
 
       # crates.io before the GitHub release: it is the irreversible
       # artifact. The guard fails a mistagged release instead of

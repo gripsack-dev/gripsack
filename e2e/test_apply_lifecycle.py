@@ -356,28 +356,40 @@ export default module("{name}", {{
 
 
 def test_independent_modules_run_in_parallel(sandbox):
-    """Two independent 2s builds finish in ~2s, not 4s (0007 §5 —
-    the ready-queue scheduler runs N = cores)."""
+    """Two independent 2s builds overlap (0007 §5 — the ready-queue
+    scheduler runs N = cores). Self-relative: measure a --jobs 1
+    baseline in this same sandbox, then assert the default-jobs run
+    beats it by the overlap — wall-clock absolutes flake on slow
+    runners (the macOS round taught this)."""
     import time
 
-    repo = make_env_repo(
-        sandbox / "myenv",
-        {
-            name: f"""
+    modules = {
+        name: f"""
 import {{ module }} from "@gripsack/core";
 
 export default module("{name}", {{
   build: {{ kind: "custom_shell", script: "sleep 2" }},
 }});
 """
-            for name in ("slow-a", "slow-b")
-        },
-    )
+        for name in ("slow-a", "slow-b")
+    }
+
+    repo = make_env_repo(sandbox / "serial", modules)
+    start = time.monotonic()
+    out = grip("apply", "--host", "testhost", "--jobs", "1", cwd=repo)
+    serial = time.monotonic() - start
+    assert out.returncode == 0, out.stderr
+
+    repo = make_env_repo(sandbox / "parallel", modules)
     start = time.monotonic()
     out = grip("apply", "--host", "testhost", cwd=repo)
-    elapsed = time.monotonic() - start
+    parallel = time.monotonic() - start
     assert out.returncode == 0, out.stderr
-    assert elapsed < 3.5, f"serial execution suspected: {elapsed:.1f}s"
+    # two 2s builds: serial ~4s+overhead, parallel ~2s+overhead — the
+    # speedup must recover at least half the second sleep
+    assert parallel < serial - 0.8, (
+        f"no overlap detected: serial {serial:.1f}s, parallel {parallel:.1f}s"
+    )
 
 
 def test_failed_apply_rolls_back_this_runs_deployments(sandbox):
