@@ -469,6 +469,7 @@ version = "0.20.0"
 dependencies = [
  "gripsack-config",
  "gripsack-fetch",
+ "gripsack-fs",
  "gripsack-ir",
  "gripsack-store",
  "libc",

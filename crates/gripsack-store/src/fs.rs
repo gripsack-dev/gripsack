@@ -43,6 +43,29 @@ pub fn store_prior_blob(home: &Path, bytes: &[u8]) -> io::Result<String> {
     Ok(sha)
 }
 
+/// A prior blob's path relative to the home capability:
+/// `prior/<sha256>`.
+pub fn prior_blob_rel(sha: &str) -> std::path::PathBuf {
+    Path::new("prior").join(sha)
+}
+
+/// [`store_prior_blob`] through the home capability (plan/0021 phase
+/// 1): the write is named relative to the `Dir`, never re-resolved.
+pub fn store_prior_blob_in(home: &gripsack_fs::Dir, bytes: &[u8]) -> io::Result<String> {
+    let sha = crate::hash::hex_sha256(bytes);
+    let rel = prior_blob_rel(&sha);
+    // same planted-symlink guard as the string version: skip only a
+    // real regular file; anything else is replaced by the atomic rename
+    let present = home
+        .symlink_metadata(&rel)
+        .map(|m| m.is_file())
+        .unwrap_or(false);
+    if !present {
+        gripsack_fs::atomic_write(home, &rel, bytes)?;
+    }
+    Ok(sha)
+}
+
 /// Where a prior blob lives: `$GRIPSACK_HOME/prior/<sha256>`.
 pub fn prior_blob_path(home: &Path, sha: &str) -> std::path::PathBuf {
     home.join("prior").join(sha)
@@ -70,12 +93,6 @@ pub fn publish_dir(staging: &Path, dest: &Path) -> io::Result<()> {
 /// or merged into — so a repo overlay can land on a fetched payload.
 pub fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
     gripsack_fs::copy_dir(src, dst)
-}
-
-/// fsync a directory so renames into it are durable.
-pub(crate) fn fsync_dir(dir: &Path) -> io::Result<()> {
-    let cap = gripsack_fs::open(dir)?;
-    gripsack_fs::fsync_dir(&cap, Path::new("."))
 }
 
 #[cfg(test)]

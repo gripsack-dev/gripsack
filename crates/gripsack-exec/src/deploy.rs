@@ -239,7 +239,7 @@ pub(crate) fn run_rollback(
 /// commits (the flip); per-entry there is no commit, matching the
 /// run-level rollback's all-or-nothing semantics.
 fn journaled(
-    home: &Path,
+    home: &gripsack_fs::Dir,
     dest: &Path,
     after: String,
     mutate: impl FnOnce() -> std::io::Result<()>,
@@ -400,7 +400,7 @@ pub(crate) fn deploy_entry(
                     std::fs::create_dir_all(parent)?;
                 }
                 let target = source.to_string_lossy().into_owned();
-                journaled(&ctx.home, &dest, target, || {
+                journaled(ctx.home_dir()?, &dest, target, || {
                     store::symlink_replace(&dest, &source)
                 })?;
             }
@@ -448,7 +448,7 @@ pub(crate) fn deploy_entry(
                     )
                 } else if prev_hash == Some(current.as_str()) {
                     let after = store::canonical_bytes_hash(content);
-                    journaled(&ctx.home, &dest, after, || {
+                    journaled(ctx.home_dir()?, &dest, after, || {
                         store::atomic_write(&dest, content)
                     })?;
                     (
@@ -461,7 +461,7 @@ pub(crate) fn deploy_entry(
                     // 0015 §4: record the foreign bytes before absorbing
                     let prior = capture_prior(&dest, &ctx.home);
                     let after = store::canonical_bytes_hash(content);
-                    journaled(&ctx.home, &dest, after, || {
+                    journaled(ctx.home_dir()?, &dest, after, || {
                         store::atomic_write(&dest, content)
                     })?;
                     (
@@ -488,7 +488,7 @@ pub(crate) fn deploy_entry(
                     std::fs::create_dir_all(parent)?;
                 }
                 let after = store::canonical_bytes_hash(content);
-                journaled(&ctx.home, &dest, after, || {
+                journaled(ctx.home_dir()?, &dest, after, || {
                     store::atomic_write(&dest, content)
                 })?;
                 (
@@ -558,7 +558,7 @@ pub(crate) fn deploy_entry(
                     std::fs::create_dir_all(parent)?;
                 }
                 let after = store::canonical_bytes_hash(new.as_bytes());
-                journaled(&ctx.home, &dest, after, || {
+                journaled(ctx.home_dir()?, &dest, after, || {
                     store::atomic_write(&dest, new.as_bytes())
                 })?;
                 (

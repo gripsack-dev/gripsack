@@ -23,6 +23,7 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
     let host_name = outcome.host.clone();
     let ctx = Ctx {
         home: store::gripsack_home(),
+        home_dir: Default::default(),
         repo: repo.to_path_buf(),
         only: modules,
         host: host_name,

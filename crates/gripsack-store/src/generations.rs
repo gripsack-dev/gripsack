@@ -119,6 +119,17 @@ pub fn current(home: &Path) -> Option<u64> {
         .ok()
 }
 
+/// [`current`] through the home capability (plan/0021): the link is
+/// read relative to the `Dir`, never re-resolved by string.
+pub fn current_in(home: &gripsack_fs::Dir) -> Option<u64> {
+    home.read_link_contents("current")
+        .ok()?
+        .file_name()?
+        .to_string_lossy()
+        .parse()
+        .ok()
+}
+
 /// Flip `current` to a generation — the single indivisible activation
 /// operation (0001 §9.2). The target must exist first: a `current`
 /// pointing at nothing reads as "no generations" everywhere

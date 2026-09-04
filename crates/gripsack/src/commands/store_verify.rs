@@ -20,6 +20,7 @@ pub fn store_verify(repair: bool, palette: Palette) -> ExitCode {
     let host = crate::commands::default_host();
     let ctx = Ctx {
         home,
+        home_dir: Default::default(),
         repo,
         host,
         only: Vec::new(),
