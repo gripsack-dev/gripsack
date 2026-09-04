@@ -98,11 +98,12 @@ damaged.
 
 ## Queued (priority order)
 
-1. GitHub artifact attestations in release-core.yml (supply chain)
-2. macOS e2e job (the release matrix's runners, reused)
-3. cap-std/openat fs layer (when the recovery core soaks)
+1. ~~GitHub artifact attestations in release-core.yml~~ — 0.20.0
+2. ~~macOS e2e job (the release matrix's runners, reused)~~ — 0.20.0
+3. ~~cap-std/openat fs layer~~ — 0.21.0 (plan/0021, shipped)
 4. Signed update-channel manifest + installer verification
-5. SBOM (SPDX) per release
+5. ~~SBOM per release~~ — 0.21.0 (plan/0022, in-binary via
+   cargo-auditable, not a sidecar SPDX file)
 
 ---
 

@@ -1,9 +1,8 @@
 # 0021 — Capability filesystem access (cap-std/openat migration)
 
-Status: **planned, not started** — handover document. Read plan/0020
+Status: **implemented** (0.21.0, all five phases). Read plan/0020
 §"cap-std/openat, the decision restated" for why this was deferred
-and its trigger. This doc is the implementation plan for when it
-fires (one real TOCTOU report, or the approach of 1.0).
+and its trigger.
 
 ## Problem
 
