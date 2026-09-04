@@ -39,7 +39,8 @@ pub use generations::{
     list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{
-    canonical_bytes_hash, canonical_file_hash, canonical_overlay_hash, canonical_tree_hash,
+    canonical_bytes_hash, canonical_file_hash, canonical_file_hash_in, canonical_overlay_hash,
+    canonical_tree_hash,
 };
 pub use journal::{Entry as JournalEntry, Prior as JournalPrior, reconcile, record};
 pub use paths::{

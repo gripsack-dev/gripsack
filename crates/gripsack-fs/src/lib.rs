@@ -28,6 +28,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+pub use cap_std; // metadata/permissions types for Dir-relative readers
 pub use cap_std::fs::Dir;
 
 /// Open `path` as a directory capability. Ambient authority lives at

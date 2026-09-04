@@ -100,12 +100,17 @@ fn run_marker_rel() -> PathBuf {
     Path::new("journal").join("run.json")
 }
 
-/// Capture a destination's current state, backing file bytes up into
-/// the prior blob store. Call immediately before the mutation; the
-/// capture and the write race nothing (the lifecycle lock serializes
-/// runs).
-pub fn capture(dest: &Path, home: &Dir) -> io::Result<Prior> {
-    let meta = match std::fs::symlink_metadata(dest) {
+/// Capture a destination's current state through its pinned parent
+/// capability (plan/0021): the capture, the journaled write, and the
+/// mark-after all name the SAME parent inode — a swapped path
+/// component cannot redirect the mutation the journal is protecting.
+/// File bytes back up into the prior blob store under `home`.
+/// `dest` is the display/record form (absolute); `dest_dir` +
+/// `dest_name` are the access path. Call immediately before the
+/// mutation; the capture and the write race nothing (the lifecycle
+/// lock serializes runs).
+pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io::Result<Prior> {
+    let meta = match dest_dir.symlink_metadata(dest_name) {
         Ok(meta) => meta,
         // only NotFound means absent — a permission error or I/O
         // failure recorded as Absent would make recovery REMOVE a
@@ -119,7 +124,7 @@ pub fn capture(dest: &Path, home: &Dir) -> io::Result<Prior> {
         }
     };
     if meta.file_type().is_symlink() {
-        let target = std::fs::read_link(dest)?;
+        let target = dest_dir.read_link_contents(dest_name)?;
         let Some(target) = target.to_str() else {
             // a non-UTF-8 target lossily recorded would re-create a
             // DIFFERENT link on recovery — refuse the mutation
@@ -136,7 +141,7 @@ pub fn capture(dest: &Path, home: &Dir) -> io::Result<Prior> {
         });
     }
     if meta.is_file() {
-        let bytes = std::fs::read(dest)?;
+        let bytes = dest_dir.read(dest_name)?;
         let hash = fs::store_prior_blob_in(home, &bytes)?;
         return Ok(Prior::File { hash });
     }
@@ -396,12 +401,7 @@ fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry) -> Recovery {
     }
 }
 
-fn restore(
-    dest_dir: &Dir,
-    dest_name: &Path,
-    prior: &PriorSerde,
-    home: &Dir,
-) -> io::Result<()> {
+fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> io::Result<()> {
     match prior {
         PriorSerde::Absent => {
             // remove_file never removes a directory; a dest that grew
@@ -433,6 +433,13 @@ mod tests {
         gripsack_fs::open_or_create(home.path()).expect("home capability")
     }
 
+    /// Capture through the destination's pinned parent capability,
+    /// as deploy's journaled mutations do (plan/0021).
+    fn capture_at(dest: &Path, home: &Dir) -> Prior {
+        let dir = gripsack_fs::open_or_create(dest.parent().unwrap()).unwrap();
+        capture(&dir, Path::new(dest.file_name().unwrap()), dest, home).unwrap()
+    }
+
     #[test]
     fn crash_between_record_and_write_restores_prior() {
         let home = home();
@@ -440,7 +447,7 @@ mod tests {
         std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
         std::fs::write(&dest, b"user stuff\n").unwrap();
 
-        let prior = capture(&dest, &cap(&home)).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         // simulate the crash: mutation never happened, no after, no
         // commit — the file still holds the prior bytes
@@ -460,7 +467,7 @@ mod tests {
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
 
-        let prior = capture(&dest, &cap(&home)).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"deployed half-run content\n").unwrap();
         mark_after(
@@ -482,11 +489,10 @@ mod tests {
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
 
-        let prior = capture(&dest, &cap(&home)).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
-        mark_after(
-            &cap(&home), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
+        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
         // the user edits the file AFTER the crash, before the next run
         std::fs::write(&dest, b"my own edit\n").unwrap();
 
@@ -501,7 +507,7 @@ mod tests {
         let fresh = home.path().join("fresh");
         let link = home.path().join("link");
 
-        let prior = capture(&fresh, &cap(&home)).unwrap();
+        let prior = capture_at(&fresh, &cap(&home));
         assert_eq!(prior, Prior::Absent);
         record(&cap(&home), &fresh, &prior).unwrap();
         std::fs::write(&fresh, b"crashed write\n").unwrap();
@@ -513,12 +519,11 @@ mod tests {
         .unwrap();
 
         std::os::unix::fs::symlink("/original/target", &link).unwrap();
-        let link_prior = capture(&link, &cap(&home)).unwrap();
+        let link_prior = capture_at(&link, &cap(&home));
         record(&cap(&home), &link, &link_prior).unwrap();
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink("/deployed/target", &link).unwrap();
-        mark_after(
-            &cap(&home), &link, "/deployed/target").unwrap();
+        mark_after(&cap(&home), &link, "/deployed/target").unwrap();
 
         reconcile(&cap(&home)).unwrap();
         assert!(!fresh.exists(), "absent prior removes the crashed write");
@@ -538,11 +543,10 @@ mod tests {
         std::fs::write(&dest, b"old\n").unwrap();
 
         begin_run(&cap(&home), 1).unwrap();
-        let prior = capture(&dest, &cap(&home)).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
-        mark_after(
-            &cap(&home), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
+        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
         // the flip: generation 1 becomes current; commit_run never ran
         let manifest = crate::generations::Generation {
             number: 1,
@@ -568,11 +572,10 @@ mod tests {
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
         begin_run(&cap(&home), 1).unwrap();
-        let prior = capture(&dest, &cap(&home)).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"half\n").unwrap();
-        mark_after(
-            &cap(&home), &dest, &crate::hash::hex_sha256(b"half\n")).unwrap();
+        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"half\n")).unwrap();
 
         reconcile(&cap(&home)).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
@@ -595,11 +598,10 @@ mod tests {
         let home = home();
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
-        let prior = capture(&dest, &cap(&home)).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"new\n").unwrap();
-        mark_after(
-            &cap(&home), &dest, &crate::hash::hex_sha256(b"new\n")).unwrap();
+        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"new\n")).unwrap();
 
         commit_run(&cap(&home)).unwrap();
         // the flip happened: recovery must NOT undo the deploy
