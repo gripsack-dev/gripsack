@@ -24,8 +24,24 @@ pub struct GcReport {
 /// applies to the destructive commands too, N6).
 pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, ExecError> {
     let mut report = GcReport::default();
-    let generations = store::list_generations(home);
+    // fail closed (0027 §2): enumeration errors propagate — gc's
+    // deletion set derives from this inventory, and "cannot read"
+    // must never read as "nothing referenced"
+    let generations = store::list_generations(home)?;
     let current = store::current_generation(home)?;
+    // the active generation must be IN the inventory before any plan
+    // is computed — a current without a directory is corruption
+    if let Some(c) = current
+        && !generations.contains(&c)
+    {
+        return Err(ExecError::Step {
+            module: "*".into(),
+            step: "gc".into(),
+            detail: format!(
+                "current generation {c} has no directory on disk — refusing to collect"
+            ),
+        });
+    }
 
     // what WOULD be pruned (dry-run must preview the post-prune state,
     // or it under-reports collectable paths)
@@ -162,7 +178,7 @@ mod tests {
                     to: "~/.config/m/a".into(),
                     mode: Ownership::TrackedCopy,
                     vars: Default::default(),
-                    hash: "h".into(),
+                    hash: "a".repeat(64),
                     prior: None,
                 }],
                 env: vec![],

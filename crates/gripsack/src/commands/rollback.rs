@@ -42,7 +42,19 @@ pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let current_manifest = current.and_then(|c| store::read_manifest(&home, c).ok());
+    // fail closed (0027 §3): an unreadable CURRENT manifest blocks
+    // the rollback — the transition map would be built without the
+    // authoritative live state
+    let current_manifest = match current {
+        Some(c) => match store::read_manifest(&home, c) {
+            Ok(m) => Some(m),
+            Err(e) => {
+                eprintln!("grip: current generation {c}'s manifest is unreadable: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
+        None => None,
+    };
     match gripsack_exec::rollback_generation(&home, current_manifest.as_ref(), &manifest) {
         Ok(notes) => {
             for note in notes {

@@ -328,6 +328,37 @@ pub fn atomic_write_at(path: &Path, contents: &[u8]) -> io::Result<()> {
     )
 }
 
+/// [`atomic_write`] with an exact mode on the result — recovery
+/// writes, where the recorded mode must ride the rename (0027 §6):
+/// temp → write → set mode → fsync → rename, so the file never exists
+/// at a wider mode, not even for the rename's instant.
+#[cfg(unix)]
+pub fn atomic_write_with_mode(
+    dir: &Dir,
+    name: &Path,
+    contents: &[u8],
+    mode: u32,
+) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let parent = parent_rel(name);
+    dir.create_dir_all(parent)?;
+    let tmp = parent.join(temp_name("tmp-write", name));
+    let result = (|| {
+        let mut file = create_temp(dir, &tmp)?;
+        io::Write::write_all(&mut file, contents)?;
+        file.set_permissions(cap_std::fs::Permissions::from_std(
+            std::fs::Permissions::from_mode(mode),
+        ))?;
+        file.sync_all()?;
+        dir.rename(&tmp, dir, name)
+    })();
+    if result.is_err() {
+        let _ = dir.remove_file(&tmp);
+    }
+    result?;
+    fsync_dir(dir, parent)
+}
+
 /// [`symlink_replace`] at an absolute path (parent opened on the spot).
 pub fn symlink_replace_at(link: &Path, target: &Path) -> io::Result<()> {
     let parent = link.parent().unwrap_or_else(|| Path::new("."));
@@ -526,6 +557,31 @@ mod tests {
             std::fs::metadata(&tool).unwrap().permissions().mode() & 0o777,
             0o755
         );
+    }
+
+    /// Recovery-grade write: the exact mode rides the rename — the
+    /// file never exists at a wider mode (0027 §6).
+    #[test]
+    fn atomic_write_with_mode_lands_exact_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let cap = open(dir.path()).unwrap();
+        atomic_write_with_mode(&cap, Path::new("secret"), b"s", 0o600).unwrap();
+        assert_eq!(
+            std::fs::metadata(dir.path().join("secret"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        // and it still replaces an existing symlink (file→link→crash
+        // recovery path)
+        std::os::unix::fs::symlink("/elsewhere", dir.path().join("link")).unwrap();
+        atomic_write_with_mode(&cap, Path::new("link"), b"s", 0o400).unwrap();
+        let meta = std::fs::metadata(dir.path().join("link")).unwrap();
+        assert!(meta.is_file());
+        assert_eq!(meta.permissions().mode() & 0o777, 0o400);
     }
 
     /// The EXDEV fallback across a REAL filesystem boundary: staging

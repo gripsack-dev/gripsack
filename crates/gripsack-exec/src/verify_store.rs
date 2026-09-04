@@ -16,7 +16,9 @@ pub fn verify_store(
 ) -> Result<Vec<(String, ReportKind, String)>, ExecError> {
     let mut out = Vec::new();
     let home = &ctx.home;
-    for n in gripsack_store::list_generations(home) {
+    // enumeration errors are real (0027 §2) — verify must not read
+    // "cannot list generations" as "nothing to verify"
+    for n in gripsack_store::list_generations(home)? {
         let manifest = match gripsack_store::read_manifest(home, n) {
             Ok(m) => m,
             Err(e) => {

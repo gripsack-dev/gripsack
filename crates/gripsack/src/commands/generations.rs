@@ -11,15 +11,24 @@ pub fn generations() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let all = store::list_generations(&home);
+    let all = match store::list_generations(&home) {
+        Ok(all) => all,
+        Err(e) => {
+            eprintln!("grip: cannot enumerate generations: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     if all.is_empty() {
         println!("no generations yet — run `grip apply`");
         return ExitCode::SUCCESS;
     }
     for n in all {
-        let modules = store::read_manifest(&home, n)
-            .map(|g| g.modules.len())
-            .unwrap_or(0);
+        let modules = match store::read_manifest(&home, n) {
+            Ok(g) => g.modules.len().to_string(),
+            // a corrupt generation shows as corrupt (0027 §4), never
+            // as "0 modules"
+            Err(_) => "corrupt".to_string(),
+        };
         let marker = if Some(n) == current { "→" } else { " " };
         println!("{marker} {n:>3}  ({modules} modules)");
     }
