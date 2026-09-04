@@ -96,7 +96,11 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // recovery compares the marker against `current` — a crash after
     // the flip but before journal cleanup must read as COMMITTED,
     // never restore priors the new generation owns (review 5.1)
-    store::journal::begin_run(ctx.home_dir()?, current_gen.unwrap_or(0) + 1)?;
+    store::journal::begin_run(
+        ctx.home_dir()?,
+        current_gen.unwrap_or(0) + 1,
+        store::journal::RunOp::Apply,
+    )?;
     let outcome =
         crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)?;
     // An empty result set must be a deliberate empty declaration,
@@ -108,13 +112,13 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             detail: "the scheduler produced zero module states from a non-empty graph".into(),
         });
     }
-    if let Some((name, error, failed_state)) = outcome.failed {
-        // Run-level rollback (0001 §9): the flip never happened, so
-        // every destination this run touched goes back to the previous
-        // generation's state — no half-applied deployment exists.
-        let mut touched = outcome.modules;
-        touched.insert(name, failed_state);
-        crate::deploy::run_rollback(&touched, &prev_modules, &ctx.home);
+    if let Some((_name, error, _failed_state)) = outcome.failed {
+        // Run-level rollback through the journal itself (0025 §D):
+        // ONE compensating path — an ordinary failure reconciles
+        // exactly like a kill would, restoring captured priors (which
+        // honors post-crash user state better than replaying the
+        // previous manifest did). No half-applied deployment exists.
+        compensate(ctx);
         return Err(error);
     }
     for (name, module_reports) in outcome.reports {
@@ -128,59 +132,43 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             lock_dirty = true;
         }
     }
-    // pins are fetch outcomes — they must land before anything can
-    // short-circuit later (the satisfied early-return used to skip
-    // the write, so a mirror-swap re-fetch never refreshed its pin
-    // and every later apply re-resolved)
-    if lock_dirty {
-        crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
-    }
     modules.extend(outcome.modules);
-
-    // Prune-on-undeclare (0006 critique): destinations in the previous
-    // manifest but gone now are removed — only if the file still matches
-    // the recorded hash (user edits are never deleted).
-    if let Some(prev) = &prev_manifest {
-        prune_undeclared(prev, &modules, &ctx.home)?;
-    }
-
-    // Satisfied = the module states are identical (the generation
-    // number is not part of the comparison — 0008 §3) AND nothing
-    // touched the filesystem. A run that repaired a destination —
-    // an owned link swapped back to the store after drift, a stale
-    // pre-store link replaced — changes disk state the manifest
-    // cannot see; "already satisfied" and "I modified your
-    // filesystem" must never both be true of one run (migration
-    // report 0.18.1: a repaired symlink cut no generation, so
-    // rollback could not undo it).
-    let touched_disk = reports.iter().any(|r| {
-        matches!(
-            r.kind,
-            crate::report::ReportKind::Installed | crate::report::ReportKind::Configured
-        )
-    });
     let next = current_gen.unwrap_or(0) + 1;
-    if prev_manifest.as_ref().map(|g| &g.modules) == Some(&modules) && !touched_disk {
+
+    // Everything between the scheduler and the flip is recoverable
+    // through ONE compensating path (0025 §D): an ordinary error —
+    // lockfile, prune, manifest, env render — reconciles exactly like
+    // a kill would have. The flip itself is one atomic rename: an
+    // error from it means nothing flipped, so it compensates too.
+    match pre_flip(
+        ctx,
+        &prev_manifest,
+        &modules,
+        next,
+        lock_dirty.then_some(&lock),
+        &reports,
+    ) {
+        Ok(Some(_generation)) => {}
         // vacuous run: nothing journaled, nothing flipped — the
         // marker begin_run wrote must not linger
-        store::journal::end_run(ctx.home_dir()?)?;
-        return Ok(ApplyResult {
-            outcome: Outcome::Satisfied {
-                generation: current_gen,
-            },
-            reports,
-        });
-    }
-    let generation = store::Generation {
-        number: next,
-        modules,
+        Ok(None) => {
+            store::journal::end_run(ctx.home_dir()?)?;
+            return Ok(ApplyResult {
+                outcome: Outcome::Satisfied {
+                    generation: current_gen,
+                },
+                reports,
+            });
+        }
+        Err(e) => {
+            compensate(ctx);
+            return Err(e);
+        }
     };
-    store::write_manifest(ctx.home_dir()?, &generation)?;
-    // the exported-env profile renders BEFORE the flip: it names
-    // store paths (already published), not the `current` link, so a
-    // failure here leaves nothing activated
-    render_env_file(&ctx.home, &generation.modules)?;
-    store::flip(ctx.home_dir()?, &ctx.home, next)?;
+    if let Err(e) = store::flip(ctx.home_dir()?, &ctx.home, next) {
+        compensate(ctx);
+        return Err(e.into());
+    }
     // the flip is the run's commit point: everything the journal
     // recorded is now owned by the new generation — the crash window
     // closes here
@@ -232,12 +220,89 @@ pub(crate) fn scoped_order(
     ))
 }
 
+/// A failed run's ONE compensating path (0025 §D): reconcile the
+/// journal — the same code path a kill would take on the next run.
+/// Compensation failure (quarantined entries fail closed) is logged,
+/// not masked: the journal survives for the next run either way.
+fn compensate(ctx: &Ctx) {
+    match ctx.home_dir().and_then(store::journal::reconcile) {
+        Ok(lines) => {
+            for line in lines {
+                info!("{line}");
+            }
+        }
+        Err(e) => {
+            tracing::warn!("compensation reconcile failed (journal intact for next run): {e}")
+        }
+    }
+}
+
+/// Lock write, prune, manifest, and the generation-local env profile —
+/// everything fallible between the scheduler and the flip. Ok(None)
+/// is the vacuous (satisfied) run.
+fn pre_flip(
+    ctx: &Ctx,
+    prev_manifest: &Option<store::Generation>,
+    modules: &BTreeMap<String, store::ModuleState>,
+    next: u64,
+    lock: Option<&crate::lockfile::Lockfile>,
+    reports: &[crate::report::StepReport],
+) -> Result<Option<store::Generation>, ExecError> {
+    // pins are fetch outcomes — they must land before anything can
+    // short-circuit later (the satisfied early-return used to skip
+    // the write, so a mirror-swap re-fetch never refreshed its pin
+    // and every later apply re-resolved)
+    if let Some(lock) = lock {
+        crate::lockfile::write(&ctx.repo, &ctx.host, lock)?;
+    }
+
+    // Prune-on-undeclare (0006 critique): destinations in the previous
+    // manifest but gone now are removed — only if the file still matches
+    // the recorded hash (user edits are never deleted). Every prune
+    // mutation is journaled like a deploy (0025 §B).
+    if let Some(prev) = prev_manifest {
+        prune_undeclared(prev, modules, &ctx.home, ctx.home_dir()?)?;
+    }
+    // test-only kill switch: the prune→flip crash window's e2e (0025)
+    crate::util::crash_hook("after-prune");
+
+    // Satisfied = the module states are identical (the generation
+    // number is not part of the comparison — 0008 §3) AND nothing
+    // touched the filesystem. A run that repaired a destination —
+    // an owned link swapped back to the store after drift, a stale
+    // pre-store link replaced — changes disk state the manifest
+    // cannot see; "already satisfied" and "I modified your
+    // filesystem" must never both be true of one run (migration
+    // report 0.18.1: a repaired symlink cut no generation, so
+    // rollback could not undo it).
+    let touched_disk = reports.iter().any(|r| {
+        matches!(
+            r.kind,
+            crate::report::ReportKind::Installed | crate::report::ReportKind::Configured
+        )
+    });
+    if prev_manifest.as_ref().map(|g| &g.modules) == Some(modules) && !touched_disk {
+        return Ok(None);
+    }
+    let generation = store::Generation {
+        number: next,
+        modules: modules.clone(),
+    };
+    store::write_manifest(ctx.home_dir()?, &generation)?;
+    // the exported-env profile renders INTO the generation, BEFORE the
+    // flip (0025 §C): profile and activation are one indivisible step,
+    // and a failure here leaves nothing activated
+    render_env_file(&ctx.home, next, &generation.modules)?;
+    Ok(Some(generation))
+}
+
 /// Remove destinations the new manifest no longer declares, iff the
 /// file on disk is still exactly what we deployed.
 fn prune_undeclared(
     prev: &store::Generation,
     modules: &BTreeMap<String, store::ModuleState>,
     home: &std::path::Path,
+    home_dir: &gripsack_fs::Dir,
 ) -> Result<(), ExecError> {
     let declared: BTreeSet<&str> = modules
         .values()
@@ -260,12 +325,21 @@ fn prune_undeclared(
                     {
                         let new = crate::template::remove_block(&existing, name)
                             .expect("block found above");
-                        if new.trim().is_empty() {
-                            std::fs::remove_file(&dest)?;
-                        } else {
-                            let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
-                            gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())?;
-                        }
+                        let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
+                        crate::deploy::journaled_computed(
+                            home_dir,
+                            &dest_dir,
+                            &dest_name,
+                            &dest,
+                            || {
+                                if new.trim().is_empty() {
+                                    dest_dir.remove_file(&dest_name)
+                                } else {
+                                    gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
+                                }
+                            },
+                            || crate::deploy::post_identity(&dest_dir, &dest_name),
+                        )?;
                         info!("pruned {} (block)", entry.to);
                     }
                     Some(_) => {
@@ -279,7 +353,20 @@ fn prune_undeclared(
             // copy-like) gets its ORIGINAL file/symlink back on prune,
             // not a deletion; the helper drift-guards and falls back
             // to removal when no prior was recorded
-            if crate::deploy::remove_or_restore_prior(&dest, entry, name, home) {
+            let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
+            let mut removed = false;
+            crate::deploy::journaled_computed(
+                home_dir,
+                &dest_dir,
+                &dest_name,
+                &dest,
+                || {
+                    removed = crate::deploy::remove_or_restore_prior(&dest, entry, name, home);
+                    Ok(())
+                },
+                || crate::deploy::post_identity(&dest_dir, &dest_name),
+            )?;
+            if removed {
                 info!(
                     "{} {}",
                     if entry.prior.is_some() {

@@ -77,7 +77,13 @@ pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: 
             let ours = std::fs::read_link(dest)
                 .map(|t| t.starts_with(store::gripsack_home()))
                 .unwrap_or(false);
-            ours && std::fs::remove_file(dest).is_ok()
+            ours && {
+                // removals go through the pinned parent capability,
+                // same as writes (0025 §H)
+                dest_capability(dest)
+                    .and_then(|(d, n)| d.remove_file(&n))
+                    .is_ok()
+            }
         }
         Ownership::Merge => {
             let existing = std::fs::read_to_string(dest).unwrap_or_default();
@@ -86,7 +92,9 @@ pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: 
                     let new = crate::template::remove_block(&existing, module)
                         .expect("block found above");
                     if new.trim().is_empty() {
-                        std::fs::remove_file(dest).is_ok()
+                        dest_capability(dest)
+                            .and_then(|(d, n)| d.remove_file(&n))
+                            .is_ok()
                     } else {
                         dest_capability(dest)
                             .and_then(|(d, n)| gripsack_fs::atomic_write(&d, &n, new.as_bytes()))
@@ -101,7 +109,10 @@ pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: 
             let Ok(current) = store::canonical_file_hash(dest) else {
                 return false;
             };
-            current == entry.hash && std::fs::remove_file(dest).is_ok()
+            current == entry.hash
+                && dest_capability(dest)
+                    .and_then(|(d, n)| d.remove_file(&n))
+                    .is_ok()
         }
     }
 }
@@ -110,22 +121,39 @@ pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: 
 /// §4): real-file bytes go to the content-addressed prior blob store,
 /// a symlink's target is recorded verbatim. None = nothing there (or
 /// unreadable) — default removal semantics then apply.
+/// Strictly fallible (0025 §E): only NotFound means "no prior".
+/// Every other read, metadata, encoding, or blob-storage failure
+/// aborts the take-over BEFORE the mutation — recording `prior: None`
+/// for a file that existed but could not be captured would break the
+/// central promise (exact pre-adoption restoration).
 fn capture_prior(
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
     home: &gripsack_fs::Dir,
-) -> Option<store::Prior> {
-    let meta = dest_dir.symlink_metadata(dest_name).ok()?;
+) -> std::io::Result<Option<store::Prior>> {
+    let meta = match dest_dir.symlink_metadata(dest_name) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
     if meta.file_type().is_symlink() {
-        let target = dest_dir.read_link_contents(dest_name).ok()?;
-        Some(store::Prior {
+        let target = dest_dir.read_link_contents(dest_name)?;
+        let Some(target) = target.to_str() else {
+            // same refusal as journal::capture: a lossily recorded
+            // target restores as a DIFFERENT link
+            return Err(std::io::Error::other(format!(
+                "symlink target is not UTF-8 ({} bytes) — cannot record the prior state",
+                target.as_os_str().len()
+            )));
+        };
+        Ok(Some(store::Prior {
             kind: store::PriorKind::Symlink,
-            content: Some(target.to_string_lossy().into_owned()),
+            content: Some(target.to_string()),
             mode: None,
-        })
+        }))
     } else if meta.is_file() {
-        let bytes = dest_dir.read(dest_name).ok()?;
-        let sha = store::journal::store_prior_blob_in(home, &bytes).ok()?;
+        let bytes = dest_dir.read(dest_name)?;
+        let sha = store::journal::store_prior_blob_in(home, &bytes)?;
         #[cfg(unix)]
         let mode = {
             use gripsack_fs::cap_std::fs::MetadataExt;
@@ -133,13 +161,13 @@ fn capture_prior(
         };
         #[cfg(not(unix))]
         let mode = None;
-        Some(store::Prior {
+        Ok(Some(store::Prior {
             kind: store::PriorKind::File,
             content: Some(sha),
             mode,
-        })
+        }))
     } else {
-        None
+        Ok(None)
     }
 }
 
@@ -206,45 +234,6 @@ pub fn remove_or_restore_prior(
     remove_entry_deployed(dest, entry, module)
 }
 
-/// Run-level rollback (0001 §9, review finding E1): an apply that
-/// fails mid-graph must leave NO half-applied deployment behind —
-/// the generation flip was never reached, so every destination this
-/// run touched is restored to the previous generation's state (or
-/// removed if the previous generation didn't deploy it; entries this
-/// run absorbed via --take-over restore their captured prior first,
-/// 0015 §4 — removing the deployed link alone would lose the user's
-/// original file, whose bytes only exist in the prior blob store).
-pub(crate) fn run_rollback(
-    touched: &std::collections::BTreeMap<String, store::ModuleState>,
-    prev: &std::collections::BTreeMap<String, store::ModuleState>,
-    home: &Path,
-) {
-    for (name, state) in touched {
-        let prev_state = prev.get(name);
-        for entry in &state.entries {
-            let dest = expand_home(&entry.to);
-            match prev_state.and_then(|p| p.entries.iter().find(|e| e.to == entry.to)) {
-                Some(prev_entry) => {
-                    let result = restore_entry(
-                        &dest,
-                        prev_entry,
-                        &prev_state.expect("matched above").store_path,
-                        name,
-                    );
-                    if result.is_ok() {
-                        tracing::info!("restored {} (run rolled back)", entry.to);
-                    }
-                }
-                None => {
-                    if remove_or_restore_prior(&dest, entry, name, home) {
-                        tracing::info!("restored {} (run rolled back)", entry.to);
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// One destination mutation, journaled for crash recovery (0019):
 /// the prior state is recorded (file bytes into the prior blob
 /// store) BEFORE the write and the post-mutation identity noted
@@ -252,7 +241,7 @@ pub(crate) fn run_rollback(
 /// the next run's reconcile restores. The entry clears when the run
 /// commits (the flip); per-entry there is no commit, matching the
 /// run-level rollback's all-or-nothing semantics.
-fn journaled(
+pub(crate) fn journaled(
     home: &gripsack_fs::Dir,
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
@@ -264,6 +253,54 @@ fn journaled(
     gripsack_store::journal::record(home, dest, &prior)?;
     mutate()?;
     gripsack_store::journal::mark_after(home, dest, &after)
+}
+
+/// A journaled mutation whose post-mutation identity is computed
+/// AFTER the write (restores, removals — the caller cannot hash what
+/// is not there yet). `after` returning None records the removal
+/// sentinel: a destination that exists again at reconcile is user's
+/// content and is never overwritten (0025 §A/B).
+pub(crate) fn journaled_computed(
+    home: &gripsack_fs::Dir,
+    dest_dir: &gripsack_fs::Dir,
+    dest_name: &Path,
+    dest: &Path,
+    mutate: impl FnOnce() -> std::io::Result<()>,
+    after: impl FnOnce() -> std::io::Result<Option<String>>,
+) -> std::io::Result<()> {
+    let prior = gripsack_store::journal::capture(dest_dir, dest_name, dest, home)?;
+    gripsack_store::journal::record(home, dest, &prior)?;
+    mutate()?;
+    gripsack_store::journal::mark_after(
+        home,
+        dest,
+        &after()?.unwrap_or_else(|| gripsack_store::journal::REMOVED.to_string()),
+    )
+}
+
+/// The post-mutation identity for [`journaled_computed`]: link target
+/// for symlinks, content hash for regular files, None when absent.
+pub(crate) fn post_identity(
+    dest_dir: &gripsack_fs::Dir,
+    dest_name: &Path,
+) -> std::io::Result<Option<String>> {
+    let meta = match dest_dir.symlink_metadata(dest_name) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    if meta.file_type().is_symlink() {
+        return Ok(dest_dir
+            .read_link_contents(dest_name)
+            .ok()
+            .map(|t| t.to_string_lossy().into_owned()));
+    }
+    // the journal's identity for files is canonical_bytes_hash —
+    // exactly what deploy records in mark_after (0025: a canonical
+    // FILE hash here would never match it on executable dests)
+    Ok(Some(store::canonical_bytes_hash(
+        &dest_dir.read(dest_name)?,
+    )))
 }
 
 /// Open a destination's parent as a capability, creating parents for
@@ -422,7 +459,7 @@ pub(crate) fn deploy_entry(
             let (dest_dir, dest_name) = dest_capability(&dest)?;
             // 0015 §4: a genuine take-over records what was there first
             let prior = if take && !ours && !recorded {
-                capture_prior(&dest_dir, &dest_name, ctx.home_dir()?)
+                capture_prior(&dest_dir, &dest_name, ctx.home_dir()?)?
             } else {
                 None
             };
@@ -502,7 +539,7 @@ pub(crate) fn deploy_entry(
                     )
                 } else if ctx.takes_over(&entry.to) {
                     // 0015 §4: record the foreign bytes before absorbing
-                    let prior = capture_prior(&dest_dir, &dest_name, ctx.home_dir()?);
+                    let prior = capture_prior(&dest_dir, &dest_name, ctx.home_dir()?)?;
                     let after = store::canonical_bytes_hash(content);
                     journaled(ctx.home_dir()?, &dest_dir, &dest_name, &dest, after, || {
                         gripsack_fs::atomic_write(&dest_dir, &dest_name, content)

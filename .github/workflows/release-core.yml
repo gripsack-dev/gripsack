@@ -34,7 +34,7 @@ jobs:
           - { target: aarch64-apple-darwin, runner: macos-14 }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # plan/0022: shipped binaries embed their dependency tree
       # (cargo-auditable); the verify step below audits the SHIPPED
@@ -42,11 +42,11 @@ jobs:
       # the exact artifact users download. Prebuilt installs only —
       # from-source tool builds break on new toolchains (audit.yml's
       # lesson).
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
         if: "!matrix.docker"
         with:
           tool: cargo-auditable
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
         with:
           tool: cargo-audit
       - name: Build (linux musl, docker)
@@ -99,7 +99,7 @@ jobs:
           "$bin" --version
           cargo audit bin "$bin"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dist-${{ matrix.target }}
           path: dist/*
@@ -108,12 +108,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Assemble artifacts
         run: |
           mkdir -p dist
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: dist-*
           path: dist
@@ -128,14 +128,14 @@ jobs:
 
       # signed build provenance for every tarball (plan/0020 §5.8):
       # verifiable with `gh attestation verify <file> -R gripsack-dev/gripsack`
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
           subject-path: dist/gripsack-*.tar.gz
 
       # crates.io before the GitHub release: it is the irreversible
       # artifact. The guard fails a mistagged release instead of
       # publishing the wrong version.
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
       - name: Publish to crates.io (dependency order)
         env:

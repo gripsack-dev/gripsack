@@ -12,12 +12,12 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # prebuilt binary, not a from-source install: cargo-audit's own
       # dependency tree (old tinyvec) breaks compiling against new
       # runner toolchains — the action's install path failed CI while
       # the audit itself was clean
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
         with:
           tool: cargo-audit
       - run: cargo audit
