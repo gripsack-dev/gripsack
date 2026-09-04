@@ -4,7 +4,13 @@ use std::process::ExitCode;
 /// grip generations: list, marking the active one.
 pub fn generations() -> ExitCode {
     let home = store::gripsack_home();
-    let current = store::current_generation(&home);
+    let current = match store::current_generation(&home) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("grip: cannot read the current generation: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let all = store::list_generations(&home);
     if all.is_empty() {
         println!("no generations yet — run `grip apply`");

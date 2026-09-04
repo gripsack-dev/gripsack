@@ -85,6 +85,20 @@ fn manifest_path(home: &Path, generation: u64) -> PathBuf {
 /// capability (plan/0021): `generations/<N>/manifest.json` can never
 /// be redirected by a swapped path component.
 pub fn write_manifest(home: &gripsack_fs::Dir, generation: &Generation) -> io::Result<()> {
+    // generations are immutable history (0026 §3): an existing
+    // generation number is a hard invariant failure, never an
+    // overwrite target (the pre-0.23 current+1 allocator could reuse
+    // one after a rollback)
+    let gen_rel = Path::new(crate::paths::GENERATIONS_DIR).join(generation.number.to_string());
+    if home.symlink_metadata(&gen_rel).is_ok() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!(
+                "generation {} already exists — generations are immutable",
+                generation.number
+            ),
+        ));
+    }
     let json = serde_json::to_string_pretty(generation)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     gripsack_fs::atomic_write(
@@ -116,23 +130,45 @@ pub fn list(home: &Path) -> Vec<u64> {
     numbers
 }
 
-/// The generation `current` points at, if any.
-pub fn current(home: &Path) -> Option<u64> {
-    std::fs::read_link(crate::paths::current_link(home))
-        .ok()?
-        .file_name()?
-        .to_string_lossy()
-        .parse()
-        .ok()
+/// The generation `current` points at, if any. Fail closed
+/// (0026 §8): only NotFound means "no generations" — a permission
+/// error, I/O failure, or a `current` link that parses to no
+/// generation number are real errors, not absence (apply allocates
+/// from this, gc protects it; misreading either is corruption).
+pub fn current(home: &Path) -> io::Result<Option<u64>> {
+    match std::fs::read_link(crate::paths::current_link(home)) {
+        Ok(target) => target
+            .file_name()
+            .and_then(|n| n.to_string_lossy().parse().ok())
+            .map(Some)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "{} does not point at a generation",
+                        crate::paths::current_link(home).display()
+                    ),
+                )
+            }),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 /// [`current`] through the home capability (plan/0021): the link is
 /// read relative to the `Dir`, never re-resolved by string.
 pub fn current_in(home: &gripsack_fs::Dir) -> std::io::Result<Option<u64>> {
     match home.read_link_contents("current") {
-        Ok(target) => Ok(target
+        Ok(target) => target
             .file_name()
-            .and_then(|n| n.to_string_lossy().parse().ok())),
+            .and_then(|n| n.to_string_lossy().parse().ok())
+            .map(Some)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "current does not point at a generation".to_string(),
+                )
+            }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         // recovery reads commit evidence through this: a permission
         // or I/O error is not "no generations" (0025 §F)
@@ -207,10 +243,10 @@ mod tests {
         let cap = gripsack_fs::open_or_create(home).unwrap();
         write_manifest(&cap, &mk_gen(1)).unwrap();
         write_manifest(&cap, &mk_gen(2)).unwrap();
-        assert_eq!(current(home), None);
+        assert_eq!(current(home).unwrap(), None);
         flip(&cap, home, 1).unwrap();
-        assert_eq!(current(home), Some(1));
+        assert_eq!(current(home).unwrap(), Some(1));
         flip(&cap, home, 2).unwrap();
-        assert_eq!(current(home), Some(2));
+        assert_eq!(current(home).unwrap(), Some(2));
     }
 }

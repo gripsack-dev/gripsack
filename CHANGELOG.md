@@ -3,6 +3,54 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.23.0] — 2026-09-04
+
+Generation identity and path-centric transactions (plan/0026, third
+fresh-eyes audit) — the journal now records INTENT, and rollback
+plans per destination.
+
+### Fixed
+
+- **Rollback no longer clobbers tracked-copy drift.** Shared
+  destinations restore only when live state IS the current
+  generation's deployment; live == target is a no-op; anything else
+  is preserved with a report line (`kept … your edit stands`).
+- **A destination gets exactly one transition per rollback.** The
+  pre-0.23 two-pass rollback (prune by module, then restore)
+  journaled a renamed module's destination twice — the second entry
+  overwrote the true pre-rollback prior, so a killed rollback could
+  restore the wrong state. The planner now normalizes both
+  generations into destination-keyed maps first.
+- **Generation numbers are never reused.** Allocation is
+  `max(on-disk, current) + 1`, not `current + 1` — a post-rollback
+  apply creates generation 4, not a rewritten 2. `write_manifest`
+  refuses an existing generation number outright.
+- **Commit detection is exact-equality, not ordering.** The run
+  marker carries `previous_generation`; reconcile decides committed
+  iff `current == target`, uncommitted iff `current == previous`,
+  and refuses to guess otherwise. Roll-FORWARD (`grip rollback` to a
+  newer generation) no longer breaks the classification.
+- **The intended post-state is journaled BEFORE the mutation** —
+  `record` persists prior and intent together; `mark_after` is gone.
+  A post-crash user edit is now distinguishable from the mutation
+  itself (three-way decide: landed-intact → restore, never-landed →
+  nothing to do, neither → user's edit wins).
+- **Journal cleanup is two durability barriers** — entries deleted
+  and fsync'd, then the marker deleted and fsync'd: marker durably
+  gone now implies entries durably gone.
+- **Content updates preserve the destination's mode** — an apply
+  touching a 0600 secret or 0755 script no longer re-lands it at
+  0644&umask.
+- **`current` generation readers fail closed** — permission errors,
+  I/O failures, and a `current` link that parses to no generation are
+  errors, not "no generations" (apply allocates from it; gc protects
+  it).
+- **Rollback preflights the target generation** — a missing store
+  path or entry source aborts before the first mutation.
+- **Renaming a merge-block's module moves the block** — block prune
+  keys on (module, destination); the old module's block no longer
+  lingers as an unowned ghost.
+
 ## [0.22.0] — 2026-09-04
 
 Transaction coverage for everything that mutates a destination

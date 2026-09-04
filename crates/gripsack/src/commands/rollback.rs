@@ -19,7 +19,13 @@ pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let current = store::current_generation(&home);
+    let current = match store::current_generation(&home) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("grip: cannot read the current generation: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let target = match (generation, current) {
         (Some(n), _) => n,
         // generation 0 exists only as adopt's empty baseline (0015 §4)

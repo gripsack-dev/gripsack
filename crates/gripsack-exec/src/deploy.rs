@@ -8,34 +8,61 @@ use gripsack_store::expand_home;
 use std::path::Path;
 
 /// Restore one destination to what a generation's manifest recorded —
-/// the ONE deploy-restore path, shared by run-level rollback and
-/// `grip rollback` (0001 §3.5): every mode gets its correct semantics,
-/// never a naive byte copy (template re-renders with the recorded
-/// vars; merge re-upserts only the block into the foreign file).
+/// the ONE deploy-restore path, shared by rollback (0001 §3.5): every
+/// mode gets its correct semantics, never a naive byte copy (template
+/// re-renders with the recorded vars; merge re-upserts only the block
+/// into the foreign file).
 pub fn restore_entry(
     dest: &Path,
     entry: &store::DeployedEntry,
     store_path: &Path,
     module: &str,
 ) -> std::io::Result<()> {
+    let Some(plan) = compute_restore(dest, entry, store_path, module)? else {
+        tracing::warn!(?dest, "restore skipped — leaving destination as-is");
+        return Ok(());
+    };
+    let (dest_dir, dest_name) = dest_capability(dest)?;
+    execute_restore(&dest_dir, &dest_name, &plan)
+}
+
+/// What a restore intends to land and the journal identity of that
+/// end state — computed BEFORE any mutation (0026 §6), so the journal
+/// records intent, never observation-after-the-fact.
+pub struct RestorePlan {
+    /// Journal identity after the restore: link target for owned,
+    /// canonical bytes hash otherwise.
+    pub intent: String,
+    pub write: RestoreWrite,
+}
+
+pub enum RestoreWrite {
+    /// Owned: point the destination link here.
+    Link(std::path::PathBuf),
+    /// Tracked copy / rendered template / merge-upserted whole file.
+    Bytes(Vec<u8>),
+}
+
+/// Plan the restore of one deployed entry without touching the
+/// destination. None = leave it alone (an unreadable foreign merge
+/// file, or an owned link whose store source is gone — the manifest
+/// is stale, and a dangling link is worse than an absent dest).
+pub fn compute_restore(
+    dest: &Path,
+    entry: &store::DeployedEntry,
+    store_path: &Path,
+    module: &str,
+) -> std::io::Result<Option<RestorePlan>> {
     let source = store_path.join(&entry.from);
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     match entry.mode {
         Ownership::Owned => {
-            // never write a dangling link: a missing source means the
-            // manifest is stale, and a broken symlink is worse than
-            // an absent destination
             if !source.exists() {
-                tracing::warn!(
-                    ?source,
-                    "restore source missing — leaving destination as-is"
-                );
-                return Ok(());
+                return Ok(None);
             }
-            let (dest_dir, dest_name) = dest_capability(dest)?;
-            gripsack_fs::symlink_replace(&dest_dir, &dest_name, &source)
+            Ok(Some(RestorePlan {
+                intent: source.to_string_lossy().into_owned(),
+                write: RestoreWrite::Link(source),
+            }))
         }
         Ownership::Merge => {
             let payload = std::fs::read_to_string(&source).unwrap_or_default();
@@ -43,28 +70,47 @@ pub fn restore_entry(
             // splicing onto "" would REPLACE the whole foreign file
             // (silent data loss) — leave it alone instead
             let Some(existing) = read_foreign_text(dest) else {
-                return Ok(());
+                return Ok(None);
             };
             match crate::template::upsert_block(&existing, module, dest, None, &payload) {
-                Ok(new) => {
-                    let (dest_dir, dest_name) = dest_capability(dest)?;
-                    gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
-                }
-                Err(_) => Ok(()), // malformed markers: leave the foreign file alone
+                Ok(new) => Ok(Some(RestorePlan {
+                    intent: store::canonical_bytes_hash(new.as_bytes()),
+                    write: RestoreWrite::Bytes(new.into_bytes()),
+                })),
+                Err(_) => Ok(None), // malformed markers: leave the foreign file alone
             }
         }
-        Ownership::Template => std::fs::read(&source).and_then(|raw| {
-            crate::template::render_template(&raw, &entry.vars, &entry.from)
-                .map_err(std::io::Error::other)
-                .and_then(|bytes| {
-                    let (dest_dir, dest_name) = dest_capability(dest)?;
-                    gripsack_fs::atomic_write(&dest_dir, &dest_name, &bytes)
-                })
-        }),
-        Ownership::TrackedCopy => std::fs::read(&source).and_then(|bytes| {
-            let (dest_dir, dest_name) = dest_capability(dest)?;
-            gripsack_fs::atomic_write(&dest_dir, &dest_name, &bytes)
-        }),
+        Ownership::Template => {
+            let rendered = crate::template::render_template(
+                &std::fs::read(&source)?,
+                &entry.vars,
+                &entry.from,
+            )
+            .map_err(std::io::Error::other)?;
+            Ok(Some(RestorePlan {
+                intent: store::canonical_bytes_hash(&rendered),
+                write: RestoreWrite::Bytes(rendered),
+            }))
+        }
+        Ownership::TrackedCopy => {
+            let bytes = std::fs::read(&source)?;
+            Ok(Some(RestorePlan {
+                intent: store::canonical_bytes_hash(&bytes),
+                write: RestoreWrite::Bytes(bytes),
+            }))
+        }
+    }
+}
+
+/// Land a planned restore through the pinned destination capability.
+pub fn execute_restore(
+    dest_dir: &gripsack_fs::Dir,
+    dest_name: &Path,
+    plan: &RestorePlan,
+) -> std::io::Result<()> {
+    match &plan.write {
+        RestoreWrite::Link(target) => gripsack_fs::symlink_replace(dest_dir, dest_name, target),
+        RestoreWrite::Bytes(bytes) => gripsack_fs::atomic_write(dest_dir, dest_name, bytes),
     }
 }
 
@@ -213,13 +259,11 @@ fn restore_prior(dest: &Path, prior: &store::Prior, home: &Path) -> bool {
 /// the original file/symlink — "your original files have been
 /// restored." Drifted destinations and prior-less entries fall back to
 /// the drift-guarded removal.
-pub fn remove_or_restore_prior(
-    dest: &Path,
-    entry: &store::DeployedEntry,
-    module: &str,
-    home: &Path,
-) -> bool {
-    let intact = match entry.mode {
+/// Is the destination still exactly what this manifest entry
+/// deployed? (Merge blocks are checked by block hash at the call
+/// sites — a foreign file is never "intact" as a whole.)
+pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, home: &Path) -> bool {
+    match entry.mode {
         Ownership::Owned => std::fs::read_link(dest)
             .map(|t| t.starts_with(home))
             .unwrap_or(false),
@@ -227,8 +271,42 @@ pub fn remove_or_restore_prior(
         _ => store::canonical_file_hash(dest)
             .map(|h| h == entry.hash)
             .unwrap_or(false),
-    };
-    if intact && let Some(prior) = &entry.prior {
+    }
+}
+
+/// The intended post-prune identity of a destination (0026 §6):
+/// the restored prior's identity when a prior exists, REMOVED
+/// otherwise. Known BEFORE the mutation, from the prior blob —
+/// never observed afterward.
+pub fn prune_intent(entry: &store::DeployedEntry, home: &Path) -> std::io::Result<String> {
+    match &entry.prior {
+        Some(prior) => match prior.kind {
+            store::PriorKind::File => {
+                let sha = prior
+                    .content
+                    .as_deref()
+                    .expect("a file prior carries its blob hash");
+                let bytes = std::fs::read(store::prior_blob_path(home, sha))?;
+                Ok(store::canonical_bytes_hash(&bytes))
+            }
+            store::PriorKind::Symlink => Ok(prior
+                .content
+                .clone()
+                .expect("a symlink prior carries its target")),
+        },
+        None => Ok(store::journal::REMOVED.to_string()),
+    }
+}
+
+pub fn remove_or_restore_prior(
+    dest: &Path,
+    entry: &store::DeployedEntry,
+    module: &str,
+    home: &Path,
+) -> bool {
+    if intact_deployed(dest, entry, home)
+        && let Some(prior) = &entry.prior
+    {
         return restore_prior(dest, prior, home);
     }
     remove_entry_deployed(dest, entry, module)
@@ -246,61 +324,15 @@ pub(crate) fn journaled(
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
     dest: &Path,
-    after: String,
+    intended: String,
     mutate: impl FnOnce() -> std::io::Result<()>,
 ) -> std::io::Result<()> {
+    // prior AND intended post-state are durable BEFORE the mutation
+    // (0026 §6): reconcile's three-way decision never confuses a
+    // post-crash user edit with the mutation
     let prior = gripsack_store::journal::capture(dest_dir, dest_name, dest, home)?;
-    gripsack_store::journal::record(home, dest, &prior)?;
-    mutate()?;
-    gripsack_store::journal::mark_after(home, dest, &after)
-}
-
-/// A journaled mutation whose post-mutation identity is computed
-/// AFTER the write (restores, removals — the caller cannot hash what
-/// is not there yet). `after` returning None records the removal
-/// sentinel: a destination that exists again at reconcile is user's
-/// content and is never overwritten (0025 §A/B).
-pub(crate) fn journaled_computed(
-    home: &gripsack_fs::Dir,
-    dest_dir: &gripsack_fs::Dir,
-    dest_name: &Path,
-    dest: &Path,
-    mutate: impl FnOnce() -> std::io::Result<()>,
-    after: impl FnOnce() -> std::io::Result<Option<String>>,
-) -> std::io::Result<()> {
-    let prior = gripsack_store::journal::capture(dest_dir, dest_name, dest, home)?;
-    gripsack_store::journal::record(home, dest, &prior)?;
-    mutate()?;
-    gripsack_store::journal::mark_after(
-        home,
-        dest,
-        &after()?.unwrap_or_else(|| gripsack_store::journal::REMOVED.to_string()),
-    )
-}
-
-/// The post-mutation identity for [`journaled_computed`]: link target
-/// for symlinks, content hash for regular files, None when absent.
-pub(crate) fn post_identity(
-    dest_dir: &gripsack_fs::Dir,
-    dest_name: &Path,
-) -> std::io::Result<Option<String>> {
-    let meta = match dest_dir.symlink_metadata(dest_name) {
-        Ok(m) => m,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e),
-    };
-    if meta.file_type().is_symlink() {
-        return Ok(dest_dir
-            .read_link_contents(dest_name)
-            .ok()
-            .map(|t| t.to_string_lossy().into_owned()));
-    }
-    // the journal's identity for files is canonical_bytes_hash —
-    // exactly what deploy records in mark_after (0025: a canonical
-    // FILE hash here would never match it on executable dests)
-    Ok(Some(store::canonical_bytes_hash(
-        &dest_dir.read(dest_name)?,
-    )))
+    gripsack_store::journal::record(home, dest, &prior, &intended)?;
+    mutate()
 }
 
 /// Open a destination's parent as a capability, creating parents for

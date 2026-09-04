@@ -227,7 +227,11 @@ pub fn diff_section(
     palette: Palette,
 ) -> String {
     let home = gripsack_store::gripsack_home();
+    // plan's diff is best-effort display; an unreadable current is
+    // still fail-closed everywhere it gates a mutation
     let current = gripsack_store::current_generation(&home)
+        .ok()
+        .flatten()
         .and_then(|n| gripsack_store::read_manifest(&home, n).ok());
     let c = |s: &str| {
         if palette.enabled {
