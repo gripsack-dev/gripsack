@@ -283,6 +283,7 @@ export default module("demo", {
 
     # apply the two-entry module, then drop b → the next plan prunes it
     grip("apply", "--host", "testhost", cwd=repo)
+
     (sandbox / "myenv" / "modules" / "hello.ts").write_text(
         """
 import { module, trackedCopy } from "@gripsack/core";
@@ -294,6 +295,47 @@ export default module("demo", {
     )
     out = grip("plan", "--host", "testhost", cwd=repo)
     assert "- ~/.config/demo/b.toml (prune)" in out.stdout
+
+
+def test_plan_compares_template_and_merge_in_deployed_terms(sandbox):
+    """plan must answer "is anything drifting?" honestly: template and
+    merge entries compare as their DEPLOYED form (rendered bytes,
+    trimmed block), not the raw repo source — the raw source can never
+    match by construction, and the permanent phantom (update) trained
+    users to ignore plan's output (0.21.1 review round)."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "app.toml").write_text('key = "{{ value }}"\n')
+    (confdir / "block.sh").write_text("export DEMO=1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { merge, module, template } from "@gripsack/core";
+
+export default module("demo", {
+  config: {
+    "configs/demo/app.toml": template("~/.config/demo/app.toml", { value: "rendered" }),
+    "configs/demo/block.sh": merge("~/.bashrc"),
+  },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert 'key = "rendered"' in (sandbox / ".config/demo/app.toml").read_text()
+
+    # steady state: no phantom updates
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "(update)" not in out.stdout, out.stdout
+    assert "= ~/.config/demo/app.toml (satisfied)" in out.stdout
+    assert "= ~/.bashrc (satisfied)" in out.stdout
+
+    # real drift still reports: edit the deployed merge block by hand
+    bashrc = sandbox / ".bashrc"
+    bashrc.write_text(bashrc.read_text().replace("DEMO=1", "DEMO=2"))
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert "(update)" in out.stdout, out.stdout
 
 
 def test_exec_failures_render_with_codes_and_spans(sandbox):
@@ -578,5 +620,10 @@ export default module("a", { install: [] });
     out = grip("doctor", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert "repo pin:" in out.stdout, out.stdout
+    # a stale pin is a warning, not a pass — the 0.21.0 line rendered
+    # as a green "ok" (a no-op marker replace) and advised an npm
+    # version that did not exist yet
+    pin_line = next(l for l in out.stdout.splitlines() if "repo pin:" in l)
+    assert pin_line.startswith("warn"), pin_line
     assert "@gripsack/core ^0.17.5" in out.stdout
     assert "npm i -D @gripsack/core@" in out.stdout
