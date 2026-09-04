@@ -13,11 +13,11 @@ jobs:
   typescript-env:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           path: gripsack
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: gripsack-dev/example-env-typescript
           path: example
@@ -46,7 +46,7 @@ jobs:
           npm install "$GITHUB_WORKSPACE/gripsack/typescript"
           npx tsc
 
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
 
       - name: Apply the example env (real eval, sandboxed Deno)
         env:

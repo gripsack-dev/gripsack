@@ -251,7 +251,9 @@ export default module("zed", {
     )
     (repo / "configs" / "zed").mkdir(parents=True)
     (repo / "configs" / "zed" / "a").write_text("a\n")
-    profile = sandbox / ".local/share/gripsack/env/profile.sh"
+    # the profile is generation-local since 0.22, sourced through the
+    # current symlink (plan/0025 §C): it activates with the flip
+    profile = sandbox / ".local/share/gripsack/current/env/profile.sh"
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     text = profile.read_text()
@@ -274,6 +276,10 @@ export default module("zed", {
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
+
+    # no env contributions in this generation → no profile in it; the
+    # generation-1 file still exists behind the old directory, but
+    # current/ no longer resolves one
     assert not profile.exists()
 
 
@@ -544,6 +550,7 @@ export default module("extra", {{
 """
     )
     refresh_host(repo)
+
     third = grip("apply", "--host", "testhost", cwd=repo)
     assert third.returncode == 0, third.stderr
     assert (sandbox / ".local/bin/extra").is_symlink()
@@ -554,6 +561,107 @@ export default module("extra", {{
     assert current.resolve().name == "1"
     # the extra module's destination is gone after rollback
     assert not (sandbox / ".local/bin/extra").exists()
+
+
+def test_kill_between_prune_and_flip_recovers(sandbox, monkeypatch):
+    """A kill -9 between prune and the flip leaves pruned destinations
+    removed under the OLD current generation — before 0025 §B that
+    mutation was unjournaled and unrecoverable. The next apply's
+    reconcile restores the prior, then re-prunes cleanly."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("a\n")
+    (confdir / "b.toml").write_text("b\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: {
+    "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml"),
+    "configs/demo/b.toml": trackedCopy("~/.config/demo/b.toml"),
+  },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest_b = sandbox / ".config/demo/b.toml"
+    assert dest_b.read_text() == "b\n"
+
+    # undeclare b, then die right after the prune, before the flip
+    (repo / "modules" / "hello.ts").write_text(
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+"""
+    )
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "after-prune")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "the crash hook must kill the run"
+    # the window: b pruned, generation 1 still current
+    assert not dest_b.exists()
+    current = sandbox / ".local/share/gripsack/current"
+    assert current.resolve().name == "1"
+
+    # the next apply reconciles: restores the pruned file (journal
+    # prior), then completes the undeclare cleanly
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "recovered" in out.stdout or "recovered" in out.stderr
+    assert current.resolve().name == "2"
+    assert not dest_b.exists()
+
+
+def test_kill_mid_rollback_recovers(sandbox, monkeypatch):
+    """A kill -9 mid-rollback (restores done, flip pending) used to
+    leave destinations at the TARGET generation's content under the
+    ORIGINAL current with no record. Rollback is journaled now
+    (0025 §A): the next apply's reconcile restores the pre-rollback
+    state."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("gen1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    (confdir / "a.toml").write_text("gen2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config/demo/a.toml"
+    assert dest.read_text() == "gen2\n"
+    current = sandbox / ".local/share/gripsack/current"
+    assert current.resolve().name == "2"
+
+    # die after the rollback's restore, before its flip
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "after-rollback-restore")
+    out = grip("rollback", cwd=repo)
+    assert out.returncode != 0, "the crash hook must kill the run"
+    # the window: dest restored to gen1's content, current still 2
+    assert dest.read_text() == "gen1\n"
+    assert current.resolve().name == "2"
+
+    # the next apply reconciles the crashed rollback: the pre-rollback
+    # (generation 2) content comes back
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == "gen2\n"
+    assert current.resolve().name == "2"
 
 
 def test_fonts_and_desktop_entry_adapters_run_once_per_apply(sandbox, monkeypatch):
@@ -754,6 +862,15 @@ export default module("zz", {
     assert link.exists(), f"rollback left a dangling link: {target}"
 
 
+
+def canonical_sha(data: bytes) -> str:
+    """The journal's file identity: canonical_bytes_hash (type tag +
+    exec byte + contents) — what deploy's mark_after records."""
+    import hashlib
+
+    return hashlib.sha256(b"file\0" + b"\x00" + data).hexdigest()
+
+
 def test_apply_recovers_from_an_interrupted_run(sandbox):
     """Crash recovery (0019): a run killed between a deploy mutation
     and the flip leaves an uncommitted journal entry — the next apply
@@ -796,7 +913,7 @@ export default module("a", {{
     entry = {
         "dest": dest,
         "prior": {"kind": "file", "hash": prior_sha},
-        "after": hashlib.sha256(half).hexdigest(),
+        "after": canonical_sha(half),
     }
     (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
         json.dumps(entry)
@@ -846,7 +963,7 @@ export default module("a", {{
     entry = {
         "dest": dest,
         "prior": {"kind": "file", "hash": prior_sha},
-        "after": hashlib.sha256(b"half\n").hexdigest(),
+        "after": canonical_sha(b"half\n"),
     }
     (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
         json.dumps(entry)
