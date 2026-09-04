@@ -110,24 +110,78 @@ pub fn write_manifest(home: &gripsack_fs::Dir, generation: &Generation) -> io::R
     )
 }
 
-/// Read a generation's manifest.
+/// Read a generation's manifest — the ONE strict boundary for
+/// persisted generations (0027 §4). A generation is long-lived input
+/// (disk faults, interrupted older releases, hand edits): parse is
+/// not enough. Rejects: embedded number ≠ directory id, duplicate
+/// destinations (case-folded — the E111 rule applies to history too),
+/// malformed content hashes, store paths outside `$GRIPSACK_HOME/
+/// store`. Prior blobs stay lazily read — restore-time errors already
+/// abort the transaction.
 pub fn read_manifest(home: &Path, generation: u64) -> io::Result<Generation> {
     let raw = std::fs::read(manifest_path(home, generation))?;
-    serde_json::from_slice(&raw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    let manifest: Generation =
+        serde_json::from_slice(&raw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    validate(&manifest, generation, home)?;
+    Ok(manifest)
 }
 
-/// All generation numbers on disk, ascending.
-pub fn list(home: &Path) -> Vec<u64> {
+fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<()> {
+    let invalid = |why: String| io::Error::new(io::ErrorKind::InvalidData, why);
+    if manifest.number != generation {
+        return Err(invalid(format!(
+            "generation {generation}'s manifest claims number {} — directory and              identity disagree",
+            manifest.number
+        )));
+    }
+    let store_root = home.join(crate::paths::STORE_DIR);
+    let mut seen_dests = std::collections::BTreeSet::new();
+    for (name, state) in &manifest.modules {
+        if !state.store_path.starts_with(&store_root) {
+            return Err(invalid(format!(
+                "module {name:?}: store path {} is outside $GRIPSACK_HOME/store",
+                state.store_path.display()
+            )));
+        }
+        for entry in &state.entries {
+            if !seen_dests.insert(entry.to.to_lowercase()) {
+                return Err(invalid(format!(
+                    "destination {:?} appears twice in generation {generation}",
+                    entry.to
+                )));
+            }
+            if entry.hash.len() != 64 || !entry.hash.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err(invalid(format!(
+                    "module {name:?}: destination {:?} has a malformed content hash",
+                    entry.to
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// All generation numbers on disk, ascending. Fail closed
+/// (0027 §2): only a MISSING generations directory means "none" —
+/// an enumeration or entry error is real (gc builds its deletion
+/// set from this list; an empty list on error would collect the
+/// active generation's store objects).
+pub fn list(home: &Path) -> io::Result<Vec<u64>> {
     let dir = home.join(crate::paths::GENERATIONS_DIR);
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e),
     };
-    let mut numbers: Vec<u64> = entries
-        .flatten()
-        .filter_map(|e| e.file_name().to_string_lossy().parse().ok())
-        .collect();
+    let mut numbers = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        if let Ok(n) = entry.file_name().to_string_lossy().parse() {
+            numbers.push(n);
+        }
+    }
     numbers.sort_unstable();
-    numbers
+    Ok(numbers)
 }
 
 /// The generation `current` points at, if any. Fail closed
@@ -153,6 +207,88 @@ pub fn current(home: &Path) -> io::Result<Option<u64>> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+/// Durable high-water mark: `generations/high-water` holds the highest
+/// generation number ever allocated (0027 §9). Without it, gc of the
+/// tip moves the on-disk maximum backward and IDs get reused — logs
+/// and journal remnants would then name two different states "2".
+pub fn allocate(home_path: &Path, home: &gripsack_fs::Dir) -> io::Result<u64> {
+    let high_water = match home.read("generations/high-water") {
+        Ok(bytes) => {
+            let text = String::from_utf8_lossy(&bytes);
+            let n = text.trim().parse::<u64>().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "generations/high-water is corrupt — refusing to allocate",
+                )
+            })?;
+            Some(n)
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e),
+    };
+    let next = [
+        current(home_path)?,
+        list(home_path)?.into_iter().max(),
+        high_water,
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .unwrap_or(0)
+        + 1;
+    Ok(next)
+}
+
+/// Publish a complete generation as ONE object (0027 §8): manifest and
+/// profile are staged under `generations/.staging-<N>` and renamed
+/// into place with a no-clobber check — a failed apply never leaves a
+/// half-populated `generations/N` visible to listings, allocation, or
+/// rollback. A leftover staging dir from a crashed apply is not a
+/// generation and is cleared first.
+pub fn publish_generation(
+    home: &gripsack_fs::Dir,
+    generation: &Generation,
+    profile: Option<&str>,
+) -> io::Result<()> {
+    let staging =
+        Path::new(crate::paths::GENERATIONS_DIR).join(format!(".staging-{}", generation.number));
+    let final_dir = Path::new(crate::paths::GENERATIONS_DIR).join(generation.number.to_string());
+    if home.symlink_metadata(&final_dir).is_ok() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!(
+                "generation {} already exists — generations are immutable",
+                generation.number
+            ),
+        ));
+    }
+    let _ = home.remove_dir_all(&staging);
+    let json = serde_json::to_string_pretty(generation)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    gripsack_fs::atomic_write(home, &staging.join("manifest.json"), json.as_bytes())?;
+    if let Some(profile) = profile {
+        gripsack_fs::atomic_write(
+            home,
+            &staging.join("env").join("profile.sh"),
+            profile.as_bytes(),
+        )?;
+    }
+    gripsack_fs::fsync_dir(home, &staging)?;
+    home.rename(&staging, home, &final_dir).map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!("publish generation {}: {e}", generation.number),
+        )
+    })?;
+    // record the high-water mark with the generation that set it
+    gripsack_fs::atomic_write(
+        home,
+        Path::new("generations/high-water"),
+        generation.number.to_string().as_bytes(),
+    )?;
+    gripsack_fs::fsync_dir(home, Path::new(crate::paths::GENERATIONS_DIR))
 }
 
 /// [`current`] through the home capability (plan/0021): the link is
@@ -203,18 +339,18 @@ pub fn flip(home: &gripsack_fs::Dir, home_path: &Path, generation: u64) -> io::R
 mod tests {
     use super::*;
 
-    fn mk_gen(n: u64) -> Generation {
+    fn mk_gen(home: &Path, n: u64) -> Generation {
         let mut modules = BTreeMap::new();
         modules.insert(
             "helix".to_string(),
             ModuleState {
-                store_path: PathBuf::from("/store/abc-helix"),
+                store_path: home.join("store/abc-helix"),
                 entries: vec![DeployedEntry {
                     from: "config.toml".into(),
                     to: "~/.config/helix/config.toml".into(),
                     mode: Ownership::TrackedCopy,
                     vars: Default::default(),
-                    hash: "deadbeef".into(),
+                    hash: "d".repeat(64),
                     prior: None,
                 }],
                 env: vec![],
@@ -229,11 +365,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
         let cap = gripsack_fs::open_or_create(home).unwrap();
-        write_manifest(&cap, &mk_gen(1)).unwrap();
-        write_manifest(&cap, &mk_gen(2)).unwrap();
-        assert_eq!(list(home), vec![1, 2]);
+        write_manifest(&cap, &mk_gen(home, 1)).unwrap();
+        write_manifest(&cap, &mk_gen(home, 2)).unwrap();
+        assert_eq!(list(home).unwrap(), vec![1, 2]);
         let read = read_manifest(home, 1).unwrap();
-        assert_eq!(read.modules["helix"].entries[0].hash, "deadbeef");
+        assert_eq!(read.modules["helix"].entries[0].hash, "d".repeat(64));
     }
 
     #[test]
@@ -241,12 +377,94 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
         let cap = gripsack_fs::open_or_create(home).unwrap();
-        write_manifest(&cap, &mk_gen(1)).unwrap();
-        write_manifest(&cap, &mk_gen(2)).unwrap();
+        write_manifest(&cap, &mk_gen(home, 1)).unwrap();
+        write_manifest(&cap, &mk_gen(home, 2)).unwrap();
         assert_eq!(current(home).unwrap(), None);
         flip(&cap, home, 1).unwrap();
         assert_eq!(current(home).unwrap(), Some(1));
         flip(&cap, home, 2).unwrap();
         assert_eq!(current(home).unwrap(), Some(2));
+    }
+
+    /// 0027 §4: the persisted-generation boundary rejects identity
+    /// mismatch, duplicate destinations, malformed hashes, and store
+    /// paths outside $GRIPSACK_HOME/store.
+    #[test]
+    fn manifests_are_strictly_validated() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let cap = gripsack_fs::open_or_create(home).unwrap();
+
+        // number ≠ directory: a manifest claiming 1, filed under 7
+        write_manifest(&cap, &mk_gen(home, 1)).unwrap();
+        let wrong = mk_gen(home, 1);
+        // written by hand — publish's no-clobber guards directories,
+        // this test is about CONTENT identity
+        let bad = home.join("generations/7");
+        std::fs::create_dir_all(&bad).unwrap();
+        std::fs::write(
+            bad.join("manifest.json"),
+            serde_json::to_string_pretty(&wrong).unwrap(),
+        )
+        .unwrap();
+        let err = read_manifest(home, 7).unwrap_err();
+        assert!(err.to_string().contains("claims number"), "{err}");
+
+        // duplicate destinations (case-folded)
+        let mut dup = mk_gen(home, 3);
+        let entry = dup.modules["helix"].entries[0].clone();
+        dup.modules
+            .get_mut("helix")
+            .unwrap()
+            .entries
+            .push(DeployedEntry {
+                to: "~/.config/HELIX/config.toml".into(),
+                ..entry
+            });
+        let d = home.join("generations/3");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(
+            d.join("manifest.json"),
+            serde_json::to_string_pretty(&dup).unwrap(),
+        )
+        .unwrap();
+        let err = read_manifest(home, 3).unwrap_err();
+        assert!(err.to_string().contains("appears twice"), "{err}");
+
+        // store path outside the store
+        let mut outside = mk_gen(home, 4);
+        outside.modules.get_mut("helix").unwrap().store_path = PathBuf::from("/etc/passwd");
+        let d = home.join("generations/4");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(
+            d.join("manifest.json"),
+            serde_json::to_string_pretty(&outside).unwrap(),
+        )
+        .unwrap();
+        let err = read_manifest(home, 4).unwrap_err();
+        assert!(err.to_string().contains("outside"), "{err}");
+    }
+
+    /// 0027 §8/§9: publishing an existing generation fails no-clobber;
+    /// allocation survives gc of the tip via the high-water mark.
+    #[test]
+    fn publish_is_atomic_and_allocation_monotonic() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let cap = gripsack_fs::open_or_create(home).unwrap();
+        publish_generation(&cap, &mk_gen(home, 1), Some("export A=1")).unwrap();
+        assert!(home.join("generations/1/manifest.json").exists());
+        assert!(home.join("generations/1/env/profile.sh").exists());
+        // no staging residue
+        assert!(!home.join("generations/.staging-1").exists());
+        // no-clobber
+        let err = publish_generation(&cap, &mk_gen(home, 1), None).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        // high-water: gc the tip, allocation still moves forward
+        publish_generation(&cap, &mk_gen(home, 2), None).unwrap();
+        publish_generation(&cap, &mk_gen(home, 3), None).unwrap();
+        std::fs::remove_dir_all(home.join("generations/2")).unwrap();
+        std::fs::remove_dir_all(home.join("generations/3")).unwrap();
+        assert_eq!(allocate(home, &cap).unwrap(), 4);
     }
 }

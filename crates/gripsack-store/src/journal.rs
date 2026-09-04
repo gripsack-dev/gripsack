@@ -39,8 +39,12 @@ pub enum Prior {
     /// Nothing was there; recovery removes what the deploy wrote.
     Absent,
     /// A regular file; its bytes are in the prior blob store under
-    /// `hash`.
-    File { hash: String },
+    /// `hash`. `mode` is the original Unix mode (0027 §6 — recovery
+    /// recreates the file exactly: a 0600 secret must not come back
+    /// 0644&umask, an 0755 script must stay executable; also the
+    /// file→symlink→crash path, where the live object at recovery is
+    /// a link and mode preservation by copy is impossible).
+    File { hash: String, mode: Option<u32> },
     /// A symlink; recovery recreates it pointing at `target`.
     Symlink { target: String },
 }
@@ -65,15 +69,25 @@ pub struct Entry {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PriorSerde {
     Absent,
-    File { hash: String },
-    Symlink { target: String },
+    File {
+        hash: String,
+        /// Original Unix mode; absent only in pre-0.24 entries.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<u32>,
+    },
+    Symlink {
+        target: String,
+    },
 }
 
 impl From<&Prior> for PriorSerde {
     fn from(p: &Prior) -> Self {
         match p {
             Prior::Absent => PriorSerde::Absent,
-            Prior::File { hash } => PriorSerde::File { hash: hash.clone() },
+            Prior::File { hash, mode } => PriorSerde::File {
+                hash: hash.clone(),
+                mode: *mode,
+            },
             Prior::Symlink { target } => PriorSerde::Symlink {
                 target: target.clone(),
             },
@@ -177,7 +191,14 @@ pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io:
     if meta.is_file() {
         let bytes = dest_dir.read(dest_name)?;
         let hash = store_prior_blob_in(home, &bytes)?;
-        return Ok(Prior::File { hash });
+        #[cfg(unix)]
+        let mode = {
+            use gripsack_fs::cap_std::fs::MetadataExt;
+            Some(meta.mode() & 0o777)
+        };
+        #[cfg(not(unix))]
+        let mode = None;
+        return Ok(Prior::File { hash, mode });
     }
     // directories/fifos/devices are refused by deploy's guards; if
     // one is here anyway, treat it as absent — recovery will not
@@ -487,7 +508,7 @@ fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
 /// absent. (canonical_bytes_hash — the identity deploy records; a
 /// raw-sha256 comparison here was the latent drift-guard bug the
 /// 0025 crash-window e2e exposed.)
-fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<String>> {
+pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<String>> {
     match dest_dir.symlink_metadata(dest_name) {
         Ok(meta) if meta.file_type().is_symlink() => Ok(dest_dir
             .read_link_contents(dest_name)
@@ -507,7 +528,7 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<String>> 
     match prior {
         PriorSerde::Absent => Ok(None),
         PriorSerde::Symlink { target } => Ok(Some(target.clone())),
-        PriorSerde::File { hash } => Ok(Some(crate::hash::canonical_bytes_hash(
+        PriorSerde::File { hash, .. } => Ok(Some(crate::hash::canonical_bytes_hash(
             &home.read(prior_blob_rel(hash))?,
         ))),
     }
@@ -545,9 +566,19 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
             // into one is left for the drift guard's Keep path
             let _ = dest_dir.remove_file(dest_name);
         }
-        PriorSerde::File { hash } => {
+        PriorSerde::File { hash, mode } => {
             let bytes = home.read(prior_blob_rel(hash))?;
-            gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?;
+            // the mode rides the write (0027 §6): temp → exact mode →
+            // fsync → rename, so a restored 0600 secret never exists
+            // at a wider mode, not even for the rename's instant
+            match mode {
+                Some(mode) => {
+                    gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, *mode)?
+                }
+                // pre-0.24 entries carry no mode — content is still
+                // restored; the mode is creation default
+                None => gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?,
+            }
         }
         PriorSerde::Symlink { target } => {
             gripsack_fs::symlink_replace(dest_dir, dest_name, Path::new(target))?;
@@ -770,6 +801,57 @@ mod tests {
             number: n,
             modules: Default::default(),
         }
+    }
+
+    #[test]
+    fn recovery_restores_the_exact_mode() {
+        // 0027 §6: a 0600 secret replaced by a symlink mid-run, then a
+        // crash — the live object at recovery is a LINK, so mode
+        // preservation by copy is impossible; the mode must come from
+        // the journal entry itself
+        use std::os::unix::fs::PermissionsExt;
+        let home = home();
+        let dest = home.path().join("secret");
+        std::fs::write(&dest, b"hunter2\n").unwrap();
+        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        let prior = capture_at(&dest, &cap(&home));
+        record(&cap(&home), &dest, &prior, "/store/x").unwrap();
+        // the mutation: dest becomes an owned symlink
+        std::fs::remove_file(&dest).unwrap();
+        std::os::unix::fs::symlink("/store/x", &dest).unwrap();
+        // crash before commit
+
+        reconcile(&cap(&home)).unwrap();
+        let meta = std::fs::metadata(&dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"hunter2\n");
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    fn post_crash_edit_beats_the_landed_mutation() {
+        // 0026 §6: intent is recorded BEFORE the mutation, so an edit
+        // made after the crash is distinguishable from the mutation —
+        // the user's bytes win even when the mutation fully landed
+        let home = home();
+        let dest = home.path().join("config");
+        std::fs::write(&dest, b"old\n").unwrap();
+
+        let prior = capture_at(&dest, &cap(&home));
+        record(
+            &cap(&home),
+            &dest,
+            &prior,
+            &crate::hash::canonical_bytes_hash(b"deployed\n"),
+        )
+        .unwrap();
+        std::fs::write(&dest, b"deployed\n").unwrap();
+        // crash; THEN the user edits
+        std::fs::write(&dest, b"post-crash edit\n").unwrap();
+
+        let lines = reconcile(&cap(&home)).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"post-crash edit\n");
+        assert!(lines[0].contains("kept"), "{lines:?}");
     }
 
     #[test]

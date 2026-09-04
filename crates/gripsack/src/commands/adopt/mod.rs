@@ -239,7 +239,7 @@ pub fn adopt(
     let baseline = gripsack_fs::open_or_create(&home);
     let current = store::current_generation(&home);
     if matches!(current, Ok(None))
-        && store::list_generations(&home).is_empty()
+        && store::list_generations(&home).is_ok_and(|g| g.is_empty())
         && let Err(e) = baseline.and_then(|cap| {
             store::write_manifest(
                 &cap,

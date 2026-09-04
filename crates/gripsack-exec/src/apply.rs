@@ -2,7 +2,6 @@
 
 use crate::ctx::Outcome;
 use crate::ctx::{Ctx, ExecError};
-use crate::env::render_env_file;
 use crate::expand;
 use crate::report::ApplyResult;
 use gripsack_ir::Ir;
@@ -65,14 +64,23 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // above every generation ever published (gc'd or not — gc never
     // removes the current generation, and the tip stays on disk
     // while it is current).
-    let next_gen = current_gen
-        .into_iter()
-        .chain(store::list_generations(&ctx.home))
-        .max()
-        .unwrap_or(0)
-        + 1;
-    let prev_manifest: Option<store::Generation> =
-        current_gen.and_then(|n| store::read_manifest(&ctx.home, n).ok());
+    let next_gen = store::generations::allocate(&ctx.home, ctx.home_dir()?)?;
+    // a known current generation with an unreadable manifest is
+    // categorically different from no current generation (0027 §3):
+    // planning without the authoritative previous state would skip
+    // prunes and mis-plan ownership — block the mutation
+    let prev_manifest: Option<store::Generation> = match current_gen {
+        Some(n) => Some(
+            store::read_manifest(&ctx.home, n).map_err(|e| ExecError::Step {
+                module: "*".into(),
+                step: "manifest".into(),
+                detail: format!(
+                    "current generation {n}'s manifest is unreadable ({e}) — refusing to apply"
+                ),
+            })?,
+        ),
+        None => None,
+    };
     let prev_modules: BTreeMap<String, store::ModuleState> = prev_manifest
         .as_ref()
         .map(|g| g.modules.clone())
@@ -301,11 +309,12 @@ fn pre_flip(
         number: next,
         modules: modules.clone(),
     };
-    store::write_manifest(ctx.home_dir()?, &generation)?;
-    // the exported-env profile renders INTO the generation, BEFORE the
-    // flip (0025 §C): profile and activation are one indivisible step,
-    // and a failure here leaves nothing activated
-    render_env_file(&ctx.home, next, &generation.modules)?;
+    // the generation publishes as ONE object (0027 §8): manifest and
+    // profile stage under generations/.staging-<N> and rename into
+    // place no-clobber — a failure here leaves nothing visible, let
+    // alone activated
+    let profile = crate::env::render_profile(&generation.modules);
+    store::generations::publish_generation(ctx.home_dir()?, &generation, profile.as_deref())?;
     Ok(Some(generation))
 }
 
@@ -402,7 +411,10 @@ fn prune_undeclared(
             let intended = crate::deploy::prune_intent(entry, home)?;
             let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
             crate::deploy::journaled(home_dir, &dest_dir, &dest_name, &dest, intended, || {
-                crate::deploy::remove_or_restore_prior(&dest, entry, name, home);
+                // a failed removal is a transaction error now (0027
+                // §1), and journaled's postcondition verifies the
+                // landing regardless
+                crate::deploy::remove_or_restore_prior(&dest_dir, &dest_name, entry, name, home)?;
                 Ok(())
             })?;
             info!(

@@ -66,6 +66,92 @@ export default module("hello", {{
     assert out.returncode != 0
 
 
+def test_gc_survives_tip_removal_without_id_reuse(sandbox):
+    """0027 §9: generation IDs are never reused — rollback 3→1, gc
+    with keep=1 removes 2 and 3 (the on-disk maximum moves BACKWARD),
+    and the next apply still allocates 4, from the durable high-water
+    mark."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("one\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    for content in ("two\n", "three\n"):
+        (confdir / "a.toml").write_text(content)
+        out = grip("apply", "--host", "testhost", cwd=repo)
+        assert out.returncode == 0, out.stderr
+    home = sandbox / ".local/share/gripsack"
+    assert (home / "generations/3").is_dir()
+
+    out = grip("rollback", "1", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    user_conf = sandbox / ".config/gripsack"
+    user_conf.mkdir(parents=True)
+    (user_conf / "config.toml").write_text("[settings]\nkeep_generations = 0\n")
+    out = grip("gc", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not (home / "generations/2").exists(), "gc should remove 2"
+    assert not (home / "generations/3").exists(), "gc should remove 3 (not current)"
+
+    (confdir / "a.toml").write_text("four\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (home / "generations/4").is_dir(), (
+        f"the high-water mark must hold across gc: {sorted((home / 'generations').iterdir())}"
+    )
+
+
+def test_gc_aborts_when_generations_are_unreadable(sandbox):
+    """0027 §2: an enumeration failure must never read as 'no
+    generations' — gc would otherwise collect the active generation's
+    store objects. Here generations/ is a FILE: read_dir fails, gc
+    aborts, nothing is deleted."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    home = sandbox / ".local/share/gripsack"
+    store_before = {p.name for p in (home / "store").iterdir()}
+    assert store_before
+
+    gens = home / "generations"
+    for child in gens.iterdir():
+        if child.is_dir():
+            import shutil
+
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    gens.rmdir()
+    gens.write_text("corrupted into a file\n")
+
+    out = grip("gc", cwd=repo)
+    assert out.returncode != 0, "gc must fail closed"
+    assert store_before == {p.name for p in (home / "store").iterdir()}, (
+        "gc must delete NOTHING when the inventory is unreadable"
+    )
+
 def test_gc_dry_run_previews_without_deleting(sandbox):
     payload = make_tarball(
         sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho v1\n"}

@@ -113,18 +113,39 @@ fn by_destination(generation: &store::Generation) -> DestMap<'_> {
 /// target for owned, canonical bytes hash for copy/template, the
 /// module's block hash for merge. None when absent (or, for merge,
 /// when the block is absent).
-fn live_intent_identity(dest: &Path, entry: &store::DeployedEntry, module: &str) -> Option<String> {
+fn live_intent_identity(
+    dest: &Path,
+    entry: &store::DeployedEntry,
+    module: &str,
+) -> std::io::Result<Option<String>> {
+    // NotFound-only-is-absent (0027 §7): an unreadable destination is
+    // not "absent", "unchanged", or "drifted" — it is an error, and
+    // the rollback aborts before mutating on top of the unknown
+    let read_text = |d: &Path| match std::fs::read_to_string(d) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    };
     match entry.mode {
-        gripsack_ir::Ownership::Owned => std::fs::read_link(dest)
-            .ok()
-            .map(|t| t.to_string_lossy().into_owned()),
-        gripsack_ir::Ownership::Merge => std::fs::read_to_string(dest)
-            .ok()
+        gripsack_ir::Ownership::Owned => {
+            let target = match std::fs::read_link(dest) {
+                Ok(t) => t,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(e),
+            };
+            Ok(Some(target.to_string_lossy().into_owned()))
+        }
+        gripsack_ir::Ownership::Merge => Ok(read_text(dest)?
             .and_then(|text| crate::template::extract_block(&text, module))
-            .map(|block| store::canonical_bytes_hash(block.as_bytes())),
-        _ => std::fs::read(dest)
-            .ok()
-            .map(|b| store::canonical_bytes_hash(&b)),
+            .map(|block| store::canonical_bytes_hash(block.as_bytes()))),
+        _ => {
+            let bytes = match std::fs::read(dest) {
+                Ok(b) => b,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(e),
+            };
+            Ok(Some(store::canonical_bytes_hash(&bytes)))
+        }
     }
 }
 
@@ -198,7 +219,7 @@ fn plan(
                             gripsack_ir::Ownership::Merge => entry.hash.clone(),
                             _ => plan.intent.clone(),
                         };
-                        match live_intent_identity(&dest_path, entry, name) {
+                        match live_intent_identity(&dest_path, entry, name)? {
                             None => Transition::Restore { plan },
                             Some(live) if live == target_id => Transition::Noop,
                             Some(_) => Transition::Keep,
@@ -209,7 +230,7 @@ fn plan(
             // both deploy it: restore only from a clean base
             (Some((cname, centry, csp)), Some((tname, tentry, tsp))) => {
                 let target_plan = compute_restore(&dest_path, tentry, tsp, tname)?;
-                let live = live_intent_identity(&dest_path, centry, cname);
+                let live = live_intent_identity(&dest_path, centry, cname)?;
                 match (live, target_plan) {
                     (_, None) => Transition::Noop,
                     (None, Some(plan)) => Transition::Restore { plan },
@@ -307,7 +328,9 @@ fn execute(
             } => {
                 let (dest_dir, dest_name) = dest_capability(dest)?;
                 journaled(home, &dest_dir, &dest_name, dest, intent.clone(), || {
-                    remove_or_restore_prior(dest, entry, module, home_path);
+                    // 0027 §1: a failed removal/restore aborts the
+                    // rollback — the flip never commits it
+                    remove_or_restore_prior(&dest_dir, &dest_name, entry, module, home_path)?;
                     Ok(())
                 })?;
             }

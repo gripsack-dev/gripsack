@@ -439,7 +439,9 @@ export default module("bbb", {{
     assert out.returncode != 0
     # the flip never happened…
     generations = sandbox / ".local/share/gripsack/generations"
-    assert [p.name for p in generations.iterdir()] == ["1"]
+    # generations/ also holds the durable high-water mark (0027 §9) —
+    # filter to actual generation directories
+    assert [p.name for p in generations.iterdir() if p.is_dir()] == ["1"]
     # …and this run's deployments are rolled back exactly
     assert (sandbox / ".out/a.conf").read_text() == "v1\n"
     assert not (sandbox / ".out/b").exists()
@@ -948,6 +950,51 @@ export default module("demo", {
     assert out.returncode == 0, out.stderr
     assert dest.read_text() == "one\n", (
         "an uncommitted roll-forward must restore the prior — 0.22 kept it"
+    )
+
+
+def test_rollback_never_rewrites_historical_generations(sandbox):
+    """0027 §8: a generation is one immutable object. Rolling back to
+    it must not change a single byte inside it — the profile backfills
+    only when MISSING (pre-0.22 history), never re-renders over it."""
+    import hashlib
+
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("one\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+  env: { EDITOR: "demo" },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    (confdir / "a.toml").write_text("two\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    def tree_hash(d):
+        h = hashlib.sha256()
+        for f in sorted(d.rglob("*")):
+            if f.is_file():
+                h.update(f.name.encode())
+                h.update(f.read_bytes())
+        return h.hexdigest()
+
+    home = sandbox / ".local/share/gripsack"
+    before = tree_hash(home / "generations/1")
+    assert (home / "generations/1/env/profile.sh").exists()
+
+    out = grip("rollback", "1", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert tree_hash(home / "generations/1") == before, (
+        "rollback must not touch a historical generation"
     )
 
 

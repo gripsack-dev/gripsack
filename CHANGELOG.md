@@ -3,6 +3,49 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.24.0] — 2026-09-04
+
+Provable transactions and validated generations (plan/0027, fourth
+fresh-eyes audit). The two principles of this release: a transaction
+never commits a destination that didn't reach its declared state, and
+persisted state is never treated as absent because it couldn't be
+read.
+
+### Fixed
+
+- **Transactions verify their postcondition.** Every journaled
+  mutation re-reads the destination through the pinned capability
+  afterward and requires live == intended — a helper returning success
+  without producing the state now fails the run (and compensation
+  restores the prior) instead of committing a lie. The bool-returning
+  removal/restore helpers are `Result`: an I/O failure no longer
+  reads as "drifted, kept".
+- **GC fails closed.** An unreadable `generations/` inventory errors
+  instead of collecting the active generation's store objects; the
+  current generation must be present in the inventory and every
+  retained manifest must validate before a deletion plan exists.
+- **Persisted generations are strictly validated** at the one
+  boundary (`read_manifest`): embedded number must equal the
+  directory, destinations unique (case-folded, E111 applies to
+  history), content hashes well-formed, store paths confined to
+  `$GRIPSACK_HOME/store`. A current generation whose manifest is
+  unreadable now blocks apply and rollback instead of planning
+  without the authoritative state.
+- **A generation publishes as one immutable object** — manifest and
+  env profile stage under `generations/.staging-<N>` and rename in
+  no-clobber; a failed apply leaves nothing visible. Rollback only
+  backfills a MISSING profile (pre-0.22 history), never rewrites a
+  generation.
+- **Generation IDs never reuse, even across GC of the tip** — a
+  durable `generations/high-water` mark drives allocation.
+- **The crash journal restores exact file modes** — priors record the
+  Unix mode, and recovery writes with it riding the rename
+  (temp → chmod → fsync → rename). A 0600 secret replaced by a
+  symlink mid-run comes back 0600, not umask-default.
+- **Capture, compare, and mutate share one pinned parent capability**
+  through prune and rollback helpers — no ambient-path reopens
+  mid-transition.
+
 ## [0.23.0] — 2026-09-04
 
 Generation identity and path-centric transactions (plan/0026, third

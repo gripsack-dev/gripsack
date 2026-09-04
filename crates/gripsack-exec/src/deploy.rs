@@ -115,51 +115,72 @@ pub fn execute_restore(
 }
 
 /// Remove a destination we deployed, with drift guards (0001 §3.5):
-/// never delete user edits. Returns true if anything was removed.
-/// Merge entries remove only our block from the foreign file.
-pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: &str) -> bool {
+/// never delete user edits. `Ok(false)` is the drift POLICY (kept);
+/// every I/O failure is Err — a failed removal must never read as
+/// "user drift, kept" (0027 §1). Everything goes through the pinned
+/// parent capability the caller opened (0027 §5). Merge entries
+/// remove only our block from the foreign file.
+pub fn remove_entry_deployed(
+    dest_dir: &gripsack_fs::Dir,
+    dest_name: &Path,
+    entry: &store::DeployedEntry,
+    module: &str,
+) -> std::io::Result<bool> {
     match entry.mode {
         Ownership::Owned => {
-            let ours = std::fs::read_link(dest)
+            let ours = dest_dir
+                .read_link_contents(dest_name)
                 .map(|t| t.starts_with(store::gripsack_home()))
                 .unwrap_or(false);
-            ours && {
-                // removals go through the pinned parent capability,
-                // same as writes (0025 §H)
-                dest_capability(dest)
-                    .and_then(|(d, n)| d.remove_file(&n))
-                    .is_ok()
+            if !ours {
+                return Ok(false);
             }
+            remove_if_present(dest_dir, dest_name)?;
+            Ok(true)
         }
         Ownership::Merge => {
-            let existing = std::fs::read_to_string(dest).unwrap_or_default();
+            let existing = match dest_dir.read_to_string(dest_name) {
+                Ok(text) => text,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+                Err(e) => return Err(e),
+            };
             match crate::template::extract_block(&existing, module) {
                 Some(content) if store::canonical_bytes_hash(content.as_bytes()) == entry.hash => {
                     let new = crate::template::remove_block(&existing, module)
                         .expect("block found above");
                     if new.trim().is_empty() {
-                        dest_capability(dest)
-                            .and_then(|(d, n)| d.remove_file(&n))
-                            .is_ok()
+                        remove_if_present(dest_dir, dest_name)?;
                     } else {
-                        dest_capability(dest)
-                            .and_then(|(d, n)| gripsack_fs::atomic_write(&d, &n, new.as_bytes()))
-                            .is_ok()
+                        gripsack_fs::atomic_write(dest_dir, dest_name, new.as_bytes())?;
                     }
+                    Ok(true)
                 }
-                _ => false, // drifted block is the user's now
+                _ => Ok(false), // drifted block is the user's now
             }
         }
         _ => {
             // copy-like: only delete bytes identical to what we wrote
-            let Ok(current) = store::canonical_file_hash(dest) else {
-                return false;
+            let current = match store::canonical_file_hash_in(dest_dir, dest_name) {
+                Ok(h) => h,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+                Err(e) => return Err(e),
             };
-            current == entry.hash
-                && dest_capability(dest)
-                    .and_then(|(d, n)| d.remove_file(&n))
-                    .is_ok()
+            if current != entry.hash {
+                return Ok(false);
+            }
+            remove_if_present(dest_dir, dest_name)?;
+            Ok(true)
         }
+    }
+}
+
+/// remove_file where NotFound is success (the goal state), anything
+/// else is a real error (0027 §1).
+fn remove_if_present(dest_dir: &gripsack_fs::Dir, dest_name: &Path) -> std::io::Result<()> {
+    match dest_dir.remove_file(dest_name) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
     }
 }
 
@@ -217,39 +238,47 @@ fn capture_prior(
     }
 }
 
-/// Write a prior state back to its destination (0015 §4).
-fn restore_prior(dest: &Path, prior: &store::Prior, home: &Path) -> bool {
+/// Write a prior state back to its destination (0015 §4). Every
+/// failure is an error (0027 §1): a prior that cannot be read,
+/// written, or chmod'd must abort the transaction — the bool era read
+/// those as "kept", committing a generation over a failed restore.
+/// The recorded mode rides the write exactly (0027 §6).
+fn restore_prior(
+    dest_dir: &gripsack_fs::Dir,
+    dest_name: &Path,
+    prior: &store::Prior,
+    home: &Path,
+) -> std::io::Result<()> {
     match prior.kind {
         store::PriorKind::File => {
-            let Some(sha) = &prior.content else {
-                return false;
-            };
-            let Ok(bytes) = std::fs::read(store::prior_blob_path(home, sha)) else {
-                return false;
-            };
-            if !dest_capability(dest)
-                .and_then(|(d, n)| gripsack_fs::atomic_write(&d, &n, &bytes))
-                .is_ok()
-            {
-                return false;
-            }
+            let sha = prior.content.as_deref().ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "a file prior without a blob hash (corrupt manifest)",
+                )
+            })?;
+            let bytes = std::fs::read(store::prior_blob_path(home, sha))?;
             #[cfg(unix)]
-            if let Some(mode) = prior.mode {
-                use std::os::unix::fs::PermissionsExt;
-                return std::fs::set_permissions(dest, std::fs::Permissions::from_mode(mode))
-                    .is_ok();
+            match prior.mode {
+                Some(mode) => {
+                    gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, mode)?
+                }
+                None => gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?,
             }
-            true
+            #[cfg(not(unix))]
+            gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?;
+            Ok(())
         }
         store::PriorKind::Symlink => {
-            let Some(target) = &prior.content else {
-                return false;
-            };
+            let target = prior.content.as_deref().ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "a symlink prior without a target (corrupt manifest)",
+                )
+            })?;
             // symlink_replace over remove+create: the swap is atomic
             // and parent-fsync'd (strictly stronger than the old pair)
-            dest_capability(dest)
-                .and_then(|(d, n)| gripsack_fs::symlink_replace(&d, &n, Path::new(target)))
-                .is_ok()
+            gripsack_fs::symlink_replace(dest_dir, dest_name, Path::new(target))
         }
     }
 }
@@ -259,6 +288,25 @@ fn restore_prior(dest: &Path, prior: &store::Prior, home: &Path) -> bool {
 /// the original file/symlink — "your original files have been
 /// restored." Drifted destinations and prior-less entries fall back to
 /// the drift-guarded removal.
+/// [`intact_deployed`] through the pinned capability (0027 §5).
+pub fn intact_deployed_relative(
+    dest_dir: &gripsack_fs::Dir,
+    dest_name: &Path,
+    entry: &store::DeployedEntry,
+    home: &Path,
+) -> bool {
+    match entry.mode {
+        Ownership::Owned => dest_dir
+            .read_link_contents(dest_name)
+            .map(|t| t.starts_with(home))
+            .unwrap_or(false),
+        Ownership::Merge => false, // merge never carries a prior
+        _ => store::canonical_file_hash_in(dest_dir, dest_name)
+            .map(|h| h == entry.hash)
+            .unwrap_or(false),
+    }
+}
+
 /// Is the destination still exactly what this manifest entry
 /// deployed? (Merge blocks are checked by block hash at the call
 /// sites — a foreign file is never "intact" as a whole.)
@@ -299,17 +347,19 @@ pub fn prune_intent(entry: &store::DeployedEntry, home: &Path) -> std::io::Resul
 }
 
 pub fn remove_or_restore_prior(
-    dest: &Path,
+    dest_dir: &gripsack_fs::Dir,
+    dest_name: &Path,
     entry: &store::DeployedEntry,
     module: &str,
     home: &Path,
-) -> bool {
-    if intact_deployed(dest, entry, home)
+) -> std::io::Result<bool> {
+    if intact_deployed_relative(dest_dir, dest_name, entry, home)
         && let Some(prior) = &entry.prior
     {
-        return restore_prior(dest, prior, home);
+        restore_prior(dest_dir, dest_name, prior, home)?;
+        return Ok(true);
     }
-    remove_entry_deployed(dest, entry, module)
+    remove_entry_deployed(dest_dir, dest_name, entry, module)
 }
 
 /// One destination mutation, journaled for crash recovery (0019):
@@ -332,7 +382,26 @@ pub(crate) fn journaled(
     // post-crash user edit with the mutation
     let prior = gripsack_store::journal::capture(dest_dir, dest_name, dest, home)?;
     gripsack_store::journal::record(home, dest, &prior, &intended)?;
-    mutate()
+    mutate()?;
+    // the transaction postcondition (0027 §1): a helper that returns
+    // Ok without producing the intended state fails the run HERE, and
+    // compensation restores the prior — the flip never commits an
+    // unverified destination
+    let live = gripsack_store::journal::live_identity(dest_dir, dest_name)?;
+    let landed = if intended == gripsack_store::journal::REMOVED {
+        live.is_none()
+    } else {
+        live.as_deref() == Some(intended.as_str())
+    };
+    if !landed {
+        return Err(std::io::Error::other(format!(
+            "{} did not reach its intended state (expected {}, found {})",
+            dest.display(),
+            intended,
+            live.as_deref().unwrap_or("absent")
+        )));
+    }
+    Ok(())
 }
 
 /// Open a destination's parent as a capability, creating parents for
@@ -749,6 +818,33 @@ fn read_foreign_text(dest: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn journaled_mutation_must_reach_its_intended_state() {
+        // 0027 §1: a helper that returns Ok without producing the
+        // intended state fails the run here — the flip never commits
+        // an unverified destination
+        let dir = tempfile::tempdir().unwrap();
+        let home = gripsack_fs::open_or_create(dir.path()).unwrap();
+        let dest = dir.path().join("config");
+        let (dest_dir, dest_name) = dest_capability(&dest).unwrap();
+        let err = journaled(
+            &home,
+            &dest_dir,
+            &dest_name,
+            &dest,
+            store::canonical_bytes_hash(b"intended"),
+            || Ok(()), // reports success, writes nothing
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("did not reach its intended state"),
+            "{err}"
+        );
+        // the journal entry survives for reconcile
+        let lines = store::journal::reconcile(&home).unwrap();
+        assert!(!lines.is_empty());
+    }
 
     #[test]
     fn restore_never_writes_a_dangling_owned_link() {
