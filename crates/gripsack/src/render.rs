@@ -265,15 +265,61 @@ pub fn diff_section(
                 });
                 continue;
             }
-            let new_hash = match gripsack_store::canonical_file_hash(&repo_file) {
-                Ok(h) => h,
-                Err(_) => {
-                    lines.push(format!(
-                        "  ! {} → {} (source missing)",
-                        entry.from, entry.to
-                    ));
-                    continue;
+            // Compare in the mode's own terms (0.21.1 review): the
+            // manifest records the DEPLOYED form's hash — rendered for
+            // template, trimmed block for merge — so hashing the raw
+            // repo source can never match and plan cried (update)
+            // forever. Template vars come from the IR (eval already
+            // computed them); a render failure means the entry errors
+            // at apply too — say so instead of guessing.
+            let new_hash = match entry.mode {
+                gripsack_ir::Ownership::Merge => {
+                    std::fs::read_to_string(&repo_file).ok().map(|text| {
+                        gripsack_store::canonical_bytes_hash(text.trim_end_matches('\n').as_bytes())
+                    })
                 }
+                gripsack_ir::Ownership::Template => std::fs::read(&repo_file)
+                    .ok()
+                    .and_then(|bytes| {
+                        gripsack_exec::template::render_template(&bytes, &entry.vars, &entry.from)
+                            .ok()
+                    })
+                    .map(|rendered| gripsack_store::canonical_bytes_hash(&rendered)),
+                _ => gripsack_store::canonical_file_hash(&repo_file).ok(),
+            };
+            let Some(new_hash) = new_hash else {
+                lines.push(format!(
+                    "  ! {} → {} (source missing)",
+                    entry.from, entry.to
+                ));
+                continue;
+            };
+            // Destination side (same review): source-vs-manifest alone
+            // is blind to destination drift, and merge/template drift
+            // is NOT kept — apply regenerates it. A satisfied line
+            // while apply would write is the same lie as a phantom
+            // update, so the destination must answer too.
+            let dest_diverges = |expected: &str| match entry.mode {
+                gripsack_ir::Ownership::Merge => {
+                    let Ok(existing) = std::fs::read_to_string(&dest) else {
+                        return true; // absent or unreadable: apply writes
+                    };
+                    let blocks = gripsack_exec::template::find_blocks(&existing, name).len();
+                    blocks != 1
+                        || gripsack_exec::template::extract_block(&existing, name).is_none_or(|c| {
+                            gripsack_store::canonical_bytes_hash(c.as_bytes()) != expected
+                        })
+                }
+                gripsack_ir::Ownership::Template => {
+                    match gripsack_store::canonical_file_hash(&dest) {
+                        Ok(actual) => actual != expected,
+                        Err(_) => true, // absent: apply writes
+                    }
+                }
+                // owned/tracked-copy drift is KEPT by apply (never
+                // silently overwritten) — source-vs-manifest is the
+                // honest answer for them
+                _ => false,
             };
             let recorded = current.as_ref().and_then(|m| {
                 m.modules
@@ -281,7 +327,7 @@ pub fn diff_section(
                     .and_then(|s| s.entries.iter().find(|e| e.to == entry.to))
             });
             match recorded {
-                Some(rec) if rec.hash == new_hash => {
+                Some(rec) if rec.hash == new_hash && !dest_diverges(&new_hash) => {
                     lines.push(format!("  = {} (satisfied)", entry.to))
                 }
                 Some(_) => lines.push(format!("  ~ {} → {} (update)", entry.from, entry.to)),
