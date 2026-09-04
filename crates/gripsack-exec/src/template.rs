@@ -172,15 +172,35 @@ fn line_has_shape(line: &str, key: &str, open_marker: bool) -> bool {
     prefix_ok && tail_ok
 }
 
-/// Locate a module's block: (open line, close line), zero-based.
-fn find_block(existing: &str, module: &str) -> Option<(usize, usize)> {
+/// Locate a module's blocks: every (open line, close line) pair,
+/// zero-based, in file order. A module owns ALL blocks carrying its
+/// name — a duplicate is accumulated state to reconcile, not
+/// invisible content (0.21.1 review: the first-match scan made a
+/// tampered second block undetectable and let drift repair delete
+/// it silently).
+pub fn find_blocks(existing: &str, module: &str) -> Vec<(usize, usize)> {
     let lines: Vec<&str> = existing.lines().collect();
-    let open = lines.iter().position(|l| line_is_open_marker(l, module))?;
-    let close = lines[open + 1..]
-        .iter()
-        .position(|l| line_is_close_marker(l, module))
-        .map(|i| open + 1 + i)?;
-    Some((open, close))
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if line_is_open_marker(lines[i], module)
+            && let Some(rel) = lines[i + 1..]
+                .iter()
+                .position(|l| line_is_close_marker(l, module))
+        {
+            let close = i + 1 + rel;
+            out.push((i, close));
+            i = close + 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Locate a module's FIRST block: (open line, close line), zero-based.
+fn find_block(existing: &str, module: &str) -> Option<(usize, usize)> {
+    find_blocks(existing, module).into_iter().next()
 }
 
 /// The block's current content (between the banner and the close
@@ -261,16 +281,36 @@ pub fn upsert_block(
     Ok(join_lines(&lines, crlf))
 }
 
-/// Remove the module's block, returning the new content (None if the
-/// block is absent). A trailing blank line left by an appended block
-/// is trimmed; the caller deletes the file if what remains is empty.
+/// Remove the module's blocks — ALL of them: upsert reconciles
+/// duplicates down to one, so removal must not leave the extras
+/// behind (0.21.1 review). Returns the new content (None if no block
+/// is present). Trailing blank lines left by removed blocks are
+/// trimmed; the caller deletes the file if what remains is empty.
 pub fn remove_block(existing: &str, module: &str) -> Option<String> {
-    let (open, close) = find_block(existing, module)?;
+    let blocks = find_blocks(existing, module);
+    if blocks.is_empty() {
+        return None;
+    }
     let crlf = existing.contains("\r\n");
     let lines: Vec<&str> = existing.lines().collect();
+    let block_at: std::collections::BTreeMap<usize, usize> = blocks.into_iter().collect();
     let mut out: Vec<&str> = Vec::with_capacity(lines.len());
-    out.extend_from_slice(&lines[..open]);
-    out.extend_from_slice(&lines[close + 1..]);
+    let mut skip_until = 0usize;
+    let mut skipping = false;
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(close) = block_at.get(&i) {
+            skip_until = *close;
+            skipping = true;
+            continue;
+        }
+        if skipping {
+            if i <= skip_until {
+                continue;
+            }
+            skipping = false;
+        }
+        out.push(line);
+    }
     while out.last().is_some_and(|l| l.trim().is_empty()) {
         out.pop();
     }
@@ -361,6 +401,19 @@ mod tests {
         let doubled = format!("{first}{first}");
         let out = upsert_block(&doubled, "shell", &dest, None, "one\n").unwrap();
         assert_eq!(out.matches(">>> gripsack module=shell sha=").count(), 1);
+    }
+
+    #[test]
+    fn remove_block_removes_every_block_the_module_owns() {
+        // removal must match upsert's reconciliation: leaving a
+        // duplicate behind on prune/rollback would resurrect the
+        // block on the next deploy of the same file (0.21.1 review)
+        let dest = PathBuf::from("/home/u/.bashrc");
+        let first = upsert_block("", "shell", &dest, None, "one\n").unwrap();
+        let doubled = format!("{first}\n# user note\n\n{first}");
+        let out = remove_block(&doubled, "shell").unwrap();
+        assert!(!out.contains("gripsack module=shell"), "{out}");
+        assert!(out.contains("# user note"), "{out}");
     }
 
     #[test]

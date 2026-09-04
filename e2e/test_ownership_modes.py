@@ -407,3 +407,68 @@ export default module("shell", {
     assert out.returncode == 0, out.stderr
     assert "hand-edited block regenerated" in out.stdout, out.stdout
     assert "SINK=1" in bashrc.read_text(), "the block self-heals"
+
+def test_duplicate_merge_blocks_are_reconciled_and_reported(sandbox):
+    """A module owns EVERY block carrying its name: a duplicate is
+    reconciled down to one and the removal is NAMED in the report —
+    never invisible in steady state, never silently deleted as a side
+    effect of an unrelated drift repair (0.21.1 review round)."""
+    confdir = sandbox / "myenv" / "configs" / "shell"
+    confdir.mkdir(parents=True)
+    (confdir / "block.sh").write_text("export SINK=1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { merge, module } from "@gripsack/core";
+
+export default module("shell", {
+  config: { "configs/shell/block.sh": merge("~/.bashrc") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    bashrc = sandbox / ".bashrc"
+    content = bashrc.read_text()
+
+    # a byte-identical duplicate block, user content interleaved
+    block_start = content.index("# >>> gripsack module=shell")
+    block_end = content.index("# <<< gripsack module=shell <<<")
+    block_end = content.index("\n", block_end) + 1
+    block = content[block_start:block_end]
+    bashrc.write_text(
+        content + "\n# a user's own note below\n\n" + block + "\nexport USER_OWN_TAIL=keepme\n"
+    )
+
+    # steady state with an intact first block: the duplicate must
+    # still be seen, reconciled, and NAMED — before the fix this
+    # reported "block unchanged" and left both blocks
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "removed 1 duplicate block" in out.stdout, out.stdout
+    healed = bashrc.read_text()
+    assert healed.count("# >>> gripsack module=shell") == 1
+    assert "# a user's own note below" in healed
+    assert "export USER_OWN_TAIL=keepme" in healed
+
+    # the next apply is satisfied — reconciliation converges
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "block unchanged" in out.stdout, out.stdout
+
+    # a tampered SECOND block is just as visible as a tampered first:
+    # duplicate again, edit inside the copy only — before the fix the
+    # content-hash guarantee held only for whichever block came first
+    content = bashrc.read_text()
+    block_start = content.index("# >>> gripsack module=shell")
+    block_end = content.index("# <<< gripsack module=shell <<<")
+    block_end = content.index("\n", block_end) + 1
+    block = content[block_start:block_end]
+    tampered = block.replace("SINK=1", "SINK=2")
+    bashrc.write_text(content + "\n" + tampered)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "removed 1 duplicate block" in out.stdout, out.stdout
+    final = bashrc.read_text()
+    assert final.count("# >>> gripsack module=shell") == 1
+    assert "SINK=2" not in final
