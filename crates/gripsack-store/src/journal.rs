@@ -79,6 +79,12 @@ impl From<&Prior> for PriorSerde {
     }
 }
 
+/// The `after` identity recorded for a journaled REMOVAL: nothing
+/// should be there. Distinctive enough to never collide with a real
+/// content hash or link target — a destination that exists again at
+/// reconcile reads as user content and is kept (0025 §B).
+pub const REMOVED: &str = "gripsack:removed";
+
 /// Where the journal lives.
 pub fn dir(home: &Path) -> PathBuf {
     home.join("journal")
@@ -216,14 +222,36 @@ pub fn mark_after(home: &Dir, dest: &Path, after: &str) -> io::Result<()> {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct RunMarker {
     target_generation: u64,
+    /// Apply builds a NEWER generation (committed once `current`
+    /// reaches the target); rollback returns to an OLDER one, so its
+    /// commit condition inverts (committed once `current` comes back
+    /// DOWN to the target) — 0025 §A. Default keeps pre-0.22 markers
+    /// readable as apply runs.
+    #[serde(default)]
+    op: RunOp,
+}
+
+/// What the run is doing — the reconcile commit decision differs by
+/// direction (see RunMarker).
+#[derive(Debug, Default, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunOp {
+    /// The normal case: building the next generation.
+    #[default]
+    Apply,
+    /// Returning to a previous generation.
+    Rollback,
 }
 
 /// Declare the generation this run is building, BEFORE any mutation:
 /// recovery compares it against `current` — a crash between the flip
 /// and journal cleanup must NOT restore priors the committed
 /// generation now owns (the post-commit window, review finding 5.1).
-pub fn begin_run(home: &Dir, target_generation: u64) -> io::Result<()> {
-    let marker = RunMarker { target_generation };
+pub fn begin_run(home: &Dir, target_generation: u64, op: RunOp) -> io::Result<()> {
+    let marker = RunMarker {
+        target_generation,
+        op,
+    };
     gripsack_fs::atomic_write(
         home,
         &run_marker_rel(),
@@ -285,18 +313,33 @@ pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
     let Some(entries) = read_uncommitted(home)? else {
         return Ok(Vec::new());
     };
-    // the commit decision: a run whose target generation is current
-    // (or older than current — later runs happened) COMMITTED. Only a
-    // run whose target is still ahead restored.
-    let committed = run_marker(home)?.is_some_and(|target| {
-        crate::generations::current_in(home).is_some_and(|current| current >= target)
-    });
+    // the commit decision, per run direction (0025 §A): an apply
+    // COMMITTED once current reached its target (or passed it — later
+    // runs happened); a rollback committed once current came back
+    // DOWN to its target. Unreadable commit evidence errors (both
+    // readers fail closed) rather than choosing a branch.
+    let committed = match run_marker(home)? {
+        Some(marker) => {
+            let current = crate::generations::current_in(home)?;
+            match (marker.op, current) {
+                (RunOp::Apply, Some(c)) => c >= marker.target_generation,
+                (RunOp::Rollback, Some(c)) => c <= marker.target_generation,
+                // no current at all: the flip never happened
+                (_, None) => false,
+            }
+        }
+        None => false,
+    };
     let mut lines = Vec::new();
     if committed {
         for (path, _) in &entries {
             home.remove_file(path)?;
         }
         let _ = home.remove_file(run_marker_rel());
+        // the deletions must be durable before we return, same rule
+        // as commit_run (0025 §F): a power loss now must not
+        // resurrect entries a later reconcile would re-act on
+        gripsack_fs::fsync_dir(home, Path::new("journal"))?;
         lines.push(
             "interrupted run's generation had already activated — journal \
              cleared, deployed state stands"
@@ -322,6 +365,7 @@ pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
         home.remove_file(&path)?;
     }
     let _ = home.remove_file(run_marker_rel());
+    gripsack_fs::fsync_dir(home, Path::new("journal"))?;
     Ok(lines)
 }
 
@@ -335,13 +379,17 @@ fn dest_capability(dest: &Path) -> io::Result<(Dir, PathBuf)> {
     Ok((dir, PathBuf::from(dest.file_name().unwrap_or_default())))
 }
 
-fn run_marker(home: &Dir) -> io::Result<Option<u64>> {
-    let Ok(bytes) = home.read(run_marker_rel()) else {
-        return Ok(None);
-    };
-    serde_json::from_slice::<RunMarker>(&bytes)
-        .map(|m| Some(m.target_generation))
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+fn run_marker(home: &Dir) -> io::Result<Option<RunMarker>> {
+    match home.read(run_marker_rel()) {
+        Ok(bytes) => serde_json::from_slice::<RunMarker>(&bytes)
+            .map(Some)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
+        // only NotFound means absent (same rule as capture): an
+        // unreadable marker in RECOVERY code is commit evidence we
+        // cannot see — error, never pick a branch blind (0025 §F)
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 /// Entries on disk, with the run marker if any. Malformed recovery
@@ -413,10 +461,14 @@ fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry) -> Recovery {
             .map(|t| t.to_string_lossy().into_owned())
             .ok()
     } else {
+        // the SAME identity deploy records in mark_after
+        // (canonical_bytes_hash): comparing raw sha256 here never
+        // matched a production entry, so the drift guard kept
+        // everything — a latent bug the 0025 crash-window e2e exposed
         dest_dir
             .read(dest_name)
             .ok()
-            .map(|b| crate::hash::hex_sha256(&b))
+            .map(|b| crate::hash::canonical_bytes_hash(&b))
     };
     match current {
         Some(id) if id == *after => {
@@ -499,7 +551,7 @@ mod tests {
         mark_after(
             &cap(&home),
             &dest,
-            &crate::hash::hex_sha256(b"deployed half-run content\n"),
+            &crate::hash::canonical_bytes_hash(b"deployed half-run content\n"),
         )
         .unwrap();
         // crash: no commit_run
@@ -518,7 +570,12 @@ mod tests {
         let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
-        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
+        mark_after(
+            &cap(&home),
+            &dest,
+            &crate::hash::canonical_bytes_hash(b"deployed\n"),
+        )
+        .unwrap();
         // the user edits the file AFTER the crash, before the next run
         std::fs::write(&dest, b"my own edit\n").unwrap();
 
@@ -540,7 +597,7 @@ mod tests {
         mark_after(
             &cap(&home),
             &fresh,
-            &crate::hash::hex_sha256(b"crashed write\n"),
+            &crate::hash::canonical_bytes_hash(b"crashed write\n"),
         )
         .unwrap();
 
@@ -568,11 +625,16 @@ mod tests {
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
 
-        begin_run(&cap(&home), 1).unwrap();
+        begin_run(&cap(&home), 1, RunOp::Apply).unwrap();
         let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
-        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
+        mark_after(
+            &cap(&home),
+            &dest,
+            &crate::hash::canonical_bytes_hash(b"deployed\n"),
+        )
+        .unwrap();
         // the flip: generation 1 becomes current; commit_run never ran
         let manifest = crate::generations::Generation {
             number: 1,
@@ -597,11 +659,16 @@ mod tests {
         let home = home();
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
-        begin_run(&cap(&home), 1).unwrap();
+        begin_run(&cap(&home), 1, RunOp::Apply).unwrap();
         let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"half\n").unwrap();
-        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"half\n")).unwrap();
+        mark_after(
+            &cap(&home),
+            &dest,
+            &crate::hash::canonical_bytes_hash(b"half\n"),
+        )
+        .unwrap();
 
         reconcile(&cap(&home)).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
@@ -627,11 +694,84 @@ mod tests {
         let prior = capture_at(&dest, &cap(&home));
         record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"new\n").unwrap();
-        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"new\n")).unwrap();
+        mark_after(
+            &cap(&home),
+            &dest,
+            &crate::hash::canonical_bytes_hash(b"new\n"),
+        )
+        .unwrap();
 
         commit_run(&cap(&home)).unwrap();
         // the flip happened: recovery must NOT undo the deploy
         assert!(reconcile(&cap(&home)).unwrap().is_empty());
         assert_eq!(std::fs::read(&dest).unwrap(), b"new\n");
+    }
+    fn manifest(n: u64) -> crate::generations::Generation {
+        crate::generations::Generation {
+            number: n,
+            modules: Default::default(),
+        }
+    }
+
+    #[test]
+    fn crashed_rollback_restores_priors() {
+        // 0025 §A: a rollback's target is OLDER than current — the
+        // pre-0025 commit rule (current >= target) would have misread
+        // a crashed rollback as committed and skipped restoration.
+        let home = home();
+        let dest = home.path().join("config");
+        std::fs::write(&dest, b"new\n").unwrap();
+        crate::generations::write_manifest(&cap(&home), &manifest(2)).unwrap();
+        crate::generations::write_manifest(&cap(&home), &manifest(3)).unwrap();
+        crate::generations::flip(&cap(&home), home.path(), 3).unwrap();
+
+        // rolling back 3 → 2: the restore lands, the flip never does
+        begin_run(&cap(&home), 2, RunOp::Rollback).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
+        record(&cap(&home), &dest, &prior).unwrap();
+        std::fs::write(&dest, b"old\n").unwrap();
+        mark_after(
+            &cap(&home),
+            &dest,
+            &crate::hash::canonical_bytes_hash(b"old\n"),
+        )
+        .unwrap();
+        // crash: current is still 3, target was 2 — uncommitted
+
+        let lines = reconcile(&cap(&home)).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"new\n");
+        assert!(lines[0].contains("recovered"), "{lines:?}");
+    }
+
+    #[test]
+    fn completed_rollback_reads_committed() {
+        // the flip landed (current back DOWN to the target) but
+        // cleanup never ran: the restored content STANDS
+        let home = home();
+        let dest = home.path().join("config");
+        std::fs::write(&dest, b"new\n").unwrap();
+        crate::generations::write_manifest(&cap(&home), &manifest(2)).unwrap();
+        crate::generations::write_manifest(&cap(&home), &manifest(3)).unwrap();
+        crate::generations::flip(&cap(&home), home.path(), 3).unwrap();
+
+        begin_run(&cap(&home), 2, RunOp::Rollback).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
+        record(&cap(&home), &dest, &prior).unwrap();
+        std::fs::write(&dest, b"old\n").unwrap();
+        mark_after(
+            &cap(&home),
+            &dest,
+            &crate::hash::canonical_bytes_hash(b"old\n"),
+        )
+        .unwrap();
+        crate::generations::flip(&cap(&home), home.path(), 2).unwrap();
+        // crash between the flip and commit_run
+
+        let lines = reconcile(&cap(&home)).unwrap();
+        assert!(
+            lines.iter().any(|l| l.contains("already activated")),
+            "{lines:?}"
+        );
+        assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
     }
 }

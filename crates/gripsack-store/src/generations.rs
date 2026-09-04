@@ -128,13 +128,16 @@ pub fn current(home: &Path) -> Option<u64> {
 
 /// [`current`] through the home capability (plan/0021): the link is
 /// read relative to the `Dir`, never re-resolved by string.
-pub fn current_in(home: &gripsack_fs::Dir) -> Option<u64> {
-    home.read_link_contents("current")
-        .ok()?
-        .file_name()?
-        .to_string_lossy()
-        .parse()
-        .ok()
+pub fn current_in(home: &gripsack_fs::Dir) -> std::io::Result<Option<u64>> {
+    match home.read_link_contents("current") {
+        Ok(target) => Ok(target
+            .file_name()
+            .and_then(|n| n.to_string_lossy().parse().ok())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        // recovery reads commit evidence through this: a permission
+        // or I/O error is not "no generations" (0025 §F)
+        Err(e) => Err(e),
+    }
 }
 
 /// Flip `current` to a generation — the single indivisible activation
