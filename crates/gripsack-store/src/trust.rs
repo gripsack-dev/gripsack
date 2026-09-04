@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
-use crate::fs::atomic_write;
 use crate::paths::gripsack_home;
+use gripsack_fs::atomic_write_at as atomic_write;
 
 /// The exact capability set eval gets (0013 D2/D7) — shown at the
 /// prompt so the trust decision is informed. Wording is contract.
@@ -69,8 +69,8 @@ pub fn ensure_trusted(repo: &Path) -> io::Result<()> {
 /// rewrites the WHOLE file — two concurrent first-evals used to
 /// erase each other's entry (last writer wins). One lock,
 /// load-through-save.
-fn lock_trust(home: &Path) -> io::Result<crate::fs::FlockGuard> {
-    crate::fs::FlockGuard::acquire(&home.join("locks"), "trust")
+fn lock_trust(home: &Path) -> io::Result<gripsack_fs::FlockGuard> {
+    gripsack_fs::FlockGuard::acquire(&home.join("locks"), "trust")
 }
 
 /// Testable core of [`ensure_trusted`]: gate `repo` against the

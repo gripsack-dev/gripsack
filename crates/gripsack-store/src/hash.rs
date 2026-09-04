@@ -33,6 +33,31 @@ pub fn canonical_file_hash(path: &Path) -> std::io::Result<String> {
     Ok(hex(&hasher.finalize()))
 }
 
+/// [`canonical_file_hash`] through a directory capability
+/// (plan/0021): deploy's drift check hashes the destination relative
+/// to the SAME pinned parent inode the subsequent write uses, so the
+/// check and the use cannot observe different filesystems.
+pub fn canonical_file_hash_in(dir: &gripsack_fs::Dir, name: &Path) -> std::io::Result<String> {
+    let meta = dir.symlink_metadata(name)?;
+    let mut hasher = Sha256::new();
+    if meta.file_type().is_symlink() {
+        hasher.update(b"link\0");
+        hasher.update(dir.read_link_contents(name)?.as_os_str().as_encoded_bytes());
+    } else if meta.is_dir() {
+        hasher.update(b"dir\0");
+    } else if meta.is_file() {
+        hasher.update(b"file\0");
+        hasher.update([exec_byte_in(&meta)]);
+        hasher.update(dir.read(name)?);
+    } else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{name:?} is not a regular file, directory, or symlink"),
+        ));
+    }
+    Ok(hex(&hasher.finalize()))
+}
+
 /// Canonical hash of in-memory file contents (no executable bit) — for
 /// rendered templates and managed blocks, which have no store file.
 pub fn canonical_bytes_hash(bytes: &[u8]) -> String {
@@ -146,6 +171,17 @@ fn exec_byte(meta: &std::fs::Metadata) -> u8 {
     u8::from(meta.permissions().mode() & 0o111 != 0)
 }
 
+#[cfg(unix)]
+fn exec_byte_in(meta: &gripsack_fs::cap_std::fs::Metadata) -> u8 {
+    use gripsack_fs::cap_std::fs::MetadataExt;
+    u8::from(meta.mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn exec_byte_in(_meta: &gripsack_fs::cap_std::fs::Metadata) -> u8 {
+    1
+}
+
 #[cfg(not(unix))]
 fn exec_byte(_meta: &std::fs::Metadata) -> u8 {
     1
@@ -253,7 +289,7 @@ mod tests {
         let overlay = canonical_overlay_hash(&repo, &froms).unwrap();
         // what publish stages: the dir copied under its from path
         let staged = dir.path().join("staged");
-        crate::fs::copy_dir(&repo.join("configs/app"), &staged.join("configs/app")).unwrap();
+        gripsack_fs::copy_dir(&repo.join("configs/app"), &staged.join("configs/app")).unwrap();
         assert_eq!(
             overlay,
             canonical_tree_hash(&staged).unwrap(),

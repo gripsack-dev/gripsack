@@ -29,7 +29,7 @@
 //! or between mutation and the after-mark) restores unconditionally —
 //! the same choice the in-process rollback makes on failure.
 
-use crate::fs;
+use gripsack_fs::Dir;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -84,19 +84,59 @@ pub fn dir(home: &Path) -> PathBuf {
     home.join("journal")
 }
 
-fn entry_path(home: &Path, dest: &Path) -> PathBuf {
-    dir(home).join(format!(
+/// A prior blob's path relative to the home capability:
+/// `prior/<sha256>`.
+pub fn prior_blob_rel(sha: &str) -> PathBuf {
+    Path::new("prior").join(sha)
+}
+
+/// Store pre-take-over bytes content-addressed (0015 §4): returns the
+/// sha256 the manifest references. Dedup is the point — priors are
+/// small, and identical originals share one blob. Written through the
+/// home capability (plan/0021).
+pub fn store_prior_blob_in(home: &Dir, bytes: &[u8]) -> io::Result<String> {
+    let sha = crate::hash::hex_sha256(bytes);
+    let rel = prior_blob_rel(&sha);
+    // symlink_metadata does not follow links: a planted `prior/<sha>`
+    // symlink would skip the write and later restore THROUGH it. Skip
+    // only a real regular file; anything else is replaced by the
+    // atomic rename.
+    let present = home
+        .symlink_metadata(&rel)
+        .map(|m| m.is_file())
+        .unwrap_or(false);
+    if !present {
+        gripsack_fs::atomic_write(home, &rel, bytes)?;
+    }
+    Ok(sha)
+}
+
+/// An entry's path relative to the home capability: the journal's
+/// own files (entries, run marker, quarantine, prior blobs) never
+/// leave `$GRIPSACK_HOME`, so they are named relative to the `Dir`
+/// every journal function takes (plan/0021).
+fn entry_rel(dest: &Path) -> PathBuf {
+    Path::new("journal").join(format!(
         "{}.json",
         crate::hash::hex_sha256(dest.to_string_lossy().as_bytes(),)
     ))
 }
 
-/// Capture a destination's current state, backing file bytes up into
-/// the prior blob store. Call immediately before the mutation; the
-/// capture and the write race nothing (the lifecycle lock serializes
-/// runs).
-pub fn capture(dest: &Path, home: &Path) -> io::Result<Prior> {
-    let meta = match std::fs::symlink_metadata(dest) {
+fn run_marker_rel() -> PathBuf {
+    Path::new("journal").join("run.json")
+}
+
+/// Capture a destination's current state through its pinned parent
+/// capability (plan/0021): the capture, the journaled write, and the
+/// mark-after all name the SAME parent inode — a swapped path
+/// component cannot redirect the mutation the journal is protecting.
+/// File bytes back up into the prior blob store under `home`.
+/// `dest` is the display/record form (absolute); `dest_dir` +
+/// `dest_name` are the access path. Call immediately before the
+/// mutation; the capture and the write race nothing (the lifecycle
+/// lock serializes runs).
+pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io::Result<Prior> {
+    let meta = match dest_dir.symlink_metadata(dest_name) {
         Ok(meta) => meta,
         // only NotFound means absent — a permission error or I/O
         // failure recorded as Absent would make recovery REMOVE a
@@ -110,7 +150,7 @@ pub fn capture(dest: &Path, home: &Path) -> io::Result<Prior> {
         }
     };
     if meta.file_type().is_symlink() {
-        let target = std::fs::read_link(dest)?;
+        let target = dest_dir.read_link_contents(dest_name)?;
         let Some(target) = target.to_str() else {
             // a non-UTF-8 target lossily recorded would re-create a
             // DIFFERENT link on recovery — refuse the mutation
@@ -127,8 +167,8 @@ pub fn capture(dest: &Path, home: &Path) -> io::Result<Prior> {
         });
     }
     if meta.is_file() {
-        let bytes = std::fs::read(dest)?;
-        let hash = fs::store_prior_blob(home, &bytes)?;
+        let bytes = dest_dir.read(dest_name)?;
+        let hash = store_prior_blob_in(home, &bytes)?;
         return Ok(Prior::File { hash });
     }
     // directories/fifos/devices are refused by deploy's guards; if
@@ -139,14 +179,15 @@ pub fn capture(dest: &Path, home: &Path) -> io::Result<Prior> {
 
 /// Record the intent to mutate `dest` whose prior state is `prior`:
 /// the entry must be durable BEFORE the mutation lands.
-pub fn record(home: &Path, dest: &Path, prior: &Prior) -> io::Result<()> {
+pub fn record(home: &Dir, dest: &Path, prior: &Prior) -> io::Result<()> {
     let entry = Entry {
         dest: dest.to_string_lossy().into_owned(),
         prior: prior.into(),
         after: None,
     };
-    fs::atomic_write(
-        &entry_path(home, dest),
+    gripsack_fs::atomic_write(
+        home,
+        &entry_rel(dest),
         serde_json::to_string(&entry)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
             .as_bytes(),
@@ -156,12 +197,13 @@ pub fn record(home: &Path, dest: &Path, prior: &Prior) -> io::Result<()> {
 /// Note the post-mutation identity, so recovery can tell "still the
 /// deployed bytes" (restore prior) from "someone edited it since"
 /// (leave it alone).
-pub fn mark_after(home: &Path, dest: &Path, after: &str) -> io::Result<()> {
-    let path = entry_path(home, dest);
-    let mut entry: Entry = serde_json::from_slice(&std::fs::read(&path)?)
+pub fn mark_after(home: &Dir, dest: &Path, after: &str) -> io::Result<()> {
+    let path = entry_rel(dest);
+    let mut entry: Entry = serde_json::from_slice(&home.read(&path)?)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     entry.after = Some(after.to_string());
-    fs::atomic_write(
+    gripsack_fs::atomic_write(
+        home,
         &path,
         serde_json::to_string(&entry)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
@@ -176,18 +218,15 @@ struct RunMarker {
     target_generation: u64,
 }
 
-fn run_marker_path(home: &Path) -> PathBuf {
-    dir(home).join("run.json")
-}
-
 /// Declare the generation this run is building, BEFORE any mutation:
 /// recovery compares it against `current` — a crash between the flip
 /// and journal cleanup must NOT restore priors the committed
 /// generation now owns (the post-commit window, review finding 5.1).
-pub fn begin_run(home: &Path, target_generation: u64) -> io::Result<()> {
+pub fn begin_run(home: &Dir, target_generation: u64) -> io::Result<()> {
     let marker = RunMarker { target_generation };
-    fs::atomic_write(
-        &run_marker_path(home),
+    gripsack_fs::atomic_write(
+        home,
+        &run_marker_rel(),
         serde_json::to_string(&marker)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
             .as_bytes(),
@@ -196,15 +235,17 @@ pub fn begin_run(home: &Path, target_generation: u64) -> io::Result<()> {
 
 /// The run completed and the generation flipped: nothing left to
 /// recover. Entries, stragglers, and the run marker are gone.
-pub fn commit_run(home: &Path) -> io::Result<()> {
-    let dir = dir(home);
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    for entry in std::fs::read_dir(&dir)? {
-        let path = entry?.path();
-        if path.extension().is_some_and(|e| e == "json") {
-            std::fs::remove_file(&path)?;
+pub fn commit_run(home: &Dir) -> io::Result<()> {
+    let entries = match home.read_dir("journal") {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    for entry in entries {
+        let name = entry?.file_name();
+        let rel = Path::new("journal").join(&name);
+        if rel.extension().is_some_and(|e| e == "json") {
+            home.remove_file(&rel)?;
         }
     }
     // deletions are durable before we return: a power loss after
@@ -212,7 +253,7 @@ pub fn commit_run(home: &Path) -> io::Result<()> {
     // deletion WAS durable — reconcile would then read no marker and
     // restore a committed generation's priors (review: fsync the
     // journal directory after deletion)
-    fs::fsync_dir(&dir)
+    gripsack_fs::fsync_dir(home, Path::new("journal"))
 }
 
 /// The run ended without mutating anything (satisfied, empty graph):
@@ -220,9 +261,9 @@ pub fn commit_run(home: &Path) -> io::Result<()> {
 /// marker with no entries is harmless but noisy, and a marker whose
 /// target generation is later than `current` would misread the NEXT
 /// crash window.
-pub fn end_run(home: &Path) -> io::Result<()> {
-    let _ = std::fs::remove_file(run_marker_path(home));
-    let _ = fs::fsync_dir(&dir(home));
+pub fn end_run(home: &Dir) -> io::Result<()> {
+    let _ = home.remove_file(run_marker_rel());
+    let _ = gripsack_fs::fsync_dir(home, Path::new("journal"));
     Ok(())
 }
 
@@ -240,7 +281,7 @@ enum Recovery {
 /// stands; uncommitted runs are restored to their priors. Returns one
 /// human line per decision for the apply report. Must run under the
 /// lifecycle lock.
-pub fn reconcile(home: &Path) -> io::Result<Vec<String>> {
+pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
     let Some(entries) = read_uncommitted(home)? else {
         return Ok(Vec::new());
     };
@@ -248,14 +289,14 @@ pub fn reconcile(home: &Path) -> io::Result<Vec<String>> {
     // (or older than current — later runs happened) COMMITTED. Only a
     // run whose target is still ahead restored.
     let committed = run_marker(home)?.is_some_and(|target| {
-        crate::current_generation(home).is_some_and(|current| current >= target)
+        crate::generations::current_in(home).is_some_and(|current| current >= target)
     });
     let mut lines = Vec::new();
     if committed {
         for (path, _) in &entries {
-            std::fs::remove_file(path)?;
+            home.remove_file(path)?;
         }
-        let _ = std::fs::remove_file(run_marker_path(home));
+        let _ = home.remove_file(run_marker_rel());
         lines.push(
             "interrupted run's generation had already activated — journal \
              cleared, deployed state stands"
@@ -265,23 +306,37 @@ pub fn reconcile(home: &Path) -> io::Result<Vec<String>> {
     }
     for (path, entry) in entries {
         let dest = PathBuf::from(&entry.dest);
-        match decide(&dest, &entry) {
+        // the drift check and the restore share ONE pinned parent
+        // inode: a parent symlink swapped between decide() and
+        // restore() cannot redirect the recovery write (plan/0021)
+        let (dest_dir, dest_name) = dest_capability(&dest)?;
+        match decide(&dest_dir, &dest_name, &entry) {
             Recovery::Restore(what) => {
-                restore(&dest, &entry.prior, home)?;
+                restore(&dest_dir, &dest_name, &entry.prior, home)?;
                 lines.push(format!("recovered {}: {what}", entry.dest));
             }
             Recovery::Keep(why) => {
                 lines.push(format!("kept {}: {why}", entry.dest));
             }
         }
-        std::fs::remove_file(&path)?;
+        home.remove_file(&path)?;
     }
-    let _ = std::fs::remove_file(run_marker_path(home));
+    let _ = home.remove_file(run_marker_rel());
     Ok(lines)
 }
 
-fn run_marker(home: &Path) -> io::Result<Option<u64>> {
-    let Ok(bytes) = std::fs::read(run_marker_path(home)) else {
+/// Open a destination's parent as a capability, returning it with the
+/// destination's bare file name. `open_or_create` because a crashed
+/// run's destination may sit under parents the mutation itself was
+/// about to create.
+fn dest_capability(dest: &Path) -> io::Result<(Dir, PathBuf)> {
+    let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+    let dir = gripsack_fs::open_or_create(parent)?;
+    Ok((dir, PathBuf::from(dest.file_name().unwrap_or_default())))
+}
+
+fn run_marker(home: &Dir) -> io::Result<Option<u64>> {
+    let Ok(bytes) = home.read(run_marker_rel()) else {
         return Ok(None);
     };
     serde_json::from_slice::<RunMarker>(&bytes)
@@ -295,43 +350,43 @@ fn run_marker(home: &Path) -> io::Result<Option<u64>> {
 /// recovering user files must never be shrugged off as archaeology
 /// (review finding 5.2). Inspect and delete the quarantine to
 /// proceed.
-fn read_uncommitted(home: &Path) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
-    let dir = dir(home);
-    if !dir.is_dir() {
-        return Ok(None);
-    }
+fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
+    let entries = match home.read_dir("journal") {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
     let mut out = Vec::new();
     let mut quarantined = 0usize;
-    for entry in std::fs::read_dir(&dir)? {
-        let path = entry?.path();
-        if path.file_name().is_some_and(|n| n == "run.json") {
+    for entry in entries {
+        let name = entry?.file_name();
+        if name == "run.json" {
             continue;
         }
-        if path.extension().is_some_and(|e| e != "json") {
+        let rel = Path::new("journal").join(&name);
+        if rel.extension().is_some_and(|e| e != "json") {
             continue;
         }
-        match std::fs::read(&path).and_then(|b| {
+        match home.read(&rel).and_then(|b| {
             serde_json::from_slice::<Entry>(&b)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
         }) {
-            Ok(parsed) => out.push((path, parsed)),
+            Ok(parsed) => out.push((rel, parsed)),
             Err(_) => {
-                let quarantine = dir.join("quarantine");
-                std::fs::create_dir_all(&quarantine)?;
-                let name = path.file_name().unwrap_or_default();
-                let _ = std::fs::rename(&path, quarantine.join(name));
+                let quarantine = Path::new("journal").join("quarantine");
+                home.create_dir_all(&quarantine)?;
+                let _ = home.rename(&rel, home, quarantine.join(&name));
                 quarantined += 1;
             }
         }
     }
     if quarantined > 0 {
         return Err(io::Error::other(format!(
-            "{} journal entr{} could not be parsed — moved to {}/quarantine; \
-             inspect and remove them to continue (recovery metadata is \
-             never ignored)",
+            "{} journal entr{} could not be parsed — moved to journal/quarantine \
+             under $GRIPSACK_HOME; inspect and remove them to continue \
+             (recovery metadata is never ignored)",
             quarantined,
             if quarantined == 1 { "y" } else { "ies" },
-            dir.display()
         )));
     }
     Ok(Some(out))
@@ -339,8 +394,9 @@ fn read_uncommitted(home: &Path) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
 
 /// The drift guard, same philosophy as everywhere else: a known
 /// `after` that no longer matches means the file changed since the
-/// crash — never delete user edits.
-fn decide(dest: &Path, entry: &Entry) -> Recovery {
+/// crash — never delete user edits. Reads go through the destination
+/// capability reconcile pinned.
+fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry) -> Recovery {
     let Some(after) = &entry.after else {
         return Recovery::Restore(match &entry.prior {
             PriorSerde::Absent => "removed (was absent before the interrupted run)".into(),
@@ -348,15 +404,17 @@ fn decide(dest: &Path, entry: &Entry) -> Recovery {
             PriorSerde::Symlink { target } => format!("prior symlink → {target} restored"),
         });
     };
-    let current = if dest
-        .symlink_metadata()
+    let current = if dest_dir
+        .symlink_metadata(dest_name)
         .is_ok_and(|m| m.file_type().is_symlink())
     {
-        std::fs::read_link(dest)
+        dest_dir
+            .read_link_contents(dest_name)
             .map(|t| t.to_string_lossy().into_owned())
             .ok()
     } else {
-        std::fs::read(dest)
+        dest_dir
+            .read(dest_name)
             .ok()
             .map(|b| crate::hash::hex_sha256(&b))
     };
@@ -369,22 +427,19 @@ fn decide(dest: &Path, entry: &Entry) -> Recovery {
     }
 }
 
-fn restore(dest: &Path, prior: &PriorSerde, home: &Path) -> io::Result<()> {
+fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> io::Result<()> {
     match prior {
         PriorSerde::Absent => {
             // remove_file never removes a directory; a dest that grew
             // into one is left for the drift guard's Keep path
-            let _ = std::fs::remove_file(dest);
+            let _ = dest_dir.remove_file(dest_name);
         }
         PriorSerde::File { hash } => {
-            let bytes = std::fs::read(fs::prior_blob_path(home, hash))?;
-            if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            fs::atomic_write(dest, &bytes)?;
+            let bytes = home.read(prior_blob_rel(hash))?;
+            gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?;
         }
         PriorSerde::Symlink { target } => {
-            fs::symlink_replace(dest, Path::new(target))?;
+            gripsack_fs::symlink_replace(dest_dir, dest_name, Path::new(target))?;
         }
     }
     Ok(())
@@ -398,6 +453,19 @@ mod tests {
         tempfile::tempdir().expect("tempdir")
     }
 
+    /// The home capability the journal API takes now (plan/0021) —
+    /// opened on the temp home; assertions below are unchanged.
+    fn cap(home: &tempfile::TempDir) -> Dir {
+        gripsack_fs::open_or_create(home.path()).expect("home capability")
+    }
+
+    /// Capture through the destination's pinned parent capability,
+    /// as deploy's journaled mutations do (plan/0021).
+    fn capture_at(dest: &Path, home: &Dir) -> Prior {
+        let dir = gripsack_fs::open_or_create(dest.parent().unwrap()).unwrap();
+        capture(&dir, Path::new(dest.file_name().unwrap()), dest, home).unwrap()
+    }
+
     #[test]
     fn crash_between_record_and_write_restores_prior() {
         let home = home();
@@ -405,18 +473,18 @@ mod tests {
         std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
         std::fs::write(&dest, b"user stuff\n").unwrap();
 
-        let prior = capture(&dest, home.path()).unwrap();
-        record(home.path(), &dest, &prior).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
+        record(&cap(&home), &dest, &prior).unwrap();
         // simulate the crash: mutation never happened, no after, no
         // commit — the file still holds the prior bytes
 
-        let lines = reconcile(home.path()).unwrap();
+        let lines = reconcile(&cap(&home)).unwrap();
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("recovered"));
         // restore is idempotent for an unwritten dest
         assert_eq!(std::fs::read(&dest).unwrap(), b"user stuff\n");
         // the entry is consumed either way
-        assert!(reconcile(home.path()).unwrap().is_empty());
+        assert!(reconcile(&cap(&home)).unwrap().is_empty());
     }
 
     #[test]
@@ -425,18 +493,18 @@ mod tests {
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
 
-        let prior = capture(&dest, home.path()).unwrap();
-        record(home.path(), &dest, &prior).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
+        record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"deployed half-run content\n").unwrap();
         mark_after(
-            home.path(),
+            &cap(&home),
             &dest,
             &crate::hash::hex_sha256(b"deployed half-run content\n"),
         )
         .unwrap();
         // crash: no commit_run
 
-        let lines = reconcile(home.path()).unwrap();
+        let lines = reconcile(&cap(&home)).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
         assert!(lines[0].contains("recovered"));
     }
@@ -447,14 +515,14 @@ mod tests {
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
 
-        let prior = capture(&dest, home.path()).unwrap();
-        record(home.path(), &dest, &prior).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
+        record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
-        mark_after(home.path(), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
+        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
         // the user edits the file AFTER the crash, before the next run
         std::fs::write(&dest, b"my own edit\n").unwrap();
 
-        let lines = reconcile(home.path()).unwrap();
+        let lines = reconcile(&cap(&home)).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"my own edit\n");
         assert!(lines[0].contains("kept"));
     }
@@ -465,25 +533,25 @@ mod tests {
         let fresh = home.path().join("fresh");
         let link = home.path().join("link");
 
-        let prior = capture(&fresh, home.path()).unwrap();
+        let prior = capture_at(&fresh, &cap(&home));
         assert_eq!(prior, Prior::Absent);
-        record(home.path(), &fresh, &prior).unwrap();
+        record(&cap(&home), &fresh, &prior).unwrap();
         std::fs::write(&fresh, b"crashed write\n").unwrap();
         mark_after(
-            home.path(),
+            &cap(&home),
             &fresh,
             &crate::hash::hex_sha256(b"crashed write\n"),
         )
         .unwrap();
 
         std::os::unix::fs::symlink("/original/target", &link).unwrap();
-        let link_prior = capture(&link, home.path()).unwrap();
-        record(home.path(), &link, &link_prior).unwrap();
+        let link_prior = capture_at(&link, &cap(&home));
+        record(&cap(&home), &link, &link_prior).unwrap();
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink("/deployed/target", &link).unwrap();
-        mark_after(home.path(), &link, "/deployed/target").unwrap();
+        mark_after(&cap(&home), &link, "/deployed/target").unwrap();
 
-        reconcile(home.path()).unwrap();
+        reconcile(&cap(&home)).unwrap();
         assert!(!fresh.exists(), "absent prior removes the crashed write");
         assert_eq!(
             std::fs::read_link(&link).unwrap().to_string_lossy(),
@@ -500,20 +568,20 @@ mod tests {
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
 
-        begin_run(home.path(), 1).unwrap();
-        let prior = capture(&dest, home.path()).unwrap();
-        record(home.path(), &dest, &prior).unwrap();
+        begin_run(&cap(&home), 1).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
+        record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
-        mark_after(home.path(), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
+        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"deployed\n")).unwrap();
         // the flip: generation 1 becomes current; commit_run never ran
         let manifest = crate::generations::Generation {
             number: 1,
             modules: Default::default(),
         };
-        crate::generations::write_manifest(home.path(), &manifest).unwrap();
-        crate::generations::flip(home.path(), 1).unwrap();
+        crate::generations::write_manifest(&cap(&home), &manifest).unwrap();
+        crate::generations::flip(&cap(&home), home.path(), 1).unwrap();
 
-        let lines = reconcile(home.path()).unwrap();
+        let lines = reconcile(&cap(&home)).unwrap();
         assert!(
             lines.iter().any(|l| l.contains("already activated")),
             "{lines:?}"
@@ -529,13 +597,13 @@ mod tests {
         let home = home();
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
-        begin_run(home.path(), 1).unwrap();
-        let prior = capture(&dest, home.path()).unwrap();
-        record(home.path(), &dest, &prior).unwrap();
+        begin_run(&cap(&home), 1).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
+        record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"half\n").unwrap();
-        mark_after(home.path(), &dest, &crate::hash::hex_sha256(b"half\n")).unwrap();
+        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"half\n")).unwrap();
 
-        reconcile(home.path()).unwrap();
+        reconcile(&cap(&home)).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
     }
 
@@ -546,7 +614,7 @@ mod tests {
         let home = home();
         std::fs::create_dir_all(dir(home.path())).unwrap();
         std::fs::write(dir(home.path()).join("deadbeef.json"), b"{ not json").unwrap();
-        let err = reconcile(home.path()).unwrap_err();
+        let err = reconcile(&cap(&home)).unwrap_err();
         assert!(err.to_string().contains("quarantine"), "{err}");
         assert!(dir(home.path()).join("quarantine/deadbeef.json").exists());
     }
@@ -556,14 +624,14 @@ mod tests {
         let home = home();
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
-        let prior = capture(&dest, home.path()).unwrap();
-        record(home.path(), &dest, &prior).unwrap();
+        let prior = capture_at(&dest, &cap(&home));
+        record(&cap(&home), &dest, &prior).unwrap();
         std::fs::write(&dest, b"new\n").unwrap();
-        mark_after(home.path(), &dest, &crate::hash::hex_sha256(b"new\n")).unwrap();
+        mark_after(&cap(&home), &dest, &crate::hash::hex_sha256(b"new\n")).unwrap();
 
-        commit_run(home.path()).unwrap();
+        commit_run(&cap(&home)).unwrap();
         // the flip happened: recovery must NOT undo the deploy
-        assert!(reconcile(home.path()).unwrap().is_empty());
+        assert!(reconcile(&cap(&home)).unwrap().is_empty());
         assert_eq!(std::fs::read(&dest).unwrap(), b"new\n");
     }
 }

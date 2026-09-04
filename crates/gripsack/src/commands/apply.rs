@@ -87,6 +87,7 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
     };
     let ctx = Ctx {
         home: store::gripsack_home(),
+        home_dir: Default::default(),
         repo: repo.to_path_buf(),
         only: opts.modules,
         host: outcome.host.clone(),

@@ -21,7 +21,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // mutation and the flip left uncommitted journal entries — the
     // filesystem sits between generations. Restore the priors before
     // deploying anything; the run then proceeds from a clean floor.
-    let recovered = store::journal::reconcile(&ctx.home)?;
+    let recovered = store::journal::reconcile(ctx.home_dir()?)?;
     let mut reports = Vec::new();
     if !recovered.is_empty() {
         reports.push(crate::report::StepReport {
@@ -96,7 +96,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // recovery compares the marker against `current` — a crash after
     // the flip but before journal cleanup must read as COMMITTED,
     // never restore priors the new generation owns (review 5.1)
-    store::journal::begin_run(&ctx.home, current_gen.unwrap_or(0) + 1)?;
+    store::journal::begin_run(ctx.home_dir()?, current_gen.unwrap_or(0) + 1)?;
     let outcome =
         crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)?;
     // An empty result set must be a deliberate empty declaration,
@@ -163,7 +163,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     if prev_manifest.as_ref().map(|g| &g.modules) == Some(&modules) && !touched_disk {
         // vacuous run: nothing journaled, nothing flipped — the
         // marker begin_run wrote must not linger
-        store::journal::end_run(&ctx.home)?;
+        store::journal::end_run(ctx.home_dir()?)?;
         return Ok(ApplyResult {
             outcome: Outcome::Satisfied {
                 generation: current_gen,
@@ -175,16 +175,16 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         number: next,
         modules,
     };
-    store::write_manifest(&ctx.home, &generation)?;
+    store::write_manifest(ctx.home_dir()?, &generation)?;
     // the exported-env profile renders BEFORE the flip: it names
     // store paths (already published), not the `current` link, so a
     // failure here leaves nothing activated
     render_env_file(&ctx.home, &generation.modules)?;
-    store::flip(&ctx.home, next)?;
+    store::flip(ctx.home_dir()?, &ctx.home, next)?;
     // the flip is the run's commit point: everything the journal
     // recorded is now owned by the new generation — the crash window
     // closes here
-    store::journal::commit_run(&ctx.home)?;
+    store::journal::commit_run(ctx.home_dir()?)?;
     reports.extend(crate::activate::run_post_link(&order, &steps_by_module));
     reports.extend(crate::activate::run_post_activate(&order, &steps_by_module));
     info!(generation = next, "activated");
@@ -263,7 +263,8 @@ fn prune_undeclared(
                         if new.trim().is_empty() {
                             std::fs::remove_file(&dest)?;
                         } else {
-                            store::atomic_write(&dest, new.as_bytes())?;
+                            let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
+                            gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())?;
                         }
                         info!("pruned {} (block)", entry.to);
                     }

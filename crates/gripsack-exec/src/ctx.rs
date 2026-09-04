@@ -31,6 +31,11 @@ pub struct Ctx {
     /// Max concurrent modules in the scheduler (0007 §5). None = cores.
     /// `--jobs` on the CLI; GRIPSACK_JOBS for CI.
     pub jobs: Option<usize>,
+
+    /// The home capability (plan/0021), opened lazily on first use:
+    /// read-only commands (plan, check) never materialize
+    /// `$GRIPSACK_HOME`; mutation paths share ONE pinned root inode.
+    pub home_dir: std::sync::OnceLock<gripsack_fs::Dir>,
 }
 
 impl Ctx {
@@ -41,6 +46,17 @@ impl Ctx {
                 .take_over_entries
                 .as_ref()
                 .is_some_and(|entries| entries.contains(to))
+    }
+
+    /// The home capability, opened (and created) on first mutation.
+    /// A concurrent second opener loses to `get_or_init` — both fds
+    /// name the same directory, so the race is harmless.
+    pub fn home_dir(&self) -> io::Result<&gripsack_fs::Dir> {
+        if let Some(dir) = self.home_dir.get() {
+            return Ok(dir);
+        }
+        let dir = gripsack_fs::open_or_create(&self.home)?;
+        Ok(self.home_dir.get_or_init(|| dir))
     }
 }
 

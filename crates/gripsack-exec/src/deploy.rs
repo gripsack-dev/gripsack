@@ -34,7 +34,8 @@ pub fn restore_entry(
                 );
                 return Ok(());
             }
-            store::symlink_replace(dest, &source)
+            let (dest_dir, dest_name) = dest_capability(dest)?;
+            gripsack_fs::symlink_replace(&dest_dir, &dest_name, &source)
         }
         Ownership::Merge => {
             let payload = std::fs::read_to_string(&source).unwrap_or_default();
@@ -45,18 +46,25 @@ pub fn restore_entry(
                 return Ok(());
             };
             match crate::template::upsert_block(&existing, module, dest, None, &payload) {
-                Ok(new) => store::atomic_write(dest, new.as_bytes()),
+                Ok(new) => {
+                    let (dest_dir, dest_name) = dest_capability(dest)?;
+                    gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
+                }
                 Err(_) => Ok(()), // malformed markers: leave the foreign file alone
             }
         }
         Ownership::Template => std::fs::read(&source).and_then(|raw| {
             crate::template::render_template(&raw, &entry.vars, &entry.from)
                 .map_err(std::io::Error::other)
-                .and_then(|bytes| store::atomic_write(dest, &bytes))
+                .and_then(|bytes| {
+                    let (dest_dir, dest_name) = dest_capability(dest)?;
+                    gripsack_fs::atomic_write(&dest_dir, &dest_name, &bytes)
+                })
         }),
-        Ownership::TrackedCopy => {
-            std::fs::read(&source).and_then(|bytes| store::atomic_write(dest, &bytes))
-        }
+        Ownership::TrackedCopy => std::fs::read(&source).and_then(|bytes| {
+            let (dest_dir, dest_name) = dest_capability(dest)?;
+            gripsack_fs::atomic_write(&dest_dir, &dest_name, &bytes)
+        }),
     }
 }
 
@@ -80,7 +88,9 @@ pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: 
                     if new.trim().is_empty() {
                         std::fs::remove_file(dest).is_ok()
                     } else {
-                        store::atomic_write(dest, new.as_bytes()).is_ok()
+                        dest_capability(dest)
+                            .and_then(|(d, n)| gripsack_fs::atomic_write(&d, &n, new.as_bytes()))
+                            .is_ok()
                     }
                 }
                 _ => false, // drifted block is the user's now
@@ -100,22 +110,26 @@ pub fn remove_entry_deployed(dest: &Path, entry: &store::DeployedEntry, module: 
 /// §4): real-file bytes go to the content-addressed prior blob store,
 /// a symlink's target is recorded verbatim. None = nothing there (or
 /// unreadable) — default removal semantics then apply.
-fn capture_prior(dest: &Path, home: &Path) -> Option<store::Prior> {
-    let meta = std::fs::symlink_metadata(dest).ok()?;
+fn capture_prior(
+    dest_dir: &gripsack_fs::Dir,
+    dest_name: &Path,
+    home: &gripsack_fs::Dir,
+) -> Option<store::Prior> {
+    let meta = dest_dir.symlink_metadata(dest_name).ok()?;
     if meta.file_type().is_symlink() {
-        let target = std::fs::read_link(dest).ok()?;
+        let target = dest_dir.read_link_contents(dest_name).ok()?;
         Some(store::Prior {
             kind: store::PriorKind::Symlink,
             content: Some(target.to_string_lossy().into_owned()),
             mode: None,
         })
     } else if meta.is_file() {
-        let bytes = std::fs::read(dest).ok()?;
-        let sha = store::store_prior_blob(home, &bytes).ok()?;
+        let bytes = dest_dir.read(dest_name).ok()?;
+        let sha = store::journal::store_prior_blob_in(home, &bytes).ok()?;
         #[cfg(unix)]
         let mode = {
-            use std::os::unix::fs::PermissionsExt;
-            Some(meta.permissions().mode() & 0o777)
+            use gripsack_fs::cap_std::fs::MetadataExt;
+            Some(meta.mode() & 0o777)
         };
         #[cfg(not(unix))]
         let mode = None;
@@ -139,10 +153,10 @@ fn restore_prior(dest: &Path, prior: &store::Prior, home: &Path) -> bool {
             let Ok(bytes) = std::fs::read(store::prior_blob_path(home, sha)) else {
                 return false;
             };
-            if let Some(parent) = dest.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if !store::atomic_write(dest, &bytes).is_ok() {
+            if !dest_capability(dest)
+                .and_then(|(d, n)| gripsack_fs::atomic_write(&d, &n, &bytes))
+                .is_ok()
+            {
                 return false;
             }
             #[cfg(unix)]
@@ -157,11 +171,11 @@ fn restore_prior(dest: &Path, prior: &store::Prior, home: &Path) -> bool {
             let Some(target) = &prior.content else {
                 return false;
             };
-            let _ = std::fs::remove_file(dest);
-            #[cfg(unix)]
-            return std::os::unix::fs::symlink(target, dest).is_ok();
-            #[cfg(not(unix))]
-            return false;
+            // symlink_replace over remove+create: the swap is atomic
+            // and parent-fsync'd (strictly stronger than the old pair)
+            dest_capability(dest)
+                .and_then(|(d, n)| gripsack_fs::symlink_replace(&d, &n, Path::new(target)))
+                .is_ok()
         }
     }
 }
@@ -239,15 +253,35 @@ pub(crate) fn run_rollback(
 /// commits (the flip); per-entry there is no commit, matching the
 /// run-level rollback's all-or-nothing semantics.
 fn journaled(
-    home: &Path,
+    home: &gripsack_fs::Dir,
+    dest_dir: &gripsack_fs::Dir,
+    dest_name: &Path,
     dest: &Path,
     after: String,
     mutate: impl FnOnce() -> std::io::Result<()>,
 ) -> std::io::Result<()> {
-    let prior = gripsack_store::journal::capture(dest, home)?;
+    let prior = gripsack_store::journal::capture(dest_dir, dest_name, dest, home)?;
     gripsack_store::journal::record(home, dest, &prior)?;
     mutate()?;
     gripsack_store::journal::mark_after(home, dest, &after)
+}
+
+/// Open a destination's parent as a capability, creating parents for
+/// a fresh destination first. Deploy's check-then-write paths pin
+/// THIS inode: the drift hash, the journal capture, and the write
+/// all resolve relative to it — a parent symlink swapped in after
+/// `dest_resolves_into` ran cannot redirect the write (plan/0021
+/// phase 2).
+pub(crate) fn dest_capability(
+    dest: &Path,
+) -> std::io::Result<(gripsack_fs::Dir, std::path::PathBuf)> {
+    let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let dir = gripsack_fs::open(parent)?;
+    Ok((
+        dir,
+        std::path::PathBuf::from(dest.file_name().unwrap_or_default()),
+    ))
 }
 /// never silently overwrite.
 pub(crate) fn deploy_entry(
@@ -382,9 +416,13 @@ pub(crate) fn deploy_entry(
                     ),
                 });
             }
+            // The dest-parent capability, opened where the
+            // dest-resolves-into check ran: prior capture, the
+            // journal, and the link swap pin ONE parent inode.
+            let (dest_dir, dest_name) = dest_capability(&dest)?;
             // 0015 §4: a genuine take-over records what was there first
             let prior = if take && !ours && !recorded {
-                capture_prior(&dest, &ctx.home)
+                capture_prior(&dest_dir, &dest_name, ctx.home_dir()?)
             } else {
                 None
             };
@@ -396,13 +434,15 @@ pub(crate) fn deploy_entry(
                 .map(|t| t == source)
                 .unwrap_or(false);
             if !already {
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
                 let target = source.to_string_lossy().into_owned();
-                journaled(&ctx.home, &dest, target, || {
-                    store::symlink_replace(&dest, &source)
-                })?;
+                journaled(
+                    ctx.home_dir()?,
+                    &dest_dir,
+                    &dest_name,
+                    &dest,
+                    target,
+                    || gripsack_fs::symlink_replace(&dest_dir, &dest_name, &source),
+                )?;
             }
             let hash = store::canonical_file_hash(&source)?;
             if already {
@@ -438,7 +478,10 @@ pub(crate) fn deploy_entry(
                 .and_then(|m| m.entries.iter().find(|e| e.to == entry.to))
                 .map(|e| e.hash.as_str());
             if dest.exists() {
-                let current = store::canonical_file_hash(&dest)?;
+                // drift check and any write below share the pinned
+                // dest parent (plan/0021 phase 2)
+                let (dest_dir, dest_name) = dest_capability(&dest)?;
+                let current = store::canonical_file_hash_in(&dest_dir, &dest_name)?;
                 if current == hash {
                     (
                         format!("{} unchanged", entry.to),
@@ -448,8 +491,8 @@ pub(crate) fn deploy_entry(
                     )
                 } else if prev_hash == Some(current.as_str()) {
                     let after = store::canonical_bytes_hash(content);
-                    journaled(&ctx.home, &dest, after, || {
-                        store::atomic_write(&dest, content)
+                    journaled(ctx.home_dir()?, &dest_dir, &dest_name, &dest, after, || {
+                        gripsack_fs::atomic_write(&dest_dir, &dest_name, content)
                     })?;
                     (
                         format!("updated {} → {}", from, entry.to),
@@ -459,10 +502,10 @@ pub(crate) fn deploy_entry(
                     )
                 } else if ctx.takes_over(&entry.to) {
                     // 0015 §4: record the foreign bytes before absorbing
-                    let prior = capture_prior(&dest, &ctx.home);
+                    let prior = capture_prior(&dest_dir, &dest_name, ctx.home_dir()?);
                     let after = store::canonical_bytes_hash(content);
-                    journaled(&ctx.home, &dest, after, || {
-                        store::atomic_write(&dest, content)
+                    journaled(ctx.home_dir()?, &dest_dir, &dest_name, &dest, after, || {
+                        gripsack_fs::atomic_write(&dest_dir, &dest_name, content)
                     })?;
                     (
                         format!("took over {} → {}", from, entry.to),
@@ -484,12 +527,10 @@ pub(crate) fn deploy_entry(
                     (note, ReportKind::Warned, current, None)
                 }
             } else {
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
+                let (dest_dir, dest_name) = dest_capability(&dest)?;
                 let after = store::canonical_bytes_hash(content);
-                journaled(&ctx.home, &dest, after, || {
-                    store::atomic_write(&dest, content)
+                journaled(ctx.home_dir()?, &dest_dir, &dest_name, &dest, after, || {
+                    gripsack_fs::atomic_write(&dest_dir, &dest_name, content)
                 })?;
                 (
                     format!("copied {} → {}", from, entry.to),
@@ -554,12 +595,10 @@ pub(crate) fn deploy_entry(
                     &payload,
                 )
                 .map_err(fail)?;
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
+                let (dest_dir, dest_name) = dest_capability(&dest)?;
                 let after = store::canonical_bytes_hash(new.as_bytes());
-                journaled(&ctx.home, &dest, after, || {
-                    store::atomic_write(&dest, new.as_bytes())
+                journaled(ctx.home_dir()?, &dest_dir, &dest_name, &dest, after, || {
+                    gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
                 })?;
                 (
                     format!("merged {} → {}{note}", from, entry.to),

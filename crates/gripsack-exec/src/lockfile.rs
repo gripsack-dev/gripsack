@@ -119,7 +119,7 @@ pub fn read(repo: &Path, host: &str) -> LockRead {
 pub fn write(repo: &Path, host: &str, lockfile: &Lockfile) -> io::Result<()> {
     let json = serde_json::to_string_pretty(lockfile)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    gripsack_store::fs::atomic_write(&path(repo, host), json.as_bytes())
+    gripsack_fs::atomic_write_at(&path(repo, host), json.as_bytes())
 }
 
 #[cfg(test)]

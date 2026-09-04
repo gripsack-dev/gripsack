@@ -16,6 +16,13 @@ Capability-based filesystem writes (plan/0021), an in-binary SBOM
   the current host: a repo written on Linux no longer corrupts on a
   Mac (case-insensitive filesystems treat `~/Foo` and `~/foo` as one
   file). Case-variant destinations were ~always typos anyway.
+- **Filesystem writes go through capability-relative paths**
+  (plan/0021) — the journal, generation flip, store publishes, and
+  deploy destinations now name files relative to a directory handle
+  opened once (cap-std/rustix), so a path component swapped between
+  gripsack's check and its write cannot redirect the write (TOCTOU).
+  No behavior change; every existing unit and e2e test passes with
+  its assertions untouched.
 
 ### Added
 

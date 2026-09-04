@@ -18,6 +18,7 @@ dialoguer.workspace = true
 sha2.workspace = true
 indicatif = "0.18"
 gripsack-config.workspace = true
+gripsack-fs.workspace = true
 gripsack-lint.workspace = true
 gripsack-ir.workspace = true
 gripsack-store.workspace = true

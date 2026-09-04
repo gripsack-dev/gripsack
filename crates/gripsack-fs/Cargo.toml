@@ -1,0 +1,15 @@
+[package]
+name = "gripsack-fs"
+description = "Capability-based filesystem primitives (plan/0021)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cap-std = "4"
+rustix = { version = "1", features = ["fs"] }
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

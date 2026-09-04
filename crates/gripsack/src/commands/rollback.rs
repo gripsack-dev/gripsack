@@ -70,7 +70,8 @@ pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
             }
         }
     }
-    if let Err(e) = store::flip(&home, target) {
+    let flip_result = gripsack_fs::open(&home).and_then(|cap| store::flip(&cap, &home, target));
+    if let Err(e) = flip_result {
         eprintln!("grip: cannot flip to generation {target}: {e}");
         return ExitCode::FAILURE;
     }

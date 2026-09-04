@@ -181,9 +181,9 @@ pub fn ensure_ts_frontend(home: &Path, core_version: &str) -> io::Result<Option<
     }
     for (rel, source) in embedded::FRONTEND_FILES {
         let dest = dir.join(rel);
-        gripsack_store::atomic_write(&dest, source.as_bytes())?;
+        gripsack_fs::atomic_write_at(&dest, source.as_bytes())?;
     }
-    gripsack_store::atomic_write(&dir.join(".complete"), b"ok\n")?;
+    gripsack_fs::atomic_write_at(&dir.join(".complete"), b"ok\n")?;
     Ok(Some(dir))
 }
 

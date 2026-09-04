@@ -71,6 +71,11 @@ pub fn expand_home(to: &str) -> PathBuf {
     PathBuf::from(to)
 }
 
+/// Where a prior blob lives: `$GRIPSACK_HOME/prior/<sha256>`.
+pub fn prior_blob_path(home: &Path, sha: &str) -> PathBuf {
+    home.join("prior").join(sha)
+}
+
 /// The `current` symlink — flipping it IS activation (0001 §9.2).
 pub fn current_link(home: &Path) -> PathBuf {
     home.join("current")

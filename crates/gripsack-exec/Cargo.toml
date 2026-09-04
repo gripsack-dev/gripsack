@@ -9,6 +9,7 @@ build = "build.rs"
 
 [dependencies]
 gripsack-config.workspace = true
+gripsack-fs.workspace = true
 gripsack-fetch.workspace = true
 gripsack-ir.workspace = true
 gripsack-store.workspace = true

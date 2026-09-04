@@ -74,7 +74,7 @@ pub fn init(home: &Path) -> io::Result<RunLog> {
         .with(json)
         .try_init();
 
-    gripsack_store::symlink_replace(&home.join("runs").join("latest"), &run.path)?;
+    gripsack_fs::symlink_replace_at(&home.join("runs").join("latest"), &run.path)?;
     Ok(run)
 }
 

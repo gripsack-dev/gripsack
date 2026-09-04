@@ -33,7 +33,7 @@ fn ensure_pixi() -> Result<PathBuf, FetchError> {
     // two concurrent applies provisioning pixi on a clean machine race
     // the download/rename into the same staging path — the same flock
     // discipline deno's provisioning uses
-    let _lock = gripsack_store::fs::FlockGuard::acquire(&home.join("locks"), "pixi")?;
+    let _lock = gripsack_fs::FlockGuard::acquire(&home.join("locks"), "pixi")?;
     if pixi.exists() {
         return Ok(pixi); // lost the race — the winner installed it
     }
