@@ -236,15 +236,18 @@ pub fn adopt(
     // empty baseline first, or the adopt apply IS generation 1 and
     // there is nothing to roll back to
     let home = store::gripsack_home();
+    let baseline = gripsack_fs::open_or_create(&home);
     if store::current_generation(&home).is_none()
         && store::list_generations(&home).is_empty()
-        && let Err(e) = store::write_manifest(
-            &home,
-            &store::Generation {
-                number: 0,
-                modules: Default::default(),
-            },
-        )
+        && let Err(e) = baseline.and_then(|cap| {
+            store::write_manifest(
+                &cap,
+                &store::Generation {
+                    number: 0,
+                    modules: Default::default(),
+                },
+            )
+        })
     {
         eprintln!("grip: cannot record the baseline generation: {e}");
         return ExitCode::FAILURE;

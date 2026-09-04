@@ -552,8 +552,8 @@ mod tests {
             number: 1,
             modules: Default::default(),
         };
-        crate::generations::write_manifest(home.path(), &manifest).unwrap();
-        crate::generations::flip(home.path(), 1).unwrap();
+        crate::generations::write_manifest(&cap(&home), &manifest).unwrap();
+        crate::generations::flip(&cap(&home), home.path(), 1).unwrap();
 
         let lines = reconcile(&cap(&home)).unwrap();
         assert!(

@@ -9,7 +9,6 @@
 //! current -> generations/2
 //! ```
 
-use crate::fs;
 use gripsack_ir::{EnvVar, Ownership};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -82,11 +81,19 @@ fn manifest_path(home: &Path, generation: u64) -> PathBuf {
     crate::paths::generation_dir(home, generation).join("manifest.json")
 }
 
-/// Write a generation's manifest atomically.
-pub fn write_manifest(home: &Path, generation: &Generation) -> io::Result<()> {
+/// Write a generation's manifest atomically, relative to the home
+/// capability (plan/0021): `generations/<N>/manifest.json` can never
+/// be redirected by a swapped path component.
+pub fn write_manifest(home: &gripsack_fs::Dir, generation: &Generation) -> io::Result<()> {
     let json = serde_json::to_string_pretty(generation)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    fs::atomic_write(&manifest_path(home, generation.number), json.as_bytes())
+    gripsack_fs::atomic_write(
+        home,
+        &Path::new(crate::paths::GENERATIONS_DIR)
+            .join(generation.number.to_string())
+            .join("manifest.json"),
+        json.as_bytes(),
+    )
 }
 
 /// Read a generation's manifest.
@@ -131,13 +138,17 @@ pub fn current_in(home: &gripsack_fs::Dir) -> Option<u64> {
 }
 
 /// Flip `current` to a generation — the single indivisible activation
-/// operation (0001 §9.2). The target must exist first: a `current`
-/// pointing at nothing reads as "no generations" everywhere
-/// downstream (list/current swallow that as None) while looking
-/// deployed to anything that inspects the link.
-pub fn flip(home: &Path, generation: u64) -> io::Result<()> {
-    let dir = crate::paths::generation_dir(home, generation);
-    if !dir.is_dir() {
+/// operation (0001 §9.2), pinned to the home capability (plan/0021).
+/// `home_path` exists only to compose the link TARGET: `current`
+/// records the absolute generation dir so readers resolve it from
+/// any cwd. The target must exist first: a `current` pointing at
+/// nothing reads as "no generations" everywhere downstream
+/// (list/current swallow that as None) while looking deployed to
+/// anything that inspects the link.
+pub fn flip(home: &gripsack_fs::Dir, home_path: &Path, generation: u64) -> io::Result<()> {
+    let rel = Path::new(crate::paths::GENERATIONS_DIR).join(generation.to_string());
+    let dir = home_path.join(&rel);
+    if !home.metadata(&rel).is_ok_and(|m| m.is_dir()) {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
             format!(
@@ -146,7 +157,7 @@ pub fn flip(home: &Path, generation: u64) -> io::Result<()> {
             ),
         ));
     }
-    fs::symlink_replace(&crate::paths::current_link(home), &dir)
+    gripsack_fs::symlink_replace(home, Path::new("current"), &dir)
 }
 
 #[cfg(test)]
@@ -178,8 +189,9 @@ mod tests {
     fn manifest_roundtrip_and_listing() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
-        write_manifest(home, &mk_gen(1)).unwrap();
-        write_manifest(home, &mk_gen(2)).unwrap();
+        let cap = gripsack_fs::open_or_create(home).unwrap();
+        write_manifest(&cap, &mk_gen(1)).unwrap();
+        write_manifest(&cap, &mk_gen(2)).unwrap();
         assert_eq!(list(home), vec![1, 2]);
         let read = read_manifest(home, 1).unwrap();
         assert_eq!(read.modules["helix"].entries[0].hash, "deadbeef");
@@ -189,12 +201,13 @@ mod tests {
     fn flip_and_current() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
-        write_manifest(home, &mk_gen(1)).unwrap();
-        write_manifest(home, &mk_gen(2)).unwrap();
+        let cap = gripsack_fs::open_or_create(home).unwrap();
+        write_manifest(&cap, &mk_gen(1)).unwrap();
+        write_manifest(&cap, &mk_gen(2)).unwrap();
         assert_eq!(current(home), None);
-        flip(home, 1).unwrap();
+        flip(&cap, home, 1).unwrap();
         assert_eq!(current(home), Some(1));
-        flip(home, 2).unwrap();
+        flip(&cap, home, 2).unwrap();
         assert_eq!(current(home), Some(2));
     }
 }

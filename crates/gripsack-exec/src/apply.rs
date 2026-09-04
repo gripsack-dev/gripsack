@@ -175,12 +175,12 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         number: next,
         modules,
     };
-    store::write_manifest(&ctx.home, &generation)?;
+    store::write_manifest(ctx.home_dir()?, &generation)?;
     // the exported-env profile renders BEFORE the flip: it names
     // store paths (already published), not the `current` link, so a
     // failure here leaves nothing activated
     render_env_file(&ctx.home, &generation.modules)?;
-    store::flip(&ctx.home, next)?;
+    store::flip(ctx.home_dir()?, &ctx.home, next)?;
     // the flip is the run's commit point: everything the journal
     // recorded is now owned by the new generation — the crash window
     // closes here

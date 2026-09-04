@@ -354,6 +354,26 @@ impl<'a> ModuleRun<'a> {
         })
     }
 
+    /// Publish staged bytes into the store through the home
+    /// capability (plan/0021 phase 4): the destination is named
+    /// RELATIVE to the pinned home inode, so a store path can never
+    /// be redirected by a swapped path component.
+    fn publish_staging(
+        &self,
+        stage: &std::path::Path,
+        dest: &std::path::Path,
+    ) -> Result<(), ExecError> {
+        let rel = dest
+            .strip_prefix(&self.ctx.home)
+            .map_err(|_| ExecError::Step {
+                module: self.name.to_string(),
+                step: "publish".into(),
+                detail: format!("store path {} is not under $GRIPSACK_HOME", dest.display()),
+            })?;
+        gripsack_fs::publish_dir(self.ctx.home_dir()?, stage, rel)?;
+        Ok(())
+    }
+
     /// Stage repo-referenced files and publish into the store — once,
     /// immutably (0001 §9.1). Content-addressed modules (0014) name
     /// the path from the merged staging's tree hash: an existing path
@@ -389,7 +409,7 @@ impl<'a> ModuleRun<'a> {
             }
         }
         if !self.content_addressed {
-            store::publish_dir(&stage, &self.store_path)?;
+            self.publish_staging(&stage, &self.store_path.clone())?;
             return Ok(());
         }
         let tree = store::canonical_tree_hash(&stage)?;
@@ -410,7 +430,7 @@ impl<'a> ModuleRun<'a> {
             // is already there — drop staging, keep the store
             std::fs::remove_dir_all(&stage)?;
         } else {
-            store::publish_dir(&stage, &path)?;
+            self.publish_staging(&stage, &path)?;
         }
         self.store_path = path;
         self.tree256 = Some(tree.clone());

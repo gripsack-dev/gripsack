@@ -441,6 +441,7 @@ dependencies = [
  "gripsack-config",
  "gripsack-exec",
  "gripsack-fetch",
+ "gripsack-fs",
  "gripsack-ir",
  "gripsack-lint",
  "gripsack-store",

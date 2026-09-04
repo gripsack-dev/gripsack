@@ -179,13 +179,14 @@ mod tests {
             let sp = home.join("store").join(format!("{tag}-m"));
             fs::create_dir_all(&sp).unwrap();
             fs::write(sp.join("payload"), format!("gen {n}")).unwrap();
-            store::write_manifest(home, &mk_gen(n, sp)).unwrap();
+            store::write_manifest(&gripsack_fs::open_or_create(home).unwrap(), &mk_gen(n, sp))
+                .unwrap();
         }
         // an orphan path no manifest references
         let orphan = home.join("store").join("zzz-orphan");
         fs::create_dir_all(&orphan).unwrap();
         fs::write(orphan.join("payload"), b"old").unwrap();
-        store::flip(home, 3).unwrap();
+        store::flip(&gripsack_fs::open_or_create(home).unwrap(), home, 3).unwrap();
         dir
     }
 
