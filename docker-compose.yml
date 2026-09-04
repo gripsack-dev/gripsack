@@ -44,7 +44,7 @@ services:
         VERSION="$${VERSION:?set VERSION to the release version, e.g. -e VERSION=0.1.0}"
         TARGET="$${TARGET:-x86_64-unknown-linux-musl}"
         PKG="gripsack-$$VERSION-$$TARGET"
-        cargo build --release --locked -p gripsack \
+        cargo auditable build --release --locked -p gripsack \
         && strip target/release/grip \
         && staging="$$(mktemp -d)" \
         && mkdir -p "$$staging/$$PKG" \
