@@ -1,10 +1,13 @@
-use crate::commands::expand_home;
 use crate::render::Palette;
 use gripsack_store as store;
 use std::process::ExitCode;
 use tracing::info;
 
-/// grip rollback: restore a generation's deployment, then flip back.
+/// grip rollback: restore a generation's deployment, then flip back —
+/// through the same journaled transaction protocol as apply
+/// (plan/0025 §A): a crash mid-rollback is recovered by the next
+/// run's reconcile, and an ordinary failure restores the pre-rollback
+/// state before returning.
 pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
     let home = store::gripsack_home();
     // rollback rewrites deployments and flips — same lifecycle race as
@@ -33,54 +36,19 @@ pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // Remove destinations the target generation doesn't know about —
-    // drift-guarded, same rule as apply's prune (user edits are never
-    // deleted; merge entries lose only our block)
-    if let Some(c) = current
-        && let Ok(current_manifest) = store::read_manifest(&home, c)
-    {
-        for (name, state) in &current_manifest.modules {
-            let target_entries = manifest.modules.get(name);
-            for entry in &state.entries {
-                let still = target_entries
-                    .map(|s| s.entries.iter().any(|e| e.to == entry.to))
-                    .unwrap_or(false);
-                if !still {
-                    let dest = expand_home(&entry.to);
-                    // 0015 §4: an entry adopted with take-over gets its
-                    // ORIGINAL file back, not a deletion
-                    if !gripsack_exec::deploy::remove_or_restore_prior(&dest, entry, name, &home) {
-                        tracing::warn!("kept {} — modified since deploy", entry.to);
-                    }
-                }
+    let current_manifest = current.and_then(|c| store::read_manifest(&home, c).ok());
+    match gripsack_exec::rollback_generation(&home, current_manifest.as_ref(), &manifest) {
+        Ok(notes) => {
+            for note in notes {
+                println!("  {note}");
             }
+            info!(generation = target, "rolled back");
+            println!("{} generation {}", palette.good("rolled back to"), target);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("grip: rollback failed: {e}");
+            ExitCode::FAILURE
         }
     }
-    // restore through the ONE deploy-restore path (0001 §3.5): template
-    // re-renders with the recorded vars, merge re-upserts only the
-    // block — never a naive byte copy
-    for (name, state) in &manifest.modules {
-        for entry in &state.entries {
-            let dest = expand_home(&entry.to);
-            let result =
-                gripsack_exec::deploy::restore_entry(&dest, entry, &state.store_path, name);
-            if let Err(e) = result {
-                eprintln!("grip: rollback failed for {}: {e}", dest.display());
-                return ExitCode::FAILURE;
-            }
-        }
-    }
-    let flip_result = gripsack_fs::open(&home).and_then(|cap| store::flip(&cap, &home, target));
-    if let Err(e) = flip_result {
-        eprintln!("grip: cannot flip to generation {target}: {e}");
-        return ExitCode::FAILURE;
-    }
-    // The profile tracks the generation (0001 §3.10).
-    if let Err(e) = gripsack_exec::render_env_file(&home, &manifest.modules) {
-        eprintln!("grip: rolled back, but env profile failed: {e}");
-        return ExitCode::FAILURE;
-    }
-    info!(generation = target, "rolled back");
-    println!("{} generation {}", palette.good("rolled back to"), target);
-    ExitCode::SUCCESS
 }

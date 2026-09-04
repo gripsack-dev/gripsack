@@ -17,6 +17,17 @@ pub fn acquire_lifecycle_lock(home: &Path) -> io::Result<FlockGuard> {
     gripsack_fs::FlockGuard::acquire(&home.join("locks"), "apply")
 }
 
+/// Test-only kill switch (plan/0025 acceptance):
+/// GRIPSACK_CRASH_AFTER=<phase> aborts the process right after the
+/// named phase, so e2e can exercise the crash windows the journal
+/// closes. abort() skips destructors like a kill -9; the OS releases
+/// the flocks. Never set outside tests.
+pub fn crash_hook(phase: &str) {
+    if std::env::var("GRIPSACK_CRASH_AFTER").as_deref() == Ok(phase) {
+        std::process::abort();
+    }
+}
+
 pub(crate) fn progress(ctx: &Ctx, module: &str, verb: &str) {
     if let Some(cb) = &ctx.on_progress {
         cb(module, verb);

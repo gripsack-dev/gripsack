@@ -29,6 +29,7 @@ pub mod lockfile;
 pub mod module;
 pub mod report;
 pub mod resolve;
+pub mod rollback;
 pub mod schedule;
 pub mod template;
 pub mod update;
@@ -42,6 +43,7 @@ pub use env::render_env_file;
 pub use frontend::{ensure_deno, ensure_ts_frontend};
 pub use gc::{GcReport, gc, why_owns};
 pub use report::{ApplyResult, ReportKind, StepReport, UpdateReport, UpdateStatus};
+pub use rollback::rollback_generation;
 pub use update::update;
 pub use util::acquire_lifecycle_lock;
 
