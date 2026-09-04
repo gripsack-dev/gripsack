@@ -13,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: rustsec/audit-check@v2
+      # prebuilt binary, not a from-source install: cargo-audit's own
+      # dependency tree (old tinyvec) breaks compiling against new
+      # runner toolchains — the action's install path failed CI while
+      # the audit itself was clean
+      - uses: taiki-e/install-action@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          tool: cargo-audit
+      - run: cargo audit
