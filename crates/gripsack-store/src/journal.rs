@@ -51,10 +51,12 @@ pub struct Entry {
     /// The destination path, as written (post `~` expansion).
     pub dest: String,
     pub prior: PriorSerde,
-    /// Post-mutation identity: the content hash (canonical) or the
-    /// link target. None until the mutation is known to have landed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub after: Option<String>,
+    /// The INTENDED post-mutation identity (0026 §6): canonical
+    /// content hash, link target, or the REMOVED sentinel — recorded
+    /// BEFORE the mutation, so recovery makes a three-way decision
+    /// (live == intended → restore prior; live == prior → the
+    /// mutation never landed; else → someone's edit, keep it).
+    pub after: String,
 }
 
 /// Wire shape of [`Prior`] — the blob-store hash rides along for
@@ -183,13 +185,15 @@ pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io:
     Ok(Prior::Absent)
 }
 
-/// Record the intent to mutate `dest` whose prior state is `prior`:
-/// the entry must be durable BEFORE the mutation lands.
-pub fn record(home: &Dir, dest: &Path, prior: &Prior) -> io::Result<()> {
+/// Record the intent to mutate `dest`: prior state AND the intended
+/// post-mutation identity, durable BEFORE the mutation lands
+/// (0026 §6 — persisting intent up front closes the window where a
+/// post-crash user edit was indistinguishable from the mutation).
+pub fn record(home: &Dir, dest: &Path, prior: &Prior, after: &str) -> io::Result<()> {
     let entry = Entry {
         dest: dest.to_string_lossy().into_owned(),
         prior: prior.into(),
-        after: None,
+        after: after.to_string(),
     };
     gripsack_fs::atomic_write(
         home,
@@ -200,27 +204,19 @@ pub fn record(home: &Dir, dest: &Path, prior: &Prior) -> io::Result<()> {
     )
 }
 
-/// Note the post-mutation identity, so recovery can tell "still the
-/// deployed bytes" (restore prior) from "someone edited it since"
-/// (leave it alone).
-pub fn mark_after(home: &Dir, dest: &Path, after: &str) -> io::Result<()> {
-    let path = entry_rel(dest);
-    let mut entry: Entry = serde_json::from_slice(&home.read(&path)?)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    entry.after = Some(after.to_string());
-    gripsack_fs::atomic_write(
-        home,
-        &path,
-        serde_json::to_string(&entry)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-            .as_bytes(),
-    )
-}
-
 /// The run marker: which generation this journal's entries belong to.
 /// Written before the first mutation; the flip makes it true.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct RunMarker {
+    /// The generation current pointed at when the run began (0026 §4):
+    /// reconcile decides by EXACT equality — current == target is
+    /// committed, current == previous is uncommitted, anything else is
+    /// ambiguous and blocks. Numeric inequalities misclassify a
+    /// crashed roll-FORWARD (current < target before the flip).
+    /// None only in pre-0.23 markers, which reconcile by the 0.22
+    /// direction rule.
+    #[serde(default)]
+    previous_generation: Option<u64>,
     target_generation: u64,
     /// Apply builds a NEWER generation (committed once `current`
     /// reaches the target); rollback returns to an OLDER one, so its
@@ -247,8 +243,14 @@ pub enum RunOp {
 /// recovery compares it against `current` — a crash between the flip
 /// and journal cleanup must NOT restore priors the committed
 /// generation now owns (the post-commit window, review finding 5.1).
-pub fn begin_run(home: &Dir, target_generation: u64, op: RunOp) -> io::Result<()> {
+pub fn begin_run(
+    home: &Dir,
+    previous_generation: Option<u64>,
+    target_generation: u64,
+    op: RunOp,
+) -> io::Result<()> {
     let marker = RunMarker {
+        previous_generation,
         target_generation,
         op,
     };
@@ -269,18 +271,37 @@ pub fn commit_run(home: &Dir) -> io::Result<()> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(e),
     };
+    let mut entry_paths = Vec::new();
     for entry in entries {
         let name = entry?.file_name();
         let rel = Path::new("journal").join(&name);
-        if rel.extension().is_some_and(|e| e == "json") {
-            home.remove_file(&rel)?;
+        // the marker is NOT deleted here — cleanup deletes it last
+        if name != "run.json" && rel.extension().is_some_and(|e| e == "json") {
+            entry_paths.push(rel);
         }
     }
-    // deletions are durable before we return: a power loss after
-    // cleanup must not resurrect entries whose sibling run-marker
-    // deletion WAS durable — reconcile would then read no marker and
-    // restore a committed generation's priors (review: fsync the
-    // journal directory after deletion)
+    cleanup(home, &entry_paths)
+}
+
+/// Two durability barriers (0026 §5): entries deleted and fsync'd
+/// FIRST, the marker deleted and fsync'd SECOND — so marker-durably-
+/// gone implies entries-durably-gone. A single trailing fsync does
+/// not order the deletions against a power loss; resurrected entries
+/// with no marker read as an uncommitted run and would restore a
+/// committed generation's priors (the 0.19.1 bug class, one level
+/// down).
+fn cleanup(home: &Dir, entry_paths: &[PathBuf]) -> io::Result<()> {
+    for path in entry_paths {
+        home.remove_file(path)?;
+    }
+    gripsack_fs::fsync_dir(home, Path::new("journal"))?;
+    // a run that never mutated has no marker (end_run already
+    // removed it) — absent is fine, anything else is real
+    match home.remove_file(run_marker_rel()) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
     gripsack_fs::fsync_dir(home, Path::new("journal"))
 }
 
@@ -302,6 +323,9 @@ enum Recovery {
     Restore(String),
     /// The destination drifted after the crash — the user's now.
     Keep(String),
+    /// Live state IS the prior: the mutation never landed (crash
+    /// between record and write) — nothing to restore.
+    Unchanged,
 }
 
 /// Resolve uncommitted journal entries from an interrupted run:
@@ -313,33 +337,41 @@ pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
     let Some(entries) = read_uncommitted(home)? else {
         return Ok(Vec::new());
     };
-    // the commit decision, per run direction (0025 §A): an apply
-    // COMMITTED once current reached its target (or passed it — later
-    // runs happened); a rollback committed once current came back
-    // DOWN to its target. Unreadable commit evidence errors (both
-    // readers fail closed) rather than choosing a branch.
+    // the commit decision by EXACT transaction identity (0026 §4):
+    // current == target committed, current == previous uncommitted,
+    // anything else is ambiguous and BLOCKS (fail closed — the
+    // lifecycle lock serializes runs, so a third value means
+    // corruption or tampering, never a branch to guess). Pre-0.23
+    // markers carry no previous generation; those reconcile by the
+    // 0.22 direction rule, correct for those versions' semantics.
     let committed = match run_marker(home)? {
         Some(marker) => {
             let current = crate::generations::current_in(home)?;
-            match (marker.op, current) {
-                (RunOp::Apply, Some(c)) => c >= marker.target_generation,
-                (RunOp::Rollback, Some(c)) => c <= marker.target_generation,
+            match (marker.previous_generation, current) {
+                (Some(_), Some(c)) if c == marker.target_generation => true,
+                (Some(prev), Some(c)) if c == prev => false,
+                (Some(marker_prev), other) => {
+                    return Err(io::Error::other(format!(
+                        "journal run marker ({}→{}) matches neither current                          ({other:?}) nor the run's previous generation — the                          journal is retained; inspect $GRIPSACK_HOME/journal                          before running again",
+                        marker_prev, marker.target_generation
+                    )));
+                }
+                (None, Some(c)) => match marker.op {
+                    RunOp::Apply => c >= marker.target_generation,
+                    RunOp::Rollback => c <= marker.target_generation,
+                },
                 // no current at all: the flip never happened
-                (_, None) => false,
+                (None, None) => false,
             }
         }
         None => false,
     };
     let mut lines = Vec::new();
     if committed {
-        for (path, _) in &entries {
-            home.remove_file(path)?;
-        }
-        let _ = home.remove_file(run_marker_rel());
-        // the deletions must be durable before we return, same rule
-        // as commit_run (0025 §F): a power loss now must not
-        // resurrect entries a later reconcile would re-act on
-        gripsack_fs::fsync_dir(home, Path::new("journal"))?;
+        cleanup(
+            home,
+            &entries.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
+        )?;
         lines.push(
             "interrupted run's generation had already activated — journal \
              cleared, deployed state stands"
@@ -347,25 +379,31 @@ pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
         );
         return Ok(lines);
     }
+    let mut entry_paths = Vec::new();
     for (path, entry) in entries {
         let dest = PathBuf::from(&entry.dest);
         // the drift check and the restore share ONE pinned parent
         // inode: a parent symlink swapped between decide() and
         // restore() cannot redirect the recovery write (plan/0021)
         let (dest_dir, dest_name) = dest_capability(&dest)?;
-        match decide(&dest_dir, &dest_name, &entry) {
+        match decide(&dest_dir, &dest_name, &entry, home)? {
             Recovery::Restore(what) => {
                 restore(&dest_dir, &dest_name, &entry.prior, home)?;
                 lines.push(format!("recovered {}: {what}", entry.dest));
+            }
+            Recovery::Unchanged => {
+                lines.push(format!(
+                    "unchanged {}: the mutation never landed",
+                    entry.dest
+                ));
             }
             Recovery::Keep(why) => {
                 lines.push(format!("kept {}: {why}", entry.dest));
             }
         }
-        home.remove_file(&path)?;
+        entry_paths.push(path);
     }
-    let _ = home.remove_file(run_marker_rel());
-    gripsack_fs::fsync_dir(home, Path::new("journal"))?;
+    cleanup(home, &entry_paths)?;
     Ok(lines)
 }
 
@@ -444,39 +482,60 @@ fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
 /// `after` that no longer matches means the file changed since the
 /// crash — never delete user edits. Reads go through the destination
 /// capability reconcile pinned.
-fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry) -> Recovery {
-    let Some(after) = &entry.after else {
-        return Recovery::Restore(match &entry.prior {
-            PriorSerde::Absent => "removed (was absent before the interrupted run)".into(),
-            PriorSerde::File { .. } => "prior bytes restored".into(),
-            PriorSerde::Symlink { target } => format!("prior symlink → {target} restored"),
-        });
-    };
-    let current = if dest_dir
-        .symlink_metadata(dest_name)
-        .is_ok_and(|m| m.file_type().is_symlink())
-    {
-        dest_dir
+/// The destination's live identity in the journal's terms: link
+/// target for symlinks, canonical content hash for files, None when
+/// absent. (canonical_bytes_hash — the identity deploy records; a
+/// raw-sha256 comparison here was the latent drift-guard bug the
+/// 0025 crash-window e2e exposed.)
+fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<String>> {
+    match dest_dir.symlink_metadata(dest_name) {
+        Ok(meta) if meta.file_type().is_symlink() => Ok(dest_dir
             .read_link_contents(dest_name)
-            .map(|t| t.to_string_lossy().into_owned())
             .ok()
-    } else {
-        // the SAME identity deploy records in mark_after
-        // (canonical_bytes_hash): comparing raw sha256 here never
-        // matched a production entry, so the drift guard kept
-        // everything — a latent bug the 0025 crash-window e2e exposed
-        dest_dir
-            .read(dest_name)
-            .ok()
-            .map(|b| crate::hash::canonical_bytes_hash(&b))
-    };
-    match current {
-        Some(id) if id == *after => {
-            Recovery::Restore("still the interrupted run's content — prior state restored".into())
-        }
-        Some(_) => Recovery::Keep("changed since the interrupted run — your edit stands".into()),
-        None => Recovery::Restore("prior state restored".into()),
+            .map(|t| t.to_string_lossy().into_owned())),
+        Ok(_) => Ok(Some(crate::hash::canonical_bytes_hash(
+            &dest_dir.read(dest_name)?,
+        ))),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
     }
+}
+
+/// The prior's identity in the same terms (recomputed from the blob;
+/// the blob's own hash is the raw sha256 used for addressing).
+fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<String>> {
+    match prior {
+        PriorSerde::Absent => Ok(None),
+        PriorSerde::Symlink { target } => Ok(Some(target.clone())),
+        PriorSerde::File { hash } => Ok(Some(crate::hash::canonical_bytes_hash(
+            &home.read(prior_blob_rel(hash))?,
+        ))),
+    }
+}
+
+/// Three-way, intent-based (0026 §6): the entry recorded the intended
+/// post-state BEFORE the mutation, so a post-crash edit is
+/// distinguishable from the mutation itself.
+fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry, home: &Dir) -> io::Result<Recovery> {
+    let live = live_identity(dest_dir, dest_name)?;
+    let intended = &entry.after;
+    let prior_id = prior_identity(&entry.prior, home)?;
+    let restore_what = || match &entry.prior {
+        PriorSerde::Absent => "removed (was absent before the interrupted run)".into(),
+        PriorSerde::File { .. } => "prior bytes restored".into(),
+        PriorSerde::Symlink { target } => format!("prior symlink → {target} restored"),
+    };
+    Ok(match live {
+        // the mutation landed intact (or the intended removal held)
+        Some(l) if l == *intended => Recovery::Restore(restore_what()),
+        // live IS the prior: the mutation never landed
+        Some(l) if Some(&l) == prior_id.as_ref() => Recovery::Unchanged,
+        Some(_) => Recovery::Keep("changed since the interrupted run — your edit stands".into()),
+        // absent now: a landed removal (intended REMOVED) or a never-
+        // landed creation — either way the prior comes back
+        None if prior_id.is_some() => Recovery::Restore(restore_what()),
+        None => Recovery::Unchanged,
+    })
 }
 
 fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> io::Result<()> {
@@ -526,16 +585,17 @@ mod tests {
         std::fs::write(&dest, b"user stuff\n").unwrap();
 
         let prior = capture_at(&dest, &cap(&home));
-        record(&cap(&home), &dest, &prior).unwrap();
-        // simulate the crash: mutation never happened, no after, no
-        // commit — the file still holds the prior bytes
+        // the intended post-state is recorded up front (0026 §6)
+        record(&cap(&home), &dest, &prior, "intended-hash").unwrap();
+        // simulate the crash: mutation never happened, no commit —
+        // the file still holds the prior bytes
 
         let lines = reconcile(&cap(&home)).unwrap();
         assert_eq!(lines.len(), 1);
-        assert!(lines[0].contains("recovered"));
-        // restore is idempotent for an unwritten dest
+        // live IS the prior: the mutation never landed, so there is
+        // nothing to restore — the entry is still consumed
+        assert!(lines[0].contains("unchanged"), "{lines:?}");
         assert_eq!(std::fs::read(&dest).unwrap(), b"user stuff\n");
-        // the entry is consumed either way
         assert!(reconcile(&cap(&home)).unwrap().is_empty());
     }
 
@@ -546,14 +606,14 @@ mod tests {
         std::fs::write(&dest, b"old\n").unwrap();
 
         let prior = capture_at(&dest, &cap(&home));
-        record(&cap(&home), &dest, &prior).unwrap();
-        std::fs::write(&dest, b"deployed half-run content\n").unwrap();
-        mark_after(
+        record(
             &cap(&home),
             &dest,
+            &prior,
             &crate::hash::canonical_bytes_hash(b"deployed half-run content\n"),
         )
         .unwrap();
+        std::fs::write(&dest, b"deployed half-run content\n").unwrap();
         // crash: no commit_run
 
         let lines = reconcile(&cap(&home)).unwrap();
@@ -568,14 +628,14 @@ mod tests {
         std::fs::write(&dest, b"old\n").unwrap();
 
         let prior = capture_at(&dest, &cap(&home));
-        record(&cap(&home), &dest, &prior).unwrap();
-        std::fs::write(&dest, b"deployed\n").unwrap();
-        mark_after(
+        record(
             &cap(&home),
             &dest,
+            &prior,
             &crate::hash::canonical_bytes_hash(b"deployed\n"),
         )
         .unwrap();
+        std::fs::write(&dest, b"deployed\n").unwrap();
         // the user edits the file AFTER the crash, before the next run
         std::fs::write(&dest, b"my own edit\n").unwrap();
 
@@ -592,21 +652,20 @@ mod tests {
 
         let prior = capture_at(&fresh, &cap(&home));
         assert_eq!(prior, Prior::Absent);
-        record(&cap(&home), &fresh, &prior).unwrap();
-        std::fs::write(&fresh, b"crashed write\n").unwrap();
-        mark_after(
+        record(
             &cap(&home),
             &fresh,
+            &prior,
             &crate::hash::canonical_bytes_hash(b"crashed write\n"),
         )
         .unwrap();
+        std::fs::write(&fresh, b"crashed write\n").unwrap();
 
         std::os::unix::fs::symlink("/original/target", &link).unwrap();
         let link_prior = capture_at(&link, &cap(&home));
-        record(&cap(&home), &link, &link_prior).unwrap();
+        record(&cap(&home), &link, &link_prior, "/deployed/target").unwrap();
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink("/deployed/target", &link).unwrap();
-        mark_after(&cap(&home), &link, "/deployed/target").unwrap();
 
         reconcile(&cap(&home)).unwrap();
         assert!(!fresh.exists(), "absent prior removes the crashed write");
@@ -625,16 +684,16 @@ mod tests {
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
 
-        begin_run(&cap(&home), 1, RunOp::Apply).unwrap();
+        begin_run(&cap(&home), None, 1, RunOp::Apply).unwrap();
         let prior = capture_at(&dest, &cap(&home));
-        record(&cap(&home), &dest, &prior).unwrap();
-        std::fs::write(&dest, b"deployed\n").unwrap();
-        mark_after(
+        record(
             &cap(&home),
             &dest,
+            &prior,
             &crate::hash::canonical_bytes_hash(b"deployed\n"),
         )
         .unwrap();
+        std::fs::write(&dest, b"deployed\n").unwrap();
         // the flip: generation 1 becomes current; commit_run never ran
         let manifest = crate::generations::Generation {
             number: 1,
@@ -659,16 +718,16 @@ mod tests {
         let home = home();
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
-        begin_run(&cap(&home), 1, RunOp::Apply).unwrap();
+        begin_run(&cap(&home), None, 1, RunOp::Apply).unwrap();
         let prior = capture_at(&dest, &cap(&home));
-        record(&cap(&home), &dest, &prior).unwrap();
-        std::fs::write(&dest, b"half\n").unwrap();
-        mark_after(
+        record(
             &cap(&home),
             &dest,
+            &prior,
             &crate::hash::canonical_bytes_hash(b"half\n"),
         )
         .unwrap();
+        std::fs::write(&dest, b"half\n").unwrap();
 
         reconcile(&cap(&home)).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
@@ -692,14 +751,14 @@ mod tests {
         let dest = home.path().join("config");
         std::fs::write(&dest, b"old\n").unwrap();
         let prior = capture_at(&dest, &cap(&home));
-        record(&cap(&home), &dest, &prior).unwrap();
-        std::fs::write(&dest, b"new\n").unwrap();
-        mark_after(
+        record(
             &cap(&home),
             &dest,
+            &prior,
             &crate::hash::canonical_bytes_hash(b"new\n"),
         )
         .unwrap();
+        std::fs::write(&dest, b"new\n").unwrap();
 
         commit_run(&cap(&home)).unwrap();
         // the flip happened: recovery must NOT undo the deploy
@@ -726,16 +785,16 @@ mod tests {
         crate::generations::flip(&cap(&home), home.path(), 3).unwrap();
 
         // rolling back 3 → 2: the restore lands, the flip never does
-        begin_run(&cap(&home), 2, RunOp::Rollback).unwrap();
+        begin_run(&cap(&home), Some(3), 2, RunOp::Rollback).unwrap();
         let prior = capture_at(&dest, &cap(&home));
-        record(&cap(&home), &dest, &prior).unwrap();
-        std::fs::write(&dest, b"old\n").unwrap();
-        mark_after(
+        record(
             &cap(&home),
             &dest,
+            &prior,
             &crate::hash::canonical_bytes_hash(b"old\n"),
         )
         .unwrap();
+        std::fs::write(&dest, b"old\n").unwrap();
         // crash: current is still 3, target was 2 — uncommitted
 
         let lines = reconcile(&cap(&home)).unwrap();
@@ -754,16 +813,16 @@ mod tests {
         crate::generations::write_manifest(&cap(&home), &manifest(3)).unwrap();
         crate::generations::flip(&cap(&home), home.path(), 3).unwrap();
 
-        begin_run(&cap(&home), 2, RunOp::Rollback).unwrap();
+        begin_run(&cap(&home), Some(3), 2, RunOp::Rollback).unwrap();
         let prior = capture_at(&dest, &cap(&home));
-        record(&cap(&home), &dest, &prior).unwrap();
-        std::fs::write(&dest, b"old\n").unwrap();
-        mark_after(
+        record(
             &cap(&home),
             &dest,
+            &prior,
             &crate::hash::canonical_bytes_hash(b"old\n"),
         )
         .unwrap();
+        std::fs::write(&dest, b"old\n").unwrap();
         crate::generations::flip(&cap(&home), home.path(), 2).unwrap();
         // crash between the flip and commit_run
 

@@ -25,7 +25,7 @@ pub struct GcReport {
 pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, ExecError> {
     let mut report = GcReport::default();
     let generations = store::list_generations(home);
-    let current = store::current_generation(home);
+    let current = store::current_generation(home)?;
 
     // what WOULD be pruned (dry-run must preview the post-prune state,
     // or it under-reports collectable paths)
@@ -130,7 +130,7 @@ pub fn why_owns(
     home: &Path,
     path: &str,
 ) -> Result<Option<(String, store::DeployedEntry)>, ExecError> {
-    let Some(n) = store::current_generation(home) else {
+    let Some(n) = store::current_generation(home)? else {
         return Ok(None);
     };
     let manifest = store::read_manifest(home, n)?;

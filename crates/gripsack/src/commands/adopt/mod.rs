@@ -237,7 +237,8 @@ pub fn adopt(
     // there is nothing to roll back to
     let home = store::gripsack_home();
     let baseline = gripsack_fs::open_or_create(&home);
-    if store::current_generation(&home).is_none()
+    let current = store::current_generation(&home);
+    if matches!(current, Ok(None))
         && store::list_generations(&home).is_empty()
         && let Err(e) = baseline.and_then(|cap| {
             store::write_manifest(
@@ -258,7 +259,9 @@ pub fn adopt(
 /// Which module already manages a destination under this path.
 fn managed_by(dest: &Path) -> Option<String> {
     let home = store::gripsack_home();
-    let n = store::current_generation(&home)?;
+    // display path: an unreadable current reads as unmanaged rather
+    // than erroring an interactive prompt; mutation paths fail closed
+    let n = store::current_generation(&home).ok()??;
     let manifest = store::read_manifest(&home, n).ok()?;
     for (name, state) in &manifest.modules {
         for entry in &state.entries {

@@ -84,6 +84,33 @@ pub fn fsync_dir(dir: &Dir, rel: &Path) -> io::Result<()> {
     rustix::fs::fsync(fd).map_err(io::Error::from)
 }
 
+/// Keep an existing destination's mode across a content-only update
+/// (0026 §7). A fresh destination gets the creation default; a
+/// symlinked destination keeps its own semantics (the rename replaces
+/// the link, never writes through it).
+#[cfg(unix)]
+fn preserve_mode(dir: &Dir, name: &Path, file: &cap_std::fs::File) -> io::Result<()> {
+    let Ok(meta) = dir.symlink_metadata(name) else {
+        return Ok(());
+    };
+    if !meta.is_file() {
+        return Ok(());
+    }
+    let mode = {
+        use cap_std::fs::PermissionsExt;
+        meta.permissions().mode()
+    };
+    use std::os::unix::fs::PermissionsExt as _;
+    file.set_permissions(cap_std::fs::Permissions::from_std(
+        std::fs::Permissions::from_mode(mode),
+    ))
+}
+
+#[cfg(not(unix))]
+fn preserve_mode(_dir: &Dir, _name: &Path, _file: &cap_std::fs::File) -> io::Result<()> {
+    Ok(())
+}
+
 /// Create a temp file with a unique sibling name, replacing a stale
 /// same-named leftover from a crashed run.
 fn create_temp(dir: &Dir, tmp: &Path) -> io::Result<cap_std::fs::File> {
@@ -109,6 +136,10 @@ pub fn atomic_write(dir: &Dir, name: &Path, contents: &[u8]) -> io::Result<()> {
     let result = (|| {
         let mut file = create_temp(dir, &tmp)?;
         io::Write::write_all(&mut file, contents)?;
+        // a content update is not a mode change (0026 §7): the fresh
+        // temp file would otherwise land 0644&umask, silently
+        // widening a 0600 secret or dropping an exec bit on update
+        preserve_mode(dir, name, &file)?;
         file.sync_all()?;
         dir.rename(&tmp, dir, name)
     })();
@@ -470,6 +501,31 @@ mod tests {
         let link = dst.join("sub/link");
         assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
         assert_eq!(std::fs::read_link(link).unwrap(), Path::new("f"));
+    }
+
+    /// A content-only update keeps the destination's mode (0026 §7):
+    /// 0600 stays 0600, 0755 stays executable.
+    #[test]
+    fn atomic_write_preserves_the_destinations_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let cap = open(dir.path()).unwrap();
+        let secret = dir.path().join("secret");
+        std::fs::write(&secret, b"v1").unwrap();
+        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o600)).unwrap();
+        atomic_write(&cap, Path::new("secret"), b"v2").unwrap();
+        let meta = std::fs::metadata(&secret).unwrap();
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read(&secret).unwrap(), b"v2");
+
+        let tool = dir.path().join("tool");
+        std::fs::write(&tool, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        atomic_write(&cap, Path::new("tool"), b"#!/bin/sh\n# v2\n").unwrap();
+        assert_eq!(
+            std::fs::metadata(&tool).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
     }
 
     /// The EXDEV fallback across a REAL filesystem boundary: staging

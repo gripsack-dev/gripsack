@@ -58,7 +58,19 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // The previous generation's state, for drift detection — distinct
     // from the manifest being built. Read once: prune and the
     // satisfied comparison below reuse it.
-    let current_gen = store::current_generation(&ctx.home);
+    let current_gen = store::current_generation(&ctx.home)?;
+    // the allocator is NOT current+1 (0026 §3): after a rollback,
+    // current is lower than the highest generation on disk, and
+    // reusing a number would rewrite immutable history. Allocate
+    // above every generation ever published (gc'd or not — gc never
+    // removes the current generation, and the tip stays on disk
+    // while it is current).
+    let next_gen = current_gen
+        .into_iter()
+        .chain(store::list_generations(&ctx.home))
+        .max()
+        .unwrap_or(0)
+        + 1;
     let prev_manifest: Option<store::Generation> =
         current_gen.and_then(|n| store::read_manifest(&ctx.home, n).ok());
     let prev_modules: BTreeMap<String, store::ModuleState> = prev_manifest
@@ -98,7 +110,8 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // never restore priors the new generation owns (review 5.1)
     store::journal::begin_run(
         ctx.home_dir()?,
-        current_gen.unwrap_or(0) + 1,
+        current_gen,
+        next_gen,
         store::journal::RunOp::Apply,
     )?;
     let outcome =
@@ -133,7 +146,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         }
     }
     modules.extend(outcome.modules);
-    let next = current_gen.unwrap_or(0) + 1;
+    let next = next_gen;
 
     // Everything between the scheduler and the flip is recoverable
     // through ONE compensating path (0025 §D): an ordinary error —
@@ -308,9 +321,28 @@ fn prune_undeclared(
         .values()
         .flat_map(|m| m.entries.iter().map(|e| e.to.as_str()))
         .collect();
+    // merge blocks are owned per (module, dest) — several modules may
+    // hold blocks in one file, and a renamed module must not leave
+    // its block behind as an unowned ghost (0026 §2). Non-merge
+    // destinations are unique by E111, so a rename keeps the dest
+    // deployed under the new module without a remove/redeploy churn.
+    let declared_merge: BTreeSet<(&str, &str)> = modules
+        .iter()
+        .flat_map(|(name, m)| {
+            m.entries
+                .iter()
+                .filter(|e| e.mode == gripsack_ir::Ownership::Merge)
+                .map(|e| (name.as_str(), e.to.as_str()))
+                .collect::<Vec<_>>()
+        })
+        .collect();
     for (name, state) in &prev.modules {
         for entry in &state.entries {
-            if declared.contains(entry.to.as_str()) {
+            if entry.mode == gripsack_ir::Ownership::Merge {
+                if declared_merge.contains(&(name.as_str(), entry.to.as_str())) {
+                    continue;
+                }
+            } else if declared.contains(entry.to.as_str()) {
                 continue;
             }
             let dest = gripsack_store::expand_home(&entry.to);
@@ -325,12 +357,21 @@ fn prune_undeclared(
                     {
                         let new = crate::template::remove_block(&existing, name)
                             .expect("block found above");
+                        // the intent is known before the mutation
+                        // (0026 §6): REMOVED when the block was the
+                        // whole file, the spliced content's hash else
+                        let intended = if new.trim().is_empty() {
+                            store::journal::REMOVED.to_string()
+                        } else {
+                            store::canonical_bytes_hash(new.as_bytes())
+                        };
                         let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
-                        crate::deploy::journaled_computed(
+                        crate::deploy::journaled(
                             home_dir,
                             &dest_dir,
                             &dest_name,
                             &dest,
+                            intended,
                             || {
                                 if new.trim().is_empty() {
                                     dest_dir.remove_file(&dest_name)
@@ -338,7 +379,6 @@ fn prune_undeclared(
                                     gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
                                 }
                             },
-                            || crate::deploy::post_identity(&dest_dir, &dest_name),
                         )?;
                         info!("pruned {} (block)", entry.to);
                     }
@@ -351,34 +391,29 @@ fn prune_undeclared(
             }
             // 0015 §4: an entry adopted with take-over (owned or
             // copy-like) gets its ORIGINAL file/symlink back on prune,
-            // not a deletion; the helper drift-guards and falls back
-            // to removal when no prior was recorded
-            let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
-            let mut removed = false;
-            crate::deploy::journaled_computed(
-                home_dir,
-                &dest_dir,
-                &dest_name,
-                &dest,
-                || {
-                    removed = crate::deploy::remove_or_restore_prior(&dest, entry, name, home);
-                    Ok(())
-                },
-                || crate::deploy::post_identity(&dest_dir, &dest_name),
-            )?;
-            if removed {
-                info!(
-                    "{} {}",
-                    if entry.prior.is_some() {
-                        "restored prior"
-                    } else {
-                        "pruned"
-                    },
-                    entry.to
-                );
-            } else if dest.symlink_metadata().is_ok() {
-                tracing::warn!("kept {} — modified since deploy", entry.to);
+            // not a deletion; the drift guard runs FIRST (0026 §6) —
+            // a kept destination is never journaled at all
+            if !crate::deploy::intact_deployed(&dest, entry, home) {
+                if dest.symlink_metadata().is_ok() {
+                    tracing::warn!("kept {} — modified since deploy", entry.to);
+                }
+                continue;
             }
+            let intended = crate::deploy::prune_intent(entry, home)?;
+            let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
+            crate::deploy::journaled(home_dir, &dest_dir, &dest_name, &dest, intended, || {
+                crate::deploy::remove_or_restore_prior(&dest, entry, name, home);
+                Ok(())
+            })?;
+            info!(
+                "{} {}",
+                if entry.prior.is_some() {
+                    "restored prior"
+                } else {
+                    "pruned"
+                },
+                entry.to
+            );
         }
     }
     Ok(())

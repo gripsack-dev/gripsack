@@ -771,6 +771,227 @@ export default module("demo", {
     assert (sandbox / "hook-ran").read_text() == "post-activate\n"
 
 
+def test_rollback_preserves_tracked_copy_drift(sandbox):
+    """0026 §1: a tracked copy edited since the current generation was
+    deployed is DRIFT — rollback must preserve and report it, never
+    overwrite it with the target generation's bytes."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("gen1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    (confdir / "a.toml").write_text("gen2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config/demo/a.toml"
+    assert dest.read_text() == "gen2\n"
+
+    # the app writes to its own config — drift from gen 2's deployment
+    dest.write_text("user edit\n")
+    out = grip("rollback", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "user edit" in dest.read_text(), "rollback must not clobber drift"
+    assert "your edit stands" in out.stdout
+    current = sandbox / ".local/share/gripsack/current"
+    assert current.resolve().name == "1", "the flip still happens — only the drifted file is kept"
+
+
+def test_module_rename_rollback_journals_once(sandbox, monkeypatch):
+    """0026 §2: the same destination under a renamed module gets ONE
+    transition in a rollback — kill mid-rollback and reconcile must
+    restore the TRUE pre-rollback state. The pre-0.23 two-pass
+    rollback journaled the dest twice (prune pass, restore pass); the
+    second entry's prior was the post-removal state, so recovery
+    deleted a file the rollback started from."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("one\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    # gen 2: new content AND a new module name for the same dest
+    (confdir / "a.toml").write_text("two\n")
+    (repo / "modules" / "hello.ts").write_text(
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("renamed", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+"""
+    )
+    # the rename makes the dest foreign to the new module — take it
+    # over so gen 2 really deploys "two" (with "one" as its prior)
+    refresh_host(repo)
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config/demo/a.toml"
+    assert dest.read_text() == "two\n"
+
+    # kill after the rollback's mutations, before its flip
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "after-rollback-restore")
+    out = grip("rollback", "1", cwd=repo)
+    assert out.returncode != 0
+    current = sandbox / ".local/share/gripsack/current"
+    assert current.resolve().name == "2"
+    assert dest.read_text() == "one\n", "the restore landed before the kill"
+
+    # reconcile must restore the TRUE pre-rollback content — the old
+    # double-journaling recorded Absent as the prior and deleted the
+    # file instead. The recovery is observable without touching the
+    # repo: a clean reconcile restores "two" and the apply is
+    # satisfied at generation 2; the old bug deleted the dest, so the
+    # apply would redeploy and cut a spurious generation
+    # (a new generation IS cut — the manifest's module name changed in
+    # the rename; the point is the dest was never deleted/redeployed)
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == "two\n", dest.read_text()
+
+
+def test_generation_numbers_are_never_reused(sandbox):
+    """0026 §3: after rollback 3→1, the next apply allocates generation
+    4 — generation 2 on disk stays byte-identical (immutable history)."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("one\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    grip("apply", "--host", "testhost", cwd=repo)
+    (confdir / "a.toml").write_text("two\n")
+    grip("apply", "--host", "testhost", cwd=repo)
+    (confdir / "a.toml").write_text("three\n")
+    grip("apply", "--host", "testhost", cwd=repo)
+    home = sandbox / ".local/share/gripsack"
+    gen2_manifest = (home / "generations/2/manifest.json").read_text()
+
+    out = grip("rollback", "1", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    (confdir / "a.toml").write_text("four\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (home / "generations/4").is_dir(), "the new generation is 4, not a reused 2"
+    assert (home / "generations/2/manifest.json").read_text() == gen2_manifest, (
+        "generation 2 must not be rewritten"
+    )
+
+
+def test_roll_forward_kill_recovers_as_uncommitted(sandbox, monkeypatch):
+    """0026 §4: rolling FORWARD (rollback 1→2 after rolling back) with
+    a kill before the flip — the 0.22 direction rule read current(1) <=
+    target(2) as committed and discarded the journal. Exact-equality
+    commit detection recovers it as uncommitted."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("one\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    grip("apply", "--host", "testhost", cwd=repo)
+    (confdir / "a.toml").write_text("two\n")
+    grip("apply", "--host", "testhost", cwd=repo)
+    dest = sandbox / ".config/demo/a.toml"
+    out = grip("rollback", "1", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == "one\n"
+
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "after-rollback-restore")
+    out = grip("rollback", "2", cwd=repo)
+    assert out.returncode != 0
+    current = sandbox / ".local/share/gripsack/current"
+    assert current.resolve().name == "1"
+    assert dest.read_text() == "two\n", "the restore landed before the kill"
+
+    # revert the repo to gen 1's content so the recovery is
+    # OBSERVABLE: reconcile restores "one", then the apply is
+    # satisfied — a misclassified-committed journal (0.22) would have
+    # left "two" standing, and apply keeps drifted destinations
+    (confdir / "a.toml").write_text("one\n")
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == "one\n", (
+        "an uncommitted roll-forward must restore the prior — 0.22 kept it"
+    )
+
+
+def test_merge_block_owner_rename_leaves_no_ghost(sandbox):
+    """0026 §2b: renaming the module that owns a merge block must move
+    the block — the old module's block is pruned (block ownership is
+    per (module, dest)), not left as an unowned ghost beside the new
+    one."""
+    confdir = sandbox / "myenv" / "configs" / "shell"
+    confdir.mkdir(parents=True)
+    (confdir / "block.sh").write_text("export RENAMED=1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { merge, module } from "@gripsack/core";
+
+export default module("shell", {
+  config: { "configs/shell/block.sh": merge("~/.bashrc") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    bashrc = sandbox / ".bashrc"
+    assert "module=shell" in bashrc.read_text()
+
+    (repo / "modules" / "hello.ts").write_text(
+        """
+import { merge, module } from "@gripsack/core";
+
+export default module("terminal", {
+  config: { "configs/shell/block.sh": merge("~/.bashrc") },
+});
+"""
+    )
+    refresh_host(repo)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    content = bashrc.read_text()
+    assert "module=terminal" in content
+    assert "module=shell" not in content, f"ghost block left behind: {content}"
+    assert content.count("export RENAMED=1") == 1
+
+
 def test_config_tree_gain_repins_and_deploys_from_store(sandbox):
     """A config tree that gains a file under an unmoved transport pin:
     `grip update` moves the pin, a warm-store apply deploys the new
