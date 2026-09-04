@@ -97,11 +97,15 @@ pub fn doctor(palette: Palette) -> ExitCode {
     if let Some(pin) = core_pin(&repo) {
         let embedded = env!("CARGO_PKG_VERSION");
         if pin_is_behind(&pin, embedded) {
+            // a stale pin is a WARNING, not a pass: `mark(true)`
+            // renders "ok" in green, and the old `.replace('✓', "!")`
+            // was a no-op on that string — the warning read as a pass
+            // (0.21.1 review)
             println!(
                 "{}  repo pin: package.json pins @gripsack/core {pin}; the embedded \
                  frontend is {embedded} — your editor typechecks against the older \
                  types (npm i -D @gripsack/core@^{embedded})",
-                mark(true).replace('\u{2713}', "!")
+                palette.warn("warn")
             );
         } else {
             println!("      repo pin: @gripsack/core {pin} (matches the embedded {embedded})");

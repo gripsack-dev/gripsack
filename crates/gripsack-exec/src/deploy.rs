@@ -562,9 +562,16 @@ pub(crate) fn deploy_entry(
                 }
             };
             let extracted = crate::template::extract_block(&existing, module);
-            let satisfied = extracted
-                .as_deref()
-                .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()) == hash);
+            // a module owns EVERY block carrying its name: a duplicate
+            // is accumulated state to reconcile, not a steady state —
+            // otherwise a tampered second block is invisible to the
+            // content-hash guarantee and only ever removed as a silent
+            // side effect of the FIRST block drifting (0.21.1 review)
+            let block_total = crate::template::find_blocks(&existing, module).len();
+            let satisfied = block_total == 1
+                && extracted
+                    .as_deref()
+                    .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()) == hash);
             if satisfied {
                 (
                     format!("{} block unchanged", entry.to),
@@ -582,10 +589,24 @@ pub(crate) fn deploy_entry(
                         recorded != store::canonical_bytes_hash(content.as_bytes())[..16]
                     })
                 });
-                let note = if hand_edited {
-                    " (hand-edited block regenerated)"
+                // whatever deploy does to a managed block, the report
+                // names it (0.21.1 review): upsert regenerates the
+                // first block and strips the duplicates behind it
+                let mut notes = Vec::new();
+                if hand_edited {
+                    notes.push("hand-edited block regenerated".to_string());
+                }
+                if block_total > 1 {
+                    notes.push(format!(
+                        "removed {} duplicate block{}",
+                        block_total - 1,
+                        if block_total == 2 { "" } else { "s" }
+                    ));
+                }
+                let note = if notes.is_empty() {
+                    String::new()
                 } else {
-                    ""
+                    format!(" ({})", notes.join(", "))
                 };
                 let new = crate::template::upsert_block(
                     &existing,

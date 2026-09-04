@@ -3,6 +3,30 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.21.1] — 2026-09-04
+
+Review-round fixes (plan/0024) from a real 0.18.1→0.21.0 migration
+report.
+
+### Fixed
+
+- **Merge blocks: the scan sees every block a module owns.** A
+  duplicate managed block was invisible in steady state, the marker
+  `sha=` content guarantee covered only the first block, and a
+  drifted first block's repair silently deleted the rest. Apply now
+  reconciles to one block and the report names it (`removed N
+  duplicate blocks`); prune/rollback remove all of a module's blocks.
+- **`plan` compares template and merge entries in deployed terms** —
+  rendered bytes and the trimmed block, not the raw repo source that
+  could never match — and consults the destination, so `(update)`
+  means "apply would write" in both directions: no permanent phantom
+  updates, and hand-edited merge blocks (visible from the `sha=`
+  marker alone) show as drift instead of `satisfied`.
+- **`doctor`'s stale-`@gripsack/core`-pin line is a yellow `warn`,
+  not a green `ok`** (the marker replacement was a no-op), and its
+  upgrade advice is followable: `@gripsack/core` 0.21.0 is now
+  published to npm in lockstep with the embedded frontend.
+
 ## [0.21.0] — 2026-09-04
 
 Capability-based filesystem writes (plan/0021), an in-binary SBOM

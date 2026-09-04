@@ -39,6 +39,11 @@ the grip binary embeds the frontend source, so users do not need it.
 
 - [ ] Versions bumped in the right files; IR version compatibility noted
       in the release notes if it changed
+- [ ] Embedded frontend changed since the last ts release? Cut the
+      matching `ts-vX.Y.Z` — doctor's stale-pin advice interpolates the
+      core version, so npm must carry the same major.minor (0.21.1
+      review: `npm i -D @gripsack/core@^0.21.0` failed while npm had
+      only 0.18.0)
 - [ ] compose gates green on the tagged commit
 - [ ] crates.io publish succeeded BEFORE announcing the GitHub release
 - [ ] `demos/demo.gif` current (merge any open `demo/artifacts` PR first)
