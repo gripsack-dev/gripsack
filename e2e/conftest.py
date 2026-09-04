@@ -28,7 +28,11 @@ from pathlib import Path
 
 import pytest
 
-GRIP = Path(os.environ.get("GRIPSACK_BIN", "target/debug/grip"))
+# repo-root-relative default: works from e2e/ (pytest) and the repo
+# root (manual runs) alike — a cwd-relative default broke the macOS
+# CI job, which runs pytest under e2e/
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+GRIP = Path(os.environ.get("GRIPSACK_BIN", str(_REPO_ROOT / "target/debug/grip")))
 
 
 def make_tarball(path: Path, files: dict[str, bytes]) -> Path:

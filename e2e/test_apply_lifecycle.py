@@ -714,7 +714,9 @@ def test_failed_apply_rollback_leaves_no_placeholder_links(sandbox):
     """A mid-graph failure rolls this run's deploys back to the
     previous generation — restored links must be the EXPANDED paths
     the generation actually deployed, never placeholder-literal."""
-    payload = make_tarball(sandbox / "a.tar.gz", {"linux/a.txt": b"a\n"})
+    import sys
+    os_dir = "darwin" if sys.platform == "darwin" else "linux"
+    payload = make_tarball(sandbox / "a.tar.gz", {f"{os_dir}/a.txt": b"a\n"})
     repo = make_env_repo(
         sandbox / "myenv",
         f"""

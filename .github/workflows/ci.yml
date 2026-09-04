@@ -21,6 +21,7 @@ jobs:
       # Flow tests: real binary + real frontend against fixture env
       # repos, offline (file:// fixtures only).
       - name: E2E (flow suite)
+        run: docker compose run --build --rm e2e
 
   # macOS behavioral round (plan/0020's queued item): the release
   # matrix builds on macOS; this RUNS the full flow suite there —
@@ -33,6 +34,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Build grip (debug — the suite's contract)
         run: cargo build
@@ -50,11 +54,9 @@ jobs:
 
       - name: E2E (flow suite, native macOS)
         working-directory: e2e
-        env:
-          GRIPSACK_BIN: ${{ github.workspace }}/target/debug/grip
         run: |
-          python3 -m venv .venv
-          ./.venv/bin/pytest -q
+          python -m pip install pytest
+          python -m pytest -q
 
   audit:
     runs-on: ubuntu-latest

@@ -17,7 +17,7 @@ pub fn store_verify(repair: bool, palette: Palette) -> ExitCode {
         }
     };
     let repo = std::env::current_dir().unwrap_or_else(|_| ".".into());
-    let host = std::env::var("HOSTNAME").unwrap_or_else(|_| "default".into());
+    let host = crate::commands::default_host();
     let ctx = Ctx {
         home,
         repo,
