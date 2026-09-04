@@ -102,6 +102,20 @@ fn pinned_deno(home: &Path) -> io::Result<Option<PathBuf>> {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&deno, std::fs::Permissions::from_mode(0o755))?;
             }
+            #[cfg(target_os = "macos")]
+            {
+                // Gatekeeper marks downloaded archives' contents with
+                // a quarantine xattr; an affected binary can be
+                // killed or translocated at exec. The download is
+                // sha256-verified, so the attribute carries no
+                // security value here — strip it best-effort (the
+                // xattr CLI ships with macOS; absence is harmless).
+                let _ = std::process::Command::new("xattr")
+                    .arg("-d")
+                    .arg("com.apple.quarantine")
+                    .arg(&deno)
+                    .status();
+            }
             let _ = std::fs::remove_dir_all(&staging);
             Ok(Some(deno))
         }

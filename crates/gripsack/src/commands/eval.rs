@@ -108,7 +108,7 @@ pub fn eval_repo(
     let host = host
         .map(str::to_string)
         .or_else(|| env.env.default_host.clone())
-        .unwrap_or_else(crate::commands::hostname);
+        .unwrap_or_else(crate::commands::default_host);
     tracing::Span::current().record("host", &host);
 
     let home = gripsack_store::gripsack_home();

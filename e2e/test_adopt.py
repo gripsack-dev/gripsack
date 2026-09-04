@@ -62,6 +62,15 @@ def test_adopt_non_interactive_takes_the_safe_default(sandbox):
     assert '"tracked_copy"' in (repo / "modules/zed.ts").read_text()
 
 
+def script_tty(command: str) -> list[str]:
+    """script(1) argv for a pty, portable across util-linux and BSD
+    (macOS): GNU needs -c, BSD takes the command as trailing args."""
+    probe = subprocess.run(["script", "-qec", "true", "/dev/null"], capture_output=True)
+    if probe.returncode == 0:
+        return ["script", "-qec", command, "/dev/null"]
+    return ["script", "-q", "/dev/null", "sh", "-c", command]
+
+
 def test_adopt_menu_selects_on_a_tty(sandbox):
     """The interactive menu (0015 §7 S1): bare enter takes the
     highlighted safe default (tracked_copy)."""
@@ -81,7 +90,7 @@ def test_adopt_menu_selects_on_a_tty(sandbox):
     })
     # bare enter on the menu, 'y' at the apply confirm
     out = subprocess.run(
-        ["script", "-qec", "grip adopt ~/.config/helix --host testhost", "/dev/null"],
+        script_tty("grip adopt ~/.config/helix --host testhost"),
         input=b"\ny\n", capture_output=True, env=env, cwd=repo, timeout=90,
     )
     transcript = out.stdout.decode(errors="replace") + out.stderr.decode(errors="replace")
@@ -92,7 +101,7 @@ def test_adopt_menu_selects_on_a_tty(sandbox):
 
 def test_adopt_refuses_path_outside_home(sandbox):
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip("adopt", "/etc/hostname", "--host", "testhost", "--yes", cwd=repo)
+    out = grip("adopt", "/etc/hosts", "--host", "testhost", "--yes", cwd=repo)
     assert out.returncode != 0
     assert "outside your home" in out.stderr
 

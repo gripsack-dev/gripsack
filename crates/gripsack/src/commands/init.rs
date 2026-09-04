@@ -71,23 +71,7 @@ fn package_json() -> String {
 }
 
 fn hostname() -> String {
-    let raw = super::hostname();
-    // a valid host file name: alnum, dash and underscore
-    let clean: String = raw
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    if clean.is_empty() {
-        "myhost".into()
-    } else {
-        clean
-    }
+    super::sanitize_hostname(&super::hostname())
 }
 
 /// Scaffold an env repo at `dir`. Never clobbers: an existing env.toml

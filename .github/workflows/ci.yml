@@ -23,6 +23,41 @@ jobs:
       - name: E2E (flow suite)
         run: docker compose run --build --rm e2e
 
+  # macOS behavioral round (plan/0020's queued item): the release
+  # matrix builds on macOS; this RUNS the full flow suite there —
+  # APFS semantics, case-insensitivity, symlink topology, Gatekeeper
+  # quarantine on provisioned runtimes. Native, not docker: macOS
+  # runners have no compose story worth the latency.
+  e2e-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build grip (debug — the suite's contract)
+        run: cargo build
+
+      - name: Prefetch the pinned Deno
+        # GRIPSACK_DENO points the suite at one shared runtime, the
+        # same trick the docker image uses — without it every test's
+        # sandbox would download its own 40MB
+        run: |
+          curl -fsSL https://github.com/denoland/deno/releases/download/v2.9.6/deno-aarch64-apple-darwin.zip -o /tmp/deno.zip
+          echo "213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472  /tmp/deno.zip" | shasum -a 256 --check
+          unzip -q /tmp/deno.zip -d "$HOME/.deno-bin"
+          echo "$HOME/.deno-bin" >> "$GITHUB_PATH"
+          echo "GRIPSACK_DENO=$HOME/.deno-bin/deno" >> "$GITHUB_ENV"
+
+      - name: E2E (flow suite, native macOS)
+        working-directory: e2e
+        run: |
+          python -m pip install pytest
+          python -m pytest -q
+
   audit:
     runs-on: ubuntu-latest
     # rustsec/audit-check publishes its findings as a Check run

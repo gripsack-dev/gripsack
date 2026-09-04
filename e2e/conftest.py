@@ -22,12 +22,17 @@ import io
 import os
 import re
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
 import pytest
 
-GRIP = Path(os.environ.get("GRIPSACK_BIN", "target/debug/grip"))
+# repo-root-relative default: works from e2e/ (pytest) and the repo
+# root (manual runs) alike — a cwd-relative default broke the macOS
+# CI job, which runs pytest under e2e/
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+GRIP = Path(os.environ.get("GRIPSACK_BIN", str(_REPO_ROOT / "target/debug/grip")))
 
 
 def make_tarball(path: Path, files: dict[str, bytes]) -> Path:
@@ -93,15 +98,40 @@ def remove_module(repo: Path, name: str, host: str = "testhost") -> None:
 
 
 @pytest.fixture
-def sandbox(tmp_path, monkeypatch):
-    """Redirect everything gripsack touches into tmp_path."""
+def sandbox(tmp_path, monkeypatch, request):
+    """Redirect everything gripsack touches into tmp_path. On test
+    failure, the grip run log (JSONL with causal spans — the debug
+    skill's first stop) is printed before the sandbox evaporates:
+    bazel keeps per-test logs for the same reason, and CI failures
+    on a platform you can't run locally are otherwise archaeology."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("GRIPSACK_HOME", str(tmp_path / ".local/share/gripsack"))
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     # the trust gate (0013 D7) would prompt on every fixture repo;
     # CI is the documented bypass
     monkeypatch.setenv("GRIPSACK_TRUST_ALL", "1")
-    return tmp_path
+    yield tmp_path
+    rep = getattr(request.node, "rep_call", None)
+    if rep is not None and rep.failed:
+        runs = tmp_path / ".local/share/gripsack/runs"
+        logs = sorted(runs.glob("*.jsonl")) if runs.is_dir() else []
+        if logs:
+            tail = logs[-1].read_text(errors="replace").splitlines()[-25:]
+            print(
+                "\n--- grip run log ({}), last 25 lines ---\n{}".format(
+                    logs[-1].name, "\n".join(tail)
+                ),
+                file=sys.stderr,
+            )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Stash the per-phase result on the node so the sandbox fixture
+    can react to the call phase's outcome (see sandbox)."""
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, f"rep_{rep.when}", rep)
 
 
 def grip(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
@@ -113,7 +143,6 @@ def grip(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
         text=True,
         timeout=120,
     )
-
 
 def _seed_plugin_store(sandbox, exe, fixture, tag="1.0"):
     """Pre-seed the managed plugin store as if a prior provision ran."""

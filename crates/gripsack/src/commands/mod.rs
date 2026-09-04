@@ -69,6 +69,35 @@ pub fn hostname() -> String {
         .unwrap_or_else(|| "default".into())
 }
 
+/// A valid host FILE name: alnum, dash, underscore — everything else
+/// (macOS hostnames carry dots) becomes a dash. The single
+/// sanitization for BOTH the file `grip init` writes and the default
+/// host every command resolves: init wrote `foo-bar.ts` while eval
+/// looked up raw `foo.bar` — `init && check` failed on every Mac
+/// whose hostname has a dot (macOS CI round).
+pub fn sanitize_hostname(raw: &str) -> String {
+    let clean: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if clean.is_empty() {
+        "myhost".into()
+    } else {
+        clean
+    }
+}
+
+/// The sanitized hostname — the default host everywhere (the file
+/// name and the lookup agree by construction).
+pub fn default_host() -> String {
+    sanitize_hostname(&hostname())
+}
 /// `~/...` expands against $HOME; absolute paths pass through.
 pub fn expand_home(to: &str) -> PathBuf {
     gripsack_store::expand_home(to)

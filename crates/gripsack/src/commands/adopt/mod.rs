@@ -10,7 +10,7 @@ mod generate;
 mod inspect;
 mod prompt;
 
-use crate::commands::{eval_repo, expand_home, hostname, trust_gate};
+use crate::commands::{default_host, eval_repo, expand_home, trust_gate};
 use crate::render::{self, Palette};
 
 use gripsack_store as store;
@@ -140,7 +140,7 @@ pub fn adopt(
         format!("modules/{name}.ts"),
         format!(
             "hosts/{}.ts",
-            host.map(str::to_string).unwrap_or_else(hostname)
+            host.map(str::to_string).unwrap_or_else(default_host)
         ),
     ];
     let revert = |why: &str| {
@@ -166,7 +166,7 @@ pub fn adopt(
     if let Err(e) = std::fs::write(repo.join("modules").join(format!("{name}.ts")), &module_ts) {
         return revert(&format!("cannot write modules/{name}.ts: {e}"));
     }
-    let host_name = host.map(str::to_string).unwrap_or_else(hostname);
+    let host_name = host.map(str::to_string).unwrap_or_else(default_host);
     let host_rel = format!("hosts/{host_name}.ts");
     let host_path = repo.join(&host_rel);
     if !host_path.is_file() {
