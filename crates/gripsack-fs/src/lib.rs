@@ -198,10 +198,14 @@ pub fn publish_dir(home: &Dir, staging: &Path, dest: &Path) -> io::Result<()> {
     }
     fsync_dir(home, parent)
 }
-
 /// Recursively copy `src` (absolute) into `rel` under `dst`:
 /// directories, regular files, and symlinks (recreated, never
-/// followed).
+/// followed). Permissions are preserved verbatim (0025 §G — the
+/// EXDEV publish path runs read_only_files on staging BEFORE the
+/// copy, so preserving modes lands the store's read-only policy and
+/// exec bits exactly like the rename path does), and every file and
+/// directory is fsync'd (leaves upward) so the renamed tree is fully
+/// durable, not just its final name.
 fn copy_into_dir(src: &Path, dst: &Dir, rel: &Path) -> io::Result<()> {
     dst.create_dir_all(rel)?;
     for entry in std::fs::read_dir(src)? {
@@ -216,10 +220,19 @@ fn copy_into_dir(src: &Path, dst: &Dir, rel: &Path) -> io::Result<()> {
             // links (see symlink_replace)
             rustix::fs::symlinkat(&target, dst, &to).map_err(io::Error::from)?;
         } else {
-            dst.write(&to, std::fs::read(entry.path())?)?;
+            let mut opts = cap_std::fs::OpenOptions::new();
+            opts.write(true).create_new(true);
+            let mut file = dst.open_with(&to, &opts)?;
+            io::Write::write_all(&mut file, &std::fs::read(entry.path())?)?;
+            file.sync_all()?;
+            dst.set_permissions(
+                &to,
+                cap_std::fs::Permissions::from_std(entry.metadata()?.permissions()),
+            )?;
         }
     }
-    Ok(())
+    // children durable before the dir's own metadata
+    fsync_dir(dst, rel)
 }
 
 /// Recursively copy a directory tree by string paths: directories,
@@ -457,6 +470,48 @@ mod tests {
         let link = dst.join("sub/link");
         assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
         assert_eq!(std::fs::read_link(link).unwrap(), Path::new("f"));
+    }
+
+    /// The EXDEV fallback across a REAL filesystem boundary: staging
+    /// on /dev/shm (tmpfs), the store in the test tempdir. Skipped
+    /// where /dev/shm does not exist (macOS). Asserts the copy
+    /// preserves the exec bit AND the store's read-only policy
+    /// (applied to staging before the copy) — the 0021 copy path
+    /// dropped both (0025 §G).
+    #[test]
+    fn publish_cross_filesystem_preserves_modes() {
+        let shm = Path::new("/dev/shm");
+        if !shm.is_dir() {
+            eprintln!("no /dev/shm — skipping the cross-filesystem test");
+            return;
+        }
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let cap = open(dir.path()).unwrap();
+        let staging = tempfile::tempdir_in(shm).unwrap();
+        let tool = staging.path().join("tool");
+        std::fs::write(&tool, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink("tool", staging.path().join("tool-link")).unwrap();
+
+        publish_dir(&cap, staging.path(), Path::new("store/exe-m")).unwrap();
+
+        let meta = std::fs::metadata(dir.path().join("store/exe-m/tool")).unwrap();
+        let mode = meta.permissions().mode();
+        assert!(mode & 0o111 != 0, "exec bit must survive EXDEV: {mode:o}");
+        assert_eq!(
+            mode & 0o222,
+            0,
+            "read-only policy must survive EXDEV: {mode:o}"
+        );
+        assert!(
+            dir.path()
+                .join("store/exe-m/tool-link")
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 
     /// The adversary the migration exists for (plan/0021 acceptance):
