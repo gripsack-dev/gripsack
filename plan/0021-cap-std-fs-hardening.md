@@ -37,6 +37,12 @@ The invariant this buys: `dest_resolves_into` (deploy.rs) and the
 subsequent write are pinned to ONE parent-dir inode — the check and
 the use cannot observe different filesystems.
 
+> **Standing policy from the owner**: backward-incompatible
+> changes are fine (pre-1.0, no users) whenever they serve
+> readability or simplicity — bump the minor, write the changelog.
+> The quality bar is high: modular, readable, why-comments where
+> the code surprises. The acceptance criteria below are the floor.
+
 ## Migration order (each phase ships green independently)
 
 1. **journal.rs + prior blobs** (smallest, newest, best-tested —

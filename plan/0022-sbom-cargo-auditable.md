@@ -34,6 +34,10 @@ detached from the binary the moment a user untars elsewhere.
    `cargo cyclonedx` generates it; attach alongside the tarballs.
    Only if a user asks — the in-binary form is the primary.
 
+Pre-1.0, no users: breaking changes allowed when they serve
+readability/simplicity (owner policy); quality bar is high and
+modular.
+
 ## Acceptance
 
 - `strings target/.../release/grip | grep -c auditable` > 0, or
