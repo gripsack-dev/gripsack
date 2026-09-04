@@ -23,35 +23,26 @@ fn entries<'a>(
 }
 
 pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
-    // APFS is case-insensitive by default: ~/Foo and ~/foo are the
-    // same file, but different strings — a plain map would let two
-    // modules claim it and race in parallel deploy. On macOS hosts
-    // the ownership map case-folds so E111 still fires.
-    let fold_case = ir.host.os == "macos";
+    // Case-variant destinations fold on every host: APFS and NTFS
+    // are case-insensitive (~/Foo and ~/foo are one file — a race in
+    // parallel deploy), and even on case-sensitive filesystems they
+    // are ~always a typo creating two confusing files. The check
+    // protects the REPO's portability, not the current host — a
+    // repo written on Linux must not corrupt on a Mac (npm bans
+    // uppercase names for the same class).
     let mut owners: std::collections::BTreeMap<String, &str> = std::collections::BTreeMap::new();
-    let key = |to: &str| -> String {
-        if fold_case {
-            to.to_lowercase()
-        } else {
-            to.to_string()
-        }
-    };
     for (name, module) in &ir.modules {
         for entry in entries(module) {
-            if let Some(other) = owners.insert(key(&entry.to), name.as_str())
+            if let Some(other) = owners.insert(entry.to.to_lowercase(), name.as_str())
                 && other != name.as_str()
             {
                 diagnostics.push(
                     Diagnostic::error(
                         codes::DUPLICATE_DESTINATION,
                         format!(
-                            "modules {other:?} and {name:?} both deploy to {}{}",
-                            entry.to,
-                            if fold_case {
-                                " (case-insensitive host)"
-                            } else {
-                                ""
-                            }
+                            "modules {other:?} and {name:?} both deploy to {} \
+                             (case-insensitive filesystems treat these as one file)",
+                            entry.to
                         ),
                     )
                     .with_label(module.span.clone(), "and here")
@@ -195,22 +186,20 @@ mod case_tests {
     }
 
     #[test]
-    fn macos_hosts_fold_destination_case() {
-        // same file on APFS: E111 must fire
+    fn case_variant_destinations_fold_on_every_host() {
+        // one rule everywhere (repo portability): macOS APFS, Linux
+        // typos — E111 fires identically on both
+        for os in ["macos", "linux"] {
+            let mut diags = Vec::new();
+            super::check(&ir_with_host(os, &["~/Config/a", "~/config/A"]), &mut diags);
+            assert!(
+                diags.iter().any(|d| d.code.as_ref() == "E111"),
+                "{os}: case-variant destinations must collide"
+            );
+        }
+        // exact-same-case duplicates still fire (the original rule)
         let mut diags = Vec::new();
-        super::check(
-            &ir_with_host("macos", &["~/Config/a", "~/config/A"]),
-            &mut diags,
-        );
+        super::check(&ir_with_host("linux", &["~/a", "~/a"]), &mut diags);
         assert!(diags.iter().any(|d| d.code.as_ref() == "E111"));
-        assert!(diags[0].message.contains("case-insensitive"));
-
-        // on case-sensitive hosts the same pair is two distinct files
-        let mut diags = Vec::new();
-        super::check(
-            &ir_with_host("linux", &["~/Config/a", "~/config/A"]),
-            &mut diags,
-        );
-        assert!(!diags.iter().any(|d| d.code.as_ref() == "E111"));
     }
 }

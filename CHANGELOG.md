@@ -3,6 +3,20 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.21.0] — 2026-09-04
+
+Capability-based filesystem writes (plan/0021), an in-binary SBOM
+(plan/0022), and one portability fix (plan/0023).
+
+### Changed
+
+- **E111 case-folds destinations on every host** — the 0.20.0 check
+  folded case only when the host reported `os: macos`; it now folds
+  unconditionally. The check protects the repo's portability, not
+  the current host: a repo written on Linux no longer corrupts on a
+  Mac (case-insensitive filesystems treat `~/Foo` and `~/foo` as one
+  file). Case-variant destinations were ~always typos anyway.
+
 ## [0.20.0] — 2026-09-04
 
 The macOS hardening round + release attestations (plan/0020's two
