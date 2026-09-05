@@ -27,6 +27,7 @@ pub mod gc;
 pub mod identity;
 pub mod lockfile;
 pub mod module;
+pub mod ops;
 pub mod report;
 pub mod resolve;
 pub mod rollback;

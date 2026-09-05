@@ -251,173 +251,82 @@ pub fn diff_section(
         Some(m) => format!("{} generation {}:", b("changes vs"), m.number),
         None => b("changes: no current generation (first apply)"),
     }];
-    let mut declared: Vec<&str> = Vec::new();
 
-    for (name, module) in &ir.modules {
-        let mut lines = Vec::new();
-        let mut non_config_note = None;
-        // explicit-step modules carry effects plan cannot preview
-        // (run/shell steps mutate the system opaquely) — never let
-        // the module read as a silent no-op (0033 R5)
-        if let Some(steps) = &module.steps
-            && steps.iter().any(|st| {
-                matches!(
-                    st.action,
-                    gripsack_ir::step::StepAction::Run { .. }
-                        | gripsack_ir::step::StepAction::CustomShell { .. }
-                )
-            })
-        {
-            lines.push(
-                "  · has run/shell steps — opaque effects, apply may change the system".to_string(),
-            );
+    // THE operation list (0034): what apply would execute, rendered.
+    // plan/apply agreement is by construction — one planner.
+    let ops = match gripsack_exec::ops::preview_ops(ir, repo, current.as_ref(), adopting) {
+        Ok(ops) => ops,
+        Err(e) => {
+            out.push(format!("  (cannot compute the preview: {e})"));
+            return out.join("\n");
         }
-        for entry in module.install.iter().chain(module.config.iter()) {
-            declared.push(entry.to.as_str());
-            let dest = crate::commands::expand_home(&entry.to);
-            let repo_file = repo.join(&entry.from);
-            if !repo_file.is_file() {
-                // a fetched payload: identity check without fetching
-                non_config_note = Some(if module.fetch.is_some() {
-                    "fetch → deploy (pin-resolved at apply)"
-                } else {
-                    "steps → deploy"
-                });
-                continue;
-            }
-            // Compare in the mode's own terms (0.21.1 review): the
-            // manifest records the DEPLOYED form's hash — rendered for
-            // template, trimmed block for merge — so hashing the raw
-            // repo source can never match and plan cried (update)
-            // forever. Template vars come from the IR (eval already
-            // computed them); a render failure means the entry errors
-            // at apply too — say so instead of guessing.
-            // each arm computes in the entry's manifest domain
-            // (0031): merge/template bytes-only; copy mode-aware with
-            // the INTENT mode from the repo payload's exec bit —
-            // matching deploy's recording exactly
-            let new_hash: Option<String> = match entry.mode {
-                gripsack_ir::Ownership::Merge => {
-                    std::fs::read_to_string(&repo_file).ok().map(|text| {
-                        gripsack_store::canonical_bytes_hash(text.trim_end_matches('\n').as_bytes())
-                            .to_string()
-                    })
+    };
+    let mut by_module: std::collections::BTreeMap<&str, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for op in &ops {
+        use gripsack_exec::ops::{Authority, OpKind};
+        let line = match &op.kind {
+            OpKind::Link { .. } | OpKind::Write { .. } => match op.authority {
+                Some(Authority::Fresh) => {
+                    let from = op
+                        .produces
+                        .as_ref()
+                        .map(|p| p.from.as_str())
+                        .unwrap_or(op.declared_to.as_str());
+                    format!("  + {from} → {} (new)", op.declared_to)
                 }
-                gripsack_ir::Ownership::Template => std::fs::read(&repo_file)
-                    .ok()
-                    .and_then(|bytes| {
-                        gripsack_exec::template::render_template(&bytes, &entry.vars, &entry.from)
-                            .ok()
-                    })
-                    .map(|rendered| gripsack_store::canonical_bytes_hash(&rendered).to_string()),
-                _ => std::fs::read(&repo_file).ok().map(|bytes| {
-                    #[cfg(unix)]
-                    let exec = {
-                        use std::os::unix::fs::MetadataExt;
-                        std::fs::metadata(&repo_file)
-                            .map(|m| m.mode() & 0o111 != 0)
-                            .unwrap_or(false)
-                    };
-                    #[cfg(not(unix))]
-                    let exec = false;
-                    gripsack_store::canonical_bytes_identity(
-                        &bytes,
-                        if exec { 0o755 } else { 0o644 },
+                Some(Authority::Update) => {
+                    let from = op
+                        .produces
+                        .as_ref()
+                        .map(|p| p.from.as_str())
+                        .unwrap_or(op.declared_to.as_str());
+                    format!("  ~ {from} → {} (update)", op.declared_to)
+                }
+                Some(Authority::TakeOver) => {
+                    // 0015 §7 S6: this take-over is the point of the
+                    // command — say so, don't demand a flag
+                    format!("  ↻ {} will be adopted (prior recorded)", op.declared_to)
+                }
+                _ => format!("  ? {}", op.declared_to),
+            },
+            OpKind::MergeUpsert { .. } => {
+                let from = op
+                    .produces
+                    .as_ref()
+                    .map(|p| p.from.as_str())
+                    .unwrap_or(op.declared_to.as_str());
+                format!("  ~ {from} → {} (update)", op.declared_to)
+            }
+            OpKind::Remove => format!("  - {} (prune)", op.declared_to),
+            OpKind::Satisfied => format!("  = {} (satisfied)", op.declared_to),
+            OpKind::Preserved => match op.authority {
+                Some(Authority::Foreign) => {
+                    format!(
+                        "  ! {} exists, not ours — needs --take-over",
+                        op.declared_to
                     )
-                    .to_string()
-                }),
-            };
-            let Some(new_hash) = new_hash else {
-                lines.push(format!(
-                    "  ! {} → {} (source missing)",
-                    entry.from, entry.to
-                ));
-                continue;
-            };
-            // Destination side (same review): source-vs-manifest alone
-            // is blind to destination drift, and merge/template drift
-            // is NOT kept — apply regenerates it. A satisfied line
-            // while apply would write is the same lie as a phantom
-            // update, so the destination must answer too.
-            let dest_diverges = |expected: &str| match entry.mode {
-                gripsack_ir::Ownership::Merge => {
-                    let Ok(existing) = std::fs::read_to_string(&dest) else {
-                        return true; // absent or unreadable: apply writes
-                    };
-                    let blocks = gripsack_exec::template::find_blocks(&existing, name).len();
-                    blocks != 1
-                        || gripsack_exec::template::extract_block(&existing, name).is_none_or(|c| {
-                            gripsack_store::canonical_bytes_hash(c.as_bytes()).as_str() != expected
-                        })
                 }
-                gripsack_ir::Ownership::Template => {
-                    // bytes-only domain (mode unmanaged): a chmodded
-                    // template dest is NOT drift
-                    match std::fs::read(&dest) {
-                        Ok(bytes) => {
-                            gripsack_store::canonical_bytes_hash(&bytes).as_str() != expected
-                        }
-                        Err(_) => true, // absent: apply writes
-                    }
-                }
-                // owned/tracked-copy drift is KEPT by apply (never
-                // silently overwritten) — source-vs-manifest is the
-                // honest answer for them
-                _ => false,
-            };
-            let recorded = current.as_ref().and_then(|m| {
-                m.modules
-                    .get(name)
-                    .and_then(|s| s.entries.iter().find(|e| e.to == entry.to))
-            });
-            match recorded {
-                Some(rec) if rec.hash == new_hash && !dest_diverges(&new_hash) => {
-                    lines.push(format!("  = {} (satisfied)", entry.to))
-                }
-                Some(_) => lines.push(format!("  ~ {} → {} (update)", entry.from, entry.to)),
-                None => {
-                    let foreign = dest.symlink_metadata().is_ok()
-                        && !std::fs::read_link(&dest)
-                            .map(|t| t.starts_with(&home))
-                            .unwrap_or(false);
-                    if adopting.contains(entry.to.as_str()) {
-                        // 0015 §7 S6: this take-over is the point of the
-                        // command — say so, don't demand a flag
-                        lines.push(format!("  ↻ {} will be adopted (prior recorded)", entry.to));
-                    } else if foreign {
-                        lines.push(format!(
-                            "  ! {} exists, not ours — needs --take-over",
-                            entry.to
-                        ));
-                    } else {
-                        lines.push(format!("  + {} → {} (new)", entry.from, entry.to));
-                    }
-                }
+                _ => format!("  ~ {} drifted — kept (apply preserves)", op.declared_to),
+            },
+            OpKind::RunEffect | OpKind::Deferred => {
+                format!("  · {}", op.note.as_deref().unwrap_or("deferred"))
             }
-        }
-        if let Some(note) = non_config_note {
-            lines.push(format!("  · {note}"));
-        }
-        if !lines.is_empty() {
-            out.push(format!("  {}", c(name)));
-            out.extend(lines);
-        }
+        };
+        by_module.entry(&op.module).or_default().push(line);
     }
-
-    // prunes: recorded destinations no longer declared
-    if let Some(manifest) = &current {
-        for (name, state) in &manifest.modules {
-            let mut prunes: Vec<String> = state
-                .entries
-                .iter()
-                .filter(|e| !declared.contains(&e.to.as_str()))
-                .map(|e| format!("  - {} (prune)", e.to))
-                .collect();
-            if !prunes.is_empty() {
-                out.push(format!("  {}", c(name)));
-                out.append(&mut prunes);
+    for (name, lines) in &by_module {
+        // one marker note per module, not per step (dedup)
+        let mut seen_notes = std::collections::BTreeSet::new();
+        let mut deduped = Vec::new();
+        for line in lines {
+            if line.starts_with("  ·") && !seen_notes.insert(line.clone()) {
+                continue;
             }
+            deduped.push(line.clone());
         }
+        out.push(format!("  {}", c(name)));
+        out.extend(deduped);
     }
     if out.len() == 1 {
         out.push("  nothing would change".into());

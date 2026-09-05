@@ -438,116 +438,24 @@ fn prune_undeclared(
             if entry.preserved_drift {
                 continue;
             }
-            if entry.mode == gripsack_ir::Ownership::Merge {
-                if declared_merge.contains(&(name.as_str(), entry.to.as_str())) {
-                    continue;
-                }
-            } else if declared.contains(entry.to.as_str()) {
+            let declared_elsewhere = if entry.mode == gripsack_ir::Ownership::Merge {
+                declared_merge.contains(&(name.as_str(), entry.to.as_str()))
+            } else {
+                declared.contains(entry.to.as_str())
+            };
+            if declared_elsewhere {
                 continue;
             }
-            let dest = gripsack_store::expand_home(&entry.to);
-            if entry.mode == gripsack_ir::Ownership::Merge {
-                // the file is foreign — prune removes only our block,
-                // and only if the block content is still what we
-                // deployed (a drifted block is the user's now)
-                // NotFound-only-is-absent (0030 §H7): a permission or
-                // I/O error is not an empty file
-                let existing = match std::fs::read_to_string(&dest) {
-                    Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-                    Err(e) => return Err(e.into()),
-                };
-                match crate::template::extract_block(&existing, name) {
-                    Some(content)
-                        if store::canonical_bytes_hash(content.as_bytes()).as_str()
-                            == entry.hash =>
-                    {
-                        let new = crate::template::remove_block(&existing, name)
-                            .expect("block found above");
-                        // the intent is known before the mutation
-                        // (0026 §6): Removed when the block was the
-                        // whole file; otherwise the spliced content's
-                        // MODE-AWARE identity (the write preserves the
-                        // foreign file's mode, 0026 §7)
-                        #[cfg(unix)]
-                        let splice_mode = {
-                            use std::os::unix::fs::MetadataExt;
-                            std::fs::metadata(&dest)
-                                .map(|m| m.mode() & 0o7777)
-                                .unwrap_or(0o644)
-                        };
-                        #[cfg(not(unix))]
-                        let splice_mode = 0o644;
-                        let intended = if new.trim().is_empty() {
-                            store::journal::Intended::Removed
-                        } else {
-                            store::journal::Intended::Object(store::journal::ObjectIdentity::File(
-                                store::canonical_bytes_identity(new.as_bytes(), splice_mode),
-                            ))
-                        };
-                        let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
-                        crate::deploy::journaled(
-                            home_dir,
-                            &dest_dir,
-                            &dest_name,
-                            &dest,
-                            intended,
-                            Some(store::journal::ObjectIdentity::File(
-                                store::canonical_bytes_identity(existing.as_bytes(), splice_mode),
-                            )),
-                            || {
-                                if new.trim().is_empty() {
-                                    dest_dir.remove_file(&dest_name)
-                                } else {
-                                    gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
-                                }
-                            },
-                        )?;
-                        info!("pruned {} (block)", entry.to);
-                    }
-                    Some(_) => {
-                        tracing::warn!("kept {} — block modified since deploy", entry.to)
-                    }
-                    None => {} // block already gone
-                }
+            // the ONE remove planner (0034): merge block-intactness,
+            // the drift guard, and the journaled intent all live in
+            // ops::plan — apply executes the same op rollback would
+            let Some(op) = crate::ops::plan_remove_op(name, entry, &state.store_path, home)? else {
                 continue;
+            };
+            if matches!(op.kind, crate::ops::OpKind::Preserved) {
+                continue; // plan_remove_op already warned
             }
-            // 0015 §4: an entry adopted with take-over (owned or
-            // copy-like) gets its ORIGINAL file/symlink back on prune,
-            // not a deletion; the drift guard runs FIRST (0026 §6) —
-            // a kept destination is never journaled at all
-            if !crate::deploy::intact_deployed(&dest, entry, &state.store_path) {
-                if dest.symlink_metadata().is_ok() {
-                    tracing::warn!("kept {} — modified since deploy", entry.to);
-                }
-                continue;
-            }
-            let intended = crate::deploy::prune_intent(entry, home)?;
-            let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
-            let expected: crate::deploy::Expect =
-                store::journal::live_identity(&dest_dir, &dest_name)?;
-            crate::deploy::journaled(
-                home_dir,
-                &dest_dir,
-                &dest_name,
-                &dest,
-                intended,
-                expected,
-                || {
-                    // a failed removal is a transaction error now (0027
-                    // §1), and journaled's postcondition verifies the
-                    // landing regardless
-                    crate::deploy::remove_or_restore_prior(
-                        &dest_dir,
-                        &dest_name,
-                        entry,
-                        name,
-                        home,
-                        &state.store_path,
-                    )?;
-                    Ok(())
-                },
-            )?;
+            crate::ops::execute_op(home_dir, home, &op)?;
             info!(
                 "{} {}",
                 if entry.prior.is_some() {

@@ -3,6 +3,35 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.30.0] — 2026-09-05
+
+One shared operation list (plan/0034) — the architecture the 0.27.0
+review called for: `ts → IR → ops → execute`. One planner computes the
+destination operations; `grip plan` renders it, apply executes it,
+rollback plans with the target generation's manifest as the desired
+state. Plan/apply agreement is by construction.
+
+### Changed
+
+- **`grip plan` renders the operation list apply executes** — the
+  separate preview engine is gone. Drifted destinations preview as
+  "drifted — kept (apply preserves)" instead of the old "(update)"
+  lie, and run/shell-step modules always show their opaque effects.
+- **Rollback plans through the same planner** — the Transition
+  machinery and the separate restore path are deleted; `plan_copy`'s
+  three-way is the rollback drift rule.
+
+### Internal
+
+- New `ops` module: the ISA (`Op`, kinds, authority, provenance),
+  the codegen (planners over the one observation), and the executor
+  (journal precondition → write → postcondition). The lineage
+  explorer continues to drive the shipped decision functions, now
+  through the op authority branches.
+- apply's deploy and prune phases and rollback's planner are thin
+  drivers over it; `diff_section`'s parallel compare logic is
+  deleted.
+
 ## [0.29.0] — 2026-09-05
 
 The 0.27.0 external-review round (plan/0033) — confidentiality of
