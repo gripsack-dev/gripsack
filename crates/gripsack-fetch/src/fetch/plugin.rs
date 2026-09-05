@@ -505,12 +505,24 @@ mod tests {
     }
 
     fn spawn(exe: &Path) -> std::process::Child {
-        std::process::Command::new(exe)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .unwrap()
+        // ETXTBSY (os error 26) races a just-written script's exec on
+        // some filesystems (WSL drvfs, CI overlayfs): a bounded retry
+        // is the honest answer for a test-only helper
+        for attempt in 0..50 {
+            let result = std::process::Command::new(exe)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn();
+            match result {
+                Ok(child) => return child,
+                Err(e) if e.raw_os_error() == Some(26) && attempt < 49 => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(e) => panic!("spawn {}: {e}", exe.display()),
+            }
+        }
+        unreachable!()
     }
 
     #[test]
