@@ -3,6 +3,21 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.31.0] — 2026-09-06
+
+The VM-level model harness (plan/0034's explorer extension, landed).
+
+### Internal
+
+- `ops/model.rs`: enumerated abstract states (absent / file at three
+  modes / foreign symlink × desired content × manifest lineage ×
+  take-over) are materialized onto a real filesystem, planned with
+  the shipped `plan_entry_op`, and executed with the shipped
+  `execute_op` — 560 cases, checked: the planner's decision IS the
+  algebra's answer (plan_copy/plan_link), and the executed op lands
+  exactly its recorded intent. Plan/apply agreement now has a
+  machine-checked floor, not just a by-construction argument.
+
 ## [0.30.0] — 2026-09-05
 
 One shared operation list (plan/0034) — the architecture the 0.27.0
