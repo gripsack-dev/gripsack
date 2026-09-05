@@ -41,7 +41,9 @@ pub fn remove_entry_deployed(
                 Err(e) => return Err(e),
             };
             match crate::template::extract_block(&existing, module) {
-                Some(content) if store::canonical_bytes_hash(content.as_bytes()) == entry.hash => {
+                Some(content)
+                    if store::canonical_bytes_hash(content.as_bytes()).as_str() == entry.hash =>
+                {
                     let new = crate::template::remove_block(&existing, module)
                         .expect("block found above");
                     if new.trim().is_empty() {
@@ -54,14 +56,39 @@ pub fn remove_entry_deployed(
                 _ => Ok(false), // drifted block is the user's now
             }
         }
-        _ => {
-            // copy-like: only delete bytes identical to what we wrote
-            let current = match store::canonical_file_hash_in(dest_dir, dest_name) {
-                Ok(h) => h,
+        Ownership::Template => {
+            // bytes-only domain: only delete what we rendered
+            let current = match dest_dir.read(dest_name) {
+                Ok(b) => b,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
                 Err(e) => return Err(e),
             };
-            if current != entry.hash {
+            if store::canonical_bytes_hash(&current).as_str() != entry.hash {
+                return Ok(false);
+            }
+            remove_if_present(dest_dir, dest_name)?;
+            Ok(true)
+        }
+        Ownership::TrackedCopy => {
+            // mode-aware domain (0031): only delete bytes+mode
+            // identical to what we wrote — a chmodded copy is the
+            // user's now
+            let bytes = match dest_dir.read(dest_name) {
+                Ok(b) => b,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+                Err(e) => return Err(e),
+            };
+            #[cfg(unix)]
+            let mode = {
+                use gripsack_fs::cap_std::fs::MetadataExt;
+                dest_dir
+                    .symlink_metadata(dest_name)
+                    .map(|m| m.mode() & 0o7777)
+                    .unwrap_or(0o644)
+            };
+            #[cfg(not(unix))]
+            let mode = 0o644;
+            if store::canonical_bytes_identity(&bytes, mode).as_str() != entry.hash {
                 return Ok(false);
             }
             remove_if_present(dest_dir, dest_name)?;

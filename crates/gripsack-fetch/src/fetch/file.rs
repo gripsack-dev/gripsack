@@ -14,7 +14,7 @@ pub(crate) fn fetch(path: &str, dest: &Path) -> Result<String, FetchError> {
     let ty = std::fs::metadata(path).map_err(FetchError::Io)?.file_type();
     if ty.is_dir() {
         archive::copy_tree(path, dest).map_err(FetchError::Io)?;
-        Ok(gripsack_store::canonical_tree_hash(path)?)
+        Ok(gripsack_store::canonical_tree_hash(path)?.to_string())
     } else if ty.is_file() {
         let bytes = std::fs::read(path)?;
         let hash = archive::sha256(&bytes);
@@ -34,7 +34,7 @@ pub(crate) fn payload_hash(path: &str) -> Result<Option<String>, FetchError> {
     let path = Path::new(path);
     let ty = std::fs::metadata(path).map_err(FetchError::Io)?.file_type();
     if ty.is_dir() {
-        Ok(Some(gripsack_store::canonical_tree_hash(path)?))
+        Ok(Some(gripsack_store::canonical_tree_hash(path)?.to_string()))
     } else if ty.is_file() {
         Ok(Some(archive::sha256(&std::fs::read(path)?)))
     } else {

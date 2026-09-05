@@ -6,13 +6,35 @@
 //! with a warning. Never delete user edits.
 
 use gripsack_fs::Dir;
+
+/// One recovery outcome from [`reconcile`], typed so callers render
+/// severity instead of parsing message text: a kept post-crash edit
+/// is a WARNING (your file was left in a state the manifest doesn't
+/// know); restores and no-ops are informational.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecoveryNote {
+    pub severity: NoteSeverity,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteSeverity {
+    Info,
+    Warn,
+}
+
+impl std::fmt::Display for RecoveryNote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
 use std::io;
 use std::path::{Path, PathBuf};
 
 use super::marker::{Classification, RecoveryFacts, classify, cleanup, run_marker};
 use super::{
-    Entry, PriorSerde, dest_capability, live_identity, prior_blob_rel, prior_identity,
-    read_uncommitted,
+    Entry, ObjectIdentity, PriorSerde, dest_capability, live_identity, prior_blob_rel,
+    prior_identity, read_uncommitted,
 };
 
 /// What an uncommitted entry asks for, once resolved against the
@@ -32,7 +54,7 @@ pub(crate) enum Recovery {
 /// stands; uncommitted runs are restored to their priors. Returns one
 /// human line per decision for the apply report. Must run under the
 /// lifecycle lock.
-pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
+pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> {
     let Some(entries) = read_uncommitted(home)? else {
         return Ok(Vec::new());
     };
@@ -74,11 +96,12 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
             home,
             &entries.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
         )?;
-        lines.push(
-            "interrupted run's generation had already activated — journal \
+        lines.push(RecoveryNote {
+            severity: NoteSeverity::Info,
+            message: "interrupted run's generation had already activated — journal \
              cleared, deployed state stands"
                 .to_string(),
-        );
+        });
         return Ok(lines);
     }
     let mut entry_paths = Vec::new();
@@ -96,22 +119,31 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
                 // entry may be dropped
                 let live = live_identity(&dest_dir, &dest_name)?;
                 let expected = prior_identity(&entry.prior, home)?;
-                if live.as_deref() != expected.as_deref() {
+                if live != expected {
                     return Err(io::Error::other(format!(
                         "recovery of {} did not produce the prior state — the                          journal is retained; inspect $GRIPSACK_HOME/journal",
                         entry.dest
                     )));
                 }
-                lines.push(format!("recovered {}: {what}", entry.dest));
+                lines.push(RecoveryNote {
+                    severity: NoteSeverity::Info,
+                    message: format!("recovered {}: {what}", entry.dest),
+                });
             }
             Recovery::Unchanged => {
-                lines.push(format!(
-                    "unchanged {}: the mutation never landed",
-                    entry.dest
-                ));
+                lines.push(RecoveryNote {
+                    severity: NoteSeverity::Info,
+                    message: format!("unchanged {}: the mutation never landed", entry.dest),
+                });
             }
             Recovery::Keep(why) => {
-                lines.push(format!("kept {}: {why}", entry.dest));
+                // a kept post-crash edit is the outcome the user must
+                // NOTICE — it means live state and the manifest now
+                // disagree about who owns the bytes
+                lines.push(RecoveryNote {
+                    severity: NoteSeverity::Warn,
+                    message: format!("kept {}: {why}", entry.dest),
+                });
             }
         }
         entry_paths.push(path);
@@ -126,10 +158,13 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
 fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry, home: &Dir) -> io::Result<Recovery> {
     let live = live_identity(dest_dir, dest_name)?;
     let prior_id = prior_identity(&entry.prior, home)?;
+    // the pure decision algebra compares CANONICAL WIRE STRINGS (the
+    // model checker drives it with abstract values); the types guard
+    // construction, the wire guards the boundary
     Ok(decide_from(
-        live.as_deref(),
+        live.as_ref().map(ObjectIdentity::to_wire).as_deref(),
         &entry.after,
-        prior_id.as_deref(),
+        prior_id.as_ref().map(ObjectIdentity::to_wire).as_deref(),
         &entry.prior,
     ))
 }

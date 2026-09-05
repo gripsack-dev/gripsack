@@ -34,11 +34,54 @@ pub mod marker;
 pub(crate) mod recover;
 
 pub use marker::{RunOp, begin_run, commit_run, end_run};
-pub use recover::reconcile;
+pub use recover::{NoteSeverity, RecoveryNote, reconcile};
 
 use gripsack_fs::Dir;
 use std::io;
 use std::path::{Path, PathBuf};
+
+/// The journal-domain identity of a live destination object (0031):
+/// type + content identity from ONE observation. Files are
+/// mode-aware; links compare their target verbatim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ObjectIdentity {
+    File(crate::hash::FileIdentity),
+    /// A symlink: its target. Compared byte-exact; adoption refuses
+    /// non-UTF-8 targets before a link can be journaled.
+    Link(String),
+}
+
+impl ObjectIdentity {
+    /// The journal wire form (entries are one-version artifacts; the
+    /// string round-trips through `Entry::after`). Recovery compares
+    /// wire forms — canonical strings — never parses variants back.
+    pub fn to_wire(&self) -> String {
+        match self {
+            ObjectIdentity::File(id) => id.to_string(),
+            ObjectIdentity::Link(target) => target.clone(),
+        }
+    }
+}
+
+/// What a journaled mutation intends the destination to become —
+/// the typed form of `Entry::after` (0026 §6's three-way decision:
+/// live == intended → restore prior; live == prior → never landed;
+/// else → someone's edit, keep it). Typed so a bytes-only template
+/// hash can never be journaled where a mode-aware identity belongs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Intended {
+    Removed,
+    Object(ObjectIdentity),
+}
+
+impl Intended {
+    pub fn to_wire(&self) -> String {
+        match self {
+            Intended::Removed => REMOVED.to_string(),
+            Intended::Object(id) => id.to_wire(),
+        }
+    }
+}
 
 /// A destination's state before a journaled mutation.
 #[derive(Debug, Clone, PartialEq)]
@@ -225,11 +268,11 @@ pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io:
 /// post-mutation identity, durable BEFORE the mutation lands
 /// (0026 §6 — persisting intent up front closes the window where a
 /// post-crash user edit was indistinguishable from the mutation).
-pub fn record(home: &Dir, dest: &Path, prior: &Prior, after: &str) -> io::Result<()> {
+pub fn record(home: &Dir, dest: &Path, prior: &Prior, after: &Intended) -> io::Result<()> {
     let entry = Entry {
         dest: dest.to_string_lossy().into_owned(),
         prior: prior.into(),
-        after: after.to_string(),
+        after: after.to_wire(),
     };
     gripsack_fs::atomic_write(
         home,
@@ -307,14 +350,14 @@ fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
 /// absent. (canonical_bytes_hash — the identity deploy records; a
 /// raw-sha256 comparison here was the latent drift-guard bug the
 /// 0025 crash-window e2e exposed.)
-pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<String>> {
+pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<ObjectIdentity>> {
     match dest_dir.symlink_metadata(dest_name) {
-        Ok(meta) if meta.file_type().is_symlink() => Ok(Some(
+        Ok(meta) if meta.file_type().is_symlink() => Ok(Some(ObjectIdentity::Link(
             dest_dir
                 .read_link_contents(dest_name)?
                 .to_string_lossy()
                 .into_owned(),
-        )),
+        ))),
         Ok(meta) => {
             // mode-aware (0031): the journal's file identity covers
             // the full permission set — a chmod between the drift
@@ -322,9 +365,8 @@ pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<Stri
             // chmod-only drift is never invisible
             use gripsack_fs::cap_std::fs::MetadataExt;
             let mode = meta.mode() & 0o7777;
-            Ok(Some(crate::hash::canonical_bytes_identity(
-                &dest_dir.read(dest_name)?,
-                mode,
+            Ok(Some(ObjectIdentity::File(
+                crate::hash::canonical_bytes_identity(&dest_dir.read(dest_name)?, mode),
             )))
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -334,13 +376,12 @@ pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<Stri
 
 /// The prior's identity in the same terms (recomputed from the blob;
 /// the blob's own hash is the raw sha256 used for addressing).
-fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<String>> {
+fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<ObjectIdentity>> {
     match prior {
         PriorSerde::Absent => Ok(None),
-        PriorSerde::Symlink { target } => Ok(Some(target.clone())),
-        PriorSerde::File { hash, mode } => Ok(Some(crate::hash::canonical_bytes_identity(
-            &home.read(prior_blob_rel(hash))?,
-            *mode,
+        PriorSerde::Symlink { target } => Ok(Some(ObjectIdentity::Link(target.clone()))),
+        PriorSerde::File { hash, mode } => Ok(Some(ObjectIdentity::File(
+            crate::hash::canonical_bytes_identity(&home.read(prior_blob_rel(hash))?, *mode),
         ))),
     }
 }
@@ -360,6 +401,17 @@ mod tests {
         gripsack_fs::open_or_create(home.path()).expect("home capability")
     }
 
+    /// Raw-string stand-ins for identities in these tests ride the
+    /// Link variant (an opaque verbatim string) — typed, so only a
+    /// real FileIdentity fits the file arm.
+    fn intent(s: &str) -> Intended {
+        Intended::Object(ObjectIdentity::Link(s.to_string()))
+    }
+
+    fn file_intent(id: crate::hash::FileIdentity) -> Intended {
+        Intended::Object(ObjectIdentity::File(id))
+    }
+
     /// Capture through the destination's pinned parent capability,
     /// as deploy's journaled mutations do (plan/0021).
     fn capture_at(dest: &Path, home: &Dir) -> Prior {
@@ -376,7 +428,7 @@ mod tests {
 
         let prior = capture_at(&dest, &cap(&home));
         // the intended post-state is recorded up front (0026 §6)
-        record(&cap(&home), &dest, &prior, "intended-hash").unwrap();
+        record(&cap(&home), &dest, &prior, &intent("intended-hash")).unwrap();
         // simulate the crash: mutation never happened, no commit —
         // the file still holds the prior bytes
 
@@ -384,7 +436,7 @@ mod tests {
         assert_eq!(lines.len(), 1);
         // live IS the prior: the mutation never landed, so there is
         // nothing to restore — the entry is still consumed
-        assert!(lines[0].contains("unchanged"), "{lines:?}");
+        assert!(lines[0].message.contains("unchanged"), "{lines:?}");
         assert_eq!(std::fs::read(&dest).unwrap(), b"user stuff\n");
         assert!(reconcile(&cap(&home), home.path()).unwrap().is_empty());
     }
@@ -400,7 +452,7 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_identity(
+            &file_intent(crate::hash::canonical_bytes_identity(
                 b"deployed half-run content\n",
                 std::fs::metadata(&dest)
                     .map(|m| {
@@ -408,7 +460,7 @@ mod tests {
                         m.mode() & 0o7777
                     })
                     .unwrap_or(0o644),
-            ),
+            )),
         )
         .unwrap();
         std::fs::write(&dest, b"deployed half-run content\n").unwrap();
@@ -416,7 +468,7 @@ mod tests {
 
         let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
-        assert!(lines[0].contains("recovered"));
+        assert!(lines[0].message.contains("recovered"));
     }
 
     #[test]
@@ -430,7 +482,7 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_identity(
+            &file_intent(crate::hash::canonical_bytes_identity(
                 b"deployed\n",
                 std::fs::metadata(&dest)
                     .map(|m| {
@@ -438,7 +490,7 @@ mod tests {
                         m.mode() & 0o7777
                     })
                     .unwrap_or(0o644),
-            ),
+            )),
         )
         .unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
@@ -447,7 +499,7 @@ mod tests {
 
         let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"my own edit\n");
-        assert!(lines[0].contains("kept"));
+        assert!(lines[0].message.contains("kept"));
     }
 
     #[test]
@@ -462,7 +514,7 @@ mod tests {
             &cap(&home),
             &fresh,
             &prior,
-            &crate::hash::canonical_bytes_identity(
+            &file_intent(crate::hash::canonical_bytes_identity(
                 b"crashed write\n",
                 std::fs::metadata(&fresh)
                     .map(|m| {
@@ -470,14 +522,14 @@ mod tests {
                         m.mode() & 0o7777
                     })
                     .unwrap_or(0o644),
-            ),
+            )),
         )
         .unwrap();
         std::fs::write(&fresh, b"crashed write\n").unwrap();
 
         std::os::unix::fs::symlink("/original/target", &link).unwrap();
         let link_prior = capture_at(&link, &cap(&home));
-        record(&cap(&home), &link, &link_prior, "/deployed/target").unwrap();
+        record(&cap(&home), &link, &link_prior, &intent("/deployed/target")).unwrap();
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink("/deployed/target", &link).unwrap();
 
@@ -504,7 +556,7 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_identity(
+            &file_intent(crate::hash::canonical_bytes_identity(
                 b"deployed\n",
                 std::fs::metadata(&dest)
                     .map(|m| {
@@ -512,7 +564,7 @@ mod tests {
                         m.mode() & 0o7777
                     })
                     .unwrap_or(0o644),
-            ),
+            )),
         )
         .unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
@@ -526,7 +578,9 @@ mod tests {
 
         let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert!(
-            lines.iter().any(|l| l.contains("already activated")),
+            lines
+                .iter()
+                .any(|l| l.message.contains("already activated")),
             "{lines:?}"
         );
         // the committed generation's content is NOT rolled back
@@ -546,7 +600,7 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_identity(
+            &file_intent(crate::hash::canonical_bytes_identity(
                 b"half\n",
                 std::fs::metadata(&dest)
                     .map(|m| {
@@ -554,7 +608,7 @@ mod tests {
                         m.mode() & 0o7777
                     })
                     .unwrap_or(0o644),
-            ),
+            )),
         )
         .unwrap();
         std::fs::write(&dest, b"half\n").unwrap();
@@ -585,7 +639,7 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_identity(
+            &file_intent(crate::hash::canonical_bytes_identity(
                 b"new\n",
                 std::fs::metadata(&dest)
                     .map(|m| {
@@ -593,7 +647,7 @@ mod tests {
                         m.mode() & 0o7777
                     })
                     .unwrap_or(0o644),
-            ),
+            )),
         )
         .unwrap();
         std::fs::write(&dest, b"new\n").unwrap();
@@ -623,7 +677,7 @@ mod tests {
         std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o600)).unwrap();
 
         let prior = capture_at(&dest, &cap(&home));
-        record(&cap(&home), &dest, &prior, "/store/x").unwrap();
+        record(&cap(&home), &dest, &prior, &intent("/store/x")).unwrap();
         // the mutation: dest becomes an owned symlink
         std::fs::remove_file(&dest).unwrap();
         std::os::unix::fs::symlink("/store/x", &dest).unwrap();
@@ -649,7 +703,7 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_identity(
+            &file_intent(crate::hash::canonical_bytes_identity(
                 b"deployed\n",
                 std::fs::metadata(&dest)
                     .map(|m| {
@@ -657,7 +711,7 @@ mod tests {
                         m.mode() & 0o7777
                     })
                     .unwrap_or(0o644),
-            ),
+            )),
         )
         .unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
@@ -666,7 +720,7 @@ mod tests {
 
         let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"post-crash edit\n");
-        assert!(lines[0].contains("kept"), "{lines:?}");
+        assert!(lines[0].message.contains("kept"), "{lines:?}");
     }
 
     #[test]
@@ -688,7 +742,7 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_identity(
+            &file_intent(crate::hash::canonical_bytes_identity(
                 b"old\n",
                 std::fs::metadata(&dest)
                     .map(|m| {
@@ -696,7 +750,7 @@ mod tests {
                         m.mode() & 0o7777
                     })
                     .unwrap_or(0o644),
-            ),
+            )),
         )
         .unwrap();
         std::fs::write(&dest, b"old\n").unwrap();
@@ -704,7 +758,7 @@ mod tests {
 
         let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"new\n");
-        assert!(lines[0].contains("recovered"), "{lines:?}");
+        assert!(lines[0].message.contains("recovered"), "{lines:?}");
     }
 
     #[test]
@@ -724,7 +778,7 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_identity(
+            &file_intent(crate::hash::canonical_bytes_identity(
                 b"old\n",
                 std::fs::metadata(&dest)
                     .map(|m| {
@@ -732,7 +786,7 @@ mod tests {
                         m.mode() & 0o7777
                     })
                     .unwrap_or(0o644),
-            ),
+            )),
         )
         .unwrap();
         std::fs::write(&dest, b"old\n").unwrap();
@@ -741,7 +795,9 @@ mod tests {
 
         let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert!(
-            lines.iter().any(|l| l.contains("already activated")),
+            lines
+                .iter()
+                .any(|l| l.message.contains("already activated")),
             "{lines:?}"
         );
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");

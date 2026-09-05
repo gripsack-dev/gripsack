@@ -91,5 +91,5 @@ pub(crate) fn fetch(
     // differently per machine (cross-machine reproducibility, 0001
     // §3.4). Excluded from the harvest AND the identity.
     archive::copy_tree_filtered(&env_dir, dest, &["conda-meta"]).map_err(FetchError::Io)?;
-    Ok(gripsack_store::canonical_tree_hash(dest)?)
+    Ok(gripsack_store::canonical_tree_hash(dest)?.to_string())
 }

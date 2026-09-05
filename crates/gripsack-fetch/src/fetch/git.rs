@@ -68,7 +68,7 @@ pub(crate) fn fetch(url: &str, rev: &str, dest: &Path) -> Result<String, FetchEr
     // re-pinned) and it must never reach the store
     std::fs::remove_dir_all(dest.join(".git"))?;
     // the rev is the pin; the tree hash is the payload identity
-    Ok(gripsack_store::canonical_tree_hash(dest)?)
+    Ok(gripsack_store::canonical_tree_hash(dest)?.to_string())
 }
 
 #[cfg(test)]

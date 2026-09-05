@@ -1467,12 +1467,15 @@ export default module("zz", {
 
 
 
-def canonical_sha(data: bytes) -> str:
-    """The journal's file identity: canonical_bytes_hash (type tag +
-    exec byte + contents) — what deploy's mark_after records."""
+def canonical_sha(data: bytes, mode: int = 0o644) -> str:
+    """The journal's mode-aware file identity (0031): type tag +
+    mode marker + LE mode + contents — what deploy records as the
+    intended post-mutation identity."""
     import hashlib
 
-    return hashlib.sha256(b"file\0" + b"\x00" + data).hexdigest()
+    return hashlib.sha256(
+        b"file\0" + b"\x01" + mode.to_bytes(4, "little") + data
+    ).hexdigest()
 
 
 def test_apply_recovers_from_an_interrupted_run(sandbox):
@@ -1516,7 +1519,7 @@ export default module("a", {{
     dest = str(conf)
     entry = {
         "dest": dest,
-        "prior": {"kind": "file", "hash": prior_sha},
+        "prior": {"kind": "file", "hash": prior_sha, "mode": 420},
         "after": canonical_sha(half),
     }
     (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
@@ -1566,7 +1569,7 @@ export default module("a", {{
     dest = str(conf)
     entry = {
         "dest": dest,
-        "prior": {"kind": "file", "hash": prior_sha},
+        "prior": {"kind": "file", "hash": prior_sha, "mode": 420},
         "after": canonical_sha(b"half\n"),
     }
     (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(

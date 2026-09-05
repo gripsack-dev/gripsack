@@ -427,17 +427,31 @@ fn prune_undeclared(
                 };
                 match crate::template::extract_block(&existing, name) {
                     Some(content)
-                        if store::canonical_bytes_hash(content.as_bytes()) == entry.hash =>
+                        if store::canonical_bytes_hash(content.as_bytes()).as_str()
+                            == entry.hash =>
                     {
                         let new = crate::template::remove_block(&existing, name)
                             .expect("block found above");
                         // the intent is known before the mutation
-                        // (0026 §6): REMOVED when the block was the
-                        // whole file, the spliced content's hash else
+                        // (0026 §6): Removed when the block was the
+                        // whole file; otherwise the spliced content's
+                        // MODE-AWARE identity (the write preserves the
+                        // foreign file's mode, 0026 §7)
+                        #[cfg(unix)]
+                        let splice_mode = {
+                            use std::os::unix::fs::MetadataExt;
+                            std::fs::metadata(&dest)
+                                .map(|m| m.mode() & 0o7777)
+                                .unwrap_or(0o644)
+                        };
+                        #[cfg(not(unix))]
+                        let splice_mode = 0o644;
                         let intended = if new.trim().is_empty() {
-                            store::journal::REMOVED.to_string()
+                            store::journal::Intended::Removed
                         } else {
-                            store::canonical_bytes_hash(new.as_bytes())
+                            store::journal::Intended::Object(store::journal::ObjectIdentity::File(
+                                store::canonical_bytes_identity(new.as_bytes(), splice_mode),
+                            ))
                         };
                         let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
                         crate::deploy::journaled(
@@ -446,8 +460,8 @@ fn prune_undeclared(
                             &dest_name,
                             &dest,
                             intended,
-                            crate::deploy::Expect::Is(store::canonical_bytes_hash(
-                                existing.as_bytes(),
+                            Some(store::journal::ObjectIdentity::File(
+                                store::canonical_bytes_identity(existing.as_bytes(), splice_mode),
                             )),
                             || {
                                 if new.trim().is_empty() {
@@ -478,10 +492,8 @@ fn prune_undeclared(
             }
             let intended = crate::deploy::prune_intent(entry, home)?;
             let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
-            let expected = match store::journal::live_identity(&dest_dir, &dest_name)? {
-                Some(l) => crate::deploy::Expect::Is(l),
-                None => crate::deploy::Expect::Absent,
-            };
+            let expected: crate::deploy::Expect =
+                store::journal::live_identity(&dest_dir, &dest_name)?;
             crate::deploy::journaled(
                 home_dir,
                 &dest_dir,

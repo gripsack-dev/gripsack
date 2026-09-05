@@ -29,9 +29,9 @@ pub fn restore_entry(
 /// end state — computed BEFORE any mutation (0026 §6), so the journal
 /// records intent, never observation-after-the-fact.
 pub struct RestorePlan {
-    /// Journal identity after the restore: link target for owned,
-    /// canonical bytes hash otherwise.
-    pub intent: String,
+    /// The identity the restore must land (journal `after`) — typed:
+    /// a restore always knows whether it means an object or a removal.
+    pub intent: store::journal::Intended,
     pub write: RestoreWrite,
 }
 
@@ -77,7 +77,9 @@ pub fn compute_restore(
                 return Ok(None);
             }
             Ok(Some(RestorePlan {
-                intent: source.to_string_lossy().into_owned(),
+                intent: store::journal::Intended::Object(store::journal::ObjectIdentity::Link(
+                    source.to_string_lossy().into_owned(),
+                )),
                 write: RestoreWrite::Link(source),
             }))
         }
@@ -95,7 +97,12 @@ pub fn compute_restore(
                     // mode, and the intent says so exactly (0031)
                     let mode = live_mode(dest).unwrap_or(0o644);
                     Ok(Some(RestorePlan {
-                        intent: store::canonical_bytes_identity(new.as_bytes(), mode),
+                        intent: store::journal::Intended::Object(
+                            store::journal::ObjectIdentity::File(store::canonical_bytes_identity(
+                                new.as_bytes(),
+                                mode,
+                            )),
+                        ),
                         write: RestoreWrite::Bytes {
                             bytes: new.into_bytes(),
                             mode,
@@ -116,7 +123,9 @@ pub fn compute_restore(
             // mode; the live mode on pre-0.27 manifests; 0644 fresh
             let mode = entry.file_mode.or_else(|| live_mode(dest)).unwrap_or(0o644);
             Ok(Some(RestorePlan {
-                intent: store::canonical_bytes_identity(&rendered, mode),
+                intent: store::journal::Intended::Object(store::journal::ObjectIdentity::File(
+                    store::canonical_bytes_identity(&rendered, mode),
+                )),
                 write: RestoreWrite::Bytes {
                     bytes: rendered,
                     mode,
@@ -127,7 +136,9 @@ pub fn compute_restore(
             let bytes = std::fs::read(&source)?;
             let mode = entry.file_mode.or_else(|| live_mode(dest)).unwrap_or(0o644);
             Ok(Some(RestorePlan {
-                intent: store::canonical_bytes_identity(&bytes, mode),
+                intent: store::journal::Intended::Object(store::journal::ObjectIdentity::File(
+                    store::canonical_bytes_identity(&bytes, mode),
+                )),
                 write: RestoreWrite::Bytes { bytes, mode },
             }))
         }
@@ -177,26 +188,20 @@ pub(crate) fn capture_prior(
                 target.as_os_str().len()
             )));
         };
-        Ok(Some(store::Prior {
-            kind: store::PriorKind::Symlink,
-            content: Some(target.to_string()),
-            mode: None,
+        Ok(Some(store::Prior::Symlink {
+            target: target.to_string(),
         }))
     } else if meta.is_file() {
         let bytes = dest_dir.read(dest_name)?;
-        let sha = store::journal::store_prior_blob_in(home, &bytes)?;
+        let hash = store::journal::store_prior_blob_in(home, &bytes)?;
         #[cfg(unix)]
         let mode = {
             use gripsack_fs::cap_std::fs::MetadataExt;
-            Some(meta.mode() & 0o777)
+            meta.mode() & 0o7777
         };
         #[cfg(not(unix))]
-        let mode = None;
-        Ok(Some(store::Prior {
-            kind: store::PriorKind::File,
-            content: Some(sha),
-            mode,
-        }))
+        let mode = 0o644;
+        Ok(Some(store::Prior::File { hash, mode }))
     } else {
         Ok(None)
     }
@@ -213,33 +218,16 @@ pub(crate) fn restore_prior(
     prior: &store::Prior,
     home: &Path,
 ) -> std::io::Result<()> {
-    match prior.kind {
-        store::PriorKind::File => {
-            let sha = prior.content.as_deref().ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "a file prior without a blob hash (corrupt manifest)",
-                )
-            })?;
-            let bytes = std::fs::read(store::prior_blob_path(home, sha))?;
+    match prior {
+        store::Prior::File { hash, mode } => {
+            let bytes = std::fs::read(store::prior_blob_path(home, hash))?;
             #[cfg(unix)]
-            match prior.mode {
-                Some(mode) => {
-                    gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, mode)?
-                }
-                None => gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?,
-            }
+            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, *mode)?;
             #[cfg(not(unix))]
             gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?;
             Ok(())
         }
-        store::PriorKind::Symlink => {
-            let target = prior.content.as_deref().ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "a symlink prior without a target (corrupt manifest)",
-                )
-            })?;
+        store::Prior::Symlink { target } => {
             // symlink_replace over remove+create: the swap is atomic
             // and parent-fsync'd (strictly stronger than the old pair)
             gripsack_fs::symlink_replace(dest_dir, dest_name, Path::new(target))
@@ -268,9 +256,35 @@ pub fn intact_deployed_relative(
             .map(|t| t == store_path.join(&entry.from))
             .unwrap_or(false),
         Ownership::Merge => false, // merge never carries a prior
-        _ => store::canonical_file_hash_in(dest_dir, dest_name)
-            .map(|h| h == entry.hash)
+        // the manifest domain is bytes-only for templates, mode-aware
+        // for tracked copies (0031) — compute in the entry's own
+        // domain or nothing is ever "intact"
+        Ownership::Template => dest_dir
+            .read(dest_name)
+            .map(|b| store::canonical_bytes_hash(&b).as_str() == entry.hash)
             .unwrap_or(false),
+        Ownership::TrackedCopy => dest_dir
+            .read(dest_name)
+            .ok()
+            .and_then(|bytes| {
+                let mode = live_mode_meta(dest_dir, dest_name)?;
+                Some(store::canonical_bytes_identity(&bytes, mode).as_str() == entry.hash)
+            })
+            .unwrap_or(false),
+    }
+}
+
+/// The live file's full mode through the pinned capability.
+fn live_mode_meta(dir: &gripsack_fs::Dir, name: &Path) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        use gripsack_fs::cap_std::fs::MetadataExt;
+        dir.metadata(name).ok().map(|m| m.mode() & 0o7777)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (dir, name);
+        Some(0o644)
     }
 }
 
@@ -283,8 +297,15 @@ pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, store_path: &P
             .map(|t| t == store_path.join(&entry.from))
             .unwrap_or(false),
         Ownership::Merge => false, // merge never carries a prior
-        _ => store::canonical_file_hash(dest)
-            .map(|h| h == entry.hash)
+        Ownership::Template => std::fs::read(dest)
+            .map(|b| store::canonical_bytes_hash(&b).as_str() == entry.hash)
+            .unwrap_or(false),
+        Ownership::TrackedCopy => std::fs::read(dest)
+            .ok()
+            .and_then(|bytes| {
+                let mode = live_mode(dest)?;
+                Some(store::canonical_bytes_identity(&bytes, mode).as_str() == entry.hash)
+            })
             .unwrap_or(false),
     }
 }
@@ -293,22 +314,23 @@ pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, store_path: &P
 /// the restored prior's identity when a prior exists, REMOVED
 /// otherwise. Known BEFORE the mutation, from the prior blob —
 /// never observed afterward.
-pub fn prune_intent(entry: &store::DeployedEntry, home: &Path) -> std::io::Result<String> {
+pub fn prune_intent(
+    entry: &store::DeployedEntry,
+    home: &Path,
+) -> std::io::Result<store::journal::Intended> {
+    use store::journal::{Intended, ObjectIdentity};
     match &entry.prior {
-        Some(prior) => match prior.kind {
-            store::PriorKind::File => {
-                let sha = prior
-                    .content
-                    .as_deref()
-                    .expect("a file prior carries its blob hash");
-                let bytes = std::fs::read(store::prior_blob_path(home, sha))?;
-                Ok(store::canonical_bytes_hash(&bytes))
-            }
-            store::PriorKind::Symlink => Ok(prior
-                .content
-                .clone()
-                .expect("a symlink prior carries its target")),
-        },
-        None => Ok(store::journal::REMOVED.to_string()),
+        // restoring the prior: the intended identity is the prior's
+        // own — mode-aware for files (0031), verbatim for links
+        Some(store::Prior::File { hash, mode }) => {
+            let bytes = std::fs::read(store::prior_blob_path(home, hash))?;
+            Ok(Intended::Object(ObjectIdentity::File(
+                store::canonical_bytes_identity(&bytes, *mode),
+            )))
+        }
+        Some(store::Prior::Symlink { target }) => {
+            Ok(Intended::Object(ObjectIdentity::Link(target.clone())))
+        }
+        None => Ok(Intended::Removed),
     }
 }
