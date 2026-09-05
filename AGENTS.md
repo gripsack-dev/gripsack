@@ -18,6 +18,7 @@ contract; the image does.
 docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
 docker compose run --build --rm ts-test   # typescript frontend tests (deno)
 docker compose run --build --rm e2e       # flow tests (real binary + real frontend)
+docker compose run --build --rm model     # TLC model check of the transaction spec (plan/0028)
 docker compose run --build --rm -e VERSION=x.y.z release   # musl tarball → ./dist/
 ```
 
@@ -25,6 +26,14 @@ docker compose run --build --rm -e VERSION=x.y.z release   # musl tarball → ./
 `cargo test` / `pytest e2e` are fine for fast iteration; always finish
 with the compose gates. `./dist/` and `target/` may contain root-owned
 files (container mounts) — delete via docker or `sudo`.
+
+TLC (the `model` gate) writes run artifacts next to the spec —
+`specs/states/` fingerprint caches and `*_TTrace_*` counterexample
+traces, root-owned from the container. Commit the spec and its cfgs
+(`specs/Transaction.tla`, `specs/cfg/`), NEVER run debris (gitignored;
+the gate runs TLC with `-cleanup`). Keep a counterexample as a cfg
+that must FAIL, not as a committed trace — reproducible beats
+archived.
 
 ## Where things are
 
@@ -40,6 +49,7 @@ files (container mounts) — delete via docker or `sudo`.
 | `typescript/` | the typed module DSL (npm `@gripsack/core`); also embedded in the binary |
 | `e2e/` | pytest flow tests against the real binary + golden IR corpus |
 | `demos/` | VHS tapes |
+| `specs/` | the TLA+ transaction spec + TLC cfgs (plan/0028) |
 | `.agents/skills/` | maintainer skills: IR evolution, e2e, demo capture, release, PR |
 | `skills/` | public skills: `gripsack-debug` (reading run logs), `gripsack-adopt` |
 | `crates/gripsack-trace` | run tracing: JSONL logs with causal spans |

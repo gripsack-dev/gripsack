@@ -368,21 +368,23 @@ pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
     let committed = match run_marker(home)? {
         Some(marker) => {
             let current = crate::generations::current_in(home)?;
-            match (marker.previous_generation, current) {
-                (Some(_), Some(c)) if c == marker.target_generation => true,
-                (Some(prev), Some(c)) if c == prev => false,
-                (Some(marker_prev), other) => {
+            match classify(
+                marker.previous_generation,
+                marker.target_generation,
+                marker.op,
+                current,
+            ) {
+                Classification::Committed => true,
+                Classification::Uncommitted => false,
+                Classification::Ambiguous => {
                     return Err(io::Error::other(format!(
-                        "journal run marker ({}→{}) matches neither current                          ({other:?}) nor the run's previous generation — the                          journal is retained; inspect $GRIPSACK_HOME/journal                          before running again",
-                        marker_prev, marker.target_generation
+                        "journal run marker ({:?}→{}) matches neither current \
+                         ({current:?}) nor its previous generation — the \
+                         journal is retained; inspect $GRIPSACK_HOME/journal \
+                         before running again",
+                        marker.previous_generation, marker.target_generation
                     )));
                 }
-                (None, Some(c)) => match marker.op {
-                    RunOp::Apply => c >= marker.target_generation,
-                    RunOp::Rollback => c <= marker.target_generation,
-                },
-                // no current at all: the flip never happened
-                (None, None) => false,
             }
         }
         None => false,
@@ -539,26 +541,69 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<String>> 
 /// distinguishable from the mutation itself.
 fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry, home: &Dir) -> io::Result<Recovery> {
     let live = live_identity(dest_dir, dest_name)?;
-    let intended = &entry.after;
     let prior_id = prior_identity(&entry.prior, home)?;
-    let restore_what = || match &entry.prior {
+    Ok(decide_from(
+        live.as_deref(),
+        &entry.after,
+        prior_id.as_deref(),
+        &entry.prior,
+    ))
+}
+
+/// The recovery decision as a pure function of the three identities
+/// (0028): the model checker drives THIS code with abstract states —
+/// the protocol's decision logic is what gets checked, not a parallel
+/// reimplementation.
+fn decide_from(
+    live: Option<&str>,
+    intended: &str,
+    prior_id: Option<&str>,
+    prior: &PriorSerde,
+) -> Recovery {
+    let restore_what = || match prior {
         PriorSerde::Absent => "removed (was absent before the interrupted run)".into(),
         PriorSerde::File { .. } => "prior bytes restored".into(),
         PriorSerde::Symlink { target } => format!("prior symlink → {target} restored"),
     };
-    Ok(match live {
+    match live {
         // the mutation landed intact (or the intended removal held)
-        Some(l) if l == *intended => Recovery::Restore(restore_what()),
+        Some(l) if l == intended => Recovery::Restore(restore_what()),
         // live IS the prior: the mutation never landed
-        Some(l) if Some(&l) == prior_id.as_ref() => Recovery::Unchanged,
+        Some(l) if Some(l) == prior_id => Recovery::Unchanged,
         Some(_) => Recovery::Keep("changed since the interrupted run — your edit stands".into()),
         // absent now: a landed removal (intended REMOVED) or a never-
         // landed creation — either way the prior comes back
         None if prior_id.is_some() => Recovery::Restore(restore_what()),
         None => Recovery::Unchanged,
-    })
+    }
 }
 
+/// The commit classification as a pure function (0028), exact
+/// equality only: current == target is committed, current == previous
+/// is uncommitted, anything else is ambiguous and blocks. Pre-0.23
+/// markers carry no previous generation; those classify by the 0.22
+/// direction rule, correct for those versions' semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Classification {
+    Committed,
+    Uncommitted,
+    Ambiguous,
+}
+
+fn classify(previous: Option<u64>, target: u64, op: RunOp, current: Option<u64>) -> Classification {
+    match (previous, current) {
+        (Some(_), Some(c)) if c == target => Classification::Committed,
+        (Some(prev), Some(c)) if c == prev => Classification::Uncommitted,
+        (Some(_), _) => Classification::Ambiguous,
+        (None, Some(c)) => match op {
+            RunOp::Apply if c >= target => Classification::Committed,
+            RunOp::Rollback if c <= target => Classification::Committed,
+            _ => Classification::Uncommitted,
+        },
+        // no current at all: the flip never happened
+        (None, None) => Classification::Uncommitted,
+    }
+}
 fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> io::Result<()> {
     match prior {
         PriorSerde::Absent => {
@@ -916,3 +961,8 @@ mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
     }
 }
+
+/// The exhaustive state-machine model of this protocol
+/// (plan/0028) — see the module's own documentation.
+#[cfg(test)]
+mod model;

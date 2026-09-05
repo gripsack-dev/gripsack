@@ -2,6 +2,7 @@
 #   docker compose run --build --rm test      # fmt + clippy + cargo test
 #   docker compose run --build --rm ts-test   # deno test on the frontend
 #   docker compose run --build --rm e2e       # flow tests (offline)
+#   docker compose run --build --rm model     # TLC over the transaction spec (plan/0028)
 #   docker compose run --build --rm -e VERSION=x.y.z release   # tarball → ./dist/
 
 services:
@@ -20,6 +21,14 @@ services:
       dockerfile: Dockerfile
       target: ts-test
     command: 'echo "gate passed: typescript frontend tests (deno test)"'
+
+  model:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: model
+    # TLC runs at image-build time; the image existing IS the gate.
+    command: 'echo "gate passed: transaction model checks clean (TLC)"'
 
   build:
     build:

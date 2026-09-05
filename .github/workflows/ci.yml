@@ -23,6 +23,10 @@ jobs:
       - name: E2E (flow suite)
         run: docker compose run --build --rm e2e
 
+      # the TLA+ spec of the journal protocol, model-checked (0028)
+      - name: Transaction model (TLC)
+        run: docker compose run --build --rm model
+
   # macOS behavioral round (plan/0020's queued item): the release
   # matrix builds on macOS; this RUNS the full flow suite there —
   # APFS semantics, case-insensitivity, symlink topology, Gatekeeper
