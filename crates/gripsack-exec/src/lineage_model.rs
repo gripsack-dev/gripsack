@@ -13,7 +13,7 @@
 //! > by being observed, and an adopted origin remains recoverable
 //! > until gripsack successfully relinquishes ownership.
 
-use crate::deploy::{CopyPlan, plan_copy};
+use crate::deploy::{CopyPlan, LinkPlan, plan_copy, plan_link};
 
 /// Abstract contents: 0 = the foreign original, 1 = repo content A,
 /// 2 = repo content B, 3 = a user/application edit.
@@ -54,6 +54,16 @@ impl Declaration {
     }
 }
 
+/// The declaration's ownership mode (0033 R7): copies and links share
+/// one lineage epoch (the origin rides across a mode change), but the
+/// AUTHORITY differs — a link over preserved drift must refuse where
+/// a copy re-evaluates.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum DeployMode {
+    Copy,
+    Link,
+}
+
 /// One destination's lineage state. `manifest` is what the generation
 /// records: (the recorded hash, whether it was preserved drift) — the
 /// two facts the next apply reads. `origin` is the epoch's prior.
@@ -73,6 +83,7 @@ struct Lineage {
     /// Some = an ownership epoch with a recoverable origin
     origin: Option<Content>,
     declaration: Declaration,
+    mode: DeployMode,
 }
 
 /// The actions the model enumerates.
@@ -94,6 +105,8 @@ enum Action {
     DropA,
     /// Spelling B leaves the repo.
     DropB,
+    /// The repo switches the declaration copy ↔ link (0033 R7).
+    ModeChange,
     /// gripsack apply (no take-over).
     Apply,
     /// gripsack apply --take-over (adoption or explicit absorb).
@@ -133,13 +146,26 @@ fn step(mut l: Lineage, action: Action) -> Lineage {
             l
         }
         Action::ExternalChmod => {
-            l.mode_drifted = true;
+            // a symlink has no content mode, and chmod THROUGH our
+            // link hits the read-only store payload (EACCES) — drift
+            // exists only for file-form destinations
+            if l.live != 4 {
+                l.mode_drifted = true;
+            }
             l
         }
         // repo-side declaration changes never touch the filesystem —
         // and never touch the ORIGIN: the epoch is keyed by the
         // physical cell, so gaining or dropping a spelling mid-epoch
         // inherits the lineage (0030 §H4's destination-keyed carry)
+        Action::ModeChange => {
+            // repo-side, no fs effect — the lineage rides the epoch
+            l.mode = match l.mode {
+                DeployMode::Copy => DeployMode::Link,
+                DeployMode::Link => DeployMode::Copy,
+            };
+            l
+        }
         Action::DeclareA => {
             l.declaration = l.declaration.with(Declaration::SpellingA);
             l
@@ -164,6 +190,33 @@ fn step(mut l: Lineage, action: Action) -> Lineage {
                 return l;
             }
             if !l.declaration.declared() {
+                return l;
+            }
+            // the owned-link branch — the REAL rule (0033 R7):
+            // plan_link, not plan_copy. Ours = the live object is our
+            // link (content value 4); recorded = a manifest entry that
+            // is NOT preserved drift
+            if l.mode == DeployMode::Link {
+                let ours = l.live == 4;
+                let recorded = l.manifest.as_ref().is_some_and(|(_, preserved)| !preserved);
+                match plan_link(true, ours, recorded, matches!(action, Action::TakeOver)) {
+                    LinkPlan::Link => {
+                        l.live = 4; // pointing at our store path
+                        l.mode_drifted = false;
+                        l.manifest = Some((l.desired.to_string(), false));
+                    }
+                    LinkPlan::TakeOver => {
+                        if l.origin.is_none() {
+                            l.origin = Some(l.live);
+                        }
+                        l.live = 4;
+                        l.mode_drifted = false;
+                        l.manifest = Some((l.desired.to_string(), false));
+                    }
+                    // the run errors — nothing changes (a mode change
+                    // over preserved drift lands here)
+                    LinkPlan::Refuse => {}
+                }
                 return l;
             }
             if matches!(action, Action::TakeOver) {
@@ -252,8 +305,12 @@ fn check_transition(state: &Lineage, action: Action, next: &Lineage) -> Result<(
     }
     // chmod-only drift (0031): an apply must not silently re-mode a
     // managed file — the mode-aware identity reads it as drift, and
-    // drift is preserved
+    // drift is preserved. Copy mode only: under a link declaration
+    // the destination is replaced by the link itself — the file and
+    // its mode go together, which is a mode change, not a revert
+    // (the preserved-drift oracle above still guards the bytes)
     if matches!(action, Action::Apply)
+        && state.mode == DeployMode::Copy
         && state.mode_drifted
         && state.declaration.declared()
         && (next.live != state.live || !next.mode_drifted)
@@ -295,6 +352,7 @@ fn ownership_lineage_holds_over_every_sequence() {
         Action::SourceUpdate,
         Action::ExternalWrite,
         Action::ExternalChmod,
+        Action::ModeChange,
         Action::DeclareA,
         Action::DeclareB,
         Action::DropA,
@@ -313,6 +371,7 @@ fn ownership_lineage_holds_over_every_sequence() {
             manifest: None,
             origin: None,
             declaration: Declaration::SpellingA,
+            mode: DeployMode::Copy,
         },
         Lineage {
             live: 1,
@@ -321,6 +380,7 @@ fn ownership_lineage_holds_over_every_sequence() {
             manifest: Some(("1".to_string(), false)),
             origin: None,
             declaration: Declaration::SpellingA,
+            mode: DeployMode::Copy,
         },
     ];
     let mut seen = std::collections::HashSet::new();

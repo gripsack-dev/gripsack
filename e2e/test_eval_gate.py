@@ -12,6 +12,7 @@ from conftest import (
     GRIP,
     grip,
     make_env_repo,
+    refresh_host,
 )
 
 
@@ -631,3 +632,35 @@ export default module("a", { install: [] });
     # when npm's latest is 0.21.0, and the frontend doesn't republish
     # on every core patch
     assert "@^{}.{}.0)".format(*out.stdout.split("frontend is ")[1].split(" —")[0].split(".")[:2]) in out.stdout, out.stdout
+
+
+def test_a_pin_symlink_to_a_nonpackage_grants_nothing(sandbox):
+    """0033 R3: node_modules/@gripsack/core symlinking OUTSIDE the
+    repo must not enlarge the eval sandbox unless the resolved target
+    proves it is a @gripsack/core package (package.json name). The
+    reviewer's repro: an outside read failed, the symlink made it
+    succeed."""
+    outside = sandbox / "outside"
+    outside.mkdir()
+    (outside / "secret.ts").write_text("export default 42;\n")
+
+    repo = make_env_repo(sandbox / "myenv", {})
+    # a module importing outside the repo — the sandbox denies the read
+    (repo / "modules" / "evil.ts").write_text(
+        f"""
+import {{ module }} from "@gripsack/core";
+import secret from "{outside}/secret.ts";
+
+export default module("evil", {{}});
+"""
+    )
+    refresh_host(repo)
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "the outside import must be denied"
+
+    # the planted symlink earns no grant: the target is no package
+    pin = repo / "node_modules" / "@gripsack"
+    pin.mkdir(parents=True)
+    (pin / "core").symlink_to(outside)
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "a non-package symlink must not enlarge the sandbox"

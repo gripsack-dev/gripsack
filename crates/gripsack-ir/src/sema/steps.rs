@@ -113,6 +113,71 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                 }
             }
         }
+        check_cycles(name, module, steps, diagnostics);
+    }
+}
+
+// E120: a cycle in a module's step `needs` graph is unsatisfiable —
+// check it statically, with the same span treatment as E104.
+fn check_cycles(
+    name: &str,
+    module: &crate::model::Module,
+    steps: &[crate::step::Step],
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    // DFS with a color map; intra-module needs only (cross-module
+    // refs order modules, not steps)
+    let mut color: std::collections::BTreeMap<&str, u8> = std::collections::BTreeMap::new();
+    fn visit<'a>(
+        id: &'a str,
+        steps: &'a [crate::step::Step],
+        color: &mut std::collections::BTreeMap<&'a str, u8>,
+        path: &mut Vec<String>,
+    ) -> Option<Vec<String>> {
+        match color.get(id) {
+            Some(2) => return None,
+            Some(1) => {
+                let start = path.iter().position(|p| p == id).unwrap_or(0);
+                let mut cycle = path[start..].to_vec();
+                cycle.push(id.to_string());
+                return Some(cycle);
+            }
+            _ => {}
+        }
+        color.insert(id, 1);
+        path.push(id.to_string());
+        if let Some(step) = steps.iter().find(|s| s.id == id) {
+            for need in &step.needs {
+                if !need.contains(':')
+                    && steps.iter().any(|s| s.id == *need)
+                    && let Some(cycle) = visit(need, steps, color, path)
+                {
+                    return Some(cycle);
+                }
+            }
+        }
+        path.pop();
+        color.insert(id, 2);
+        None
+    }
+    let mut path = Vec::new();
+    for step in steps {
+        if let Some(cycle) = visit(&step.id, steps, &mut color, &mut path) {
+            diagnostics.push(
+                Diagnostic::error(
+                    codes::STEP_CYCLE,
+                    format!(
+                        "module {name:?}: step needs form a cycle: {}",
+                        cycle.join(" → ")
+                    ),
+                )
+                .with_label(
+                    step.span.clone().or_else(|| module.span.clone()),
+                    "in this module",
+                ),
+            );
+            return; // one cycle per module is diagnosis enough
+        }
     }
 }
 

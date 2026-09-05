@@ -623,3 +623,36 @@ export default module("shell", {
     final = bashrc.read_text()
     assert final.count("# >>> gripsack module=shell") == 1
     assert "SINK=2" not in final
+
+
+def test_merge_into_private_file_rolls_back(sandbox):
+    """0033 (review): a managed block in a 0600 file, updated, then
+    rolled back — the splice must not misread the mode as a change."""
+    import stat
+
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "block.conf").write_text("line1\n")
+    dest = sandbox / ".bashrc"
+    dest.write_text("# my bashrc\n")
+    dest.chmod(0o600)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, merge } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/block.conf": merge("~/.bashrc") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert oct(stat.S_IMODE(dest.stat().st_mode)) == "0o600", "merge preserves the mode"
+    (confdir / "block.conf").write_text("line2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    out = grip("rollback", "1", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "line1" in dest.read_text()
+    assert "line2" not in dest.read_text()

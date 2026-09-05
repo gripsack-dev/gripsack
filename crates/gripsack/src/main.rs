@@ -253,10 +253,26 @@ fn main() -> ExitCode {
                 Ok(o) => o,
                 Err(code) => return code,
             };
-            let ir = match commands::check_ir(&outcome.ir_json, palette) {
+            // the same validation pipeline check/apply run (0033 R5):
+            // a plan that succeeds where apply would fail is a lie
+            let ir = match commands::validated_ir(&outcome, &repo, host.as_deref(), palette) {
                 Ok(ir) => ir,
                 Err(code) => return code,
             };
+            {
+                let steps = gripsack_exec::expand::expand_all(&ir.modules);
+                match gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &steps) {
+                    Ok(()) => {}
+                    Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
+                        eprintln!("{}", render::render_diagnostics(&[d], palette));
+                        return ExitCode::FAILURE;
+                    }
+                    Err(e) => {
+                        eprintln!("grip: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
             // host-inputs header (0013 D6): the facts that went in and
             // the probes the core bound — what keeps hardware-reactive
             // plans from reading as nondeterminism.

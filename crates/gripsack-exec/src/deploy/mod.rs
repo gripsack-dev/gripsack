@@ -117,6 +117,31 @@ struct DeployOutcome {
     preserved_drift: bool,
 }
 
+/// The owned-link disposition as a pure function (0033 R7) — the
+/// lineage explorer drives THIS, like plan_copy for copies. `exists`:
+/// anything at the destination; `ours`: a link into the store;
+/// `recorded`: a previous manifest entry that is NOT preserved drift
+/// (preserved drift authorizes nothing, including a mode change).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LinkPlan {
+    /// Nothing there (or already ours to redeploy): point the link.
+    Link,
+    /// Absorb the foreign object --take-over (a prior is captured).
+    TakeOver,
+    /// A foreign object blocks the deploy — move it or --take-over.
+    Refuse,
+}
+
+pub(crate) fn plan_link(exists: bool, ours: bool, recorded: bool, take_over: bool) -> LinkPlan {
+    if exists && !ours && !recorded && !take_over {
+        LinkPlan::Refuse
+    } else if take_over && !ours && !recorded {
+        LinkPlan::TakeOver
+    } else {
+        LinkPlan::Link
+    }
+}
+
 /// What the precondition expects of the live object before the
 /// mutation — None: the destination must be ABSENT, anything
 /// appearing aborts the run. (The 0031 typed form of the old
@@ -314,7 +339,11 @@ pub(crate) fn deploy_entry(
             // external satisfaction (0009 critique): never overwrite a
             // path that is neither ours (symlink into the store) nor
             // recorded in a previous manifest — unless --take-over.
-            let recorded = prev.is_some();
+            // A PRESERVED-DRIFT record authorizes nothing (0029 §2),
+            // and that includes a mode change: switching the
+            // declaration to an owned link over drift the copy mode
+            // preserved must not overwrite the user's file (0033 R7).
+            let recorded = prev.is_some_and(|e| !e.preserved_drift);
             let ours = std::fs::read_link(&dest)
                 .map(|t| t.starts_with(&ctx.home))
                 .unwrap_or(false);
@@ -322,7 +351,8 @@ pub(crate) fn deploy_entry(
             // foreign symlinks refuse too (review finding E4): a stow/
             // chezmoi link is exactly the foreign path this guard is
             // for — absorb it only via --take-over, never silently
-            if dest.symlink_metadata().is_ok() && !ours && !recorded && !take {
+            let plan = plan_link(dest.symlink_metadata().is_ok(), ours, recorded, take);
+            if plan == LinkPlan::Refuse {
                 return Err(ExecError::Step {
                     module: module.to_string(),
                     step: "deploy".into(),
@@ -337,7 +367,7 @@ pub(crate) fn deploy_entry(
             // journal, and the link swap pin ONE parent inode.
             let (dest_dir, dest_name) = dest_capability(&dest)?;
             // 0015 §4: a genuine take-over records what was there first
-            let prior = if take && !ours && !recorded {
+            let prior = if plan == LinkPlan::TakeOver {
                 capture_prior(&dest_dir, &dest_name, ctx.home_dir()?)?
             } else {
                 None
@@ -525,12 +555,20 @@ pub(crate) fn deploy_entry(
                 CopyPlan::TakeOver => {
                     // 0015 §4: record the foreign bytes before absorbing
                     let prior = capture_prior(&dest_dir, &dest_name, ctx.home_dir()?)?;
-                    // the absorbed file is OURS now — it lands the
-                    // managed mode (0031), matching the recorded
-                    // identity exactly
+                    // adoption is not a fresh deploy (0033 R1): the
+                    // absorbed file KEEPS its mode — taking over a 0600
+                    // secret must not widen it to 0644, not even for a
+                    // rename's instant. (A symlink at the destination
+                    // has no content mode to preserve — the managed
+                    // rule applies.) Repo-driven exec changes apply
+                    // from the next update.
+                    let takeover_mode = match &observed {
+                        Some(Observation::File { mode, .. }) => *mode,
+                        _ => intent_mode,
+                    };
                     let after =
                         store::journal::Intended::Object(store::journal::ObjectIdentity::File(
-                            store::canonical_bytes_identity(content, intent_mode),
+                            store::canonical_bytes_identity(content, takeover_mode),
                         ));
                     journaled(
                         ctx.home_dir()?,
@@ -544,7 +582,7 @@ pub(crate) fn deploy_entry(
                                 &dest_dir,
                                 &dest_name,
                                 content,
-                                intent_mode,
+                                takeover_mode,
                             )
                         },
                     )?;
@@ -552,7 +590,7 @@ pub(crate) fn deploy_entry(
                         summary: format!("took over {} → {}", from, entry.to),
                         kind: ReportKind::Configured,
                         hash,
-                        file_mode: Some(intent_mode),
+                        file_mode: Some(takeover_mode),
                         prior,
                         preserved_drift: false,
                     }

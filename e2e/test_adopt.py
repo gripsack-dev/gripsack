@@ -208,3 +208,19 @@ def test_adopt_rollback_keeps_post_adopt_user_edits(sandbox):
     out = grip("rollback", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert dest.read_text() == 'theme = "mine now"\n'
+
+
+def test_adopt_sanitizes_digit_leading_names(sandbox):
+    """0033 R6: a digit-leading dotfile yields a valid TS module —
+    check passes on the generated code, no user repair needed."""
+    confdir = sandbox / ".config"
+    confdir.mkdir(parents=True)
+    (confdir / "9lives.conf").write_text("lives=9\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip(
+        "adopt", "~/.config/9lives.conf", "--mode", "tracked_copy",
+        "--host", "testhost", "--yes", cwd=repo,
+    )
+    assert out.returncode == 0, out.stderr
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr

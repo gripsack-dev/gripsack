@@ -38,6 +38,8 @@ pub mod codes {
     pub const INVALID_ENV_NAME: &str = "E117";
     /// Steps modules with more than one fetch step cannot be pinned.
     pub const UNPINNABLE_STEPS: &str = "E118";
+    /// A cycle in a module's step `needs` graph (0033 R4).
+    pub const STEP_CYCLE: &str = "E120";
     /// Two declarations resolve to one physical destination (aliases:
     /// `~` vs `$HOME` vs absolute, symlinked ancestors) — 0030 §P0-1.
     pub const DESTINATION_ALIAS: &str = "E119";

@@ -33,6 +33,15 @@ def test_check_fails_on_lint_error(sandbox):
     assert not (sandbox / ".config/demo").exists()
 
 
+def test_plan_fails_on_lint_error(sandbox):
+    """0033 R5: plan runs the same validation pipeline as check and
+    apply — a lint error is a plan failure, not a surprise at apply."""
+    repo = make_lint_repo(sandbox, "BAD_KEY = 1\n")
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, out.stdout + out.stderr
+    assert "griplint-demo/A01" in out.stderr
+
+
 LINT_FIXTURE = """#!/usr/bin/env python3
 import json, sys
 req = json.loads(sys.stdin.readline())

@@ -733,6 +733,139 @@ export default module("demo", {{
     assert not pending.exists(), "the stale record is discarded"
 
 
+def test_exec_copy_rollback_restores_v1(sandbox):
+    """0033 (review): two versions of a 0755 tracked copy; rollback to
+    generation 1 restores v1's bytes AND the exec bit. (0.27 compared
+    rollback identities across domains and kept gen 2.)"""
+    import os
+
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    script = confdir / "tool.sh"
+    script.write_text("#!/bin/sh\necho v1\n")
+    script.chmod(0o755)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/tool.sh": trackedCopy("~/.local/bin/tool.sh") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    script.write_text("#!/bin/sh\necho v2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".local/bin/tool.sh"
+    assert dest.read_text().endswith("v2\n")
+    out = grip("rollback", "1", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text().endswith("v1\n"), dest.read_text()
+    assert os.stat(dest).st_mode & 0o111, "exec bit restored too"
+
+
+def test_takeover_preserves_a_private_files_mode(sandbox):
+    """0033 R1: adopting a 0600 secret keeps it 0600 — the live file
+    AND its prior blob. Adoption is not a fresh deploy."""
+    import os
+
+    secret = sandbox / ".config/demo/secret.conf"
+    secret.parent.mkdir(parents=True)
+    secret.write_text("token=hunter2\n")
+    secret.chmod(0o600)
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip(
+        "adopt", "~/.config/demo/secret.conf", "--mode", "tracked_copy",
+        "--host", "testhost", "--yes", cwd=repo,
+    )
+    assert out.returncode == 0, out.stderr
+    assert oct(os.stat(secret).st_mode & 0o777) == "0o600", (
+        "take-over must not widen a private file"
+    )
+    prior_dir = sandbox / ".local/share/gripsack/prior"
+    assert oct(os.stat(prior_dir).st_mode & 0o777) == "0o700", (
+        "the prior store is owner-only"
+    )
+    for blob in prior_dir.iterdir():
+        assert oct(os.stat(blob).st_mode & 0o777) == "0o600", (
+            "a backed-up secret is 0600"
+        )
+
+
+def test_preserved_copy_blocks_a_mode_switch_to_owned(sandbox):
+    """0033 R7: a tracked copy that preserved user drift, redeclared
+    as an owned symlink — the apply must REFUSE, not overwrite the
+    user's edit. Preserved drift authorizes nothing, including a
+    mode change."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    dest = sandbox / ".config/demo/a.conf"
+    dest.parent.mkdir(parents=True)
+    dest.write_text("original\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip(
+        "adopt", "~/.config/demo/a.conf", "--mode", "tracked_copy",
+        "--host", "testhost", "--yes", cwd=repo,
+    )
+    assert out.returncode == 0, out.stderr
+
+    # the user edits; the next apply preserves (drift)
+    dest.write_text("user edit\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "drifted" in out.stdout, out.stdout
+
+    # redeclare as an owned symlink — must refuse, not clobber
+    (repo / "modules" / "a-conf.ts").write_text(
+        """
+import { module, symlink } from "@gripsack/core";
+
+export default module("a-conf", {
+  install: { "configs/demo/a.conf": symlink("~/.config/demo/a.conf") },
+});
+"""
+    )
+    refresh_host(repo)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "the mode switch must refuse over preserved drift"
+    assert "not deployed by gripsack" in out.stderr, out.stderr
+    assert dest.read_text() == "user edit\n", "the user's edit stands"
+
+
+def test_step_needs_order_execution(sandbox):
+    """0033 R4: a consumer declared BEFORE its producer still runs
+    after it — `needs` orders execution, not just validation."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module } from "@gripsack/core";
+
+export default module("demo", {
+  steps: [
+    {
+      id: "consume",
+      action: { kind: "custom_shell", script: "cat $HOME/marker >/dev/null" },
+      needs: ["produce"],
+      phase: "custom",
+    },
+    {
+      id: "produce",
+      action: { kind: "custom_shell", script: "echo made > $HOME/marker" },
+      phase: "custom",
+    },
+  ],
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / "marker").read_text() == "made\n"
+
+
 def test_current_link_must_resolve_under_home(sandbox):
     """0030 §H10: `current -> /tmp/42` is corruption, not a
     generation — apply fails closed."""

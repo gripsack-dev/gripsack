@@ -29,9 +29,11 @@ pub fn default_name(dest: &Path, is_dir: bool) -> Option<String> {
     if clean.is_empty() { None } else { Some(clean) }
 }
 
-/// A TS-safe identifier for the module name.
+/// A TS-safe identifier for the module name: [alnum _], never
+/// digit-leading, never empty (0033 R6).
 pub fn ident(name: &str) -> String {
-    name.chars()
+    let mapped: String = name
+        .chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '_' {
                 c
@@ -39,7 +41,19 @@ pub fn ident(name: &str) -> String {
                 '_'
             }
         })
-        .collect()
+        .collect();
+    match mapped.chars().next() {
+        Some(c) if c.is_ascii_digit() => format!("_{mapped}"),
+        Some(_) => mapped,
+        None => "_".into(),
+    }
+}
+
+/// A TS string literal for an interpolated value (0033 R6): JSON
+/// quoting IS valid TypeScript, and a path containing quotes or
+/// backslashes can neither break nor inject the generated module.
+fn quoted(value: &str) -> String {
+    serde_json::to_string(value).expect("a string always serializes")
 }
 
 /// "~/…" for a path under $HOME, absolute otherwise.
@@ -60,14 +74,17 @@ pub const MODE_MERGE: &str = "merge";
 /// The generated modules/<name>.ts — exactly what the user would have
 /// written by hand.
 pub fn module_source(name: &str, to: &str, first_rel: &str, mode: &str, is_dir: bool) -> String {
+    let source_path = quoted(&format!("configs/{name}/{first_rel}"));
+    let tree_path = quoted(&format!("configs/{name}"));
+    let (name, to) = (quoted(name), quoted(to));
     match (mode, is_dir) {
         (MODE_MERGE, _) => format!(
             "import {{ merge, module }} from \"@gripsack/core\";\n\n\
-             export default module(\"{name}\", {{\n  config: {{\n    \"configs/{name}/{first_rel}\": merge(\"{to}\", \"#\"),\n  }},\n}});\n"
+             export default module({name}, {{\n  config: {{\n    {source_path}: merge({to}, \"#\"),\n  }},\n}});\n"
         ),
         (_, true) => format!(
             "import {{ module, tree }} from \"@gripsack/core\";\n\n\
-             export default module(\"{name}\", {{\n  config: tree(\"configs/{name}\", \"{to}\", \"{mode}\"),\n}});\n"
+             export default module({name}, {{\n  config: tree({tree_path}, {to}, \"{mode}\"),\n}});\n"
         ),
         _ => {
             let ctor = match mode {
@@ -76,7 +93,7 @@ pub fn module_source(name: &str, to: &str, first_rel: &str, mode: &str, is_dir: 
             };
             format!(
                 "import {{ {ctor}, module }} from \"@gripsack/core\";\n\n\
-                 export default module(\"{name}\", {{\n  config: {{\n    \"configs/{name}/{first_rel}\": {ctor}(\"{to}\"),\n  }},\n}});\n"
+                 export default module({name}, {{\n  config: {{\n    {source_path}: {ctor}({to}),\n  }},\n}});\n"
             )
         }
     }
@@ -237,6 +254,33 @@ mod tests {
     fn update_host_bails_on_unexpected_shape() {
         assert!(update_host("const x = 1;\n", "zed").is_none());
         assert!(update_host("import a from \"./a.ts\";\n", "zed").is_none());
+    }
+
+    #[test]
+    fn ident_is_always_a_valid_ts_identifier() {
+        assert_eq!(ident("9pocket"), "_9pocket");
+        assert_eq!(ident("my-mod"), "my_mod");
+        assert_eq!(ident("---"), "___");
+        assert_eq!(ident("..."), "___");
+        assert_eq!(ident(""), "_");
+    }
+
+    #[test]
+    fn module_source_escapes_hostile_strings() {
+        // a filename with quotes/backslashes can neither break the
+        // generated module nor inject into it (0033 R6)
+        let src = module_source(
+            "demo",
+            "~/.config/we\"ird.toml",
+            "a\"b.toml",
+            MODE_TRACKED_COPY,
+            false,
+        );
+        assert!(
+            src.contains(r#"trackedCopy("~/.config/we\"ird.toml")"#),
+            "{src}"
+        );
+        assert!(src.contains(r#""configs/demo/a\"b.toml""#), "{src}");
     }
 
     #[test]

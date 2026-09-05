@@ -176,6 +176,9 @@ pub fn store_prior_blob_in(home: &Dir, bytes: &[u8]) -> io::Result<String> {
         .symlink_metadata(&rel)
         .map(|m| m.is_file())
         .unwrap_or(false);
+    // prior blobs are user file bytes — secrets by nature (0033 R2):
+    // they land 0600 and the directory is 0700, regardless of umask
+    tighten_prior_dir(home)?;
     if present {
         // trust nothing by name (0029 §8): the blob exists — prove the
         // bytes or quarantine the impostor aside and write the truth
@@ -183,12 +186,56 @@ pub fn store_prior_blob_in(home: &Dir, bytes: &[u8]) -> io::Result<String> {
         if crate::hash::hex_sha256(&existing) != sha {
             let aside = Path::new("prior").join(format!("{sha}.corrupt"));
             home.rename(&rel, home, &aside)?;
-            gripsack_fs::atomic_write(home, &rel, bytes)?;
+            gripsack_fs::atomic_write_with_mode(home, &rel, bytes, 0o600)?;
+        } else {
+            // a pre-0.29 blob may sit at 0644 — tighten in place
+            tighten_blob(home, &rel)?;
         }
     } else {
-        gripsack_fs::atomic_write(home, &rel, bytes)?;
+        gripsack_fs::atomic_write_with_mode(home, &rel, bytes, 0o600)?;
     }
     Ok(sha)
+}
+
+/// The prior directory is 0700 — blob names are content hashes, but
+/// the listing itself leaks what files were ever adopted.
+fn tighten_prior_dir(home: &Dir) -> io::Result<()> {
+    home.create_dir_all(Path::new("prior"))?;
+    #[cfg(unix)]
+    {
+        use gripsack_fs::cap_std::fs::MetadataExt as _;
+        use std::os::unix::fs::PermissionsExt as _;
+        let meta = home.symlink_metadata(Path::new("prior"))?;
+        if meta.mode() & 0o777 != 0o700 {
+            home.set_permissions(
+                Path::new("prior"),
+                gripsack_fs::cap_std::fs::Permissions::from_std(std::fs::Permissions::from_mode(
+                    0o700,
+                )),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// A blob is 0600 — tighten a pre-0.29 one in place.
+#[cfg(unix)]
+fn tighten_blob(home: &Dir, rel: &Path) -> io::Result<()> {
+    use gripsack_fs::cap_std::fs::MetadataExt as _;
+    let meta = home.symlink_metadata(rel)?;
+    if meta.mode() & 0o777 != 0o600 {
+        use std::os::unix::fs::PermissionsExt as _;
+        home.set_permissions(
+            rel,
+            gripsack_fs::cap_std::fs::Permissions::from_std(std::fs::Permissions::from_mode(0o600)),
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn tighten_blob(_home: &Dir, _rel: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 /// An entry's path relative to the home capability: the journal's

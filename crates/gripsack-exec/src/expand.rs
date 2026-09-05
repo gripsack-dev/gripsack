@@ -94,8 +94,62 @@ pub fn expand_all(
 ) -> std::collections::BTreeMap<String, Vec<Step>> {
     modules
         .iter()
-        .map(|(name, m)| (name.clone(), m.steps.clone().unwrap_or_else(|| expand(m))))
+        .map(|(name, m)| {
+            (
+                name.clone(),
+                order_by_needs(m.steps.clone().unwrap_or_else(|| expand(m))),
+            )
+        })
         .collect()
+}
+
+/// Steps execute in `needs` order (0033 R4): a Kahn pass over the
+/// intra-module refs, declaration order breaking ties. Unknown refs
+/// were E104 at sema; cycles were E120 — a cycle that arrives anyway
+/// (hand-written IR) leaves the remaining steps in declaration order
+/// rather than dropping them.
+fn order_by_needs(steps: Vec<Step>) -> Vec<Step> {
+    let mut done = vec![false; steps.len()];
+    let mut out = Vec::with_capacity(steps.len());
+    loop {
+        let mut progressed = false;
+        for (i, step) in steps.iter().enumerate() {
+            if done[i] {
+                continue;
+            }
+            let ready = step.needs.iter().all(|need| {
+                match need.split_once(':') {
+                    // cross-module refs order MODULES (dep_edges), not
+                    // this list
+                    Some(_) => true,
+                    None => !steps
+                        .iter()
+                        .enumerate()
+                        .any(|(j, s)| s.id == *need && !done[j]),
+                }
+            });
+            if ready {
+                out.push(step.clone());
+                done[i] = true;
+                progressed = true;
+            }
+        }
+        if out.len() == steps.len() {
+            return out;
+        }
+        if !progressed {
+            // a cycle slipped past sema (hand-written IR): keep the
+            // remainder rather than dropping steps
+            out.extend(
+                steps
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| !done[*i])
+                    .map(|(_, s)| s.clone()),
+            );
+            return out;
+        }
+    }
 }
 
 /// A module's effective steps: declared ones pass through, declarative
