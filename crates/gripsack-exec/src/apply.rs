@@ -154,6 +154,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         }
     }
     modules.extend(outcome.modules);
+    if let Some(prev) = &prev_manifest {
+        inherit_priors(prev, &mut modules);
+    }
     let next = next_gen;
 
     // Everything between the scheduler and the flip is recoverable
@@ -193,7 +196,17 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // the flip is the run's commit point: everything the journal
     // recorded is now owned by the new generation — the crash window
     // closes here
-    store::journal::commit_run(ctx.home_dir()?)?;
+    if let Err(e) = store::journal::commit_run(ctx.home_dir()?) {
+        // the flip already committed — this is cleanup-pending, not a
+        // failed apply (0029 §13); the next run's reconcile finishes it
+        reports.push(crate::report::StepReport {
+            module: "*".into(),
+            summary: format!(
+                "generation {next} active; journal cleanup pending ({e}) — the next apply finishes it"
+            ),
+            kind: crate::report::ReportKind::Warned,
+        });
+    }
     reports.extend(crate::activate::run_post_link(&order, &steps_by_module));
     reports.extend(crate::activate::run_post_activate(&order, &steps_by_module));
     info!(generation = next, "activated");
@@ -239,6 +252,32 @@ pub(crate) fn scoped_order(
             .collect(),
         missing,
     ))
+}
+
+/// Ownership lineage (0029 §1): an origin prior rides the whole
+/// epoch — every generation carries it forward per destination until
+/// a successful restore or prune ends the epoch. Take-over captures a
+/// fresh prior at deploy; this pass inherits everything else, keyed
+/// by DESTINATION (a module rename transfers the origin to the new
+/// module rather than losing it).
+fn inherit_priors(prev: &store::Generation, modules: &mut BTreeMap<String, store::ModuleState>) {
+    let mut by_dest: std::collections::BTreeMap<&str, &store::Prior> = Default::default();
+    for state in prev.modules.values() {
+        for entry in &state.entries {
+            if let Some(prior) = &entry.prior {
+                by_dest.entry(entry.to.as_str()).or_insert(prior);
+            }
+        }
+    }
+    for state in modules.values_mut() {
+        for entry in &mut state.entries {
+            if entry.prior.is_none()
+                && let Some(prior) = by_dest.get(entry.to.as_str())
+            {
+                entry.prior = Some((*prior).clone());
+            }
+        }
+    }
 }
 
 /// A failed run's ONE compensating path (0025 §D): reconcile the
@@ -314,7 +353,12 @@ fn pre_flip(
     // place no-clobber — a failure here leaves nothing visible, let
     // alone activated
     let profile = crate::env::render_profile(&generation.modules);
-    store::generations::publish_generation(ctx.home_dir()?, &generation, profile.as_deref())?;
+    store::generations::publish_generation(
+        ctx.home_dir()?,
+        &generation,
+        profile.as_deref(),
+        &ctx.home,
+    )?;
     Ok(Some(generation))
 }
 
@@ -347,6 +391,13 @@ fn prune_undeclared(
         .collect();
     for (name, state) in &prev.modules {
         for entry in &state.entries {
+            // preserved drift was never written by gripsack — prune
+            // never touches it (0029 §2; before this, the recorded
+            // observed hash made the intact check pass and prune
+            // DELETED the user's drifted file)
+            if entry.preserved_drift {
+                continue;
+            }
             if entry.mode == gripsack_ir::Ownership::Merge {
                 if declared_merge.contains(&(name.as_str(), entry.to.as_str())) {
                     continue;
@@ -381,6 +432,9 @@ fn prune_undeclared(
                             &dest_name,
                             &dest,
                             intended,
+                            crate::deploy::Expect::Is(store::canonical_bytes_hash(
+                                existing.as_bytes(),
+                            )),
                             || {
                                 if new.trim().is_empty() {
                                     dest_dir.remove_file(&dest_name)
@@ -402,7 +456,7 @@ fn prune_undeclared(
             // copy-like) gets its ORIGINAL file/symlink back on prune,
             // not a deletion; the drift guard runs FIRST (0026 §6) —
             // a kept destination is never journaled at all
-            if !crate::deploy::intact_deployed(&dest, entry, home) {
+            if !crate::deploy::intact_deployed(&dest, entry, &state.store_path) {
                 if dest.symlink_metadata().is_ok() {
                     tracing::warn!("kept {} — modified since deploy", entry.to);
                 }
@@ -410,13 +464,27 @@ fn prune_undeclared(
             }
             let intended = crate::deploy::prune_intent(entry, home)?;
             let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
-            crate::deploy::journaled(home_dir, &dest_dir, &dest_name, &dest, intended, || {
-                // a failed removal is a transaction error now (0027
-                // §1), and journaled's postcondition verifies the
-                // landing regardless
-                crate::deploy::remove_or_restore_prior(&dest_dir, &dest_name, entry, name, home)?;
-                Ok(())
-            })?;
+            let expected = match store::journal::live_identity(&dest_dir, &dest_name)? {
+                Some(l) => crate::deploy::Expect::Is(l),
+                None => crate::deploy::Expect::Absent,
+            };
+            crate::deploy::journaled(
+                home_dir,
+                &dest_dir,
+                &dest_name,
+                &dest,
+                intended,
+                expected,
+                || {
+                    // a failed removal is a transaction error now (0027
+                    // §1), and journaled's postcondition verifies the
+                    // landing regardless
+                    crate::deploy::remove_or_restore_prior(
+                        &dest_dir, &dest_name, entry, name, home,
+                    )?;
+                    Ok(())
+                },
+            )?;
             info!(
                 "{} {}",
                 if entry.prior.is_some() {

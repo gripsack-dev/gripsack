@@ -3,6 +3,62 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.25.0] — 2026-09-05
+
+Ownership lineage and authorized transitions (plan/0029, fifth
+fresh-eyes audit) — the state-representation round: observed user
+bytes can no longer become overwrite authority, and the pre-adoption
+origin rides the whole ownership epoch. The ownership algebra joins
+the crash protocol in the model harness (Rust explorer driving the
+real `plan_copy`, plus `Ownership.tla` alongside `Transaction.tla`).
+
+### Fixed
+
+- **The pre-adoption origin is no longer dropped by the next ordinary
+  apply.** `prior` is carried forward per destination across every
+  generation — module renames included — and stays pinned against gc
+  until the epoch ends by restore. (0.24 attached it to one deployment
+  result; an origin could vanish and be gc'd.)
+- **Preserved drift never promotes to authority.** A kept drifted or
+  foreign file is recorded with `preserved_drift`; repeated applies
+  keep it until you converge by hand (write the desired content) or
+  take over explicitly. Previously the observed hash became the
+  recorded deployment, so the NEXT apply overwrote your bytes.
+- **Undeclaring a drift-kept module no longer deletes your file** —
+  the recorded observed hash used to pass prune's intact check.
+  Preserved-drift entries are never pruned or rolled back over.
+- **`grip adopt` captures the origin even when content matches** — a
+  file adopt's scoped take-over set named `dest/dest-basename` and
+  never matched; and `--take-over` now opens the epoch before the
+  satisfied check, since content-equal adoption still needs the prior.
+- **Every journaled mutation carries a precondition** — the live
+  object must equal what the drift decision saw (absent counts), or
+  the run aborts retryably instead of clobbering a write that landed
+  in between. Merge re-derives its splice from the latest foreign
+  content at the mutation boundary.
+- **Recovery verifies its own work** — a restore is re-read and must
+  equal the prior identity before the journal entry may be dropped;
+  failed removals and failed link reads propagate instead of reading
+  as absence.
+- **Foreign or dangling symlinks at copy/template destinations refuse**
+  (or take over, capturing the link as prior) — `exists()` used to
+  follow links, reading a dangling link as "absent" and losing its
+  identity.
+- **Store integrity is proven, not named** — prior blobs recompute on
+  reuse (a corrupt blob quarantines aside); rollback preflight
+  verifies each module's `tree256` against the actual tree.
+- **`current` must resolve under `$GRIPSACK_HOME/generations/<N>`**
+  with N matching — `current -> /tmp/42` is corruption, not a
+  generation. Owned-link intactness compares the EXACT expected store
+  target, not "somewhere under gripsack".
+- **Persisted-generation validation and merge semantics agree** —
+  merge blocks validate per (destination, module); several modules may
+  own blocks in one file, and publish validates what load would
+  reject.
+- **High-water moves before the rename** and a post-commit cleanup
+  failure reports "generation N active; cleanup pending" instead of a
+  failed apply.
+
 ## [0.24.0] — 2026-09-04
 
 Provable transactions and validated generations (plan/0027, fourth

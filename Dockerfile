@@ -54,13 +54,17 @@ ARG TLA_TOOLS_SHA256=b658b4e504fdf0b721caf7066320f6b6fe5805f4dd2f717d0e47baba409
 ADD --checksum=sha256:${TLA_TOOLS_SHA256} https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar /tla/tla2tools.jar
 WORKDIR /work
 COPY specs ./specs
-RUN for cfg in apply-deploy rollback-deploy apply-prune rollback-prune; do \
-      java -jar /tla/tla2tools.jar -config specs/cfg/$cfg.cfg specs/Transaction.tla > /tmp/$cfg.log 2>&1 \
+RUN java -jar /tla/tla2tools.jar -cleanup -config specs/cfg/ownership.cfg specs/Ownership.tla > /tmp/ownership.log 2>&1 \
+    && grep -q "Model checking completed. No error" /tmp/ownership.log \
+    || { echo "TLC failed for ownership"; cat /tmp/ownership.log; exit 1; }; \
+    echo "ownership: clean"; \
+    for cfg in apply-deploy rollback-deploy apply-prune rollback-prune; do \
+      java -jar /tla/tla2tools.jar -cleanup -config specs/cfg/$cfg.cfg specs/Transaction.tla > /tmp/$cfg.log 2>&1 \
       && grep -q "Model checking completed. No error" /tmp/$cfg.log \
       || { echo "TLC failed for $cfg"; cat /tmp/$cfg.log; exit 1; }; \
       echo "$cfg: clean"; \
     done \
-    && java -jar /tla/tla2tools.jar -config specs/cfg/legacy-rollforward.cfg specs/Transaction.tla > /tmp/legacy.log 2>&1; \
+    && java -jar /tla/tla2tools.jar -cleanup -config specs/cfg/legacy-rollforward.cfg specs/Transaction.tla > /tmp/legacy.log 2>&1; \
     grep -q "Invariant Oracle is violated" /tmp/legacy.log \
       && echo "legacy-rollforward: violates the oracle as expected (the 0.22 bug, kept as proof)" \
       || { echo "legacy-rollforward must VIOLATE the oracle"; cat /tmp/legacy.log; exit 1; }

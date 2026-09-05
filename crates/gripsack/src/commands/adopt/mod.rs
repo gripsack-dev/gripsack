@@ -209,10 +209,18 @@ pub fn adopt(
         Ok(ir) => ir,
         Err(code) => return code,
     };
-    let adopting: std::collections::BTreeSet<String> = rel_files
-        .iter()
-        .map(|rel| generate::tilde(&dest.join(rel)))
-        .collect();
+    // the scoped take-over set names the DESTINATIONS (0029: a file
+    // adopt must not re-join its own file name — `dest.join(rel)`
+    // doubled it, so the set never matched and the origin was never
+    // captured when the content already matched)
+    let adopting: std::collections::BTreeSet<String> = if is_dir {
+        rel_files
+            .iter()
+            .map(|rel| generate::tilde(&dest.join(rel)))
+            .collect()
+    } else {
+        std::iter::once(generate::tilde(&dest)).collect()
+    };
     println!("{}", render::diff_section(&ir, &repo, &adopting, palette));
     println!(
         "  {}",

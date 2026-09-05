@@ -229,3 +229,8 @@ mod tests {
         }
     }
 }
+
+/// The ownership-lineage model (plan/0029) — drives the real
+/// `plan_copy` decision function over every action sequence.
+#[cfg(test)]
+mod lineage_model;

@@ -180,6 +180,7 @@ mod tests {
                     vars: Default::default(),
                     hash: "a".repeat(64),
                     prior: None,
+                    preserved_drift: false,
                 }],
                 env: vec![],
                 tree256: None,

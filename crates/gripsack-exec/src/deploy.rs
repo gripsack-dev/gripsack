@@ -293,12 +293,15 @@ pub fn intact_deployed_relative(
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
     entry: &store::DeployedEntry,
-    home: &Path,
+    store_path: &Path,
 ) -> bool {
     match entry.mode {
+        // intact means EXACTLY this entry's store link (0029 §11):
+        // "points somewhere under gripsack" conflated a user-repointed
+        // link with ownership
         Ownership::Owned => dest_dir
             .read_link_contents(dest_name)
-            .map(|t| t.starts_with(home))
+            .map(|t| t == store_path.join(&entry.from))
             .unwrap_or(false),
         Ownership::Merge => false, // merge never carries a prior
         _ => store::canonical_file_hash_in(dest_dir, dest_name)
@@ -310,10 +313,10 @@ pub fn intact_deployed_relative(
 /// Is the destination still exactly what this manifest entry
 /// deployed? (Merge blocks are checked by block hash at the call
 /// sites — a foreign file is never "intact" as a whole.)
-pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, home: &Path) -> bool {
+pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, store_path: &Path) -> bool {
     match entry.mode {
         Ownership::Owned => std::fs::read_link(dest)
-            .map(|t| t.starts_with(home))
+            .map(|t| t == store_path.join(&entry.from))
             .unwrap_or(false),
         Ownership::Merge => false, // merge never carries a prior
         _ => store::canonical_file_hash(dest)
@@ -346,6 +349,12 @@ pub fn prune_intent(entry: &store::DeployedEntry, home: &Path) -> std::io::Resul
     }
 }
 
+/// Restore the recorded prior, or drift-guarded removal when there
+/// is none (0015 §4). Callers prove intactness at plan time (apply's
+/// prune and the rollback planner both check before journaling) — the
+/// redundant re-check used to receive `home` where `store_path` was
+/// expected and silently miscompared, deleting links it should have
+/// restored (0029).
 pub fn remove_or_restore_prior(
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
@@ -353,9 +362,7 @@ pub fn remove_or_restore_prior(
     module: &str,
     home: &Path,
 ) -> std::io::Result<bool> {
-    if intact_deployed_relative(dest_dir, dest_name, entry, home)
-        && let Some(prior) = &entry.prior
-    {
+    if let Some(prior) = &entry.prior {
         restore_prior(dest_dir, dest_name, prior, home)?;
         return Ok(true);
     }
@@ -369,14 +376,94 @@ pub fn remove_or_restore_prior(
 /// the next run's reconcile restores. The entry clears when the run
 /// commits (the flip); per-entry there is no commit, matching the
 /// run-level rollback's all-or-nothing semantics.
+/// The copy/template disposition decision as a pure function
+/// (0029 §2 — the lineage model in the harness drives THIS code).
+/// `prev` is (the previous manifest's hash, whether it was preserved
+/// drift). The authorization rule that was missing: only
+/// last-written managed content may be updated; preserved drift
+/// NEVER promotes to authority — reconvergence (live == desired) is
+/// the only way back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CopyPlan {
+    /// Nothing live: create.
+    Fresh,
+    /// Live IS the desired content.
+    Satisfied,
+    /// Live is what gripsack last wrote (managed): authorized update.
+    Update,
+    /// Live is foreign or drifted: preserve and report.
+    Preserve,
+    /// Explicit user consent to absorb whatever is live.
+    TakeOver,
+}
+
+pub(crate) fn plan_copy(
+    desired: &str,
+    live: Option<&str>,
+    prev: Option<(&str, bool)>,
+    take_over: bool,
+) -> CopyPlan {
+    let Some(live) = live else {
+        return CopyPlan::Fresh;
+    };
+    // explicit consent/absorb ALWAYS captures the origin — even when
+    // the bytes already match (adopt relies on this to open the epoch)
+    if take_over {
+        return CopyPlan::TakeOver;
+    }
+    if live == desired {
+        return CopyPlan::Satisfied;
+    }
+    match prev {
+        // managed and live is our last write: the clean update path
+        // (never a fresh take-over — the epoch's origin stands)
+        Some((written, false)) if live == written => CopyPlan::Update,
+        // explicit consent outranks preservation: --take-over absorbs
+        // whatever is live and begins a new epoch with it as origin
+        _ if take_over => CopyPlan::TakeOver,
+        // preserved drift never authorizes — only reconvergence
+        // (handled above) ends the drift state
+        _ => CopyPlan::Preserve,
+    }
+}
+
+/// The transition precondition (0029 §3): what the live object must
+/// be when the mutation lands.
+#[derive(Debug, Clone)]
+pub(crate) enum Expect {
+    /// The destination must be ABSENT — anything appearing between
+    /// the decision and the mutation aborts the run.
+    Absent,
+    /// The destination's live identity must equal this.
+    Is(String),
+}
+
 pub(crate) fn journaled(
     home: &gripsack_fs::Dir,
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
     dest: &Path,
     intended: String,
+    expected_before: Expect,
     mutate: impl FnOnce() -> std::io::Result<()>,
 ) -> std::io::Result<()> {
+    // the live object must still be the one the drift decision was
+    // made against — a write between decision and capture aborts
+    // instead of clobbering it. (There is no portable content-CAS:
+    // renameat2 RENAME_EXCHANGE is Linux-only. Capture and mutation
+    // are back-to-back; the residual window is documented on the
+    // safety page.)
+    let live = gripsack_store::journal::live_identity(dest_dir, dest_name)?;
+    let ok = match &expected_before {
+        Expect::Absent => live.is_none(),
+        Expect::Is(expected) => live.as_deref() == Some(expected.as_str()),
+    };
+    if !ok {
+        return Err(std::io::Error::other(format!(
+            "{} changed between the drift decision and the mutation — aborting; re-run to retry",
+            dest.display()
+        )));
+    }
     // prior AND intended post-state are durable BEFORE the mutation
     // (0026 §6): reconcile's three-way decision never confuses a
     // post-crash user edit with the mutation
@@ -529,7 +616,7 @@ pub(crate) fn deploy_entry(
         )?),
         _ => None,
     };
-    let (summary, kind, hash, prior) = match &entry.mode {
+    let (summary, kind, hash, prior, preserved_drift) = match &entry.mode {
         Ownership::Owned => {
             // external satisfaction (0009 critique): never overwrite a
             // path that is neither ours (symlink into the store) nor
@@ -573,12 +660,21 @@ pub(crate) fn deploy_entry(
                 .unwrap_or(false);
             if !already {
                 let target = source.to_string_lossy().into_owned();
+                // precondition: the object we replace is the one the
+                // guards inspected — link target for a symlink, content
+                // hash for a take-over of a regular file
+                let expected = match gripsack_store::journal::live_identity(&dest_dir, &dest_name)?
+                {
+                    Some(l) => Expect::Is(l),
+                    None => Expect::Absent,
+                };
                 journaled(
                     ctx.home_dir()?,
                     &dest_dir,
                     &dest_name,
                     &dest,
                     target,
+                    expected,
                     || gripsack_fs::symlink_replace(&dest_dir, &dest_name, &source),
                 )?;
             }
@@ -589,6 +685,7 @@ pub(crate) fn deploy_entry(
                     ReportKind::Satisfied,
                     hash,
                     prior,
+                    false,
                 )
             } else {
                 (
@@ -596,6 +693,7 @@ pub(crate) fn deploy_entry(
                     ReportKind::Installed,
                     hash,
                     prior,
+                    false,
                 )
             }
         }
@@ -612,70 +710,118 @@ pub(crate) fn deploy_entry(
                 Some(bytes) => store::canonical_bytes_hash(bytes),
                 None => store::canonical_file_hash(&source)?,
             };
-            let prev_hash = prev
+            let prev_pair = prev
                 .and_then(|m| m.entries.iter().find(|e| e.to == entry.to))
-                .map(|e| e.hash.as_str());
-            if dest.exists() {
-                // drift check and any write below share the pinned
-                // dest parent (plan/0021 phase 2)
-                let (dest_dir, dest_name) = dest_capability(&dest)?;
-                let current = store::canonical_file_hash_in(&dest_dir, &dest_name)?;
-                if current == hash {
-                    (
-                        format!("{} unchanged", entry.to),
-                        ReportKind::Satisfied,
-                        hash,
-                        None,
-                    )
-                } else if prev_hash == Some(current.as_str()) {
+                .map(|e| (e.hash.as_str(), e.preserved_drift));
+            let (dest_dir, dest_name) = dest_capability(&dest)?;
+            // branch on the OBJECT TYPE, never exists() (0029 §5):
+            // exists() follows links — a dangling foreign link used to
+            // read as "absent" and lose its identity
+            let live = match dest_dir.symlink_metadata(&dest_name) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => {
+                    return Err(fail(format!("cannot inspect {}: {e}", entry.to)));
+                }
+                Ok(m) if m.file_type().is_symlink() => {
+                    // a symlink here is a foreign OBJECT (copy/template
+                    // never write links) — its identity is its target
+                    let target = dest_dir.read_link_contents(&dest_name)?;
+                    Some(store::canonical_bytes_hash(
+                        target.as_os_str().as_encoded_bytes(),
+                    ))
+                }
+                Ok(m) if m.is_file() => Some(store::canonical_file_hash_in(&dest_dir, &dest_name)?),
+                Ok(m) if m.is_dir() => {
+                    return Err(fail(format!("{} is a directory", entry.to)));
+                }
+                Ok(_) => {
+                    return Err(fail(format!(
+                        "{} is not a regular file — refusing to touch it",
+                        entry.to
+                    )));
+                }
+            };
+            // the journal's identity domain (link targets verbatim,
+            // canonical bytes hash for files) — distinct from the
+            // manifest domain (exec-aware file hash); the precondition
+            // speaks the journal's
+            let live_journal = store::journal::live_identity(&dest_dir, &dest_name)?;
+            let expect = match &live_journal {
+                Some(l) => Expect::Is(l.clone()),
+                None => Expect::Absent,
+            };
+            match plan_copy(&hash, live.as_deref(), prev_pair, ctx.takes_over(&entry.to)) {
+                CopyPlan::Satisfied => (
+                    format!("{} unchanged", entry.to),
+                    ReportKind::Satisfied,
+                    hash,
+                    None,
+                    false,
+                ),
+                CopyPlan::Fresh | CopyPlan::Update => {
+                    let update = live.is_some();
                     let after = store::canonical_bytes_hash(content);
-                    journaled(ctx.home_dir()?, &dest_dir, &dest_name, &dest, after, || {
-                        gripsack_fs::atomic_write(&dest_dir, &dest_name, content)
-                    })?;
+                    journaled(
+                        ctx.home_dir()?,
+                        &dest_dir,
+                        &dest_name,
+                        &dest,
+                        after,
+                        expect.clone(),
+                        || gripsack_fs::atomic_write(&dest_dir, &dest_name, content),
+                    )?;
                     (
-                        format!("updated {} → {}", from, entry.to),
+                        format!(
+                            "{} {} → {}",
+                            if update { "updated" } else { "copied" },
+                            from,
+                            entry.to
+                        ),
                         ReportKind::Configured,
                         hash,
                         None,
+                        false,
                     )
-                } else if ctx.takes_over(&entry.to) {
+                }
+                CopyPlan::TakeOver => {
                     // 0015 §4: record the foreign bytes before absorbing
                     let prior = capture_prior(&dest_dir, &dest_name, ctx.home_dir()?)?;
                     let after = store::canonical_bytes_hash(content);
-                    journaled(ctx.home_dir()?, &dest_dir, &dest_name, &dest, after, || {
-                        gripsack_fs::atomic_write(&dest_dir, &dest_name, content)
-                    })?;
+                    journaled(
+                        ctx.home_dir()?,
+                        &dest_dir,
+                        &dest_name,
+                        &dest,
+                        after,
+                        expect.clone(),
+                        || gripsack_fs::atomic_write(&dest_dir, &dest_name, content),
+                    )?;
                     (
                         format!("took over {} → {}", from, entry.to),
                         ReportKind::Configured,
                         hash,
                         prior,
+                        false,
                     )
-                } else {
-                    let note = if prev_hash.is_none() {
+                }
+                CopyPlan::Preserve => {
+                    let note = if prev_pair.is_none() {
                         format!("{} exists (not deployed by gripsack) — kept", entry.to)
                     } else {
                         format!("{} drifted — kept", entry.to)
                     };
                     tracing::warn!("{}", note);
-                    // the manifest must record what's ACTUALLY deployed
-                    // (the kept content), not the source we declined to
-                    // write — or drift resolution can never converge
-                    // (e2e: drift_is_kept)
-                    (note, ReportKind::Warned, current, None)
+                    // the record holds what we OBSERVED, marked
+                    // preserved (0029 §2): it authorizes nothing —
+                    // the next apply re-evaluates the drift fresh
+                    (
+                        note,
+                        ReportKind::Warned,
+                        live.expect("Preserve implies a live object"),
+                        None,
+                        true,
+                    )
                 }
-            } else {
-                let (dest_dir, dest_name) = dest_capability(&dest)?;
-                let after = store::canonical_bytes_hash(content);
-                journaled(ctx.home_dir()?, &dest_dir, &dest_name, &dest, after, || {
-                    gripsack_fs::atomic_write(&dest_dir, &dest_name, content)
-                })?;
-                (
-                    format!("copied {} → {}", from, entry.to),
-                    ReportKind::Configured,
-                    hash,
-                    None,
-                )
             }
         }
         Ownership::Merge => {
@@ -686,9 +832,10 @@ pub(crate) fn deploy_entry(
                 .map_err(|e| fail(format!("cannot read {}: {e}", source.display())))?;
             let block = payload.trim_end_matches('\n');
             let hash = store::canonical_bytes_hash(block.as_bytes());
+            let dest_exists = dest.symlink_metadata().is_ok();
             let existing = match read_foreign_text(&dest) {
                 Some(text) => text,
-                None if !dest.exists() => String::new(),
+                None if !dest_exists => String::new(),
                 // a binary or unreadable dest would be replaced
                 // wholesale by the marker block — silent data loss
                 None => {
@@ -716,6 +863,7 @@ pub(crate) fn deploy_entry(
                     ReportKind::Satisfied,
                     hash,
                     None,
+                    false,
                 )
             } else {
                 // the open marker's sha is the content hash at deploy
@@ -756,14 +904,57 @@ pub(crate) fn deploy_entry(
                 .map_err(fail)?;
                 let (dest_dir, dest_name) = dest_capability(&dest)?;
                 let after = store::canonical_bytes_hash(new.as_bytes());
-                journaled(ctx.home_dir()?, &dest_dir, &dest_name, &dest, after, || {
-                    gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
-                })?;
+                let expected = if dest_exists {
+                    Expect::Is(store::canonical_bytes_hash(existing.as_bytes()))
+                } else {
+                    Expect::Absent
+                };
+                // merge re-derives from the LATEST foreign content at
+                // the mutation boundary (0029 §3): an outside-block
+                // write between the decision and here either lands in
+                // the output or aborts the run — never silently lost
+                let marker_owned = entry.marker.clone();
+                let payload_owned = payload.clone();
+                let module_owned = module.to_string();
+                let dest_owned = dest.clone();
+                journaled(
+                    ctx.home_dir()?,
+                    &dest_dir,
+                    &dest_name,
+                    &dest,
+                    after,
+                    expected,
+                    || {
+                        let latest = match dest_dir.read_to_string(&dest_name) {
+                            Ok(t) => t,
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                            Err(e) => return Err(e),
+                        };
+                        if store::canonical_bytes_hash(latest.as_bytes())
+                            != store::canonical_bytes_hash(existing.as_bytes())
+                        {
+                            return Err(std::io::Error::other(format!(
+                                "{} changed between the merge decision and the write — aborting; re-run to retry",
+                                dest_owned.display()
+                            )));
+                        }
+                        let new = crate::template::upsert_block(
+                            &latest,
+                            &module_owned,
+                            &dest_owned,
+                            marker_owned.as_deref(),
+                            &payload_owned,
+                        )
+                        .map_err(std::io::Error::other)?;
+                        gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
+                    },
+                )?;
                 (
                     format!("merged {} → {}{note}", from, entry.to),
                     ReportKind::Configured,
                     hash,
                     None,
+                    false,
                 )
             }
         }
@@ -778,6 +969,7 @@ pub(crate) fn deploy_entry(
         vars: entry.vars.clone(),
         hash,
         prior,
+        preserved_drift,
     });
     Ok((summary, kind))
 }
@@ -834,6 +1026,7 @@ mod tests {
             &dest_name,
             &dest,
             store::canonical_bytes_hash(b"intended"),
+            Expect::Absent,
             || Ok(()), // reports success, writes nothing
         )
         .unwrap_err();
@@ -862,6 +1055,7 @@ mod tests {
             vars: Default::default(),
             hash: "x".repeat(64),
             prior: None,
+            preserved_drift: false,
         };
         restore_entry(&dest, &entry, &store_path, "m").unwrap();
         assert!(
