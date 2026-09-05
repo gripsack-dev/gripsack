@@ -48,10 +48,22 @@ pub struct DeployedEntry {
     /// Template vars at deploy time — rollback re-renders with these.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub vars: std::collections::BTreeMap<String, String>,
+    /// What gripsack last WROTE — or, when `preserved_drift` is set,
+    /// what it OBSERVED (0029 §2: one field used to mean both, and
+    /// observed user bytes became overwrite authority on the next
+    /// apply).
     pub hash: String,
-    /// Pre-take-over state of this destination (0015 §4).
+    /// Pre-take-over state of this destination (0015 §4) — carried
+    /// forward across EVERY generation of the ownership epoch (0029
+    /// §1): an origin is forgotten only by a successful restore or an
+    /// explicit forget, never by an ordinary later apply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prior: Option<Prior>,
+    /// True when gripsack preserved user bytes instead of deploying
+    /// (0029 §2): such an entry authorizes NOTHING — apply re-evaluates
+    /// the drift fresh, prune and rollback never touch the file.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub preserved_drift: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -144,7 +156,16 @@ fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<(
             )));
         }
         for entry in &state.entries {
-            if !seen_dests.insert(entry.to.to_lowercase()) {
+            // key: the destination for non-merge (E111 applies), and
+            // (destination, module) for merge — several modules may own
+            // separate blocks in one shared file (0029 §7: the 0027
+            // validator rejected what merge legitimately allows)
+            let key = if entry.mode == gripsack_ir::Ownership::Merge {
+                format!("{}\u{1f}{}", entry.to.to_lowercase(), name)
+            } else {
+                entry.to.to_lowercase()
+            };
+            if !seen_dests.insert(key) {
                 return Err(invalid(format!(
                     "destination {:?} appears twice in generation {generation}",
                     entry.to
@@ -191,19 +212,38 @@ pub fn list(home: &Path) -> io::Result<Vec<u64>> {
 /// from this, gc protects it; misreading either is corruption).
 pub fn current(home: &Path) -> io::Result<Option<u64>> {
     match std::fs::read_link(crate::paths::current_link(home)) {
-        Ok(target) => target
-            .file_name()
-            .and_then(|n| n.to_string_lossy().parse().ok())
-            .map(Some)
-            .ok_or_else(|| {
-                io::Error::new(
+        Ok(target) => {
+            let n: u64 = target
+                .file_name()
+                .and_then(|n| n.to_string_lossy().parse().ok())
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "{} does not point at a generation",
+                            crate::paths::current_link(home).display()
+                        ),
+                    )
+                })?;
+            // the control plane and data plane must agree (0029 §10):
+            // the link resolves to THIS home's generations/<n> — a
+            // `current -> /tmp/42` is corruption, not generation 42
+            let resolved = std::fs::canonicalize(crate::paths::current_link(home))?;
+            let home_canon = std::fs::canonicalize(home)?;
+            let expected = home_canon
+                .join(crate::paths::GENERATIONS_DIR)
+                .join(n.to_string());
+            if resolved != expected {
+                return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!(
-                        "{} does not point at a generation",
-                        crate::paths::current_link(home).display()
+                        "current resolves to {} — outside $GRIPSACK_HOME/generations",
+                        resolved.display()
                     ),
-                )
-            }),
+                ));
+            }
+            Ok(Some(n))
+        }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
@@ -251,7 +291,11 @@ pub fn publish_generation(
     home: &gripsack_fs::Dir,
     generation: &Generation,
     profile: Option<&str>,
+    home_path: &Path,
 ) -> io::Result<()> {
+    // construction and load share the ONE validator (0029 §7): we
+    // never publish what read_manifest would reject
+    validate(generation, generation.number, home_path)?;
     let staging =
         Path::new(crate::paths::GENERATIONS_DIR).join(format!(".staging-{}", generation.number));
     let final_dir = Path::new(crate::paths::GENERATIONS_DIR).join(generation.number.to_string());
@@ -275,6 +319,14 @@ pub fn publish_generation(
             profile.as_bytes(),
         )?;
     }
+    // the high-water mark moves BEFORE the rename (0029 §9 ordering):
+    // a failure after the rename must never leave a visible generation
+    // the allocator doesn't know about
+    gripsack_fs::atomic_write(
+        home,
+        Path::new("generations/high-water"),
+        generation.number.to_string().as_bytes(),
+    )?;
     gripsack_fs::fsync_dir(home, &staging)?;
     home.rename(&staging, home, &final_dir).map_err(|e| {
         io::Error::new(
@@ -282,12 +334,6 @@ pub fn publish_generation(
             format!("publish generation {}: {e}", generation.number),
         )
     })?;
-    // record the high-water mark with the generation that set it
-    gripsack_fs::atomic_write(
-        home,
-        Path::new("generations/high-water"),
-        generation.number.to_string().as_bytes(),
-    )?;
     gripsack_fs::fsync_dir(home, Path::new(crate::paths::GENERATIONS_DIR))
 }
 
@@ -352,6 +398,7 @@ mod tests {
                     vars: Default::default(),
                     hash: "d".repeat(64),
                     prior: None,
+                    preserved_drift: false,
                 }],
                 env: vec![],
                 tree256: None,
@@ -452,17 +499,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
         let cap = gripsack_fs::open_or_create(home).unwrap();
-        publish_generation(&cap, &mk_gen(home, 1), Some("export A=1")).unwrap();
+        publish_generation(&cap, &mk_gen(home, 1), Some("export A=1"), home).unwrap();
         assert!(home.join("generations/1/manifest.json").exists());
         assert!(home.join("generations/1/env/profile.sh").exists());
         // no staging residue
         assert!(!home.join("generations/.staging-1").exists());
         // no-clobber
-        let err = publish_generation(&cap, &mk_gen(home, 1), None).unwrap_err();
+        let err = publish_generation(&cap, &mk_gen(home, 1), None, home).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
         // high-water: gc the tip, allocation still moves forward
-        publish_generation(&cap, &mk_gen(home, 2), None).unwrap();
-        publish_generation(&cap, &mk_gen(home, 3), None).unwrap();
+        publish_generation(&cap, &mk_gen(home, 2), None, home).unwrap();
+        publish_generation(&cap, &mk_gen(home, 3), None, home).unwrap();
         std::fs::remove_dir_all(home.join("generations/2")).unwrap();
         std::fs::remove_dir_all(home.join("generations/3")).unwrap();
         assert_eq!(allocate(home, &cap).unwrap(), 4);

@@ -133,6 +133,7 @@ mod tests {
                 vars: Default::default(),
                 hash: "h".into(),
                 prior: None,
+                preserved_drift: false,
             }],
             env,
             tree256: None,

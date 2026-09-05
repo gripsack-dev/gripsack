@@ -127,7 +127,16 @@ pub fn store_prior_blob_in(home: &Dir, bytes: &[u8]) -> io::Result<String> {
         .symlink_metadata(&rel)
         .map(|m| m.is_file())
         .unwrap_or(false);
-    if !present {
+    if present {
+        // trust nothing by name (0029 §8): the blob exists — prove the
+        // bytes or quarantine the impostor aside and write the truth
+        let existing = home.read(&rel)?;
+        if crate::hash::hex_sha256(&existing) != sha {
+            let aside = Path::new("prior").join(format!("{sha}.corrupt"));
+            home.rename(&rel, home, &aside)?;
+            gripsack_fs::atomic_write(home, &rel, bytes)?;
+        }
+    } else {
         gripsack_fs::atomic_write(home, &rel, bytes)?;
     }
     Ok(sha)
@@ -412,6 +421,17 @@ pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
         match decide(&dest_dir, &dest_name, &entry, home)? {
             Recovery::Restore(what) => {
                 restore(&dest_dir, &dest_name, &entry.prior, home)?;
+                // recovery is held to the transaction's standard
+                // (0029 §4): verify the prior identity before the
+                // entry may be dropped
+                let live = live_identity(&dest_dir, &dest_name)?;
+                let expected = prior_identity(&entry.prior, home)?;
+                if live.as_deref() != expected.as_deref() {
+                    return Err(io::Error::other(format!(
+                        "recovery of {} did not produce the prior state — the                          journal is retained; inspect $GRIPSACK_HOME/journal",
+                        entry.dest
+                    )));
+                }
                 lines.push(format!("recovered {}: {what}", entry.dest));
             }
             Recovery::Unchanged => {
@@ -512,10 +532,12 @@ fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
 /// 0025 crash-window e2e exposed.)
 pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<String>> {
     match dest_dir.symlink_metadata(dest_name) {
-        Ok(meta) if meta.file_type().is_symlink() => Ok(dest_dir
-            .read_link_contents(dest_name)
-            .ok()
-            .map(|t| t.to_string_lossy().into_owned())),
+        Ok(meta) if meta.file_type().is_symlink() => Ok(Some(
+            dest_dir
+                .read_link_contents(dest_name)?
+                .to_string_lossy()
+                .into_owned(),
+        )),
         Ok(_) => Ok(Some(crate::hash::canonical_bytes_hash(
             &dest_dir.read(dest_name)?,
         ))),
@@ -608,8 +630,14 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
     match prior {
         PriorSerde::Absent => {
             // remove_file never removes a directory; a dest that grew
-            // into one is left for the drift guard's Keep path
-            let _ = dest_dir.remove_file(dest_name);
+            // into one errors here (ENOTDIR) and the journal entry is
+            // retained — recovery data is never dropped on a failed
+            // removal (0029 §4)
+            match dest_dir.remove_file(dest_name) {
+                Ok(()) => {}
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e),
+            }
         }
         PriorSerde::File { hash, mode } => {
             let bytes = home.read(prior_blob_rel(hash))?;

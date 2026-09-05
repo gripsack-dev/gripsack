@@ -220,15 +220,26 @@ export default module("zed", {
     assert out.returncode == 0, out.stderr
     assert dest.read_text() == '{"theme": "nord", "user": true}\n'
 
-    # drift resolved by hand (dest back to the pinned content): gripsack
-    # can't tell a restore from a new drift, so it keeps once — and the
-    # next apply converges and updates (bounded, no lockfile surgery)
-    dest.write_text('{"theme": "mocha"}\n')
+    # a second apply without hand-resolution must NOT promote the
+    # drift to authority (0029 §2 — the 0.24 promotion bug: the
+    # recorded observed hash made the next apply overwrite it)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
+    assert dest.read_text() == '{"theme": "nord", "user": true}\n', (
+        "preserved drift must survive repeated applies"
+    )
+
+    # convergence is explicit: hand-write the DESIRED content and the
+    # next apply reads managed+satisfied (observation is never consent)
+    dest.write_text('{"theme": "latte"}\n')
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert dest.read_text() == '{"theme": "latte"}\n'
+    # and now the repo drives again
+    (confdir / "settings.json").write_text('{"theme": "frappe"}\n')
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == '{"theme": "frappe"}\n'
 
 
 def test_rollback_restores_template_rendered_and_merge_block(sandbox):
@@ -375,6 +386,146 @@ export default module("m", {
     assert "resolves inside the env repo" in out.stderr
     assert "symlink into the repo" in out.stderr, out.stderr
     assert (repo / "stale-conf").read_text() == "stale\n"
+
+
+def test_adoption_origin_survives_generations_and_gc(sandbox):
+    """0029 §1: the pre-adoption origin rides the whole ownership
+    epoch — carried through satisfied applies and content updates,
+    pinned against gc, restored on undeclare. The 0.24 lineage bug
+    dropped `prior` on the next ordinary apply."""
+    # no repo content needed up front — adopt snapshots the live file
+    original = sandbox / ".config/demo/a.toml"
+    original.parent.mkdir(parents=True)
+    original.write_text("ORIGINAL\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip(
+        "adopt", "~/.config/demo/a.toml", "--mode", "tracked_copy",
+        "--host", "testhost", "--yes", cwd=repo,
+    )
+    # adopt snapshots the live file INTO the repo — the destination
+    # keeps its bytes through the adoption apply
+    assert original.read_text() == "ORIGINAL\n"
+
+    # ordinary satisfied apply + a content update: the origin must
+    # ride along (0.24 dropped it here)
+    grip("apply", "--host", "testhost", cwd=repo)
+    # adopt snapshots into configs/<module>/ — name it explicitly
+    # (rglob order is readdir order; a decoy would flake CI)
+    adopted = repo / "configs" / "a-toml" / "a.toml"
+    assert adopted.exists()
+    adopted.write_text("v2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert original.read_text() == "v2\n", f"{out.stdout}\n{out.stderr}"
+
+    # gc the old history — the origin's blob must stay pinned
+    user_conf = sandbox / ".config/gripsack"
+    user_conf.mkdir(parents=True)
+    (user_conf / "config.toml").write_text("[settings]\nkeep_generations = 0\n")
+    out = grip("gc", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    # undeclare the ADOPTED module (not the scaffold) — the ORIGINAL
+    # comes back
+    remove_module(repo, "a-toml")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert original.read_text() == "ORIGINAL\n", original.read_text()
+
+
+def test_foreign_file_is_never_promoted_by_observation(sandbox):
+    """0029 §2: a never-managed foreign file stays foreign across
+    repeated applies — observing it twice is not consent."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("repo\n")
+    foreign = sandbox / ".config/demo/a.toml"
+    foreign.parent.mkdir(parents=True)
+    foreign.write_text("FOREIGN\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    for _ in range(3):
+        out = grip("apply", "--host", "testhost", cwd=repo)
+        assert out.returncode == 0, out.stderr
+        assert foreign.read_text() == "FOREIGN\n"
+        assert "kept" in out.stdout
+
+
+def test_undeclaring_a_drift_kept_module_keeps_the_file(sandbox):
+    """0029 (unlisted consequence): the drift-keep path recorded the
+    observed hash, so undeclare's intact check matched — and prune
+    DELETED the user's drifted file. Preserved-drift entries are now
+    never pruned."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("repo\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config/demo/a.toml"
+    dest.write_text("user drift\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "kept" in out.stdout
+
+    remove_module(repo, "hello")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == "user drift\n", "prune must not delete preserved drift"
+
+
+def test_foreign_symlink_at_a_copy_destination_refuses(sandbox):
+    """0029 §5: a symlink at a tracked-copy destination is a foreign
+    OBJECT — never silently absent, never followed. Take-over captures
+    the link as the prior."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("repo\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    dest = sandbox / ".config/demo/a.toml"
+    dest.parent.mkdir(parents=True)
+    dest.symlink_to("/elsewhere/foreign.toml")
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.is_symlink(), "the foreign link must survive"
+    assert "kept" in out.stdout
+
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.read_text() == "repo\n"
+
+    # and the link is the recorded prior — undeclare restores it
+    remove_module(repo, "hello")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert dest.is_symlink() and dest.readlink() == __import__("pathlib").Path("/elsewhere/foreign.toml")
 
 
 def test_merge_block_carries_its_content_hash(sandbox):
