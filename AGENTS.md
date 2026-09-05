@@ -18,6 +18,7 @@ contract; the image does.
 docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
 docker compose run --build --rm ts-test   # typescript frontend tests (deno)
 docker compose run --build --rm e2e       # flow tests (real binary + real frontend)
+docker compose run --build --rm model     # TLC model check of the transaction spec (plan/0028)
 docker compose run --build --rm -e VERSION=x.y.z release   # musl tarball → ./dist/
 ```
 
