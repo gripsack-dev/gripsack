@@ -391,13 +391,12 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
             // the ONE current-pointer reader (0030 §H10): recovery
             // never uses weaker commit evidence than normal commands
             let current = crate::generations::current(home_path)?;
-            match classify(
-                marker.previous_generation,
-                marker.target_generation,
-                marker.op,
+            match classify(&RecoveryFacts {
+                previous: marker.previous_generation,
+                target: marker.target_generation,
                 current,
-                marker.format,
-            ) {
+                format: marker.format,
+            }) {
                 Classification::Committed => true,
                 Classification::Uncommitted => false,
                 Classification::Ambiguous => {
@@ -638,35 +637,48 @@ fn decide_from(
 /// The commit classification as a pure function (0028), exact
 /// equality only: current == target is committed, current == previous
 /// is uncommitted, anything else is ambiguous and blocks. Pre-0.23
-/// markers carry no previous generation; those classify by the 0.22
-/// direction rule, correct for those versions' semantics.
+/// markers carry no previous generation; those refuse (never
+/// auto-classify by the model-proven-unsound direction rule).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Classification {
     Committed,
     Uncommitted,
     Ambiguous,
     /// A pre-0.23 run marker (no previous_generation): the commit
-    /// state is unknowable — refuse, never auto-classify (0030 §11)
+    /// state is unknowable - refuse, never auto-classify (0030 §11)
     Legacy,
 }
-fn classify(
+
+/// The classifier's whole input, named: the facts a run marker
+/// carries, plus the live `current` read at recovery time. (A struct,
+/// not five positional `Option<u64>`-flavored arguments - the model
+/// harness passes the same shape to its legacy counterexample.)
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RecoveryFacts {
+    /// The generation the run started from. None for a fresh
+    /// machine's first run - and for pre-0.23 markers, which never
+    /// recorded it (told apart by `format`).
     previous: Option<u64>,
+    /// The generation the run was building toward.
     target: u64,
-    _op: RunOp,
+    /// `current` on disk when recovery ran.
     current: Option<u64>,
+    /// Marker schema: 2+ carries exact transaction identity.
     format: u8,
-) -> Classification {
-    match (previous, current) {
-        (Some(_), Some(c)) if c == target => Classification::Committed,
+}
+
+fn classify(facts: &RecoveryFacts) -> Classification {
+    match (facts.previous, facts.current) {
+        (Some(_), Some(c)) if c == facts.target => Classification::Committed,
         (Some(prev), Some(c)) if c == prev => Classification::Uncommitted,
         (Some(_), _) => Classification::Ambiguous,
-        // a fresh machine's run (no previous generation): exact too —
+        // a fresh machine's run (no previous generation): exact too -
         // distinguishable from legacy by the format field
-        (None, Some(c)) if format >= 2 && c == target => Classification::Committed,
-        (None, None) if format >= 2 => Classification::Uncommitted,
-        (None, Some(_)) if format >= 2 => Classification::Ambiguous,
+        (None, Some(c)) if facts.format >= 2 && c == facts.target => Classification::Committed,
+        (None, None) if facts.format >= 2 => Classification::Uncommitted,
+        (None, Some(_)) if facts.format >= 2 => Classification::Ambiguous,
         // pre-0.23 marker (no format field): the directional rule is
-        // proven unsound (0028's kept counterexample) — refuse with
+        // proven unsound (0028's kept counterexample) - refuse with
         // guidance rather than guess (0030 §11)
         _ => Classification::Legacy,
     }

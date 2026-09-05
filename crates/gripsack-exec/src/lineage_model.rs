@@ -19,6 +19,29 @@ use crate::deploy::{CopyPlan, plan_copy};
 /// 2 = repo content B, 3 = a user/application edit.
 type Content = u8;
 
+/// Which spellings of the ONE physical cell the repo currently
+/// declares (0030 §P0-1): `~/x` and `$HOME/x` are two logical keys
+/// for one directory entry. The lineage is keyed by the CELL, never
+/// the spelling — a module that switches spellings mid-epoch keeps
+/// its origin (destination-keyed `inherit_priors`).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum Declaration {
+    Undeclared,
+    SpellingA,
+    SpellingB,
+    /// Both spellings live at once — the physical-uniqueness gate
+    /// (`expand::check_physical_uniqueness`) must reject such a run
+    /// BEFORE any mutation. This model pins that contract; unit and
+    /// e2e tests pin the implementation to real paths.
+    Aliased,
+}
+
+impl Declaration {
+    fn declared(self) -> bool {
+        self != Declaration::Undeclared
+    }
+}
+
 /// One destination's lineage state. `manifest` is what the generation
 /// records: (the recorded hash, whether it was preserved drift) — the
 /// two facts the next apply reads. `origin` is the epoch's prior.
@@ -30,7 +53,7 @@ struct Lineage {
     manifest: Option<(Content, bool)>,
     /// Some = an ownership epoch with a recoverable origin
     origin: Option<Content>,
-    declared: bool,
+    declaration: Declaration,
 }
 
 /// The actions the model enumerates.
@@ -40,12 +63,40 @@ enum Action {
     SourceUpdate,
     /// The app/user writes to the live file.
     ExternalWrite,
+    /// The repo gains spelling A of the cell (a module appears, or a
+    /// second module aliases the same cell).
+    DeclareA,
+    /// The repo gains spelling B.
+    DeclareB,
+    /// Spelling A leaves the repo.
+    DropA,
+    /// Spelling B leaves the repo.
+    DropB,
     /// gripsack apply (no take-over).
     Apply,
     /// gripsack apply --take-over (adoption or explicit absorb).
     TakeOver,
-    /// The module is undeclared (prune / rollback to empty).
-    Undeclare,
+}
+
+impl Declaration {
+    fn with(self, spelling: Declaration) -> Declaration {
+        match (self, spelling) {
+            (Declaration::Undeclared, s) => s,
+            (Declaration::SpellingA, Declaration::SpellingB)
+            | (Declaration::SpellingB, Declaration::SpellingA)
+            | (Declaration::Aliased, _) => Declaration::Aliased,
+            (d, _) => d,
+        }
+    }
+
+    fn without(self, spelling: Declaration) -> Declaration {
+        match (self, spelling) {
+            (Declaration::Aliased, Declaration::SpellingA) => Declaration::SpellingB,
+            (Declaration::Aliased, Declaration::SpellingB) => Declaration::SpellingA,
+            (d, s) if d == s => Declaration::Undeclared,
+            (d, _) => d,
+        }
+    }
 }
 
 /// One action's effect on the lineage, mirroring deploy+prune.
@@ -59,8 +110,44 @@ fn step(mut l: Lineage, action: Action) -> Lineage {
             l.live = 3;
             l
         }
-        Action::Apply => {
-            if !l.declared {
+        // repo-side declaration changes never touch the filesystem —
+        // and never touch the ORIGIN: the epoch is keyed by the
+        // physical cell, so gaining or dropping a spelling mid-epoch
+        // inherits the lineage (0030 §H4's destination-keyed carry)
+        Action::DeclareA => {
+            l.declaration = l.declaration.with(Declaration::SpellingA);
+            l
+        }
+        Action::DeclareB => {
+            l.declaration = l.declaration.with(Declaration::SpellingB);
+            l
+        }
+        Action::DropA => {
+            let next = l.declaration.without(Declaration::SpellingA);
+            undeclare(l, next)
+        }
+        Action::DropB => {
+            let next = l.declaration.without(Declaration::SpellingB);
+            undeclare(l, next)
+        }
+        Action::Apply | Action::TakeOver => {
+            // the gate (0030 §P0-1): a run whose declaration set maps
+            // two spellings onto one physical cell is REJECTED before
+            // any mutation — the lineage cannot change at all
+            if l.declaration == Declaration::Aliased {
+                return l;
+            }
+            if !l.declaration.declared() {
+                return l;
+            }
+            if matches!(action, Action::TakeOver) {
+                // a genuine take-over captures the origin ONCE per
+                // epoch (0030 §H5)
+                if l.origin.is_none() {
+                    l.origin = Some(l.live);
+                }
+                l.live = l.desired;
+                l.manifest = Some((l.desired, false));
                 return l;
             }
             // owned bindings so the borrowed tuple never outlives them
@@ -82,43 +169,47 @@ fn step(mut l: Lineage, action: Action) -> Lineage {
             }
             l
         }
-        Action::TakeOver => {
-            if !l.declared {
-                return l;
-            }
-            // a genuine take-over captures the origin ONCE per epoch
-            if l.origin.is_none() {
-                l.origin = Some(l.live);
-            }
-            l.live = l.desired;
-            l.manifest = Some((l.desired, false));
-            l
-        }
-        Action::Undeclare => {
-            if !l.declared {
-                return l;
-            }
-            // an epoch ends ONLY by restoring the origin (0029 §1):
-            // managed content is replaced by what was there at
-            // adoption; preserved drift was never ours and stays
-            let managed = l.manifest.is_some_and(|(_, preserved)| !preserved);
-            if managed && let Some(origin) = l.origin {
-                l.live = origin;
-            }
-            l.origin = None;
-            l.manifest = None;
-            l.declared = false;
-            l
-        }
     }
 }
 
+/// Dropping a spelling: the epoch ends ONLY when the LAST declaration
+/// of the cell goes away (0029 §1) — managed content is replaced by
+/// the adoption origin; preserved drift was never ours and stays.
+fn undeclare(mut l: Lineage, next_declaration: Declaration) -> Lineage {
+    if next_declaration.declared() {
+        // one spelling remains — the epoch continues untouched
+        l.declaration = next_declaration;
+        return l;
+    }
+    if !l.declaration.declared() {
+        return l;
+    }
+    let managed = l.manifest.is_some_and(|(_, preserved)| !preserved);
+    if managed && let Some(origin) = l.origin {
+        l.live = origin;
+    }
+    l.origin = None;
+    l.manifest = None;
+    l.declaration = Declaration::Undeclared;
+    l
+}
+
 /// Per-transition: an open epoch's origin survives everything except
-/// relinquish, relinquish RESTORES it (0029 §1), and apply never
-/// writes over preserved drift (0029 §2 — an external write between
-/// applies is user drift, not a clobber; the apply following it must
-/// still not write).
+/// relinquish, relinquish RESTORES it (0029 §1), apply never writes
+/// over preserved drift (0029 §2), and an aliased declaration set is
+/// rejected before any mutation (0030 §P0-1).
 fn check_transition(state: &Lineage, action: Action, next: &Lineage) -> Result<(), String> {
+    // the gate contract: Apply/TakeOver over two spellings of one
+    // physical cell is a pre-mutation rejection — NOTHING may change,
+    // not even the manifest (a partial rejection would still corrupt)
+    if state.declaration == Declaration::Aliased
+        && matches!(action, Action::Apply | Action::TakeOver)
+        && next != state
+    {
+        return Err(format!(
+            "an aliased run mutated the lineage instead of being rejected: {state:?} -{action:?}-> {next:?}"
+        ));
+    }
     if matches!(action, Action::Apply)
         && state.manifest.is_some_and(|(_, p)| p)
         && state.live != state.desired
@@ -128,14 +219,16 @@ fn check_transition(state: &Lineage, action: Action, next: &Lineage) -> Result<(
             "apply overwrote preserved drift: {state:?} -> {next:?}"
         ));
     }
-    if state.origin.is_some() && !matches!(action, Action::Undeclare) && next.origin != state.origin
-    {
+    // the origin survives everything except the epoch's END (the last
+    // declaration dropping away)
+    let epoch_ends = next.declaration == Declaration::Undeclared;
+    if state.origin.is_some() && !epoch_ends && next.origin != state.origin {
         return Err(format!(
             "the origin was lost without relinquishing ownership: {state:?} -{action:?}-> {next:?}"
         ));
     }
-    if matches!(action, Action::Undeclare)
-        && state.declared
+    if epoch_ends
+        && state.declaration.declared()
         && state.manifest.is_some_and(|(_, preserved)| !preserved)
         && let Some(origin) = state.origin
         && next.live != origin
@@ -155,26 +248,30 @@ fn ownership_lineage_holds_over_every_sequence() {
     let actions = [
         Action::SourceUpdate,
         Action::ExternalWrite,
+        Action::DeclareA,
+        Action::DeclareB,
+        Action::DropA,
+        Action::DropB,
         Action::Apply,
         Action::TakeOver,
-        Action::Undeclare,
     ];
     // the two meaningful starts: a foreign file (origin to capture)
-    // and a fresh machine (nothing to capture)
+    // and a fresh machine (nothing to capture) — both declared via
+    // one spelling
     let starts = [
         Lineage {
             live: 0,
             desired: 1,
             manifest: None,
             origin: None,
-            declared: true,
+            declaration: Declaration::SpellingA,
         },
         Lineage {
             live: 1,
             desired: 1,
             manifest: Some((1, false)),
             origin: None,
-            declared: true,
+            declaration: Declaration::SpellingA,
         },
     ];
     let mut seen = std::collections::HashSet::new();
