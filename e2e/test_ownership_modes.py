@@ -393,9 +393,7 @@ def test_adoption_origin_survives_generations_and_gc(sandbox):
     epoch — carried through satisfied applies and content updates,
     pinned against gc, restored on undeclare. The 0.24 lineage bug
     dropped `prior` on the next ordinary apply."""
-    confdir = sandbox / "myenv" / "configs" / "demo"
-    confdir.mkdir(parents=True)
-    (confdir / "a.toml").write_text("v1\n")
+    # no repo content needed up front — adopt snapshots the live file
     original = sandbox / ".config/demo/a.toml"
     original.parent.mkdir(parents=True)
     original.write_text("ORIGINAL\n")
@@ -411,8 +409,10 @@ def test_adoption_origin_survives_generations_and_gc(sandbox):
     # ordinary satisfied apply + a content update: the origin must
     # ride along (0.24 dropped it here)
     grip("apply", "--host", "testhost", cwd=repo)
-    # adopt snapshots into configs/<module>/ — find where it landed
-    adopted = next((repo / "configs").rglob("a.toml"))
+    # adopt snapshots into configs/<module>/ — name it explicitly
+    # (rglob order is readdir order; a decoy would flake CI)
+    adopted = repo / "configs" / "a-toml" / "a.toml"
+    assert adopted.exists()
     adopted.write_text("v2\n")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
