@@ -256,6 +256,22 @@ pub fn diff_section(
     for (name, module) in &ir.modules {
         let mut lines = Vec::new();
         let mut non_config_note = None;
+        // explicit-step modules carry effects plan cannot preview
+        // (run/shell steps mutate the system opaquely) — never let
+        // the module read as a silent no-op (0033 R5)
+        if let Some(steps) = &module.steps
+            && steps.iter().any(|st| {
+                matches!(
+                    st.action,
+                    gripsack_ir::step::StepAction::Run { .. }
+                        | gripsack_ir::step::StepAction::CustomShell { .. }
+                )
+            })
+        {
+            lines.push(
+                "  · has run/shell steps — opaque effects, apply may change the system".to_string(),
+            );
+        }
         for entry in module.install.iter().chain(module.config.iter()) {
             declared.push(entry.to.as_str());
             let dest = crate::commands::expand_home(&entry.to);

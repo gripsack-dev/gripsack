@@ -3,6 +3,45 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.29.0] — 2026-09-05
+
+The 0.27.0 external-review round (plan/0033) — confidentiality of
+adopted secrets, evaluation-grant scoping, and plan/apply agreement.
+
+### Changed
+
+- **Take-over preserves a private file's mode** — adopting a 0600
+  secret keeps it 0600, live AND in the prior blob store (blobs land
+  0600; `$GRIPSACK_HOME/prior` is 0700). Adoption is not a fresh
+  deploy; repo-driven exec changes still apply afterward.
+- **The deliberate-pin read grant is validated** — a
+  `node_modules/@gripsack/core` symlink earns its eval read grant
+  only when the resolved target proves it IS a `@gripsack/core`
+  package (`package.json` name). A planted symlink to arbitrary
+  outside content no longer enlarges the sandbox.
+- **Step `needs` order execution** — a consumer declared before its
+  producer runs after it; cross-module step refs (`other:done`,
+  `other:step`) fold into the module DAG; cycles are E120 at check.
+- **`grip plan` runs the full validation pipeline** — linters, source
+  checks, and physical-destination uniqueness (E119) gate plan the
+  same as check/apply; modules with opaque run/shell steps are marked
+  "may change the system", never rendered as silent no-ops.
+- **Preserved drift blocks a mode switch** — redeclaring a preserved
+  tracked copy as an owned symlink refuses instead of overwriting
+  the user's edit. The lineage explorer now models the owned-link
+  branch (driving the shipped `plan_link`) and mode changes.
+
+### Fixed
+
+- **Executable rollback restores** — rolling back across versions of
+  a 0755 tracked copy restores the right bytes (0.27 compared
+  identities across domains and kept the newer content).
+- **Private merge files roll back** — updating a managed block in a
+  0600 file then rolling back no longer reports a phantom change.
+- **Adoption codegen** — digit-leading names and quote/backslash
+  filenames produce valid TypeScript (idents prefixed, every
+  interpolated string JSON-quoted).
+
 ## [0.28.0] — 2026-09-05
 
 Durable activation hooks (plan/0032) and a legacy-purged, fully typed

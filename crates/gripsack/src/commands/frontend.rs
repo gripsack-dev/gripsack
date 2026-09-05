@@ -37,8 +37,14 @@ impl<'a> Frontend<'a> {
                 .to_path_buf(),
             self.frontend_dir.to_path_buf(),
         ];
+        // the deliberate pin may enlarge the read set — so the grant
+        // is only as strong as the proof: the RESOLVED target must be
+        // a @gripsack/core package (0033 R3). Without the check, a
+        // repo-planted symlink would extend its own sandbox reads to
+        // wherever it points.
         if let Ok(pin) = self.repo.join("node_modules/@gripsack/core").canonicalize()
             && !reads.contains(&pin)
+            && pin_is_gripsack_core(&pin)
         {
             reads.push(pin);
         }
@@ -69,4 +75,15 @@ impl<'a> Frontend<'a> {
             .env("DENO_DIR", self.home.join("deno-cache"));
         cmd
     }
+}
+
+/// The resolved pin target must prove it IS @gripsack/core: a
+/// package.json with that name. Anything else (a bare directory, a
+/// symlink to arbitrary outside content) earns no read grant.
+fn pin_is_gripsack_core(pin: &Path) -> bool {
+    std::fs::read_to_string(pin.join("package.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|v| v.get("name")?.as_str().map(str::to_string))
+        .is_some_and(|name| name == "@gripsack/core")
 }
