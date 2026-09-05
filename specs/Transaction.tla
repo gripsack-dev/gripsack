@@ -21,9 +21,9 @@ EXTENDS Integers, FiniteSets
 
 CONSTANTS PREV,       \* generation current points at when the run starts
           TARGET,     \* the generation this run builds (apply) or returns to
-          OP,         \* "apply" | "rollback" (read only by legacy markers)
-          KIND,       \* "deploy" | "prune"
-          MODE        \* "shipped" | "legacy" (pre-0.23 markers)
+          OP,         \* "apply" | "rollback"
+          KIND        \* "deploy" | "prune"
+
 
 \* Abstract contents. One destination is enough — destinations are
 \* journaled independently; the shared state is what we check.
@@ -68,7 +68,7 @@ Intended == IF KIND = "deploy" THEN CDEPLOYED ELSE REMOVED
 AfterMutate == IF KIND = "deploy" THEN CDEPLOYED ELSE ABSENT
 
 Effect(i, disk) ==
-    CASE i = 0 -> [disk EXCEPT !.marker = [prev |-> IF MODE = "shipped" THEN PREV ELSE NONE,
+    CASE i = 0 -> [disk EXCEPT !.marker = [prev |-> PREV,
                                                  target |-> TARGET]]
       [] i = 1 -> [disk EXCEPT !.entry = [prior |-> disk.dest, intended |-> Intended]]
       [] i = 2 -> [disk EXCEPT !.dest = AfterMutate]

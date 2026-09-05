@@ -80,11 +80,8 @@ pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, Exe
         // is restorable exactly while its generation lives
         for state in manifest.modules.values() {
             for entry in &state.entries {
-                if let Some(prior) = &entry.prior
-                    && prior.kind == store::PriorKind::File
-                    && let Some(sha) = &prior.content
-                {
-                    referenced.insert(store::prior_blob_path(home, sha));
+                if let Some(store::Prior::File { hash, .. }) = &entry.prior {
+                    referenced.insert(store::prior_blob_path(home, hash));
                 }
             }
         }

@@ -276,10 +276,15 @@ pub fn diff_section(
             // forever. Template vars come from the IR (eval already
             // computed them); a render failure means the entry errors
             // at apply too — say so instead of guessing.
-            let new_hash = match entry.mode {
+            // each arm computes in the entry's manifest domain
+            // (0031): merge/template bytes-only; copy mode-aware with
+            // the INTENT mode from the repo payload's exec bit —
+            // matching deploy's recording exactly
+            let new_hash: Option<String> = match entry.mode {
                 gripsack_ir::Ownership::Merge => {
                     std::fs::read_to_string(&repo_file).ok().map(|text| {
                         gripsack_store::canonical_bytes_hash(text.trim_end_matches('\n').as_bytes())
+                            .to_string()
                     })
                 }
                 gripsack_ir::Ownership::Template => std::fs::read(&repo_file)
@@ -288,8 +293,23 @@ pub fn diff_section(
                         gripsack_exec::template::render_template(&bytes, &entry.vars, &entry.from)
                             .ok()
                     })
-                    .map(|rendered| gripsack_store::canonical_bytes_hash(&rendered)),
-                _ => gripsack_store::canonical_file_hash(&repo_file).ok(),
+                    .map(|rendered| gripsack_store::canonical_bytes_hash(&rendered).to_string()),
+                _ => std::fs::read(&repo_file).ok().map(|bytes| {
+                    #[cfg(unix)]
+                    let exec = {
+                        use std::os::unix::fs::MetadataExt;
+                        std::fs::metadata(&repo_file)
+                            .map(|m| m.mode() & 0o111 != 0)
+                            .unwrap_or(false)
+                    };
+                    #[cfg(not(unix))]
+                    let exec = false;
+                    gripsack_store::canonical_bytes_identity(
+                        &bytes,
+                        if exec { 0o755 } else { 0o644 },
+                    )
+                    .to_string()
+                }),
             };
             let Some(new_hash) = new_hash else {
                 lines.push(format!(
@@ -311,12 +331,16 @@ pub fn diff_section(
                     let blocks = gripsack_exec::template::find_blocks(&existing, name).len();
                     blocks != 1
                         || gripsack_exec::template::extract_block(&existing, name).is_none_or(|c| {
-                            gripsack_store::canonical_bytes_hash(c.as_bytes()) != expected
+                            gripsack_store::canonical_bytes_hash(c.as_bytes()).as_str() != expected
                         })
                 }
                 gripsack_ir::Ownership::Template => {
-                    match gripsack_store::canonical_file_hash(&dest) {
-                        Ok(actual) => actual != expected,
+                    // bytes-only domain (mode unmanaged): a chmodded
+                    // template dest is NOT drift
+                    match std::fs::read(&dest) {
+                        Ok(bytes) => {
+                            gripsack_store::canonical_bytes_hash(&bytes).as_str() != expected
+                        }
                         Err(_) => true, // absent: apply writes
                     }
                 }

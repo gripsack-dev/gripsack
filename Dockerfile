@@ -47,8 +47,7 @@ RUN cargo build --locked -p gripsack
 
 # The transaction model check (plan/0028): TLC over the TLA+ spec of
 # the journal protocol — the shipped configs must check clean, and the
-# legacy-marker config must VIOLATE the oracle (the kept 0.22
-# counterexample). tla2tools is checksum-pinned like deno.
+# tla2tools is checksum-pinned like deno.
 FROM eclipse-temurin:21-jre AS model
 ARG TLA_TOOLS_SHA256=b658b4e504fdf0b721caf7066320f6b6fe5805f4dd2f717d0e47baba4097205e
 ADD --checksum=sha256:${TLA_TOOLS_SHA256} https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar /tla/tla2tools.jar
@@ -64,10 +63,10 @@ RUN java -jar /tla/tla2tools.jar -cleanup -config specs/cfg/ownership.cfg specs/
       || { echo "TLC failed for $cfg"; cat /tmp/$cfg.log; exit 1; }; \
       echo "$cfg: clean"; \
     done \
-    && java -jar /tla/tla2tools.jar -cleanup -config specs/cfg/legacy-rollforward.cfg specs/Transaction.tla > /tmp/legacy.log 2>&1; \
-    grep -q "Invariant Oracle is violated" /tmp/legacy.log \
-      && echo "legacy-rollforward: violates the oracle as expected (the 0.22 bug, kept as proof)" \
-      || { echo "legacy-rollforward must VIOLATE the oracle"; cat /tmp/legacy.log; exit 1; }
+    && java -jar /tla/tla2tools.jar -cleanup -config specs/cfg/activation.cfg specs/Activation.tla > /tmp/activation.log 2>&1 \
+    && grep -q "Model checking completed. No error" /tmp/activation.log \
+    || { echo "TLC failed for activation"; cat /tmp/activation.log; exit 1; }; \
+    echo "activation: clean"
 
 # TypeScript frontend tests (plan/0005 §1, plan/0013 D1): `deno test`
 # on the source tree — no transpile chain, no node_modules. The image

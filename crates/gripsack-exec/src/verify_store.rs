@@ -55,6 +55,11 @@ pub fn verify_store(
                 if !src.is_file() || src.is_symlink() {
                     continue;
                 }
+                // each arm recomputes in the entry's manifest domain
+                // (0031): merge/template are bytes-only; copies are
+                // mode-aware — the intent mode re-derived from the
+                // store payload's exec bit (0444 → 0644, 0555 → 0755);
+                // owned links record the payload's store identity
                 let actual = match entry.mode {
                     gripsack_ir::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
                         gripsack_store::canonical_bytes_hash(
@@ -62,14 +67,33 @@ pub fn verify_store(
                                 .trim_end_matches('\n')
                                 .as_bytes(),
                         )
+                        .to_string()
                     }),
                     gripsack_ir::Ownership::Template => std::fs::read(&src)
                         .ok()
                         .and_then(|b| {
                             crate::template::render_template(&b, &entry.vars, &entry.from).ok()
                         })
-                        .map(|r| gripsack_store::canonical_bytes_hash(&r)),
-                    _ => gripsack_store::canonical_file_hash(&src).ok(),
+                        .map(|r| gripsack_store::canonical_bytes_hash(&r).to_string()),
+                    gripsack_ir::Ownership::Owned => gripsack_store::canonical_file_hash(&src)
+                        .ok()
+                        .map(|h| h.to_string()),
+                    gripsack_ir::Ownership::TrackedCopy => std::fs::read(&src).ok().map(|bytes| {
+                        #[cfg(unix)]
+                        let exec = {
+                            use std::os::unix::fs::MetadataExt;
+                            std::fs::metadata(&src)
+                                .map(|m| m.mode() & 0o111 != 0)
+                                .unwrap_or(false)
+                        };
+                        #[cfg(not(unix))]
+                        let exec = false;
+                        gripsack_store::canonical_bytes_identity(
+                            &bytes,
+                            if exec { 0o755 } else { 0o644 },
+                        )
+                        .to_string()
+                    }),
                 };
                 if let Some(h) = &actual
                     && *h != entry.hash
@@ -99,7 +123,7 @@ pub fn verify_store(
             // the generation, not with any host's lockfile
             if let Some(expected) = &state.tree256 {
                 let actual = gripsack_store::canonical_tree_hash(path)?;
-                if actual != *expected {
+                if actual.as_str() != expected.as_str() {
                     return_corrupt(
                         &mut out,
                         repair,
@@ -109,7 +133,7 @@ pub fn verify_store(
                         &format!(
                             "corrupt: {} hashes {} but the manifest records {} — `grip store verify --repair` removes it",
                             path.display(),
-                            hex_head(&actual),
+                            hex_head(actual.as_str()),
                             hex_head(expected)
                         ),
                     )?;

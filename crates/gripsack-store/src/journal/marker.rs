@@ -18,33 +18,24 @@ pub(crate) struct RunMarker {
     /// committed, current == previous is uncommitted, anything else is
     /// ambiguous and blocks. Numeric inequalities misclassify a
     /// crashed roll-FORWARD (current < target before the flip).
-    /// None only in pre-0.23 markers, which reconcile by the 0.22
-    /// direction rule.
-    #[serde(default)]
+    /// Null is a fresh machine's first run. The field is REQUIRED on
+    /// the wire (no serde default): a marker missing it is torn or
+    /// corrupt and fails closed, never mistaken for a fresh run.
     pub(crate) previous_generation: Option<u64>,
     pub(crate) target_generation: u64,
-    /// 2 for markers written since 0.26 (0030 §11): distinguishes
-    /// "no previous generation" (a fresh machine) from a pre-0.23
-    /// marker that never recorded one — the latter refuses to
-    /// reconcile, the former classifies exactly
-    #[serde(default)]
-    pub(crate) format: u8,
     /// Apply builds a NEWER generation (committed once `current`
     /// reaches the target); rollback returns to an OLDER one, so its
     /// commit condition inverts (committed once `current` comes back
-    /// DOWN to the target) — 0025 §A. Default keeps pre-0.22 markers
-    /// readable as apply runs.
-    #[serde(default)]
+    /// DOWN to the target) — 0025 §A.
     pub(crate) op: RunOp,
 }
 
 /// What the run is doing — the reconcile commit decision differs by
 /// direction (see RunMarker).
-#[derive(Debug, Default, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunOp {
     /// The normal case: building the next generation.
-    #[default]
     Apply,
     /// Returning to a previous generation.
     Rollback,
@@ -64,7 +55,6 @@ pub fn begin_run(
         previous_generation,
         target_generation,
         op,
-        format: 2,
     };
     gripsack_fs::atomic_write(
         home,
@@ -148,35 +138,28 @@ pub(crate) fn run_marker(home: &Dir) -> io::Result<Option<RunMarker>> {
 
 /// The commit classification as a pure function (0028), exact
 /// equality only: current == target is committed, current == previous
-/// is uncommitted, anything else is ambiguous and blocks. Pre-0.23
-/// markers carry no previous generation; those refuse (never
-/// auto-classify by the model-proven-unsound direction rule).
+/// is uncommitted, anything else is ambiguous and blocks. A marker
+/// without `previous_generation` never reaches here — the field is
+/// required on the wire and a torn marker fails closed at parse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Classification {
     Committed,
     Uncommitted,
     Ambiguous,
-    /// A pre-0.23 run marker (no previous_generation): the commit
-    /// state is unknowable - refuse, never auto-classify (0030 §11)
-    Legacy,
 }
 
 /// The classifier's whole input, named: the facts a run marker
 /// carries, plus the live `current` read at recovery time. (A struct,
-/// not five positional `Option<u64>`-flavored arguments - the model
-/// harness passes the same shape to its legacy counterexample.)
+/// not positional `Option<u64>`-flavored arguments.)
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RecoveryFacts {
-    /// The generation the run started from. None for a fresh
-    /// machine's first run - and for pre-0.23 markers, which never
-    /// recorded it (told apart by `format`).
+    /// The generation the run started from — None is a fresh
+    /// machine's first run.
     pub(crate) previous: Option<u64>,
     /// The generation the run was building toward.
     pub(crate) target: u64,
     /// `current` on disk when recovery ran.
     pub(crate) current: Option<u64>,
-    /// Marker schema: 2+ carries exact transaction identity.
-    pub(crate) format: u8,
 }
 
 pub(crate) fn classify(facts: &RecoveryFacts) -> Classification {
@@ -184,14 +167,10 @@ pub(crate) fn classify(facts: &RecoveryFacts) -> Classification {
         (Some(_), Some(c)) if c == facts.target => Classification::Committed,
         (Some(prev), Some(c)) if c == prev => Classification::Uncommitted,
         (Some(_), _) => Classification::Ambiguous,
-        // a fresh machine's run (no previous generation): exact too -
-        // distinguishable from legacy by the format field
-        (None, Some(c)) if facts.format >= 2 && c == facts.target => Classification::Committed,
-        (None, None) if facts.format >= 2 => Classification::Uncommitted,
-        (None, Some(_)) if facts.format >= 2 => Classification::Ambiguous,
-        // pre-0.23 marker (no format field): the directional rule is
-        // proven unsound (0028's kept counterexample) - refuse with
-        // guidance rather than guess (0030 §11)
-        _ => Classification::Legacy,
+        // a fresh machine's first run: current at the target means the
+        // flip landed; absent means it never did
+        (None, Some(c)) if c == facts.target => Classification::Committed,
+        (None, None) => Classification::Uncommitted,
+        (None, Some(_)) => Classification::Ambiguous,
     }
 }

@@ -194,7 +194,9 @@ pub(crate) fn repo_overlay(
     if froms.is_empty() {
         return Ok(None);
     }
-    Ok(Some(store::canonical_overlay_hash(repo, &froms)?))
+    Ok(Some(
+        store::canonical_overlay_hash(repo, &froms)?.to_string(),
+    ))
 }
 
 pub(crate) fn module_input(
@@ -209,7 +211,7 @@ pub(crate) fn module_input(
             input.push('|');
             input.push_str(&entry.from);
             input.push('=');
-            input.push_str(&store::canonical_file_hash(&repo_file)?);
+            input.push_str(store::canonical_file_hash(&repo_file)?.as_str());
         }
     }
     // the closure model (0001 §3.4): a dependency's identity joins the

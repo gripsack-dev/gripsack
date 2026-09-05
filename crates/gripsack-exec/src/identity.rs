@@ -124,7 +124,7 @@ pub(crate) fn resolve(
                     .chain(module.config.iter())
                     .map(|e| e.from.clone())
                     .collect();
-                let tree = store::canonical_overlay_hash(&ctx.repo, &froms)?;
+                let tree = store::canonical_overlay_hash(&ctx.repo, &froms)?.to_string();
                 (
                     store::content_path(&ctx.home, name, &tree),
                     false,

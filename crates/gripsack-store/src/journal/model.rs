@@ -50,7 +50,7 @@
 //! matches neither the marker's previous nor its target, recovery
 //! changes NOTHING and keeps the journal intact (fail closed).
 
-use super::marker::{Classification, RecoveryFacts, RunOp, classify};
+use super::marker::{Classification, RecoveryFacts, classify};
 use super::recover::{Recovery, decide_from};
 
 /// Abstract contents. One destination is enough: the protocol
@@ -106,13 +106,10 @@ struct Node {
     step: usize,
     crashed: bool,
     user_edited: bool,
-    /// Write 0.22-shaped markers (no previous generation, op-driven
-    /// classification) — the counterexample test's knob.
-    legacy: bool,
 }
 
 impl Node {
-    fn initial(prev_gen: u64, kind: RunKind, legacy: bool) -> Node {
+    fn initial(prev_gen: u64, kind: RunKind) -> Node {
         let dest = match kind {
             RunKind::Deploy => Some(PRIOR),
             RunKind::Prune => Some(DEPLOYED),
@@ -129,7 +126,6 @@ impl Node {
             step: 0,
             crashed: false,
             user_edited: false,
-            legacy,
         }
     }
 
@@ -140,9 +136,9 @@ impl Node {
 }
 
 /// Execute step `i`'s effect on the volatile copy (no flush).
-fn step_effect(disk: &mut Disk, i: usize, prev: u64, target: u64, kind: RunKind, legacy: bool) {
+fn step_effect(disk: &mut Disk, i: usize, prev: u64, target: u64, kind: RunKind) {
     match i {
-        0 => disk.marker = Some((if legacy { None } else { Some(prev) }, target)),
+        0 => disk.marker = Some((Some(prev), target)),
         1 => {
             disk.entry = Some(match kind {
                 RunKind::Deploy => (disk.dest, "1"),
@@ -209,7 +205,6 @@ fn recover(
             previous: prev,
             target,
             current: disk.current,
-            format: if prev.is_some() { 2 } else { 0 },
         })),
         // entries without a marker: the real rule — uncommitted
         None => Some(Classification::Uncommitted),
@@ -251,7 +246,7 @@ fn recover(
         }
         // fail closed: nothing changes, journal intact — Legacy
         // markers refuse the same way (0030 §11)
-        Classification::Ambiguous | Classification::Legacy => {}
+        Classification::Ambiguous => {}
     }
     (disk, Some(class))
 }
@@ -278,7 +273,7 @@ fn check_oracle(
         };
     };
     match class {
-        Classification::Ambiguous | Classification::Legacy => {
+        Classification::Ambiguous => {
             if *disk != *crashed_disk {
                 return Err(bad("ambiguous state must change NOTHING"));
             }
@@ -326,11 +321,10 @@ fn explore(
     prev: u64,
     target: u64,
     kind: RunKind,
-    legacy: bool,
     classifier: &dyn Fn(&RecoveryFacts) -> Classification,
 ) -> (usize, Vec<String>) {
     let mut seen = std::collections::HashSet::new();
-    let mut stack = vec![(Node::initial(prev, kind, legacy), String::new())];
+    let mut stack = vec![(Node::initial(prev, kind), String::new())];
     let mut violations = Vec::new();
     let mut explored = 0usize;
 
@@ -398,7 +392,7 @@ fn explore(
         let i = node.step;
 
         let mut full = node.clone();
-        step_effect(&mut full.volatile, i, prev, target, kind, full.legacy);
+        step_effect(&mut full.volatile, i, prev, target, kind);
         full.flush();
         full.step += 1;
         stack.push((full, format!("{trace} step{i}\n")));
@@ -408,7 +402,7 @@ fn explore(
         stack.push((before, format!("{trace} CRASH before step{i}\n")));
 
         let mut midway = node.clone();
-        step_effect(&mut midway.volatile, i, prev, target, kind, midway.legacy);
+        step_effect(&mut midway.volatile, i, prev, target, kind);
         midway.crashed = true; // note: no flush — the write is pending
         stack.push((midway, format!("{trace} CRASH mid-step{i}\n")));
     }
@@ -428,7 +422,7 @@ mod tests {
         let mut total = 0;
         for (prev, target) in [(1, 2), (2, 1)] {
             for kind in [RunKind::Deploy, RunKind::Prune] {
-                let (explored, violations) = explore(prev, target, kind, false, &classify);
+                let (explored, violations) = explore(prev, target, kind, &classify);
                 total += explored;
                 assert!(
                     violations.is_empty(),
@@ -439,43 +433,6 @@ mod tests {
             }
         }
         eprintln!("transaction model: {total} states explored, zero violations");
-    }
-
-    /// The counterexample, kept: pre-0.23 markers (no previous
-    /// generation) classify by direction — a roll-FORWARD killed
-    /// before its flip reads `current(1) <= target(2)` as committed
-    /// and abandons a half-restored destination. The explorer finds
-    /// it in milliseconds; the shipped marker shape makes the class
-    /// unrepresentable.
-    #[test]
-    fn legacy_markers_misclassify_rollforward_and_shipped_ones_cannot() {
-        // the 0.22 rule, kept model-local as archaeology (production
-        // refuses legacy markers since 0.26)
-        // the 0.22 rule classified by the RUN's direction (the
-        // marker's op field was never read even then)
-        fn legacy_classify(direction: RunOp, facts: &RecoveryFacts) -> Classification {
-            match (direction, facts.current) {
-                (RunOp::Apply, Some(c)) if c >= facts.target => Classification::Committed,
-                (RunOp::Rollback, Some(c)) if c <= facts.target => Classification::Committed,
-                _ => Classification::Uncommitted,
-            }
-        }
-        let (_, violations) = explore(1, 2, RunKind::Deploy, true, &|facts| {
-            legacy_classify(RunOp::Rollback, facts)
-        });
-        assert!(
-            violations
-                .iter()
-                .any(|v| v.contains("must point at the target")),
-            "the legacy direction rule must produce the known counterexample; got: {violations:?}"
-        );
-        // the same schedule space with shipped markers: clean
-        // shipped markers through the REAL classifier: clean. And
-        // legacy markers through it: refuse (Ambiguous), never guess
-        let (_, violations) = explore(1, 2, RunKind::Deploy, false, &classify);
-        assert!(violations.is_empty(), "{violations:?}");
-        let (_, violations) = explore(1, 2, RunKind::Deploy, true, &classify);
-        assert!(violations.is_empty(), "{violations:?}");
     }
 
     impl std::fmt::Debug for RunKind {

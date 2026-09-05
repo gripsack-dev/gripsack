@@ -9,6 +9,7 @@
 use crate::report::{ReportKind, StepReport};
 use gripsack_ir::Action;
 use gripsack_ir::step::{Step, StepAction};
+use gripsack_store as store;
 
 /// Step-form intents from the EXPANDED steps (declarative `activate`
 /// fields expand into these — the IR's module.steps field is empty
@@ -27,28 +28,48 @@ fn step_intents(steps: &[Step]) -> Vec<&Action> {
 use std::collections::BTreeMap;
 use tracing::{info, warn};
 
-/// Run every PostLink intent (fonts / desktop-entry cache refreshes),
-/// deduped across modules — three font modules mean ONE fc-cache,
-/// not three. Runs before PostActivate (trigger order, 0001 §3.8).
-pub(crate) fn run_post_link(
+/// Collect every module's activation intents in trigger order
+/// (0001 §3.8): post-link caches first (fonts, desktop-entry), then
+/// post-activate (services, custom hooks). The list is DATA — it
+/// lands in the durable pending record (0032) before the flip, and
+/// resume runs from the record, not a re-read of the repo.
+pub(crate) fn collect(
     order: &[String],
     steps_by_module: &BTreeMap<String, Vec<Step>>,
-) -> Vec<StepReport> {
-    let mut want_fonts = false;
-    let mut want_desktop = false;
+) -> Vec<store::activation::PendingIntent> {
+    let mut caches = Vec::new();
+    let mut rest = Vec::new();
     for name in order {
-        // step-form intents — cache kinds are post-link (declarative
-        // activate fields expand into these too, so this is the ONLY
-        // place they execute)
         for action in step_intents(&steps_by_module[name.as_str()]) {
+            let intent = store::activation::PendingIntent {
+                module: name.clone(),
+                action: action.clone(),
+            };
             match action {
-                Action::Fonts => want_fonts = true,
-                Action::DesktopEntry => want_desktop = true,
-                _ => {}
+                Action::Fonts | Action::DesktopEntry => caches.push(intent),
+                Action::Service { .. } | Action::CustomShell { .. } => rest.push(intent),
             }
         }
     }
+    caches.extend(rest);
+    caches
+}
+
+/// Run the intents, deduped by kind — three font modules mean ONE
+/// fc-cache, not three. Failures are warnings, never apply errors
+/// (0001 §3.8, hard rule). Returns the reports for the CLI.
+pub(crate) fn run(intents: &[store::activation::PendingIntent]) -> Vec<StepReport> {
     let mut reports = Vec::new();
+    let mut want_fonts = false;
+    let mut want_desktop = false;
+    let mut rest = Vec::new();
+    for intent in intents {
+        match &intent.action {
+            Action::Fonts => want_fonts = true,
+            Action::DesktopEntry => want_desktop = true,
+            other => rest.push((intent.module.as_str(), other)),
+        }
+    }
     if want_fonts {
         reports.push(refresh_cache(
             "fonts",
@@ -67,7 +88,57 @@ pub(crate) fn run_post_link(
             "desktop database refreshed",
         ));
     }
+    for (module, action) in rest {
+        match action {
+            Action::Service { name: svc, user } => {
+                reports.push(service(module, svc, *user));
+            }
+            Action::CustomShell { script } => {
+                reports.push(custom_shell(module, script));
+            }
+            other => {
+                info!(?other, "intent declared (adapter later)");
+            }
+        }
+    }
     reports
+}
+
+/// The resume step (0032): every lifecycle run starts here, after
+/// journal reconcile, under the lock. A pending record naming the
+/// CURRENT generation re-runs its intents (they are idempotent
+/// refreshes by contract); anything else names a superseded or
+/// rolled-back generation — discarded, never run.
+pub(crate) fn resume_pending(
+    home: &gripsack_fs::Dir,
+    current: Option<u64>,
+) -> std::io::Result<Vec<StepReport>> {
+    let Some(pending) = store::activation::read_pending(home)? else {
+        return Ok(Vec::new());
+    };
+    if Some(pending.generation) != current {
+        // the named generation never committed (or is no longer
+        // current) — running its adapters now would activate state
+        // that isn't live
+        store::activation::clear_pending(home)?;
+        return Ok(Vec::new());
+    }
+    let mut reports = run(&pending.intents);
+    store::activation::clear_pending(home)?;
+    if !pending.intents.is_empty() {
+        reports.insert(
+            0,
+            StepReport {
+                module: "*".into(),
+                summary: format!(
+                    "resumed activation for generation {} (interrupted run)",
+                    pending.generation
+                ),
+                kind: ReportKind::Warned,
+            },
+        );
+    }
+    Ok(reports)
 }
 
 fn desktop_applications_dir() -> std::path::PathBuf {
@@ -113,33 +184,6 @@ fn refresh_cache(kind: &str, tool: &str, args: &[&str], ok_msg: &str) -> StepRep
             }
         }
     }
-}
-
-/// Run every PostActivate intent of the modules that applied, in
-/// graph order. Returns the reports for the CLI.
-pub(crate) fn run_post_activate(
-    order: &[String],
-    steps_by_module: &BTreeMap<String, Vec<Step>>,
-) -> Vec<StepReport> {
-    let mut reports = Vec::new();
-    for name in order {
-        // step-form intents — service/custom are post-activate
-        // (single execution path, see run_post_link)
-        for action in step_intents(&steps_by_module[name.as_str()]) {
-            match action {
-                Action::Service { name: svc, user } => {
-                    reports.push(service(name, svc, *user));
-                }
-                Action::CustomShell { script } => {
-                    reports.push(custom_shell(name, script));
-                }
-                other => {
-                    info!(?other, "intent declared (adapter later)");
-                }
-            }
-        }
-    }
-    reports
 }
 
 fn systemctl_available(user: bool) -> bool {

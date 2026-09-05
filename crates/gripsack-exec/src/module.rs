@@ -412,7 +412,7 @@ impl<'a> ModuleRun<'a> {
             self.publish_staging(&stage, &self.store_path.clone())?;
             return Ok(());
         }
-        let tree = store::canonical_tree_hash(&stage)?;
+        let tree = store::canonical_tree_hash(&stage)?.to_string();
         // drift the transport check can't see (plugin fetchers stage
         // trees directly): a locked identity must match what landed
         if let Some(expected) = &self.tree256

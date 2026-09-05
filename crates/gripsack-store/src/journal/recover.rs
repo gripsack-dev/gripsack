@@ -6,13 +6,35 @@
 //! with a warning. Never delete user edits.
 
 use gripsack_fs::Dir;
+
+/// One recovery outcome from [`reconcile`], typed so callers render
+/// severity instead of parsing message text: a kept post-crash edit
+/// is a WARNING (your file was left in a state the manifest doesn't
+/// know); restores and no-ops are informational.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecoveryNote {
+    pub severity: NoteSeverity,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteSeverity {
+    Info,
+    Warn,
+}
+
+impl std::fmt::Display for RecoveryNote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
 use std::io;
 use std::path::{Path, PathBuf};
 
 use super::marker::{Classification, RecoveryFacts, classify, cleanup, run_marker};
 use super::{
-    Entry, PriorSerde, dest_capability, live_identity, prior_blob_rel, prior_identity,
-    read_uncommitted,
+    Entry, ObjectIdentity, PriorSerde, dest_capability, live_identity, prior_blob_rel,
+    prior_identity, read_uncommitted,
 };
 
 /// What an uncommitted entry asks for, once resolved against the
@@ -32,7 +54,7 @@ pub(crate) enum Recovery {
 /// stands; uncommitted runs are restored to their priors. Returns one
 /// human line per decision for the apply report. Must run under the
 /// lifecycle lock.
-pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
+pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> {
     let Some(entries) = read_uncommitted(home)? else {
         return Ok(Vec::new());
     };
@@ -40,9 +62,9 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
     // current == target committed, current == previous uncommitted,
     // anything else is ambiguous and BLOCKS (fail closed — the
     // lifecycle lock serializes runs, so a third value means
-    // corruption or tampering, never a branch to guess). Pre-0.23
-    // markers carry no previous generation; those reconcile by the
-    // 0.22 direction rule, correct for those versions' semantics.
+    // corruption or tampering, never a branch to guess). A marker
+    // missing `previous_generation` fails closed at parse — torn or
+    // corrupt, never mistaken for a fresh-machine run.
     let committed = match run_marker(home)? {
         Some(marker) => {
             // the ONE current-pointer reader (0030 §H10): recovery
@@ -52,7 +74,6 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
                 previous: marker.previous_generation,
                 target: marker.target_generation,
                 current,
-                format: marker.format,
             }) {
                 Classification::Committed => true,
                 Classification::Uncommitted => false,
@@ -65,18 +86,6 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
                         marker.previous_generation, marker.target_generation
                     )));
                 }
-                Classification::Legacy => {
-                    return Err(io::Error::other(format!(
-                        "journal run marker (→{}) predates 0.23's exact \
-                         transaction identity — cannot prove whether it \
-                         committed. Inspect $GRIPSACK_HOME/journal: the \
-                         entries name each destination's prior and intended \
-                         state. To accept the current state, delete the \
-                         journal directory; to restore, move the named files \
-                         back by hand first",
-                        marker.target_generation
-                    )));
-                }
             }
         }
         None => false,
@@ -87,11 +96,12 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
             home,
             &entries.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
         )?;
-        lines.push(
-            "interrupted run's generation had already activated — journal \
+        lines.push(RecoveryNote {
+            severity: NoteSeverity::Info,
+            message: "interrupted run's generation had already activated — journal \
              cleared, deployed state stands"
                 .to_string(),
-        );
+        });
         return Ok(lines);
     }
     let mut entry_paths = Vec::new();
@@ -109,22 +119,31 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
                 // entry may be dropped
                 let live = live_identity(&dest_dir, &dest_name)?;
                 let expected = prior_identity(&entry.prior, home)?;
-                if live.as_deref() != expected.as_deref() {
+                if live != expected {
                     return Err(io::Error::other(format!(
                         "recovery of {} did not produce the prior state — the                          journal is retained; inspect $GRIPSACK_HOME/journal",
                         entry.dest
                     )));
                 }
-                lines.push(format!("recovered {}: {what}", entry.dest));
+                lines.push(RecoveryNote {
+                    severity: NoteSeverity::Info,
+                    message: format!("recovered {}: {what}", entry.dest),
+                });
             }
             Recovery::Unchanged => {
-                lines.push(format!(
-                    "unchanged {}: the mutation never landed",
-                    entry.dest
-                ));
+                lines.push(RecoveryNote {
+                    severity: NoteSeverity::Info,
+                    message: format!("unchanged {}: the mutation never landed", entry.dest),
+                });
             }
             Recovery::Keep(why) => {
-                lines.push(format!("kept {}: {why}", entry.dest));
+                // a kept post-crash edit is the outcome the user must
+                // NOTICE — it means live state and the manifest now
+                // disagree about who owns the bytes
+                lines.push(RecoveryNote {
+                    severity: NoteSeverity::Warn,
+                    message: format!("kept {}: {why}", entry.dest),
+                });
             }
         }
         entry_paths.push(path);
@@ -139,10 +158,13 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
 fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry, home: &Dir) -> io::Result<Recovery> {
     let live = live_identity(dest_dir, dest_name)?;
     let prior_id = prior_identity(&entry.prior, home)?;
+    // the pure decision algebra compares CANONICAL WIRE STRINGS (the
+    // model checker drives it with abstract values); the types guard
+    // construction, the wire guards the boundary
     Ok(decide_from(
-        live.as_deref(),
+        live.as_ref().map(ObjectIdentity::to_wire).as_deref(),
         &entry.after,
-        prior_id.as_deref(),
+        prior_id.as_ref().map(ObjectIdentity::to_wire).as_deref(),
         &entry.prior,
     ))
 }
@@ -193,14 +215,7 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
             // the mode rides the write (0027 §6): temp → exact mode →
             // fsync → rename, so a restored 0600 secret never exists
             // at a wider mode, not even for the rename's instant
-            match mode {
-                Some(mode) => {
-                    gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, *mode)?
-                }
-                // pre-0.24 entries carry no mode — content is still
-                // restored; the mode is creation default
-                None => gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?,
-            }
+            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, *mode)?
         }
         PriorSerde::Symlink { target } => {
             gripsack_fs::symlink_replace(dest_dir, dest_name, Path::new(target))?;

@@ -117,24 +117,22 @@ struct DeployOutcome {
     preserved_drift: bool,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum Expect {
-    /// The destination must be ABSENT — anything appearing between
-    /// the decision and the mutation aborts the run.
-    Absent,
-    /// The destination's live identity must equal this.
-    Is(String),
-}
+/// What the precondition expects of the live object before the
+/// mutation — None: the destination must be ABSENT, anything
+/// appearing aborts the run. (The 0031 typed form of the old
+/// `Expect` enum: `Option<ObjectIdentity>`, no stringly `Is`.)
+pub(crate) type Expect = Option<store::journal::ObjectIdentity>;
 
 pub(crate) fn journaled(
     home: &gripsack_fs::Dir,
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
     dest: &Path,
-    intended: String,
+    intended: store::journal::Intended,
     expected_before: Expect,
     mutate: impl FnOnce() -> std::io::Result<()>,
 ) -> std::io::Result<()> {
+    use store::journal::{Intended, ObjectIdentity};
     // the live object must still be the one the drift decision was
     // made against — a write between decision and capture aborts
     // instead of clobbering it. (There is no portable content-CAS:
@@ -142,11 +140,7 @@ pub(crate) fn journaled(
     // are back-to-back; the residual window is documented on the
     // safety page.)
     let live = gripsack_store::journal::live_identity(dest_dir, dest_name)?;
-    let ok = match &expected_before {
-        Expect::Absent => live.is_none(),
-        Expect::Is(expected) => live.as_deref() == Some(expected.as_str()),
-    };
-    if !ok {
+    if live != expected_before {
         return Err(std::io::Error::other(format!(
             "{} changed between the drift decision and the mutation — aborting; re-run to retry",
             dest.display()
@@ -163,17 +157,19 @@ pub(crate) fn journaled(
     // compensation restores the prior — the flip never commits an
     // unverified destination
     let live = gripsack_store::journal::live_identity(dest_dir, dest_name)?;
-    let landed = if intended == gripsack_store::journal::REMOVED {
-        live.is_none()
-    } else {
-        live.as_deref() == Some(intended.as_str())
+    let landed = match &intended {
+        Intended::Removed => live.is_none(),
+        Intended::Object(id) => live.as_ref() == Some(id),
     };
     if !landed {
         return Err(std::io::Error::other(format!(
             "{} did not reach its intended state (expected {}, found {})",
             dest.display(),
-            intended,
-            live.as_deref().unwrap_or("absent")
+            intended.to_wire(),
+            live.as_ref()
+                .map(ObjectIdentity::to_wire)
+                .as_deref()
+                .unwrap_or("absent")
         )));
     }
     Ok(())
@@ -354,26 +350,24 @@ pub(crate) fn deploy_entry(
                 .map(|t| t == source)
                 .unwrap_or(false);
             if !already {
-                let target = source.to_string_lossy().into_owned();
                 // precondition: the object we replace is the one the
                 // guards inspected — link target for a symlink, content
                 // hash for a take-over of a regular file
-                let expected = match gripsack_store::journal::live_identity(&dest_dir, &dest_name)?
-                {
-                    Some(l) => Expect::Is(l),
-                    None => Expect::Absent,
-                };
+                let expected: Expect =
+                    gripsack_store::journal::live_identity(&dest_dir, &dest_name)?;
                 journaled(
                     ctx.home_dir()?,
                     &dest_dir,
                     &dest_name,
                     &dest,
-                    target,
+                    store::journal::Intended::Object(store::journal::ObjectIdentity::Link(
+                        source.to_string_lossy().into_owned(),
+                    )),
                     expected,
                     || gripsack_fs::symlink_replace(&dest_dir, &dest_name, &source),
                 )?;
             }
-            let hash = store::canonical_file_hash(&source)?;
+            let hash = store::canonical_file_hash(&source)?.to_string();
             if already {
                 DeployOutcome {
                     summary: format!("{} unchanged", entry.to),
@@ -416,11 +410,14 @@ pub(crate) fn deploy_entry(
             #[cfg(not(unix))]
             let src_exec = false;
             let intent_mode: u32 = if src_exec { 0o755 } else { 0o644 };
+            // the modal manifest identity (the field is a wire string;
+            // the TYPE of the hash is fixed by the entry's mode, so a
+            // cross-mode comparison is impossible by construction)
             let hash = match entry.mode {
                 // templates: bytes-only identity — a rendered file's
                 // mode is not managed (0030 §H3)
-                Ownership::Template => store::canonical_bytes_hash(content),
-                _ => store::canonical_bytes_identity(content, intent_mode),
+                Ownership::Template => store::canonical_bytes_hash(content).to_string(),
+                _ => store::canonical_bytes_identity(content, intent_mode).to_string(),
             };
             let prev_pair = prev.map(|e| (e.hash.as_str(), e.preserved_drift));
             let (dest_dir, dest_name) = dest_capability(&dest)?;
@@ -436,20 +433,24 @@ pub(crate) fn deploy_entry(
             // templates bytes-only, links hash their target bytes; the
             // journal/precondition domain is mode-aware for files,
             // raw target for links
-            let (live, expect) = match &observed {
-                None => (None, Expect::Absent),
+            let (live, expect): (Option<String>, Expect) = match &observed {
+                None => (None, None),
                 Some(Observation::Symlink { target }) => (
-                    Some(store::canonical_bytes_hash(target.as_encoded_bytes())),
-                    Expect::Is(target.to_string_lossy().into_owned()),
+                    Some(store::canonical_bytes_hash(target.as_encoded_bytes()).to_string()),
+                    Some(store::journal::ObjectIdentity::Link(
+                        target.to_string_lossy().into_owned(),
+                    )),
                 ),
                 Some(Observation::File { bytes, mode }) => {
                     let manifest = match entry.mode {
-                        Ownership::Template => store::canonical_bytes_hash(bytes),
-                        _ => store::canonical_bytes_identity(bytes, *mode),
+                        Ownership::Template => store::canonical_bytes_hash(bytes).to_string(),
+                        _ => store::canonical_bytes_identity(bytes, *mode).to_string(),
                     };
                     (
                         Some(manifest),
-                        Expect::Is(store::canonical_bytes_identity(bytes, *mode)),
+                        Some(store::journal::ObjectIdentity::File(
+                            store::canonical_bytes_identity(bytes, *mode),
+                        )),
                     )
                 }
             };
@@ -479,7 +480,10 @@ pub(crate) fn deploy_entry(
                         },
                         _ => intent_mode,
                     };
-                    let after = store::canonical_bytes_identity(content, landed_mode);
+                    let after =
+                        store::journal::Intended::Object(store::journal::ObjectIdentity::File(
+                            store::canonical_bytes_identity(content, landed_mode),
+                        ));
                     journaled(
                         ctx.home_dir()?,
                         &dest_dir,
@@ -524,7 +528,10 @@ pub(crate) fn deploy_entry(
                     // the absorbed file is OURS now — it lands the
                     // managed mode (0031), matching the recorded
                     // identity exactly
-                    let after = store::canonical_bytes_identity(content, intent_mode);
+                    let after =
+                        store::journal::Intended::Object(store::journal::ObjectIdentity::File(
+                            store::canonical_bytes_identity(content, intent_mode),
+                        ));
                     journaled(
                         ctx.home_dir()?,
                         &dest_dir,
@@ -578,7 +585,7 @@ pub(crate) fn deploy_entry(
             let payload = std::fs::read_to_string(&source)
                 .map_err(|e| fail(format!("cannot read {}: {e}", source.display())))?;
             let block = payload.trim_end_matches('\n');
-            let hash = store::canonical_bytes_hash(block.as_bytes());
+            let hash = store::canonical_bytes_hash(block.as_bytes()).to_string();
             let dest_exists = dest.symlink_metadata().is_ok();
             let existing = match read_foreign_text(&dest) {
                 Some(text) => text,
@@ -603,7 +610,7 @@ pub(crate) fn deploy_entry(
             let satisfied = block_total == 1
                 && extracted
                     .as_deref()
-                    .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()) == hash);
+                    .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()).as_str() == hash);
             if satisfied {
                 DeployOutcome {
                     summary: format!("{} block unchanged", entry.to),
@@ -620,7 +627,7 @@ pub(crate) fn deploy_entry(
                 // needed); the block regenerates either way
                 let hand_edited = extracted.as_deref().is_some_and(|content| {
                     crate::template::marker_sha(&existing, module).is_some_and(|recorded| {
-                        recorded != store::canonical_bytes_hash(content.as_bytes())[..16]
+                        recorded != store::canonical_bytes_hash(content.as_bytes()).as_str()[..16]
                     })
                 });
                 // whatever deploy does to a managed block, the report
@@ -663,14 +670,15 @@ pub(crate) fn deploy_entry(
                     .unwrap_or(0o644);
                 #[cfg(not(unix))]
                 let dest_mode: u32 = 0o644;
-                let after = store::canonical_bytes_identity(new.as_bytes(), dest_mode);
-                let expected = if dest_exists {
-                    Expect::Is(store::canonical_bytes_identity(
-                        existing.as_bytes(),
-                        dest_mode,
+                let after = store::journal::Intended::Object(store::journal::ObjectIdentity::File(
+                    store::canonical_bytes_identity(new.as_bytes(), dest_mode),
+                ));
+                let expected: Expect = if dest_exists {
+                    Some(store::journal::ObjectIdentity::File(
+                        store::canonical_bytes_identity(existing.as_bytes(), dest_mode),
                     ))
                 } else {
-                    Expect::Absent
+                    None
                 };
                 // merge re-derives from the LATEST foreign content at
                 // the mutation boundary (0029 §3): an outside-block
@@ -818,8 +826,10 @@ mod tests {
             &dest_dir,
             &dest_name,
             &dest,
-            store::canonical_bytes_hash(b"intended"),
-            Expect::Absent,
+            store::journal::Intended::Object(store::journal::ObjectIdentity::Link(
+                "intended".into(),
+            )),
+            None,
             || Ok(()), // reports success, writes nothing
         )
         .unwrap_err();

@@ -24,7 +24,12 @@ export const desktopEntry = (trigger: Trigger = "post_link"): Intent => ({
   trigger,
 });
 
-/** Escape hatch — flagged, shown by `plan`. */
+/** Escape hatch — flagged, shown by `plan`.
+ *
+ * Activation intents are durable (plan/0032): a crash around the flip
+ * re-runs them on the next `apply`. Write hooks IDEMPOTENT — they may
+ * run more than once across a crash, and they are never silently
+ * skipped. */
 export const customHook = (script: string, trigger: Trigger = "post_activate"): Intent => ({
   kind: "custom_shell",
   trigger,

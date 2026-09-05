@@ -17,25 +17,18 @@ use std::path::{Path, PathBuf};
 
 /// What a destination was before gripsack took it over (0015 §4) —
 /// recorded on every take-over, restored by rollback and prune instead
-/// of deletion. "your original files have been restored."
+/// Pre-take-over state of a destination, riding the whole ownership
+/// epoch in the manifest (0015 §4, 0029 §1). The enum keeps the facts
+/// per variant — no `content: Option` that means hash-or-target.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Prior {
-    pub kind: PriorKind,
-    /// File: sha256 of the bytes in the prior blob store.
-    /// Symlink: the link target.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
-    /// Original permission bits (unix) — a restore is faithful or it
-    /// isn't a restore.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mode: Option<u32>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PriorKind {
-    File,
-    Symlink,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Prior {
+    /// A regular file: bytes in the prior blob store under `hash`,
+    /// restored at exactly `mode` (0027 §6 — a restore is faithful
+    /// or it isn't one).
+    File { hash: String, mode: u32 },
+    /// A symlink; restored pointing at `target`.
+    Symlink { target: String },
 }
 
 /// One deployed file: where it went, how, and its canonical hash at

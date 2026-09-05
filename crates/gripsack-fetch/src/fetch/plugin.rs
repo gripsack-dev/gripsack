@@ -457,7 +457,7 @@ fn fetch_exchange(
     // disagreement class that broke update→apply on cold stores):
     // fail at write time, not at the next cold apply
     if let Some(reported) = pin_sha
-        && reported != hash
+        && reported != hash.as_str()
     {
         return Err(FetchError::Http {
             url: name.to_string(),
@@ -469,7 +469,7 @@ fn fetch_exchange(
         });
     }
     Ok(PluginFetch {
-        hash,
+        hash: hash.to_string(),
         url: pin.0,
         version: pin.1,
     })
@@ -591,7 +591,9 @@ printf '{"type":"response","result":{"url":"https://example/tarball","version":"
         // the hash is recomputed from the staged tree
         assert_eq!(
             got.hash,
-            gripsack_store::canonical_tree_hash(dest.path()).unwrap()
+            gripsack_store::canonical_tree_hash(dest.path())
+                .unwrap()
+                .as_str()
         );
     }
 

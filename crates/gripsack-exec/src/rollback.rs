@@ -22,18 +22,34 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use store::journal::RunOp;
 
-/// Roll back to `target`'s manifest. Returns human notes (recovery
-/// lines, drift keeps) for the caller to surface. Must run under the
-/// lifecycle lock.
+/// Roll back to `target`'s manifest. Returns typed recovery notes
+/// (restores, drift keeps, skips) for the caller to surface by
+/// severity. Must run under the lifecycle lock.
 pub fn rollback_generation(
     home_path: &Path,
     current: Option<&store::Generation>,
     target: &store::Generation,
-) -> Result<Vec<String>, ExecError> {
+) -> Result<Vec<store::journal::RecoveryNote>, ExecError> {
     let home = gripsack_fs::open_or_create(home_path)?;
     // the clean-floor rule, same as apply: an interrupted run's
     // entries resolve BEFORE this run mutates anything
     let mut notes = store::journal::reconcile(&home, home_path)?;
+    // durable activation resume (0032): same rule as apply — a
+    // pending record naming the current generation re-runs its
+    // intents; anything else is discarded, never run
+    match crate::activate::resume_pending(&home, current.map(|g| g.number)) {
+        Ok(resumed) => notes.extend(resumed.into_iter().map(|r| store::journal::RecoveryNote {
+            severity: if r.kind == crate::report::ReportKind::Warned {
+                store::journal::NoteSeverity::Warn
+            } else {
+                store::journal::NoteSeverity::Info
+            },
+            message: format!("{}: {}", r.module, r.summary),
+        })),
+        Err(e) => {
+            tracing::warn!("activation resume failed (record intact for next run): {e}")
+        }
+    }
     store::journal::begin_run(
         &home,
         current.map(|g| g.number),
@@ -58,10 +74,13 @@ pub fn rollback_generation(
             // cleanup-pending, not a failed rollback (0030 §13); the
             // next reconcile finishes it
             if let Err(e) = store::journal::commit_run(&home) {
-                notes.push(format!(
-                    "generation {} active; journal cleanup pending ({e}) — the next run finishes it",
-                    target.number
-                ));
+                notes.push(store::journal::RecoveryNote {
+                    severity: store::journal::NoteSeverity::Warn,
+                    message: format!(
+                        "generation {} active; journal cleanup pending ({e}) — the next run finishes it",
+                        target.number
+                    ),
+                });
             }
             Ok(notes)
         }
@@ -89,7 +108,7 @@ enum Transition {
     Remove {
         module: String,
         entry: store::DeployedEntry,
-        intent: String,
+        intent: store::journal::Intended,
         /// the live identity the intact check ran against (0029 §3)
         expected: crate::deploy::Expect,
         /// the current generation's store path (exact removal guard)
@@ -156,14 +175,34 @@ fn live_intent_identity(
         }
         gripsack_ir::Ownership::Merge => Ok(read_text(dest)?
             .and_then(|text| crate::template::extract_block(&text, module))
-            .map(|block| store::canonical_bytes_hash(block.as_bytes()))),
-        _ => {
+            .map(|block| store::canonical_bytes_hash(block.as_bytes()).to_string())),
+        // the manifest domain is mode-aware for tracked copies (0031):
+        // a chmodded copy is drift, not intact
+        gripsack_ir::Ownership::TrackedCopy => {
             let bytes = match std::fs::read(dest) {
                 Ok(b) => b,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
                 Err(e) => return Err(e),
             };
-            Ok(Some(store::canonical_bytes_hash(&bytes)))
+            #[cfg(unix)]
+            let mode = {
+                use std::os::unix::fs::MetadataExt;
+                std::fs::metadata(dest)?.mode() & 0o7777
+            };
+            #[cfg(not(unix))]
+            let mode = 0o644;
+            Ok(Some(
+                store::canonical_bytes_identity(&bytes, mode).to_string(),
+            ))
+        }
+        // templates: bytes-only (a rendered file's mode is unmanaged)
+        gripsack_ir::Ownership::Template => {
+            let bytes = match std::fs::read(dest) {
+                Ok(b) => b,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(e),
+            };
+            Ok(Some(store::canonical_bytes_hash(&bytes).to_string()))
         }
     }
 }
@@ -208,21 +247,43 @@ fn plan(
                     };
                     match crate::template::extract_block(&existing, name) {
                         Some(content)
-                            if store::canonical_bytes_hash(content.as_bytes()) == entry.hash =>
+                            if store::canonical_bytes_hash(content.as_bytes()).as_str()
+                                == entry.hash =>
                         {
                             let new = crate::template::remove_block(&existing, name)
                                 .expect("block found above");
+                            // the splice preserves the foreign file's
+                            // mode (0026 §7) — intents are mode-aware
+                            #[cfg(unix)]
+                            let splice_mode = {
+                                use std::os::unix::fs::MetadataExt;
+                                std::fs::metadata(&dest_path)
+                                    .map(|m| m.mode() & 0o7777)
+                                    .unwrap_or(0o644)
+                            };
+                            #[cfg(not(unix))]
+                            let splice_mode = 0o644;
                             let intent = if new.trim().is_empty() {
-                                store::journal::REMOVED.to_string()
+                                store::journal::Intended::Removed
                             } else {
-                                store::canonical_bytes_hash(new.as_bytes())
+                                store::journal::Intended::Object(
+                                    store::journal::ObjectIdentity::File(
+                                        store::canonical_bytes_identity(
+                                            new.as_bytes(),
+                                            splice_mode,
+                                        ),
+                                    ),
+                                )
                             };
                             Transition::Remove {
                                 module: name.to_string(),
                                 entry: (*entry).clone(),
                                 intent,
-                                expected: crate::deploy::Expect::Is(store::canonical_bytes_hash(
-                                    existing.as_bytes(),
+                                expected: Some(store::journal::ObjectIdentity::File(
+                                    store::canonical_bytes_identity(
+                                        existing.as_bytes(),
+                                        splice_mode,
+                                    ),
                                 )),
                                 store_path: sp.to_path_buf(),
                             }
@@ -235,10 +296,7 @@ fn plan(
                         module: name.to_string(),
                         entry: (*entry).clone(),
                         intent: prune_intent(entry, home_path)?,
-                        expected: match store::journal::live_identity(&dest_dir, &dest_name)? {
-                            Some(l) => crate::deploy::Expect::Is(l),
-                            None => crate::deploy::Expect::Absent,
-                        },
+                        expected: store::journal::live_identity(&dest_dir, &dest_name)?,
                         store_path: sp.to_path_buf(),
                     }
                 } else {
@@ -257,17 +315,14 @@ fn plan(
                         // SURFACED, never a silent no-op (0030 §H8)
                         None => Transition::Skipped,
                         Some(plan) => {
-                            // merge compares BLOCK hashes (the manifest's
-                            // record); the plan's intent is the whole file
-                            let target_id = match entry.mode {
-                                gripsack_ir::Ownership::Merge => entry.hash.clone(),
-                                _ => plan.intent.clone(),
-                            };
+                            // the manifest's record IS the
+                            // manifest-domain target — every mode
+                            let target_id = entry.hash.clone();
                             let live = live_intent_identity(&dest_path, entry, name)?;
                             match live {
                                 None => Transition::Restore {
                                     plan,
-                                    expected: crate::deploy::Expect::Absent,
+                                    expected: None,
                                 },
                                 Some(l) if l == target_id => Transition::Noop,
                                 Some(_) => Transition::Keep,
@@ -290,45 +345,31 @@ fn plan(
                     (_, None) => Transition::Skipped,
                     (None, Some(plan)) => Transition::Restore {
                         plan,
-                        expected: crate::deploy::Expect::Absent,
+                        expected: None,
                     },
                     (Some(live), Some(plan)) => {
-                        // merge identities are block hashes from the
-                        // manifests; other modes recompute the current
-                        // generation's deployment intent
-                        let (current_id, target_id) =
-                            if centry.mode == gripsack_ir::Ownership::Merge {
-                                (centry.hash.clone(), tentry.hash.clone())
-                            } else {
-                                let current = compute_restore(&dest_path, centry, csp, cname)?
-                                    .map(|p| p.intent);
-                                let Some(current) = current else {
-                                    // cannot prove the current
-                                    // deployment — preserving drift is
-                                    // the safe default
-                                    out.push((dest_path, Transition::Keep));
-                                    continue;
-                                };
-                                (current, plan.intent.clone())
-                            };
+                        // the manifest records ARE the
+                        // manifest-domain identities (merge's are
+                        // block hashes; the intact check below reads
+                        // the live object in the same domain)
+                        let (current_id, target_id) = (centry.hash.clone(), tentry.hash.clone());
+                        // but the current generation's restorability
+                        // must still be PROVEN — its store source
+                        // could be missing (gc'd, corrupt)
+                        if compute_restore(&dest_path, centry, csp, cname)?.is_none() {
+                            out.push((dest_path, Transition::Keep));
+                            continue;
+                        }
                         if live == target_id {
                             Transition::Noop
                         } else if live == current_id {
-                            // merge's `live` is the block hash; the
-                            // precondition checks the whole file
-                            let expected = if centry.mode == gripsack_ir::Ownership::Merge {
-                                match std::fs::read_to_string(&dest_path) {
-                                    Ok(text) => crate::deploy::Expect::Is(
-                                        store::canonical_bytes_hash(text.as_bytes()),
-                                    ),
-                                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                                        crate::deploy::Expect::Absent
-                                    }
-                                    Err(e) => return Err(e.into()),
-                                }
-                            } else {
-                                crate::deploy::Expect::Is(live)
-                            };
+                            // the precondition checks the live
+                            // OBJECT, typed (merge's `live` above was
+                            // the block hash — the precondition needs
+                            // the whole file, mode-aware)
+                            let (dest_dir, dest_name) = dest_capability(&dest_path)?;
+                            let expected: crate::deploy::Expect =
+                                store::journal::live_identity(&dest_dir, &dest_name)?;
                             Transition::Restore { plan, expected }
                         } else {
                             Transition::Keep
@@ -360,7 +401,7 @@ fn preflight(target: &store::Generation) -> Result<(), ExecError> {
                         target.number
                     ),
                 })?;
-            if &actual != expected {
+            if actual.as_str() != expected.as_str() {
                 return Err(ExecError::Step {
                     module: name.clone(),
                     step: "rollback".into(),
@@ -408,22 +449,28 @@ fn execute(
     home: &gripsack_fs::Dir,
     home_path: &Path,
     transitions: &[(PathBuf, Transition)],
-    notes: &mut Vec<String>,
+    notes: &mut Vec<store::journal::RecoveryNote>,
 ) -> Result<(), ExecError> {
     for (dest, transition) in transitions {
         match transition {
             Transition::Noop => {}
             Transition::Skipped => {
-                notes.push(format!(
-                    "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
-                    dest.display()
-                ));
+                notes.push(store::journal::RecoveryNote {
+                    severity: store::journal::NoteSeverity::Warn,
+                    message: format!(
+                        "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
+                        dest.display()
+                    ),
+                });
             }
             Transition::Keep => {
-                notes.push(format!(
-                    "kept {} — drifted since the current generation; your edit stands",
-                    dest.display()
-                ));
+                notes.push(store::journal::RecoveryNote {
+                    severity: store::journal::NoteSeverity::Warn,
+                    message: format!(
+                        "kept {} — drifted since the current generation; your edit stands",
+                        dest.display()
+                    ),
+                });
             }
             Transition::Remove {
                 module,

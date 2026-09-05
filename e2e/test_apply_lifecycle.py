@@ -616,10 +616,10 @@ def test_double_takeover_keeps_the_first_origin(sandbox):
     )
 
 
-def test_legacy_run_marker_refuses_with_guidance(sandbox):
-    """0030 §11: a pre-0.23 run marker (no previous_generation, no
-    format field) is not auto-classified by the model-proven-unsound
-    direction rule — recovery refuses and tells you what to do."""
+def test_torn_run_marker_fails_closed(sandbox):
+    """A run marker missing `previous_generation` is torn or corrupt
+    (the field is required on the wire) — recovery fails closed and
+    retains the journal, never guessing a commit state."""
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
@@ -642,8 +642,95 @@ export default module("demo", {
     (journal / "run.json").write_text('{"target_generation": 2, "op": "apply"}')
 
     out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode != 0, "a legacy marker must block"
-    assert "predates 0.23" in out.stderr, out.stderr
+    assert out.returncode != 0, "a torn marker must block"
+    assert (journal / "run.json").exists(), "the journal is retained"
+
+
+def test_crash_before_adapters_resumes_next_run(sandbox, monkeypatch):
+    """0032: a kill between the flip and the adapters leaves a durable
+    pending record; the next run (even a satisfied one) resumes the
+    intents. The pending write is PRE-flip — the TLA+ mutant with a
+    post-flip write violates NoSilentSkip."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("a\n")
+    marker = sandbox / "hook-ran"
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") }},
+  activate: [customHook("touch {marker}")],
+}});
+""",
+    )
+
+    # the run dies after the flip, before adapters
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "before-adapters")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "the crash hook must kill the run"
+    assert not marker.exists(), "the hook must NOT have run"
+    pending = sandbox / ".local/share/gripsack/activation.json"
+    assert pending.exists(), "the pending record is durable"
+
+    # the next run resumes the intents — even though nothing changed
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "resumed activation" in out.stdout, out.stdout
+    assert marker.exists(), "the resumed hook ran"
+    assert not pending.exists(), "the record drained"
+
+
+def test_stale_pending_record_is_discarded_never_run(sandbox):
+    """0032: a pending record naming a generation that never became
+    current (crash between pending-write and flip) is discarded by
+    the next run — adapters never run for non-current state."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("a\n")
+    marker = sandbox / "hook-ran"
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") }},
+  activate: [customHook("touch {marker}")],
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert marker.exists()
+
+    # hand-craft a pending record naming a future (never-committed)
+    # generation — as if a run died between the pending write and
+    # the flip
+    marker.unlink()
+    import json
+
+    pending = sandbox / ".local/share/gripsack/activation.json"
+    pending.write_text(
+        json.dumps(
+            {
+                "generation": 99,
+                "intents": [
+                    {
+                        "module": "demo",
+                        "action": {"kind": "custom_shell", "script": f"touch {marker}"},
+                    }
+                ],
+            }
+        )
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not marker.exists(), "a non-current generation's adapters never run"
+    assert not pending.exists(), "the stale record is discarded"
 
 
 def test_current_link_must_resolve_under_home(sandbox):
@@ -1467,12 +1554,15 @@ export default module("zz", {
 
 
 
-def canonical_sha(data: bytes) -> str:
-    """The journal's file identity: canonical_bytes_hash (type tag +
-    exec byte + contents) — what deploy's mark_after records."""
+def canonical_sha(data: bytes, mode: int = 0o644) -> str:
+    """The journal's mode-aware file identity (0031): type tag +
+    mode marker + LE mode + contents — what deploy records as the
+    intended post-mutation identity."""
     import hashlib
 
-    return hashlib.sha256(b"file\0" + b"\x00" + data).hexdigest()
+    return hashlib.sha256(
+        b"file\0" + b"\x01" + mode.to_bytes(4, "little") + data
+    ).hexdigest()
 
 
 def test_apply_recovers_from_an_interrupted_run(sandbox):
@@ -1516,7 +1606,7 @@ export default module("a", {{
     dest = str(conf)
     entry = {
         "dest": dest,
-        "prior": {"kind": "file", "hash": prior_sha},
+        "prior": {"kind": "file", "hash": prior_sha, "mode": 420},
         "after": canonical_sha(half),
     }
     (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
@@ -1566,7 +1656,7 @@ export default module("a", {{
     dest = str(conf)
     entry = {
         "dest": dest,
-        "prior": {"kind": "file", "hash": prior_sha},
+        "prior": {"kind": "file", "hash": prior_sha, "mode": 420},
         "after": canonical_sha(b"half\n"),
     }
     (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(

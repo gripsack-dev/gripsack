@@ -234,8 +234,8 @@ pub fn upsert_block(
 ) -> Result<String, String> {
     let (pre, suf) = comment_style(dest, marker);
     let block = block.trim_end_matches('\n');
-    let sha = &gripsack_store::canonical_bytes_hash(block.as_bytes())[..16];
-    let open = open_marker(module, sha, &pre, suf);
+    let sha = gripsack_store::canonical_bytes_hash(block.as_bytes()).as_str()[..16].to_string();
+    let open = open_marker(module, &sha, &pre, suf);
     let close = close_marker(module, &pre, suf);
     let banner = format!("{pre} !! managed by gripsack — edit the module, not this block !!{suf}");
     let crlf = existing.contains("\r\n");
@@ -488,7 +488,7 @@ mod tests {
         assert_eq!(sha.len(), 16);
         assert_eq!(
             sha,
-            &gripsack_store::canonical_bytes_hash(b"original")[..16]
+            gripsack_store::canonical_bytes_hash(b"original").as_str()[..16]
         );
 
         // a hand edit inside the markers: the content moves, the
@@ -498,7 +498,7 @@ mod tests {
         assert_eq!(marker_sha(&edited, "m").as_deref(), Some(sha.as_str()));
         assert_ne!(
             &gripsack_store::canonical_bytes_hash(extract_block(&edited, "m").unwrap().as_bytes())
-                [..16],
+                .as_str()[..16],
             sha.as_str()
         );
     }

@@ -6,8 +6,58 @@
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+/// The hash DOMAINS, typed: gripsack hashes content for three
+/// different purposes and a bare `String` lets one domain's hash
+/// silently compare against another's (a merge arm once checked a
+/// bytes-only hash against the mode-aware journal identity and
+/// aborted every merge write). Each newtype comes from exactly one
+/// constructor family, so a cross-domain mix is a type error.
+macro_rules! hash_domain {
+    ($name:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(&self.0)
+            }
+        }
+
+        impl From<$name> for String {
+            fn from(h: $name) -> String {
+                h.0
+            }
+        }
+    };
+}
+
+hash_domain!(
+    PayloadHash,
+    "A store payload's content identity (0008 §2): names the store path, \
+     drives dedup and the lockfile pin. Exec-bit + bytes preimage."
+);
+hash_domain!(
+    BytesHash,
+    "Bytes-only content identity — the mode-UNMANAGED domain: rendered \
+     templates, merge blocks, a symlink target observed at a copy \
+     destination. Never interchangeable with `FileIdentity`."
+);
+hash_domain!(
+    FileIdentity,
+    "Mode-aware file identity (0031): bytes + full permission mode. The \
+     journal's identity domain and the tracked-copy manifest domain. \
+     Never interchangeable with `BytesHash`."
+);
 /// Canonical hash of a single file system entry (file, dir, or symlink).
-pub fn canonical_file_hash(path: &Path) -> std::io::Result<String> {
+pub fn canonical_file_hash(path: &Path) -> std::io::Result<PayloadHash> {
     let meta = std::fs::symlink_metadata(path)?;
     let mut hasher = Sha256::new();
     if meta.file_type().is_symlink() {
@@ -30,14 +80,14 @@ pub fn canonical_file_hash(path: &Path) -> std::io::Result<String> {
             ),
         ));
     }
-    Ok(hex(&hasher.finalize()))
+    Ok(PayloadHash(hex(&hasher.finalize())))
 }
 
 /// [`canonical_file_hash`] through a directory capability
 /// (plan/0021): deploy's drift check hashes the destination relative
 /// to the SAME pinned parent inode the subsequent write uses, so the
 /// check and the use cannot observe different filesystems.
-pub fn canonical_file_hash_in(dir: &gripsack_fs::Dir, name: &Path) -> std::io::Result<String> {
+pub fn canonical_file_hash_in(dir: &gripsack_fs::Dir, name: &Path) -> std::io::Result<PayloadHash> {
     let meta = dir.symlink_metadata(name)?;
     let mut hasher = Sha256::new();
     if meta.file_type().is_symlink() {
@@ -55,50 +105,37 @@ pub fn canonical_file_hash_in(dir: &gripsack_fs::Dir, name: &Path) -> std::io::R
             format!("{name:?} is not a regular file, directory, or symlink"),
         ));
     }
-    Ok(hex(&hasher.finalize()))
+    Ok(PayloadHash(hex(&hasher.finalize())))
 }
 
 /// Canonical identity of in-memory contents WITH their permission
 /// mode (0026 §7, 0030 #17, plan/0031): the journal's and the
 /// manifest's file identity is mode-aware, so a chmod-only change is
-/// drift, never invisible.
-///
-/// Backward-compatible preimage: the two modes a pre-0.27 gripsack
-/// could ever have recorded — 0644 and 0755, the only values its own
-/// writes produced — hash byte-identically to the 0.26 exec-bit
-/// form, so an upgraded home reads its manifests as satisfied. Any
-/// other mode (a hand-chmodded 0600) hashes under the extended
-/// preimage: drift is detected, never silently absorbed.
-pub fn canonical_bytes_identity(bytes: &[u8], mode: u32) -> String {
+/// drift, never invisible. Distinct preimage tag from
+/// [`canonical_bytes_hash`] — the bytes-only (mode-unmanaged) and
+/// mode-aware domains never compare equal by accident.
+pub fn canonical_bytes_identity(bytes: &[u8], mode: u32) -> FileIdentity {
     let mut hasher = Sha256::new();
     hasher.update(b"file\0");
-    match mode {
-        // the 0.26 exec-bit preimage, kept verbatim
-        0o644 => hasher.update([0u8]),
-        0o755 => hasher.update([1u8]),
-        // the mode-extended preimage for everything else
-        m => {
-            hasher.update([2u8]);
-            hasher.update(m.to_le_bytes());
-        }
-    }
+    hasher.update([1u8]);
+    hasher.update(mode.to_le_bytes());
     hasher.update(bytes);
-    hex(&hasher.finalize())
+    FileIdentity(hex(&hasher.finalize()))
 }
 
 /// Canonical hash of in-memory file contents (no executable bit) — for
 /// rendered templates and managed blocks, which have no store file.
-pub fn canonical_bytes_hash(bytes: &[u8]) -> String {
+pub fn canonical_bytes_hash(bytes: &[u8]) -> BytesHash {
     let mut hasher = Sha256::new();
     hasher.update(b"file\0");
     hasher.update([0u8]);
     hasher.update(bytes);
-    hex(&hasher.finalize())
+    BytesHash(hex(&hasher.finalize()))
 }
 
 /// Canonical hash of a directory tree: sorted relative paths plus each
 /// entry's canonical identity. Deterministic across machines.
-pub fn canonical_tree_hash(root: &Path) -> std::io::Result<String> {
+pub fn canonical_tree_hash(root: &Path) -> std::io::Result<PayloadHash> {
     let mut entries = Vec::new();
     collect_entries(root, root, &mut entries)?;
     entries.sort();
@@ -106,10 +143,10 @@ pub fn canonical_tree_hash(root: &Path) -> std::io::Result<String> {
     for rel in entries {
         hasher.update(rel.as_bytes());
         hasher.update(b"\0");
-        hasher.update(canonical_file_hash(&root.join(&rel))?.as_bytes());
+        hasher.update(canonical_file_hash(&root.join(&rel))?.as_str().as_bytes());
         hasher.update(b"\0");
     }
-    Ok(hex(&hasher.finalize()))
+    Ok(PayloadHash(hex(&hasher.finalize())))
 }
 
 /// Canonical tree hash of a NOT-YET-STAGED overlay (0014): repo files
@@ -117,7 +154,7 @@ pub fn canonical_tree_hash(root: &Path) -> std::io::Result<String> {
 /// digest `canonical_tree_hash` gives the staged directory, without
 /// materializing it. Plan-time content identity for config-only
 /// modules.
-pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<String> {
+pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<PayloadHash> {
     let dir_hash = hex(&Sha256::digest(b"dir\0"));
     let mut entries: Vec<(String, String)> = Vec::new();
     for from in froms {
@@ -142,7 +179,7 @@ pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<
                 let hash = if source.join(&rel).is_dir() && !source.join(&rel).is_symlink() {
                     dir_hash.clone()
                 } else {
-                    canonical_file_hash(&source.join(&rel))?
+                    canonical_file_hash(&source.join(&rel))?.to_string()
                 };
                 entries.push((rel_path, hash));
             }
@@ -162,7 +199,7 @@ pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<
             entries.push((rel, dir_hash.clone()));
             ancestor = dir.parent();
         }
-        entries.push((from.clone(), canonical_file_hash(&source)?));
+        entries.push((from.clone(), canonical_file_hash(&source)?.to_string()));
     }
     entries.sort();
     entries.dedup();
@@ -173,7 +210,7 @@ pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<
         hasher.update(hash.as_bytes());
         hasher.update(b"\0");
     }
-    Ok(hex(&hasher.finalize()))
+    Ok(PayloadHash(hex(&hasher.finalize())))
 }
 
 fn collect_entries(root: &Path, dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
@@ -237,26 +274,15 @@ pub fn hex_sha256(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn mode_identity_preimage_is_upgrade_compatible() {
-        // 0031 §1: the modes a pre-0.27 gripsack could ever record —
-        // 0644 and 0755 — hash byte-identically to the 0.26 exec-bit
-        // form, so an upgraded home reads its manifests satisfied
-        assert_eq!(
-            canonical_bytes_identity(b"abc", 0o644),
-            canonical_bytes_hash(b"abc"),
-            "0644 keeps the bytes-only (exec=false) preimage"
+    fn the_two_identity_domains_never_collide() {
+        // bytes-only (templates: mode unmanaged) vs mode-aware
+        // (tracked copies, the journal): different TYPES — a domain
+        // mix-up doesn't compile. Their wire forms differ too:
+        assert_ne!(
+            canonical_bytes_hash(b"abc").as_str(),
+            canonical_bytes_identity(b"abc", 0o644).as_str(),
         );
-        // 0755 == the 0.26 exec=true preimage, pinned byte-exact
-        let mut reference = Sha256::new();
-        reference.update(b"file\0");
-        reference.update([1u8]);
-        reference.update(b"abc");
-        assert_eq!(
-            canonical_bytes_identity(b"abc", 0o755),
-            hex(&reference.finalize())
-        );
-        // every other mode takes the extended preimage: chmod-only
-        // drift (0600, 0777, …) is never invisible
+        // the mode is IN the identity, not just the exec bit
         assert_ne!(
             canonical_bytes_identity(b"abc", 0o600),
             canonical_bytes_identity(b"abc", 0o644),
@@ -264,7 +290,6 @@ mod tests {
         assert_ne!(
             canonical_bytes_identity(b"abc", 0o600),
             canonical_bytes_identity(b"abc", 0o700),
-            "the mode is IN the identity, not just the exec bit"
         );
     }
 
@@ -397,7 +422,7 @@ mod reference_vector {
         std::fs::write(root.join("share/version.txt"), b"1.0\n").unwrap();
         let hash = crate::canonical_tree_hash(root).unwrap();
         assert_eq!(
-            hash,
+            hash.as_str(),
             "cce3e9f819b476cc5abed85b83f2f1a01cac2abd4c2eb34f08b76d822739e595"
         );
     }
