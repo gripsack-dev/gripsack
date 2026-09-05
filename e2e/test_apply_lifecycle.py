@@ -616,10 +616,10 @@ def test_double_takeover_keeps_the_first_origin(sandbox):
     )
 
 
-def test_legacy_run_marker_refuses_with_guidance(sandbox):
-    """0030 §11: a pre-0.23 run marker (no previous_generation, no
-    format field) is not auto-classified by the model-proven-unsound
-    direction rule — recovery refuses and tells you what to do."""
+def test_torn_run_marker_fails_closed(sandbox):
+    """A run marker missing `previous_generation` is torn or corrupt
+    (the field is required on the wire) — recovery fails closed and
+    retains the journal, never guessing a commit state."""
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
@@ -642,8 +642,8 @@ export default module("demo", {
     (journal / "run.json").write_text('{"target_generation": 2, "op": "apply"}')
 
     out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode != 0, "a legacy marker must block"
-    assert "predates 0.23" in out.stderr, out.stderr
+    assert out.returncode != 0, "a torn marker must block"
+    assert (journal / "run.json").exists(), "the journal is retained"
 
 
 def test_current_link_must_resolve_under_home(sandbox):

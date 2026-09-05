@@ -40,9 +40,9 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
     // current == target committed, current == previous uncommitted,
     // anything else is ambiguous and BLOCKS (fail closed — the
     // lifecycle lock serializes runs, so a third value means
-    // corruption or tampering, never a branch to guess). Pre-0.23
-    // markers carry no previous generation; those reconcile by the
-    // 0.22 direction rule, correct for those versions' semantics.
+    // corruption or tampering, never a branch to guess). A marker
+    // missing `previous_generation` fails closed at parse — torn or
+    // corrupt, never mistaken for a fresh-machine run.
     let committed = match run_marker(home)? {
         Some(marker) => {
             // the ONE current-pointer reader (0030 §H10): recovery
@@ -52,7 +52,6 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
                 previous: marker.previous_generation,
                 target: marker.target_generation,
                 current,
-                format: marker.format,
             }) {
                 Classification::Committed => true,
                 Classification::Uncommitted => false,
@@ -63,18 +62,6 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
                          journal is retained; inspect $GRIPSACK_HOME/journal \
                          before running again",
                         marker.previous_generation, marker.target_generation
-                    )));
-                }
-                Classification::Legacy => {
-                    return Err(io::Error::other(format!(
-                        "journal run marker (→{}) predates 0.23's exact \
-                         transaction identity — cannot prove whether it \
-                         committed. Inspect $GRIPSACK_HOME/journal: the \
-                         entries name each destination's prior and intended \
-                         state. To accept the current state, delete the \
-                         journal directory; to restore, move the named files \
-                         back by hand first",
-                        marker.target_generation
                     )));
                 }
             }
@@ -193,14 +180,7 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
             // the mode rides the write (0027 §6): temp → exact mode →
             // fsync → rename, so a restored 0600 secret never exists
             // at a wider mode, not even for the rename's instant
-            match mode {
-                Some(mode) => {
-                    gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, *mode)?
-                }
-                // pre-0.24 entries carry no mode — content is still
-                // restored; the mode is creation default
-                None => gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?,
-            }
+            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, *mode)?
         }
         PriorSerde::Symlink { target } => {
             gripsack_fs::symlink_replace(dest_dir, dest_name, Path::new(target))?;

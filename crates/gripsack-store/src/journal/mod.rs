@@ -51,7 +51,7 @@ pub enum Prior {
     /// 0644&umask, an 0755 script must stay executable; also the
     /// file→symlink→crash path, where the live object at recovery is
     /// a link and mode preservation by copy is impossible).
-    File { hash: String, mode: Option<u32> },
+    File { hash: String, mode: u32 },
     /// A symlink; recovery recreates it pointing at `target`.
     Symlink { target: String },
 }
@@ -78,9 +78,8 @@ pub enum PriorSerde {
     Absent,
     File {
         hash: String,
-        /// Original Unix mode; absent only in pre-0.24 entries.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        mode: Option<u32>,
+        /// Original Unix mode — restored exactly (0026 §7).
+        mode: u32,
     },
     Symlink {
         target: String,
@@ -210,10 +209,10 @@ pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io:
         #[cfg(unix)]
         let mode = {
             use gripsack_fs::cap_std::fs::MetadataExt;
-            Some(meta.mode() & 0o777)
+            meta.mode() & 0o7777
         };
         #[cfg(not(unix))]
-        let mode = None;
+        let mode = 0o644;
         return Ok(Prior::File { hash, mode });
     }
     // directories/fifos/devices are refused by deploy's guards; if
@@ -339,15 +338,10 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<String>> 
     match prior {
         PriorSerde::Absent => Ok(None),
         PriorSerde::Symlink { target } => Ok(Some(target.clone())),
-        PriorSerde::File { hash, mode } => {
-            Ok(Some(crate::hash::canonical_bytes_identity(
-                &home.read(prior_blob_rel(hash))?,
-                // pre-0.24 priors carry no mode — 0644 keeps their
-                // identity on the same preimage they were written
-                // with (the bytes-only form)
-                mode.unwrap_or(0o644),
-            )))
-        }
+        PriorSerde::File { hash, mode } => Ok(Some(crate::hash::canonical_bytes_identity(
+            &home.read(prior_blob_rel(hash))?,
+            *mode,
+        ))),
     }
 }
 
@@ -406,7 +400,15 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_hash(b"deployed half-run content\n"),
+            &crate::hash::canonical_bytes_identity(
+                b"deployed half-run content\n",
+                std::fs::metadata(&dest)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        m.mode() & 0o7777
+                    })
+                    .unwrap_or(0o644),
+            ),
         )
         .unwrap();
         std::fs::write(&dest, b"deployed half-run content\n").unwrap();
@@ -428,7 +430,15 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_hash(b"deployed\n"),
+            &crate::hash::canonical_bytes_identity(
+                b"deployed\n",
+                std::fs::metadata(&dest)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        m.mode() & 0o7777
+                    })
+                    .unwrap_or(0o644),
+            ),
         )
         .unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
@@ -452,7 +462,15 @@ mod tests {
             &cap(&home),
             &fresh,
             &prior,
-            &crate::hash::canonical_bytes_hash(b"crashed write\n"),
+            &crate::hash::canonical_bytes_identity(
+                b"crashed write\n",
+                std::fs::metadata(&fresh)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        m.mode() & 0o7777
+                    })
+                    .unwrap_or(0o644),
+            ),
         )
         .unwrap();
         std::fs::write(&fresh, b"crashed write\n").unwrap();
@@ -486,7 +504,15 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_hash(b"deployed\n"),
+            &crate::hash::canonical_bytes_identity(
+                b"deployed\n",
+                std::fs::metadata(&dest)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        m.mode() & 0o7777
+                    })
+                    .unwrap_or(0o644),
+            ),
         )
         .unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
@@ -520,7 +546,15 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_hash(b"half\n"),
+            &crate::hash::canonical_bytes_identity(
+                b"half\n",
+                std::fs::metadata(&dest)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        m.mode() & 0o7777
+                    })
+                    .unwrap_or(0o644),
+            ),
         )
         .unwrap();
         std::fs::write(&dest, b"half\n").unwrap();
@@ -551,7 +585,15 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_hash(b"new\n"),
+            &crate::hash::canonical_bytes_identity(
+                b"new\n",
+                std::fs::metadata(&dest)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        m.mode() & 0o7777
+                    })
+                    .unwrap_or(0o644),
+            ),
         )
         .unwrap();
         std::fs::write(&dest, b"new\n").unwrap();
@@ -607,7 +649,15 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_hash(b"deployed\n"),
+            &crate::hash::canonical_bytes_identity(
+                b"deployed\n",
+                std::fs::metadata(&dest)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        m.mode() & 0o7777
+                    })
+                    .unwrap_or(0o644),
+            ),
         )
         .unwrap();
         std::fs::write(&dest, b"deployed\n").unwrap();
@@ -638,7 +688,15 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_hash(b"old\n"),
+            &crate::hash::canonical_bytes_identity(
+                b"old\n",
+                std::fs::metadata(&dest)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        m.mode() & 0o7777
+                    })
+                    .unwrap_or(0o644),
+            ),
         )
         .unwrap();
         std::fs::write(&dest, b"old\n").unwrap();
@@ -666,7 +724,15 @@ mod tests {
             &cap(&home),
             &dest,
             &prior,
-            &crate::hash::canonical_bytes_hash(b"old\n"),
+            &crate::hash::canonical_bytes_identity(
+                b"old\n",
+                std::fs::metadata(&dest)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        m.mode() & 0o7777
+                    })
+                    .unwrap_or(0o644),
+            ),
         )
         .unwrap();
         std::fs::write(&dest, b"old\n").unwrap();
