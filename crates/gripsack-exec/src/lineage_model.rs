@@ -235,7 +235,10 @@ fn preserved_drift_never_authorizes_an_update() {
                                 CopyPlan::Preserve | CopyPlan::Satisfied | CopyPlan::Fresh
                             )
                         };
-                        assert!(allowed, "desired={desired} live={live:?} prev={prev:?} → {plan:?}");
+                        assert!(
+                            allowed,
+                            "desired={desired} live={live:?} prev={prev:?} → {plan:?}"
+                        );
                     }
                     // without take-over, foreign content is never updated
                     if !take_over

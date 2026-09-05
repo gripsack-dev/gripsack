@@ -416,7 +416,7 @@ def test_adoption_origin_survives_generations_and_gc(sandbox):
     adopted.write_text("v2\n")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert original.read_text() == "v2\n"
+    assert original.read_text() == "v2\n", f"{out.stdout}\n{out.stderr}"
 
     # gc the old history — the origin's blob must stay pinned
     user_conf = sandbox / ".config/gripsack"
