@@ -130,6 +130,9 @@ pub(crate) mod execute;
 pub mod plan;
 pub mod preview;
 
+#[cfg(test)]
+mod model;
+
 pub(crate) use execute::execute_op;
 pub(crate) use plan::{DestView, ModeInput, plan_entry_op, plan_remove_op, plan_restore_op};
 pub use preview::preview_ops;
