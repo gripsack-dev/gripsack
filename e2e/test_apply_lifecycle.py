@@ -14,6 +14,7 @@ from conftest import (
     make_env_repo,
     make_tarball,
     refresh_host,
+    remove_module,
 )
 
 
@@ -334,6 +335,266 @@ export default module("two", {
     assert out.returncode != 0
     assert "E111" in out.stderr
     assert "same.conf" in out.stderr
+
+
+def test_destination_aliases_are_rejected_before_mutation(sandbox):
+    """0030 §P0-1: `~/x` and `$HOME/x` are one physical destination —
+    and a symlinked ancestor collapses to one too. Both must fail at
+    check/apply time, never double-transition one object."""
+    confdir = sandbox / "myenv" / "configs" / "x"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    home = sandbox
+    alias = home / ".config/aliased/x.conf"
+    alias.parent.mkdir(parents=True)
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "one": """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("one", {
+  config: { "configs/x/a.conf": trackedCopy("~/.config/aliased/x.conf") },
+});
+""",
+            "two": f"""
+import {{ module, trackedCopy }} from "@gripsack/core";
+
+export default module("two", {{
+  config: {{ "configs/x/a.conf": trackedCopy("{alias}") }},
+}});
+""",
+        },
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "resolve to the same path" in out.stderr, out.stderr
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "resolve to the same path" in out.stderr
+
+    # and a symlinked ancestor: ~/config-link -> ~/.config
+    (home / "config-link").symlink_to(home / ".config")
+    (sandbox / "myenv2").mkdir(exist_ok=True)
+    (sandbox / "myenv2" / "configs" / "x").mkdir(parents=True, exist_ok=True)
+    (sandbox / "myenv2" / "configs" / "x" / "a.conf").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv2",
+        {
+            "one": """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("one", {
+  config: { "configs/x/a.conf": trackedCopy("~/.config/aliased/x.conf") },
+});
+""",
+            "two": """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("two", {
+  config: { "configs/x/a.conf": trackedCopy("~/config-link/aliased/x.conf") },
+});
+""",
+        },
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "resolve to the same path" in out.stderr, out.stderr
+
+
+def test_same_module_duplicate_destination_is_e111(sandbox):
+    """0030 §P0-1: E111's same-module suppression is gone — two
+    declarations of one destination in ONE module would double-journal
+    it, the second entry overwriting the first's true prior."""
+    confdir = sandbox / "myenv" / "configs" / "x"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    (confdir / "b.conf").write_text("b\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("one", {
+  config: {
+    "configs/x/a.conf": trackedCopy("~/.out/same.conf"),
+    "configs/x/b.conf": trackedCopy("~/.out/same.conf"),
+  },
+});
+""",
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "E111" in out.stderr
+
+
+def test_executable_tracked_copy_stays_coherent(sandbox):
+    """0030 §H3 (Option A): a tracked copy manages executability — a
+    fresh 0755 deploy lands executable, the next apply is satisfied,
+    and an exec-bit change from the repo applies."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    script = confdir / "tool.sh"
+    script.write_text("#!/bin/sh\necho v1\n")
+    script.chmod(0o755)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/tool.sh": trackedCopy("~/.config/demo/tool.sh") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    import os
+
+    dest = sandbox / ".config/demo/tool.sh"
+    assert os.stat(dest).st_mode & 0o111, "the exec bit must land"
+
+    # the next apply is satisfied — the exec-aware identity agrees
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert "unchanged" in out.stdout, out.stdout
+
+    # the repo drops the exec bit — the update applies it
+    script.chmod(0o644)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not os.stat(dest).st_mode & 0o111, "the exec update applies"
+
+
+def test_rename_keeps_full_lineage_authority(sandbox):
+    """0030 §H4: renaming a module with a content change is an
+    authorized UPDATE (not preserved-as-foreign), and undeclare
+    restores the original adoption origin."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("v1\n")
+    original = sandbox / ".config/demo/a.toml"
+    original.parent.mkdir(parents=True)
+    original.write_text("ORIGINAL\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip(
+        "adopt", "~/.config/demo/a.toml", "--mode", "tracked_copy",
+        "--host", "testhost", "--yes", cwd=repo,
+    )
+    assert out.returncode == 0, out.stderr
+
+    # rename the module AND change the content
+    adopted = repo / "configs" / "a-toml" / "a.toml"
+    adopted.write_text("v2\n")
+    (repo / "modules" / "a-toml.ts").unlink()
+    (repo / "modules" / "renamed.ts").write_text(
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("renamed", {
+  config: { "configs/a-toml/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+"""
+    )
+    refresh_host(repo)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "updated" in out.stdout, out.stdout
+    assert original.read_text() == "v2\n"
+
+    remove_module(repo, "renamed")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert original.read_text() == "ORIGINAL\n"
+
+
+def test_double_takeover_keeps_the_first_origin(sandbox):
+    """0030 §H5: take-over RETAINS the epoch's origin — a second
+    --take-over absorbs content but does not rebase the restore
+    point. Undeclare restores the FIRST pre-adoption state."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("A\n")
+    original = sandbox / ".config/demo/a.toml"
+    original.parent.mkdir(parents=True)
+    original.write_text("ORIGINAL\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    out = grip(
+        "adopt", "~/.config/demo/a.toml", "--mode", "tracked_copy",
+        "--host", "testhost", "--yes", cwd=repo,
+    )
+    assert out.returncode == 0, out.stderr
+
+    # the app drifts; a second take-over absorbs B over U
+    adopted = repo / "configs" / "a-toml" / "a.toml"
+    original.write_text("U\n")
+    adopted.write_text("B\n")
+    out = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert original.read_text() == "B\n"
+
+    remove_module(repo, "a-toml")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert original.read_text() == "ORIGINAL\n", (
+        "the epoch's FIRST origin must survive a second take-over"
+    )
+
+
+def test_legacy_run_marker_refuses_with_guidance(sandbox):
+    """0030 §11: a pre-0.23 run marker (no previous_generation, no
+    format field) is not auto-classified by the model-proven-unsound
+    direction rule — recovery refuses and tells you what to do."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    home = sandbox / ".local/share/gripsack"
+    journal = home / "journal"
+    journal.mkdir(exist_ok=True)
+    (journal / "run.json").write_text('{"target_generation": 2, "op": "apply"}')
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "a legacy marker must block"
+    assert "predates 0.23" in out.stderr, out.stderr
+
+
+def test_current_link_must_resolve_under_home(sandbox):
+    """0030 §H10: `current -> /tmp/42` is corruption, not a
+    generation — apply fails closed."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    current = sandbox / ".local/share/gripsack/current"
+    current.unlink()
+    current.symlink_to("/tmp/42")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "an outside-home current must block"
 
 
 def test_jobs_one_forces_serial_execution(sandbox):

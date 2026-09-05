@@ -111,6 +111,11 @@ fn is_identifier(name: &str) -> bool {
 /// Escape backslash, quote, and backtick (the caller adds the double
 /// quotes). `$` is left alone: values like "$HOME/bin" expand at
 /// source time — that is a feature (0001 §3.10).
+/// `$` stays live BY DESIGN ("$HOME/bin" expands at source time).
+/// That deliberately also admits $(...) and ${...} — env values come
+/// from the trusted, eval-gated repo, and the profile is documented
+/// as sourced code (0030 §19). Backticks are escaped: no gripsack
+/// feature needs them, and they're the legacy execution form.
 fn shell_quote(value: &str) -> String {
     value
         .replace('\\', "\\\\")

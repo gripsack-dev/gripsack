@@ -33,7 +33,7 @@ pub fn rollback_generation(
     let home = gripsack_fs::open_or_create(home_path)?;
     // the clean-floor rule, same as apply: an interrupted run's
     // entries resolve BEFORE this run mutates anything
-    let mut notes = store::journal::reconcile(&home)?;
+    let mut notes = store::journal::reconcile(&home, home_path)?;
     store::journal::begin_run(
         &home,
         current.map(|g| g.number),
@@ -54,7 +54,15 @@ pub fn rollback_generation(
     })();
     match result {
         Ok(()) => {
-            store::journal::commit_run(&home)?;
+            // the flip already committed — a cleanup failure is
+            // cleanup-pending, not a failed rollback (0030 §13); the
+            // next reconcile finishes it
+            if let Err(e) = store::journal::commit_run(&home) {
+                notes.push(format!(
+                    "generation {} active; journal cleanup pending ({e}) — the next run finishes it",
+                    target.number
+                ));
+            }
             Ok(notes)
         }
         Err(e) => {
@@ -63,7 +71,7 @@ pub fn rollback_generation(
             // so an ordinary failure restores exactly what a kill
             // would restore on the next run. A reconcile failure
             // leaves the journal intact for that next run.
-            match store::journal::reconcile(&home) {
+            match store::journal::reconcile(&home, home_path) {
                 Ok(lines) => notes.extend(lines),
                 Err(re) => {
                     tracing::warn!("rollback compensation failed (journal intact): {re}")
@@ -84,6 +92,8 @@ enum Transition {
         intent: String,
         /// the live identity the intact check ran against (0029 §3)
         expected: crate::deploy::Expect,
+        /// the current generation's store path (exact removal guard)
+        store_path: PathBuf,
     },
     /// Restore the target generation's deployment.
     Restore {
@@ -91,9 +101,12 @@ enum Transition {
         /// the live identity the drift decision ran against
         expected: crate::deploy::Expect,
     },
-    /// Live state already matches the target (or the target side
-    /// declines to write) — nothing to do.
+    /// Live state already matches the target — nothing to do.
     Noop,
+    /// The target asks for this destination but no safe restore could
+    /// be constructed — surfaced in the rollback output, never
+    /// silently skipped (0030 §H8).
+    Skipped,
     /// Drifted: matches neither current nor target — the user's now.
     Keep,
 }
@@ -187,7 +200,12 @@ fn plan(
                     // is foreign), and removal splices the block out —
                     // the intent is the resulting content, like apply's
                     // merge prune
-                    let existing = std::fs::read_to_string(&dest_path).unwrap_or_default();
+                    // NotFound-only-is-absent (0030 §H7)
+                    let existing = match std::fs::read_to_string(&dest_path) {
+                        Ok(t) => t,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                        Err(e) => return Err(e.into()),
+                    };
                     match crate::template::extract_block(&existing, name) {
                         Some(content)
                             if store::canonical_bytes_hash(content.as_bytes()) == entry.hash =>
@@ -206,6 +224,7 @@ fn plan(
                                 expected: crate::deploy::Expect::Is(store::canonical_bytes_hash(
                                     existing.as_bytes(),
                                 )),
+                                store_path: sp.to_path_buf(),
                             }
                         }
                         _ => Transition::Keep, // block drifted or gone
@@ -220,6 +239,7 @@ fn plan(
                             Some(l) => crate::deploy::Expect::Is(l),
                             None => crate::deploy::Expect::Absent,
                         },
+                        store_path: sp.to_path_buf(),
                     }
                 } else {
                     Transition::Keep // drifted — the user's now
@@ -233,7 +253,9 @@ fn plan(
                     Transition::Noop
                 } else {
                     match compute_restore(&dest_path, entry, store_path, name)? {
-                        None => Transition::Noop,
+                        // None = could not construct a safe restore —
+                        // SURFACED, never a silent no-op (0030 §H8)
+                        None => Transition::Skipped,
                         Some(plan) => {
                             // merge compares BLOCK hashes (the manifest's
                             // record); the plan's intent is the whole file
@@ -265,7 +287,7 @@ fn plan(
                 let target_plan = compute_restore(&dest_path, tentry, tsp, tname)?;
                 let live = live_intent_identity(&dest_path, centry, cname)?;
                 match (live, target_plan) {
-                    (_, None) => Transition::Noop,
+                    (_, None) => Transition::Skipped,
                     (None, Some(plan)) => Transition::Restore {
                         plan,
                         expected: crate::deploy::Expect::Absent,
@@ -391,6 +413,12 @@ fn execute(
     for (dest, transition) in transitions {
         match transition {
             Transition::Noop => {}
+            Transition::Skipped => {
+                notes.push(format!(
+                    "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
+                    dest.display()
+                ));
+            }
             Transition::Keep => {
                 notes.push(format!(
                     "kept {} — drifted since the current generation; your edit stands",
@@ -402,6 +430,7 @@ fn execute(
                 entry,
                 intent,
                 expected,
+                store_path,
             } => {
                 let (dest_dir, dest_name) = dest_capability(dest)?;
                 journaled(
@@ -414,7 +443,9 @@ fn execute(
                     || {
                         // 0027 §1: a failed removal/restore aborts the
                         // rollback — the flip never commits it
-                        remove_or_restore_prior(&dest_dir, &dest_name, entry, module, home_path)?;
+                        remove_or_restore_prior(
+                            &dest_dir, &dest_name, entry, module, home_path, store_path,
+                        )?;
                         Ok(())
                     },
                 )?;

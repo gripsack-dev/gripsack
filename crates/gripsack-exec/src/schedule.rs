@@ -185,6 +185,25 @@ pub(crate) fn run_all(
 
 /// One module — steps acquire their own resources (0007 §4, N4); the
 /// scheduler only orders and fans out.
+/// Lineage is destination-GLOBAL (0030 §H4): the previous generation's
+/// entry for each canonical destination, whichever module owned it —
+/// a rename keeps full authority (update, not preserve-as-foreign).
+pub(crate) fn prev_by_dest(
+    prev: &BTreeMap<String, store::ModuleState>,
+) -> BTreeMap<std::path::PathBuf, &store::DeployedEntry> {
+    let mut map = BTreeMap::new();
+    for state in prev.values() {
+        for entry in &state.entries {
+            // the canonical key deploy computes; first-wins is fine
+            // (physical uniqueness is enforced pre-schedule)
+            if let Ok(key) = store::canonical_dest(&entry.to) {
+                map.entry(key).or_insert(entry);
+            }
+        }
+    }
+    map
+}
+
 fn run_one(
     name: &str,
     ir: &Ir,
@@ -201,7 +220,7 @@ fn run_one(
         ir,
         steps,
         ctx,
-        prev.get(name),
+        &prev_by_dest(prev),
         lock.modules.get(name),
     )
 }

@@ -86,6 +86,62 @@ pub fn generation_dir(home: &Path, generation: u64) -> PathBuf {
     home.join(GENERATIONS_DIR).join(generation.to_string())
 }
 
+/// The canonical physical identity of a declared destination
+/// (0030 §P0-1): `~` expanded, lexical aliases (`.`, duplicate
+/// separators) normalized, the deepest EXISTING ancestor
+/// canonicalized (a symlinked ancestor resolves THROUGH to its
+/// target), and the not-yet-existing tail re-appended. Two spellings
+/// of one directory entry produce one key.
+///
+/// A non-UTF-8 $HOME is a loud error: journal keys and manifest paths
+/// serialize as text, and lossy conversion would collapse distinct
+/// byte paths into one recovery key.
+pub fn canonical_dest(to: &str) -> std::io::Result<std::path::PathBuf> {
+    let expanded = expand_home(to);
+    if expanded.to_str().is_none() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("destination {to:?} is not UTF-8 after expansion"),
+        ));
+    }
+    // lexical normalize: keep RootDir + Normal components only
+    let mut lex = std::path::PathBuf::new();
+    for c in expanded.components() {
+        match c {
+            std::path::Component::RootDir => lex.push(c.as_os_str()),
+            std::path::Component::Normal(n) => lex.push(n),
+            // `.` and duplicate separators disappear
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir | std::path::Component::Prefix(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("destination {to:?} must not contain `..`"),
+                ));
+            }
+        }
+    }
+    // canonicalize the deepest existing ancestor, re-append the
+    // tail. The walk starts at the PARENT: the final component is
+    // never resolved — a symlink AT the destination IS the managed
+    // object, not an alias for its target (0030 §P0-1). Resolving it
+    // would collapse a deployed link into the store and aim the next
+    // mutation at store internals.
+    let mut ancestor = lex.parent();
+    loop {
+        let Some(a) = ancestor else {
+            return Ok(lex);
+        };
+        if std::fs::symlink_metadata(a).is_ok() {
+            let tail = lex.strip_prefix(a).expect("ancestor is a prefix");
+            return match std::fs::canonicalize(a) {
+                Ok(canon) => Ok(canon.join(tail)),
+                Err(_) => Ok(lex),
+            };
+        }
+        ancestor = a.parent();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +183,48 @@ mod tests {
         let home = Path::new("/gs");
         assert_eq!(current_link(home), Path::new("/gs/current"));
         assert_eq!(generation_dir(home, 42), Path::new("/gs/generations/42"));
+    }
+
+    #[test]
+    fn canonical_dest_collapses_spelling_aliases() {
+        // one physical entry, many spellings — one key
+        let home = std::env::temp_dir().join(format!("gs-canon-{}", std::process::id()));
+        let real = home.join("cfg/app");
+        std::fs::create_dir_all(&real).unwrap();
+        unsafe { std::env::set_var("HOME", &home) };
+        let abs = real.join("x.conf");
+        let variants = [
+            "~/cfg/app/x.conf".to_string(),
+            abs.to_str().unwrap().to_string(),
+            abs.to_str().unwrap().replace("/cfg/", "/./cfg//"),
+        ];
+        let keys: Vec<_> = variants
+            .iter()
+            .map(|v| canonical_dest(v).unwrap())
+            .collect();
+        assert!(
+            keys.windows(2).all(|w| w[0] == w[1]),
+            "spellings disagree: {keys:?}"
+        );
+        unsafe { std::env::remove_var("HOME") };
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn canonical_dest_resolves_a_symlinked_ancestor() {
+        let base = std::env::temp_dir().join(format!("gs-canonln-{}", std::process::id()));
+        let real = base.join("real/app");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = base.join("link");
+        std::os::unix::fs::symlink(base.join("real"), &link).unwrap();
+        let via_link = canonical_dest(link.join("app/x.conf").to_str().unwrap()).unwrap();
+        let direct = canonical_dest(real.join("x.conf").to_str().unwrap()).unwrap();
+        assert_eq!(via_link, direct);
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn canonical_dest_refuses_parent_traversal() {
+        assert!(canonical_dest("/tmp/../etc/x").is_err());
     }
 }

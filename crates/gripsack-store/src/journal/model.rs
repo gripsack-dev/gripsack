@@ -194,6 +194,7 @@ fn recover(
     op: RunOp,
     run_prev: u64,
     run_target: u64,
+    classifier: fn(Option<u64>, u64, RunOp, Option<u64>, u8) -> Classification,
 ) -> (Disk, Option<Classification>) {
     // an empty journal — never started, or cleanup finished — means
     // NO recovery at all (the real reconcile returns before reading
@@ -204,7 +205,13 @@ fn recover(
     }
     let (prev, target) = disk.marker.unwrap_or((Some(run_prev), run_target));
     let class = match disk.marker {
-        Some(_) => Some(classify(prev, target, op, disk.current)),
+        Some(_) => Some(classifier(
+            prev,
+            target,
+            op,
+            disk.current,
+            if prev.is_some() { 2 } else { 0 },
+        )),
         // entries without a marker: the real rule — uncommitted
         None => Some(Classification::Uncommitted),
     };
@@ -243,8 +250,9 @@ fn recover(
             disk.entry = None;
             disk.marker = None;
         }
-        // fail closed: nothing changes, journal intact
-        Classification::Ambiguous => {}
+        // fail closed: nothing changes, journal intact — Legacy
+        // markers refuse the same way (0030 §11)
+        Classification::Ambiguous | Classification::Legacy => {}
     }
     (disk, Some(class))
 }
@@ -271,7 +279,7 @@ fn check_oracle(
         };
     };
     match class {
-        Classification::Ambiguous => {
+        Classification::Ambiguous | Classification::Legacy => {
             if *disk != *crashed_disk {
                 return Err(bad("ambiguous state must change NOTHING"));
             }
@@ -315,7 +323,14 @@ fn check_oracle(
 
 /// Walk every reachable state of one run kind and direction. Returns
 /// (states explored, violations).
-fn explore(prev: u64, target: u64, kind: RunKind, legacy: bool, op: RunOp) -> (usize, Vec<String>) {
+fn explore(
+    prev: u64,
+    target: u64,
+    kind: RunKind,
+    legacy: bool,
+    op: RunOp,
+    classifier: fn(Option<u64>, u64, RunOp, Option<u64>, u8) -> Classification,
+) -> (usize, Vec<String>) {
     let mut seen = std::collections::HashSet::new();
     let mut stack = vec![(Node::initial(prev, kind, legacy), String::new())];
     let mut violations = Vec::new();
@@ -339,7 +354,7 @@ fn explore(prev: u64, target: u64, kind: RunKind, legacy: bool, op: RunOp) -> (u
                     if edit {
                         disk.dest = Some(USER_EDIT);
                     }
-                    let (after, class) = recover(disk, op, prev, target);
+                    let (after, class) = recover(disk, op, prev, target, classifier);
                     if let Err(violation) =
                         check_oracle(&disk, &after, class, kind, edit, prev, target)
                     {
@@ -415,7 +430,10 @@ mod tests {
         let mut total = 0;
         for (prev, target, op) in [(1, 2, RunOp::Apply), (2, 1, RunOp::Rollback)] {
             for kind in [RunKind::Deploy, RunKind::Prune] {
-                let (explored, violations) = explore(prev, target, kind, false, op);
+                let (explored, violations) =
+                    explore(prev, target, kind, false, op, |p, t, o, c, f| {
+                        classify(p, t, o, c, f)
+                    });
                 total += explored;
                 assert!(
                     violations.is_empty(),
@@ -436,15 +454,41 @@ mod tests {
     /// unrepresentable.
     #[test]
     fn legacy_markers_misclassify_rollforward_and_shipped_ones_cannot() {
-        let (_, violations) = explore(1, 2, RunKind::Deploy, true, RunOp::Rollback);
+        // the 0.22 rule, kept model-local as archaeology (production
+        // refuses legacy markers since 0.26)
+        fn legacy_classify(
+            _prev: Option<u64>,
+            target: u64,
+            op: RunOp,
+            current: Option<u64>,
+            _format: u8,
+        ) -> Classification {
+            match (op, current) {
+                (RunOp::Apply, Some(c)) if c >= target => Classification::Committed,
+                (RunOp::Rollback, Some(c)) if c <= target => Classification::Committed,
+                _ => Classification::Uncommitted,
+            }
+        }
+        let (_, violations) = explore(
+            1,
+            2,
+            RunKind::Deploy,
+            true,
+            RunOp::Rollback,
+            legacy_classify,
+        );
         assert!(
             violations
                 .iter()
                 .any(|v| v.contains("must point at the target")),
-            "the legacy direction rule must produce the known counterexample"
+            "the legacy direction rule must produce the known counterexample; got: {violations:?}"
         );
         // the same schedule space with shipped markers: clean
-        let (_, violations) = explore(1, 2, RunKind::Deploy, false, RunOp::Rollback);
+        // shipped markers through the REAL classifier: clean. And
+        // legacy markers through it: refuse (Ambiguous), never guess
+        let (_, violations) = explore(1, 2, RunKind::Deploy, false, RunOp::Rollback, classify);
+        assert!(violations.is_empty(), "{violations:?}");
+        let (_, violations) = explore(1, 2, RunKind::Deploy, true, RunOp::Rollback, classify);
         assert!(violations.is_empty(), "{violations:?}");
     }
 

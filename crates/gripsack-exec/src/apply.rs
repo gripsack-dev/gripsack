@@ -20,7 +20,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // mutation and the flip left uncommitted journal entries — the
     // filesystem sits between generations. Restore the priors before
     // deploying anything; the run then proceeds from a clean floor.
-    let recovered = store::journal::reconcile(ctx.home_dir()?)?;
+    let recovered = store::journal::reconcile(ctx.home_dir()?, &ctx.home)?;
     let mut reports = Vec::new();
     if !recovered.is_empty() {
         reports.push(crate::report::StepReport {
@@ -112,6 +112,8 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         });
     }
     let steps_by_module = expand::expand_all(&ir.modules);
+    // physical destination uniqueness before anything mutates (0030)
+    expand::check_physical_uniqueness(&steps_by_module)?;
     // declare the generation this run builds BEFORE any mutation:
     // recovery compares the marker against `current` — a crash after
     // the flip but before journal cleanup must read as COMMITTED,
@@ -256,10 +258,15 @@ pub(crate) fn scoped_order(
 
 /// Ownership lineage (0029 §1): an origin prior rides the whole
 /// epoch — every generation carries it forward per destination until
-/// a successful restore or prune ends the epoch. Take-over captures a
-/// fresh prior at deploy; this pass inherits everything else, keyed
-/// by DESTINATION (a module rename transfers the origin to the new
+/// a successful restore or prune ends the epoch. Keyed by
+/// DESTINATION (a module rename transfers the origin to the new
 /// module rather than losing it).
+///
+/// The inherited origin ALWAYS wins (0030 §H5): a second
+/// `--take-over` captures the drifted bytes for the crash-recovery
+/// journal, but the manifest keeps the epoch's FIRST origin —
+/// undeclare must restore the pre-adoption state, not the last
+/// absorbed drift.
 fn inherit_priors(prev: &store::Generation, modules: &mut BTreeMap<String, store::ModuleState>) {
     let mut by_dest: std::collections::BTreeMap<&str, &store::Prior> = Default::default();
     for state in prev.modules.values() {
@@ -271,9 +278,7 @@ fn inherit_priors(prev: &store::Generation, modules: &mut BTreeMap<String, store
     }
     for state in modules.values_mut() {
         for entry in &mut state.entries {
-            if entry.prior.is_none()
-                && let Some(prior) = by_dest.get(entry.to.as_str())
-            {
+            if let Some(prior) = by_dest.get(entry.to.as_str()) {
                 entry.prior = Some((*prior).clone());
             }
         }
@@ -285,7 +290,10 @@ fn inherit_priors(prev: &store::Generation, modules: &mut BTreeMap<String, store
 /// Compensation failure (quarantined entries fail closed) is logged,
 /// not masked: the journal survives for the next run either way.
 fn compensate(ctx: &Ctx) {
-    match ctx.home_dir().and_then(store::journal::reconcile) {
+    match ctx
+        .home_dir()
+        .and_then(|h| store::journal::reconcile(h, &ctx.home))
+    {
         Ok(lines) => {
             for line in lines {
                 info!("{line}");
@@ -410,7 +418,13 @@ fn prune_undeclared(
                 // the file is foreign — prune removes only our block,
                 // and only if the block content is still what we
                 // deployed (a drifted block is the user's now)
-                let existing = std::fs::read_to_string(&dest).unwrap_or_default();
+                // NotFound-only-is-absent (0030 §H7): a permission or
+                // I/O error is not an empty file
+                let existing = match std::fs::read_to_string(&dest) {
+                    Ok(t) => t,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                    Err(e) => return Err(e.into()),
+                };
                 match crate::template::extract_block(&existing, name) {
                     Some(content)
                         if store::canonical_bytes_hash(content.as_bytes()) == entry.hash =>
@@ -480,7 +494,12 @@ fn prune_undeclared(
                     // §1), and journaled's postcondition verifies the
                     // landing regardless
                     crate::deploy::remove_or_restore_prior(
-                        &dest_dir, &dest_name, entry, name, home,
+                        &dest_dir,
+                        &dest_name,
+                        entry,
+                        name,
+                        home,
+                        &state.store_path,
                     )?;
                     Ok(())
                 },

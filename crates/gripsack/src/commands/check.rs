@@ -16,6 +16,14 @@ pub fn check(repo: &Path, host: Option<&str>, palette: Palette) -> ExitCode {
     };
     match validated_ir(&outcome, repo, host, palette) {
         Ok(ir) => {
+            // physical destination uniqueness (0030 §P0-1): reads
+            // only, no side effects — two spellings of one directory
+            // entry are a check-time error
+            let steps = gripsack_exec::expand::expand_all(&ir.modules);
+            if let Err(e) = gripsack_exec::expand::check_physical_uniqueness(&steps) {
+                eprintln!("grip: {e}");
+                return ExitCode::FAILURE;
+            }
             let host = &ir.host;
             println!(
                 "{} {} modules · host {}/{} · tags: {}",

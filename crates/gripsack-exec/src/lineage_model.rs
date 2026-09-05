@@ -253,3 +253,57 @@ fn preserved_drift_never_authorizes_an_update() {
         }
     }
 }
+
+/// The intra-apply race (0030 §9): an external write landing between
+/// the drift check's observation and the mutation must be aborted,
+/// never clobbered. `plan_copy` decides from a STALE observation; the
+/// write-side precondition re-reads and refuses when the live bytes
+/// moved. Exhaustive over (desired, observed, live-now, prev,
+/// take-over): either the precondition sees no movement and the
+/// observed plan applies, or it sees movement and NOTHING is written.
+#[test]
+fn a_mid_apply_external_write_is_aborted_never_clobbered() {
+    for desired in ["1", "2"] {
+        for observed in [None, Some("0"), Some("1"), Some("2"), Some("3")] {
+            for live_now in [None, Some("0"), Some("1"), Some("2"), Some("3")] {
+                for prev in [None, Some(("1", false)), Some(("3", true))] {
+                    for take_over in [false, true] {
+                        // the plan was computed from the observation…
+                        let plan = plan_copy(desired, observed, prev, take_over);
+                        let writes = matches!(
+                            plan,
+                            CopyPlan::Fresh | CopyPlan::Update | CopyPlan::TakeOver
+                        );
+                        // …the precondition compares live-now to the
+                        // observation before any write (deploy.rs:
+                        // atomic_write's expect-unchanged guard)
+                        let moved = live_now != observed;
+                        if moved && writes {
+                            // aborted: the run fails, live-now is
+                            // untouched — a foreign write is never
+                            // overwritten on a stale observation
+                            continue;
+                        }
+                        if !moved && writes {
+                            // no race: the write is exactly the plan
+                            // the observation authorized
+                            // authorized iff we own the live bytes
+                            // (they are exactly what we deployed) —
+                            // or the destination was foreign/absent
+                            // and the user said absorb / there is
+                            // nothing to clobber
+                            assert!(
+                                take_over
+                                    || prev.is_some_and(|(d, p)| !p && observed == Some(d))
+                                    || observed.is_none()
+                                    || observed == Some(desired),
+                                "unauthorized write: desired={desired} observed={observed:?} \
+                                 prev={prev:?} take_over={take_over} plan={plan:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
