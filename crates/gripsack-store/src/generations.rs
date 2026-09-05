@@ -149,22 +149,37 @@ fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<(
     let store_root = home.join(crate::paths::STORE_DIR);
     let mut seen_dests = std::collections::BTreeSet::new();
     for (name, state) in &manifest.modules {
-        if !state.store_path.starts_with(&store_root) {
+        // lexical normalization, not bare prefix (0030 §H9):
+        // `store/../outside` starts with the root as a STRING
+        let has_parent = state
+            .store_path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir));
+        if has_parent || !state.store_path.starts_with(&store_root) {
             return Err(invalid(format!(
                 "module {name:?}: store path {} is outside $GRIPSACK_HOME/store",
                 state.store_path.display()
             )));
         }
         for entry in &state.entries {
-            // key: the destination for non-merge (E111 applies), and
-            // (destination, module) for merge — several modules may own
-            // separate blocks in one shared file (0029 §7: the 0027
-            // validator rejected what merge legitimately allows)
-            let key = if entry.mode == gripsack_ir::Ownership::Merge {
-                format!("{}\u{1f}{}", entry.to.to_lowercase(), name)
-            } else {
-                entry.to.to_lowercase()
-            };
+            // 0030 §H9: `from` joins the store path — an absolute or
+            // parent-traversing one escapes it (Path::join DISCARDS
+            // the base on absolute). Normal components only.
+            if std::path::Path::new(&entry.from)
+                .components()
+                .any(|c| !matches!(c, std::path::Component::Normal(_)))
+            {
+                return Err(invalid(format!(
+                    "module {name:?}: source {:?} is not a plain relative path",
+                    entry.from
+                )));
+            }
+            // one owner per destination across ALL modes (0030 §H6):
+            // the 0029 merge exemption made the validator disagree
+            // with sema and rollback. Multi-module blocks in one file
+            // return when aggregation lands (roadmap) — concurrent
+            // whole-file writes are unsound before that
+            let key = entry.to.to_lowercase();
             if !seen_dests.insert(key) {
                 return Err(invalid(format!(
                     "destination {:?} appears twice in generation {generation}",
@@ -213,6 +228,10 @@ pub fn list(home: &Path) -> io::Result<Vec<u64>> {
 pub fn current(home: &Path) -> io::Result<Option<u64>> {
     match std::fs::read_link(crate::paths::current_link(home)) {
         Ok(target) => {
+            // the relative canonical form skips canonicalize entirely
+            if let Some(n) = parse_current_relative(&target) {
+                return Ok(Some(n));
+            }
             let n: u64 = target
                 .file_name()
                 .and_then(|n| n.to_string_lossy().parse().ok())
@@ -296,8 +315,13 @@ pub fn publish_generation(
     // construction and load share the ONE validator (0029 §7): we
     // never publish what read_manifest would reject
     validate(generation, generation.number, home_path)?;
-    let staging =
-        Path::new(crate::paths::GENERATIONS_DIR).join(format!(".staging-{}", generation.number));
+    // pid-tagged (0030 §18): a staging dir from a crashed apply is
+    // cleared only when it's ours to clear
+    let staging = Path::new(crate::paths::GENERATIONS_DIR).join(format!(
+        ".staging-{}-{}",
+        generation.number,
+        std::process::id()
+    ));
     let final_dir = Path::new(crate::paths::GENERATIONS_DIR).join(generation.number.to_string());
     if home.symlink_metadata(&final_dir).is_ok() {
         return Err(io::Error::new(
@@ -308,7 +332,11 @@ pub fn publish_generation(
             ),
         ));
     }
-    let _ = home.remove_dir_all(&staging);
+    match home.remove_dir_all(&staging) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
     let json = serde_json::to_string_pretty(generation)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     gripsack_fs::atomic_write(home, &staging.join("manifest.json"), json.as_bytes())?;
@@ -337,24 +365,18 @@ pub fn publish_generation(
     gripsack_fs::fsync_dir(home, Path::new(crate::paths::GENERATIONS_DIR))
 }
 
-/// [`current`] through the home capability (plan/0021): the link is
-/// read relative to the `Dir`, never re-resolved by string.
-pub fn current_in(home: &gripsack_fs::Dir) -> std::io::Result<Option<u64>> {
-    match home.read_link_contents("current") {
-        Ok(target) => target
-            .file_name()
-            .and_then(|n| n.to_string_lossy().parse().ok())
-            .map(Some)
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "current does not point at a generation".to_string(),
-                )
-            }),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        // recovery reads commit evidence through this: a permission
-        // or I/O error is not "no generations" (0025 §F)
-        Err(e) => Err(e),
+/// Parse the canonical relative `generations/<N>` target (0030 §H10).
+/// The ONE shape flip writes; both current readers accept it without
+/// ambient canonicalization.
+fn parse_current_relative(target: &Path) -> Option<u64> {
+    let mut parts = target.components();
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(std::path::Component::Normal(head)), Some(std::path::Component::Normal(n)), None)
+            if head == crate::paths::GENERATIONS_DIR =>
+        {
+            n.to_string_lossy().parse().ok()
+        }
+        _ => None,
     }
 }
 
@@ -378,7 +400,11 @@ pub fn flip(home: &gripsack_fs::Dir, home_path: &Path, generation: u64) -> io::R
             ),
         ));
     }
-    gripsack_fs::symlink_replace(home, Path::new("current"), &dir)
+    // the link target is the RELATIVE canonical form (0030 §H10): one
+    // lexical shape means both readers validate without ambient
+    // canonicalization. Pre-0.26 absolute targets still validate via
+    // canonicalize in the reader.
+    gripsack_fs::symlink_replace(home, Path::new("current"), &rel)
 }
 
 #[cfg(test)]

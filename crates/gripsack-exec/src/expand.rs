@@ -118,6 +118,51 @@ pub fn dep_edges(modules: &std::collections::BTreeMap<String, Module>) -> Vec<(S
     edges
 }
 
+/// Physical destination uniqueness (0030 §P0-1): expand `~/`,
+/// normalize, and canonicalize the deepest existing ancestor — two
+/// declarations resolving to one directory entry are a hard error
+/// BEFORE any mutation. They would race in the scheduler and
+/// double-journal one object. Runs in `grip check` and apply.
+pub fn check_physical_uniqueness(
+    steps_by_module: &std::collections::BTreeMap<String, Vec<gripsack_ir::Step>>,
+) -> Result<(), crate::ctx::ExecError> {
+    let mut owners: std::collections::BTreeMap<std::path::PathBuf, (&str, &str)> =
+        std::collections::BTreeMap::new();
+    for (name, steps) in steps_by_module {
+        for step in steps {
+            let entries: &[gripsack_ir::Entry] = match &step.action {
+                gripsack_ir::StepAction::Install { entries }
+                | gripsack_ir::StepAction::ConfigDeploy { entries } => entries,
+                _ => continue,
+            };
+            for entry in entries {
+                let key = gripsack_store::canonical_dest(&entry.to).map_err(|e| {
+                    crate::ctx::ExecError::Step {
+                        module: name.clone(),
+                        step: "plan".into(),
+                        detail: format!("destination {:?}: {e}", entry.to),
+                    }
+                })?;
+                if let Some((other_module, other_to)) = owners.get(&key) {
+                    return Err(crate::ctx::ExecError::Step {
+                        module: name.clone(),
+                        step: "plan".into(),
+                        detail: format!(
+                            "{:?} and {:?} (module {other_module:?}) resolve to the same path {} \
+                             — one physical destination per run",
+                            entry.to,
+                            other_to,
+                            key.display()
+                        ),
+                    });
+                }
+                owners.insert(key, (name.as_str(), entry.to.as_str()));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

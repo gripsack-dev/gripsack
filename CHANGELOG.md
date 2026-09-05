@@ -3,6 +3,43 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.26.0] — 2026-09-05
+
+Canonical destinations and hardened transaction identity
+(plan/0030, sixth fresh-eyes audit) — one physical file now has one
+identity everywhere gripsack looks, and the crash/ownership
+protocols gained their last proven-unsound edge cases.
+
+### Changed
+
+- **Destination aliases are rejected before any mutation** —
+  `~/.x`, `$HOME/.x`, `/home/me/.x`, and a path through a symlinked
+  ancestor are one directory entry; declaring two spellings (even
+  across modules) is now a hard `grip check`/`apply` error instead
+  of a silent double-transition of one object. E111 also fires for
+  duplicates inside a single module, which previously slipped
+  through and double-journaled the destination.
+- **A second `--take-over` no longer rebases the restore point** —
+  the drifted bytes are still captured for crash recovery, but the
+  manifest keeps the epoch's FIRST pre-adoption origin: undeclare
+  restores what was there before gripsack ever touched the file.
+- **Renaming a module keeps full lineage authority** — rename plus
+  content change applies as an authorized update (no more
+  preserved-as-foreign), and undeclare after a rename still
+  restores the origin.
+- **Tracked copies own the executable bit** — a fresh 0755 deploy
+  lands executable, the next apply is satisfied instead of
+  flip-flopping, and an exec-bit change from the repo applies.
+- **Pre-0.23 journal run markers refuse closed** — the old
+  direction rule is model-proven unsound for the markers 0.22
+  wrote; recovery now stops with guidance instead of guessing.
+- **Store hardening** — `current` resolving outside
+  `$GRIPSACK_HOME/generations` is corruption (error, not a
+  generation); manifests reject `from` paths that escape the store
+  (`../x`, absolutes) and duplicate destinations across ALL
+  ownership modes; the intra-apply race (an external write between
+  drift check and mutation) is aborted, never clobbered.
+
 ## [0.25.0] — 2026-09-05
 
 Ownership lineage and authorized transitions (plan/0029, fifth

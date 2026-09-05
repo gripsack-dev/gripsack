@@ -248,6 +248,12 @@ struct RunMarker {
     #[serde(default)]
     previous_generation: Option<u64>,
     target_generation: u64,
+    /// 2 for markers written since 0.26 (0030 §11): distinguishes
+    /// "no previous generation" (a fresh machine) from a pre-0.23
+    /// marker that never recorded one — the latter refuses to
+    /// reconcile, the former classifies exactly
+    #[serde(default)]
+    format: u8,
     /// Apply builds a NEWER generation (committed once `current`
     /// reaches the target); rollback returns to an OLDER one, so its
     /// commit condition inverts (committed once `current` comes back
@@ -283,6 +289,7 @@ pub fn begin_run(
         previous_generation,
         target_generation,
         op,
+        format: 2,
     };
     gripsack_fs::atomic_write(
         home,
@@ -341,9 +348,14 @@ fn cleanup(home: &Dir, entry_paths: &[PathBuf]) -> io::Result<()> {
 /// target generation is later than `current` would misread the NEXT
 /// crash window.
 pub fn end_run(home: &Dir) -> io::Result<()> {
-    let _ = home.remove_file(run_marker_rel());
-    let _ = gripsack_fs::fsync_dir(home, Path::new("journal"));
-    Ok(())
+    // a stale marker misleads the NEXT crash window — its deletion is
+    // a durability operation, never `let _ =` (0030 §12)
+    match home.remove_file(run_marker_rel()) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    gripsack_fs::fsync_dir(home, Path::new("journal"))
 }
 
 /// What an uncommitted entry asks for, once resolved against the
@@ -363,7 +375,7 @@ enum Recovery {
 /// stands; uncommitted runs are restored to their priors. Returns one
 /// human line per decision for the apply report. Must run under the
 /// lifecycle lock.
-pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
+pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
     let Some(entries) = read_uncommitted(home)? else {
         return Ok(Vec::new());
     };
@@ -376,12 +388,15 @@ pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
     // 0.22 direction rule, correct for those versions' semantics.
     let committed = match run_marker(home)? {
         Some(marker) => {
-            let current = crate::generations::current_in(home)?;
+            // the ONE current-pointer reader (0030 §H10): recovery
+            // never uses weaker commit evidence than normal commands
+            let current = crate::generations::current(home_path)?;
             match classify(
                 marker.previous_generation,
                 marker.target_generation,
                 marker.op,
                 current,
+                marker.format,
             ) {
                 Classification::Committed => true,
                 Classification::Uncommitted => false,
@@ -392,6 +407,18 @@ pub fn reconcile(home: &Dir) -> io::Result<Vec<String>> {
                          journal is retained; inspect $GRIPSACK_HOME/journal \
                          before running again",
                         marker.previous_generation, marker.target_generation
+                    )));
+                }
+                Classification::Legacy => {
+                    return Err(io::Error::other(format!(
+                        "journal run marker (→{}) predates 0.23's exact \
+                         transaction identity — cannot prove whether it \
+                         committed. Inspect $GRIPSACK_HOME/journal: the \
+                         entries name each destination's prior and intended \
+                         state. To accept the current state, delete the \
+                         journal directory; to restore, move the named files \
+                         back by hand first",
+                        marker.target_generation
                     )));
                 }
             }
@@ -538,9 +565,16 @@ pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<Stri
                 .to_string_lossy()
                 .into_owned(),
         )),
-        Ok(_) => Ok(Some(crate::hash::canonical_bytes_hash(
-            &dest_dir.read(dest_name)?,
-        ))),
+        Ok(meta) => {
+            // exec-aware (0030 §H3): the journal's file identity
+            // matches what deploy records for a tracked copy
+            use gripsack_fs::cap_std::fs::MetadataExt;
+            let exec = meta.mode() & 0o111 != 0;
+            Ok(Some(crate::hash::canonical_bytes_identity(
+                &dest_dir.read(dest_name)?,
+                exec,
+            )))
+        }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
@@ -552,8 +586,9 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<String>> 
     match prior {
         PriorSerde::Absent => Ok(None),
         PriorSerde::Symlink { target } => Ok(Some(target.clone())),
-        PriorSerde::File { hash, .. } => Ok(Some(crate::hash::canonical_bytes_hash(
+        PriorSerde::File { hash, mode } => Ok(Some(crate::hash::canonical_bytes_identity(
             &home.read(prior_blob_rel(hash))?,
+            mode.is_some_and(|m| m & 0o111 != 0),
         ))),
     }
 }
@@ -610,22 +645,33 @@ enum Classification {
     Committed,
     Uncommitted,
     Ambiguous,
+    /// A pre-0.23 run marker (no previous_generation): the commit
+    /// state is unknowable — refuse, never auto-classify (0030 §11)
+    Legacy,
 }
-
-fn classify(previous: Option<u64>, target: u64, op: RunOp, current: Option<u64>) -> Classification {
+fn classify(
+    previous: Option<u64>,
+    target: u64,
+    _op: RunOp,
+    current: Option<u64>,
+    format: u8,
+) -> Classification {
     match (previous, current) {
         (Some(_), Some(c)) if c == target => Classification::Committed,
         (Some(prev), Some(c)) if c == prev => Classification::Uncommitted,
         (Some(_), _) => Classification::Ambiguous,
-        (None, Some(c)) => match op {
-            RunOp::Apply if c >= target => Classification::Committed,
-            RunOp::Rollback if c <= target => Classification::Committed,
-            _ => Classification::Uncommitted,
-        },
-        // no current at all: the flip never happened
-        (None, None) => Classification::Uncommitted,
+        // a fresh machine's run (no previous generation): exact too —
+        // distinguishable from legacy by the format field
+        (None, Some(c)) if format >= 2 && c == target => Classification::Committed,
+        (None, None) if format >= 2 => Classification::Uncommitted,
+        (None, Some(_)) if format >= 2 => Classification::Ambiguous,
+        // pre-0.23 marker (no format field): the directional rule is
+        // proven unsound (0028's kept counterexample) — refuse with
+        // guidance rather than guess (0030 §11)
+        _ => Classification::Legacy,
     }
 }
+
 fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> io::Result<()> {
     match prior {
         PriorSerde::Absent => {
@@ -694,13 +740,13 @@ mod tests {
         // simulate the crash: mutation never happened, no commit —
         // the file still holds the prior bytes
 
-        let lines = reconcile(&cap(&home)).unwrap();
+        let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(lines.len(), 1);
         // live IS the prior: the mutation never landed, so there is
         // nothing to restore — the entry is still consumed
         assert!(lines[0].contains("unchanged"), "{lines:?}");
         assert_eq!(std::fs::read(&dest).unwrap(), b"user stuff\n");
-        assert!(reconcile(&cap(&home)).unwrap().is_empty());
+        assert!(reconcile(&cap(&home), home.path()).unwrap().is_empty());
     }
 
     #[test]
@@ -720,7 +766,7 @@ mod tests {
         std::fs::write(&dest, b"deployed half-run content\n").unwrap();
         // crash: no commit_run
 
-        let lines = reconcile(&cap(&home)).unwrap();
+        let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
         assert!(lines[0].contains("recovered"));
     }
@@ -743,7 +789,7 @@ mod tests {
         // the user edits the file AFTER the crash, before the next run
         std::fs::write(&dest, b"my own edit\n").unwrap();
 
-        let lines = reconcile(&cap(&home)).unwrap();
+        let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"my own edit\n");
         assert!(lines[0].contains("kept"));
     }
@@ -771,7 +817,7 @@ mod tests {
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink("/deployed/target", &link).unwrap();
 
-        reconcile(&cap(&home)).unwrap();
+        reconcile(&cap(&home), home.path()).unwrap();
         assert!(!fresh.exists(), "absent prior removes the crashed write");
         assert_eq!(
             std::fs::read_link(&link).unwrap().to_string_lossy(),
@@ -806,7 +852,7 @@ mod tests {
         crate::generations::write_manifest(&cap(&home), &manifest).unwrap();
         crate::generations::flip(&cap(&home), home.path(), 1).unwrap();
 
-        let lines = reconcile(&cap(&home)).unwrap();
+        let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert!(
             lines.iter().any(|l| l.contains("already activated")),
             "{lines:?}"
@@ -833,7 +879,7 @@ mod tests {
         .unwrap();
         std::fs::write(&dest, b"half\n").unwrap();
 
-        reconcile(&cap(&home)).unwrap();
+        reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
     }
 
@@ -844,7 +890,7 @@ mod tests {
         let home = home();
         std::fs::create_dir_all(dir(home.path())).unwrap();
         std::fs::write(dir(home.path()).join("deadbeef.json"), b"{ not json").unwrap();
-        let err = reconcile(&cap(&home)).unwrap_err();
+        let err = reconcile(&cap(&home), home.path()).unwrap_err();
         assert!(err.to_string().contains("quarantine"), "{err}");
         assert!(dir(home.path()).join("quarantine/deadbeef.json").exists());
     }
@@ -866,7 +912,7 @@ mod tests {
 
         commit_run(&cap(&home)).unwrap();
         // the flip happened: recovery must NOT undo the deploy
-        assert!(reconcile(&cap(&home)).unwrap().is_empty());
+        assert!(reconcile(&cap(&home), home.path()).unwrap().is_empty());
         assert_eq!(std::fs::read(&dest).unwrap(), b"new\n");
     }
     fn manifest(n: u64) -> crate::generations::Generation {
@@ -895,7 +941,7 @@ mod tests {
         std::os::unix::fs::symlink("/store/x", &dest).unwrap();
         // crash before commit
 
-        reconcile(&cap(&home)).unwrap();
+        reconcile(&cap(&home), home.path()).unwrap();
         let meta = std::fs::metadata(&dest).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"hunter2\n");
         assert_eq!(meta.permissions().mode() & 0o777, 0o600);
@@ -922,7 +968,7 @@ mod tests {
         // crash; THEN the user edits
         std::fs::write(&dest, b"post-crash edit\n").unwrap();
 
-        let lines = reconcile(&cap(&home)).unwrap();
+        let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"post-crash edit\n");
         assert!(lines[0].contains("kept"), "{lines:?}");
     }
@@ -952,7 +998,7 @@ mod tests {
         std::fs::write(&dest, b"old\n").unwrap();
         // crash: current is still 3, target was 2 — uncommitted
 
-        let lines = reconcile(&cap(&home)).unwrap();
+        let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"new\n");
         assert!(lines[0].contains("recovered"), "{lines:?}");
     }
@@ -981,7 +1027,7 @@ mod tests {
         crate::generations::flip(&cap(&home), home.path(), 2).unwrap();
         // crash between the flip and commit_run
 
-        let lines = reconcile(&cap(&home)).unwrap();
+        let lines = reconcile(&cap(&home), home.path()).unwrap();
         assert!(
             lines.iter().any(|l| l.contains("already activated")),
             "{lines:?}"

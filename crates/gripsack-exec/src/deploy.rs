@@ -4,7 +4,6 @@ use crate::ctx::{Ctx, ExecError};
 use crate::report::ReportKind;
 use gripsack_ir::{Entry, Ownership};
 use gripsack_store as store;
-use gripsack_store::expand_home;
 use std::path::Path;
 
 /// Restore one destination to what a generation's manifest recorded —
@@ -125,12 +124,16 @@ pub fn remove_entry_deployed(
     dest_name: &Path,
     entry: &store::DeployedEntry,
     module: &str,
+    store_path: &Path,
 ) -> std::io::Result<bool> {
     match entry.mode {
         Ownership::Owned => {
+            // removal authority is the EXACT expected target (0030
+            // §15): a user-repointed link to another gripsack object
+            // is drift, never deletable
             let ours = dest_dir
                 .read_link_contents(dest_name)
-                .map(|t| t.starts_with(store::gripsack_home()))
+                .map(|t| t == store_path.join(&entry.from))
                 .unwrap_or(false);
             if !ours {
                 return Ok(false);
@@ -361,12 +364,13 @@ pub fn remove_or_restore_prior(
     entry: &store::DeployedEntry,
     module: &str,
     home: &Path,
+    store_path: &Path,
 ) -> std::io::Result<bool> {
     if let Some(prior) = &entry.prior {
         restore_prior(dest_dir, dest_name, prior, home)?;
         return Ok(true);
     }
-    remove_entry_deployed(dest_dir, dest_name, entry, module)
+    remove_entry_deployed(dest_dir, dest_name, entry, module, store_path)
 }
 
 /// One destination mutation, journaled for crash recovery (0019):
@@ -376,6 +380,40 @@ pub fn remove_or_restore_prior(
 /// the next run's reconcile restores. The entry clears when the run
 /// commits (the flip); per-entry there is no commit, matching the
 /// run-level rollback's all-or-nothing semantics.
+/// One filesystem observation, one read (0030 §P0-2): the object type
+/// and its raw facts. Both identity domains derive from these bytes —
+/// no second observation can silently rebase the precondition.
+enum Observation {
+    File { bytes: Vec<u8>, exec: bool },
+    Symlink { target: std::ffi::OsString },
+}
+
+fn observe(dest_dir: &gripsack_fs::Dir, dest_name: &Path) -> std::io::Result<Option<Observation>> {
+    let meta = match dest_dir.symlink_metadata(dest_name) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+        Ok(m) => m,
+    };
+    if meta.file_type().is_symlink() {
+        let target = dest_dir.read_link_contents(dest_name)?;
+        Ok(Some(Observation::Symlink {
+            target: target.into_os_string(),
+        }))
+    } else if meta.is_file() {
+        let exec = {
+            use gripsack_fs::cap_std::fs::MetadataExt;
+            meta.mode() & 0o111 != 0
+        };
+        let bytes = dest_dir.read(dest_name)?;
+        Ok(Some(Observation::File { bytes, exec }))
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file or symlink",
+        ))
+    }
+}
+
 /// The copy/template disposition decision as a pure function
 /// (0029 §2 — the lineage model in the harness drives THIS code).
 /// `prev` is (the previous manifest's hash, whether it was preserved
@@ -515,7 +553,7 @@ pub(crate) fn deploy_entry(
     store_path: &Path,
     entry: &Entry,
     ctx: &Ctx,
-    prev: Option<&store::ModuleState>,
+    prev_map: &std::collections::BTreeMap<std::path::PathBuf, &store::DeployedEntry>,
     version: Option<&str>,
 ) -> Result<(String, ReportKind), ExecError> {
     let from = match version {
@@ -531,7 +569,16 @@ pub(crate) fn deploy_entry(
     // reason to reach into the repo checkout and deploy a path the
     // store never published.
     let source = store_path.join(&from);
-    let dest = expand_home(&entry.to);
+    // the canonical physical key (0030 §P0-1): one observation, one
+    // transition, one journal key per physical object
+    let dest = store::canonical_dest(&entry.to).map_err(|e| ExecError::Step {
+        module: module.to_string(),
+        step: "deploy".into(),
+        detail: format!("destination {:?}: {e}", entry.to),
+    })?;
+    // lineage is destination-global: the previous generation's entry
+    // for THIS physical destination, whichever module owned it
+    let prev = prev_map.get(&dest).copied();
     let fail = |detail: String| ExecError::Step {
         module: module.to_string(),
         step: "deploy".into(),
@@ -621,9 +668,7 @@ pub(crate) fn deploy_entry(
             // external satisfaction (0009 critique): never overwrite a
             // path that is neither ours (symlink into the store) nor
             // recorded in a previous manifest — unless --take-over.
-            let recorded = prev
-                .map(|m| m.entries.iter().any(|e| e.to == entry.to))
-                .unwrap_or(false);
+            let recorded = prev.is_some();
             let ours = std::fs::read_link(&dest)
                 .map(|t| t.starts_with(&ctx.home))
                 .unwrap_or(false);
@@ -710,45 +755,35 @@ pub(crate) fn deploy_entry(
                 Some(bytes) => store::canonical_bytes_hash(bytes),
                 None => store::canonical_file_hash(&source)?,
             };
-            let prev_pair = prev
-                .and_then(|m| m.entries.iter().find(|e| e.to == entry.to))
-                .map(|e| (e.hash.as_str(), e.preserved_drift));
+            let prev_pair = prev.map(|e| (e.hash.as_str(), e.preserved_drift));
             let (dest_dir, dest_name) = dest_capability(&dest)?;
-            // branch on the OBJECT TYPE, never exists() (0029 §5):
-            // exists() follows links — a dangling foreign link used to
-            // read as "absent" and lose its identity
-            let live = match dest_dir.symlink_metadata(&dest_name) {
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                Err(e) => {
-                    return Err(fail(format!("cannot inspect {}: {e}", entry.to)));
+            // ONE observation drives the decision AND the precondition
+            // (0030 §P0-2 — the 0029 code read twice, and the second
+            // read silently became the authorized baseline). Both
+            // identity domains derive from the same bytes; the
+            // journal's file identity is exec-aware (0030 §H3).
+            let observed: Option<Observation> = observe(&dest_dir, &dest_name)?;
+            // both identity domains from the ONE observation:
+            // manifest (plan_copy) is mode-specific — tracked copies
+            // are exec-aware (0030 §H3), templates bytes-only, links
+            // hash their target bytes; the journal/precondition domain
+            // is exec-aware for files, raw target for links
+            let (live, expect) = match &observed {
+                None => (None, Expect::Absent),
+                Some(Observation::Symlink { target }) => (
+                    Some(store::canonical_bytes_hash(target.as_encoded_bytes())),
+                    Expect::Is(target.to_string_lossy().into_owned()),
+                ),
+                Some(Observation::File { bytes, exec }) => {
+                    let manifest = match entry.mode {
+                        Ownership::Template => store::canonical_bytes_hash(bytes),
+                        _ => store::canonical_bytes_identity(bytes, *exec),
+                    };
+                    (
+                        Some(manifest),
+                        Expect::Is(store::canonical_bytes_identity(bytes, *exec)),
+                    )
                 }
-                Ok(m) if m.file_type().is_symlink() => {
-                    // a symlink here is a foreign OBJECT (copy/template
-                    // never write links) — its identity is its target
-                    let target = dest_dir.read_link_contents(&dest_name)?;
-                    Some(store::canonical_bytes_hash(
-                        target.as_os_str().as_encoded_bytes(),
-                    ))
-                }
-                Ok(m) if m.is_file() => Some(store::canonical_file_hash_in(&dest_dir, &dest_name)?),
-                Ok(m) if m.is_dir() => {
-                    return Err(fail(format!("{} is a directory", entry.to)));
-                }
-                Ok(_) => {
-                    return Err(fail(format!(
-                        "{} is not a regular file — refusing to touch it",
-                        entry.to
-                    )));
-                }
-            };
-            // the journal's identity domain (link targets verbatim,
-            // canonical bytes hash for files) — distinct from the
-            // manifest domain (exec-aware file hash); the precondition
-            // speaks the journal's
-            let live_journal = store::journal::live_identity(&dest_dir, &dest_name)?;
-            let expect = match &live_journal {
-                Some(l) => Expect::Is(l.clone()),
-                None => Expect::Absent,
             };
             match plan_copy(&hash, live.as_deref(), prev_pair, ctx.takes_over(&entry.to)) {
                 CopyPlan::Satisfied => (
@@ -760,7 +795,31 @@ pub(crate) fn deploy_entry(
                 ),
                 CopyPlan::Fresh | CopyPlan::Update => {
                     let update = live.is_some();
-                    let after = store::canonical_bytes_hash(content);
+                    // exec-bit coherence (0030 §H3, Option A): tracked
+                    // copies manage executability — a fresh write lands
+                    // the source's exec bits, an update applies an
+                    // exec change. (Templates stay bytes-only: a
+                    // rendered file's mode is not managed.)
+                    #[cfg(unix)]
+                    let src_exec = {
+                        use std::os::unix::fs::PermissionsExt;
+                        std::fs::metadata(&source)?.permissions().mode() & 0o111 != 0
+                    };
+                    #[cfg(not(unix))]
+                    let src_exec = false;
+                    let intent_exec = match entry.mode {
+                        // a rendered file's mode is not managed:
+                        // atomic_write preserves the existing mode on
+                        // update (0026 §7), a fresh file lands
+                        // non-exec — the intended identity mirrors
+                        // exactly that
+                        Ownership::Template => match &observed {
+                            Some(Observation::File { exec, .. }) => *exec,
+                            _ => false,
+                        },
+                        _ => src_exec,
+                    };
+                    let after = store::canonical_bytes_identity(content, intent_exec);
                     journaled(
                         ctx.home_dir()?,
                         &dest_dir,
@@ -768,7 +827,23 @@ pub(crate) fn deploy_entry(
                         &dest,
                         after,
                         expect.clone(),
-                        || gripsack_fs::atomic_write(&dest_dir, &dest_name, content),
+                        || {
+                            if entry.mode == Ownership::Template {
+                                // mode preserved — see intent_exec
+                                gripsack_fs::atomic_write(&dest_dir, &dest_name, content)
+                            } else {
+                                // one atomic write lands bytes AND
+                                // exec bits — fresh or update, the
+                                // mode is what the source declares
+                                #[cfg(unix)]
+                                let mode = 0o644 | if intent_exec { 0o111 } else { 0 };
+                                #[cfg(not(unix))]
+                                let mode = 0o644;
+                                gripsack_fs::atomic_write_with_mode(
+                                    &dest_dir, &dest_name, content, mode,
+                                )
+                            }
+                        },
                     )?;
                     (
                         format!(
@@ -903,9 +978,29 @@ pub(crate) fn deploy_entry(
                 )
                 .map_err(fail)?;
                 let (dest_dir, dest_name) = dest_capability(&dest)?;
-                let after = store::canonical_bytes_hash(new.as_bytes());
+                // the journal speaks exec-aware identities (0030 §H3)
+                // — merge preserves the file's mode, so the exec bit
+                // rides along on both sides of the precondition
+                let dest_exec = std::fs::metadata(&dest)
+                    .map(|m| {
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::MetadataExt;
+                            m.mode() & 0o111 != 0
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            let _ = &m;
+                            false
+                        }
+                    })
+                    .unwrap_or(false);
+                let after = store::canonical_bytes_identity(new.as_bytes(), dest_exec);
                 let expected = if dest_exists {
-                    Expect::Is(store::canonical_bytes_hash(existing.as_bytes()))
+                    Expect::Is(store::canonical_bytes_identity(
+                        existing.as_bytes(),
+                        dest_exec,
+                    ))
                 } else {
                     Expect::Absent
                 };
@@ -930,8 +1025,23 @@ pub(crate) fn deploy_entry(
                             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
                             Err(e) => return Err(e),
                         };
-                        if store::canonical_bytes_hash(latest.as_bytes())
-                            != store::canonical_bytes_hash(existing.as_bytes())
+                        let latest_exec = dest_dir
+                            .metadata(&dest_name)
+                            .map(|m| {
+                                #[cfg(unix)]
+                                {
+                                    use gripsack_fs::cap_std::fs::MetadataExt;
+                                    m.mode() & 0o111 != 0
+                                }
+                                #[cfg(not(unix))]
+                                {
+                                    let _ = &m;
+                                    false
+                                }
+                            })
+                            .unwrap_or(false);
+                        if store::canonical_bytes_identity(latest.as_bytes(), latest_exec)
+                            != store::canonical_bytes_identity(existing.as_bytes(), dest_exec)
                         {
                             return Err(std::io::Error::other(format!(
                                 "{} changed between the merge decision and the write — aborting; re-run to retry",
@@ -1035,7 +1145,7 @@ mod tests {
             "{err}"
         );
         // the journal entry survives for reconcile
-        let lines = store::journal::reconcile(&home).unwrap();
+        let lines = store::journal::reconcile(&home, dir.path()).unwrap();
         assert!(!lines.is_empty());
     }
 

@@ -35,12 +35,12 @@ pub use generations::{
     list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{
-    canonical_bytes_hash, canonical_file_hash, canonical_file_hash_in, canonical_overlay_hash,
-    canonical_tree_hash,
+    canonical_bytes_hash, canonical_bytes_identity, canonical_file_hash, canonical_file_hash_in,
+    canonical_overlay_hash, canonical_tree_hash,
 };
 pub use journal::{Entry as JournalEntry, Prior as JournalPrior, reconcile, record};
 pub use paths::{
-    GENERATIONS_DIR, HASH_LEN, STORE_DIR, content_path, current_link, expand_home, generation_dir,
-    gripsack_home, input_hash, prior_blob_path, store_path,
+    GENERATIONS_DIR, HASH_LEN, STORE_DIR, canonical_dest, content_path, current_link, expand_home,
+    generation_dir, gripsack_home, input_hash, prior_blob_path, store_path,
 };
 pub use trust::{TrustedRepo, ensure_trusted};

@@ -58,6 +58,20 @@ pub fn canonical_file_hash_in(dir: &gripsack_fs::Dir, name: &Path) -> std::io::R
     Ok(hex(&hasher.finalize()))
 }
 
+/// Canonical identity of in-memory contents WITH an executability
+/// flag (0030 §H3): the journal's file identity is exec-aware, so a
+/// fresh 0755 tracked copy can't commit as executable and verify as
+/// bytes-only. `canonical_bytes_identity(b, false)` ==
+/// `canonical_bytes_hash(b)` — the bytes-only form is the
+/// non-executable case.
+pub fn canonical_bytes_identity(bytes: &[u8], executable: bool) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"file\0");
+    hasher.update([u8::from(executable)]);
+    hasher.update(bytes);
+    hex(&hasher.finalize())
+}
+
 /// Canonical hash of in-memory file contents (no executable bit) — for
 /// rendered templates and managed blocks, which have no store file.
 pub fn canonical_bytes_hash(bytes: &[u8]) -> String {

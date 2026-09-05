@@ -41,7 +41,7 @@ struct ModuleRun<'a> {
     ir: &'a gripsack_ir::Ir,
     steps: &'a [Step],
     ctx: &'a Ctx,
-    prev: Option<&'a store::ModuleState>,
+    prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
     locked: Option<&'a lockfile::LockEntry>,
     /// `{version}` substitution source — the locked pin or a resolution
     /// from this run (0008 §5).
@@ -80,10 +80,10 @@ pub(crate) fn run_module<'a>(
     ir: &'a gripsack_ir::Ir,
     steps: &'a [Step],
     ctx: &'a Ctx,
-    prev: Option<&'a store::ModuleState>,
+    prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
     locked: Option<&'a lockfile::LockEntry>,
 ) -> Result<ModuleOutcome, ExecError> {
-    let mut run = ModuleRun::new(name, module, ir, steps, ctx, prev, locked)?;
+    let mut run = ModuleRun::new(name, module, ir, steps, ctx, prev_map, locked)?;
     for phase in [
         ModuleRun::produce,
         ModuleRun::publish,
@@ -110,7 +110,7 @@ impl<'a> ModuleRun<'a> {
         ir: &'a gripsack_ir::Ir,
         steps: &'a [Step],
         ctx: &'a Ctx,
-        prev: Option<&'a store::ModuleState>,
+        prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
         locked: Option<&'a lockfile::LockEntry>,
     ) -> Result<Self, ExecError> {
         // identity is pure resolution (identity.rs) — this type is
@@ -126,7 +126,7 @@ impl<'a> ModuleRun<'a> {
             ir,
             steps,
             ctx,
-            prev,
+            prev_map,
             locked,
             version: locked
                 .and_then(|e| e.resolved.as_ref())
@@ -458,7 +458,7 @@ impl<'a> ModuleRun<'a> {
                             &self.store_path,
                             entry,
                             self.ctx,
-                            self.prev,
+                            self.prev_map,
                             self.version.as_deref(),
                         )?;
                         self.reports.push(StepReport {

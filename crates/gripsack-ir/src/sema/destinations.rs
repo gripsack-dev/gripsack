@@ -33,9 +33,11 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
     let mut owners: std::collections::BTreeMap<String, &str> = std::collections::BTreeMap::new();
     for (name, module) in &ir.modules {
         for entry in entries(module) {
-            if let Some(other) = owners.insert(entry.to.to_lowercase(), name.as_str())
-                && other != name.as_str()
-            {
+            // same-module duplicates count too (0030 §P0-1): two
+            // declarations of one destination in a module would deploy
+            // twice into one journal key, the second overwriting the
+            // first entry's true prior
+            if let Some(other) = owners.insert(entry.to.to_lowercase(), name.as_str()) {
                 diagnostics.push(
                     Diagnostic::error(
                         codes::DUPLICATE_DESTINATION,
