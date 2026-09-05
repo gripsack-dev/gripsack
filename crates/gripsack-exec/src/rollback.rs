@@ -34,6 +34,22 @@ pub fn rollback_generation(
     // the clean-floor rule, same as apply: an interrupted run's
     // entries resolve BEFORE this run mutates anything
     let mut notes = store::journal::reconcile(&home, home_path)?;
+    // durable activation resume (0032): same rule as apply — a
+    // pending record naming the current generation re-runs its
+    // intents; anything else is discarded, never run
+    match crate::activate::resume_pending(&home, current.map(|g| g.number)) {
+        Ok(resumed) => notes.extend(resumed.into_iter().map(|r| store::journal::RecoveryNote {
+            severity: if r.kind == crate::report::ReportKind::Warned {
+                store::journal::NoteSeverity::Warn
+            } else {
+                store::journal::NoteSeverity::Info
+            },
+            message: format!("{}: {}", r.module, r.summary),
+        })),
+        Err(e) => {
+            tracing::warn!("activation resume failed (record intact for next run): {e}")
+        }
+    }
     store::journal::begin_run(
         &home,
         current.map(|g| g.number),

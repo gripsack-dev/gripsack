@@ -3,6 +3,50 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.28.0] — 2026-09-05
+
+Durable activation hooks (plan/0032) and a legacy-purged, fully typed
+identity layer.
+
+### Changed
+
+- **Activation hooks are durable** — the pending intent record
+  (`$GRIPSACK_HOME/activation.json`) is written BEFORE the generation
+  flip, so a kill between the flip and the adapters (or mid-adapters)
+  no longer silently skips your service restarts and cache refreshes:
+  the next run resumes them. The protocol is model-checked in TLA+
+  (`specs/Activation.tla`, TLC in CI; the pre-0.28 shape fails the
+  NoSilentSkip invariant as a kept mutant).
+- **Intents may run twice across a crash** — they are idempotent
+  refreshes by contract; write `customHook` scripts idempotent.
+  A record naming a generation that never became current is
+  discarded, never run.
+- **Recovery notes are typed** — `grip rollback` output and the
+  interrupted-run report distinguish severities (a kept post-crash
+  edit warns) instead of flattening to strings.
+
+### Removed (alpha hygiene — no legacy homes exist)
+
+- The pre-0.23 journal marker compatibility path and its `format`
+  field: a marker missing `previous_generation` now fails closed at
+  parse (torn/corrupt), never mistaken for a fresh-machine run.
+- The 0.26-compatible exec-bit identity preimage: identities are
+  uniformly mode-aware. Homes written by ≤0.27 read drifted once;
+  `grip apply --take-over` re-pins.
+- Journal priors always carry a mode; manifests' `Prior` is now the
+  enum shape (`file`/`symlink` variants, no `content: Option`).
+
+### Internal
+
+- The identity domains are typed end to end: `PayloadHash` /
+  `BytesHash` / `FileIdentity` newtypes, `ObjectIdentity` and
+  `Intended` at the journal boundary. The pass caught three latent
+  domain mixups (prune authority, store-verify, rollback compares) —
+  each is an e2e-covered fix now.
+- The legacy counterexample plumbing left the transaction model
+  (Rust harness AND the TLA+ `MODE="legacy"` branch); mutation
+  calibration keeps the harness honest, plan/0028 keeps the record.
+
 ## [0.27.0] — 2026-09-05
 
 Mode-aware identity (plan/0031 — completes 0026 §7 and 0030 #17) —

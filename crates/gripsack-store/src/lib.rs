@@ -24,6 +24,7 @@
 //! guarantees the mechanics — a reader never sees a partial write, and
 //! activation is a single indivisible rename.
 
+pub mod activation;
 pub mod generations;
 pub mod hash;
 pub mod journal;

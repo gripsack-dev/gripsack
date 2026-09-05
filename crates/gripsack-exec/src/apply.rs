@@ -58,6 +58,15 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // from the manifest being built. Read once: prune and the
     // satisfied comparison below reuse it.
     let current_gen = store::current_generation(&ctx.home)?;
+    // durable activation resume (0032): a previous run killed around
+    // its adapters left a pending record — run or discard it BEFORE
+    // this run mutates anything (a satisfied run resumes too)
+    match crate::activate::resume_pending(ctx.home_dir()?, current_gen) {
+        Ok(resumed) => reports.extend(resumed),
+        Err(e) => {
+            tracing::warn!("activation resume failed (record intact for next run): {e}")
+        }
+    }
     // the allocator is NOT current+1 (0026 §3): after a rollback,
     // current is lower than the highest generation on disk, and
     // reusing a number would rewrite immutable history. Allocate
@@ -191,10 +200,26 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             return Err(e);
         }
     };
+    // the pending activation record lands BEFORE the flip (0032): a
+    // kill anywhere now leaves either a committed generation with its
+    // intents recorded (next run resumes) or a record naming a
+    // generation that never committed (next run discards)
+    let intents = crate::activate::collect(&order, &steps_by_module);
+    if !intents.is_empty() {
+        store::activation::write_pending(
+            ctx.home_dir()?,
+            &store::activation::PendingActivation {
+                generation: next,
+                intents: intents.clone(),
+            },
+        )?;
+    }
     if let Err(e) = store::flip(ctx.home_dir()?, &ctx.home, next) {
         compensate(ctx);
         return Err(e.into());
     }
+    // test-only kill switch: the flip→adapters crash window's e2e
+    crate::util::crash_hook("before-adapters");
     // the flip is the run's commit point: everything the journal
     // recorded is now owned by the new generation — the crash window
     // closes here
@@ -209,8 +234,15 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             kind: crate::report::ReportKind::Warned,
         });
     }
-    reports.extend(crate::activate::run_post_link(&order, &steps_by_module));
-    reports.extend(crate::activate::run_post_activate(&order, &steps_by_module));
+    reports.extend(crate::activate::run(&intents));
+    // the record's work is done — clear it (a clear failure is
+    // cleanup-pending: the next run discards or re-runs harmlessly,
+    // the intents being idempotent)
+    if !intents.is_empty()
+        && let Err(e) = store::activation::clear_pending(ctx.home_dir()?)
+    {
+        tracing::warn!("activation record cleanup pending ({e}) — the next run finishes it");
+    }
     info!(generation = next, "activated");
     Ok(ApplyResult {
         outcome: Outcome::Applied { generation: next },

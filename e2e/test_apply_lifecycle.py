@@ -646,6 +646,93 @@ export default module("demo", {
     assert (journal / "run.json").exists(), "the journal is retained"
 
 
+def test_crash_before_adapters_resumes_next_run(sandbox, monkeypatch):
+    """0032: a kill between the flip and the adapters leaves a durable
+    pending record; the next run (even a satisfied one) resumes the
+    intents. The pending write is PRE-flip — the TLA+ mutant with a
+    post-flip write violates NoSilentSkip."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("a\n")
+    marker = sandbox / "hook-ran"
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") }},
+  activate: [customHook("touch {marker}")],
+}});
+""",
+    )
+
+    # the run dies after the flip, before adapters
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "before-adapters")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "the crash hook must kill the run"
+    assert not marker.exists(), "the hook must NOT have run"
+    pending = sandbox / ".local/share/gripsack/activation.json"
+    assert pending.exists(), "the pending record is durable"
+
+    # the next run resumes the intents — even though nothing changed
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "resumed activation" in out.stdout, out.stdout
+    assert marker.exists(), "the resumed hook ran"
+    assert not pending.exists(), "the record drained"
+
+
+def test_stale_pending_record_is_discarded_never_run(sandbox):
+    """0032: a pending record naming a generation that never became
+    current (crash between pending-write and flip) is discarded by
+    the next run — adapters never run for non-current state."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.toml").write_text("a\n")
+    marker = sandbox / "hook-ran"
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/a.toml": trackedCopy("~/.config/demo/a.toml") }},
+  activate: [customHook("touch {marker}")],
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert marker.exists()
+
+    # hand-craft a pending record naming a future (never-committed)
+    # generation — as if a run died between the pending write and
+    # the flip
+    marker.unlink()
+    import json
+
+    pending = sandbox / ".local/share/gripsack/activation.json"
+    pending.write_text(
+        json.dumps(
+            {
+                "generation": 99,
+                "intents": [
+                    {
+                        "module": "demo",
+                        "action": {"kind": "custom_shell", "script": f"touch {marker}"},
+                    }
+                ],
+            }
+        )
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not marker.exists(), "a non-current generation's adapters never run"
+    assert not pending.exists(), "the stale record is discarded"
+
+
 def test_current_link_must_resolve_under_home(sandbox):
     """0030 §H10: `current -> /tmp/42` is corruption, not a
     generation — apply fails closed."""
