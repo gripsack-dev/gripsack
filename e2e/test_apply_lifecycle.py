@@ -369,9 +369,11 @@ export default module("two", {{
     )
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
+    assert "E119" in out.stderr, out.stderr
     assert "resolve to the same path" in out.stderr, out.stderr
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
+    assert "E119" in out.stderr
     assert "resolve to the same path" in out.stderr
 
     # and a symlinked ancestor: ~/config-link -> ~/.config
@@ -400,6 +402,7 @@ export default module("two", {
     )
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
+    assert "E119" in out.stderr
     assert "resolve to the same path" in out.stderr, out.stderr
 
 

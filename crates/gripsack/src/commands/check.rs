@@ -18,11 +18,19 @@ pub fn check(repo: &Path, host: Option<&str>, palette: Palette) -> ExitCode {
         Ok(ir) => {
             // physical destination uniqueness (0030 §P0-1): reads
             // only, no side effects — two spellings of one directory
-            // entry are a check-time error
+            // entry are a check-time error, rendered like any sema
+            // diagnostic (code, spans, help)
             let steps = gripsack_exec::expand::expand_all(&ir.modules);
-            if let Err(e) = gripsack_exec::expand::check_physical_uniqueness(&steps) {
-                eprintln!("grip: {e}");
-                return ExitCode::FAILURE;
+            match gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &steps) {
+                Ok(()) => {}
+                Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
+                    eprintln!("{}", crate::render::render_diagnostics(&[d], palette));
+                    return ExitCode::FAILURE;
+                }
+                Err(e) => {
+                    eprintln!("grip: {e}");
+                    return ExitCode::FAILURE;
+                }
             }
             let host = &ir.host;
             println!(

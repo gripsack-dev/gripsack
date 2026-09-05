@@ -142,6 +142,12 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
             );
             ExitCode::FAILURE
         }
+        Err(gripsack_exec::ExecError::Gate(d)) => {
+            // pre-mutation validity gates carry their own spans —
+            // render them as-is, same as sema (0030 §P0-1)
+            eprintln!("{}", crate::render::render_diagnostics(&[d], palette));
+            ExitCode::FAILURE
+        }
         Err(e) => {
             // exec failures get the same span-labeled treatment as
             // sema errors (0004 §3): step/verify errors name a module,

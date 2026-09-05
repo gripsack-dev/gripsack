@@ -113,7 +113,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     }
     let steps_by_module = expand::expand_all(&ir.modules);
     // physical destination uniqueness before anything mutates (0030)
-    expand::check_physical_uniqueness(&steps_by_module)?;
+    expand::check_physical_uniqueness(&ir.modules, &steps_by_module)?;
     // declare the generation this run builds BEFORE any mutation:
     // recovery compares the marker against `current` — a crash after
     // the flip but before journal cleanup must read as COMMITTED,

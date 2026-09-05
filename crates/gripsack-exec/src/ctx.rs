@@ -84,6 +84,11 @@ pub enum ExecError {
     },
     #[error("scheduling: {0}")]
     Plan(#[from] crate::PlanError),
+    /// A pre-mutation validity gate failed (physical destination
+    /// uniqueness, 0030 §P0-1): the run aborts before touching
+    /// anything, with a span-labeled diagnostic.
+    #[error("{0}")]
+    Gate(gripsack_ir::diagnostic::Diagnostic),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
 }
