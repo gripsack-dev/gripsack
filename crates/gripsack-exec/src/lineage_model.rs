@@ -36,6 +36,18 @@ enum Declaration {
     Aliased,
 }
 
+impl Lineage {
+    /// The live object's identity as the shipped code would hash it:
+    /// content, plus the mode when drifted (0031).
+    fn live_identity(&self) -> String {
+        if self.mode_drifted {
+            format!("{}·m", self.live)
+        } else {
+            self.live.to_string()
+        }
+    }
+}
+
 impl Declaration {
     fn declared(self) -> bool {
         self != Declaration::Undeclared
@@ -45,12 +57,19 @@ impl Declaration {
 /// One destination's lineage state. `manifest` is what the generation
 /// records: (the recorded hash, whether it was preserved drift) — the
 /// two facts the next apply reads. `origin` is the epoch's prior.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct Lineage {
     live: Content,
+    /// The live object's mode differs from what gripsack recorded
+    /// (0031): a chmod-only change is drift — the identity strings
+    /// below carry it as a `·m` suffix, exactly as the shipped
+    /// mode-aware preimage makes it a different hash
+    mode_drifted: bool,
     desired: Content,
-    /// None = never managed/foreign
-    manifest: Option<(Content, bool)>,
+    /// None = never managed/foreign. The recorded identity is a
+    /// STRING (the hash domain): a preserved observation may carry
+    /// the mode-drift marker, which no Content value can name
+    manifest: Option<(String, bool)>,
     /// Some = an ownership epoch with a recoverable origin
     origin: Option<Content>,
     declaration: Declaration,
@@ -63,6 +82,9 @@ enum Action {
     SourceUpdate,
     /// The app/user writes to the live file.
     ExternalWrite,
+    /// The user chmods the live file without touching its bytes
+    /// (0031) — drift, not an invisible no-op.
+    ExternalChmod,
     /// The repo gains spelling A of the cell (a module appears, or a
     /// second module aliases the same cell).
     DeclareA,
@@ -110,6 +132,10 @@ fn step(mut l: Lineage, action: Action) -> Lineage {
             l.live = 3;
             l
         }
+        Action::ExternalChmod => {
+            l.mode_drifted = true;
+            l
+        }
         // repo-side declaration changes never touch the filesystem —
         // and never touch the ORIGIN: the epoch is keyed by the
         // physical cell, so gaining or dropping a spelling mid-epoch
@@ -147,23 +173,26 @@ fn step(mut l: Lineage, action: Action) -> Lineage {
                     l.origin = Some(l.live);
                 }
                 l.live = l.desired;
-                l.manifest = Some((l.desired, false));
+                l.mode_drifted = false;
+                l.manifest = Some((l.desired.to_string(), false));
                 return l;
             }
             // owned bindings so the borrowed tuple never outlives them
             let desired = l.desired.to_string();
-            let live = l.live.to_string();
-            let prev = l.manifest.map(|(h, preserved)| (h.to_string(), preserved));
+            let live = l.live_identity();
+            let prev = l.manifest.clone();
             let prev_ref = prev.as_ref().map(|(h, p)| (h.as_str(), *p));
             // the REAL decision function — this is the point
             match plan_copy(&desired, Some(&live), prev_ref, false) {
                 CopyPlan::Fresh | CopyPlan::Satisfied | CopyPlan::Update => {
                     l.live = l.desired;
-                    l.manifest = Some((l.desired, false));
+                    l.mode_drifted = false;
+                    l.manifest = Some((l.desired.to_string(), false));
                 }
                 CopyPlan::Preserve => {
-                    // observed, never authority (0029 §2)
-                    l.manifest = Some((l.live, true));
+                    // observed, never authority (0029 §2) — the
+                    // recorded observation carries the mode drift
+                    l.manifest = Some((l.live_identity(), true));
                 }
                 CopyPlan::TakeOver => unreachable!("no take-over here"),
             }
@@ -187,6 +216,8 @@ fn undeclare(mut l: Lineage, next_declaration: Declaration) -> Lineage {
     let managed = l.manifest.is_some_and(|(_, preserved)| !preserved);
     if managed && let Some(origin) = l.origin {
         l.live = origin;
+        // exact restoration: bytes AND mode (0031)
+        l.mode_drifted = false;
     }
     l.origin = None;
     l.manifest = None;
@@ -211,12 +242,24 @@ fn check_transition(state: &Lineage, action: Action, next: &Lineage) -> Result<(
         ));
     }
     if matches!(action, Action::Apply)
-        && state.manifest.is_some_and(|(_, p)| p)
+        && state.manifest.as_ref().is_some_and(|(_, p)| *p)
         && state.live != state.desired
         && next.live != state.live
     {
         return Err(format!(
             "apply overwrote preserved drift: {state:?} -> {next:?}"
+        ));
+    }
+    // chmod-only drift (0031): an apply must not silently re-mode a
+    // managed file — the mode-aware identity reads it as drift, and
+    // drift is preserved
+    if matches!(action, Action::Apply)
+        && state.mode_drifted
+        && state.declaration.declared()
+        && (next.live != state.live || !next.mode_drifted)
+    {
+        return Err(format!(
+            "apply reverted chmod-only drift instead of preserving it: {state:?} -> {next:?}"
         ));
     }
     // the origin survives everything except the epoch's END (the last
@@ -229,7 +272,10 @@ fn check_transition(state: &Lineage, action: Action, next: &Lineage) -> Result<(
     }
     if epoch_ends
         && state.declaration.declared()
-        && state.manifest.is_some_and(|(_, preserved)| !preserved)
+        && state
+            .manifest
+            .as_ref()
+            .is_some_and(|(_, preserved)| !preserved)
         && let Some(origin) = state.origin
         && next.live != origin
     {
@@ -248,6 +294,7 @@ fn ownership_lineage_holds_over_every_sequence() {
     let actions = [
         Action::SourceUpdate,
         Action::ExternalWrite,
+        Action::ExternalChmod,
         Action::DeclareA,
         Action::DeclareB,
         Action::DropA,
@@ -261,6 +308,7 @@ fn ownership_lineage_holds_over_every_sequence() {
     let starts = [
         Lineage {
             live: 0,
+            mode_drifted: false,
             desired: 1,
             manifest: None,
             origin: None,
@@ -268,18 +316,20 @@ fn ownership_lineage_holds_over_every_sequence() {
         },
         Lineage {
             live: 1,
+            mode_drifted: false,
             desired: 1,
-            manifest: Some((1, false)),
+            manifest: Some(("1".to_string(), false)),
             origin: None,
             declaration: Declaration::SpellingA,
         },
     ];
     let mut seen = std::collections::HashSet::new();
-    let mut stack: Vec<(Lineage, Vec<Action>)> = starts.iter().map(|l| (*l, Vec::new())).collect();
+    let mut stack: Vec<(Lineage, Vec<Action>)> =
+        starts.iter().map(|l| (l.clone(), Vec::new())).collect();
     let mut explored = 0usize;
     let mut violations = Vec::new();
     while let Some((state, trace)) = stack.pop() {
-        if !seen.insert((state, trace.len())) {
+        if !seen.insert((state.clone(), trace.len())) {
             continue;
         }
         explored += 1;
@@ -287,7 +337,7 @@ fn ownership_lineage_holds_over_every_sequence() {
             continue;
         }
         for action in actions {
-            let next = step(state, action);
+            let next = step(state.clone(), action);
             if let Err(v) = check_transition(&state, action, &next) {
                 violations.push(format!("{trace:?}\n{v}"));
             }
@@ -403,4 +453,39 @@ fn a_mid_apply_external_write_is_aborted_never_clobbered() {
             }
         }
     }
+}
+
+/// Chmod-only drift (0031): the same bytes with a different mode is
+/// drift — preserved like any drift, absorbed only by an explicit
+/// take-over. The `·m` marker stands for the mode-aware preimage:
+/// the shipped hash functions make "1" and "1·chmodded" different
+/// identities, and this table proves the algebra on that fact.
+#[test]
+fn chmod_only_drift_is_preserved_never_silently_reverted() {
+    // managed file, mode drifted, no take-over: preserve
+    assert_eq!(
+        plan_copy("1", Some("1·m"), Some(("1", false)), false),
+        CopyPlan::Preserve
+    );
+    // an update is authorized ONLY off the exact recorded identity —
+    // "1·m" is not "1"
+    assert_eq!(
+        plan_copy("2", Some("1·m"), Some(("1", false)), false),
+        CopyPlan::Preserve
+    );
+    // explicit absorb opens a new epoch over the drifted mode
+    assert_eq!(
+        plan_copy("1", Some("1·m"), Some(("1", false)), true),
+        CopyPlan::TakeOver
+    );
+    // and the happy path is unchanged: exact identity match stays
+    // satisfied, recorded content updates cleanly
+    assert_eq!(
+        plan_copy("1", Some("1"), Some(("1", false)), false),
+        CopyPlan::Satisfied
+    );
+    assert_eq!(
+        plan_copy("2", Some("1"), Some(("1", false)), false),
+        CopyPlan::Update
+    );
 }

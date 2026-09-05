@@ -38,8 +38,26 @@ pub struct RestorePlan {
 pub enum RestoreWrite {
     /// Owned: point the destination link here.
     Link(std::path::PathBuf),
-    /// Tracked copy / rendered template / merge-upserted whole file.
-    Bytes(Vec<u8>),
+    /// Tracked copy / rendered template / merge-upserted whole file —
+    /// landed with EXACTLY this mode (0031: the manifest's recorded
+    /// mode; the live mode when unrecorded; 0644 when absent).
+    Bytes { bytes: Vec<u8>, mode: u32 },
+}
+
+/// The destination's current full permission mode, if it exists
+/// (0026 §7's preserve rule, made explicit at plan time so the
+/// journaled intent can name the landed identity exactly).
+fn live_mode(dest: &Path) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(dest).ok().map(|m| m.mode() & 0o7777)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dest;
+        None
+    }
 }
 
 /// Plan the restore of one deployed entry without touching the
@@ -72,10 +90,18 @@ pub fn compute_restore(
                 return Ok(None);
             };
             match crate::template::upsert_block(&existing, module, dest, None, &payload) {
-                Ok(new) => Ok(Some(RestorePlan {
-                    intent: store::canonical_bytes_hash(new.as_bytes()),
-                    write: RestoreWrite::Bytes(new.into_bytes()),
-                })),
+                Ok(new) => {
+                    // the file is foreign — the restore keeps ITS
+                    // mode, and the intent says so exactly (0031)
+                    let mode = live_mode(dest).unwrap_or(0o644);
+                    Ok(Some(RestorePlan {
+                        intent: store::canonical_bytes_identity(new.as_bytes(), mode),
+                        write: RestoreWrite::Bytes {
+                            bytes: new.into_bytes(),
+                            mode,
+                        },
+                    }))
+                }
                 Err(_) => Ok(None), // malformed markers: leave the foreign file alone
             }
         }
@@ -86,16 +112,23 @@ pub fn compute_restore(
                 &entry.from,
             )
             .map_err(std::io::Error::other)?;
+            // exact mode restoration (0031): the manifest's recorded
+            // mode; the live mode on pre-0.27 manifests; 0644 fresh
+            let mode = entry.file_mode.or_else(|| live_mode(dest)).unwrap_or(0o644);
             Ok(Some(RestorePlan {
-                intent: store::canonical_bytes_hash(&rendered),
-                write: RestoreWrite::Bytes(rendered),
+                intent: store::canonical_bytes_identity(&rendered, mode),
+                write: RestoreWrite::Bytes {
+                    bytes: rendered,
+                    mode,
+                },
             }))
         }
         Ownership::TrackedCopy => {
             let bytes = std::fs::read(&source)?;
+            let mode = entry.file_mode.or_else(|| live_mode(dest)).unwrap_or(0o644);
             Ok(Some(RestorePlan {
-                intent: store::canonical_bytes_hash(&bytes),
-                write: RestoreWrite::Bytes(bytes),
+                intent: store::canonical_bytes_identity(&bytes, mode),
+                write: RestoreWrite::Bytes { bytes, mode },
             }))
         }
     }
@@ -109,7 +142,9 @@ pub fn execute_restore(
 ) -> std::io::Result<()> {
     match &plan.write {
         RestoreWrite::Link(target) => gripsack_fs::symlink_replace(dest_dir, dest_name, target),
-        RestoreWrite::Bytes(bytes) => gripsack_fs::atomic_write(dest_dir, dest_name, bytes),
+        RestoreWrite::Bytes { bytes, mode } => {
+            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, bytes, *mode)
+        }
     }
 }
 

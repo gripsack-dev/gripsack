@@ -469,6 +469,78 @@ export default module("demo", {
     assert not os.stat(dest).st_mode & 0o111, "the exec update applies"
 
 
+def test_chmod_only_drift_is_preserved_and_warned(sandbox):
+    """0031: a chmod with no content change is drift — the mode-aware
+    identity reads it, the next apply preserves and warns, and a
+    repo-side exec change still applies (the update path)."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    import os
+
+    dest = sandbox / ".config/demo/a.conf"
+    dest.chmod(0o600)
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "drifted" in out.stdout, out.stdout
+    assert oct(os.stat(dest).st_mode & 0o777) == "0o600", (
+        "chmod-only drift is preserved, never silently reverted"
+    )
+
+
+def test_rollback_restores_the_exact_mode(sandbox):
+    """0031: rollback restores the recorded mode, not just bytes.
+    Generation 1 is executable, generation 2 is the same bytes with
+    the exec bit dropped; rolling back to 1 must flip the live file
+    back to 0755 (content is identical — only the mode can differ)."""
+    import os
+
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    script = confdir / "tool.sh"
+    script.write_text("#!/bin/sh\necho v1\n")
+    script.chmod(0o755)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/tool.sh": trackedCopy("~/.local/bin/tool.sh") },
+});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+    # generation 2: same content, exec bit dropped — a mode-only update
+    script.chmod(0o644)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".local/bin/tool.sh"
+    assert not os.stat(dest).st_mode & 0o111
+
+    out = grip("rollback", "1", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert oct(os.stat(dest).st_mode & 0o777) == "0o755", (
+        "the recorded mode is restored exactly"
+    )
+
+
 def test_rename_keeps_full_lineage_authority(sandbox):
     """0030 §H4: renaming a module with a content change is an
     authorized UPDATE (not preserved-as-foreign), and undeclare

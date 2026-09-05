@@ -179,6 +179,7 @@ mod tests {
                     mode: Ownership::TrackedCopy,
                     vars: Default::default(),
                     hash: "a".repeat(64),
+                    file_mode: None,
                     prior: None,
                     preserved_drift: false,
                 }],

@@ -317,13 +317,15 @@ pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<Stri
                 .into_owned(),
         )),
         Ok(meta) => {
-            // exec-aware (0030 §H3): the journal's file identity
-            // matches what deploy records for a tracked copy
+            // mode-aware (0031): the journal's file identity covers
+            // the full permission set — a chmod between the drift
+            // decision and the mutation aborts the run, and
+            // chmod-only drift is never invisible
             use gripsack_fs::cap_std::fs::MetadataExt;
-            let exec = meta.mode() & 0o111 != 0;
+            let mode = meta.mode() & 0o7777;
             Ok(Some(crate::hash::canonical_bytes_identity(
                 &dest_dir.read(dest_name)?,
-                exec,
+                mode,
             )))
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -337,10 +339,15 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<String>> 
     match prior {
         PriorSerde::Absent => Ok(None),
         PriorSerde::Symlink { target } => Ok(Some(target.clone())),
-        PriorSerde::File { hash, mode } => Ok(Some(crate::hash::canonical_bytes_identity(
-            &home.read(prior_blob_rel(hash))?,
-            mode.is_some_and(|m| m & 0o111 != 0),
-        ))),
+        PriorSerde::File { hash, mode } => {
+            Ok(Some(crate::hash::canonical_bytes_identity(
+                &home.read(prior_blob_rel(hash))?,
+                // pre-0.24 priors carry no mode — 0644 keeps their
+                // identity on the same preimage they were written
+                // with (the bytes-only form)
+                mode.unwrap_or(0o644),
+            )))
+        }
     }
 }
 
