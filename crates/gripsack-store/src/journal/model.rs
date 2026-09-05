@@ -50,7 +50,8 @@
 //! matches neither the marker's previous nor its target, recovery
 //! changes NOTHING and keeps the journal intact (fail closed).
 
-use super::{Classification, Recovery, RecoveryFacts, RunOp, classify, decide_from};
+use super::marker::{Classification, RecoveryFacts, RunOp, classify};
+use super::recover::{Recovery, decide_from};
 
 /// Abstract contents. One destination is enough: the protocol
 /// journals destinations independently, so a multi-destination run
