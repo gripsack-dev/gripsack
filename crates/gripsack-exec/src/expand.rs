@@ -121,12 +121,15 @@ pub fn dep_edges(modules: &std::collections::BTreeMap<String, Module>) -> Vec<(S
 /// Physical destination uniqueness (0030 §P0-1): expand `~/`,
 /// normalize, and canonicalize the deepest existing ancestor — two
 /// declarations resolving to one directory entry are a hard error
-/// BEFORE any mutation. They would race in the scheduler and
-/// double-journal one object. Runs in `grip check` and apply.
 pub fn check_physical_uniqueness(
+    modules: &std::collections::BTreeMap<String, gripsack_ir::Module>,
     steps_by_module: &std::collections::BTreeMap<String, Vec<gripsack_ir::Step>>,
 ) -> Result<(), crate::ctx::ExecError> {
-    let mut owners: std::collections::BTreeMap<std::path::PathBuf, (&str, &str)> =
+    struct Seen<'a> {
+        module: &'a str,
+        entry: &'a gripsack_ir::Entry,
+    }
+    let mut owners: std::collections::BTreeMap<std::path::PathBuf, Seen> =
         std::collections::BTreeMap::new();
     for (name, steps) in steps_by_module {
         for step in steps {
@@ -143,20 +146,40 @@ pub fn check_physical_uniqueness(
                         detail: format!("destination {:?}: {e}", entry.to),
                     }
                 })?;
-                if let Some((other_module, other_to)) = owners.get(&key) {
-                    return Err(crate::ctx::ExecError::Step {
-                        module: name.clone(),
-                        step: "plan".into(),
-                        detail: format!(
-                            "{:?} and {:?} (module {other_module:?}) resolve to the same path {} \
-                             — one physical destination per run",
+                if let Some(other) = owners.get(&key) {
+                    // the same quality of error as a typo in a module:
+                    // code, both spellings, spans on both declarations,
+                    // and a help line (E119)
+                    let diagnostic = gripsack_ir::diagnostic::Diagnostic::error(
+                        gripsack_ir::diagnostic::codes::DESTINATION_ALIAS,
+                        format!(
+                            "{:?} (module {name:?}) and {:?} (module {:?}) resolve to the same \
+                             path {} — one physical destination per run",
                             entry.to,
-                            other_to,
+                            other.entry.to,
+                            other.module,
                             key.display()
                         ),
-                    });
+                    )
+                    .with_help("these spellings are one file on disk — keep a single declaration");
+                    let diagnostic = diagnostic
+                        .with_label(
+                            modules.get(other.module).and_then(|m| m.span.clone()),
+                            format!("{:?} first declared in this module", other.entry.to),
+                        )
+                        .with_label(
+                            modules.get(name.as_str()).and_then(|m| m.span.clone()),
+                            format!("{:?} aliases it from here", entry.to),
+                        );
+                    return Err(crate::ctx::ExecError::Gate(diagnostic));
                 }
-                owners.insert(key, (name.as_str(), entry.to.as_str()));
+                owners.insert(
+                    key,
+                    Seen {
+                        module: name,
+                        entry,
+                    },
+                );
             }
         }
     }
