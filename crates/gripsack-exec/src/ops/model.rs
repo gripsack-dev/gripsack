@@ -10,9 +10,7 @@
 #[cfg(test)]
 mod tests {
     use crate::ctx::Ctx;
-    use crate::ops::{
-        Authority, DestView, ModeInput, OpKind, execute_op, plan_entry_op,
-    };
+    use crate::ops::{Authority, DestView, ModeInput, OpKind, execute_op, plan_entry_op};
     use gripsack_ir::{Entry, Ownership};
     use gripsack_store as store;
     use std::path::{Path, PathBuf};
