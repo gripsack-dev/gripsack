@@ -19,18 +19,60 @@ use crate::deploy::{CopyPlan, plan_copy};
 /// 2 = repo content B, 3 = a user/application edit.
 type Content = u8;
 
+/// Which spellings of the ONE physical cell the repo currently
+/// declares (0030 §P0-1): `~/x` and `$HOME/x` are two logical keys
+/// for one directory entry. The lineage is keyed by the CELL, never
+/// the spelling — a module that switches spellings mid-epoch keeps
+/// its origin (destination-keyed `inherit_priors`).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum Declaration {
+    Undeclared,
+    SpellingA,
+    SpellingB,
+    /// Both spellings live at once — the physical-uniqueness gate
+    /// (`expand::check_physical_uniqueness`) must reject such a run
+    /// BEFORE any mutation. This model pins that contract; unit and
+    /// e2e tests pin the implementation to real paths.
+    Aliased,
+}
+
+impl Lineage {
+    /// The live object's identity as the shipped code would hash it:
+    /// content, plus the mode when drifted (0031).
+    fn live_identity(&self) -> String {
+        if self.mode_drifted {
+            format!("{}·m", self.live)
+        } else {
+            self.live.to_string()
+        }
+    }
+}
+
+impl Declaration {
+    fn declared(self) -> bool {
+        self != Declaration::Undeclared
+    }
+}
+
 /// One destination's lineage state. `manifest` is what the generation
 /// records: (the recorded hash, whether it was preserved drift) — the
 /// two facts the next apply reads. `origin` is the epoch's prior.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct Lineage {
     live: Content,
+    /// The live object's mode differs from what gripsack recorded
+    /// (0031): a chmod-only change is drift — the identity strings
+    /// below carry it as a `·m` suffix, exactly as the shipped
+    /// mode-aware preimage makes it a different hash
+    mode_drifted: bool,
     desired: Content,
-    /// None = never managed/foreign
-    manifest: Option<(Content, bool)>,
+    /// None = never managed/foreign. The recorded identity is a
+    /// STRING (the hash domain): a preserved observation may carry
+    /// the mode-drift marker, which no Content value can name
+    manifest: Option<(String, bool)>,
     /// Some = an ownership epoch with a recoverable origin
     origin: Option<Content>,
-    declared: bool,
+    declaration: Declaration,
 }
 
 /// The actions the model enumerates.
@@ -40,12 +82,43 @@ enum Action {
     SourceUpdate,
     /// The app/user writes to the live file.
     ExternalWrite,
+    /// The user chmods the live file without touching its bytes
+    /// (0031) — drift, not an invisible no-op.
+    ExternalChmod,
+    /// The repo gains spelling A of the cell (a module appears, or a
+    /// second module aliases the same cell).
+    DeclareA,
+    /// The repo gains spelling B.
+    DeclareB,
+    /// Spelling A leaves the repo.
+    DropA,
+    /// Spelling B leaves the repo.
+    DropB,
     /// gripsack apply (no take-over).
     Apply,
     /// gripsack apply --take-over (adoption or explicit absorb).
     TakeOver,
-    /// The module is undeclared (prune / rollback to empty).
-    Undeclare,
+}
+
+impl Declaration {
+    fn with(self, spelling: Declaration) -> Declaration {
+        match (self, spelling) {
+            (Declaration::Undeclared, s) => s,
+            (Declaration::SpellingA, Declaration::SpellingB)
+            | (Declaration::SpellingB, Declaration::SpellingA)
+            | (Declaration::Aliased, _) => Declaration::Aliased,
+            (d, _) => d,
+        }
+    }
+
+    fn without(self, spelling: Declaration) -> Declaration {
+        match (self, spelling) {
+            (Declaration::Aliased, Declaration::SpellingA) => Declaration::SpellingB,
+            (Declaration::Aliased, Declaration::SpellingB) => Declaration::SpellingA,
+            (d, s) if d == s => Declaration::Undeclared,
+            (d, _) => d,
+        }
+    }
 }
 
 /// One action's effect on the lineage, mirroring deploy+prune.
@@ -59,68 +132,117 @@ fn step(mut l: Lineage, action: Action) -> Lineage {
             l.live = 3;
             l
         }
-        Action::Apply => {
-            if !l.declared {
+        Action::ExternalChmod => {
+            l.mode_drifted = true;
+            l
+        }
+        // repo-side declaration changes never touch the filesystem —
+        // and never touch the ORIGIN: the epoch is keyed by the
+        // physical cell, so gaining or dropping a spelling mid-epoch
+        // inherits the lineage (0030 §H4's destination-keyed carry)
+        Action::DeclareA => {
+            l.declaration = l.declaration.with(Declaration::SpellingA);
+            l
+        }
+        Action::DeclareB => {
+            l.declaration = l.declaration.with(Declaration::SpellingB);
+            l
+        }
+        Action::DropA => {
+            let next = l.declaration.without(Declaration::SpellingA);
+            undeclare(l, next)
+        }
+        Action::DropB => {
+            let next = l.declaration.without(Declaration::SpellingB);
+            undeclare(l, next)
+        }
+        Action::Apply | Action::TakeOver => {
+            // the gate (0030 §P0-1): a run whose declaration set maps
+            // two spellings onto one physical cell is REJECTED before
+            // any mutation — the lineage cannot change at all
+            if l.declaration == Declaration::Aliased {
+                return l;
+            }
+            if !l.declaration.declared() {
+                return l;
+            }
+            if matches!(action, Action::TakeOver) {
+                // a genuine take-over captures the origin ONCE per
+                // epoch (0030 §H5)
+                if l.origin.is_none() {
+                    l.origin = Some(l.live);
+                }
+                l.live = l.desired;
+                l.mode_drifted = false;
+                l.manifest = Some((l.desired.to_string(), false));
                 return l;
             }
             // owned bindings so the borrowed tuple never outlives them
             let desired = l.desired.to_string();
-            let live = l.live.to_string();
-            let prev = l.manifest.map(|(h, preserved)| (h.to_string(), preserved));
+            let live = l.live_identity();
+            let prev = l.manifest.clone();
             let prev_ref = prev.as_ref().map(|(h, p)| (h.as_str(), *p));
             // the REAL decision function — this is the point
             match plan_copy(&desired, Some(&live), prev_ref, false) {
                 CopyPlan::Fresh | CopyPlan::Satisfied | CopyPlan::Update => {
                     l.live = l.desired;
-                    l.manifest = Some((l.desired, false));
+                    l.mode_drifted = false;
+                    l.manifest = Some((l.desired.to_string(), false));
                 }
                 CopyPlan::Preserve => {
-                    // observed, never authority (0029 §2)
-                    l.manifest = Some((l.live, true));
+                    // observed, never authority (0029 §2) — the
+                    // recorded observation carries the mode drift
+                    l.manifest = Some((l.live_identity(), true));
                 }
                 CopyPlan::TakeOver => unreachable!("no take-over here"),
             }
             l
         }
-        Action::TakeOver => {
-            if !l.declared {
-                return l;
-            }
-            // a genuine take-over captures the origin ONCE per epoch
-            if l.origin.is_none() {
-                l.origin = Some(l.live);
-            }
-            l.live = l.desired;
-            l.manifest = Some((l.desired, false));
-            l
-        }
-        Action::Undeclare => {
-            if !l.declared {
-                return l;
-            }
-            // an epoch ends ONLY by restoring the origin (0029 §1):
-            // managed content is replaced by what was there at
-            // adoption; preserved drift was never ours and stays
-            let managed = l.manifest.is_some_and(|(_, preserved)| !preserved);
-            if managed && let Some(origin) = l.origin {
-                l.live = origin;
-            }
-            l.origin = None;
-            l.manifest = None;
-            l.declared = false;
-            l
-        }
     }
 }
 
+/// Dropping a spelling: the epoch ends ONLY when the LAST declaration
+/// of the cell goes away (0029 §1) — managed content is replaced by
+/// the adoption origin; preserved drift was never ours and stays.
+fn undeclare(mut l: Lineage, next_declaration: Declaration) -> Lineage {
+    if next_declaration.declared() {
+        // one spelling remains — the epoch continues untouched
+        l.declaration = next_declaration;
+        return l;
+    }
+    if !l.declaration.declared() {
+        return l;
+    }
+    let managed = l.manifest.is_some_and(|(_, preserved)| !preserved);
+    if managed && let Some(origin) = l.origin {
+        l.live = origin;
+        // exact restoration: bytes AND mode (0031)
+        l.mode_drifted = false;
+    }
+    l.origin = None;
+    l.manifest = None;
+    l.declaration = Declaration::Undeclared;
+    l
+}
+
 /// Per-transition: an open epoch's origin survives everything except
-/// relinquish, relinquish RESTORES it (0029 §1), and apply never
-/// writes over preserved drift (0029 §2 — an external write between
-/// applies is user drift, not a clobber; the apply following it must
-/// still not write).
+/// relinquish, relinquish RESTORES it (0029 §1), apply never writes
+/// over preserved drift (0029 §2), and an aliased declaration set is
+/// rejected before any mutation (0030 §P0-1).
 fn check_transition(state: &Lineage, action: Action, next: &Lineage) -> Result<(), String> {
+    // the gate contract: Apply/TakeOver over two spellings of one
+    // physical cell is a pre-mutation rejection — NOTHING may change,
+    // not even the manifest (a partial rejection would still corrupt)
+    if state.declaration == Declaration::Aliased
+        && matches!(action, Action::Apply | Action::TakeOver)
+        && next != state
+    {
+        return Err(format!(
+            "an aliased run mutated the lineage instead of being rejected: {state:?} -{action:?}-> {next:?}"
+        ));
+    }
     if matches!(action, Action::Apply)
-        && state.manifest.is_some_and(|(_, p)| p)
+        && state.manifest.as_ref().is_some_and(|(_, p)| *p)
         && state.live != state.desired
         && next.live != state.live
     {
@@ -128,15 +250,32 @@ fn check_transition(state: &Lineage, action: Action, next: &Lineage) -> Result<(
             "apply overwrote preserved drift: {state:?} -> {next:?}"
         ));
     }
-    if state.origin.is_some() && !matches!(action, Action::Undeclare) && next.origin != state.origin
+    // chmod-only drift (0031): an apply must not silently re-mode a
+    // managed file — the mode-aware identity reads it as drift, and
+    // drift is preserved
+    if matches!(action, Action::Apply)
+        && state.mode_drifted
+        && state.declaration.declared()
+        && (next.live != state.live || !next.mode_drifted)
     {
+        return Err(format!(
+            "apply reverted chmod-only drift instead of preserving it: {state:?} -> {next:?}"
+        ));
+    }
+    // the origin survives everything except the epoch's END (the last
+    // declaration dropping away)
+    let epoch_ends = next.declaration == Declaration::Undeclared;
+    if state.origin.is_some() && !epoch_ends && next.origin != state.origin {
         return Err(format!(
             "the origin was lost without relinquishing ownership: {state:?} -{action:?}-> {next:?}"
         ));
     }
-    if matches!(action, Action::Undeclare)
-        && state.declared
-        && state.manifest.is_some_and(|(_, preserved)| !preserved)
+    if epoch_ends
+        && state.declaration.declared()
+        && state
+            .manifest
+            .as_ref()
+            .is_some_and(|(_, preserved)| !preserved)
         && let Some(origin) = state.origin
         && next.live != origin
     {
@@ -155,34 +294,42 @@ fn ownership_lineage_holds_over_every_sequence() {
     let actions = [
         Action::SourceUpdate,
         Action::ExternalWrite,
+        Action::ExternalChmod,
+        Action::DeclareA,
+        Action::DeclareB,
+        Action::DropA,
+        Action::DropB,
         Action::Apply,
         Action::TakeOver,
-        Action::Undeclare,
     ];
     // the two meaningful starts: a foreign file (origin to capture)
-    // and a fresh machine (nothing to capture)
+    // and a fresh machine (nothing to capture) — both declared via
+    // one spelling
     let starts = [
         Lineage {
             live: 0,
+            mode_drifted: false,
             desired: 1,
             manifest: None,
             origin: None,
-            declared: true,
+            declaration: Declaration::SpellingA,
         },
         Lineage {
             live: 1,
+            mode_drifted: false,
             desired: 1,
-            manifest: Some((1, false)),
+            manifest: Some(("1".to_string(), false)),
             origin: None,
-            declared: true,
+            declaration: Declaration::SpellingA,
         },
     ];
     let mut seen = std::collections::HashSet::new();
-    let mut stack: Vec<(Lineage, Vec<Action>)> = starts.iter().map(|l| (*l, Vec::new())).collect();
+    let mut stack: Vec<(Lineage, Vec<Action>)> =
+        starts.iter().map(|l| (l.clone(), Vec::new())).collect();
     let mut explored = 0usize;
     let mut violations = Vec::new();
     while let Some((state, trace)) = stack.pop() {
-        if !seen.insert((state, trace.len())) {
+        if !seen.insert((state.clone(), trace.len())) {
             continue;
         }
         explored += 1;
@@ -190,7 +337,7 @@ fn ownership_lineage_holds_over_every_sequence() {
             continue;
         }
         for action in actions {
-            let next = step(state, action);
+            let next = step(state.clone(), action);
             if let Err(v) = check_transition(&state, action, &next) {
                 violations.push(format!("{trace:?}\n{v}"));
             }
@@ -306,4 +453,39 @@ fn a_mid_apply_external_write_is_aborted_never_clobbered() {
             }
         }
     }
+}
+
+/// Chmod-only drift (0031): the same bytes with a different mode is
+/// drift — preserved like any drift, absorbed only by an explicit
+/// take-over. The `·m` marker stands for the mode-aware preimage:
+/// the shipped hash functions make "1" and "1·chmodded" different
+/// identities, and this table proves the algebra on that fact.
+#[test]
+fn chmod_only_drift_is_preserved_never_silently_reverted() {
+    // managed file, mode drifted, no take-over: preserve
+    assert_eq!(
+        plan_copy("1", Some("1·m"), Some(("1", false)), false),
+        CopyPlan::Preserve
+    );
+    // an update is authorized ONLY off the exact recorded identity —
+    // "1·m" is not "1"
+    assert_eq!(
+        plan_copy("2", Some("1·m"), Some(("1", false)), false),
+        CopyPlan::Preserve
+    );
+    // explicit absorb opens a new epoch over the drifted mode
+    assert_eq!(
+        plan_copy("1", Some("1·m"), Some(("1", false)), true),
+        CopyPlan::TakeOver
+    );
+    // and the happy path is unchanged: exact identity match stays
+    // satisfied, recorded content updates cleanly
+    assert_eq!(
+        plan_copy("1", Some("1"), Some(("1", false)), false),
+        CopyPlan::Satisfied
+    );
+    assert_eq!(
+        plan_copy("2", Some("1"), Some(("1", false)), false),
+        CopyPlan::Update
+    );
 }

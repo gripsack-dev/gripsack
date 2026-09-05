@@ -53,6 +53,12 @@ pub struct DeployedEntry {
     /// observed user bytes became overwrite authority on the next
     /// apply).
     pub hash: String,
+    /// The landed permission mode (0031) — tracked copies and
+    /// templates only; rollback re-applies it exactly. None on
+    /// pre-0.27 manifests (not recorded; the legacy rule restores),
+    /// links, and merge blocks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_mode: Option<u32>,
     /// Pre-take-over state of this destination (0015 §4) — carried
     /// forward across EVERY generation of the ownership epoch (0029
     /// §1): an origin is forgotten only by a successful restore or an
@@ -183,6 +189,12 @@ fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<(
             if !seen_dests.insert(key) {
                 return Err(invalid(format!(
                     "destination {:?} appears twice in generation {generation}",
+                    entry.to
+                )));
+            }
+            if entry.file_mode.is_some_and(|m| m > 0o7777) {
+                return Err(invalid(format!(
+                    "module {name:?}: destination {:?} records an impossible mode",
                     entry.to
                 )));
             }
@@ -423,6 +435,7 @@ mod tests {
                     mode: Ownership::TrackedCopy,
                     vars: Default::default(),
                     hash: "d".repeat(64),
+                    file_mode: None,
                     prior: None,
                     preserved_drift: false,
                 }],

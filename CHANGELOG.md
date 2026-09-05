@@ -3,6 +3,47 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.27.0] — 2026-09-05
+
+Mode-aware identity (plan/0031 — completes 0026 §7 and 0030 #17) —
+the full permission mode joins the manifest and journal identity:
+chmod-only drift is detected, and rollback restores modes exactly.
+
+### Changed
+
+- **Chmod-only drift is drift** — a tracked copy whose mode changed
+  without a content change is preserved-and-warned on the next apply,
+  never silently reverted and never treated as satisfied.
+- **Rollback restores the exact mode** — the manifest records each
+  deployed file's landed mode and rollback re-applies it (the crash
+  journal has done this since 0.24; the generation path now matches).
+- **Deterministic landing modes** — fresh templates and merge-created
+  files land 0644 absolutely instead of `0666 & ~umask`; the
+  journaled precondition no longer depends on the process umask.
+  (Behavior change only for fresh creates under a non-022 umask.)
+- **A take-over lands the managed mode** — the absorbed file is ours
+  after a take-over; it gets the 0644/0755 rule like any deploy
+  instead of keeping the foreign file's mode.
+- **E119 diagnostics** — the physical-destination-alias gate
+  (0.26.0) reports with a stable code, both spellings, spans on both
+  module declarations, and a help line, in `check` and `apply`.
+
+### Upgrade notes
+
+Seamless: the identity preimage for 0644/0755 is byte-identical to
+0.26's exec-bit form, so existing homes read satisfied — no spurious
+drift, no mass re-deploy.
+
+### Internal
+
+- The lineage explorer models destination ALIASES (two spellings of
+  one physical cell — the E119 gate contract is now a checked model
+  property: an aliased run cannot mutate anything) and chmod drift
+  (`ExternalChmod`), still driving the shipped decision functions.
+- `journal.rs` and `deploy.rs` split into module directories
+  (marker/recover/model; restore/remove) — no more >1000-line files.
+- The recovery classifier takes a named `RecoveryFacts` struct.
+
 ## [0.26.0] — 2026-09-05
 
 Canonical destinations and hardened transaction identity

@@ -137,6 +137,7 @@ mod tests {
                 mode: Ownership::Owned,
                 vars: Default::default(),
                 hash: "h".into(),
+                file_mode: None,
                 prior: None,
                 preserved_drift: false,
             }],

@@ -28,6 +28,13 @@
 //! An entry without an `after` (crashed between record and mutation,
 //! or between mutation and the after-mark) restores unconditionally —
 //! the same choice the in-process rollback makes on failure.
+//! 4. **reconcile** — see `recover` (the drift guard lives there).
+
+pub mod marker;
+pub(crate) mod recover;
+
+pub use marker::{RunOp, begin_run, commit_run, end_run};
+pub use recover::reconcile;
 
 use gripsack_fs::Dir;
 use std::io;
@@ -234,249 +241,6 @@ pub fn record(home: &Dir, dest: &Path, prior: &Prior, after: &str) -> io::Result
     )
 }
 
-/// The run marker: which generation this journal's entries belong to.
-/// Written before the first mutation; the flip makes it true.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct RunMarker {
-    /// The generation current pointed at when the run began (0026 §4):
-    /// reconcile decides by EXACT equality — current == target is
-    /// committed, current == previous is uncommitted, anything else is
-    /// ambiguous and blocks. Numeric inequalities misclassify a
-    /// crashed roll-FORWARD (current < target before the flip).
-    /// None only in pre-0.23 markers, which reconcile by the 0.22
-    /// direction rule.
-    #[serde(default)]
-    previous_generation: Option<u64>,
-    target_generation: u64,
-    /// 2 for markers written since 0.26 (0030 §11): distinguishes
-    /// "no previous generation" (a fresh machine) from a pre-0.23
-    /// marker that never recorded one — the latter refuses to
-    /// reconcile, the former classifies exactly
-    #[serde(default)]
-    format: u8,
-    /// Apply builds a NEWER generation (committed once `current`
-    /// reaches the target); rollback returns to an OLDER one, so its
-    /// commit condition inverts (committed once `current` comes back
-    /// DOWN to the target) — 0025 §A. Default keeps pre-0.22 markers
-    /// readable as apply runs.
-    #[serde(default)]
-    op: RunOp,
-}
-
-/// What the run is doing — the reconcile commit decision differs by
-/// direction (see RunMarker).
-#[derive(Debug, Default, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RunOp {
-    /// The normal case: building the next generation.
-    #[default]
-    Apply,
-    /// Returning to a previous generation.
-    Rollback,
-}
-
-/// Declare the generation this run is building, BEFORE any mutation:
-/// recovery compares it against `current` — a crash between the flip
-/// and journal cleanup must NOT restore priors the committed
-/// generation now owns (the post-commit window, review finding 5.1).
-pub fn begin_run(
-    home: &Dir,
-    previous_generation: Option<u64>,
-    target_generation: u64,
-    op: RunOp,
-) -> io::Result<()> {
-    let marker = RunMarker {
-        previous_generation,
-        target_generation,
-        op,
-        format: 2,
-    };
-    gripsack_fs::atomic_write(
-        home,
-        &run_marker_rel(),
-        serde_json::to_string(&marker)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-            .as_bytes(),
-    )
-}
-
-/// The run completed and the generation flipped: nothing left to
-/// recover. Entries, stragglers, and the run marker are gone.
-pub fn commit_run(home: &Dir) -> io::Result<()> {
-    let entries = match home.read_dir("journal") {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(e),
-    };
-    let mut entry_paths = Vec::new();
-    for entry in entries {
-        let name = entry?.file_name();
-        let rel = Path::new("journal").join(&name);
-        // the marker is NOT deleted here — cleanup deletes it last
-        if name != "run.json" && rel.extension().is_some_and(|e| e == "json") {
-            entry_paths.push(rel);
-        }
-    }
-    cleanup(home, &entry_paths)
-}
-
-/// Two durability barriers (0026 §5): entries deleted and fsync'd
-/// FIRST, the marker deleted and fsync'd SECOND — so marker-durably-
-/// gone implies entries-durably-gone. A single trailing fsync does
-/// not order the deletions against a power loss; resurrected entries
-/// with no marker read as an uncommitted run and would restore a
-/// committed generation's priors (the 0.19.1 bug class, one level
-/// down).
-fn cleanup(home: &Dir, entry_paths: &[PathBuf]) -> io::Result<()> {
-    for path in entry_paths {
-        home.remove_file(path)?;
-    }
-    gripsack_fs::fsync_dir(home, Path::new("journal"))?;
-    // a run that never mutated has no marker (end_run already
-    // removed it) — absent is fine, anything else is real
-    match home.remove_file(run_marker_rel()) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
-    }
-    gripsack_fs::fsync_dir(home, Path::new("journal"))
-}
-
-/// The run ended without mutating anything (satisfied, empty graph):
-/// the marker declared by `begin_run` must not linger — a stale
-/// marker with no entries is harmless but noisy, and a marker whose
-/// target generation is later than `current` would misread the NEXT
-/// crash window.
-pub fn end_run(home: &Dir) -> io::Result<()> {
-    // a stale marker misleads the NEXT crash window — its deletion is
-    // a durability operation, never `let _ =` (0030 §12)
-    match home.remove_file(run_marker_rel()) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
-    }
-    gripsack_fs::fsync_dir(home, Path::new("journal"))
-}
-
-/// What an uncommitted entry asks for, once resolved against the
-/// current filesystem.
-enum Recovery {
-    /// Restore the prior state; `String` describes it for the report.
-    Restore(String),
-    /// The destination drifted after the crash — the user's now.
-    Keep(String),
-    /// Live state IS the prior: the mutation never landed (crash
-    /// between record and write) — nothing to restore.
-    Unchanged,
-}
-
-/// Resolve uncommitted journal entries from an interrupted run:
-/// committed runs (the flip landed) are cleaned up, their content
-/// stands; uncommitted runs are restored to their priors. Returns one
-/// human line per decision for the apply report. Must run under the
-/// lifecycle lock.
-pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<String>> {
-    let Some(entries) = read_uncommitted(home)? else {
-        return Ok(Vec::new());
-    };
-    // the commit decision by EXACT transaction identity (0026 §4):
-    // current == target committed, current == previous uncommitted,
-    // anything else is ambiguous and BLOCKS (fail closed — the
-    // lifecycle lock serializes runs, so a third value means
-    // corruption or tampering, never a branch to guess). Pre-0.23
-    // markers carry no previous generation; those reconcile by the
-    // 0.22 direction rule, correct for those versions' semantics.
-    let committed = match run_marker(home)? {
-        Some(marker) => {
-            // the ONE current-pointer reader (0030 §H10): recovery
-            // never uses weaker commit evidence than normal commands
-            let current = crate::generations::current(home_path)?;
-            match classify(
-                marker.previous_generation,
-                marker.target_generation,
-                marker.op,
-                current,
-                marker.format,
-            ) {
-                Classification::Committed => true,
-                Classification::Uncommitted => false,
-                Classification::Ambiguous => {
-                    return Err(io::Error::other(format!(
-                        "journal run marker ({:?}→{}) matches neither current \
-                         ({current:?}) nor its previous generation — the \
-                         journal is retained; inspect $GRIPSACK_HOME/journal \
-                         before running again",
-                        marker.previous_generation, marker.target_generation
-                    )));
-                }
-                Classification::Legacy => {
-                    return Err(io::Error::other(format!(
-                        "journal run marker (→{}) predates 0.23's exact \
-                         transaction identity — cannot prove whether it \
-                         committed. Inspect $GRIPSACK_HOME/journal: the \
-                         entries name each destination's prior and intended \
-                         state. To accept the current state, delete the \
-                         journal directory; to restore, move the named files \
-                         back by hand first",
-                        marker.target_generation
-                    )));
-                }
-            }
-        }
-        None => false,
-    };
-    let mut lines = Vec::new();
-    if committed {
-        cleanup(
-            home,
-            &entries.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
-        )?;
-        lines.push(
-            "interrupted run's generation had already activated — journal \
-             cleared, deployed state stands"
-                .to_string(),
-        );
-        return Ok(lines);
-    }
-    let mut entry_paths = Vec::new();
-    for (path, entry) in entries {
-        let dest = PathBuf::from(&entry.dest);
-        // the drift check and the restore share ONE pinned parent
-        // inode: a parent symlink swapped between decide() and
-        // restore() cannot redirect the recovery write (plan/0021)
-        let (dest_dir, dest_name) = dest_capability(&dest)?;
-        match decide(&dest_dir, &dest_name, &entry, home)? {
-            Recovery::Restore(what) => {
-                restore(&dest_dir, &dest_name, &entry.prior, home)?;
-                // recovery is held to the transaction's standard
-                // (0029 §4): verify the prior identity before the
-                // entry may be dropped
-                let live = live_identity(&dest_dir, &dest_name)?;
-                let expected = prior_identity(&entry.prior, home)?;
-                if live.as_deref() != expected.as_deref() {
-                    return Err(io::Error::other(format!(
-                        "recovery of {} did not produce the prior state — the                          journal is retained; inspect $GRIPSACK_HOME/journal",
-                        entry.dest
-                    )));
-                }
-                lines.push(format!("recovered {}: {what}", entry.dest));
-            }
-            Recovery::Unchanged => {
-                lines.push(format!(
-                    "unchanged {}: the mutation never landed",
-                    entry.dest
-                ));
-            }
-            Recovery::Keep(why) => {
-                lines.push(format!("kept {}: {why}", entry.dest));
-            }
-        }
-        entry_paths.push(path);
-    }
-    cleanup(home, &entry_paths)?;
-    Ok(lines)
-}
-
 /// Open a destination's parent as a capability, returning it with the
 /// destination's bare file name. `open_or_create` because a crashed
 /// run's destination may sit under parents the mutation itself was
@@ -485,19 +249,6 @@ fn dest_capability(dest: &Path) -> io::Result<(Dir, PathBuf)> {
     let parent = dest.parent().unwrap_or_else(|| Path::new("."));
     let dir = gripsack_fs::open_or_create(parent)?;
     Ok((dir, PathBuf::from(dest.file_name().unwrap_or_default())))
-}
-
-fn run_marker(home: &Dir) -> io::Result<Option<RunMarker>> {
-    match home.read(run_marker_rel()) {
-        Ok(bytes) => serde_json::from_slice::<RunMarker>(&bytes)
-            .map(Some)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
-        // only NotFound means absent (same rule as capture): an
-        // unreadable marker in RECOVERY code is commit evidence we
-        // cannot see — error, never pick a branch blind (0025 §F)
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e),
-    }
 }
 
 /// Entries on disk, with the run marker if any. Malformed recovery
@@ -566,13 +317,15 @@ pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<Stri
                 .into_owned(),
         )),
         Ok(meta) => {
-            // exec-aware (0030 §H3): the journal's file identity
-            // matches what deploy records for a tracked copy
+            // mode-aware (0031): the journal's file identity covers
+            // the full permission set — a chmod between the drift
+            // decision and the mutation aborts the run, and
+            // chmod-only drift is never invisible
             use gripsack_fs::cap_std::fs::MetadataExt;
-            let exec = meta.mode() & 0o111 != 0;
+            let mode = meta.mode() & 0o7777;
             Ok(Some(crate::hash::canonical_bytes_identity(
                 &dest_dir.read(dest_name)?,
-                exec,
+                mode,
             )))
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -586,128 +339,21 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<String>> 
     match prior {
         PriorSerde::Absent => Ok(None),
         PriorSerde::Symlink { target } => Ok(Some(target.clone())),
-        PriorSerde::File { hash, mode } => Ok(Some(crate::hash::canonical_bytes_identity(
-            &home.read(prior_blob_rel(hash))?,
-            mode.is_some_and(|m| m & 0o111 != 0),
-        ))),
-    }
-}
-
-/// Three-way, intent-based (0026 §6): the entry recorded the intended
-/// post-state BEFORE the mutation, so a post-crash edit is
-/// distinguishable from the mutation itself.
-fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry, home: &Dir) -> io::Result<Recovery> {
-    let live = live_identity(dest_dir, dest_name)?;
-    let prior_id = prior_identity(&entry.prior, home)?;
-    Ok(decide_from(
-        live.as_deref(),
-        &entry.after,
-        prior_id.as_deref(),
-        &entry.prior,
-    ))
-}
-
-/// The recovery decision as a pure function of the three identities
-/// (0028): the model checker drives THIS code with abstract states —
-/// the protocol's decision logic is what gets checked, not a parallel
-/// reimplementation.
-fn decide_from(
-    live: Option<&str>,
-    intended: &str,
-    prior_id: Option<&str>,
-    prior: &PriorSerde,
-) -> Recovery {
-    let restore_what = || match prior {
-        PriorSerde::Absent => "removed (was absent before the interrupted run)".into(),
-        PriorSerde::File { .. } => "prior bytes restored".into(),
-        PriorSerde::Symlink { target } => format!("prior symlink → {target} restored"),
-    };
-    match live {
-        // the mutation landed intact (or the intended removal held)
-        Some(l) if l == intended => Recovery::Restore(restore_what()),
-        // live IS the prior: the mutation never landed
-        Some(l) if Some(l) == prior_id => Recovery::Unchanged,
-        Some(_) => Recovery::Keep("changed since the interrupted run — your edit stands".into()),
-        // absent now: a landed removal (intended REMOVED) or a never-
-        // landed creation — either way the prior comes back
-        None if prior_id.is_some() => Recovery::Restore(restore_what()),
-        None => Recovery::Unchanged,
-    }
-}
-
-/// The commit classification as a pure function (0028), exact
-/// equality only: current == target is committed, current == previous
-/// is uncommitted, anything else is ambiguous and blocks. Pre-0.23
-/// markers carry no previous generation; those classify by the 0.22
-/// direction rule, correct for those versions' semantics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Classification {
-    Committed,
-    Uncommitted,
-    Ambiguous,
-    /// A pre-0.23 run marker (no previous_generation): the commit
-    /// state is unknowable — refuse, never auto-classify (0030 §11)
-    Legacy,
-}
-fn classify(
-    previous: Option<u64>,
-    target: u64,
-    _op: RunOp,
-    current: Option<u64>,
-    format: u8,
-) -> Classification {
-    match (previous, current) {
-        (Some(_), Some(c)) if c == target => Classification::Committed,
-        (Some(prev), Some(c)) if c == prev => Classification::Uncommitted,
-        (Some(_), _) => Classification::Ambiguous,
-        // a fresh machine's run (no previous generation): exact too —
-        // distinguishable from legacy by the format field
-        (None, Some(c)) if format >= 2 && c == target => Classification::Committed,
-        (None, None) if format >= 2 => Classification::Uncommitted,
-        (None, Some(_)) if format >= 2 => Classification::Ambiguous,
-        // pre-0.23 marker (no format field): the directional rule is
-        // proven unsound (0028's kept counterexample) — refuse with
-        // guidance rather than guess (0030 §11)
-        _ => Classification::Legacy,
-    }
-}
-
-fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> io::Result<()> {
-    match prior {
-        PriorSerde::Absent => {
-            // remove_file never removes a directory; a dest that grew
-            // into one errors here (ENOTDIR) and the journal entry is
-            // retained — recovery data is never dropped on a failed
-            // removal (0029 §4)
-            match dest_dir.remove_file(dest_name) {
-                Ok(()) => {}
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => return Err(e),
-            }
-        }
         PriorSerde::File { hash, mode } => {
-            let bytes = home.read(prior_blob_rel(hash))?;
-            // the mode rides the write (0027 §6): temp → exact mode →
-            // fsync → rename, so a restored 0600 secret never exists
-            // at a wider mode, not even for the rename's instant
-            match mode {
-                Some(mode) => {
-                    gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, *mode)?
-                }
-                // pre-0.24 entries carry no mode — content is still
-                // restored; the mode is creation default
-                None => gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?,
-            }
-        }
-        PriorSerde::Symlink { target } => {
-            gripsack_fs::symlink_replace(dest_dir, dest_name, Path::new(target))?;
+            Ok(Some(crate::hash::canonical_bytes_identity(
+                &home.read(prior_blob_rel(hash))?,
+                // pre-0.24 priors carry no mode — 0644 keeps their
+                // identity on the same preimage they were written
+                // with (the bytes-only form)
+                mode.unwrap_or(0o644),
+            )))
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use super::marker::*;
     use super::*;
 
     fn home() -> tempfile::TempDir {

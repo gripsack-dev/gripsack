@@ -58,16 +58,30 @@ pub fn canonical_file_hash_in(dir: &gripsack_fs::Dir, name: &Path) -> std::io::R
     Ok(hex(&hasher.finalize()))
 }
 
-/// Canonical identity of in-memory contents WITH an executability
-/// flag (0030 §H3): the journal's file identity is exec-aware, so a
-/// fresh 0755 tracked copy can't commit as executable and verify as
-/// bytes-only. `canonical_bytes_identity(b, false)` ==
-/// `canonical_bytes_hash(b)` — the bytes-only form is the
-/// non-executable case.
-pub fn canonical_bytes_identity(bytes: &[u8], executable: bool) -> String {
+/// Canonical identity of in-memory contents WITH their permission
+/// mode (0026 §7, 0030 #17, plan/0031): the journal's and the
+/// manifest's file identity is mode-aware, so a chmod-only change is
+/// drift, never invisible.
+///
+/// Backward-compatible preimage: the two modes a pre-0.27 gripsack
+/// could ever have recorded — 0644 and 0755, the only values its own
+/// writes produced — hash byte-identically to the 0.26 exec-bit
+/// form, so an upgraded home reads its manifests as satisfied. Any
+/// other mode (a hand-chmodded 0600) hashes under the extended
+/// preimage: drift is detected, never silently absorbed.
+pub fn canonical_bytes_identity(bytes: &[u8], mode: u32) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"file\0");
-    hasher.update([u8::from(executable)]);
+    match mode {
+        // the 0.26 exec-bit preimage, kept verbatim
+        0o644 => hasher.update([0u8]),
+        0o755 => hasher.update([1u8]),
+        // the mode-extended preimage for everything else
+        m => {
+            hasher.update([2u8]);
+            hasher.update(m.to_le_bytes());
+        }
+    }
     hasher.update(bytes);
     hex(&hasher.finalize())
 }
@@ -222,6 +236,38 @@ pub fn hex_sha256(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mode_identity_preimage_is_upgrade_compatible() {
+        // 0031 §1: the modes a pre-0.27 gripsack could ever record —
+        // 0644 and 0755 — hash byte-identically to the 0.26 exec-bit
+        // form, so an upgraded home reads its manifests satisfied
+        assert_eq!(
+            canonical_bytes_identity(b"abc", 0o644),
+            canonical_bytes_hash(b"abc"),
+            "0644 keeps the bytes-only (exec=false) preimage"
+        );
+        // 0755 == the 0.26 exec=true preimage, pinned byte-exact
+        let mut reference = Sha256::new();
+        reference.update(b"file\0");
+        reference.update([1u8]);
+        reference.update(b"abc");
+        assert_eq!(
+            canonical_bytes_identity(b"abc", 0o755),
+            hex(&reference.finalize())
+        );
+        // every other mode takes the extended preimage: chmod-only
+        // drift (0600, 0777, …) is never invisible
+        assert_ne!(
+            canonical_bytes_identity(b"abc", 0o600),
+            canonical_bytes_identity(b"abc", 0o644),
+        );
+        assert_ne!(
+            canonical_bytes_identity(b"abc", 0o600),
+            canonical_bytes_identity(b"abc", 0o700),
+            "the mode is IN the identity, not just the exec bit"
+        );
+    }
+
     use super::*;
 
     #[test]
