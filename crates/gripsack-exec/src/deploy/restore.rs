@@ -1,49 +1,13 @@
-//! Restore and prior capture (0001 §3.5, 0015 §4): the ONE
-//! deploy-restore path, shared by rollback — every mode gets its
-//! correct semantics, never a naive byte copy (template re-renders
-//! with the recorded vars; merge re-upserts only the block into the
-//! foreign file).
+//! Prior capture/restore and intactness (0015 §4, 0029 §3): the
+//! drift guards the ops planner relies on — the rollback restore path
+//! lives in ops::plan (0034).
 
-use super::{dest_capability, read_foreign_text};
 use gripsack_ir::Ownership;
 use gripsack_store as store;
 use std::path::Path;
 
 /// re-renders with the recorded vars; merge re-upserts only the block
 /// into the foreign file).
-pub fn restore_entry(
-    dest: &Path,
-    entry: &store::DeployedEntry,
-    store_path: &Path,
-    module: &str,
-) -> std::io::Result<()> {
-    let Some(plan) = compute_restore(dest, entry, store_path, module)? else {
-        tracing::warn!(?dest, "restore skipped — leaving destination as-is");
-        return Ok(());
-    };
-    let (dest_dir, dest_name) = dest_capability(dest)?;
-    execute_restore(&dest_dir, &dest_name, &plan)
-}
-
-/// What a restore intends to land and the journal identity of that
-/// end state — computed BEFORE any mutation (0026 §6), so the journal
-/// records intent, never observation-after-the-fact.
-pub struct RestorePlan {
-    /// The identity the restore must land (journal `after`) — typed:
-    /// a restore always knows whether it means an object or a removal.
-    pub intent: store::journal::Intended,
-    pub write: RestoreWrite,
-}
-
-pub enum RestoreWrite {
-    /// Owned: point the destination link here.
-    Link(std::path::PathBuf),
-    /// Tracked copy / rendered template / merge-upserted whole file —
-    /// landed with EXACTLY this mode (0031: the manifest's recorded
-    /// mode; the live mode when unrecorded; 0644 when absent).
-    Bytes { bytes: Vec<u8>, mode: u32 },
-}
-
 /// The destination's current full permission mode, if it exists
 /// (0026 §7's preserve rule, made explicit at plan time so the
 /// journaled intent can name the landed identity exactly).
@@ -57,105 +21,6 @@ fn live_mode(dest: &Path) -> Option<u32> {
     {
         let _ = dest;
         None
-    }
-}
-
-/// Plan the restore of one deployed entry without touching the
-/// destination. None = leave it alone (an unreadable foreign merge
-/// file, or an owned link whose store source is gone — the manifest
-/// is stale, and a dangling link is worse than an absent dest).
-pub fn compute_restore(
-    dest: &Path,
-    entry: &store::DeployedEntry,
-    store_path: &Path,
-    module: &str,
-) -> std::io::Result<Option<RestorePlan>> {
-    let source = store_path.join(&entry.from);
-    match entry.mode {
-        Ownership::Owned => {
-            if !source.exists() {
-                return Ok(None);
-            }
-            Ok(Some(RestorePlan {
-                intent: store::journal::Intended::Object(store::journal::ObjectIdentity::Link(
-                    source.to_string_lossy().into_owned(),
-                )),
-                write: RestoreWrite::Link(source),
-            }))
-        }
-        Ownership::Merge => {
-            let payload = std::fs::read_to_string(&source).unwrap_or_default();
-            // a dest that is not text cannot host a managed block:
-            // splicing onto "" would REPLACE the whole foreign file
-            // (silent data loss) — leave it alone instead
-            let Some(existing) = read_foreign_text(dest) else {
-                return Ok(None);
-            };
-            match crate::template::upsert_block(&existing, module, dest, None, &payload) {
-                Ok(new) => {
-                    // the file is foreign — the restore keeps ITS
-                    // mode, and the intent says so exactly (0031)
-                    let mode = live_mode(dest).unwrap_or(0o644);
-                    Ok(Some(RestorePlan {
-                        intent: store::journal::Intended::Object(
-                            store::journal::ObjectIdentity::File(store::canonical_bytes_identity(
-                                new.as_bytes(),
-                                mode,
-                            )),
-                        ),
-                        write: RestoreWrite::Bytes {
-                            bytes: new.into_bytes(),
-                            mode,
-                        },
-                    }))
-                }
-                Err(_) => Ok(None), // malformed markers: leave the foreign file alone
-            }
-        }
-        Ownership::Template => {
-            let rendered = crate::template::render_template(
-                &std::fs::read(&source)?,
-                &entry.vars,
-                &entry.from,
-            )
-            .map_err(std::io::Error::other)?;
-            // exact mode restoration (0031): the manifest's recorded
-            // mode; the live mode on pre-0.27 manifests; 0644 fresh
-            let mode = entry.file_mode.or_else(|| live_mode(dest)).unwrap_or(0o644);
-            Ok(Some(RestorePlan {
-                intent: store::journal::Intended::Object(store::journal::ObjectIdentity::File(
-                    store::canonical_bytes_identity(&rendered, mode),
-                )),
-                write: RestoreWrite::Bytes {
-                    bytes: rendered,
-                    mode,
-                },
-            }))
-        }
-        Ownership::TrackedCopy => {
-            let bytes = std::fs::read(&source)?;
-            let mode = entry.file_mode.or_else(|| live_mode(dest)).unwrap_or(0o644);
-            Ok(Some(RestorePlan {
-                intent: store::journal::Intended::Object(store::journal::ObjectIdentity::File(
-                    store::canonical_bytes_identity(&bytes, mode),
-                )),
-                write: RestoreWrite::Bytes { bytes, mode },
-            }))
-        }
-    }
-}
-
-/// Land a planned restore through the pinned destination capability.
-pub fn execute_restore(
-    dest_dir: &gripsack_fs::Dir,
-    dest_name: &Path,
-    plan: &RestorePlan,
-) -> std::io::Result<()> {
-    match &plan.write {
-        RestoreWrite::Link(target) => gripsack_fs::symlink_replace(dest_dir, dest_name, target),
-        RestoreWrite::Bytes { bytes, mode } => {
-            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, bytes, *mode)
-        }
     }
 }
 
@@ -240,54 +105,6 @@ pub(crate) fn restore_prior(
 /// the original file/symlink — "your original files have been
 /// restored." Drifted destinations and prior-less entries fall back to
 /// the drift-guarded removal.
-/// [`intact_deployed`] through the pinned capability (0027 §5).
-pub fn intact_deployed_relative(
-    dest_dir: &gripsack_fs::Dir,
-    dest_name: &Path,
-    entry: &store::DeployedEntry,
-    store_path: &Path,
-) -> bool {
-    match entry.mode {
-        // intact means EXACTLY this entry's store link (0029 §11):
-        // "points somewhere under gripsack" conflated a user-repointed
-        // link with ownership
-        Ownership::Owned => dest_dir
-            .read_link_contents(dest_name)
-            .map(|t| t == store_path.join(&entry.from))
-            .unwrap_or(false),
-        Ownership::Merge => false, // merge never carries a prior
-        // the manifest domain is bytes-only for templates, mode-aware
-        // for tracked copies (0031) — compute in the entry's own
-        // domain or nothing is ever "intact"
-        Ownership::Template => dest_dir
-            .read(dest_name)
-            .map(|b| store::canonical_bytes_hash(&b).as_str() == entry.hash)
-            .unwrap_or(false),
-        Ownership::TrackedCopy => dest_dir
-            .read(dest_name)
-            .ok()
-            .and_then(|bytes| {
-                let mode = live_mode_meta(dest_dir, dest_name)?;
-                Some(store::canonical_bytes_identity(&bytes, mode).as_str() == entry.hash)
-            })
-            .unwrap_or(false),
-    }
-}
-
-/// The live file's full mode through the pinned capability.
-fn live_mode_meta(dir: &gripsack_fs::Dir, name: &Path) -> Option<u32> {
-    #[cfg(unix)]
-    {
-        use gripsack_fs::cap_std::fs::MetadataExt;
-        dir.metadata(name).ok().map(|m| m.mode() & 0o7777)
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (dir, name);
-        Some(0o644)
-    }
-}
-
 /// Is the destination still exactly what this manifest entry
 /// deployed? (Merge blocks are checked by block hash at the call
 /// sites — a foreign file is never "intact" as a whole.)

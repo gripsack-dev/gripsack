@@ -1,0 +1,596 @@
+//! Codegen (0034): observations + the desired state in, Ops out.
+//! Every decision a destination needs is computed HERE — apply,
+//! rollback, and plan share this module.
+
+use super::*;
+use crate::ctx::ExecError;
+use store::journal::{Intended, ObjectIdentity};
+
+/// Everything a planner needs to know about one destination — the
+/// ONE observation, the lineage record, the run's take-over scope.
+/// (A struct, not nine positional arguments: each field is named at
+/// the call site.)
+pub struct DestView<'a> {
+    pub module: &'a str,
+    pub entry: &'a Entry,
+    /// The canonical physical destination (0030 §P0-1).
+    pub dest: PathBuf,
+    /// The home the store lives under (link "ours" is target-under-home).
+    pub home: &'a Path,
+    pub observed: Option<crate::deploy::Observation>,
+    pub prev: Option<&'a store::DeployedEntry>,
+    pub take_over: bool,
+}
+
+impl DestView<'_> {
+    /// The journal-domain identity of the observation.
+    pub(crate) fn observed_identity(&self) -> Option<ObjectIdentity> {
+        self.observed.as_ref().map(|o| match o {
+            crate::deploy::Observation::Symlink { target } => {
+                ObjectIdentity::Link(target.to_string_lossy().into_owned())
+            }
+            crate::deploy::Observation::File { bytes, mode } => {
+                ObjectIdentity::File(store::canonical_bytes_identity(bytes, *mode))
+            }
+        })
+    }
+
+    fn base(&self, kind: OpKind, authority: Option<Authority>, intended: Intended) -> Op {
+        Op {
+            module: self.module.to_string(),
+            dest: self.dest.clone(),
+            declared_to: self.entry.to.clone(),
+            mode: self.entry.mode.clone(),
+            kind,
+            authority,
+            observed: self.observed_identity(),
+            intended,
+            produces: None,
+            note: None,
+            removing: None,
+        }
+    }
+
+    fn produces(
+        &self,
+        hash: String,
+        file_mode: Option<u32>,
+        preserved: bool,
+    ) -> Option<ProducedEntry> {
+        Some(ProducedEntry {
+            from: self.entry.from.clone(),
+            mode: self.entry.mode.clone(),
+            vars: self.entry.vars.clone(),
+            hash,
+            file_mode,
+            prior: None,
+            preserved_drift: preserved,
+        })
+    }
+}
+
+/// What the mode's decision needs beyond the view.
+pub enum ModeInput<'a> {
+    /// Owned link: the store payload it points at, its content hash,
+    /// and whether the live link already points there.
+    Link {
+        source: &'a Path,
+        content_hash: String,
+        already: bool,
+    },
+    /// Tracked copy / template: the content bytes and the intended
+    /// landed mode (the copy rule 0644/0755; template preserves).
+    Write { content: &'a [u8], intent_mode: u32 },
+    /// Merge: the block payload, the foreign file's current text, and
+    /// its mode (preserved across the splice).
+    Merge {
+        payload: &'a str,
+        existing: Option<String>,
+        dest_mode: u32,
+    },
+}
+
+/// The per-destination decision (0034): one Op out, per the mode's
+/// rule — plan_copy for copies/templates, plan_link for owned links,
+/// the block hash for merge. THE function plan/apply/rollback share.
+pub(crate) fn plan_entry_op(view: &DestView, input: ModeInput) -> Result<Op, ExecError> {
+    match input {
+        ModeInput::Link {
+            source,
+            content_hash,
+            already,
+        } => Ok(plan_link(view, source, content_hash, already)),
+        ModeInput::Write {
+            content,
+            intent_mode,
+        } => Ok(plan_write(view, content, intent_mode)),
+        ModeInput::Merge {
+            payload,
+            existing,
+            dest_mode,
+        } => plan_merge(view, payload, existing, dest_mode),
+    }
+}
+
+fn plan_write(view: &DestView, content: &[u8], intent_mode: u32) -> Op {
+    use crate::deploy::CopyPlan;
+    let entry = view.entry;
+    let desired_hash = match entry.mode {
+        Ownership::Template => store::canonical_bytes_hash(content).to_string(),
+        _ => store::canonical_bytes_identity(content, intent_mode).to_string(),
+    };
+    // the manifest-domain live identity (mode-aware for copies,
+    // bytes-only for templates; a foreign link hashes its target)
+    let live = match &view.observed {
+        None => None,
+        Some(crate::deploy::Observation::Symlink { target }) => {
+            Some(store::canonical_bytes_hash(target.as_encoded_bytes()).to_string())
+        }
+        Some(crate::deploy::Observation::File { bytes, mode }) => match entry.mode {
+            Ownership::Template => Some(store::canonical_bytes_hash(bytes).to_string()),
+            _ => Some(store::canonical_bytes_identity(bytes, *mode).to_string()),
+        },
+    };
+    let prev_pair = view.prev.map(|e| (e.hash.as_str(), e.preserved_drift));
+    let plan = crate::deploy::plan_copy(&desired_hash, live.as_deref(), prev_pair, view.take_over);
+    match plan {
+        CopyPlan::Satisfied => {
+            // satisfied means managed (0029 §2): the record clears any
+            // prior preserve mark and holds the desired identity — an
+            // observation recorded as drift must not stick forever
+            let mut op = view.base(
+                OpKind::Satisfied,
+                None,
+                Intended::Object(view.observed_identity().expect("satisfied implies live")),
+            );
+            op.produces = view.produces(desired_hash, view.prev.and_then(|e| e.file_mode), false);
+            op
+        }
+        CopyPlan::Fresh | CopyPlan::Update => {
+            let update = matches!(plan, CopyPlan::Update);
+            let mode = match entry.mode {
+                // templates preserve an existing file's mode (0026 §7);
+                // fresh lands 0644 — the write mirrors this exactly
+                Ownership::Template => match &view.observed {
+                    Some(crate::deploy::Observation::File { mode, .. }) => *mode,
+                    _ => 0o644,
+                },
+                _ => intent_mode,
+            };
+            let mut op = view.base(
+                OpKind::Write {
+                    content: ContentSource::Bytes(content.to_vec()),
+                    mode,
+                },
+                Some(if update {
+                    Authority::Update
+                } else {
+                    Authority::Fresh
+                }),
+                Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
+                    content, mode,
+                ))),
+            );
+            op.produces = view.produces(desired_hash, Some(mode), false);
+            op
+        }
+        CopyPlan::TakeOver => {
+            // adoption keeps the live mode (0033 R1)
+            let mode = match &view.observed {
+                Some(crate::deploy::Observation::File { mode, .. }) => *mode,
+                _ => intent_mode,
+            };
+            let mut op = view.base(
+                OpKind::Write {
+                    content: ContentSource::Bytes(content.to_vec()),
+                    mode,
+                },
+                Some(Authority::TakeOver),
+                Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
+                    content, mode,
+                ))),
+            );
+            // the prior is captured at execution (0015 §4)
+            op.produces = view.produces(desired_hash, Some(mode), false);
+            op
+        }
+        CopyPlan::Preserve => {
+            let mut op = view.base(
+                OpKind::Preserved,
+                None,
+                Intended::Object(view.observed_identity().expect("preserve implies live")),
+            );
+            // the record holds the OBSERVED identity, marked preserved
+            // (0029 §2) — it authorizes nothing
+            op.produces = view.produces(live.expect("Preserve implies a live object"), None, true);
+            op
+        }
+    }
+}
+
+fn plan_link(view: &DestView, source: &Path, content_hash: String, already: bool) -> Op {
+    use crate::deploy::LinkPlan;
+    let exists = view.observed.is_some();
+    let ours = match &view.observed {
+        Some(crate::deploy::Observation::Symlink { target }) => {
+            Path::new(target.as_os_str()).starts_with(view.home)
+        }
+        _ => false,
+    };
+    let recorded = view.prev.is_some_and(|e| !e.preserved_drift);
+    let link_intent = Intended::Object(ObjectIdentity::Link(source.to_string_lossy().into_owned()));
+    match crate::deploy::plan_link(exists, ours, recorded, view.take_over) {
+        LinkPlan::Link if already => {
+            let mut op = view.base(OpKind::Satisfied, None, link_intent);
+            op.produces = view.produces(content_hash, None, false);
+            op
+        }
+        LinkPlan::Link => {
+            let mut op = view.base(
+                OpKind::Link {
+                    target: source.to_path_buf(),
+                },
+                Some(Authority::Fresh),
+                link_intent,
+            );
+            op.produces = view.produces(content_hash, None, false);
+            op
+        }
+        LinkPlan::TakeOver => {
+            let mut op = view.base(
+                OpKind::Link {
+                    target: source.to_path_buf(),
+                },
+                Some(Authority::TakeOver),
+                link_intent,
+            );
+            op.produces = view.produces(content_hash, None, false);
+            op
+        }
+        // rendered "foreign — needs --take-over"; apply refuses
+        LinkPlan::Refuse => view.base(
+            OpKind::Preserved,
+            Some(Authority::Foreign),
+            Intended::Object(view.observed_identity().expect("refuse implies an object")),
+        ),
+    }
+}
+
+fn plan_merge(
+    view: &DestView,
+    payload: &str,
+    existing: Option<String>,
+    dest_mode: u32,
+) -> Result<Op, ExecError> {
+    let fail = |detail: String| ExecError::Step {
+        module: view.module.to_string(),
+        step: "deploy".into(),
+        detail,
+    };
+    let block = payload.trim_end_matches('\n');
+    let hash = store::canonical_bytes_hash(block.as_bytes()).to_string();
+    let existing = existing.unwrap_or_default();
+    let extracted = crate::template::extract_block(&existing, view.module);
+    let block_total = crate::template::find_blocks(&existing, view.module).len();
+    let satisfied = block_total == 1
+        && extracted
+            .as_deref()
+            .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()).as_str() == hash);
+    if satisfied {
+        let mut op = view.base(
+            OpKind::Satisfied,
+            None,
+            Intended::Object(view.observed_identity().expect("satisfied implies live")),
+        );
+        op.produces = view.produces(hash, None, false);
+        return Ok(op);
+    }
+    let spliced = crate::template::upsert_block(
+        &existing,
+        view.module,
+        &view.dest,
+        view.entry.marker.as_deref(),
+        payload,
+    )
+    .map_err(fail)?;
+    let mut op = view.base(
+        OpKind::MergeUpsert {
+            payload: payload.as_bytes().to_vec(),
+            marker: view.entry.marker.clone(),
+            existing: existing.clone(),
+        },
+        Some(Authority::Update),
+        Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
+            spliced.as_bytes(),
+            dest_mode,
+        ))),
+    );
+    op.produces = view.produces(hash, None, false);
+    Ok(op)
+}
+
+/// A Remove op (prune-on-undeclare, rollback's current-only
+/// destinations): removal authority is the manifest entry, the intent
+/// is the prior's restoration or REMOVED (0026 §6). None when nothing
+/// needs doing; Preserved when the drift guard keeps the destination
+/// (a drifted merge block, a modified copy — the user's now).
+pub(crate) fn plan_remove_op(
+    module: &str,
+    entry: &store::DeployedEntry,
+    store_path: &Path,
+    home: &Path,
+) -> Result<Option<Op>, ExecError> {
+    let fail = |detail: String| ExecError::Step {
+        module: module.to_string(),
+        step: "plan".into(),
+        detail,
+    };
+    let dest = store::canonical_dest(&entry.to)
+        .map_err(|e| fail(format!("destination {:?}: {e}", entry.to)))?;
+    let (dest_dir, dest_name) =
+        crate::deploy::dest_capability(&dest).map_err(|e| ExecError::Step {
+            module: module.to_string(),
+            step: "plan".into(),
+            detail: format!("cannot open {} parent: {e}", entry.to),
+        })?;
+    let observed = store::journal::live_identity(&dest_dir, &dest_name)
+        .map_err(|e| fail(format!("cannot inspect {}: {e}", entry.to)))?;
+    let kept = |note: String| {
+        tracing::warn!("{note}");
+        Ok(Some(Op {
+            module: module.to_string(),
+            dest: dest.clone(),
+            declared_to: entry.to.clone(),
+            mode: entry.mode.clone(),
+            kind: OpKind::Preserved,
+            authority: None,
+            observed: observed.clone(),
+            intended: match &observed {
+                Some(o) => Intended::Object(o.clone()),
+                None => Intended::Removed,
+            },
+            produces: None,
+            note: None,
+            removing: None,
+        }))
+    };
+    if entry.mode == Ownership::Merge {
+        // the file is foreign — prune removes only our block, and only
+        // if the block is still what we deployed
+        let existing = match dest_dir.read_to_string(&dest_name) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        match crate::template::extract_block(&existing, module) {
+            Some(content)
+                if store::canonical_bytes_hash(content.as_bytes()).as_str() == entry.hash =>
+            {
+                let new =
+                    crate::template::remove_block(&existing, module).expect("block found above");
+                // the splice preserves the foreign file's mode
+                #[cfg(unix)]
+                let splice_mode = {
+                    use gripsack_fs::cap_std::fs::MetadataExt;
+                    dest_dir
+                        .symlink_metadata(&dest_name)
+                        .map(|m| m.mode() & 0o7777)
+                        .unwrap_or(0o644)
+                };
+                #[cfg(not(unix))]
+                let splice_mode = 0o644;
+                let intended = if new.trim().is_empty() {
+                    Intended::Removed
+                } else {
+                    Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
+                        new.as_bytes(),
+                        splice_mode,
+                    )))
+                };
+                return Ok(Some(Op {
+                    module: module.to_string(),
+                    dest,
+                    declared_to: entry.to.clone(),
+                    mode: entry.mode.clone(),
+                    kind: OpKind::Remove,
+                    authority: Some(Authority::Update),
+                    observed,
+                    intended,
+                    produces: None,
+                    note: None,
+                    removing: Some((entry.clone(), store_path.to_path_buf())),
+                }));
+            }
+            Some(_) => {
+                return kept(format!("kept {} — block modified since deploy", entry.to));
+            }
+            None => return Ok(None), // block already gone
+        }
+    }
+    // the drift guard runs FIRST (0026 §6) — a kept destination is
+    // never journaled at all
+    if !crate::deploy::intact_deployed(&dest, entry, store_path) {
+        if dest.symlink_metadata().is_ok() {
+            return kept(format!("kept {} — modified since deploy", entry.to));
+        }
+        return Ok(None); // already gone
+    }
+    let intended =
+        crate::deploy::restore::prune_intent(entry, home).map_err(|e| fail(format!("{e}")))?;
+    Ok(Some(Op {
+        module: module.to_string(),
+        dest,
+        declared_to: entry.to.clone(),
+        mode: entry.mode.clone(),
+        kind: OpKind::Remove,
+        authority: Some(Authority::Update),
+        observed,
+        intended,
+        produces: None,
+        note: None,
+        removing: Some((entry.clone(), store_path.to_path_buf())),
+    }))
+}
+
+/// A restore op for rollback (0034): the desired state is the TARGET
+/// generation's manifest record, planned by the same per-destination
+/// function apply uses. None when no safe restore exists (the caller
+/// surfaces a Skipped note — 0030 §H8).
+pub(crate) fn plan_restore_op(
+    module: &str,
+    entry: &store::DeployedEntry,
+    store_path: &Path,
+    prev: Option<&store::DeployedEntry>,
+    home: &Path,
+) -> Result<Option<Op>, ExecError> {
+    let fail = |detail: String| ExecError::Step {
+        module: module.to_string(),
+        step: "rollback".into(),
+        detail,
+    };
+    // the planner speaks IR entries; the manifest record synthesizes
+    // one (the marker is deploy-time only — merge restore upserts
+    // with the default)
+    let ir_entry = Entry {
+        from: entry.from.clone(),
+        to: entry.to.clone(),
+        mode: entry.mode.clone(),
+        vars: entry.vars.clone(),
+        marker: None,
+        span: None,
+    };
+    let dest = store::canonical_dest(&entry.to)
+        .map_err(|e| fail(format!("destination {:?}: {e}", entry.to)))?;
+    let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)
+        .map_err(|e| fail(format!("cannot open {} parent: {e}", entry.to)))?;
+    let observed = crate::deploy::observe(&dest_dir, &dest_name)
+        .map_err(|e| fail(format!("cannot inspect {}: {e}", entry.to)))?;
+    let source = store_path.join(&entry.from);
+    let view = DestView {
+        module,
+        entry: &ir_entry,
+        dest,
+        home,
+        observed,
+        prev,
+        take_over: false, // rollback never absorbs
+    };
+    let op = match entry.mode {
+        Ownership::Owned => {
+            if !source.exists() {
+                return Ok(None);
+            }
+            let already = std::fs::read_link(&view.dest)
+                .map(|t| t == source)
+                .unwrap_or(false);
+            plan_entry_op(
+                &view,
+                ModeInput::Link {
+                    source: &source,
+                    content_hash: store::canonical_file_hash(&source)
+                        .map_err(|e| fail(format!("{e}")))?
+                        .to_string(),
+                    already,
+                },
+            )?
+        }
+        Ownership::TrackedCopy | Ownership::Template => {
+            let bytes = match std::fs::read(&source) {
+                Ok(b) => b,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(fail(format!("{e}"))),
+            };
+            let rendered;
+            let content: &[u8] = match entry.mode {
+                Ownership::Template => {
+                    rendered = crate::template::render_template(&bytes, &entry.vars, &entry.from)
+                        .map_err(|e| fail(format!("{e}")))?;
+                    &rendered
+                }
+                _ => &bytes,
+            };
+            // exact mode restoration (0031): the recorded landed mode;
+            // an unrecorded one follows the payload's exec bit
+            #[cfg(unix)]
+            let payload_exec = {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::metadata(&source)
+                    .map(|m| m.permissions().mode() & 0o111 != 0)
+                    .unwrap_or(false)
+            };
+            #[cfg(not(unix))]
+            let payload_exec = false;
+            let intent_mode = entry
+                .file_mode
+                .unwrap_or(if payload_exec { 0o755 } else { 0o644 });
+            plan_entry_op(
+                &view,
+                ModeInput::Write {
+                    content,
+                    intent_mode,
+                },
+            )?
+        }
+        Ownership::Merge => {
+            let payload = match std::fs::read_to_string(&source) {
+                Ok(t) => t,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(fail(format!("{e}"))),
+            };
+            // a dest that is not text cannot host the block — leave
+            // the foreign file alone (Skipped)
+            let existing = match std::fs::read_to_string(&view.dest) {
+                Ok(t) => Some(t),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(_) => return Ok(None),
+            };
+            #[cfg(unix)]
+            let dest_mode = {
+                use std::os::unix::fs::MetadataExt;
+                std::fs::metadata(&view.dest)
+                    .map(|m| m.mode() & 0o7777)
+                    .unwrap_or(0o644)
+            };
+            #[cfg(not(unix))]
+            let dest_mode = 0o644;
+            plan_entry_op(
+                &view,
+                ModeInput::Merge {
+                    payload: &payload,
+                    existing,
+                    dest_mode,
+                },
+            )?
+        }
+    };
+    Ok(Some(op))
+}
+
+/// The merge upsert's report notes (0.21.1 review), derived from the
+/// op's inputs — the renderer and the executor agree by construction.
+pub(crate) fn merge_notes_pub(module: &str, payload: &[u8], existing: &str) -> String {
+    let block_total = crate::template::find_blocks(existing, module).len();
+    let extracted = crate::template::extract_block(existing, module);
+    let hand_edited = extracted.as_deref().is_some_and(|content| {
+        crate::template::marker_sha(existing, module).is_some_and(|recorded| {
+            recorded != store::canonical_bytes_hash(content.as_bytes()).as_str()[..16]
+        })
+    });
+    let mut notes = Vec::new();
+    if hand_edited {
+        notes.push("hand-edited block regenerated".to_string());
+    }
+    if block_total > 1 {
+        notes.push(format!(
+            "removed {} duplicate block{}",
+            block_total - 1,
+            if block_total == 2 { "" } else { "s" }
+        ));
+    }
+    let _ = payload;
+    if notes.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", notes.join(", "))
+    }
+}

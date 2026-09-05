@@ -13,13 +13,9 @@
 //! drift — preserved and reported, never overwritten.
 
 use crate::ctx::ExecError;
-use crate::deploy::{
-    RestorePlan, compute_restore, dest_capability, execute_restore, intact_deployed, journaled,
-    prune_intent, remove_or_restore_prior,
-};
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use store::journal::RunOp;
 
 /// Roll back to `target`'s manifest. Returns typed recovery notes
@@ -58,8 +54,9 @@ pub fn rollback_generation(
     )?;
 
     let result = (|| {
-        let transitions = plan(home_path, current, target)?;
-        execute(&home, home_path, &transitions, &mut notes)?;
+        let (ops, mut planned_notes) = plan(home_path, current, target)?;
+        execute(&home, home_path, &ops)?;
+        notes.append(&mut planned_notes);
         // The env profile renders INTO the generation before the flip
         // (0025 §C): activation and profile become one indivisible step.
         crate::env::render_env_file(home_path, target.number, &target.modules)?;
@@ -101,35 +98,6 @@ pub fn rollback_generation(
     }
 }
 
-/// One destination's planned transition.
-enum Transition {
-    /// Only the current generation deploys it: drift-guarded removal
-    /// / prior restore, intent recorded up front.
-    Remove {
-        module: String,
-        entry: store::DeployedEntry,
-        intent: store::journal::Intended,
-        /// the live identity the intact check ran against (0029 §3)
-        expected: crate::deploy::Expect,
-        /// the current generation's store path (exact removal guard)
-        store_path: PathBuf,
-    },
-    /// Restore the target generation's deployment.
-    Restore {
-        plan: RestorePlan,
-        /// the live identity the drift decision ran against
-        expected: crate::deploy::Expect,
-    },
-    /// Live state already matches the target — nothing to do.
-    Noop,
-    /// The target asks for this destination but no safe restore could
-    /// be constructed — surfaced in the rollback output, never
-    /// silently skipped (0030 §H8).
-    Skipped,
-    /// Drifted: matches neither current nor target — the user's now.
-    Keep,
-}
-
 /// `(module, entry, store_path)` per destination.
 type DestMap<'m> = BTreeMap<&'m str, (&'m str, &'m store::DeployedEntry, &'m Path)>;
 
@@ -147,73 +115,18 @@ fn by_destination(generation: &store::Generation) -> DestMap<'_> {
     map
 }
 
-/// The destination's live identity in intent terms (0026 §1): link
-/// target for owned, canonical bytes hash for copy/template, the
-/// module's block hash for merge. None when absent (or, for merge,
-/// when the block is absent).
-fn live_intent_identity(
-    dest: &Path,
-    entry: &store::DeployedEntry,
-    module: &str,
-) -> std::io::Result<Option<String>> {
-    // NotFound-only-is-absent (0027 §7): an unreadable destination is
-    // not "absent", "unchanged", or "drifted" — it is an error, and
-    // the rollback aborts before mutating on top of the unknown
-    let read_text = |d: &Path| match std::fs::read_to_string(d) {
-        Ok(text) => Ok(Some(text)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e),
-    };
-    match entry.mode {
-        gripsack_ir::Ownership::Owned => {
-            let target = match std::fs::read_link(dest) {
-                Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(e) => return Err(e),
-            };
-            Ok(Some(target.to_string_lossy().into_owned()))
-        }
-        gripsack_ir::Ownership::Merge => Ok(read_text(dest)?
-            .and_then(|text| crate::template::extract_block(&text, module))
-            .map(|block| store::canonical_bytes_hash(block.as_bytes()).to_string())),
-        // the manifest domain is mode-aware for tracked copies (0031):
-        // a chmodded copy is drift, not intact
-        gripsack_ir::Ownership::TrackedCopy => {
-            let bytes = match std::fs::read(dest) {
-                Ok(b) => b,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(e) => return Err(e),
-            };
-            #[cfg(unix)]
-            let mode = {
-                use std::os::unix::fs::MetadataExt;
-                std::fs::metadata(dest)?.mode() & 0o7777
-            };
-            #[cfg(not(unix))]
-            let mode = 0o644;
-            Ok(Some(
-                store::canonical_bytes_identity(&bytes, mode).to_string(),
-            ))
-        }
-        // templates: bytes-only (a rendered file's mode is unmanaged)
-        gripsack_ir::Ownership::Template => {
-            let bytes = match std::fs::read(dest) {
-                Ok(b) => b,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(e) => return Err(e),
-            };
-            Ok(Some(store::canonical_bytes_hash(&bytes).to_string()))
-        }
-    }
-}
-
-/// Plan one transition per destination, with drift policy and
-/// preflight (0026 §1, §9).
+/// Plan one op per destination, with drift policy and preflight
+/// (0026 §1, §9). The decisions are the SAME planner apply and the
+/// CLI preview share (0034): rollback is plan_entry_op with the
+/// target generation's manifest as the desired state — plan_copy's
+/// three-way IS the rollback drift rule (live == target → nothing;
+/// live == current's record → restore; else → keep, drift preserved).
 fn plan(
     home_path: &Path,
     current: Option<&store::Generation>,
     target: &store::Generation,
-) -> Result<Vec<(PathBuf, Transition)>, ExecError> {
+) -> Result<(Vec<crate::ops::Op>, Vec<store::journal::RecoveryNote>), ExecError> {
+    use store::journal::{NoteSeverity, RecoveryNote};
     preflight(target)?;
     let current_by_dest = current.map(by_destination).unwrap_or_default();
     let target_by_dest = by_destination(target);
@@ -222,166 +135,92 @@ fn plan(
         .chain(target_by_dest.keys())
         .copied()
         .collect();
-    let mut out = Vec::new();
+    let mut ops = Vec::new();
+    let mut notes = Vec::new();
     for dest in dests {
-        let dest_path = store::expand_home(dest);
-        let transition = match (current_by_dest.get(dest), target_by_dest.get(dest)) {
+        match (current_by_dest.get(dest), target_by_dest.get(dest)) {
             // only the current generation deploys it: the prune rule
             (Some((name, entry, sp)), None) => {
                 // preserved drift was never written by gripsack —
                 // rollback and prune never touch it (0029 §2)
-                if entry.preserved_drift || dest_path.symlink_metadata().is_err() {
-                    // preserved drift: never written by gripsack, never
-                    // touched (0029 §2). Absent: already gone.
-                    Transition::Noop
-                } else if entry.mode == gripsack_ir::Ownership::Merge {
-                    // merge intactness is the BLOCK's hash (the file
-                    // is foreign), and removal splices the block out —
-                    // the intent is the resulting content, like apply's
-                    // merge prune
-                    // NotFound-only-is-absent (0030 §H7)
-                    let existing = match std::fs::read_to_string(&dest_path) {
-                        Ok(t) => t,
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-                        Err(e) => return Err(e.into()),
-                    };
-                    match crate::template::extract_block(&existing, name) {
-                        Some(content)
-                            if store::canonical_bytes_hash(content.as_bytes()).as_str()
-                                == entry.hash =>
-                        {
-                            let new = crate::template::remove_block(&existing, name)
-                                .expect("block found above");
-                            // the splice preserves the foreign file's
-                            // mode (0026 §7) — intents are mode-aware
-                            #[cfg(unix)]
-                            let splice_mode = {
-                                use std::os::unix::fs::MetadataExt;
-                                std::fs::metadata(&dest_path)
-                                    .map(|m| m.mode() & 0o7777)
-                                    .unwrap_or(0o644)
-                            };
-                            #[cfg(not(unix))]
-                            let splice_mode = 0o644;
-                            let intent = if new.trim().is_empty() {
-                                store::journal::Intended::Removed
-                            } else {
-                                store::journal::Intended::Object(
-                                    store::journal::ObjectIdentity::File(
-                                        store::canonical_bytes_identity(
-                                            new.as_bytes(),
-                                            splice_mode,
-                                        ),
-                                    ),
-                                )
-                            };
-                            Transition::Remove {
-                                module: name.to_string(),
-                                entry: (*entry).clone(),
-                                intent,
-                                expected: Some(store::journal::ObjectIdentity::File(
-                                    store::canonical_bytes_identity(
-                                        existing.as_bytes(),
-                                        splice_mode,
-                                    ),
-                                )),
-                                store_path: sp.to_path_buf(),
-                            }
-                        }
-                        _ => Transition::Keep, // block drifted or gone
+                if entry.preserved_drift {
+                    continue;
+                }
+                match crate::ops::plan_remove_op(name, entry, sp, home_path)? {
+                    None => {} // already gone
+                    Some(op) if matches!(op.kind, crate::ops::OpKind::Preserved) => {
+                        notes.push(RecoveryNote {
+                            severity: NoteSeverity::Warn,
+                            message: format!(
+                                "kept {} — drifted since the current generation; your edit stands",
+                                op.dest.display()
+                            ),
+                        });
                     }
-                } else if intact_deployed(&dest_path, entry, sp) {
-                    let (dest_dir, dest_name) = dest_capability(&dest_path)?;
-                    Transition::Remove {
-                        module: name.to_string(),
-                        entry: (*entry).clone(),
-                        intent: prune_intent(entry, home_path)?,
-                        expected: store::journal::live_identity(&dest_dir, &dest_name)?,
-                        store_path: sp.to_path_buf(),
-                    }
-                } else {
-                    Transition::Keep // drifted — the user's now
+                    Some(op) => ops.push(op),
                 }
             }
-            // only the target deploys it: restore — unless foreign
+            // only the target deploys it: restore, unless foreign
             // content stands there now (drift preserved)
-            (None, Some((name, entry, store_path))) => {
+            (None, Some((name, entry, sp))) => {
                 if entry.preserved_drift {
-                    // the target never deployed this — nothing to restore
-                    Transition::Noop
-                } else {
-                    match compute_restore(&dest_path, entry, store_path, name)? {
-                        // None = could not construct a safe restore —
-                        // SURFACED, never a silent no-op (0030 §H8)
-                        None => Transition::Skipped,
-                        Some(plan) => {
-                            // the manifest's record IS the
-                            // manifest-domain target — every mode
-                            let target_id = entry.hash.clone();
-                            let live = live_intent_identity(&dest_path, entry, name)?;
-                            match live {
-                                None => Transition::Restore {
-                                    plan,
-                                    expected: None,
-                                },
-                                Some(l) if l == target_id => Transition::Noop,
-                                Some(_) => Transition::Keep,
-                            }
-                        }
-                    }
+                    continue;
+                }
+                match crate::ops::plan_restore_op(name, entry, sp, None, home_path)? {
+                    None => notes.push(RecoveryNote {
+                        severity: NoteSeverity::Warn,
+                        message: format!(
+                            "skipped {dest} — no safe restore plan (stale manifest or unreadable merge file)",
+                        ),
+                    }),
+                    Some(op) => match op.kind {
+                        crate::ops::OpKind::Satisfied => {} // already there
+                        crate::ops::OpKind::Preserved => notes.push(RecoveryNote {
+                            severity: NoteSeverity::Warn,
+                            message: format!(
+                                "kept {} — foreign content stands there; your edit stands",
+                                op.dest.display()
+                            ),
+                        }),
+                        _ => ops.push(op),
+                    },
                 }
             }
             // both deploy it: restore only from a clean base
-            (Some((cname, centry, csp)), Some((tname, tentry, tsp))) => {
+            (Some((_cname, centry, _csp)), Some((tname, tentry, tsp))) => {
                 // either side marked preserved-drift means gripsack is
                 // not the writer — never restore over it (0029 §2)
                 if centry.preserved_drift || tentry.preserved_drift {
-                    out.push((dest_path, Transition::Noop));
                     continue;
                 }
-                let target_plan = compute_restore(&dest_path, tentry, tsp, tname)?;
-                let live = live_intent_identity(&dest_path, centry, cname)?;
-                match (live, target_plan) {
-                    (_, None) => Transition::Skipped,
-                    (None, Some(plan)) => Transition::Restore {
-                        plan,
-                        expected: None,
+                // plan_copy's three-way through the one planner: the
+                // target's record is the desired state, the current's
+                // is the lineage — live == target is a no-op, live ==
+                // current restores, anything else keeps the drift
+                match crate::ops::plan_restore_op(tname, tentry, tsp, Some(centry), home_path)? {
+                    None => notes.push(RecoveryNote {
+                        severity: NoteSeverity::Warn,
+                        message: format!(
+                            "skipped {dest} — no safe restore plan (stale manifest or unreadable merge file)",
+                        ),
+                    }),
+                    Some(op) => match op.kind {
+                        crate::ops::OpKind::Satisfied => {}
+                        crate::ops::OpKind::Preserved => notes.push(RecoveryNote {
+                            severity: NoteSeverity::Warn,
+                            message: format!(
+                                "kept {} — drifted since the current generation; your edit stands",
+                                op.dest.display()
+                            ),
+                        }),
+                        _ => ops.push(op),
                     },
-                    (Some(live), Some(plan)) => {
-                        // the manifest records ARE the
-                        // manifest-domain identities (merge's are
-                        // block hashes; the intact check below reads
-                        // the live object in the same domain)
-                        let (current_id, target_id) = (centry.hash.clone(), tentry.hash.clone());
-                        // but the current generation's restorability
-                        // must still be PROVEN — its store source
-                        // could be missing (gc'd, corrupt)
-                        if compute_restore(&dest_path, centry, csp, cname)?.is_none() {
-                            out.push((dest_path, Transition::Keep));
-                            continue;
-                        }
-                        if live == target_id {
-                            Transition::Noop
-                        } else if live == current_id {
-                            // the precondition checks the live
-                            // OBJECT, typed (merge's `live` above was
-                            // the block hash — the precondition needs
-                            // the whole file, mode-aware)
-                            let (dest_dir, dest_name) = dest_capability(&dest_path)?;
-                            let expected: crate::deploy::Expect =
-                                store::journal::live_identity(&dest_dir, &dest_name)?;
-                            Transition::Restore { plan, expected }
-                        } else {
-                            Transition::Keep
-                        }
-                    }
                 }
             }
-            (None, None) => Transition::Noop, // unreachable, union of keys
-        };
-        out.push((dest_path, transition));
+            (None, None) => {} // unreachable, union of keys
+        }
     }
-    Ok(out)
+    Ok((ops, notes))
 }
 
 /// 0026 §9: never discover an incomplete target mid-mutation — every
@@ -448,68 +287,10 @@ fn preflight(target: &store::Generation) -> Result<(), ExecError> {
 fn execute(
     home: &gripsack_fs::Dir,
     home_path: &Path,
-    transitions: &[(PathBuf, Transition)],
-    notes: &mut Vec<store::journal::RecoveryNote>,
+    ops: &[crate::ops::Op],
 ) -> Result<(), ExecError> {
-    for (dest, transition) in transitions {
-        match transition {
-            Transition::Noop => {}
-            Transition::Skipped => {
-                notes.push(store::journal::RecoveryNote {
-                    severity: store::journal::NoteSeverity::Warn,
-                    message: format!(
-                        "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
-                        dest.display()
-                    ),
-                });
-            }
-            Transition::Keep => {
-                notes.push(store::journal::RecoveryNote {
-                    severity: store::journal::NoteSeverity::Warn,
-                    message: format!(
-                        "kept {} — drifted since the current generation; your edit stands",
-                        dest.display()
-                    ),
-                });
-            }
-            Transition::Remove {
-                module,
-                entry,
-                intent,
-                expected,
-                store_path,
-            } => {
-                let (dest_dir, dest_name) = dest_capability(dest)?;
-                journaled(
-                    home,
-                    &dest_dir,
-                    &dest_name,
-                    dest,
-                    intent.clone(),
-                    expected.clone(),
-                    || {
-                        // 0027 §1: a failed removal/restore aborts the
-                        // rollback — the flip never commits it
-                        remove_or_restore_prior(
-                            &dest_dir, &dest_name, entry, module, home_path, store_path,
-                        )?;
-                        Ok(())
-                    },
-                )?;
-            }
-            Transition::Restore { plan, expected } => {
-                let (dest_dir, dest_name) = dest_capability(dest)?;
-                journaled(
-                    home,
-                    &dest_dir,
-                    &dest_name,
-                    dest,
-                    plan.intent.clone(),
-                    expected.clone(),
-                    || execute_restore(&dest_dir, &dest_name, plan),
-                )?;
-            }
-        }
+    for op in ops {
+        crate::ops::execute_op(home, home_path, op)?;
     }
     Ok(())
 }
