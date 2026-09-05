@@ -354,7 +354,6 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<String>> 
 #[cfg(test)]
 mod tests {
     use super::marker::*;
-    use super::recover::*;
     use super::*;
 
     fn home() -> tempfile::TempDir {
