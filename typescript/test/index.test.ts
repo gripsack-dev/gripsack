@@ -40,7 +40,7 @@ function view(over: Partial<EnvContext> = {}): EnvContext {
 // JSON.parse's inferred `any` is deliberate here: these tests assert
 // the wire shape of the emitted IR, field by field
 const emit = (env: Env, tags: string[] = []) => JSON.parse(emitIr(env, facts, tags));
-Deno.test("emitIr emits the IR v1 shape", () => {
+Deno.test("emitIr emits the IR v2 contract", () => {
   clearResources();
   const helix = module("helix", {
     fetch: githubRelease({
@@ -56,7 +56,7 @@ Deno.test("emitIr emits the IR v1 shape", () => {
 
   const ir = emit({ modules: [helix, git] }, ["gui"]);
 
-  assert.equal(ir.ir_version, 1);
+  assert.equal(ir.ir_version, 2);
   assert.deepEqual(ir.host.tags, ["gui"]);
 
   assert.equal(ir.modules.helix.fetch.kind, "github_release");
@@ -65,7 +65,7 @@ Deno.test("emitIr emits the IR v1 shape", () => {
     { from: "bin/hx", to: "~/.local/bin/hx", mode: "owned" },
   ]);
   assert.equal(ir.modules.helix.config[0].mode, "tracked_copy");
-  assert.deepEqual(ir.modules.helix.depends, [{ module: "git", edge: "runtime" }]);
+  assert.equal(ir.modules.helix.depends[0].for, "runtime");
   assert.equal(ir.modules.helix.activate[0].kind, "service");
   assert.equal(ir.modules.helix.activate[0].trigger, "post_activate");
 
@@ -150,13 +150,11 @@ Deno.test("runStep emits structured argv actions with outputs", () => {
   assert.deepEqual(action.outputs, ["bin/hx"]);
 });
 
-Deno.test("build-only deps keep their edge", () => {
-  clearResources();
-  const src = module("helix-src", {
-    fetch: tarball("https://example.invalid/helix.tar.xz"),
-    depends: [dep("rust", "build")],
-  });
-  assert.equal(emit({ modules: [src] }).modules["helix-src"].depends[0].edge, "build");
+
+Deno.test("dep rejects legacy and misspelled option shapes", () => {
+  assert.throws(() => dep("rust", "build" as never), /options object/);
+  assert.throws(() => dep("rust", { edge: "build" } as never), /unknown option/);
+  assert.throws(() => dep("rust", null as never), /options object/);
 });
 
 Deno.test("duplicate module names throw at emit with both sites", () => {

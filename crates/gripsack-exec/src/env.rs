@@ -131,6 +131,7 @@ mod tests {
     fn state(store: &str, env: Vec<EnvVar>) -> store::ModuleState {
         store::ModuleState {
             store_path: PathBuf::from(store),
+            build_only: false,
             intents: vec![],
             verified: None,
             entries: vec![store::DeployedEntry {
@@ -146,6 +147,7 @@ mod tests {
             }],
             env,
             tree256: None,
+            build_closure: vec![],
         }
     }
 

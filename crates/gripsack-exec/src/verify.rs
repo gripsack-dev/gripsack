@@ -48,18 +48,24 @@ pub(crate) fn run_verify(
                 return Err(fail(format!("{} not deployed", path)));
             }
         }
-        Verify::Shell { script } => run_shell(script, store_path).map_err(fail)?,
+        Verify::Shell { script } => run_shell(script, store_path, None).map_err(fail)?,
     }
     Ok(())
 }
 
-pub(crate) fn run_shell(script: &str, cwd: &Path) -> Result<(), String> {
-    let status = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(script)
-        .current_dir(cwd)
-        .status()
-        .map_err(|e| e.to_string())?;
+pub(crate) fn run_shell(
+    script: &str,
+    cwd: &Path,
+    build_env: Option<&crate::closure::BuildEnv>,
+) -> Result<(), String> {
+    // Resolve the interpreter independently of the toolchain PATH, including
+    // when the caller deliberately has no ambient PATH.
+    let mut command = std::process::Command::new("/bin/sh");
+    command.arg("-c").arg(script).current_dir(cwd);
+    if let Some(env) = build_env {
+        env.apply(&mut command)?;
+    }
+    let status = command.status().map_err(|e| e.to_string())?;
     if status.success() {
         Ok(())
     } else {

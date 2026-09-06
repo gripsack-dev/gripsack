@@ -160,20 +160,37 @@ export function hasTag(tag: string, view: FactView): boolean {
   return view.tags.includes(tag);
 }
 "#),
-    ("src/deps.ts", r#"/** Module dependency edges (0001 §3.1). */
+    ("src/deps.ts", r#"/** Dependency purposes (0039): the DSL and IR v2 use the same `for` field. */
+import { callerSpan, type Span } from "./module.ts";
 
 export type Edge = "runtime" | "build";
 
-export interface Dependency {
-  module: string;
-  edge: Edge;
+export interface DepOptions {
+  for?: Edge;
 }
 
-/** `edge: "build"` = ephemeral, build-only. */
-export const dep = (module: string, edge: Edge = "runtime"): Dependency => ({
-  module,
-  edge,
-});
+export interface Dependency {
+  module: string;
+  for: Edge;
+  span?: Span;
+}
+
+/** Build-only dependencies supply PATH and GRIP_DEP_* to build steps, not HOME. */
+export function dep(module: string, opts: DepOptions = {}): Dependency {
+  if (typeof opts !== "object" || opts === null || Array.isArray(opts)) {
+    throw new Error(`dep(${JSON.stringify(module)}): expected an options object { for: "build" | "runtime" }`);
+  }
+  for (const key of Object.keys(opts)) {
+    if (key !== "for") {
+      throw new Error(`dep(${JSON.stringify(module)}): unknown option ${JSON.stringify(key)} (known: for)`);
+    }
+  }
+  // The typed core validates values, including JS/cast inputs, with E122 and
+  // this source span. Do not turn an invalid purpose into a runtime edge.
+  const edge = opts.for === undefined ? "runtime" : opts.for;
+  const span = callerSpan();
+  return { module, for: edge, ...(span ? { span } : {}) };
+}
 "#),
     ("src/entries.ts", r#"/** Deployment destinations with ownership modes (0001 §3.7). */
 
@@ -306,7 +323,7 @@ import type { IrModule, ModuleValue } from "./module.ts";
 import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
-export const IR_VERSION = 1;
+export const IR_VERSION = 2;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,
@@ -1302,8 +1319,8 @@ export function verifyDeployed(path: string): Verify {
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.21.0",
-  "description": "gripsack typescript frontend \u2014 typed module DSL, emits IR",
+  "version": "0.35.0",
+  "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",
   "main": "./dist/src/index.js",

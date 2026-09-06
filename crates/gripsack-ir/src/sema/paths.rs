@@ -161,7 +161,7 @@ mod tests {
 
     fn ir_with(from: &str, to: &str) -> String {
         format!(
-            r#"{{"ir_version": 1, "host": {{"os": "linux", "arch": "x86_64", "tags": [], "libc": "glibc-2.36"}}, "modules": {{"demo": {{
+            r#"{{"ir_version": 2, "host": {{"os": "linux", "arch": "x86_64", "tags": [], "libc": "glibc-2.36"}}, "modules": {{"demo": {{
             "install": [{{"from": {from:?}, "to": {to:?}, "mode": "owned"}}],
             "span": {{"file": "modules/demo.ts", "line": 3, "col": 1}}}}}}}}"#
         )

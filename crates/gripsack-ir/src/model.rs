@@ -194,15 +194,16 @@ pub enum Ownership {
 #[serde(deny_unknown_fields)]
 pub struct Dependency {
     pub module: String,
-    #[serde(default)]
+    #[serde(default, rename = "for")]
     pub edge: EdgeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
 }
 
-/// Build-only deps are ephemeral: present during build, referenced by no
-/// generation, GC'd afterward (0001 §3.1).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+/// Runtime dependencies deploy; build dependencies provide store artifacts to
+/// build steps without deploying destinations (0039). Invalid wire values are
+/// rejected with their declaration span before deserialization (E122).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeKind {
     #[default]

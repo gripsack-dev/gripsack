@@ -9,7 +9,7 @@
         "gui"
       ]
     },
-    "ir_version": 1,
+    "ir_version": 2,
     "modules": {
       "brewed": {
         "fetch": {
@@ -17,6 +17,53 @@
           "kind": "brew",
           "version": "1.8.0"
         }
+      },
+      "build-consumer": {
+        "depends": [
+          {
+            "for": "build",
+            "module": "build-toolchain"
+          }
+        ],
+        "steps": [
+          {
+            "action": {
+              "kind": "custom_shell",
+              "script": "mkdir -p out && cp \"$(command -v cc)\" out/built"
+            },
+            "id": "build",
+            "phase": "custom"
+          },
+          {
+            "action": {
+              "entries": [
+                {
+                  "from": "out/built",
+                  "mode": "owned",
+                  "to": "~/.local/bin/fixture-built"
+                }
+              ],
+              "kind": "install"
+            },
+            "id": "install",
+            "needs": [
+              "build"
+            ],
+            "phase": "install"
+          }
+        ]
+      },
+      "build-toolchain": {
+        "steps": [
+          {
+            "action": {
+              "kind": "custom_shell",
+              "script": "mkdir -p bin && printf '#!/bin/sh\\necho fixture\\n' > bin/cc && chmod +x bin/cc"
+            },
+            "id": "build",
+            "phase": "custom"
+          }
+        ]
       },
       "core": {
         "activate": [

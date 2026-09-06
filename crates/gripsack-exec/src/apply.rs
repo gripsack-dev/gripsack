@@ -211,7 +211,15 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // kill anywhere now leaves either a committed generation with its
     // intents recorded (next run resumes) or a record naming a
     // generation that never committed (next run discards)
-    let mut intents = crate::activate::collect(&order, &steps_by_module);
+    // build-only deps activate nothing (0039) — collect walks the
+    // deploying order only
+    let build_only = gripsack_ir::dependencies::build_only_modules(&ir.modules);
+    let deploying: Vec<String> = order
+        .iter()
+        .filter(|n| !build_only.contains(*n))
+        .cloned()
+        .collect();
+    let mut intents = crate::activate::collect(&deploying, &steps_by_module);
     // on_remove hooks (0035 F9): a module dropped from the IR fires
     // its removal intents with the new generation — the record is the
     // only durable place the old intents live

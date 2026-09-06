@@ -1,9 +1,54 @@
-# 0039 - Build closures (handover plan)
+# 0039 — Build closures
 
-Status: **handover — planned, not started**. A fresh agent executes
-this in a separate session. Everything below is decided or
-recommended; the marked brainstorm items are open for the
-implementer to evaluate. Owner-approved shape.
+Status: **implemented for core/TS 0.35.0**; release gates and publication follow.
+
+## Execution amendment — alpha IR cutover
+
+Owner approved an IR change rather than retaining compatibility solely
+because the product previously shipped `edge`. Plan recorded before the
+cutover:
+
+1. **IR v2** replaces dependency `edge` with `for`, values `runtime`
+   (default) and `build`. `schema/ir/v2.json`, Rust types, TypeScript
+   output, and the golden corpus move together. Keep `v1.json` as
+   historical documentation; core accepts v2 only. No aliases, shims,
+   or fallback parser. A v1 document fails the version gate before
+   field decoding, with advice to update a pinned frontend.
+2. **DSL** is `dep(name, { for: "build" })`, emitting `for` directly.
+   Reject old positional/options shapes, unknown purposes (E122 with
+   a declaration span), and ambiguous `GRIP_DEP_*` aliases (E123).
+   Rust's producer uses a typed dependency-purpose enum; invalid
+   values never enter it.
+3. **Deployment role** comes from the whole graph: any runtime
+   incoming edge wins; build incoming edges alone make a module
+   build-only; standalone modules deploy. Host membership supplies
+   graph nodes, not a second root/deployment flag. Subset apply uses
+   the same role decision as plan. Removing a consumer does not
+   undeclare a tool still explicitly listed as a standalone module.
+4. **Receipts and reachability**: retain build-only `ModuleState`
+   with `build_only: true`, store identity and payload receipts, but
+   empty `entries`, `intents`, and `env`. Compare store identity as
+   well as checks before reusing a receipt. Consumers record
+   `build_closure`; all retained generations pin these paths. GC
+   releases them only once no retained generation references them.
+5. **Execution**: order transitive build closure members using the
+   existing validated dependency order, never a second scheduler.
+   Freshly resolved dependency pins reach dependents in the same
+   apply, so the next warm apply does not rebuild needlessly.
+   Prepend closure bins to explicit step PATH or ambient PATH;
+   preserve OS-string paths. No inherited module env exports.
+6. **Proof and delivery**: exercise cold/warm applies, transitive pin
+   changes, runtime/build transitions, subset apply, payload receipt
+   failure/retry, rollback without builds, and GC with retained
+   history. Extend the op harness and seeded journeys. Run all four
+   compose gates and macOS CI. Update the site roadmap/docs and
+   release both core and TypeScript with the IR v2 migration noted.
+
+No destination algebra or transaction protocol changes: `lineage_model`
+and `specs/` remain unchanged. The sections below retain the original
+design motivation; this amendment governs where it refines them.
+
+## Original handover requirements
 
 The rules that govern this repo apply in full: plan-first for
 behavior changes, docker gates green (`test` / `ts-test` / `e2e` /
@@ -50,11 +95,11 @@ export default module("consumer", {
 
 ### Semantics, pinned
 
-- **DSL**: `dep("x", { for: "build" })` — one dependency list, the
-  split is a property of the edge. IR: `Dependency` gains
-  `for: "build" | "runtime"` (serde default `runtime` — additive, no
-  `ir_version` bump; the three-sides rule applies: `schema/ir/v1.json`,
-  `crates/gripsack-ir`, `typescript/` in one PR).
+- **DSL/IR**: `dep("x", { for: "build" })` — one dependency list,
+  the split is a property of the edge. IR v2 `Dependency.for` has
+  `build | runtime` with a runtime default. The version bump is
+  required because this replaces the previously shipped `edge`
+  field (see the execution amendment).
 - **GC**: the closure's store paths must survive while the consumer's
   generation lives: `ModuleState.build_closure: Vec<PathBuf>`
   (serde default; gc reachability reads it like `tree256` does).
@@ -166,3 +211,29 @@ Historical note for context: the owner shipped a primitive
 "ephemeral dependencies" version once (deploy-and-clean-after) — the
 closure approach replaces that idea entirely: nothing deploys, so
 nothing needs cleaning.
+
+## Brainstorm verdicts
+
+1. **Reject speculative edge types.** The fixtures need build/runtime
+   only. In-core linters do not require a verify-tool edge; core Deno
+   provisioning remains outside the environment DAG. Revisit a third
+   purpose only with a concrete consumer, not a taxonomy exercise.
+2. **Defer library/header exports, low priority.** No real lib/include
+   consumer fixture justifies CPATH/LIBRARY_PATH/provides semantics.
+   Recorded after reliability work on the site roadmap.
+3. **Defer controlled PATH, low priority and opt-in.** The implemented
+   shell/structured fixtures deliberately depend on system sh, mkdir,
+   and cp. A strict mode needs an explicit system-tool baseline;
+   simply removing ambient PATH would break them. Prefer a global
+   build policy rather than conflicting per-edge PATH policies.
+4. **Defer general env inheritance separately.** It was not already
+   implemented: current module env is activation-profile data. Keep
+   the existing roadmap priority; closure exports are PATH and typed
+   dependency roots only, not implicit profile-env inheritance.
+5. **Adopt a marker, not a new destination opcode.** The existing
+   marker mechanism displays each build-only dependency while the
+   shared graph projection excludes all its destination operations.
+
+The implementation is split across IR graph decisions, BuildEnv,
+scheduler input snapshots, the per-module lifecycle and its receipt
+submodule. No new transaction or ownership algebra was introduced.

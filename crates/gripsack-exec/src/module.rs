@@ -9,13 +9,15 @@
 //! way. The pattern follows cargo's UnitContext: one context struct,
 //! no six-argument function threading.
 
+mod verify;
+
 use crate::ctx::{Ctx, ExecError};
 use crate::deploy::deploy_entry;
 use crate::lockfile;
-use crate::report::{ReportKind, StepReport, describe_fetch, describe_verify};
+use crate::report::{ReportKind, StepReport, describe_fetch};
 use crate::resolve::{module_input, resolve_spec};
 use crate::util::{fresh_staging, progress};
-use crate::verify::{run_shell, run_verify};
+use crate::verify::run_shell;
 use gripsack_ir::{Build, Step, StepAction, Verify};
 use gripsack_store as store;
 use std::path::PathBuf;
@@ -80,6 +82,14 @@ struct ModuleRun<'a> {
     /// at publish. Recorded into the generation manifest for
     /// host-independent store verify.
     tree256: Option<String>,
+    /// The build closure this module's produce-phase steps run in
+    /// (0039): build-only deps' store paths as PATH prefix +
+    /// GRIP_DEP_* vars. Empty for modules without build deps.
+    build_env: crate::closure::BuildEnv,
+    /// This module deploys nothing (0039): every incoming edge is a
+    /// build edge. Produce/publish still run; deploy and destination
+    /// verifies don't; the manifest retains only payload state and receipts.
+    build_only: bool,
 }
 
 /// Identity errors (new) escape before anything deploys; phase errors
@@ -96,6 +106,10 @@ pub(crate) struct ModuleInputs<'a> {
     pub prev_module: Option<&'a store::ModuleState>,
     pub locked: Option<&'a lockfile::LockEntry>,
     pub lock: &'a lockfile::Lockfile,
+    /// The closure env for produce-phase steps (0039).
+    pub build_env: crate::closure::BuildEnv,
+    /// This module is a build-only dependency (0039).
+    pub build_only: bool,
 }
 
 pub(crate) fn run_module<'a>(
@@ -133,6 +147,8 @@ impl<'a> ModuleRun<'a> {
             prev_module,
             locked,
             lock,
+            build_env,
+            build_only,
         } = inputs;
         // identity is pure resolution (identity.rs) — this type is
         // the phase machine that executes against its answer
@@ -166,6 +182,8 @@ impl<'a> ModuleRun<'a> {
             verified: None,
             lock_entry: None,
             error: None,
+            build_env,
+            build_only,
         })
     }
 
@@ -341,10 +359,11 @@ impl<'a> ModuleRun<'a> {
             .clone();
         std::fs::create_dir_all(&dir)?;
         let workdir = cwd.map(|c| dir.join(c)).unwrap_or_else(|| dir.clone());
-        let status = std::process::Command::new(program)
-            .args(args)
-            .current_dir(&workdir)
-            .envs(env)
+        let mut command = std::process::Command::new(program);
+        command.args(args).current_dir(&workdir);
+        command.envs(env);
+        self.build_env.apply(&mut command).map_err(fail)?;
+        let status = command
             .status()
             .map_err(|e| fail(format!("cannot spawn {program}: {e}")))?;
         if !status.success() {
@@ -371,7 +390,9 @@ impl<'a> ModuleRun<'a> {
         // get_or_insert persists the dir: publish's fresh_staging must
         // never wipe what a fetchless build/run step just produced
         std::fs::create_dir_all(&dir)?;
-        run_shell(script, &dir).map_err(|detail| ExecError::Step {
+        // the build closure rides the step env (0039): PATH gains the
+        // deps' bin dirs, GRIP_DEP_* names their store roots
+        run_shell(script, &dir, Some(&self.build_env)).map_err(|detail| ExecError::Step {
             module: self.name.to_string(),
             step: step.id.clone(),
             detail,
@@ -470,6 +491,18 @@ impl<'a> ModuleRun<'a> {
     /// path. Deploy runs even when satisfied — it's idempotent and
     /// repairs drift.
     fn deploy(&mut self) -> Result<(), ExecError> {
+        if self.build_only {
+            // 0039: a build-only dependency deploys nothing — visible
+            // as a report line, never a silent no-op. Its store path
+            // rides the consumer's build_closure instead.
+            self.reports.push(StepReport {
+                module: self.name.to_string(),
+                summary: "build-only dependency — staged for the build closure, not deployed"
+                    .to_string(),
+                kind: ReportKind::Satisfied,
+            });
+            return Ok(());
+        }
         for step in self.steps {
             match &step.action {
                 StepAction::Install { entries } | StepAction::ConfigDeploy { entries } => {
@@ -504,87 +537,16 @@ impl<'a> ModuleRun<'a> {
         Ok(())
     }
 
-    /// The declared checks' fingerprints, sorted (receipt identity).
-    fn verify_fingerprints(&self) -> Vec<String> {
-        let mut fps: Vec<String> = self
-            .steps
-            .iter()
-            .filter_map(|s| match &s.action {
-                StepAction::Verify { verify } => Some(verify),
-                _ => None,
-            })
-            .chain(self.pending_verifies.iter().copied())
-            .map(|v| {
-                let json = serde_json::to_string(v).expect("verify specs serialize");
-                store::hash::hex_sha256(json.as_bytes())
-            })
-            .collect();
-        fps.sort();
-        fps
-    }
-
-    /// Verify — the receipt rule (0035 F2): skip ONLY when a committed
-    /// generation verified this exact produced state with these exact
-    /// checks. Store presence is not a receipt; a failed run never
-    /// writes one; changing a verifier invalidates it.
-    fn verify(&mut self) -> Result<(), ExecError> {
-        let fps = self.verify_fingerprints();
-        if fps.is_empty() {
-            return Ok(());
-        }
-        let receipt_holds = self.prev_module.is_some_and(|m| {
-            m.verified.as_deref() == Some(fps.as_slice())
-                && m.entries.len() == self.deployed.len()
-                && m.entries.iter().zip(self.deployed.iter()).all(|(a, b)| {
-                    // the produced state sans lineage (the epoch's
-                    // prior is not content)
-                    a.from == b.from
-                        && a.to == b.to
-                        && a.mode == b.mode
-                        && a.hash == b.hash
-                        && a.file_mode == b.file_mode
-                        && a.preserved_drift == b.preserved_drift
-                })
-        });
-        if receipt_holds {
-            // the receipt rides forward — the manifest must not
-            // differ from the committed generation, or every warm
-            // apply would cut a generation
-            self.verified = Some(fps);
-            return Ok(());
-        }
-        for step in self.steps {
-            if let StepAction::Verify { verify } = &step.action {
-                progress(self.ctx, self.name, "verifying");
-                run_verify(self.name, verify, &self.store_path, self.version.as_deref())?;
-                self.reports.push(StepReport {
-                    module: self.name.to_string(),
-                    summary: describe_verify(verify, self.version.as_deref()),
-                    kind: ReportKind::Verified,
-                });
-            }
-        }
-        for verify in self.pending_verifies.clone() {
-            run_verify(self.name, verify, &self.store_path, self.version.as_deref())?;
-            self.reports.push(StepReport {
-                module: self.name.to_string(),
-                summary: describe_verify(verify, self.version.as_deref()),
-                kind: ReportKind::Verified,
-            });
-        }
-        // every declared check passed — the receipt rides the manifest
-        self.verified = Some(fps);
-        Ok(())
-    }
-
     fn finish(self) -> ModuleOutcome {
         ModuleOutcome {
             state: store::ModuleState {
                 store_path: self.store_path,
+                build_only: self.build_only,
                 entries: self.deployed,
                 intents: self
                     .steps
                     .iter()
+                    .filter(|_| !self.build_only)
                     .filter_map(|s| match &s.action {
                         StepAction::Intent { action, trigger } => Some(store::IntentRecord {
                             action: action.as_ref().clone(),
@@ -594,8 +556,13 @@ impl<'a> ModuleRun<'a> {
                     })
                     .collect(),
                 verified: self.verified,
-                env: self.module.env.clone(),
+                env: if self.build_only {
+                    Vec::new()
+                } else {
+                    self.module.env.clone()
+                },
                 tree256: self.tree256,
+                build_closure: self.build_env.into_paths(),
             },
             reports: self.reports,
             lock_entry: self.lock_entry,

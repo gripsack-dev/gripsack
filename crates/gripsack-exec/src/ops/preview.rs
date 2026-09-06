@@ -34,6 +34,22 @@ pub fn preview_ops(
     }
     let home = store::gripsack_home();
     let steps_by_module = crate::expand::expand_all(&ir.modules);
+    // Build closures (0039): a build-only dep plans ZERO destination
+    // ops — one marker line instead, naming the consumers. The same
+    // whole-graph rule apply uses, so preview and apply agree.
+    let build_only = gripsack_ir::dependencies::build_only_modules(&ir.modules);
+    let mut build_consumers: std::collections::BTreeMap<&str, Vec<&str>> =
+        std::collections::BTreeMap::new();
+    for (name, module) in &ir.modules {
+        for dep in &module.depends {
+            if dep.edge == gripsack_ir::EdgeKind::Build {
+                build_consumers
+                    .entry(dep.module.as_str())
+                    .or_default()
+                    .push(name);
+            }
+        }
+    }
     // a locked, present payload resolves the store path offline
     // (0035 F7): a deployed fetched module previews satisfied, not
     // deferred
@@ -45,6 +61,29 @@ pub fn preview_ops(
         path.exists().then_some(path)
     };
     for (name, steps) in &steps_by_module {
+        if build_only.contains(name) {
+            // the closure line (0039): fetch + stage, never deploy
+            let consumers = build_consumers
+                .get(name.as_str())
+                .map(|c| c.join(", "))
+                .unwrap_or_default();
+            ops.push(Op {
+                module: name.clone(),
+                dest: PathBuf::new(),
+                declared_to: String::new(),
+                mode: Ownership::Merge, // unused on marker ops
+                kind: OpKind::RunEffect,
+                authority: None,
+                observed: None,
+                intended: Intended::Removed,
+                produces: None,
+                note: Some(format!(
+                    "{name}: fetch + stage for build ({consumers}) — not deployed"
+                )),
+                removing: None,
+            });
+            continue;
+        }
         for step in steps {
             let entries: &[Entry] = match &step.action {
                 gripsack_ir::StepAction::Install { entries }

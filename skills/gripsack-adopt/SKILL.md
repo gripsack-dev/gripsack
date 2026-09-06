@@ -98,7 +98,8 @@ Rules you must hold:
 
 - Every module: a `verify` — no exceptions.
 - Destinations absolute or `~/`-prefixed (E102).
-- `dep()` for real dependencies; `Edge.BUILD` for build-only toolchains.
+- `dep()` for real dependencies; `dep(name, { for: "build" })` for
+  build-only toolchains (0039) — fetched and staged, never deployed.
 - If the tool needs a lock (package managers!) declare
   `resource("pixi.lock")` first and require it on the step.
 - Config `from` paths are repo-relative; the file must exist in the

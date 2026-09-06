@@ -281,7 +281,7 @@ fn service(module: &str, svc: &str, user: bool) -> StepReport {
 
 fn custom_shell(module: &str, script: &str) -> StepReport {
     let dir = std::env::temp_dir();
-    match crate::verify::run_shell(script, &dir) {
+    match crate::verify::run_shell(script, &dir, None) {
         Ok(()) => StepReport {
             module: module.to_string(),
             summary: "custom hook ran".to_string(),

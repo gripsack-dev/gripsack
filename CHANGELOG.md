@@ -3,6 +3,40 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.35.0] — 2026-09-06
+
+Build closures (plan/0039) — a build dependency is no longer a
+deployed one.
+
+### Added
+
+- **`dep(name, { for: "build" })`** — build-only dependencies are
+  fetched and stored, never deployed merely to serve a compile.
+  Build/custom/run steps prepend the transitive closure's `bin/`
+  directories to PATH and receive `GRIP_DEP_<NAME>` store roots.
+  Any runtime incoming edge still requires normal deployment.
+- **Payload receipts and retained-history GC** — build-only manifest
+  records keep verification receipts but no destinations, activation
+  intents, or profile exports. Consumers record `build_closure`; all
+  retained generations pin those paths until GC prunes that history.
+- **Fresh dependency pins reach consumers immediately** — a cold
+  apply followed by a warm one reuses the artifact; direct or
+  transitive pin changes rebuild it. Rollback never rebuilds.
+- Unknown `for` values receive source-labeled **E122** diagnostics.
+  Ambiguous normalized `GRIP_DEP_*` names are rejected with **E123**.
+
+### Changed
+
+- **Breaking alpha cutover to IR v2** — `Dependency.for` replaces
+  `edge`; the core accepts v2 only and rejects v1 before field
+  decoding. The v1 schema remains historical documentation.
+  Lockfiles and persisted generations remain readable.
+- **`dep()` takes an options object** —
+  `dep("rust", "build")` becomes `dep("rust", { for: "build" })`.
+  `dep("git")` still defaults to runtime. Update pinned
+  `@gripsack/core` to `^0.35.0` or remove the pin to use the embedded
+  frontend. Core and TypeScript 0.35.0 ship together.
+
 ## [0.34.0] — 2026-09-06
 
 The journey harness (plan/0038) — stateful property tests of user
