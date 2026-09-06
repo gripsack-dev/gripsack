@@ -4,7 +4,7 @@ use crate::diagnostic::{Diagnostic, codes};
 use crate::model::Ir;
 
 /// The only IR version this core accepts (for now).
-pub const IR_VERSION: u32 = 1;
+pub const IR_VERSION: u32 = 2;
 
 /// Parse IR JSON into the typed model (E000 malformed, E100 version).
 /// Pass 1.5 (tagged-field validation) runs BEFORE serde drops unknown
@@ -34,15 +34,6 @@ pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
              both are current, this is a frontend bug",
         )
     })?;
-    if ir.ir_version != IR_VERSION {
-        return Err(Diagnostic::error(
-            codes::VERSION,
-            format!(
-                "unsupported ir_version {} (this core accepts {IR_VERSION})",
-                ir.ir_version
-            ),
-        ));
-    }
     Ok(ir)
 }
 

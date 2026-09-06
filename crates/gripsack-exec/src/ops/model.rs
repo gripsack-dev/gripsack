@@ -10,7 +10,9 @@
 #[cfg(test)]
 mod tests {
     use crate::ctx::Ctx;
-    use crate::ops::{Authority, DestView, ModeInput, OpKind, execute_op, plan_entry_op};
+    use crate::ops::{
+        Authority, DestView, ModeInput, OpKind, execute_op, plan_entry_op, preview_ops,
+    };
     use gripsack_ir::{Entry, Ownership};
     use gripsack_store as store;
     use std::path::{Path, PathBuf};
@@ -331,6 +333,86 @@ mod tests {
         );
     }
 
+    /// 0039's case class: a build-only dep in the graph plans ZERO
+    /// destination ops — one marker instead — and the consumer's
+    /// destination ops are exactly what they'd be without the edge.
+    /// The shipped planner (preview_ops), not a reimplementation.
+    #[test]
+    fn a_build_only_dep_plans_zero_destination_ops() {
+        for live in [
+            Live::Absent,
+            Live::File("foreign", 0o600),
+            Live::Link("foreign"),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let repo = dir.path();
+            let dest = materialize(repo, &live);
+            std::fs::write(repo.join("payload"), "built artifact").unwrap();
+            let mut ir = gripsack_ir::Ir {
+                ir_version: gripsack_ir::IR_VERSION,
+                host: Default::default(),
+                resources: vec![],
+                modules: [
+                    (
+                        "consumer".into(),
+                        gripsack_ir::Module {
+                            install: vec![entry(Ownership::TrackedCopy, &dest)],
+                            ..Default::default()
+                        },
+                    ),
+                    (
+                        "compiler".into(),
+                        gripsack_ir::Module {
+                            install: vec![entry(
+                                Ownership::TrackedCopy,
+                                &repo.join("compiler-bin"),
+                            )],
+                            ..Default::default()
+                        },
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            };
+            let lock = crate::lockfile::Lockfile::default();
+            let adopting = Default::default();
+            let runtime = preview_ops(&ir, repo, None, &adopting, &lock).unwrap();
+            ir.modules
+                .get_mut("consumer")
+                .unwrap()
+                .depends
+                .push(gripsack_ir::Dependency {
+                    module: "compiler".into(),
+                    edge: gripsack_ir::EdgeKind::Build,
+                    span: None,
+                });
+            let build = preview_ops(&ir, repo, None, &adopting, &lock).unwrap();
+            let compiler: Vec<_> = build.iter().filter(|o| o.module == "compiler").collect();
+            assert_eq!(
+                compiler.len(),
+                1,
+                "exactly one closure marker per build-only module"
+            );
+            assert!(matches!(compiler[0].kind, OpKind::RunEffect));
+            assert!(compiler[0].dest.as_os_str().is_empty());
+            assert!(
+                runtime
+                    .iter()
+                    .any(|o| o.module == "compiler" && !o.dest.as_os_str().is_empty())
+            );
+
+            let control = runtime.iter().find(|o| o.module == "consumer").unwrap();
+            let actual = build.iter().find(|o| o.module == "consumer").unwrap();
+            assert_eq!(actual.dest, control.dest);
+            assert_eq!(
+                std::mem::discriminant(&actual.kind),
+                std::mem::discriminant(&control.kind)
+            );
+            assert_eq!(actual.authority, control.authority);
+            assert_eq!(actual.observed, control.observed);
+            assert_eq!(actual.intended, control.intended);
+        }
+    }
     fn model_ctx(home: &Path) -> Ctx {
         Ctx {
             home: home.to_path_buf(),

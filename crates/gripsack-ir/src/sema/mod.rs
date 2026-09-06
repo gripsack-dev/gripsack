@@ -57,7 +57,7 @@ mod tests {
     use crate::model::*;
 
     const EXAMPLE: &str = r#"{
-        "ir_version": 1,
+        "ir_version": 2,
         "host": {"os": "linux", "arch": "x86_64", "tags": ["gui"]},
         "modules": {
             "helix": {
@@ -66,7 +66,7 @@ mod tests {
                 "install": [{"from": "bin/hx", "to": "~/.local/bin/hx", "mode": "owned"}],
                 "config": [{"from": "config.toml", "to": "~/.config/helix/config.toml",
                             "mode": "tracked_copy"}],
-                "depends": [{"module": "git", "edge": "runtime"}],
+                "depends": [{"module": "git", "for": "runtime"}],
                 "activate": [{"trigger": "post_activate",
                               "kind": "service", "name": "syncthing", "user": true}],
                 "span": {"file": "modules/helix.py", "line": 4, "col": 1}
@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn parses_and_validates_example() {
         let ir = check(EXAMPLE).unwrap();
-        assert_eq!(ir.ir_version, 1);
+        assert_eq!(ir.ir_version, crate::IR_VERSION);
         assert_eq!(ir.modules.len(), 2);
         let helix = &ir.modules["helix"];
         assert!(matches!(helix.fetch, Some(FetchSpec::GithubRelease { .. })));
@@ -103,6 +103,20 @@ mod tests {
     }
 
     #[test]
+    fn unknown_edge_kind_is_span_labeled_e122() {
+        // Invalid purpose values must preserve the source span before the
+        // typed enum boundary, whether emitted by JS or handwritten IR.
+        let bad = EXAMPLE.replace(r#""for": "runtime""#, r#""for": "buidl""#);
+        let diagnostics = check(&bad).unwrap_err();
+        assert_eq!(diagnostics.len(), 1);
+        let d = &diagnostics[0];
+        assert_eq!(d.code, codes::UNKNOWN_EDGE);
+        let rendered = d.to_string();
+        assert!(rendered.contains("error[E122]"));
+        assert!(rendered.contains("modules/helix.py:4:1"));
+    }
+
+    #[test]
     fn collects_multiple_diagnostics() {
         let bad = EXAMPLE
             .replace(r#""module": "git""#, r#""module": "nope""#)
@@ -116,8 +130,17 @@ mod tests {
 
     #[test]
     fn rejects_wrong_version() {
-        let bad = EXAMPLE.replace(r#""ir_version": 1"#, r#""ir_version": 99"#);
+        let bad = EXAMPLE.replace(r#""ir_version": 2"#, r#""ir_version": 99"#);
         let diagnostics = check(&bad).unwrap_err();
+        assert_eq!(diagnostics[0].code, codes::VERSION);
+    }
+
+    #[test]
+    fn legacy_ir_is_rejected_before_decoding_renamed_fields() {
+        let old = EXAMPLE
+            .replace(r#""ir_version": 2"#, r#""ir_version": 1"#)
+            .replace(r#""for":"#, r#""edge":"#);
+        let diagnostics = check(&old).unwrap_err();
         assert_eq!(diagnostics[0].code, codes::VERSION);
     }
 
@@ -129,18 +152,10 @@ mod tests {
     }
 
     #[test]
-    fn ownership_and_edge_defaults() {
-        let e: Entry = serde_json::from_str(r#"{"from":"a","to":"/b"}"#).unwrap();
-        assert!(matches!(e.mode, Ownership::Owned));
-        let d: Dependency = serde_json::from_str(r#"{"module":"m"}"#).unwrap();
-        assert!(matches!(d.edge, EdgeKind::Runtime));
-    }
-
-    #[test]
     fn dotfiles_only_module_needs_no_source() {
         // 0006 §2 level 1: a module that only manages configs.
         let json = r#"{
-            "ir_version": 1,
+            "ir_version": 2,
             "modules": {
                 "helix": {
                     "config": [{"from": "config.toml",
@@ -155,7 +170,7 @@ mod tests {
     }
 
     const STEPPED: &str = r#"{
-        "ir_version": 1,
+        "ir_version": 2,
         "modules": {
             "helix": {
                 "steps": [
@@ -305,7 +320,7 @@ mod tests {
     #[test]
     fn merge_and_template_modes_pass_sema_with_vars_and_marker() {
         let json = r##"{
-            "ir_version": 1,
+            "ir_version": 2,
             "modules": {
                 "shell": {
                     "config": [
@@ -322,7 +337,7 @@ mod tests {
     #[test]
     fn destination_shaped_verify_path_is_e109() {
         let json = r#"{
-            "ir_version": 1,
+            "ir_version": 2,
             "modules": {
                 "gitui": {
                     "config": [{"from": "theme.ron", "to": "~/.config/gitui/theme.ron"}],
@@ -359,7 +374,7 @@ mod contract_tests {
         // the contract is load-bearing (review finding B): a camelCase
         // leak like baseUrl is a hard error, never silent data loss
         let json = r##"{
-            "ir_version": 1,
+            "ir_version": 2,
             "modules": {
                 "gh": {
                     "fetch": {"kind": "github_release", "repo": "a/b",

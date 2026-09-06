@@ -141,20 +141,38 @@ pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palett
     } else {
         title
     };
-
     if let Some(fetch) = &module.fetch {
         out.push_str(&format!(
             "\n  fetch    {}",
             gripsack_exec::report::describe_fetch(fetch)
         ));
     }
-    for entry in module.install.iter() {
+    // 0039: a build-only dependency deploys nothing — its declared
+    // install/config lines must not read as plan intent
+    let build_only = gripsack_ir::dependencies::build_only_modules(&ir.modules).contains(name);
+    if build_only {
+        let consumers: Vec<&str> = ir
+            .modules
+            .iter()
+            .filter(|(_, m)| {
+                m.depends
+                    .iter()
+                    .any(|d| d.module == name && d.edge == gripsack_ir::EdgeKind::Build)
+            })
+            .map(|(n, _)| n.as_str())
+            .collect();
+        out.push_str(&format!(
+            "\n  closure  build-only ({} builds against it) — fetched + staged, never deployed",
+            consumers.join(", ")
+        ));
+    }
+    for entry in module.install.iter().filter(|_| !build_only) {
         out.push_str(&format!(
             "\n  install  {} → {} ({:?}) [reversible: prior state recorded]",
             entry.from, entry.to, entry.mode
         ));
     }
-    for entry in module.config.iter() {
+    for entry in module.config.iter().filter(|_| !build_only) {
         out.push_str(&format!(
             "\n  config   {} → {} ({:?}) [reversible: prior state recorded]",
             entry.from, entry.to, entry.mode
@@ -172,7 +190,7 @@ pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palett
     if !dependents.is_empty() {
         out.push_str(&format!("\n  blocks   {}", dependents.join(", ")));
     }
-    for intent in module.activate.iter() {
+    for intent in module.activate.iter().filter(|_| !build_only) {
         out.push_str(&format!(
             "\n  activate {:?} [best-effort: adapter re-runs, no automatic inverse]",
             intent.action
@@ -181,6 +199,19 @@ pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palett
     if let Some(steps) = &module.steps {
         out.push_str("\n  steps");
         for step in steps {
+            if build_only
+                && matches!(
+                    step.action,
+                    gripsack_ir::StepAction::Install { .. }
+                        | gripsack_ir::StepAction::ConfigDeploy { .. }
+                        | gripsack_ir::StepAction::Intent { .. }
+                        | gripsack_ir::StepAction::Verify {
+                            verify: gripsack_ir::Verify::FileDeployed { .. }
+                        }
+                )
+            {
+                continue;
+            }
             let needs = if step.needs.is_empty() {
                 String::new()
             } else {

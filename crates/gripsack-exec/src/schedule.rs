@@ -14,7 +14,7 @@ use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::PathBuf;
 
-use std::sync::{Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 /// What the scheduler produced: the new manifest state, the reports
 /// (grouped per module, completion-ordered), and lockfile entries.
@@ -32,6 +32,9 @@ struct State {
     running: BTreeSet<String>,
     error: Option<(String, ExecError, store::ModuleState)>,
     modules: BTreeMap<String, store::ModuleState>,
+    /// Ready consumers see dependency pins resolved in this run, not merely
+    /// the lockfile that existed when apply began (0035 F4, 0039).
+    lock: Arc<Lockfile>,
     reports: Vec<(String, Vec<StepReport>)>,
     lock_entries: BTreeMap<String, LockEntry>,
 }
@@ -63,6 +66,20 @@ pub(crate) fn run_all(
         indegree.insert(name, deps);
     }
 
+    let build_only = gripsack_ir::dependencies::build_only_modules(&ir.modules);
+    let closures: BTreeMap<&str, Vec<&str>> = wanted
+        .iter()
+        .map(|name| {
+            let reachable = gripsack_ir::dependencies::build_closure_names(&ir.modules, name);
+            let closure = order
+                .iter()
+                .map(String::as_str)
+                .filter(|dep| reachable.contains(dep))
+                .collect();
+            (*name, closure)
+        })
+        .collect();
+
     let state = Mutex::new(State {
         ready: indegree
             .iter()
@@ -72,6 +89,7 @@ pub(crate) fn run_all(
         running: BTreeSet::new(),
         error: None,
         modules: BTreeMap::new(),
+        lock: Arc::new(lock.clone()),
         reports: Vec::new(),
         lock_entries: BTreeMap::new(),
     });
@@ -89,6 +107,9 @@ pub(crate) fn run_all(
         for _ in 0..workers {
             scope.spawn(|| {
                 loop {
+                    // Readiness guarantees all dependencies have published.
+                    // Copy only the closure paths and share an immutable pin
+                    // snapshot; completion updates it before releasing readers.
                     let next = {
                         let mut st = state.lock().expect("scheduler state");
                         loop {
@@ -105,7 +126,11 @@ pub(crate) fn run_all(
                             }
                             if let Some(name) = st.ready.pop_front() {
                                 st.running.insert(name.clone());
-                                break Some(name);
+                                let build_env = crate::closure::BuildEnv::compose(
+                                    &closures[name.as_str()],
+                                    &st.modules,
+                                );
+                                break Some((name, build_env, Arc::clone(&st.lock)));
                             }
                             if st.running.is_empty() {
                                 return; // queue drained, nothing in flight
@@ -113,17 +138,38 @@ pub(crate) fn run_all(
                             st = condvar.wait(st).expect("scheduler state");
                         }
                     };
-                    let Some(name) = next else {
+                    let Some((name, build_env, current_lock)) = next else {
                         continue;
                     };
-                    let result = run_one(&name, ir, steps_by_module, ctx, prev, lock);
+                    let result = build_env.and_then(|build_env| {
+                        run_one(
+                            &name,
+                            ir,
+                            steps_by_module,
+                            ctx,
+                            prev,
+                            &current_lock,
+                            Scheduled {
+                                build_env,
+                                build_only: build_only.contains(&name),
+                            },
+                        )
+                    });
+                    drop(current_lock);
                     let mut st = state.lock().expect("scheduler state");
                     st.running.remove(&name);
                     match result {
                         Ok(outcome) if outcome.error.is_none() => {
                             st.reports.push((name.clone(), outcome.reports));
+                            // Store-only states keep payload receipts, but
+                            // carry no destination or activation effects.
                             st.modules.insert(name.clone(), outcome.state);
                             if let Some(entry) = outcome.lock_entry {
+                                if st.lock.modules.get(&name) != Some(&entry) {
+                                    Arc::make_mut(&mut st.lock)
+                                        .modules
+                                        .insert(name.clone(), entry.clone());
+                                }
                                 st.lock_entries.insert(name.clone(), entry);
                             }
                             if let Some(deps) = dependents.get(name.as_str()) {
@@ -160,11 +206,13 @@ pub(crate) fn run_all(
                                     e,
                                     store::ModuleState {
                                         store_path: PathBuf::new(),
+                                        build_only: false,
                                         intents: vec![],
                                         verified: None,
                                         entries: vec![],
                                         env: vec![],
                                         tree256: None,
+                                        build_closure: vec![],
                                     },
                                 ));
                             }
@@ -206,6 +254,14 @@ pub(crate) fn prev_by_dest(
     map
 }
 
+/// What the scheduler adds to one module run beyond the static graph
+/// inputs (0039): the composed build closure and the build-only
+/// verdict. A struct, not two more positional arguments.
+struct Scheduled {
+    build_env: crate::closure::BuildEnv,
+    build_only: bool,
+}
+
 fn run_one(
     name: &str,
     ir: &Ir,
@@ -213,6 +269,7 @@ fn run_one(
     ctx: &Ctx,
     prev: &BTreeMap<String, store::ModuleState>,
     lock: &Lockfile,
+    scheduled: Scheduled,
 ) -> Result<ModuleOutcome, ExecError> {
     let module: &Module = &ir.modules[name];
     let steps = &steps_by_module[name];
@@ -226,6 +283,8 @@ fn run_one(
             prev_module: prev.get(name),
             locked: lock.modules.get(name),
             lock,
+            build_env: scheduled.build_env,
+            build_only: scheduled.build_only,
         },
         ctx,
     )

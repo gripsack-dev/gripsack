@@ -11,7 +11,13 @@ sequence to a named regression test.
 import random
 
 import pytest
-from conftest import grip, make_env_repo, make_tarball, refresh_host
+from conftest import (
+    grip,
+    make_env_repo,
+    make_tarball,
+    make_toolchain_tarball,
+    refresh_host,
+)
 
 SEEDS = [7, 42, 1337, 2026, 31337]
 STEPS = 30
@@ -46,6 +52,32 @@ import { module, customHook } from "@gripsack/core";
 
 export default module("hook", {
   activate: [customHook("echo tick >> ~/" + "hook.log")],
+});
+"""
+
+# 0039: a build edge in the world. The toolchain is fetched + stored
+# but NEVER deployed; the consumer builds against it through the
+# closure (which tcc + GRIP_DEP_TOOLCHAIN) and deploys the artifact.
+TOOLCHAIN_MOD = """
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("toolchain", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/tcc": symlink("~/.local/bin/tcc") }},
+}});
+"""
+
+BUILT_MOD = """
+import { dep, installStep, module, shellStep, symlink } from "@gripsack/core";
+
+export default module("built", {
+  depends: [dep("toolchain", { for: "build" })],
+  steps: [
+    shellStep("mkdir -p out && cp \\"$(which tcc)\\" out/built", "build"),
+    installStep({ "out/built": symlink("~/.local/bin/built") }, "install", {
+      needs: ["build"],
+    }),
+  ],
 });
 """
 
@@ -146,6 +178,8 @@ def test_random_journey(sandbox, seed):
     link_dest = sandbox / ".local/bin/tool"
     copy_abs = str(copy_dest)
     link_abs = str(link_dest)
+    built_dest = sandbox / ".local/bin/built"
+    tcc_dest = sandbox / ".local/bin/tcc"
 
     (repo_root / "configs" / "copy").mkdir(parents=True)
     (repo_root / "configs" / "shell").mkdir(parents=True)
@@ -154,6 +188,8 @@ def test_random_journey(sandbox, seed):
     (repo_root / "configs" / "shell" / "block.sh").write_text("export V=0\n")
     payload = repo_root / "tool.tar.gz"
     make_tarball(payload, {"bin/tool": b"#!/bin/sh\necho tool-v0\n"})
+    tc_payload = repo_root / "toolchain.tar.gz"
+    make_toolchain_tarball(tc_payload, {"bin/tcc": b"#!/bin/sh\necho tcc-v0\n"})
 
     # destination models: copy and merge hold CONTENT; the link holds
     # a marker = the payload bytes it points at
@@ -162,6 +198,7 @@ def test_random_journey(sandbox, seed):
     merge.origin = "# my bashrc\n"
     merge.live = "# my bashrc\n"
     tool = Dest(link_to)
+    built = Dest("~/.local/bin/built")
 
     present = {"copy": True, "tool": True, "shell": True, "hook": True}
 
@@ -175,6 +212,11 @@ def test_random_journey(sandbox, seed):
             mods["shell"] = MERGE_MOD
         if present["hook"]:
             mods["hook"] = HOOK_MOD
+        # the build edge (0039): both always present — the consumer
+        # rebuilds when the toolchain pin moves; the toolchain itself
+        # never deploys
+        mods["toolchain"] = TOOLCHAIN_MOD.format(payload=tc_payload)
+        mods["built"] = BUILT_MOD
         (repo_root / "configs" / "copy" / "a.conf").write_text(copy.repo)
         (repo_root / "configs" / "shell" / "block.sh").write_text(merge.repo)
         # re-entrant: removed modules' files are DELETED (an
@@ -212,6 +254,10 @@ def test_random_journey(sandbox, seed):
         else:
             tool.undeclare()
             tool.applied()
+        # always declared (0039 fixture): the link lands, rebuilt
+        # against the current toolchain pin
+        built.declared = True
+        built.applied()
         return gen
 
     def check_world():
@@ -219,6 +265,7 @@ def test_random_journey(sandbox, seed):
             _check_world()
         except AssertionError as e:
             raise AssertionError(f"seed={seed} trace: {' '.join(trace)}\n{e}")
+
     def _check_world():
         # content destinations
         if copy.live is None:
@@ -247,6 +294,14 @@ def test_random_journey(sandbox, seed):
             assert "gripsack" in str(target) or "store" in str(target)
         else:
             assert not link_dest.exists(), f"seed={seed}: tool link should be gone"
+        # 0039 invariants, checked after EVERY step: the build-only
+        # toolchain never deploys, and the consumer's artifact link
+        # stands (rebuilt against the current pin)
+        assert not tcc_dest.exists(), f"seed={seed}: build dep tcc leaked into HOME"
+        if built.managed is not None:
+            assert built_dest.is_symlink(), f"seed={seed}: built link missing"
+            target = built_dest.readlink()
+            assert "gripsack" in str(target) or "store" in str(target)
         # system health
         out = grip("check", "--host", "testhost", cwd=repo_root)
         assert out.returncode == 0, f"seed={seed}: check failed: {out.stderr}"
@@ -258,11 +313,14 @@ def test_random_journey(sandbox, seed):
     copy.declare("copy-v0\n")
     merge.declare("export V=0\n")
     tool.declare("tool-v0\n")
+    built.declare("tcc-v0\n")
     make_env_repo(repo_root, {
         "copy": module_source(repo_root, "copy", copy.to, None),
         "tool": module_source(repo_root, "tool", tool.to, None),
         "shell": module_source(repo_root, "shell", None, None),
         "hook": module_source(repo_root, "hook", None, None),
+        "toolchain": TOOLCHAIN_MOD.format(payload=tc_payload),
+        "built": BUILT_MOD,
     })
     trace = ["init+apply"]
 
@@ -277,7 +335,8 @@ def test_random_journey(sandbox, seed):
                 "edit_copy", "edit_merge", "edit_payload",
                 "apply", "apply", "drift_copy", "drift_merge",
                 "apply_takeover", "toggle_copy", "toggle_merge",
-                "respell_copy", "update_payload", "rollback",
+                "respell_copy", "update_payload", "edit_toolchain",
+                "rollback",
             ]
         )
         trace.append(f"{step}:{op}")
@@ -295,6 +354,23 @@ def test_random_journey(sandbox, seed):
             gen = apply()
             gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared)
             check_world()
+            continue
+        elif op == "edit_toolchain":
+            # 0035 F4's keying across a build edge: a new toolchain
+            # pin must rebuild the consumer — the artifact picks up
+            # the new bytes, proving the closure fed the build
+            tcc = f"#!/bin/sh\necho tcc-v{rng.randint(1, 9999)}\n".encode()
+            make_toolchain_tarball(tc_payload, {"bin/tcc": tcc})
+            out = grip("update", "--host", "testhost", cwd=repo_root)
+            assert out.returncode == 0, f"seed={seed} update: {out.stderr}"
+            write_repo()
+            built.declare(tcc.decode())
+            gen = apply()
+            gen_content[gen] = (copy.managed, copy.declared, merge.managed, merge.declared)
+            check_world()
+            assert built_dest.resolve().read_bytes() == tcc, (
+                f"seed={seed}: consumer did not rebuild against the new pin"
+            )
             continue
         elif op == "drift_copy" and copy_dest.exists():
             copy.drift(f"user-{rng.randint(1, 9999)}\n")

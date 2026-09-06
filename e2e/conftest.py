@@ -45,6 +45,19 @@ def make_tarball(path: Path, files: dict[str, bytes]) -> Path:
     return path
 
 
+def make_toolchain_tarball(path: Path, files: dict[str, bytes]) -> Path:
+    """A fixture tarball with EXECUTABLE members — `which <bin>`
+    inside a build step needs the exec bit (0039 fixtures); the plain
+    helper above is data-only by default."""
+    with tarfile.open(path, "w:gz") as tar:
+        for name, content in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            info.mode = 0o755
+            tar.addfile(info, io.BytesIO(content))
+    return path
+
+
 def refresh_host(repo: Path, host: str = "testhost") -> Path:
     """(Re)write hosts/<host>.ts importing every modules/*.ts — the
     defineEnv contract. Deterministic: files are globbed sorted, so the

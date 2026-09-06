@@ -17,6 +17,7 @@
 
 pub mod activate;
 pub mod apply;
+mod closure;
 pub mod ctx;
 pub mod deploy;
 mod embedded_frontend;
@@ -169,7 +170,7 @@ mod tests {
 
     fn ir(entries: &[(&str, &[&str])]) -> Ir {
         Ir {
-            ir_version: 1,
+            ir_version: gripsack_ir::IR_VERSION,
             host: Default::default(),
             resources: vec![],
             modules: entries

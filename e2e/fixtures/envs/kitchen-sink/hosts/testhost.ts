@@ -7,6 +7,8 @@
 // return value) — gating on host tags uses the local const.
 import { defineEnv, hasTag } from "@gripsack/core";
 import brewed from "../modules/brewed.ts";
+import buildConsumer from "../modules/build-consumer.ts";
+import buildToolchain from "../modules/build-toolchain.ts";
 import core from "../modules/core.ts";
 import cuda from "../modules/cuda.ts";
 import extras from "../modules/extras.ts";
@@ -21,6 +23,8 @@ export default defineEnv((ctx) => ({
   tags,
   modules: [
     core,
+    buildConsumer,
+    buildToolchain,
     tags.includes("gui") && tools,
     hasTag("cli", ctx) && extras,
     brewed,

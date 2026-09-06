@@ -31,7 +31,11 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
     // repo written on Linux must not corrupt on a Mac (npm bans
     // uppercase names for the same class).
     let mut owners: std::collections::BTreeMap<String, &str> = std::collections::BTreeMap::new();
+    let build_only = crate::dependencies::build_only_modules(&ir.modules);
     for (name, module) in &ir.modules {
+        if build_only.contains(name) {
+            continue;
+        }
         for entry in entries(module) {
             // same-module duplicates count too (0030 §P0-1): two
             // declarations of one destination in a module would deploy
@@ -104,7 +108,7 @@ mod tests {
 
     fn ir_with(steps: Vec<Step>) -> Ir {
         Ir {
-            ir_version: 1,
+            ir_version: crate::IR_VERSION,
             host: Default::default(),
             resources: vec![],
             modules: [(
@@ -156,7 +160,7 @@ mod case_tests {
 
     fn ir_with_host(os: &str, tos: &[&str]) -> Ir {
         Ir {
-            ir_version: 1,
+            ir_version: crate::IR_VERSION,
             host: crate::model::HostFacts {
                 os: os.into(),
                 arch: "x86_64".into(),

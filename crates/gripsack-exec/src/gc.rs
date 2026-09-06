@@ -75,6 +75,10 @@ pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, Exe
         })?;
         for state in manifest.modules.values() {
             referenced.insert(state.store_path.clone());
+            // Retained generations pin the consumer's transitive build closure.
+            for path in &state.build_closure {
+                referenced.insert(path.clone());
+            }
         }
         // 0015 §4: generations pin prior blobs the same way — a prior
         // is restorable exactly while its generation lives
@@ -174,6 +178,7 @@ mod tests {
             "m".to_string(),
             store::ModuleState {
                 store_path,
+                build_only: false,
                 intents: vec![],
                 verified: None,
                 entries: vec![store::DeployedEntry {
@@ -189,6 +194,7 @@ mod tests {
                 }],
                 env: vec![],
                 tree256: None,
+                build_closure: vec![],
             },
         );
         store::Generation { number: n, modules }

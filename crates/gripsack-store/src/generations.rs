@@ -100,6 +100,10 @@ pub struct IntentRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModuleState {
     pub store_path: PathBuf,
+    /// A store-only module: retain payload receipts, never destinations,
+    /// activation intents, or shell-profile exports (0039).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub build_only: bool,
     #[serde(default)]
     pub entries: Vec<DeployedEntry>,
     /// The module's declared activation intents (0035 F9): the record
@@ -122,6 +126,10 @@ pub struct ModuleState {
     /// against this, no lockfile lookup.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree256: Option<String>,
+    /// Transitive build dependencies used by this module, in graph order.
+    /// Retained generations keep these artifacts alive for history/rollback.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub build_closure: Vec<PathBuf>,
 }
 
 /// A generation: an immutable record of one profile state.
@@ -191,7 +199,13 @@ fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<(
     let store_root = home.join(crate::paths::STORE_DIR);
     let mut seen_dests = std::collections::BTreeSet::new();
     for (name, state) in &manifest.modules {
-        // lexical normalization, not bare prefix (0030 §H9):
+        if state.build_only
+            && (!state.entries.is_empty() || !state.intents.is_empty() || !state.env.is_empty())
+        {
+            return Err(invalid(format!(
+                "module {name:?}: build-only state contains deployment effects"
+            )));
+        }
         // `store/../outside` starts with the root as a STRING
         let has_parent = state
             .store_path
@@ -202,6 +216,19 @@ fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<(
                 "module {name:?}: store path {} is outside $GRIPSACK_HOME/store",
                 state.store_path.display()
             )));
+        }
+        // 0039: closure paths are store paths too — same root rule,
+        // same fail-closed reading of a long-lived manifest
+        for path in &state.build_closure {
+            let closure_escape = path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir));
+            if closure_escape || !path.starts_with(&store_root) {
+                return Err(invalid(format!(
+                    "module {name:?}: build closure path {} is outside $GRIPSACK_HOME/store",
+                    path.display()
+                )));
+            }
         }
         for entry in &state.entries {
             // 0030 §H9: `from` joins the store path — an absolute or
@@ -467,6 +494,7 @@ mod tests {
             "helix".to_string(),
             ModuleState {
                 store_path: home.join("store/abc-helix"),
+                build_only: false,
                 intents: vec![],
                 verified: None,
                 entries: vec![DeployedEntry {
@@ -482,6 +510,7 @@ mod tests {
                 }],
                 env: vec![],
                 tree256: None,
+                build_closure: vec![],
             },
         );
         Generation { number: n, modules }

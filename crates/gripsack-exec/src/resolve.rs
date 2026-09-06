@@ -301,7 +301,7 @@ mod identity_tests {
             serde_json::from_str(&json("/home/bob/dotfiles/modules/m.py", 47)).unwrap();
         let repo = std::path::Path::new("/nonexistent");
         let ir = gripsack_ir::Ir {
-            ir_version: 1,
+            ir_version: gripsack_ir::IR_VERSION,
             host: gripsack_ir::HostFacts {
                 os: "linux".into(),
                 arch: "x86_64".into(),

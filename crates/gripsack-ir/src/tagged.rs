@@ -129,11 +129,38 @@ pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
         return; // pass 1 reports the syntax error itself
     };
+    if let Some(version) = value.get("ir_version").and_then(|v| v.as_u64())
+        && version != u64::from(crate::parse::IR_VERSION)
+    {
+        out.push(Diagnostic::error(
+            codes::VERSION,
+            format!("unsupported ir_version {version} (this core accepts {})", crate::parse::IR_VERSION),
+        ).with_help("update a pinned @gripsack/core to 0.35.0 or newer, or remove the pin to use the embedded frontend"));
+        return;
+    }
     let Some(modules) = value.get("modules").and_then(|m| m.as_object()) else {
         return;
     };
     for (name, module) in modules {
         let path = format!("module {name:?}");
+        // Reject invalid dependency purposes before enum deserialization so
+        // E122 can retain the dependency's declaration span.
+        if let Some(deps) = module.get("depends").and_then(|d| d.as_array()) {
+            for dep in deps {
+                if let Some(edge) = dep.get("for")
+                    && !matches!(edge.as_str(), Some("runtime" | "build"))
+                {
+                    let span = dep
+                        .get("span")
+                        .or_else(|| module.get("span"))
+                        .and_then(|s| serde_json::from_value::<crate::Span>(s.clone()).ok());
+                    out.push(Diagnostic::error(
+                        codes::UNKNOWN_EDGE,
+                        format!("{path}: unknown dependency purpose `for: {edge}`; expected \"runtime\" or \"build\""),
+                    ).with_label(span, "dependency declared here"));
+                }
+            }
+        }
         if let Some(fetch) = module.get("fetch") {
             check_tagged(fetch, &path, allowed_fetch_fields, out);
         }

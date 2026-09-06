@@ -186,7 +186,11 @@ pub fn check_physical_uniqueness(
     }
     let mut owners: std::collections::BTreeMap<std::path::PathBuf, Seen> =
         std::collections::BTreeMap::new();
+    let build_only = gripsack_ir::dependencies::build_only_modules(modules);
     for (name, steps) in steps_by_module {
+        if build_only.contains(name) {
+            continue;
+        }
         for step in steps {
             let entries: &[gripsack_ir::Entry] = match &step.action {
                 gripsack_ir::StepAction::Install { entries }

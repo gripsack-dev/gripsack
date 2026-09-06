@@ -265,7 +265,7 @@ mod tests {
 
     fn ir_with_steps(steps: Vec<Step>) -> Ir {
         Ir {
-            ir_version: 1,
+            ir_version: crate::IR_VERSION,
             host: Default::default(),
             resources: vec![],
             modules: [(

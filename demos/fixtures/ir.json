@@ -1,5 +1,5 @@
 {
-  "ir_version": 1,
+  "ir_version": 2,
   "host": {"os": "linux", "arch": "x86_64", "tags": ["demo"]},
   "modules": {
     "helix": {

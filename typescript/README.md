@@ -77,7 +77,7 @@ First eval of an unfamiliar repo is an explicit trust decision
 | graph | `emitIr`, `mergeTags`, `IR_VERSION`, `parseInputs` |
 | fetchers | `githubRelease`, `tarball`, `git`, `fileFetch`, `pluginFetch`, `brew`, `pixi` |
 | destinations | `symlink`, `trackedCopy`, `merge`, `template` |
-| dependencies | `dep(module, edge?)` |
+| dependencies | `dep(module, { for? })` |
 | activation | `service`, `fonts`, `desktopEntry`, `customHook` |
 | steps | `step`, `fetchStep`, `buildStep`, `installStep`, `configStep`, `runStep`, `shellStep` |
 | verify | `verifyBinary`, `verifyFile`, `verifyShell`, `verifyDeployed` |
@@ -85,6 +85,24 @@ First eval of an unfamiliar repo is an explicit trust decision
 
 Everything is fully typed — your editor gives you autocomplete and
 inline errors for free.
+
+## Build dependencies and IR v2
+
+`dep("compiler", { for: "build" })` supplies store artifacts to the
+consumer's build/custom/run steps through a prepended PATH and
+`GRIP_DEP_COMPILER`. A dependency referenced only by build edges has
+no destinations, activation hooks, or shell-profile exports; a runtime
+incoming edge wins. Both modules still belong in the host environment.
+Build closures follow build edges transitively, with graph-ordered
+PATH and deduplicated members. Runtime deps of a build tool still
+deploy normally. This is not a hermetic environment.
+
+Core/TypeScript **0.35.0 uses IR v2**. `for` replaces the v1 `edge`
+wire field, and the old positional `dep("rust", "build")` form is
+rejected. Update a pinned `@gripsack/core` to `^0.35.0`, or remove it
+to use the embedded frontend. Old lockfiles and generations remain
+readable; rollback restores files without rebuilding. GC retains
+closure paths for every generation that references them.
 
 ## Development
 

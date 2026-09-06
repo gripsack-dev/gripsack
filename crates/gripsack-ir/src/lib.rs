@@ -1,11 +1,11 @@
 //! The IR contract between frontends and the core: types, spans,
 //! diagnostics, and the compiler passes every IR document goes through
 //! (plan/0001 §3.2, 0004, 0007). The schema lives in
-//! `schema/ir/v1.json`; change all three sides together
+//! `schema/ir/v2.json`; change all three sides together
 //! (`.agents/skills/gripsack-ir`).
 //!
 //! ```text
-//! frontend (python | typescript)
+//! frontend (typescript)
 //!     │  evals your modules, emits JSON with spans
 //!     ▼
 //! parse        E000 malformed · E100 wrong ir_version
@@ -21,6 +21,7 @@
 //!
 //! To add a check: one file in `sema/`, one line in `PASSES`, one test.
 
+pub mod dependencies;
 pub mod diagnostic;
 pub mod model;
 pub mod parse;

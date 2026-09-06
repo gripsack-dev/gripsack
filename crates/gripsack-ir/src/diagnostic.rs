@@ -46,6 +46,10 @@ pub mod codes {
     /// Two declarations resolve to one physical destination (aliases:
     /// `~` vs `$HOME` vs absolute, symlinked ancestors) — 0030 §P0-1.
     pub const DESTINATION_ALIAS: &str = "E119";
+    /// A dependency edge kind other than `runtime`/`build` (0039).
+    pub const UNKNOWN_EDGE: &str = "E122";
+    /// Two build dependencies normalize to the same GRIP_DEP_* identifier.
+    pub const BUILD_DEP_ENV_COLLISION: &str = "E123";
 }
 
 // ---------------------------------------------------------------- diagnostics
