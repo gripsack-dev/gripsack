@@ -3,6 +3,27 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.34.0] — 2026-09-06
+
+The journey harness (plan/0038) — stateful property tests of user
+time, and the bug it caught on its first day.
+
+### Fixed
+
+- **`store verify` no longer reports false corruption on preserved
+  entries** — a preserved-drift record describes an OBSERVATION, not
+  a store deployment; verify skips it. Found by the harness, covered
+  by it.
+
+### Internal
+
+- `e2e/test_journey.py`: seeded random declare/apply/drift/take-over/
+  undeclare/respell/rollback/update journeys against the real binary,
+  with a per-destination expectation model (0029 §2 drift and prune
+  semantics included) and system oracles (check, store-verify,
+  generation monotonicity) after every step. Five fixed seeds; a red
+  run prints its op trace.
+
 ## [0.33.0] — 2026-09-06
 
 Rollback activation (plan/0037) — the roadmap's rollback-adapters
