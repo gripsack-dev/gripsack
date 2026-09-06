@@ -110,6 +110,28 @@ pub(crate) fn run(intents: &[store::activation::PendingIntent]) -> Vec<StepRepor
     reports
 }
 
+/// The intents a GENERATION recorded (0037): rollback activates the
+/// target generation as it was declared — its manifest carries the
+/// intents (0035 F9), so rollback needs no repo state at all.
+pub(crate) fn collect_from_manifest(
+    generation: &store::Generation,
+) -> Vec<store::activation::PendingIntent> {
+    let mut out = Vec::new();
+    for (name, state) in &generation.modules {
+        for record in &state.intents {
+            if record.trigger == gripsack_ir::Trigger::OnRemove {
+                continue; // removal hooks fire for VANISHED modules only
+            }
+            out.push(store::activation::PendingIntent {
+                module: name.clone(),
+                action: record.action.clone(),
+                trigger: record.trigger,
+            });
+        }
+    }
+    out
+}
+
 /// The resume step (0032): every lifecycle run starts here, after
 /// journal reconcile, under the lock. A pending record naming the
 /// CURRENT generation re-runs its intents (they are idempotent

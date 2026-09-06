@@ -65,6 +65,19 @@ pub fn rollback_generation(
         // The env profile renders INTO the generation before the flip
         // (0025 §C): activation and profile become one indivisible step.
         crate::env::render_env_file(home_path, target.number, &target.modules)?;
+        // the pending record lands BEFORE the flip (0032's shape,
+        // 0037): a failure here compensates like any other; a crash
+        // after the flip leaves the record for the next run's resume
+        let intents = rollback_intents(current, target);
+        if !intents.is_empty() {
+            store::activation::write_pending(
+                &home,
+                &store::activation::PendingActivation {
+                    generation: target.number,
+                    intents,
+                },
+            )?;
+        }
         // test-only kill switch: the restore→flip crash window's e2e
         crate::util::crash_hook("after-rollback-restore");
         store::flip(&home, home_path, target.number)?;
@@ -83,6 +96,29 @@ pub fn rollback_generation(
                         target.number
                     ),
                 });
+            }
+            // activate the TARGET generation as recorded (0037): the
+            // pending record is the source (it also carries the
+            // removal hooks of modules this rollback undeclared)
+            if let Some(pending) = store::activation::read_pending(&home)? {
+                for report in crate::activate::run(&pending.intents) {
+                    notes.push(store::journal::RecoveryNote {
+                        severity: if report.kind == crate::report::ReportKind::Warned {
+                            store::journal::NoteSeverity::Warn
+                        } else {
+                            store::journal::NoteSeverity::Info
+                        },
+                        message: format!("{}: {}", report.module, report.summary),
+                    });
+                }
+                if let Err(e) = store::activation::clear_pending(&home) {
+                    notes.push(store::journal::RecoveryNote {
+                        severity: store::journal::NoteSeverity::Warn,
+                        message: format!(
+                            "activation record cleanup pending ({e}) — the next run finishes it"
+                        ),
+                    });
+                }
             }
             Ok(notes)
         }
@@ -118,6 +154,33 @@ fn by_destination(generation: &store::Generation) -> DestMap<'_> {
         }
     }
     map
+}
+
+/// The intents a rollback activates (0037): the target generation's
+/// recorded intents, plus the on_remove hooks of modules the rollback
+/// undeclares.
+fn rollback_intents(
+    current: Option<&store::Generation>,
+    target: &store::Generation,
+) -> Vec<store::activation::PendingIntent> {
+    let mut intents = crate::activate::collect_from_manifest(target);
+    if let Some(current) = current {
+        for (name, state) in &current.modules {
+            if target.modules.contains_key(name) {
+                continue;
+            }
+            for record in &state.intents {
+                if record.trigger == gripsack_ir::Trigger::OnRemove {
+                    intents.push(store::activation::PendingIntent {
+                        module: name.clone(),
+                        action: record.action.clone(),
+                        trigger: record.trigger,
+                    });
+                }
+            }
+        }
+    }
+    intents
 }
 
 /// Plan one op per destination, with drift policy and preflight
