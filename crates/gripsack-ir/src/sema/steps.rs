@@ -114,6 +114,65 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
             }
         }
         check_cycles(name, module, steps, diagnostics);
+        check_phase_order(name, module, steps, diagnostics);
+    }
+}
+
+/// Execution phase ranks (0007 §5): produce (fetch/build/custom) runs
+/// before deploy (install/config), then verify, then activate. A step
+/// may only `need` a step that runs no later than itself.
+fn phase_rank(phase: Option<crate::step::Phase>) -> u8 {
+    use crate::step::Phase;
+    match phase {
+        Some(Phase::Fetch) => 0,
+        // custom and unset phase land in the produce sweep
+        Some(Phase::Build) | Some(Phase::Custom) | None => 1,
+        Some(Phase::Install) | Some(Phase::Config) => 2,
+        Some(Phase::Verify) => 3,
+        Some(Phase::Activate) => 4,
+    }
+}
+
+// E121: cross-phase needs must respect the execution order — a
+// produce-phase step needing a deploy-phase step could never see its
+// output. Post-deploy effects belong in activate hooks.
+fn check_phase_order(
+    name: &str,
+    module: &crate::model::Module,
+    steps: &[crate::step::Step],
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let rank_of = |id: &str| {
+        steps
+            .iter()
+            .find(|s| s.id == id)
+            .map(|s| phase_rank(s.phase))
+    };
+    for step in steps {
+        for need in &step.needs {
+            if need.contains(':') {
+                continue; // cross-module refs order modules (dep edges)
+            }
+            if let Some(need_rank) = rank_of(need)
+                && need_rank > phase_rank(step.phase)
+            {
+                diagnostics.push(
+                    Diagnostic::error(
+                        codes::STEP_PHASE_ORDER,
+                        format!(
+                            "module {name:?}: step {:?} ({:?}) needs {need:?} ({:?}), which runs later",
+                            step.id,
+                            step.phase,
+                            steps.iter().find(|s| s.id == *need).map(|s| s.phase).unwrap_or(step.phase),
+                        ),
+                    )
+                    .with_label(step.span.clone().or_else(|| module.span.clone()), "")
+                    .with_help(
+                        "post-deploy effects belong in activate hooks (customHook/service),                          which run after the flip",
+                    ),
+                );
+            }
+        }
     }
 }
 

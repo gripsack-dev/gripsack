@@ -99,10 +99,11 @@ mod tests {
         prev.0.map(|(content, preserved)| store::DeployedEntry {
             from: "payload".into(),
             to: String::new(),
+            key: None,
             mode: Ownership::TrackedCopy,
             vars: Default::default(),
             file_mode: None,
-            hash: store::canonical_bytes_identity(content.as_bytes(), 0o644).to_string(),
+            hash: store::canonical_bytes_identity(content.as_bytes(), 0o644).into(),
             prior: None,
             preserved_drift: preserved,
         })
@@ -247,6 +248,87 @@ mod tests {
             Live::File(c, m) => format!("file({c},{m:o})"),
             Live::Link(t) => format!("link({t})"),
         }
+    }
+
+    /// 0035 F1 end to end through the planner: the same file declared
+    /// by two spellings plans satisfied on the second — the canonical
+    /// key, never the string, decides.
+    #[test]
+    fn a_spelling_change_plans_no_op() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let payload_dir = home.join("payload");
+        std::fs::create_dir_all(&payload_dir).unwrap();
+        std::fs::write(payload_dir.join("payload"), "1").unwrap();
+
+        // deploy via the tilde spelling
+        let tilde = home.join("dest");
+        let entry_tilde = entry(Ownership::TrackedCopy, &tilde);
+        let ctx = model_ctx(home);
+        let (dest_dir, dest_name) = crate::deploy::dest_capability(&tilde).unwrap();
+        let observed = crate::deploy::observe(&dest_dir, &dest_name).unwrap();
+        let view = DestView {
+            module: "m",
+            entry: &entry_tilde,
+            dest: tilde.clone(),
+            home,
+            observed,
+            prev: None,
+            take_over: false,
+        };
+        let op = plan_entry_op(
+            &view,
+            ModeInput::Write {
+                content: b"1",
+                intent_mode: 0o644,
+            },
+        )
+        .unwrap();
+        assert!(matches!(op.kind, OpKind::Write { .. }));
+        let _ = execute_op(ctx.home_dir().unwrap(), &ctx.home, &op).unwrap();
+        let produced = op.produces.expect("a write produces an entry");
+
+        // the same file declared by its absolute spelling: prev's key
+        // joins the lineage, and the op is satisfied — not a prune,
+        // not a rewrite
+        let entry_abs = entry(Ownership::TrackedCopy, &tilde);
+        let (dest_dir, dest_name) = crate::deploy::dest_capability(&tilde).unwrap();
+        let observed = crate::deploy::observe(&dest_dir, &dest_name).unwrap();
+        let prev = store::DeployedEntry {
+            from: produced.from.clone(),
+            // the recorded spelling is the OLD one — the new entry
+            // declares the same file differently
+            to: "~/dest".into(),
+            key: None, // pre-0.32 shape: the read path canonicalizes
+            mode: Ownership::TrackedCopy,
+            vars: Default::default(),
+            file_mode: produced.file_mode,
+            prior: None,
+            hash: produced.hash.clone(),
+            preserved_drift: false,
+        };
+        let view = DestView {
+            module: "m",
+            entry: &entry_abs,
+            dest: tilde.clone(),
+            home,
+            observed,
+            prev: Some(&prev),
+            take_over: false,
+        };
+        let op = plan_entry_op(
+            &view,
+            ModeInput::Write {
+                content: b"1",
+                intent_mode: 0o644,
+            },
+        )
+        .unwrap();
+        assert!(
+            matches!(op.kind, OpKind::Satisfied),
+            "the absolute spelling of a deployed file must plan satisfied, got {:?}",
+            op.kind
+        );
     }
 
     fn model_ctx(home: &Path) -> Ctx {

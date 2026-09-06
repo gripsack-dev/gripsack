@@ -951,6 +951,316 @@ export default module("demo", {
     assert "nothing would change" not in out.stdout
 
 
+def test_a_dep_pin_update_rebuilds_the_consumer(sandbox):
+    """0035 F4: the consumer's build key includes the dependency's
+    RESOLVED pin — updating the producer's payload rebuilds the
+    consumer, never serves a stale cache hit."""
+    compiler = sandbox / "compiler.tar.gz"
+    make_tarball(compiler, {"bin/cc": b"#!/bin/sh\necho cc-v1\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "compiler": f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("compiler", {{
+  fetch: fileFetch("{compiler}"),
+  install: {{ "bin/cc": symlink("~/.local/bin/cc") }},
+}});
+""",
+            "consumer": """
+import { dep, installStep, module, shellStep, symlink } from "@gripsack/core";
+
+export default module("consumer", {
+  depends: [dep("compiler")],
+  steps: [
+    shellStep("mkdir -p out && cp $HOME/.local/bin/cc out/built", "build"),
+    installStep({ "out/built": symlink("~/.local/bin/built") }, "install", { needs: ["build"] }),
+  ],
+});
+""",
+        },
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    built = sandbox / ".local/bin/built"
+    assert built.read_text() == "#!/bin/sh\necho cc-v1\n"
+
+    make_tarball(compiler, {"bin/cc": b"#!/bin/sh\necho cc-v2\n"})
+    out = grip("update", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "bumped" in out.stdout
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert built.read_text() == "#!/bin/sh\necho cc-v2\n", (
+        "the consumer rebuilt against the new compiler"
+    )
+
+
+def test_spelling_change_preserves_the_file_and_its_lineage(sandbox):
+    """0035 F1: changing only a destination's SPELLING (~/x → $HOME/x)
+    must not prune the file — ownership identity is canonical, never
+    the spelling."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "value.conf").write_text("v1\n")
+    home = sandbox
+    absolute = home / ".config/example/value.conf"
+
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "demo": """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/value.conf": trackedCopy("~/.config/example/value.conf") },
+});
+"""
+        },
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert absolute.read_text() == "v1\n"
+
+    # the reviewer's repro: same file, absolute spelling
+    (repo / "modules" / "demo.ts").write_text(
+        f"""
+import {{ module, trackedCopy }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/value.conf": trackedCopy("{absolute}") }},
+}});
+"""
+    )
+    refresh_host(repo)
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert absolute.exists(), "a spelling change must never delete the file"
+    assert absolute.read_text() == "v1\n"
+
+    # and why-owns resolves the spelling either way
+    out = grip("why-owns", "~/.config/example/value.conf", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "demo" in out.stdout
+
+
+def test_a_failed_verifier_fails_every_retry(sandbox):
+    """0035 F2: presence in the store is not a verification receipt —
+    a permanently failing check fails EVERY apply, and a warm store
+    never skips the deployment gate."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "demo": """
+import { module, trackedCopy, verifyShell } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") },
+  verify: verifyShell("exit 1"),
+});
+"""
+        },
+    )
+    for attempt in ["first", "second"]:
+        out = grip("apply", "--host", "testhost", cwd=repo)
+        assert out.returncode != 0, f"{attempt} apply must fail"
+        assert not (sandbox / ".config/demo/a.conf").exists(), (
+            f"{attempt} apply compensated the destination"
+        )
+    assert not (sandbox / ".local/share/gripsack/current").exists(), (
+        "no generation ever activated"
+    )
+
+
+def test_a_fixed_verifier_verifies_once_then_receipt_holds(sandbox):
+    """0035 F2, the other half: a passing check runs, the receipt rides
+    the manifest, and the warm satisfied apply does not re-run it."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    marker = sandbox / "verify-ran"
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "demo": f"""
+import {{ module, trackedCopy, verifyShell }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") }},
+  verify: verifyShell("echo ran >> {marker}"),
+}});
+"""
+        },
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert marker.read_text().count("ran") == 1
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "satisfied" in out.stdout
+    assert marker.read_text().count("ran") == 1, "the receipt holds on a satisfied apply"
+
+
+def test_a_typo_field_is_rejected_never_pruned(sandbox):
+    """0035 F3: `confg:` must fail eval with a suggestion — a typo is
+    never a removal instruction."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "demo": """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") },
+});
+"""
+        },
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config/demo/a.conf"
+    assert dest.exists()
+
+    (repo / "modules" / "demo.ts").write_text(
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  confg: { "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") },
+});
+"""
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "a typo'd field must fail check"
+    assert "confg" in out.stderr and "config" in out.stderr, out.stderr
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert dest.exists(), "the typo must never prune"
+
+
+def test_on_remove_hook_fires_at_removal_not_install(sandbox):
+    """0035 F9: an on_remove intent runs when the module leaves the
+    repo — not on install."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("a\n")
+    marker = sandbox / "removed-hook-ran"
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "demo": f"""
+import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") }},
+  activate: [customHook("touch {marker}", "on_remove")],
+}});
+"""
+        },
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not marker.exists(), "on_remove must not fire at install"
+
+    remove_module(repo, "demo")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert marker.exists(), "on_remove fires when the module leaves"
+    assert not (sandbox / ".config/demo/a.conf").exists(), "the file pruned too"
+
+
+def test_activation_record_failure_compensates(sandbox):
+    """0035 F5: a fallible write between the first mutation and the
+    flip is INSIDE the transaction boundary — the run fails AND the
+    destination returns to the previous generation's content."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("v1\n")
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "demo": f"""
+import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") }},
+  activate: [customHook("true")],
+}});
+"""
+        },
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    dest = sandbox / ".config/demo/a.conf"
+    assert dest.read_text() == "v1\n"
+
+    # the reviewer's fault: the activation-record pathname is a
+    # directory — the pending write must fail
+    record = sandbox / ".local/share/gripsack/activation.json"
+    record.mkdir()
+    (confdir / "a.conf").write_text("v2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "the pending write must fail"
+    assert dest.read_text() == "v1\n", (
+        "the failure compensated — live state matches generation 1"
+    )
+    assert (
+        (sandbox / ".local/share/gripsack/current").readlink()
+        .name
+        == "1"
+    ), "generation 1 is still current"
+
+
+def test_plan_creates_nothing_and_reads_state_correctly(sandbox):
+    """0035 F7: plan is read-only (no parent dirs appear), a satisfied
+    owned link previews as satisfied, and a deferred fetched
+    destination is never shown as a prune."""
+    payload = make_tarball(sandbox / "hello.tar.gz", {"bin/hello": b"#!/bin/sh\necho hi\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "hello": f"""
+import {{ fileFetch, module, symlink }} from "@gripsack/core";
+
+export default module("hello", {{
+  fetch: fileFetch("{payload}"),
+  install: {{ "bin/hello": symlink("~/.local/bin/hello") }},
+}});
+""",
+            "demo": """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("demo", {
+  config: { "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") },
+});
+""",
+        },
+    )
+    (repo / "configs" / "demo").mkdir(parents=True)
+    (repo / "configs" / "demo" / "a.conf").write_text("a\n")
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not (sandbox / ".config").exists(), "plan created a directory"
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".local/bin/hello").is_symlink()
+    assert (sandbox / ".config/demo/a.conf").exists()
+
+    out = grip("plan", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "= ~/.local/bin/hello (satisfied)" in out.stdout, out.stdout
+    assert "+ " not in out.stdout, "a satisfied link must not preview as new"
+    assert "(prune)" not in out.stdout, "a deferred dest is still declared"
+
+
 def test_current_link_must_resolve_under_home(sandbox):
     """0030 §H10: `current -> /tmp/42` is corruption, not a
     generation — apply fails closed."""

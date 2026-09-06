@@ -193,6 +193,34 @@ fn parse_env_as(source: &str, file: &str) -> Result<EnvConfig, Vec<Diagnostic>> 
             ),
         ]);
     }
+    // GRIPSACK_* is the operator's namespace (0035 F10): a repo's
+    // build env must never redefine runtime policy — GRIPSACK_DENO
+    // would redirect the evaluator itself
+    for key in env.eval.env.keys() {
+        if let Some(rest) = key.strip_prefix("GRIPSACK_") {
+            let offset = source.find(key.as_str()).unwrap_or(0);
+            let (line, col) = line_col(source, offset);
+            return Err(vec![
+                Diagnostic::error(
+                    codes::CONFIG,
+                    format!(
+                        "env.toml [eval] env: {key:?} is in the reserved GRIPSACK_* namespace"
+                    ),
+                )
+                .with_label(
+                    Some(Span {
+                        file: file.to_string(),
+                        line,
+                        col: Some(col),
+                    }),
+                    "declared here",
+                )
+                .with_help(format!(
+                    "build env cannot set GRIPSACK_* — those configure grip itself.                      If you meant a variable for your build steps, rename it (e.g. ENV_{rest})"
+                )),
+            ]);
+        }
+    }
     Ok(env)
 }
 

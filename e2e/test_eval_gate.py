@@ -664,3 +664,16 @@ export default module("evil", {{}});
     (pin / "core").symlink_to(outside)
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, "a non-package symlink must not enlarge the sandbox"
+
+
+def test_eval_env_cannot_override_operator_runtime(sandbox):
+    """0035 F10: [eval] env must never redefine the GRIPSACK_*
+    operator namespace — a trusted repo's GRIPSACK_DENO shim is a
+    config error, not an evaluator."""
+    repo = make_env_repo(sandbox / "myenv", {})
+    (repo / "env.toml").write_text(
+        '[env]\nname = "fixture"\n\n[eval]\n[eval.env]\nGRIPSACK_DENO = "/tmp/shim"\n'
+    )
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "the reserved namespace must fail"
+    assert "reserved" in out.stderr, out.stderr

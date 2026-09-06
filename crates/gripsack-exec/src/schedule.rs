@@ -160,6 +160,8 @@ pub(crate) fn run_all(
                                     e,
                                     store::ModuleState {
                                         store_path: PathBuf::new(),
+                                        intents: vec![],
+                                        verified: None,
                                         entries: vec![],
                                         env: vec![],
                                         tree256: None,
@@ -215,12 +217,16 @@ fn run_one(
     let module: &Module = &ir.modules[name];
     let steps = &steps_by_module[name];
     run_module(
-        name,
-        module,
-        ir,
-        steps,
+        crate::module::ModuleInputs {
+            name,
+            module,
+            ir,
+            steps,
+            prev_map: &prev_by_dest(prev),
+            prev_module: prev.get(name),
+            locked: lock.modules.get(name),
+            lock,
+        },
         ctx,
-        &prev_by_dest(prev),
-        lock.modules.get(name),
     )
 }

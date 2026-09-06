@@ -42,7 +42,13 @@ struct ModuleRun<'a> {
     steps: &'a [Step],
     ctx: &'a Ctx,
     prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
+    /// The previous generation's record for THIS module — the
+    /// verification receipt lives there (0035 F2)
+    prev_module: Option<&'a store::ModuleState>,
     locked: Option<&'a lockfile::LockEntry>,
+    /// The full lockfile — dependency pins ride the consumer's build
+    /// key (0035 F4)
+    lock: &'a lockfile::Lockfile,
     /// `{version}` substitution source — the locked pin or a resolution
     /// from this run (0008 §5).
     version: Option<String>,
@@ -53,6 +59,10 @@ struct ModuleRun<'a> {
     deployed: Vec<store::DeployedEntry>,
     reports: Vec<StepReport>,
     pending_verifies: Vec<&'a Verify>,
+    /// The verification receipt this run earned (0035 F2): Some(fps)
+    /// after every declared check passed; None when nothing was
+    /// declared or any failed (a failed run never commits anyway).
+    verified: Option<Vec<String>>,
     lock_entry: Option<lockfile::LockEntry>,
     error: Option<ExecError>,
     /// Identity is finalized after fetch for kinds whose payload hash
@@ -74,16 +84,25 @@ struct ModuleRun<'a> {
 
 /// Identity errors (new) escape before anything deploys; phase errors
 /// land in `outcome.error` with partial deployments recorded.
+/// Everything one module run needs, named (0035): the IR slice, the
+/// lineage records, and the lock. A struct, not nine positional
+/// arguments — the signature says what a run consumes.
+pub(crate) struct ModuleInputs<'a> {
+    pub name: &'a str,
+    pub module: &'a gripsack_ir::Module,
+    pub ir: &'a gripsack_ir::Ir,
+    pub steps: &'a [Step],
+    pub prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
+    pub prev_module: Option<&'a store::ModuleState>,
+    pub locked: Option<&'a lockfile::LockEntry>,
+    pub lock: &'a lockfile::Lockfile,
+}
+
 pub(crate) fn run_module<'a>(
-    name: &str,
-    module: &'a gripsack_ir::Module,
-    ir: &'a gripsack_ir::Ir,
-    steps: &'a [Step],
+    inputs: ModuleInputs<'a>,
     ctx: &'a Ctx,
-    prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
-    locked: Option<&'a lockfile::LockEntry>,
 ) -> Result<ModuleOutcome, ExecError> {
-    let mut run = ModuleRun::new(name, module, ir, steps, ctx, prev_map, locked)?;
+    let mut run = ModuleRun::new(inputs, ctx)?;
     for phase in [
         ModuleRun::produce,
         ModuleRun::publish,
@@ -104,18 +123,20 @@ impl<'a> ModuleRun<'a> {
     /// Identity and satisfaction: the payload hash joins the store-path
     /// input before the existence check, so first and second applies
     /// compute the same path (0008 §5).
-    fn new(
-        name: &'a str,
-        module: &'a gripsack_ir::Module,
-        ir: &'a gripsack_ir::Ir,
-        steps: &'a [Step],
-        ctx: &'a Ctx,
-        prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
-        locked: Option<&'a lockfile::LockEntry>,
-    ) -> Result<Self, ExecError> {
+    fn new(inputs: ModuleInputs<'a>, ctx: &'a Ctx) -> Result<Self, ExecError> {
+        let ModuleInputs {
+            name,
+            module,
+            ir,
+            steps,
+            prev_map,
+            prev_module,
+            locked,
+            lock,
+        } = inputs;
         // identity is pure resolution (identity.rs) — this type is
         // the phase machine that executes against its answer
-        let identity = crate::identity::resolve(name, module, ir, steps, ctx, locked)?;
+        let identity = crate::identity::resolve(name, module, ir, steps, ctx, locked, lock)?;
         let reports = identity
             .satisfied_report(name)
             .into_iter()
@@ -127,7 +148,9 @@ impl<'a> ModuleRun<'a> {
             steps,
             ctx,
             prev_map,
+            prev_module,
             locked,
+            lock,
             version: locked
                 .and_then(|e| e.resolved.as_ref())
                 .and_then(|r| r.version.clone()),
@@ -140,6 +163,7 @@ impl<'a> ModuleRun<'a> {
             deployed: Vec::new(),
             reports,
             pending_verifies: Vec::new(),
+            verified: None,
             lock_entry: None,
             error: None,
         })
@@ -253,7 +277,7 @@ impl<'a> ModuleRun<'a> {
         if self.identity_pending && !self.content_addressed {
             let input = format!(
                 "{}|payload={sha}",
-                module_input(self.module, &self.ctx.repo, self.ir)?
+                module_input(self.module, &self.ctx.repo, self.ir, self.lock, self.steps)?
             );
             self.store_path = store::store_path(&self.ctx.home, self.name, &input);
         }
@@ -279,7 +303,7 @@ impl<'a> ModuleRun<'a> {
                 &concrete,
                 pin,
                 sha,
-                crate::resolve::repo_overlay(self.module, &self.ctx.repo)?,
+                crate::resolve::repo_overlay(self.module, &self.ctx.repo, self.steps)?,
             )),
         });
         info!(step = %step.id, "fetched");
@@ -468,7 +492,7 @@ impl<'a> ModuleRun<'a> {
                         });
                     }
                 }
-                StepAction::Intent { action } => {
+                StepAction::Intent { action, .. } => {
                     // step-form intents run through the activation
                     // adapters after the flip (routed by kind —
                     // activate.rs step_intents)
@@ -480,10 +504,53 @@ impl<'a> ModuleRun<'a> {
         Ok(())
     }
 
-    /// Verify — only when the module actually built something (0008 §4:
-    /// a no-op apply runs zero verifies).
+    /// The declared checks' fingerprints, sorted (receipt identity).
+    fn verify_fingerprints(&self) -> Vec<String> {
+        let mut fps: Vec<String> = self
+            .steps
+            .iter()
+            .filter_map(|s| match &s.action {
+                StepAction::Verify { verify } => Some(verify),
+                _ => None,
+            })
+            .chain(self.pending_verifies.iter().copied())
+            .map(|v| {
+                let json = serde_json::to_string(v).expect("verify specs serialize");
+                store::hash::hex_sha256(json.as_bytes())
+            })
+            .collect();
+        fps.sort();
+        fps
+    }
+
+    /// Verify — the receipt rule (0035 F2): skip ONLY when a committed
+    /// generation verified this exact produced state with these exact
+    /// checks. Store presence is not a receipt; a failed run never
+    /// writes one; changing a verifier invalidates it.
     fn verify(&mut self) -> Result<(), ExecError> {
-        if self.present {
+        let fps = self.verify_fingerprints();
+        if fps.is_empty() {
+            return Ok(());
+        }
+        let receipt_holds = self.prev_module.is_some_and(|m| {
+            m.verified.as_deref() == Some(fps.as_slice())
+                && m.entries.len() == self.deployed.len()
+                && m.entries.iter().zip(self.deployed.iter()).all(|(a, b)| {
+                    // the produced state sans lineage (the epoch's
+                    // prior is not content)
+                    a.from == b.from
+                        && a.to == b.to
+                        && a.mode == b.mode
+                        && a.hash == b.hash
+                        && a.file_mode == b.file_mode
+                        && a.preserved_drift == b.preserved_drift
+                })
+        });
+        if receipt_holds {
+            // the receipt rides forward — the manifest must not
+            // differ from the committed generation, or every warm
+            // apply would cut a generation
+            self.verified = Some(fps);
             return Ok(());
         }
         for step in self.steps {
@@ -505,6 +572,8 @@ impl<'a> ModuleRun<'a> {
                 kind: ReportKind::Verified,
             });
         }
+        // every declared check passed — the receipt rides the manifest
+        self.verified = Some(fps);
         Ok(())
     }
 
@@ -513,6 +582,18 @@ impl<'a> ModuleRun<'a> {
             state: store::ModuleState {
                 store_path: self.store_path,
                 entries: self.deployed,
+                intents: self
+                    .steps
+                    .iter()
+                    .filter_map(|s| match &s.action {
+                        StepAction::Intent { action, trigger } => Some(store::IntentRecord {
+                            action: action.as_ref().clone(),
+                            trigger: *trigger,
+                        }),
+                        _ => None,
+                    })
+                    .collect(),
+                verified: self.verified,
                 env: self.module.env.clone(),
                 tree256: self.tree256,
             },

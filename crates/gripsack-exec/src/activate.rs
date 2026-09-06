@@ -16,11 +16,11 @@ use gripsack_store as store;
 /// for declarative modules, so this MUST be the expand output). No
 /// trigger on the step form: kind routes the adapter phase (caches
 /// post-link, service/custom post-activate).
-fn step_intents(steps: &[Step]) -> Vec<&Action> {
+fn step_intents(steps: &[Step]) -> Vec<(&Action, gripsack_ir::Trigger)> {
     steps
         .iter()
         .filter_map(|s| match &s.action {
-            StepAction::Intent { action } => Some(action.as_ref()),
+            StepAction::Intent { action, trigger } => Some((action.as_ref(), *trigger)),
             _ => None,
         })
         .collect()
@@ -40,10 +40,16 @@ pub(crate) fn collect(
     let mut caches = Vec::new();
     let mut rest = Vec::new();
     for name in order {
-        for action in step_intents(&steps_by_module[name.as_str()]) {
+        for (action, trigger) in step_intents(&steps_by_module[name.as_str()]) {
+            // on_remove fires from the previous generation's record at
+            // prune time (0035 F9) — never during activation
+            if trigger == gripsack_ir::Trigger::OnRemove {
+                continue;
+            }
             let intent = store::activation::PendingIntent {
                 module: name.clone(),
                 action: action.clone(),
+                trigger,
             };
             match action {
                 Action::Fonts | Action::DesktopEntry => caches.push(intent),

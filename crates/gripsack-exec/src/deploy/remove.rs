@@ -42,7 +42,8 @@ pub fn remove_entry_deployed(
             };
             match crate::template::extract_block(&existing, module) {
                 Some(content)
-                    if store::canonical_bytes_hash(content.as_bytes()).as_str() == entry.hash =>
+                    if store::canonical_bytes_hash(content.as_bytes()).as_str()
+                        == entry.hash.as_str() =>
                 {
                     let new = crate::template::remove_block(&existing, module)
                         .expect("block found above");
@@ -63,7 +64,7 @@ pub fn remove_entry_deployed(
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
                 Err(e) => return Err(e),
             };
-            if store::canonical_bytes_hash(&current).as_str() != entry.hash {
+            if store::canonical_bytes_hash(&current).as_str() != entry.hash.as_str() {
                 return Ok(false);
             }
             remove_if_present(dest_dir, dest_name)?;
@@ -88,7 +89,7 @@ pub fn remove_entry_deployed(
             };
             #[cfg(not(unix))]
             let mode = 0o644;
-            if store::canonical_bytes_identity(&bytes, mode).as_str() != entry.hash {
+            if store::canonical_bytes_identity(&bytes, mode).as_str() != entry.hash.as_str() {
                 return Ok(false);
             }
             remove_if_present(dest_dir, dest_name)?;

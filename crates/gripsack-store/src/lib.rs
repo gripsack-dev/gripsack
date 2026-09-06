@@ -32,8 +32,8 @@ pub mod paths;
 pub mod trust;
 
 pub use generations::{
-    DeployedEntry, Generation, ModuleState, Prior, current as current_generation, flip,
-    list as list_generations, read_manifest, write_manifest,
+    DeployedEntry, Generation, IntentRecord, ModuleState, Prior, current as current_generation,
+    flip, list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{
     canonical_bytes_hash, canonical_bytes_identity, canonical_file_hash, canonical_file_hash_in,

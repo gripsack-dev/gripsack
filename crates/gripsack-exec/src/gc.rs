@@ -149,8 +149,12 @@ pub fn why_owns(
     let manifest = store::read_manifest(home, n)?;
     for (name, state) in &manifest.modules {
         for entry in &state.entries {
-            if entry.to == path || gripsack_store::expand_home(&entry.to).to_string_lossy() == path
-            {
+            // the query canonicalizes like any declaration (0035 F1):
+            // spelling never decides ownership
+            let query = gripsack_store::canonical_dest(path)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| path.to_string());
+            if entry.key() == query {
                 return Ok(Some((name.clone(), entry.clone())));
             }
         }
@@ -170,12 +174,15 @@ mod tests {
             "m".to_string(),
             store::ModuleState {
                 store_path,
+                intents: vec![],
+                verified: None,
                 entries: vec![store::DeployedEntry {
                     from: "a".into(),
                     to: "~/.config/m/a".into(),
+                    key: None,
                     mode: Ownership::TrackedCopy,
                     vars: Default::default(),
-                    hash: "a".repeat(64),
+                    hash: gripsack_store::hash::ManifestHash::from_raw("a".repeat(64)),
                     file_mode: None,
                     prior: None,
                     preserved_drift: false,

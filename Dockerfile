@@ -35,11 +35,18 @@ COPY crates ./crates
 # without this COPY the embed is empty and every eval fails with
 # "no embedded frontend"
 COPY typescript ./typescript
+COPY scripts ./scripts
 
 FROM builder AS test
 RUN cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
+# 0035 F6: the frontend is vendored INTO the crate — a crates.io
+# package must contain it, and a fresh regeneration must match the
+# checked-in file (staleness check). rust:alpine has no python3.
+RUN apk add --no-cache python3 \
+    && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \
+    && python3 scripts/gen_frontend_embed.py --check
 
 # The debug binary for stages that need a runnable grip (e2e).
 FROM builder AS bin

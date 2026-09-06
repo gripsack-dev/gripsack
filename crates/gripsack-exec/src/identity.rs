@@ -61,6 +61,7 @@ pub(crate) fn resolve(
     steps: &[Step],
     ctx: &Ctx,
     locked: Option<&lockfile::LockEntry>,
+    lock: &lockfile::Lockfile,
 ) -> Result<ModuleIdentity, ExecError> {
     // 0014 §3: content is fully determined before execution unless
     // a build/custom/run step exists. Fetches pin content via the
@@ -93,7 +94,7 @@ pub(crate) fn resolve(
     let repo_drift = !spec_changed
         && pinned.is_some_and(|r| r.tree256.is_some())
         && match (
-            crate::resolve::repo_overlay(module, &ctx.repo)?,
+            crate::resolve::repo_overlay(module, &ctx.repo, steps)?,
             pinned.and_then(|r| r.repo256.as_ref()),
         ) {
             (Some(current), Some(lock)) => current != *lock,
@@ -135,7 +136,7 @@ pub(crate) fn resolve(
                 // deferred: the transport hash cannot name an
                 // unextracted tree — the first fetch finalizes the
                 // path at publish (0002 §3 TOFU)
-                let input = module_input(module, &ctx.repo, ir)?;
+                let input = module_input(module, &ctx.repo, ir, lock, steps)?;
                 (store::store_path(&ctx.home, name, &input), true, None)
             }
         }
@@ -145,8 +146,11 @@ pub(crate) fn resolve(
             .and_then(|r| r.sha256.clone())
             .or_else(|| fetch_spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten()));
         let input = match &resolved {
-            Some(sha) => format!("{}|payload={sha}", module_input(module, &ctx.repo, ir)?),
-            None => module_input(module, &ctx.repo, ir)?,
+            Some(sha) => format!(
+                "{}|payload={sha}",
+                module_input(module, &ctx.repo, ir, lock, steps)?
+            ),
+            None => module_input(module, &ctx.repo, ir, lock, steps)?,
         };
         let path = store::store_path(&ctx.home, name, &input);
         // Deferred identity (finding C): no hash from the lock AND

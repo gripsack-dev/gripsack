@@ -56,7 +56,8 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
         // the repo-overlay half of the pin — a config tree that gains
         // a file moves this WITHOUT moving any transport hash, and the
         // tree256 it invalidates must be re-pinned at the next apply
-        let repo256 = crate::resolve::repo_overlay(module, &ctx.repo)?;
+        let repo256 =
+            crate::resolve::repo_overlay(module, &ctx.repo, &crate::expand::expand(module))?;
         let old_repo = lock
             .modules
             .get(name.as_str())

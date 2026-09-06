@@ -19,6 +19,7 @@ pub mod activate;
 pub mod apply;
 pub mod ctx;
 pub mod deploy;
+mod embedded_frontend;
 pub mod env;
 pub mod expand;
 pub mod facts;

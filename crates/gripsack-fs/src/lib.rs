@@ -191,6 +191,12 @@ pub fn publish_dir(home: &Dir, staging: &Path, dest: &Path) -> io::Result<()> {
         ));
     }
     read_only_files(staging)?;
+    // the payload's bytes AND directory structure must be durable
+    // before the rename (0035 F11): a durable final name over unsynced
+    // staging is a corrupt store after a power loss. The XDEV copy
+    // path syncs per file already; the same-fs rename path needs the
+    // recursive sync here.
+    fsync_tree(home, staging)?;
     let parent = parent_rel(dest);
     home.create_dir_all(parent)?;
     match rustix::fs::renameat(rustix::fs::CWD, staging, home, dest) {
@@ -237,6 +243,27 @@ pub fn publish_dir(home: &Dir, staging: &Path, dest: &Path) -> io::Result<()> {
 /// exec bits exactly like the rename path does), and every file and
 /// directory is fsync'd (leaves upward) so the renamed tree is fully
 /// durable, not just its final name.
+/// Recursively fsync a staged tree: every file's bytes, then every
+/// directory leaf-up (children durable before their parents'
+/// metadata). Staging lives OUTSIDE the home capability ($TMPDIR), so
+/// this walks plain paths — the capability discipline governs the
+/// destination side.
+fn fsync_tree(_dir: &Dir, staging: &Path) -> io::Result<()> {
+    for entry in std::fs::read_dir(staging)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            fsync_tree(_dir, &entry.path())?;
+        } else if ty.is_file() {
+            let file = std::fs::File::open(entry.path())?;
+            file.sync_all()?;
+        }
+        // symlinks carry no bytes; their dir entries are synced by the
+        // parent fsync below
+    }
+    rustix::fs::fsync(std::fs::File::open(staging)?).map_err(io::Error::from)
+}
+
 fn copy_into_dir(src: &Path, dst: &Dir, rel: &Path) -> io::Result<()> {
     dst.create_dir_all(rel)?;
     for entry in std::fs::read_dir(src)? {

@@ -111,10 +111,10 @@ pub struct Op {
 /// What a deploying op records in the manifest.
 #[derive(Debug, Clone)]
 pub struct ProducedEntry {
-    pub from: String,
+    pub from: std::path::PathBuf,
     pub mode: Ownership,
     pub vars: std::collections::BTreeMap<String, String>,
-    pub hash: String,
+    pub hash: store::hash::ManifestHash,
     pub file_mode: Option<u32>,
     pub prior: Option<store::Prior>,
     pub preserved_drift: bool,

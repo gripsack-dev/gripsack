@@ -3,6 +3,60 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.32.0] — 2026-09-06
+
+The fb11aaf external-review round (plan/0035) — the first review
+against the shared-op architecture. Ownership identity is canonical
+everywhere, verification has receipts, and `cargo install` works.
+
+### Fixed
+
+- **A spelling-only declaration change no longer deletes the file** —
+  the manifest records the canonical destination key next to the
+  declared spelling; prune, rollback, lineage, and `why-owns` all key
+  on it. The reviewer's headline defect.
+- **A failed verifier fails every retry** — store presence is not a
+  receipt: verification runs unless a COMMITTED generation verified
+  the identical produced state with identical checks; the receipt
+  rides the manifest.
+- **A typo'd module field (`confg:`) fails eval with a
+  did-you-mean** — the TypeScript constructor rejects unknown fields
+  at runtime, so a typo can never lower to an empty desired state and
+  prune your files.
+- **A dependency's pin update rebuilds its consumers** — the build
+  key incorporates the dependency's RESOLVED identity (transport
+  hash, tree hash, version), not just its declaration.
+- **The activation-record write is inside the transaction boundary**
+  — a failure between the first mutation and the flip compensates;
+  an unreadable record blocks new mutations.
+- **`cargo install gripsack` and the mise cargo route work** — the
+  frontend is vendored into the crate as generated Rust (no
+  build-time read of the repo tree); packaging CI asserts it.
+- **Preview is read-only and accurate** — plan creates no
+  directories, a satisfied owned link reads satisfied, and a deferred
+  fetched destination is never shown as a prune.
+- **Explicit steps carry their payload sources** — overlay and
+  identity walk the normalized step graph; cross-phase `needs` that
+  can't be honored are E121 at check (post-deploy effects belong in
+  activate hooks).
+- **`on_remove` hooks fire at removal, not install** — triggers
+  survive expansion, and a removed module's hooks run from the
+  previous generation's record.
+- **Repo build env can't redefine operator policy** — `[eval] env`
+  rejects `GRIPSACK_*` (a reserved namespace) and applies after
+  runtime selection.
+- **Store publication fsyncs the staged tree recursively** before the
+  rename — payload bytes are durable before the final name exists,
+  on the same-filesystem path too.
+
+### Internal
+
+- `DeployedEntry` fields are typed: `from`/`key` are paths, `hash` is
+  a `ManifestHash` (constructible only from the typed producers),
+  `prior` is the enum. The reviewer's `DestinationKey` ask, landed.
+- Module runs take a named `ModuleInputs` bundle — no more
+  nine-positional-argument signatures.
+
 ## [0.31.0] — 2026-09-06
 
 The VM-level model harness (plan/0034's explorer extension, landed).

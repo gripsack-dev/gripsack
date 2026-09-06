@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use gripsack_fetch::DENO_RELEASE;
 
 mod embedded {
-    include!(concat!(env!("OUT_DIR"), "/frontend_files.rs"));
+    pub(crate) use crate::embedded_frontend::FRONTEND_FILES;
 }
 
 /// The deno runtime for the frontend. Precedence:
