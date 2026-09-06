@@ -54,6 +54,8 @@ the fetcher registry stay the north star.
 | 0034+ | VM-level op harness | 0.31.0 | 560 materialized cases: planner ≡ algebra, execution lands intent | — | — |
 | 0035 | Review fb11aaf | 0.32.0 | canonical DestinationKey in manifests, verify receipts, strict TS fields, dep-pin build keys, closed txn boundary, vendored frontend (cargo install works), read-only accurate preview, normalized step graph, on_remove fires, reserved GRIPSACK_*, recursive fsync publish | build closures, rollback activation, streaming/memory budget, persistence-fault evidence | SQLite, rewrites, machine-local pin setting |
 | 0036 | Representation audit | (docs only) | the typed/bare ledger + the convention (typed producers, plain wire, explicit seams) | GenerationId newtype (with the revisit trigger: a second u64 domain sharing a signature) | — |
+| 0037 | Rollback activation | 0.33.0 | rollback runs the target generation's intents (durable, crash-resumable via 0032's record); rollback-undeclared modules fire on_remove | per-entry intent diffing (if anyone asks) | — |
+| 0038 | Journey harness | 0.34.0 | seeded random journeys + expectation model + system oracles; caught the preserved-verify bug on day one | wider world (more module kinds, parallel-applies stay TLA+'s) | — |
 
 ## Settled rejections (all eras)
 
