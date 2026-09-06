@@ -1261,6 +1261,78 @@ export default module("demo", {
     assert "(prune)" not in out.stdout, "a deferred dest is still declared"
 
 
+def test_rollback_runs_the_target_generations_hooks(sandbox):
+    """0037: rollback restores the RUNNING environment, not just the
+    bytes — the target generation's intents re-run."""
+    confdir = sandbox / "myenv" / "configs" / "demo"
+    confdir.mkdir(parents=True)
+    (confdir / "a.conf").write_text("v1\n")
+    marker = sandbox / "hook-log"
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "demo": f"""
+import {{ module, trackedCopy, customHook }} from "@gripsack/core";
+
+export default module("demo", {{
+  config: {{ "configs/demo/a.conf": trackedCopy("~/.config/demo/a.conf") }},
+  activate: [customHook("echo activated >> {marker}")],
+}});
+"""
+        },
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    (confdir / "a.conf").write_text("v2\n")
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    before = marker.read_text().count("activated")
+
+    out = grip("rollback", "1", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert marker.read_text().count("activated") == before + 1, (
+        "the target generation's hook re-ran"
+    )
+
+
+def test_rollback_fires_on_remove_for_undeclared_modules(sandbox):
+    """0037: a module present now but absent from the rollback target
+    is undeclared BY the rollback — its on_remove hook fires."""
+    marker = sandbox / "remove-hook-log"
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "demo": """
+import { module } from "@gripsack/core";
+
+export default module("demo", {});
+""",
+            "ephemeral": f"""
+import {{ module, customHook }} from "@gripsack/core";
+
+export default module("ephemeral", {{
+  activate: [customHook("echo removed >> {marker}", "on_remove")],
+}});
+""",
+        },
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)  # gen 1: both modules
+    assert out.returncode == 0, out.stderr
+    remove_module(repo, "ephemeral")
+    out = grip("apply", "--host", "testhost", cwd=repo)  # gen 2: demo only
+    assert out.returncode == 0, out.stderr
+    assert marker.exists(), "on_remove fired at the undeclaring apply"
+
+    marker.unlink()
+    out = grip("rollback", "1", cwd=repo)  # back to a world WITH ephemeral
+    assert out.returncode == 0, out.stderr
+    assert not marker.exists(), "no removal hook when the module returns"
+
+    out = grip("rollback", "2", cwd=repo)  # rolling forward undeclares it
+    assert out.returncode == 0, out.stderr
+    assert marker.exists(), "on_remove fires for a module the rollback undeclares"
+
+
 def test_current_link_must_resolve_under_home(sandbox):
     """0030 §H10: `current -> /tmp/42` is corruption, not a
     generation — apply fails closed."""

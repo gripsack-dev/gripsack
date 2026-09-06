@@ -3,6 +3,20 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.33.0] — 2026-09-06
+
+Rollback activation (plan/0037) — the roadmap's rollback-adapters
+item, prioritized after the 0.31.0 review.
+
+### Changed
+
+- **`grip rollback` restores the RUNNING environment** — the target
+  generation's recorded intents (service restarts, cache refreshes,
+  custom hooks) re-run after the flip, durable through the same
+  pending record apply uses: a kill mid-rollback-adapters resumes
+  them on the next run. Modules the rollback undeclares fire their
+  `on_remove` hooks. Adapter failures warn, never un-rollback.
+
 ## [0.32.0] — 2026-09-06
 
 The fb11aaf external-review round (plan/0035) — the first review
