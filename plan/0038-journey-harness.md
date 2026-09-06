@@ -1,6 +1,6 @@
 # 0038 - The journey harness: stateful property tests of user time
 
-Status: **implemented in 0.33.0**. The 0035 meta-lesson, owner-approved:
+Status: **implemented in 0.34.0**. The 0035 meta-lesson, owner-approved:
 our e2e tests what we built; nobody fuzzed what a user DOES over time.
 The 0035 headline bugs (spelling-delete, verify-retry, stale builds)
 were all journey-shaped: state evolving across runs, not single runs.

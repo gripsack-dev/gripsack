@@ -51,6 +51,12 @@ pub fn verify_store(
             // check honest (a raw file hash can never match those).
             let mut handled = false;
             for entry in &state.entries {
+                // a preserved-drift entry records an OBSERVATION, not
+                // a store deployment (0029 §2) — there is no store
+                // content claim to verify
+                if entry.preserved_drift {
+                    continue;
+                }
                 let src = path.join(&entry.from);
                 if !src.is_file() || src.is_symlink() {
                     continue;
