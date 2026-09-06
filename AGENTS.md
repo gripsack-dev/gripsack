@@ -39,7 +39,7 @@ archived.
 
 | Path | Contents |
 |---|---|
-| `plan/` | numbered decision docs — read before changing behavior |
+| `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the landed/deferred/rejected ledger — update it in the same PR |
 | `schema/ir/v1.json` | THE contract between frontend and core |
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
 | `crates/gripsack-store` | store paths, generations, GC |
