@@ -223,6 +223,7 @@ pub fn render_diagnostics(diagnostics: &[Diagnostic], palette: Palette) -> Strin
 pub fn diff_section(
     ir: &Ir,
     repo: &Path,
+    host: &str,
     adopting: &std::collections::BTreeSet<String>,
     palette: Palette,
 ) -> String {
@@ -254,7 +255,14 @@ pub fn diff_section(
 
     // THE operation list (0034): what apply would execute, rendered.
     // plan/apply agreement is by construction — one planner.
-    let ops = match gripsack_exec::ops::preview_ops(ir, repo, current.as_ref(), adopting) {
+    // the lockfile resolves warm fetched payloads to their store
+    // paths (0035 F7) — a deployed module previews satisfied, not
+    // deferred; a cold or unpinned one stays deferred
+    let lock = match gripsack_exec::lockfile::read(repo, host) {
+        gripsack_exec::lockfile::LockRead::Parsed(lock) => lock,
+        _ => Default::default(),
+    };
+    let ops = match gripsack_exec::ops::preview_ops(ir, repo, current.as_ref(), adopting, &lock) {
         Ok(ops) => ops,
         Err(e) => {
             out.push(format!("  (cannot compute the preview: {e})"));
@@ -271,16 +279,16 @@ pub fn diff_section(
                     let from = op
                         .produces
                         .as_ref()
-                        .map(|p| p.from.as_str())
-                        .unwrap_or(op.declared_to.as_str());
+                        .map(|p| p.from.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| op.declared_to.clone());
                     format!("  + {from} → {} (new)", op.declared_to)
                 }
                 Some(Authority::Update) => {
                     let from = op
                         .produces
                         .as_ref()
-                        .map(|p| p.from.as_str())
-                        .unwrap_or(op.declared_to.as_str());
+                        .map(|p| p.from.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| op.declared_to.clone());
                     format!("  ~ {from} → {} (update)", op.declared_to)
                 }
                 Some(Authority::TakeOver) => {
@@ -294,8 +302,8 @@ pub fn diff_section(
                 let from = op
                     .produces
                     .as_ref()
-                    .map(|p| p.from.as_str())
-                    .unwrap_or(op.declared_to.as_str());
+                    .map(|p| p.from.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| op.declared_to.clone());
                 format!("  ~ {from} → {} (update)", op.declared_to)
             }
             OpKind::Remove => format!("  - {} (prune)", op.declared_to),

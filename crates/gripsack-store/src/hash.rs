@@ -50,6 +50,48 @@ hash_domain!(
      templates, merge blocks, a symlink target observed at a copy \
      destination. Never interchangeable with `FileIdentity`."
 );
+/// The manifest's deployed-entry identity (0029 §2, 0035): MODAL by
+/// ownership mode — a tracked copy's FileIdentity, a template's or
+/// merge block's BytesHash, a link's PayloadHash. The wire is a plain
+/// hex string (back-compat); the newtype's constructors make a raw
+/// string unconstructible in production code, so the modal domains
+/// can only ever be compared within their own mode's rows.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct ManifestHash(String);
+
+impl ManifestHash {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// For test fixtures and wire-boundary reassembly of a value a
+    /// typed producer just computed (the Preserve record).
+    #[doc(hidden)]
+    pub fn from_raw(s: String) -> Self {
+        ManifestHash(s)
+    }
+}
+
+impl std::fmt::Display for ManifestHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+macro_rules! manifest_hash_from {
+    ($t:ty) => {
+        impl From<$t> for ManifestHash {
+            fn from(h: $t) -> ManifestHash {
+                ManifestHash(h.to_string())
+            }
+        }
+    };
+}
+manifest_hash_from!(FileIdentity);
+manifest_hash_from!(BytesHash);
+manifest_hash_from!(PayloadHash);
+
 hash_domain!(
     FileIdentity,
     "Mode-aware file identity (0031): bytes + full permission mode. The \

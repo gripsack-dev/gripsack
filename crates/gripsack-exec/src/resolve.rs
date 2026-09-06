@@ -183,12 +183,24 @@ fn identity_projection(module: &gripsack_ir::Module) -> gripsack_ir::Module {
 pub(crate) fn repo_overlay(
     module: &gripsack_ir::Module,
     repo: &Path,
+    steps: &[gripsack_ir::Step],
 ) -> Result<Option<String>, ExecError> {
+    let step_froms: Vec<String> = steps
+        .iter()
+        .flat_map(|s| match &s.action {
+            gripsack_ir::StepAction::Install { entries }
+            | gripsack_ir::StepAction::ConfigDeploy { entries } => {
+                entries.iter().map(|e| e.from.clone()).collect::<Vec<_>>()
+            }
+            _ => vec![],
+        })
+        .collect();
     let froms: Vec<String> = module
         .install
         .iter()
         .chain(module.config.iter())
         .map(|e| e.from.clone())
+        .chain(step_froms)
         .filter(|f| repo.join(f).exists())
         .collect();
     if froms.is_empty() {
@@ -203,26 +215,67 @@ pub(crate) fn module_input(
     module: &gripsack_ir::Module,
     repo: &Path,
     ir: &gripsack_ir::Ir,
+    lock: &crate::lockfile::Lockfile,
+    steps: &[gripsack_ir::Step],
 ) -> Result<String, ExecError> {
     let mut input = serde_json::to_string(&identity_projection(module))?;
-    for entry in module.install.iter().chain(module.config.iter()) {
-        let repo_file = repo.join(&entry.from);
+    // one normalized graph (0035 F8): declarative fields AND explicit
+    // step entries feed the identity alike
+    let step_froms: Vec<&String> = steps
+        .iter()
+        .flat_map(|s| match &s.action {
+            gripsack_ir::StepAction::Install { entries }
+            | gripsack_ir::StepAction::ConfigDeploy { entries } => {
+                entries.iter().map(|e| &e.from).collect::<Vec<_>>()
+            }
+            _ => vec![],
+        })
+        .collect();
+    for from in module
+        .install
+        .iter()
+        .chain(module.config.iter())
+        .map(|e| &e.from)
+        .chain(step_froms)
+    {
+        let repo_file = repo.join(from);
         if repo_file.exists() {
             input.push('|');
-            input.push_str(&entry.from);
+            input.push_str(from);
             input.push('=');
             input.push_str(store::canonical_file_hash(&repo_file)?.as_str());
         }
     }
     // the closure model (0001 §3.4): a dependency's identity joins the
-    // dependent's input, or a rebuilt dep leaves dependents stale
+    // dependent's input — its DECLARATION (recursive) AND its RESOLVED
+    // identity (0035 F4): a pin update must move the consumer's build
+    // key, or a rebuilt dep leaves dependents stale
     for dep in &module.depends {
         if let Some(dep_module) = ir.modules.get(&dep.module) {
             input.push_str(&format!(
                 "|dep:{}={}",
                 dep.module,
-                module_input(dep_module, repo, ir)?
+                module_input(
+                    dep_module,
+                    repo,
+                    ir,
+                    lock,
+                    &crate::expand::expand(dep_module)
+                )?
             ));
+        }
+        if let Some(resolved) = lock
+            .modules
+            .get(&dep.module)
+            .and_then(|e| e.resolved.as_ref())
+        {
+            let pin = format!(
+                "{}:{}:{}",
+                resolved.sha256.as_deref().unwrap_or("-"),
+                resolved.tree256.as_deref().unwrap_or("-"),
+                resolved.version.as_deref().unwrap_or("-")
+            );
+            input.push_str(&format!("|dep-pin:{}={pin}", dep.module));
         }
     }
     Ok(input)
@@ -258,8 +311,8 @@ mod identity_tests {
             modules: Default::default(),
             resources: Default::default(),
         };
-        let ia = super::module_input(&a, repo, &ir).unwrap();
-        let ib = super::module_input(&b, repo, &ir).unwrap();
+        let ia = super::module_input(&a, repo, &ir, &Default::default(), &[]).unwrap();
+        let ib = super::module_input(&b, repo, &ir, &Default::default(), &[]).unwrap();
         assert_eq!(ia, ib, "span/provenance must not change identity");
     }
 }

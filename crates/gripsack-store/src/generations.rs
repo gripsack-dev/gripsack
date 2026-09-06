@@ -35,8 +35,17 @@ pub enum Prior {
 /// deploy time (drift detection compares against this — 0008 §3).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DeployedEntry {
-    pub from: String,
+    /// The store-relative payload key (expanded; no placeholders).
+    pub from: std::path::PathBuf,
+    /// The DECLARED spelling (diagnostics/provenance only — never an
+    /// ownership identity, 0035 F1).
     pub to: String,
+    /// The canonical physical destination (0030 §P0-1) — THE
+    /// ownership key: prune, rollback, lineage, and why-owns compare
+    /// this, never the spelling. None only in pre-0.32 manifests;
+    /// read-time upgrade canonicalizes from the spelling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<std::path::PathBuf>,
     pub mode: Ownership,
     /// Template vars at deploy time — rollback re-renders with these.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -45,7 +54,9 @@ pub struct DeployedEntry {
     /// what it OBSERVED (0029 §2: one field used to mean both, and
     /// observed user bytes became overwrite authority on the next
     /// apply).
-    pub hash: String,
+    /// Modal by ownership mode; constructible only from the typed
+    /// producers (0035).
+    pub hash: crate::hash::ManifestHash,
     /// The landed permission mode (0031) — tracked copies and
     /// templates only; rollback re-applies it exactly. None on
     /// pre-0.27 manifests (not recorded; the legacy rule restores),
@@ -65,11 +76,43 @@ pub struct DeployedEntry {
     pub preserved_drift: bool,
 }
 
+impl DeployedEntry {
+    /// The ownership key: the recorded canonical key, or the spelling
+    /// canonicalized on read (pre-0.32 manifests — the read-time
+    /// upgrade; the next apply rewrites the record with a key).
+    /// The ownership key as a path.
+    pub fn key(&self) -> std::path::PathBuf {
+        match &self.key {
+            Some(k) => k.clone(),
+            None => crate::paths::canonical_dest(&self.to)
+                .unwrap_or_else(|_| std::path::PathBuf::from(&self.to)),
+        }
+    }
+}
+
+/// A module's recorded activation intent (0035 F9).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IntentRecord {
+    pub action: gripsack_ir::Action,
+    pub trigger: gripsack_ir::Trigger,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModuleState {
     pub store_path: PathBuf,
     #[serde(default)]
     pub entries: Vec<DeployedEntry>,
+    /// The module's declared activation intents (0035 F9): the record
+    /// lets the next generation fire on_remove hooks for modules that
+    /// disappeared — without it the removal trigger is unknowable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub intents: Vec<IntentRecord>,
+    /// The verification receipt (0035 F2): fingerprints of the verify
+    /// specs that PASSED over exactly this module state. Store
+    /// presence is not a receipt; a failed run never writes one;
+    /// changing a verifier invalidates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified: Option<Vec<String>>,
     /// Environment contributions, replayed into the shell profile at
     /// activation and rollback (0001 §3.10).
     #[serde(default)]
@@ -191,7 +234,9 @@ fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<(
                     entry.to
                 )));
             }
-            if entry.hash.len() != 64 || !entry.hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            if entry.hash.as_str().len() != 64
+                || !entry.hash.as_str().chars().all(|c| c.is_ascii_hexdigit())
+            {
                 return Err(invalid(format!(
                     "module {name:?}: destination {:?} has a malformed content hash",
                     entry.to
@@ -422,12 +467,15 @@ mod tests {
             "helix".to_string(),
             ModuleState {
                 store_path: home.join("store/abc-helix"),
+                intents: vec![],
+                verified: None,
                 entries: vec![DeployedEntry {
                     from: "config.toml".into(),
                     to: "~/.config/helix/config.toml".into(),
+                    key: None,
                     mode: Ownership::TrackedCopy,
                     vars: Default::default(),
-                    hash: "d".repeat(64),
+                    hash: crate::hash::ManifestHash::from_raw("d".repeat(64)),
                     file_mode: None,
                     prior: None,
                     preserved_drift: false,
@@ -448,7 +496,10 @@ mod tests {
         write_manifest(&cap, &mk_gen(home, 2)).unwrap();
         assert_eq!(list(home).unwrap(), vec![1, 2]);
         let read = read_manifest(home, 1).unwrap();
-        assert_eq!(read.modules["helix"].entries[0].hash, "d".repeat(64));
+        assert_eq!(
+            read.modules["helix"].entries[0].hash.as_str(),
+            "d".repeat(64)
+        );
     }
 
     #[test]

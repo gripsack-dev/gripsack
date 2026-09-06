@@ -11,7 +11,7 @@ pub fn why_owns(path: &str, palette: Palette) -> ExitCode {
                 "{} {} ({} → {}, {})",
                 palette.good(&module),
                 path,
-                entry.from,
+                entry.from.display(),
                 entry.to,
                 palette.dim(&format!("{:?}", entry.mode))
             );

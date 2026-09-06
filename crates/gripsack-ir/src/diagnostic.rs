@@ -38,6 +38,9 @@ pub mod codes {
     pub const INVALID_ENV_NAME: &str = "E117";
     /// Steps modules with more than one fetch step cannot be pinned.
     pub const UNPINNABLE_STEPS: &str = "E118";
+    /// A step's `needs` references a LATER phase — post-deploy effects
+    /// belong in activate hooks (0035 F8).
+    pub const STEP_PHASE_ORDER: &str = "E121";
     /// A cycle in a module's step `needs` graph (0033 R4).
     pub const STEP_CYCLE: &str = "E120";
     /// Two declarations resolve to one physical destination (aliases:

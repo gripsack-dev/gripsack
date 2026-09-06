@@ -221,7 +221,10 @@ pub fn adopt(
     } else {
         std::iter::once(generate::tilde(&dest)).collect()
     };
-    println!("{}", render::diff_section(&ir, &repo, &adopting, palette));
+    println!(
+        "{}",
+        render::diff_section(&ir, &repo, &host_name, &adopting, palette)
+    );
     println!(
         "  {}",
         palette.dim("prior state will be recorded — rollback restores your original files")

@@ -60,6 +60,10 @@ pub enum StepAction {
     },
     Intent {
         action: Box<Action>,
+        /// When the intent fires (0035 F9): expansion used to drop
+        /// this, so on_remove ran at install and never at removal.
+        #[serde(default)]
+        trigger: crate::model::Trigger,
     },
     /// A module-level smoke contract as a terminal step (synthesized by
     /// the expansion pass; 0007 §verify).

@@ -72,7 +72,12 @@ pub fn verify_store(
                     gripsack_ir::Ownership::Template => std::fs::read(&src)
                         .ok()
                         .and_then(|b| {
-                            crate::template::render_template(&b, &entry.vars, &entry.from).ok()
+                            crate::template::render_template(
+                                &b,
+                                &entry.vars,
+                                &entry.from.to_string_lossy(),
+                            )
+                            .ok()
                         })
                         .map(|r| gripsack_store::canonical_bytes_hash(&r).to_string()),
                     gripsack_ir::Ownership::Owned => gripsack_store::canonical_file_hash(&src)
@@ -96,7 +101,7 @@ pub fn verify_store(
                     }),
                 };
                 if let Some(h) = &actual
-                    && *h != entry.hash
+                    && h.as_str() != entry.hash.as_str()
                 {
                     return_corrupt(
                         &mut out,
@@ -107,7 +112,7 @@ pub fn verify_store(
                         &format!(
                             "corrupt: {} tampered (recorded {} ≠ {})",
                             src.display(),
-                            hex_head(&entry.hash),
+                            hex_head(entry.hash.as_str()),
                             hex_head(h)
                         ),
                     )?;

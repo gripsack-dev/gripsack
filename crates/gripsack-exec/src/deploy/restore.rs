@@ -115,13 +115,13 @@ pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, store_path: &P
             .unwrap_or(false),
         Ownership::Merge => false, // merge never carries a prior
         Ownership::Template => std::fs::read(dest)
-            .map(|b| store::canonical_bytes_hash(&b).as_str() == entry.hash)
+            .map(|b| store::canonical_bytes_hash(&b).as_str() == entry.hash.as_str())
             .unwrap_or(false),
         Ownership::TrackedCopy => std::fs::read(dest)
             .ok()
             .and_then(|bytes| {
                 let mode = live_mode(dest)?;
-                Some(store::canonical_bytes_identity(&bytes, mode).as_str() == entry.hash)
+                Some(store::canonical_bytes_identity(&bytes, mode).as_str() == entry.hash.as_str())
             })
             .unwrap_or(false),
     }

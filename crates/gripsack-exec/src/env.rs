@@ -131,12 +131,15 @@ mod tests {
     fn state(store: &str, env: Vec<EnvVar>) -> store::ModuleState {
         store::ModuleState {
             store_path: PathBuf::from(store),
+            intents: vec![],
+            verified: None,
             entries: vec![store::DeployedEntry {
                 from: "a".into(),
                 to: "~/.a".into(),
+                key: None,
                 mode: Ownership::Owned,
                 vars: Default::default(),
-                hash: "h".into(),
+                hash: gripsack_store::hash::ManifestHash::from_raw("h".into()),
                 file_mode: None,
                 prior: None,
                 preserved_drift: false,

@@ -284,7 +284,7 @@ fn main() -> ExitCode {
             if modules.is_empty() {
                 println!(
                     "{}",
-                    render::diff_section(&ir, &repo, &Default::default(), palette)
+                    render::diff_section(&ir, &repo, &outcome.host, &Default::default(), palette)
                 );
             }
             match modules.first() {

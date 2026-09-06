@@ -181,6 +181,38 @@ pub(crate) fn journaled(
     Ok(())
 }
 
+/// A read-only observation by plain path (0035 F7): the preview's
+/// eyes — no capability, NO directory creation. Mutation paths use
+/// `observe` through the pinned parent.
+pub fn observe_readonly(dest: &Path) -> std::io::Result<Option<Observation>> {
+    let meta = match std::fs::symlink_metadata(dest) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+        Ok(m) => m,
+    };
+    if meta.file_type().is_symlink() {
+        let target = std::fs::read_link(dest)?;
+        Ok(Some(Observation::Symlink {
+            target: target.into_os_string(),
+        }))
+    } else if meta.is_file() {
+        #[cfg(unix)]
+        let mode = {
+            use std::os::unix::fs::MetadataExt;
+            meta.mode() & 0o7777
+        };
+        #[cfg(not(unix))]
+        let mode = 0o644;
+        let bytes = std::fs::read(dest)?;
+        Ok(Some(Observation::File { bytes, mode }))
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file or symlink",
+        ))
+    }
+}
+
 /// Open a destination's parent as a capability, creating parents for
 /// a fresh destination first. Deploy's check-then-write paths pin
 /// THIS inode: the drift hash, the journal capture, and the write
@@ -338,7 +370,7 @@ pub(crate) fn deploy_entry(
                 &view,
                 crate::ops::ModeInput::Link {
                     source: &source,
-                    content_hash: store::canonical_file_hash(&source)?.to_string(),
+                    content_hash: store::canonical_file_hash(&source)?.into(),
                     already,
                 },
             )?
@@ -406,10 +438,11 @@ pub(crate) fn deploy_entry(
     match op.produces {
         Some(produced) => {
             out.push(store::DeployedEntry {
-                // the EXPANDED key — rollback (restore_entry) and store
-                // verify re-join it against the store path verbatim
-                from: from.clone(),
+                // the EXPANDED key — rollback and store verify re-join
+                // it against the store path verbatim
+                from: std::path::PathBuf::from(&from),
                 to: entry.to.clone(),
+                key: Some(dest.clone()),
                 mode: entry.mode.clone(),
                 vars: entry.vars.clone(),
                 hash: produced.hash,
@@ -506,10 +539,11 @@ mod tests {
         let entry = store::DeployedEntry {
             from: "m-{version}-{target}/m".into(),
             to: dest.to_string_lossy().into_owned(),
+            key: None,
             mode: Ownership::Owned,
             vars: Default::default(),
             file_mode: None,
-            hash: "x".repeat(64),
+            hash: gripsack_store::hash::ManifestHash::from_raw("x".repeat(64)),
             prior: None,
             preserved_drift: false,
         };

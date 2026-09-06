@@ -33,19 +33,24 @@ pub fn rollback_generation(
     // durable activation resume (0032): same rule as apply — a
     // pending record naming the current generation re-runs its
     // intents; anything else is discarded, never run
-    match crate::activate::resume_pending(&home, current.map(|g| g.number)) {
-        Ok(resumed) => notes.extend(resumed.into_iter().map(|r| store::journal::RecoveryNote {
-            severity: if r.kind == crate::report::ReportKind::Warned {
-                store::journal::NoteSeverity::Warn
-            } else {
-                store::journal::NoteSeverity::Info
-            },
-            message: format!("{}: {}", r.module, r.summary),
-        })),
-        Err(e) => {
-            tracing::warn!("activation resume failed (record intact for next run): {e}")
+    // same fail-closed rule as apply (0035 F5)
+    let resumed = crate::activate::resume_pending(&home, current.map(|g| g.number)).map_err(|e| {
+        ExecError::Step {
+            module: "*".into(),
+            step: "activate".into(),
+            detail: format!(
+                "the activation record is unreadable ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
+            ),
         }
-    }
+    })?;
+    notes.extend(resumed.into_iter().map(|r| store::journal::RecoveryNote {
+        severity: if r.kind == crate::report::ReportKind::Warned {
+            store::journal::NoteSeverity::Warn
+        } else {
+            store::journal::NoteSeverity::Info
+        },
+        message: format!("{}: {}", r.module, r.summary),
+    }));
     store::journal::begin_run(
         &home,
         current.map(|g| g.number),
@@ -98,8 +103,8 @@ pub fn rollback_generation(
     }
 }
 
-/// `(module, entry, store_path)` per destination.
-type DestMap<'m> = BTreeMap<&'m str, (&'m str, &'m store::DeployedEntry, &'m Path)>;
+/// `(module, entry, store_path)` per CANONICAL destination (0035 F1).
+type DestMap<'m> = BTreeMap<std::path::PathBuf, (&'m str, &'m store::DeployedEntry, &'m Path)>;
 
 fn by_destination(generation: &store::Generation) -> DestMap<'_> {
     // E111 guarantees one deployer per destination within a
@@ -108,7 +113,7 @@ fn by_destination(generation: &store::Generation) -> DestMap<'_> {
     let mut map = DestMap::new();
     for (name, state) in &generation.modules {
         for entry in &state.entries {
-            map.entry(entry.to.as_str())
+            map.entry(entry.key())
                 .or_insert((name.as_str(), entry, &state.store_path));
         }
     }
@@ -130,15 +135,15 @@ fn plan(
     preflight(target)?;
     let current_by_dest = current.map(by_destination).unwrap_or_default();
     let target_by_dest = by_destination(target);
-    let dests: BTreeSet<&str> = current_by_dest
+    let dests: BTreeSet<std::path::PathBuf> = current_by_dest
         .keys()
         .chain(target_by_dest.keys())
-        .copied()
+        .cloned()
         .collect();
     let mut ops = Vec::new();
     let mut notes = Vec::new();
     for dest in dests {
-        match (current_by_dest.get(dest), target_by_dest.get(dest)) {
+        match (current_by_dest.get(&dest), target_by_dest.get(&dest)) {
             // only the current generation deploys it: the prune rule
             (Some((name, entry, sp)), None) => {
                 // preserved drift was never written by gripsack —
@@ -170,7 +175,8 @@ fn plan(
                     None => notes.push(RecoveryNote {
                         severity: NoteSeverity::Warn,
                         message: format!(
-                            "skipped {dest} — no safe restore plan (stale manifest or unreadable merge file)",
+                            "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
+                            dest.display()
                         ),
                     }),
                     Some(op) => match op.kind {
@@ -201,7 +207,8 @@ fn plan(
                     None => notes.push(RecoveryNote {
                         severity: NoteSeverity::Warn,
                         message: format!(
-                            "skipped {dest} — no safe restore plan (stale manifest or unreadable merge file)",
+                            "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
+                            dest.display()
                         ),
                     }),
                     Some(op) => match op.kind {

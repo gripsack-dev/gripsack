@@ -80,6 +80,7 @@ pub fn expand(module: &Module) -> Vec<Step> {
             "activate",
             StepAction::Intent {
                 action: Box::new(intent.action.clone()),
+                trigger: intent.trigger,
             },
             Phase::Activate,
             None,

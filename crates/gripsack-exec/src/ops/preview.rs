@@ -16,6 +16,7 @@ pub fn preview_ops(
     repo: &Path,
     prev: Option<&store::Generation>,
     adopting: &std::collections::BTreeSet<String>,
+    lock: &crate::lockfile::Lockfile,
 ) -> Result<Vec<Op>, ExecError> {
     let mut ops = Vec::new();
     // the destination-global lineage map (0030 §H4): the previous
@@ -33,6 +34,16 @@ pub fn preview_ops(
     }
     let home = store::gripsack_home();
     let steps_by_module = crate::expand::expand_all(&ir.modules);
+    // a locked, present payload resolves the store path offline
+    // (0035 F7): a deployed fetched module previews satisfied, not
+    // deferred
+    let store_source = |name: &str| -> Option<PathBuf> {
+        let entry = lock.modules.get(name)?;
+        let resolved = entry.resolved.as_ref()?;
+        let tree = resolved.tree256.as_deref().or(resolved.sha256.as_deref())?;
+        let path = store::content_path(&home, name, tree);
+        path.exists().then_some(path)
+    };
     for (name, steps) in &steps_by_module {
         for step in steps {
             let entries: &[Entry] = match &step.action {
@@ -73,9 +84,10 @@ pub fn preview_ops(
                         });
                     }
                 };
-                let (dest_dir, dest_name) = crate::deploy::dest_capability(&dest)?;
+                // read-only observation (0035 F7): the preview must
+                // never create a destination's parents
                 let observed =
-                    crate::deploy::observe(&dest_dir, &dest_name).map_err(|e| ExecError::Step {
+                    crate::deploy::observe_readonly(&dest).map_err(|e| ExecError::Step {
                         module: name.clone(),
                         step: "plan".into(),
                         detail: format!("cannot inspect {}: {e}", entry.to),
@@ -91,7 +103,16 @@ pub fn preview_ops(
                 };
                 // the content question decides how much of the decision
                 // plan can make offline
-                let repo_file = repo.join(&entry.from);
+                let repo_file = {
+                    let direct = repo.join(&entry.from);
+                    if direct.exists() {
+                        direct
+                    } else if let Some(store_dir) = store_source(name) {
+                        store_dir.join(&entry.from)
+                    } else {
+                        direct
+                    }
+                };
                 let deferred = match entry.mode {
                     Ownership::Merge => match std::fs::read_to_string(&repo_file) {
                         Ok(payload) => {
@@ -168,21 +189,33 @@ pub fn preview_ops(
                     },
                     Ownership::Owned => {
                         if repo_file.exists() {
+                            // the apply-time target is the STORE path,
+                            // not the repo file (0035 F7): compute the
+                            // content-addressed path offline or the
+                            // preview reads satisfied links as new
+                            let store_target = match crate::resolve::repo_overlay(
+                                &ir.modules[name],
+                                repo,
+                                &steps_by_module[name],
+                            )? {
+                                Some(tree) => store::content_path(&home, name, &tree),
+                                None => repo_file.clone(),
+                            };
                             let already = std::fs::read_link(&dest)
-                                .map(|t| t == repo_file)
+                                .map(|t| t == store_target)
                                 .unwrap_or(false);
                             return_op(
                                 &mut ops,
                                 &view,
                                 ModeInput::Link {
-                                    source: &repo_file,
+                                    source: &store_target,
                                     content_hash: store::canonical_file_hash(&repo_file)
                                         .map_err(|e| ExecError::Step {
                                             module: name.clone(),
                                             step: "plan".into(),
                                             detail: format!("{e}"),
                                         })?
-                                        .to_string(),
+                                        .into(),
                                     already,
                                 },
                             )?;
@@ -218,14 +251,19 @@ pub fn preview_ops(
     // prunes: recorded destinations no longer declared (the remove
     // planner's gates — merge block intactness, drift — apply)
     if let Some(prev) = prev {
+        // declared = the CANONICAL keys (0035 F1 + the deferred-prune
+        // fix: a deferred op IS declared — its spelling just isn't
+        // decided yet). Only marker ops (RunEffect) carry no dest.
         let declared: std::collections::BTreeSet<String> = ops
             .iter()
-            .filter(|o| !matches!(o.kind, OpKind::RunEffect | OpKind::Deferred))
-            .map(|o| o.declared_to.clone())
+            .filter(|o| !matches!(o.kind, OpKind::RunEffect))
+            .map(|o| o.dest.to_string_lossy().into_owned())
             .collect();
         for (name, state) in &prev.modules {
             for entry in &state.entries {
-                if entry.preserved_drift || declared.contains(entry.to.as_str()) {
+                if entry.preserved_drift
+                    || declared.contains(&entry.key().to_string_lossy().into_owned())
+                {
                     continue;
                 }
                 if let Some(op) = plan_remove_op(name, entry, &state.store_path, &home)? {

@@ -96,15 +96,6 @@ pub fn eval_repo(
         Some(gripsack_store::gripsack_home().join("throttle.json")),
     );
     provision_plugins(&env)?;
-    // Build-time env (0001 §3.10 build side): injected for the run's
-    // duration so every subprocess — fetchers, build steps, plugins —
-    // inherits it. A CLI exits after one run, so process-env is the
-    // honest carrier; [eval] env in env.toml is the declaration point.
-    // (The deno eval subprocess is the exception — it gets no env:
-    // denied by the absence of --allow-env.)
-    for (name, value) in &env.eval.env {
-        unsafe { std::env::set_var(name, value) };
-    }
     let host = host
         .map(str::to_string)
         .or_else(|| env.env.default_host.clone())
@@ -134,6 +125,13 @@ pub fn eval_repo(
             return Err(ExitCode::FAILURE);
         }
     };
+    // Build-time env (0001 §3.10 build side) — AFTER runtime
+    // selection and provisioning (0035 F10): repo-declared env rides
+    // build/fetch subprocesses, never the evaluator choice. The
+    // GRIPSACK_* namespace is rejected at config parse.
+    for (name, value) in &env.eval.env {
+        unsafe { std::env::set_var(name, value) };
+    }
     let driver = frontend_dir.join("src/cli.ts");
     // the allow-read grant and the driver's import base must be the
     // same path the child sees — canonical, not CWD-relative

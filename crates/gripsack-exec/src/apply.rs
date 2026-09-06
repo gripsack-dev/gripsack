@@ -61,12 +61,19 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // durable activation resume (0032): a previous run killed around
     // its adapters left a pending record — run or discard it BEFORE
     // this run mutates anything (a satisfied run resumes too)
-    match crate::activate::resume_pending(ctx.home_dir()?, current_gen) {
-        Ok(resumed) => reports.extend(resumed),
-        Err(e) => {
-            tracing::warn!("activation resume failed (record intact for next run): {e}")
+    // invalid pending metadata BLOCKS the run (0035 F5): mutating
+    // over an unreadable activation record would strand the pending
+    // generation's intents — same rule as the journal's quarantine
+    let resumed = crate::activate::resume_pending(ctx.home_dir()?, current_gen).map_err(|e| {
+        ExecError::Step {
+            module: "*".into(),
+            step: "activate".into(),
+            detail: format!(
+                "the activation record is unreadable ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
+            ),
         }
-    }
+    })?;
+    reports.extend(resumed);
     // the allocator is NOT current+1 (0026 §3): after a rollback,
     // current is lower than the highest generation on disk, and
     // reusing a number would rewrite immutable history. Allocate
@@ -204,15 +211,40 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // kill anywhere now leaves either a committed generation with its
     // intents recorded (next run resumes) or a record naming a
     // generation that never committed (next run discards)
-    let intents = crate::activate::collect(&order, &steps_by_module);
-    if !intents.is_empty() {
-        store::activation::write_pending(
+    let mut intents = crate::activate::collect(&order, &steps_by_module);
+    // on_remove hooks (0035 F9): a module dropped from the IR fires
+    // its removal intents with the new generation — the record is the
+    // only durable place the old intents live
+    if let Some(prev) = &prev_manifest {
+        for (name, state) in &prev.modules {
+            if modules.contains_key(name) || ir.modules.contains_key(name) {
+                continue;
+            }
+            for record in &state.intents {
+                if record.trigger == gripsack_ir::Trigger::OnRemove {
+                    intents.push(store::activation::PendingIntent {
+                        module: name.clone(),
+                        action: record.action.clone(),
+                        trigger: record.trigger,
+                    });
+                }
+            }
+        }
+    }
+    if !intents.is_empty()
+        && let Err(e) = store::activation::write_pending(
             ctx.home_dir()?,
             &store::activation::PendingActivation {
                 generation: next,
                 intents: intents.clone(),
             },
-        )?;
+        )
+    {
+        // inside the transaction boundary (0035 F5): a fallible write
+        // between the first mutation and the flip compensates like
+        // any other
+        compensate(ctx);
+        return Err(e.into());
     }
     if let Err(e) = store::flip(ctx.home_dir()?, &ctx.home, next) {
         compensate(ctx);
@@ -300,17 +332,18 @@ pub(crate) fn scoped_order(
 /// undeclare must restore the pre-adoption state, not the last
 /// absorbed drift.
 fn inherit_priors(prev: &store::Generation, modules: &mut BTreeMap<String, store::ModuleState>) {
-    let mut by_dest: std::collections::BTreeMap<&str, &store::Prior> = Default::default();
+    let mut by_dest: std::collections::BTreeMap<std::path::PathBuf, &store::Prior> =
+        Default::default();
     for state in prev.modules.values() {
         for entry in &state.entries {
             if let Some(prior) = &entry.prior {
-                by_dest.entry(entry.to.as_str()).or_insert(prior);
+                by_dest.entry(entry.key()).or_insert(prior);
             }
         }
     }
     for state in modules.values_mut() {
         for entry in &mut state.entries {
-            if let Some(prior) = by_dest.get(entry.to.as_str()) {
+            if let Some(prior) = by_dest.get(&entry.key()) {
                 entry.prior = Some((*prior).clone());
             }
         }
@@ -410,22 +443,22 @@ fn prune_undeclared(
     home: &std::path::Path,
     home_dir: &gripsack_fs::Dir,
 ) -> Result<(), ExecError> {
-    let declared: BTreeSet<&str> = modules
+    let declared: BTreeSet<std::path::PathBuf> = modules
         .values()
-        .flat_map(|m| m.entries.iter().map(|e| e.to.as_str()))
+        .flat_map(|m| m.entries.iter().map(|e| e.key()))
         .collect();
     // merge blocks are owned per (module, dest) — several modules may
     // hold blocks in one file, and a renamed module must not leave
     // its block behind as an unowned ghost (0026 §2). Non-merge
     // destinations are unique by E111, so a rename keeps the dest
     // deployed under the new module without a remove/redeploy churn.
-    let declared_merge: BTreeSet<(&str, &str)> = modules
+    let declared_merge: BTreeSet<(&str, std::path::PathBuf)> = modules
         .iter()
         .flat_map(|(name, m)| {
             m.entries
                 .iter()
                 .filter(|e| e.mode == gripsack_ir::Ownership::Merge)
-                .map(|e| (name.as_str(), e.to.as_str()))
+                .map(|e| (name.as_str(), e.key()))
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -439,9 +472,9 @@ fn prune_undeclared(
                 continue;
             }
             let declared_elsewhere = if entry.mode == gripsack_ir::Ownership::Merge {
-                declared_merge.contains(&(name.as_str(), entry.to.as_str()))
+                declared_merge.contains(&(name.as_str(), entry.key()))
             } else {
-                declared.contains(entry.to.as_str())
+                declared.contains(&entry.key())
             };
             if declared_elsewhere {
                 continue;

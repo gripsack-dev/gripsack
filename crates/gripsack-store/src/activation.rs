@@ -19,6 +19,10 @@ use std::path::Path;
 pub struct PendingIntent {
     pub module: String,
     pub action: gripsack_ir::Action,
+    /// When it fires (0035 F9). Activation records never carry
+    /// on_remove (those fire at prune from the old manifest).
+    #[serde(default)]
+    pub trigger: gripsack_ir::Trigger,
 }
 
 /// The intents awaiting execution for a committed generation.
@@ -78,6 +82,7 @@ mod tests {
             intents: vec![PendingIntent {
                 module: "demo".into(),
                 action: gripsack_ir::Action::Fonts,
+                trigger: gripsack_ir::Trigger::PostLink,
             }],
         };
         write_pending(&home, &pending).unwrap();

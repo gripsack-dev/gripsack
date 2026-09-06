@@ -326,3 +326,16 @@ Deno.test("pin re-exports the full index surface", () => {
   }
   assert.ok(Object.keys(index).length >= 40);
 });
+
+Deno.test("module() rejects unknown fields — a typo never lowers to an empty desired state", () => {
+  assert.throws(
+    () => index.module("demo", { confg: {} } as never),
+    /unknown field "confg".*did you mean "config"\?/,
+  );
+  assert.throws(
+    () => index.module("demo", { fetchh: undefined } as never),
+    /unknown field "fetchh".*did you mean "fetch"\?/,
+  );
+  // a valid spec still works
+  index.module("demo", { config: {} });
+});

@@ -53,12 +53,12 @@ impl DestView<'_> {
 
     fn produces(
         &self,
-        hash: String,
+        hash: store::hash::ManifestHash,
         file_mode: Option<u32>,
         preserved: bool,
     ) -> Option<ProducedEntry> {
         Some(ProducedEntry {
-            from: self.entry.from.clone(),
+            from: std::path::PathBuf::from(&self.entry.from),
             mode: self.entry.mode.clone(),
             vars: self.entry.vars.clone(),
             hash,
@@ -75,7 +75,7 @@ pub enum ModeInput<'a> {
     /// and whether the live link already points there.
     Link {
         source: &'a Path,
-        content_hash: String,
+        content_hash: store::hash::ManifestHash,
         already: bool,
     },
     /// Tracked copy / template: the content bytes and the intended
@@ -115,9 +115,9 @@ pub(crate) fn plan_entry_op(view: &DestView, input: ModeInput) -> Result<Op, Exe
 fn plan_write(view: &DestView, content: &[u8], intent_mode: u32) -> Op {
     use crate::deploy::CopyPlan;
     let entry = view.entry;
-    let desired_hash = match entry.mode {
-        Ownership::Template => store::canonical_bytes_hash(content).to_string(),
-        _ => store::canonical_bytes_identity(content, intent_mode).to_string(),
+    let desired_hash: store::hash::ManifestHash = match entry.mode {
+        Ownership::Template => store::canonical_bytes_hash(content).into(),
+        _ => store::canonical_bytes_identity(content, intent_mode).into(),
     };
     // the manifest-domain live identity (mode-aware for copies,
     // bytes-only for templates; a foreign link hashes its target)
@@ -132,7 +132,12 @@ fn plan_write(view: &DestView, content: &[u8], intent_mode: u32) -> Op {
         },
     };
     let prev_pair = view.prev.map(|e| (e.hash.as_str(), e.preserved_drift));
-    let plan = crate::deploy::plan_copy(&desired_hash, live.as_deref(), prev_pair, view.take_over);
+    let plan = crate::deploy::plan_copy(
+        desired_hash.as_str(),
+        live.as_deref(),
+        prev_pair,
+        view.take_over,
+    );
     match plan {
         CopyPlan::Satisfied => {
             // satisfied means managed (0029 §2): the record clears any
@@ -202,13 +207,22 @@ fn plan_write(view: &DestView, content: &[u8], intent_mode: u32) -> Op {
             );
             // the record holds the OBSERVED identity, marked preserved
             // (0029 §2) — it authorizes nothing
-            op.produces = view.produces(live.expect("Preserve implies a live object"), None, true);
+            op.produces = view.produces(
+                store::hash::ManifestHash::from_raw(live.expect("Preserve implies a live object")),
+                None,
+                true,
+            );
             op
         }
     }
 }
 
-fn plan_link(view: &DestView, source: &Path, content_hash: String, already: bool) -> Op {
+fn plan_link(
+    view: &DestView,
+    source: &Path,
+    content_hash: store::hash::ManifestHash,
+    already: bool,
+) -> Op {
     use crate::deploy::LinkPlan;
     let exists = view.observed.is_some();
     let ours = match &view.observed {
@@ -268,14 +282,14 @@ fn plan_merge(
         detail,
     };
     let block = payload.trim_end_matches('\n');
-    let hash = store::canonical_bytes_hash(block.as_bytes()).to_string();
+    let hash = store::hash::ManifestHash::from(store::canonical_bytes_hash(block.as_bytes()));
     let existing = existing.unwrap_or_default();
     let extracted = crate::template::extract_block(&existing, view.module);
     let block_total = crate::template::find_blocks(&existing, view.module).len();
     let satisfied = block_total == 1
         && extracted
             .as_deref()
-            .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()).as_str() == hash);
+            .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()).as_str() == hash.as_str());
     if satisfied {
         let mut op = view.base(
             OpKind::Satisfied,
@@ -364,7 +378,8 @@ pub(crate) fn plan_remove_op(
         };
         match crate::template::extract_block(&existing, module) {
             Some(content)
-                if store::canonical_bytes_hash(content.as_bytes()).as_str() == entry.hash =>
+                if store::canonical_bytes_hash(content.as_bytes()).as_str()
+                    == entry.hash.as_str() =>
             {
                 let new =
                     crate::template::remove_block(&existing, module).expect("block found above");
@@ -452,7 +467,7 @@ pub(crate) fn plan_restore_op(
     // one (the marker is deploy-time only — merge restore upserts
     // with the default)
     let ir_entry = Entry {
-        from: entry.from.clone(),
+        from: entry.from.to_string_lossy().into_owned(),
         to: entry.to.clone(),
         mode: entry.mode.clone(),
         vars: entry.vars.clone(),
@@ -489,7 +504,7 @@ pub(crate) fn plan_restore_op(
                     source: &source,
                     content_hash: store::canonical_file_hash(&source)
                         .map_err(|e| fail(format!("{e}")))?
-                        .to_string(),
+                        .into(),
                     already,
                 },
             )?
@@ -503,8 +518,12 @@ pub(crate) fn plan_restore_op(
             let rendered;
             let content: &[u8] = match entry.mode {
                 Ownership::Template => {
-                    rendered = crate::template::render_template(&bytes, &entry.vars, &entry.from)
-                        .map_err(|e| fail(format!("{e}")))?;
+                    rendered = crate::template::render_template(
+                        &bytes,
+                        &entry.vars,
+                        &entry.from.to_string_lossy(),
+                    )
+                    .map_err(|e| fail(format!("{e}")))?;
                     &rendered
                 }
                 _ => &bytes,
