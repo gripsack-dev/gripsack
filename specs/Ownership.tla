@@ -38,6 +38,11 @@ TypeOK ==
     /\ manifest \in {NONE} \union [hash: CONTENTS, preserved: {TRUE, FALSE}]
     /\ origin \in {NONE} \union CONTENTS
     /\ declared \in {TRUE, FALSE}
+    /\ lastAction \in {"init", "source-update", "external-write", "apply", "take-over", "undeclare", "redeclare"}
+    /\ prevLive \in CONTENTS
+    /\ prevOrigin \in {NONE} \union CONTENTS
+    /\ prevDeclared \in {TRUE, FALSE}
+    /\ prevManifest \in {NONE} \union [hash: CONTENTS, preserved: {TRUE, FALSE}]
 
 \* The disposition decision — mirrors deploy.rs's plan_copy EXACTLY:
 \* take-over first (adoption opens the epoch even when bytes match),

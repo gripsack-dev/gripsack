@@ -55,6 +55,8 @@ TypeOK ==
     /\ phase \in {"running", "crashed", "recovering", "done"}
     /\ step \in 0..6
     /\ edited \in {TRUE, FALSE}
+    /\ klass \in {"none", "committed", "uncommitted", "ambiguous"}
+    /\ beforeRecover \in DiskSpace
 
 \* The step sequence, [B] = fsync barrier:
 \*   0. begin_run(prev, target)  [B]

@@ -3,6 +3,60 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.37.0] — 2026-09-07
+
+Complete source pins, bounded acquisition, and stronger protocol evidence
+(plan/0042).
+
+### Added
+
+- **One-commit source updates**: `grip update` acquires and verifies selected
+  sources, captures repo overlays, and completes their pins before replacing
+  the lockfile once. Source-only artifacts are cached without deployment;
+  build recipes and activation hooks never run during update. Warm and cold
+  apply preserve completed lock bytes. A failed update leaves the old lock intact.
+- **Independent acquisition limits**: two concurrent payloads by default,
+  512 MiB downloaded and 4 GiB expanded per payload, 100,000 entries and
+  a 128 MiB decoder budget. Positive `[settings]` values override these limits.
+  Verified private spools replace payload-sized memory buffers; archive path,
+  link, metadata and actual decoded-byte limits fail before publication.
+- **Bounded protocol supervision** for fetchers, capability probes and linters:
+  request/line/output/diagnostic caps, retained stderr tails, nonblocking pipes,
+  owned process groups and deadlines that include cleanup. Cleanup failures
+  are reported; kernel progress remains an explicit assumption.
+- **Executable published examples**, checked against the actual npm package
+  and core, plus persistent manifest/merge/archive/recovery/GC fuzz corpora.
+  Repeated-recovery, activation, process-supervision and concurrent-publication
+  models carry positive checks and calibrated counterexamples.
+
+### Fixed
+
+- Pixi pins use the installed primary-package version and the core-harvested
+  tree hash consistently in update and apply; conda bookkeeping is excluded.
+  Locked bottle URLs and versions survive registry changes during reconstruction.
+  Git branch/tag declarations are frozen to their resolved commit, so a moved
+  upstream ref cannot break a pinned cold reconstruction.
+- Repo overlays are hashed from a private snapshot, replace leaf symlinks rather
+  than following them, and refuse fetched symlink ancestors. Missing overlays
+  invalidate cached merged trees; directory and dangling source links retain
+  consistent content identity.
+- Self-update serializes per executable, rechecks the installed version under
+  its lock, selects one regular executable, and publishes bytes and mode durably.
+  Post-rename durability failures never roll the executable back.
+- Worker and step logs retain their run ancestry. Failed-test diagnostics use
+  the explicit latest-run pointer, with a validated timestamp fallback.
+- IR v3 rejects silent-drop fields in nested tagged nodes and spans; JSON Schema
+  structural admission follows the parser. Valid step-intent triggers are accepted.
+
+### Changed
+
+- Rust, Deno, base images and release tooling are deliberately pinned. A
+  two-clean-build runner records exact image/lock/toolchain inputs and compares
+  release binaries; it makes no universal cross-time reproducibility claim.
+- The SDK exports a closed `Build` type shared by `module()` and `buildStep()`.
+  IR stays at v3; existing lockfiles and generations remain readable. Update a
+  deliberate SDK pin to `@gripsack/core@^0.37.0`.
+
 ## [0.36.0] — 2026-09-07
 
 Contract fidelity and persistence evidence (plan/0041), followed by a

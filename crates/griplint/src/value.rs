@@ -1,13 +1,7 @@
-//! The config value model: one normalized Value for every format
-//! (TOML/YAML/JSON), with the type names and repr() text the python
-//! reference implementation pinned in the fixture corpus.
-//!
-//! Two python behaviors are load-bearing and ported exactly:
-//! - type names come from _TYPE_NAMES (str→"string", int→"integer",
-//!   bool→"boolean", float→"float", list→"array", dict→"table")
-//! - messages use python repr(): strings single-quoted, booleans
-//!   capitalized (True/False), numbers plain
+//! Normalized configuration values and the Python-shaped type/repr text
+//! pinned by the diagnostic corpus. Booleans are not integer-rule values.
 
+use crate::ValueType;
 use std::fmt::Write as _;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -17,11 +11,9 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Array(Vec<Value>),
-    /// Insertion order preserved — fixtures compare diagnostics in
-    /// document order (python dict order), so no BTreeMap here.
+    /// Preserve document order for diagnostic traversal.
     Table(Vec<(String, Value)>),
-    /// JSON/YAML null (TOML has no null) — a type of its own, not a
-    /// blank string, so A04 can name it.
+    /// JSON/YAML null is not admitted as a rule type, but can occur in input.
     Null,
 }
 
@@ -38,7 +30,7 @@ impl Value {
         }
     }
 
-    /// python repr(): the text fixtures pin in A05 messages.
+    /// Python repr(): the text fixtures pin in A05 messages.
     pub fn pyrepr(&self) -> String {
         match self {
             Value::Str(s) => format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'")),
@@ -77,27 +69,28 @@ impl Value {
         }
     }
 
-    /// The python isinstance check, with its one sharp edge preserved:
-    /// bool IS an int in python, but the rule engine rejects bools for
-    /// int rules explicitly (checks.py).
-    pub fn matches(&self, types: &[String]) -> bool {
-        if let Value::Bool(_) = self {
-            return types.iter().any(|t| t == "boolean");
-        }
-        types.iter().any(|t| t == self.type_name())
+    /// The reference explicitly rejects Python's bool-is-an-int edge.
+    pub fn matches(&self, types: &[ValueType]) -> bool {
+        let actual = match self {
+            Self::Str(_) => ValueType::String,
+            Self::Int(_) => ValueType::Integer,
+            Self::Float(_) => ValueType::Float,
+            Self::Bool(_) => ValueType::Boolean,
+            Self::Array(_) => ValueType::Array,
+            Self::Table(_) => ValueType::Table,
+            Self::Null => return false,
+        };
+        types.contains(&actual)
     }
 
-    /// python ==: numbers compare by value across int/float (1 == 1.0),
-    /// recursively through containers. The derived PartialEq stays
-    /// shape-exact for structural uses; bool never equals a number
-    /// here — the engine already treats booleans as their own type.
+    /// Numeric choices compare across int/float, recursively. Derived
+    /// PartialEq remains shape-exact; bool never equals a number here.
     pub fn py_eq(&self, other: &Value) -> bool {
         match (self, other) {
             (Value::Int(a), Value::Float(b)) | (Value::Float(b), Value::Int(a)) => *a as f64 == *b,
             (Value::Array(a), Value::Array(b)) => {
                 a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.py_eq(y))
             }
-            // dicts compare by contents, not pair order
             (Value::Table(a), Value::Table(b)) => {
                 a.len() == b.len()
                     && a.iter().all(|(k, v)| {
@@ -139,19 +132,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn null_is_its_own_type() {
+    fn typed_matching_keeps_null_and_boolean_distinct() {
         assert_eq!(Value::Null.type_name(), "null");
         assert_eq!(Value::Null.pyrepr(), "None");
-        assert!(!Value::Null.matches(&["string".into()]));
+        let all = [
+            ValueType::String,
+            ValueType::Integer,
+            ValueType::Boolean,
+            ValueType::Float,
+            ValueType::Array,
+            ValueType::Table,
+        ];
+        assert!(!Value::Null.matches(&all));
+        assert!(!Value::Bool(true).matches(&[ValueType::Integer]));
+        assert!(Value::Bool(true).matches(&[ValueType::Boolean]));
+        assert!(Value::Int(1).matches(&[ValueType::String, ValueType::Integer]));
+        assert!(!Value::Int(1).matches(&[ValueType::Float]));
     }
 
     #[test]
     fn numbers_compare_across_int_and_float() {
         assert!(Value::Int(1).py_eq(&Value::Float(1.0)));
         assert!(!Value::Int(1).py_eq(&Value::Float(1.5)));
-        // the derived == stays shape-exact
         assert_ne!(Value::Int(1), Value::Float(1.0));
-        // recursive, and dict order does not matter
         assert!(Value::Array(vec![Value::Int(1)]).py_eq(&Value::Array(vec![Value::Float(1.0)])));
         assert!(Value::Null.py_eq(&Value::Null));
         assert!(!Value::Bool(true).py_eq(&Value::Int(1)));
