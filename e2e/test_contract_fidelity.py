@@ -1,5 +1,6 @@
 """0041: authoring-style parity, real ordering, output gates and honest preview."""
 import json
+from pathlib import Path
 import pytest
 from conftest import grip, make_env_repo, make_toolchain_tarball, refresh_host
 
@@ -170,3 +171,36 @@ export default module('demo', {{ config: {{ payload: template('~/.private') }}, 
     run(repo, 'rollback', '1')
     assert destination.read_text() == 'one'
     assert destination.stat().st_mode & 0o777 == 0o600
+
+
+def test_store_repair_preserves_pre_036_private_copy_payloads(sandbox):
+    repo = make_env_repo(sandbox / 'env', '''import { module, trackedCopy } from '@gripsack/core';
+export default module('demo', { config: { payload: trackedCopy('~/.private') } });''')
+    (repo / 'payload').write_text('retained payload')
+    run(repo, 'apply', '--host', 'testhost')
+    manifest = current(sandbox)
+    entry = manifest['modules']['demo']['entries'][0]
+    # Pre-0.36 takeover recorded the nominal 0644 hash even when the
+    # destination's landed mode was 0600. Reproduce that persisted shape.
+    entry['file_mode'] = 0o600
+    entry.pop('source_executable', None)
+    (sandbox / '.private').chmod(0o600)
+    manifest_path = sandbox / '.local/share/gripsack/current/manifest.json'
+    manifest_path.write_text(json.dumps(manifest))
+    payload = Path(manifest['modules']['demo']['store_path']) / 'payload'
+    run(repo, 'store-verify', '--repair')
+    assert payload.read_text() == 'retained payload'
+
+
+def test_store_verify_detects_built_copy_source_exec_tampering(sandbox):
+    repo = make_env_repo(sandbox / 'env', '''import { module, shellStep, installStep, trackedCopy } from '@gripsack/core';
+export default module('demo', { steps: [
+  shellStep('printf payload > payload', 'produce'),
+  installStep({ payload: trackedCopy('~/.copy') }, 'install', { needs: ['produce'] }),
+] });''')
+    run(repo, 'apply', '--host', 'testhost')
+    payload = Path(current(sandbox)['modules']['demo']['store_path']) / 'payload'
+    payload.chmod(0o555)
+    result = grip('store-verify', cwd=repo)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert payload.read_text() == 'payload'

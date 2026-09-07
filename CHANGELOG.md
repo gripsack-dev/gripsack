@@ -23,7 +23,9 @@ placement and representation review.
   uses the same concrete source construction and artifact identity as apply.
 - **Private-file takeover records the identity actually written**. Content
   updates retain acquired permissions; source execute-bit changes do not
-  grant read/write access. Store verification uses recorded landed modes.
+  grant read/write access. Store verification checks source executability
+  and the receipt's mode domain; older private-copy receipts stay valid
+  instead of letting repair delete healthy retained payloads.
   Template rollback restores exact permissions, even with unchanged bytes.
 - **EXDEV publication syncs final permissions before publishing**; directory
   creation and publication participate in the durability boundary.

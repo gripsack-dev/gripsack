@@ -65,6 +65,9 @@ pub struct DeployedEntry {
     pub file_mode: Option<u32>,
     /// Source executability at deployment (0041). Content-only updates
     /// retain acquired permissions; a source execute-bit change is explicit.
+    /// Absence identifies legacy copy receipts hashed with the nominal source
+    /// mode, even when takeover preserved different destination permissions.
+    /// A recorded source bit also detects artifact executability tampering.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_executable: Option<bool>,
     /// Pre-take-over state of this destination (0015 §4) — carried

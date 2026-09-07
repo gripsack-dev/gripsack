@@ -129,6 +129,12 @@ the entry (optional for old manifests), preserve acquired permission
 bits on content-only updates, and adjust execute bits only when the
 source's executable state actually changes. Hash the actual landed mode;
 store verification must use that recorded mode as well.
+Persisted pre-0.36 copies remain in their original nominal-mode hash
+domain: absence of `source_executable` identifies that receipt shape.
+Verification must not reinterpret an old private takeover as corruption
+and let `store-verify --repair` delete a healthy payload. New receipts
+use the recorded actual mode; this is a persisted-data interpretation,
+not a second execution path or new overwrite authority.
 
 Apply preserves template permissions; rollback honors the recorded exact
 mode, including same-content/mode-only restoration (0031 §2/§5). Such
