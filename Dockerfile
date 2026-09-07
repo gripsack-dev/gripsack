@@ -8,7 +8,13 @@
 # the grip binary stays musl-static; deno-dependent stages (ts-test,
 # e2e) run on glibc bases, where the static binary works fine.
 
-FROM rust:alpine AS builder
+# Digest-pinned (plan/0042 F): this manifest-list sha256 is the exact
+# rust:alpine whose rustc is 1.98.0 (88d9e12ae 2026-08-18) — the same
+# toolchain CI's native jobs pin via dtolnay/rust-toolchain. Tags move;
+# digests do not. Updates are deliberate, proposed by scripts/check_pins.py
+# (upstream-watch workflow). The list covers amd64+arm64, so the arm
+# release runner resolves the same pin.
+FROM rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce AS builder
 RUN apk add --no-cache musl-dev git curl xz \
     && rustup component add clippy rustfmt
 # cargo-auditable embeds the dependency tree into the release binary
@@ -31,6 +37,11 @@ RUN set -e; \
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+# Fuzzing shares Cargo.lock with production, including decoder dependencies.
+COPY fuzz ./fuzz
+# schema: the IR v3 JSON schema is include_str!'d by the ir crate's
+# schema-acceptance tests (0042 E) — the test gate needs it in-image.
+COPY schema ./schema
 # the exec crate's build.rs embeds typescript/src as the frontend —
 # without this COPY the embed is empty and every eval fails with
 # "no embedded frontend"
@@ -52,34 +63,26 @@ RUN apk add --no-cache python3 \
 FROM builder AS bin
 RUN cargo build --locked -p gripsack
 
-# The transaction model check (plan/0028): TLC over the TLA+ spec of
-# the journal protocol — the shipped configs must check clean, and the
-# tla2tools is checksum-pinned like deno.
-FROM eclipse-temurin:21-jre AS model
+# The model gate (plan/0028, 0042 G): TLC over the TLA+ specs via the
+# canonical runner scripts/check_models.sh — positive protocols AND
+# calibrated counterexamples (each negative config must violate exactly
+# the invariant/temporal property it names; parser errors never count).
+# tla2tools is checksum-pinned; v1.8.0 is deliberately ahead of the
+# latest stable tag (v1.7.4). Base image digest-pinned like the rest.
+FROM eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 AS model
+ARG TLA_TOOLS_VERSION=1.8.0
 ARG TLA_TOOLS_SHA256=b658b4e504fdf0b721caf7066320f6b6fe5805f4dd2f717d0e47baba4097205e
-ADD --checksum=sha256:${TLA_TOOLS_SHA256} https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar /tla/tla2tools.jar
+ADD --checksum=sha256:${TLA_TOOLS_SHA256} https://github.com/tlaplus/tlaplus/releases/download/v${TLA_TOOLS_VERSION}/tla2tools.jar /tla/tla2tools.jar
 WORKDIR /work
 COPY specs ./specs
-RUN java -jar /tla/tla2tools.jar -cleanup -config specs/cfg/ownership.cfg specs/Ownership.tla > /tmp/ownership.log 2>&1 \
-    && grep -q "Model checking completed. No error" /tmp/ownership.log \
-    || { echo "TLC failed for ownership"; cat /tmp/ownership.log; exit 1; }; \
-    echo "ownership: clean"; \
-    for cfg in apply-deploy rollback-deploy apply-prune rollback-prune; do \
-      java -jar /tla/tla2tools.jar -cleanup -config specs/cfg/$cfg.cfg specs/Transaction.tla > /tmp/$cfg.log 2>&1 \
-      && grep -q "Model checking completed. No error" /tmp/$cfg.log \
-      || { echo "TLC failed for $cfg"; cat /tmp/$cfg.log; exit 1; }; \
-      echo "$cfg: clean"; \
-    done \
-    && java -jar /tla/tla2tools.jar -cleanup -config specs/cfg/activation.cfg specs/Activation.tla > /tmp/activation.log 2>&1 \
-    && grep -q "Model checking completed. No error" /tmp/activation.log \
-    || { echo "TLC failed for activation"; cat /tmp/activation.log; exit 1; }; \
-    echo "activation: clean"
+COPY scripts/check_models.sh ./scripts/check_models.sh
+RUN sh scripts/check_models.sh /tla/tla2tools.jar
 
 # TypeScript frontend tests (plan/0005 §1, plan/0013 D1): `deno test`
 # on the source tree — no transpile chain, no node_modules. The image
 # tag is the same version DENO_RELEASE pins in
 # crates/gripsack-fetch/src/host.rs; bump them together.
-FROM denoland/deno:2.9.6 AS ts-test
+FROM denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d AS ts-test
 WORKDIR /app
 COPY typescript ./typescript
 # deno install materializes node_modules (@types/node) for the
@@ -93,7 +96,7 @@ RUN cd typescript && deno install && deno task test
 # harness stays pytest. The pinned deno is prefetched at image build
 # into $GRIPSACK_HOME/tools (checksum-verified, same sha256 as
 # DENO_RELEASE) and GRIPSACK_DENO points at it — e2e never provisions.
-FROM python:3.13-slim AS e2e
+FROM python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 AS e2e
 WORKDIR /app
 # git: --repo clone tests and the trust gate's remote/commit probes
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git \
@@ -105,8 +108,16 @@ RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno \
     && mkdir -p /root/.local/share/gripsack/tools/deno-${DENO_VERSION} \
     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-${DENO_VERSION}/deno \
     && chmod 755 /root/.local/share/gripsack/tools/deno-${DENO_VERSION}/deno \
-    && rm -rf /tmp/deno.zip /tmp/deno \
-    && pip install --no-cache-dir uv
+    && rm -rf /tmp/deno.zip /tmp/deno
+# uv pinned to PyPI-published wheel digests (plan/0042 F) — official
+# metadata, no guessed checksums; refreshed deliberately by
+# scripts/check_pins.py. --require-hashes makes the digests the gate.
+# Both linux arches so the stage also builds on arm runners.
+ARG UV_VERSION=0.12.10
+RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "$UV_VERSION" > /tmp/uv.req \
+    && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req \
+    && uv --version \
+    && rm -f /tmp/uv.req
 ENV GRIPSACK_DENO=/root/.local/share/gripsack/tools/deno-${DENO_VERSION}/deno
 COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
 COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
@@ -123,6 +134,13 @@ RUN cargo auditable build --release --locked -p gripsack \
     && strip target/release/grip \
     && ldd target/release/grip 2>&1 | grep -q "Not a valid dynamic program\|not a dynamic executable" \
     && echo "static: ok"
+
+# Fuzz builds share the core compiler. Select its installed version explicitly:
+# +stable may provision a newer release even inside a digest-pinned image.
+FROM builder AS fuzz
+RUN apk add --no-cache bubblewrap python3 g++
+ENV FUZZ_TOOLCHAIN=1.98.0
+CMD ["sh", "scripts/check_fuzz.sh"]
 
 # Shipping image: just the binary.
 FROM scratch AS ship

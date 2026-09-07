@@ -42,6 +42,14 @@ jobs:
       # the exact artifact users download. Prebuilt installs only —
       # from-source tool builds break on new toolchains (audit.yml's
       # lesson).
+      # Exact toolchain pin (plan/0042 F) for native darwin builds —
+      # the same rustc as the digest-pinned docker builder (1.98.0);
+      # bumps are deliberate (scripts/check_pins.py), never floating.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        if: "!matrix.docker"
+        with:
+          toolchain: "1.98.0"
+          targets: ${{ matrix.target }}
       - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
         if: "!matrix.docker"
         with:
@@ -59,7 +67,6 @@ jobs:
       - name: Build (macOS, native)
         if: "!matrix.docker"
         run: |
-          rustup target add ${{ matrix.target }}
           cargo auditable build --release --locked --target ${{ matrix.target }} -p gripsack
           VERSION="${GITHUB_REF_NAME#core-v}"
           PKG="gripsack-$VERSION-${{ matrix.target }}"
@@ -135,7 +142,9 @@ jobs:
       # crates.io before the GitHub release: it is the irreversible
       # artifact. The guard fails a mistagged release instead of
       # publishing the wrong version.
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: "1.98.0"
 
       - name: Publish to crates.io (dependency order)
         env:
@@ -149,9 +158,9 @@ jobs:
           # absorbs index lag and crates.io's new-crate rate limit.
           # re-runs tolerate "already exists"; anything else fails loudly.
           failed=""
-          for crate in gripsack-ir gripsack-fs gripsack-store gripsack-fetch \
-                       gripsack-config griplint gripsack-lint gripsack-trace \
-                       gripsack-exec gripsack; do
+          for crate in gripsack-ir gripsack-fs gripsack-store gripsack-process \
+                       gripsack-fetch gripsack-config griplint gripsack-lint \
+                       gripsack-trace gripsack-exec gripsack; do
             ok=""
             for attempt in 1 2 3 4 5 6 7 8; do
               if out="$(cargo publish -p "$crate" 2>&1)"; then

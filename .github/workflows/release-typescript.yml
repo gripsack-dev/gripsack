@@ -15,11 +15,16 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
-          registry-url: "https://registry.npmjs.org"
+          # exact pin (0042 F): refreshed deliberately via
+          # scripts/check_pins.py (nodejs.org dist index)
+          node-version: 22.23.2
 
       # npm test IS `deno test` (0013) — the runner has no deno
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          # the same deno the Dockerfile pins (DENO_VERSION) and the
+          # runtime provisions (host.rs DENO_RELEASE)
+          deno-version: v2.9.6
 
       # The guard fails a mistagged release instead of publishing the
       # wrong version.

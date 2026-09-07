@@ -1,20 +1,32 @@
-name: upstream-watch
-
 # Weekly freshness: each data pack's supported set vs the tool's latest
 # upstream release; an issue per laggard (idempotent by title).
+#
+# The second job is the pin-update proposer (plan/0042 F): every pinned
+# toolchain/image digest/tool version vs official metadata — where a
+# bump has complete authoritative data it lands as a REAL pin-update PR
+# on a stable pins/<name> bot branch (never auto-merged); where data is
+# missing or coupled pins cannot move together, it fails closed as a
+# manual-work issue. Deliberate proposals, never silent floating
+# upgrades. GITHUB_TOKEN-created PRs do not trigger CI by themselves,
+# so the proposer dispatches ci.yml + repro.yml (both already declare
+# workflow_dispatch) on the candidate branch — hence actions:write.
 
 on:
   workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Report proposed pin PRs without writing anything"
+        type: boolean
+        default: false
   schedule:
     - cron: "0 6 * * 1"   # Mondays 06:00 UTC
-
-permissions:
-  contents: read
-  issues: write
 
 jobs:
   watch:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Check upstream releases vs pack supported sets
@@ -22,3 +34,27 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 scripts/check_upstream.py
+
+  propose:
+    runs-on: ubuntu-latest
+    # serialize bot-branch writes; never cancel mid-push
+    concurrency:
+      group: pins-propose
+      cancel-in-progress: false
+    permissions:
+      contents: write        # push pins/* bot branches
+      issues: write          # manual-work issues for fail-closed pins
+      pull-requests: write   # open/reuse the pin-update PRs
+      actions: write         # dispatch ci+repro on the candidate branch
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Propose pin-update PRs (plan/0042 F)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            python3 scripts/check_pins.py --dry-run
+          else
+            python3 scripts/check_pins.py --apply
+          fi

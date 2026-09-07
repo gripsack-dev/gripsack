@@ -1,0 +1,37 @@
+name: fuzz
+
+# Scheduled coverage-guided fuzzing (plan/0042 E): the persistent
+# targets under fuzz/ in libFuzzer `scheduled` mode — bounded per
+# target (FUZZ_SECONDS, 300s here), OS-contained via bubblewrap,
+# fail-closed: no uncontained fallback, ever. Mutated corpora and
+# crash artifacts stay inside the runner's temporary directories and
+# are discarded — fuzz state never lands in commits.
+#
+# The deterministic replay runs on every push in ci.yml (check_fuzz);
+# this workflow is the longer, time-boxed exploration.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "libFuzzer seconds per target"
+        default: "300"
+  schedule:
+    - cron: "0 6 * * 3" # Wednesdays 06:00 UTC (offset from the Monday watches)
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    # Five targets × FUZZ_SECONDS + build + seeds; hard ceiling so a
+    # wedged target cannot burn the runner indefinitely.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Scheduled fuzz run (bounded container)
+        env:
+          FUZZ_SECONDS: ${{ inputs.seconds || '300' }}
+        run: docker compose run --build --rm -e FUZZ_SECONDS fuzz sh scripts/check_fuzz.sh scheduled
