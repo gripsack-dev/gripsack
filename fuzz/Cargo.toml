@@ -1,0 +1,51 @@
+[package]
+name = "gripsack-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+
+[features]
+fuzzing = ["dep:libfuzzer-sys"]
+
+[dependencies]
+gripsack-store.workspace = true
+gripsack-fs.workspace = true
+gripsack-exec.workspace = true
+gripsack-fetch.workspace = true
+gripsack-ir.workspace = true
+serde_json.workspace = true
+tempfile = "3"
+libfuzzer-sys = { version = "0.4", optional = true }
+
+[[bin]]
+name = "replay"
+path = "src/bin/replay.rs"
+
+[[bin]]
+name = "manifest"
+path = "fuzz_targets/manifest.rs"
+required-features = ["fuzzing"]
+
+[[bin]]
+name = "journal"
+path = "fuzz_targets/journal.rs"
+required-features = ["fuzzing"]
+
+[[bin]]
+name = "merge"
+path = "fuzz_targets/merge.rs"
+required-features = ["fuzzing"]
+
+[[bin]]
+name = "store_gc"
+path = "fuzz_targets/store_gc.rs"
+required-features = ["fuzzing"]
+
+[[bin]]
+name = "archive"
+path = "fuzz_targets/archive.rs"
+required-features = ["fuzzing"]
