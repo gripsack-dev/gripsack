@@ -82,11 +82,12 @@ services:
       context: .
       dockerfile: Dockerfile
       target: fuzz
-    # Bubblewrap creates its own user/mount namespaces. Permit those syscalls
-    # inside this disposable container; no host directories are mounted.
-    security_opt:
-      - seccomp=unconfined
-      - apparmor=unconfined
+    # Bubblewrap builds nested user/mount/network namespaces for the fuzz
+    # sandbox; inside CI's docker the unprivileged path is denied, so grant
+    # the caps bwrap needs during namespace setup (dropped inside anyway).
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
 
   # One clean release build (plan/0042 F). scripts/check_reproducible.sh
   # runs this service twice — each run is a fresh container with a fresh
