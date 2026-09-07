@@ -85,6 +85,9 @@ services:
     # Bubblewrap builds nested user/mount/network namespaces for the fuzz
     # sandbox; inside CI's docker the unprivileged path is denied, so grant
     # the caps bwrap needs during namespace setup (dropped inside anyway).
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
     cap_add:
       - SYS_ADMIN
       - NET_ADMIN
