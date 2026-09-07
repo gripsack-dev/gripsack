@@ -132,7 +132,7 @@ mod tests {
 
     fn ir_with_asset(asset: &str) -> String {
         format!(
-            r#"{{"ir_version": 2, "host": {{"os": "linux", "arch": "x86_64", "tags": [], "libc": "glibc-2.36"}}, "modules": {{"demo": {{
+            r#"{{"ir_version": 3, "host": {{"os": "linux", "arch": "x86_64", "tags": [], "libc": "glibc-2.36"}}, "modules": {{"demo": {{
             "fetch": {{"kind": "github_release", "repo": "o/r", "asset": {asset:?}}},
             "span": {{"file": "modules/demo.ts", "line": 3, "col": 1}}}}}}}}"#
         )

@@ -3,6 +3,51 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.36.0] — 2026-09-07
+
+Contract fidelity and persistence evidence (plan/0041), followed by a
+placement and representation review.
+
+### Fixed
+
+- **GC fails closed before deletion** on malformed module/build-closure
+  store roots or invalid/unreadable retention configuration, including
+  dangling config links. Missing repair artifacts remain valid references.
+- **Explicit steps keep module contracts**: source staging, config lint
+  and pre-flip module verification use the same prepared view as data-style
+  modules. Failed verification cannot commit a generation.
+- **Cross-module `needs` actually orders work**, including subset applies.
+  These are scheduling-only edges, not runtime/build roles or PATH exports.
+  Activation targets, self-qualified refs and mixed graph cycles fail early.
+- **Shell outputs are enforced**, like structured-run outputs. Warm preview
+  uses the same concrete source construction and artifact identity as apply.
+- **Private-file takeover records the identity actually written**. Content
+  updates retain acquired permissions; source execute-bit changes do not
+  grant read/write access. Store verification uses recorded landed modes.
+  Template rollback restores exact permissions, even with unchanged bytes.
+- **EXDEV publication syncs final permissions before publishing**; directory
+  creation and publication participate in the durability boundary.
+
+### Changed
+
+- **Breaking alpha cutover to IR v3**: inert module/step `retries` fields
+  are removed, not silently ignored. Update pinned `@gripsack/core` to
+  `^0.36.0`, or use the embedded frontend. v1/v2 schemas remain historical;
+  lockfiles and generations remain readable.
+- Build/custom-shell/run steps are explicitly **cached artifact recipes**.
+  Outputs are postconditions, not an "always run" switch. Use activation
+  hooks for repeatable effects. Cross-module needs are module-granular.
+
+### Internal
+
+- Debug-only persistence matrix: every recorded cut in apply/deploy,
+  apply/prune, rollback/deploy, rollback/prune and forced-copy scenarios,
+  with I/O errors, abrupt process loss and subsequent user drift. A separate
+  Rust trace model checks ordering and rejects the old chmod-after-fsync
+  sequence; this is not a physical power-loss simulator.
+- Cohesive lifecycle, producer and verification modules; flow tests split
+  by invariant; filesystem/journal unit suites separated from production.
+
 ## [0.35.0] — 2026-09-06
 
 Build closures (plan/0039) — a build dependency is no longer a

@@ -31,14 +31,9 @@ pub struct Step {
     /// Reporting tag — never a scheduling barrier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<Phase>,
-    /// Smoke contract run right after the action; failure = step failed
-    /// (0007 §verify). Mandatory in spirit for custom_shell.
+    /// Pre-flip smoke contract over the published artifact/deployed state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verify: Option<Verify>,
-    /// Retry count override (0007 §retries). Default: engine policy —
-    /// retries only for fetch actions, 0 otherwise.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retries: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
 }
@@ -71,7 +66,7 @@ pub enum StepAction {
         verify: Verify,
     },
     /// A structured action (0007 §3): argv/env/cwd as data, no shell
-    /// interpretation. Declared `outputs` make it satisfiable (0008 §4).
+    /// interpretation. Outputs are postconditions; successful recipes cache.
     Run {
         argv: Vec<String>,
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -81,13 +76,29 @@ pub enum StepAction {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         outputs: Vec<String>,
     },
-    /// The last rung: declared, flagged. Declared `outputs` restore
-    /// caching; without them the step always runs (0008 §4).
+    /// A cached artifact recipe; declared outputs are enforced postconditions.
+    /// Per-activation effects belong in activation hooks (0041).
     CustomShell {
         script: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         outputs: Vec<String>,
     },
+}
+
+impl StepAction {
+    /// Execution class is intrinsic to the action; a reporting tag cannot
+    /// make a produce action wait for a deployment that has not happened.
+    pub fn execution_phase(&self) -> Phase {
+        match self {
+            Self::Fetch { .. } => Phase::Fetch,
+            Self::Build { .. } => Phase::Build,
+            Self::Run { .. } | Self::CustomShell { .. } => Phase::Custom,
+            Self::Install { .. } => Phase::Install,
+            Self::ConfigDeploy { .. } => Phase::Config,
+            Self::Verify { .. } => Phase::Verify,
+            Self::Intent { .. } => Phase::Activate,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

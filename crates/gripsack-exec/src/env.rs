@@ -142,6 +142,7 @@ mod tests {
                 vars: Default::default(),
                 hash: gripsack_store::hash::ManifestHash::from_raw("h".into()),
                 file_mode: None,
+                source_executable: None,
                 prior: None,
                 preserved_drift: false,
             }],

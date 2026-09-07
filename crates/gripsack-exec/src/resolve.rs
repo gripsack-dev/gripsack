@@ -1,8 +1,6 @@
 //! Resolution: fetch spec → concrete pin (0002 §8, 0008 §5).
 
 use crate::ctx::ExecError;
-use gripsack_store as store;
-use std::path::Path;
 
 /// pin wins; github_release resolves through the API (0002 §8).
 pub(crate) fn resolve_spec(
@@ -157,129 +155,8 @@ fn inject_locked_sha(
 /// with span removed — a line edit in your module source, or the same
 /// repo cloned at a different absolute path, must not re-fetch the
 /// world. The regression test pins this: two IR documents differing
-/// only in provenance hash identically.
-fn identity_projection(module: &gripsack_ir::Module) -> gripsack_ir::Module {
-    let mut projected = module.clone();
-    projected.span = None;
-    for entry in projected
-        .install
-        .iter_mut()
-        .chain(projected.config.iter_mut())
-    {
-        entry.span = None;
-    }
-    for dep in projected.depends.iter_mut() {
-        dep.span = None;
-    }
-    projected
-}
-
-/// The repo-overlay half of a module's content identity: the canonical
-/// hash of the install/config `from`s that exist in the repo (a
-/// payload `from` never does). None when nothing is repo-sourced.
-/// Compared against the lock's repo256 by presence checks and
-/// `grip update` — a config tree that gains a file moves this without
-/// moving the transport pin.
-pub(crate) fn repo_overlay(
-    module: &gripsack_ir::Module,
-    repo: &Path,
-    steps: &[gripsack_ir::Step],
-) -> Result<Option<String>, ExecError> {
-    let step_froms: Vec<String> = steps
-        .iter()
-        .flat_map(|s| match &s.action {
-            gripsack_ir::StepAction::Install { entries }
-            | gripsack_ir::StepAction::ConfigDeploy { entries } => {
-                entries.iter().map(|e| e.from.clone()).collect::<Vec<_>>()
-            }
-            _ => vec![],
-        })
-        .collect();
-    let froms: Vec<String> = module
-        .install
-        .iter()
-        .chain(module.config.iter())
-        .map(|e| e.from.clone())
-        .chain(step_froms)
-        .filter(|f| repo.join(f).exists())
-        .collect();
-    if froms.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(
-        store::canonical_overlay_hash(repo, &froms)?.to_string(),
-    ))
-}
-
-pub(crate) fn module_input(
-    module: &gripsack_ir::Module,
-    repo: &Path,
-    ir: &gripsack_ir::Ir,
-    lock: &crate::lockfile::Lockfile,
-    steps: &[gripsack_ir::Step],
-) -> Result<String, ExecError> {
-    let mut input = serde_json::to_string(&identity_projection(module))?;
-    // one normalized graph (0035 F8): declarative fields AND explicit
-    // step entries feed the identity alike
-    let step_froms: Vec<&String> = steps
-        .iter()
-        .flat_map(|s| match &s.action {
-            gripsack_ir::StepAction::Install { entries }
-            | gripsack_ir::StepAction::ConfigDeploy { entries } => {
-                entries.iter().map(|e| &e.from).collect::<Vec<_>>()
-            }
-            _ => vec![],
-        })
-        .collect();
-    for from in module
-        .install
-        .iter()
-        .chain(module.config.iter())
-        .map(|e| &e.from)
-        .chain(step_froms)
-    {
-        let repo_file = repo.join(from);
-        if repo_file.exists() {
-            input.push('|');
-            input.push_str(from);
-            input.push('=');
-            input.push_str(store::canonical_file_hash(&repo_file)?.as_str());
-        }
-    }
-    // the closure model (0001 §3.4): a dependency's identity joins the
-    // dependent's input — its DECLARATION (recursive) AND its RESOLVED
-    // identity (0035 F4): a pin update must move the consumer's build
-    // key, or a rebuilt dep leaves dependents stale
-    for dep in &module.depends {
-        if let Some(dep_module) = ir.modules.get(&dep.module) {
-            input.push_str(&format!(
-                "|dep:{}={}",
-                dep.module,
-                module_input(
-                    dep_module,
-                    repo,
-                    ir,
-                    lock,
-                    &crate::expand::expand(dep_module)
-                )?
-            ));
-        }
-        if let Some(resolved) = lock
-            .modules
-            .get(&dep.module)
-            .and_then(|e| e.resolved.as_ref())
-        {
-            let pin = format!(
-                "{}:{}:{}",
-                resolved.sha256.as_deref().unwrap_or("-"),
-                resolved.tree256.as_deref().unwrap_or("-"),
-                resolved.version.as_deref().unwrap_or("-")
-            );
-            input.push_str(&format!("|dep-pin:{}={pin}", dep.module));
-        }
-    }
-    Ok(input)
-}
+mod input;
+pub(crate) use input::{module_input, repo_overlay};
 
 #[cfg(test)]
 mod identity_tests {
@@ -311,8 +188,24 @@ mod identity_tests {
             modules: Default::default(),
             resources: Default::default(),
         };
-        let ia = super::module_input(&a, repo, &ir, &Default::default(), &[]).unwrap();
-        let ib = super::module_input(&b, repo, &ir, &Default::default(), &[]).unwrap();
+        let ia = super::module_input(
+            "m",
+            &a,
+            repo,
+            &ir,
+            &Default::default(),
+            &gripsack_ir::prepared::PreparedModule::new(&a).unwrap(),
+        )
+        .unwrap();
+        let ib = super::module_input(
+            "m",
+            &b,
+            repo,
+            &ir,
+            &Default::default(),
+            &gripsack_ir::prepared::PreparedModule::new(&b).unwrap(),
+        )
+        .unwrap();
         assert_eq!(ia, ib, "span/provenance must not change identity");
     }
 }

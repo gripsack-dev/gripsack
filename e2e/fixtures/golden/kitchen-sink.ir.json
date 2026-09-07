@@ -9,7 +9,7 @@
         "gui"
       ]
     },
-    "ir_version": 2,
+    "ir_version": 3,
     "modules": {
       "brewed": {
         "fetch": {
@@ -130,7 +130,6 @@
           }
         ],
         "lint": "helix",
-        "retries": 2,
         "verify": {
           "args": [
             "--version"

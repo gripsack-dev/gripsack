@@ -94,12 +94,12 @@ pub fn commit_run(home: &Dir) -> io::Result<()> {
 /// down).
 pub(crate) fn cleanup(home: &Dir, entry_paths: &[PathBuf]) -> io::Result<()> {
     for path in entry_paths {
-        home.remove_file(path)?;
+        gripsack_fs::remove_file(home, path)?;
     }
     gripsack_fs::fsync_dir(home, Path::new("journal"))?;
     // a run that never mutated has no marker (end_run already
     // removed it) — absent is fine, anything else is real
-    match home.remove_file(run_marker_rel()) {
+    match gripsack_fs::remove_file(home, &run_marker_rel()) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),
@@ -115,7 +115,7 @@ pub(crate) fn cleanup(home: &Dir, entry_paths: &[PathBuf]) -> io::Result<()> {
 pub fn end_run(home: &Dir) -> io::Result<()> {
     // a stale marker misleads the NEXT crash window — its deletion is
     // a durability operation, never `let _ =` (0030 §12)
-    match home.remove_file(run_marker_rel()) {
+    match gripsack_fs::remove_file(home, &run_marker_rel()) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),

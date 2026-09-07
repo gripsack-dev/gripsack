@@ -3,6 +3,25 @@
 use crate::{EdgeKind, Module};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Ordering constraints do not imply installation purposes or build exports.
+/// `name` excludes self-qualified step references, which sema rejects.
+pub fn ordering_dependencies<'a>(name: &str, module: &'a Module) -> BTreeSet<&'a str> {
+    module
+        .depends
+        .iter()
+        .map(|d| d.module.as_str())
+        .chain(
+            module
+                .steps
+                .iter()
+                .flatten()
+                .flat_map(|s| &s.needs)
+                .filter_map(|need| need.split_once(':').map(|(target, _)| target))
+                .filter(|target| *target != name),
+        )
+        .collect()
+}
+
 /// Host membership makes a module available to the graph. An incoming runtime
 /// edge requires deployment; otherwise incoming build edges make it build-only.
 /// Standalone modules deploy, and subset applies do not reinterpret the graph.

@@ -81,10 +81,10 @@ into one after the crash is left alone.
 
 ## Testing
 
-- Unit (`journal.rs`): crash-between-record-and-write restores prior;
+- Unit (`journal/tests.rs`): crash-between-record-and-write restores prior;
   crash-after-write restores prior bytes; user-edit-after-crash wins;
   absent/symlink priors recover; commit_run closes the window.
-- e2e (`test_apply_lifecycle.py`): a crafted crashed state (exactly
+- e2e (`test_transaction_recovery.py`): a crafted crashed state (exactly
   what a kill between mutation and flip leaves) — the next apply
   restores the prior, reports the recovery, redeploys, drains the
   journal, and ends satisfied; the drift-guard case keeps the user's

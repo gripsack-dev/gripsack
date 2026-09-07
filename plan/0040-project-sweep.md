@@ -1,6 +1,6 @@
 # 0040 — Post-0.35 project sweep: contract fidelity before more breadth
 
-Status: **DRAFT — discussion only; no follow-up implementation authorized.**
+Status: **review complete; P1 implementation approved and tracked by [0041](0041-p1-contract-fidelity.md).**
 
 Requested by the owner after 0039 landed and core/TypeScript 0.35.0
 published. This is a proposed maintenance/architecture program, not a
@@ -500,6 +500,7 @@ most of the normalization above can remain core-internal.
 5. Prefer a narrow shared process primitive now for the two hosts, or
    first fix their bounds independently and extract after measurement?
 
-**Nothing in this draft changes production behavior.** The release
-remains the verified 0.35.0 artifacts; follow-up code requires a separate
-plan decision and the same end-to-end evidence discipline.
+This review preserved the 0.35.0 baseline. The owner subsequently
+approved all P1s, implemented under [0041](0041-p1-contract-fidelity.md)
+with the same end-to-end evidence discipline. P2 proposals remain
+separate, prioritized roadmap work rather than implied shipped features.

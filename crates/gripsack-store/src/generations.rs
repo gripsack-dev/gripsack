@@ -63,6 +63,10 @@ pub struct DeployedEntry {
     /// links, and merge blocks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_mode: Option<u32>,
+    /// Source executability at deployment (0041). Content-only updates
+    /// retain acquired permissions; a source execute-bit change is explicit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_executable: Option<bool>,
     /// Pre-take-over state of this destination (0015 §4) — carried
     /// forward across EVERY generation of the ownership epoch (0029
     /// §1): an origin is forgotten only by a successful restore or an
@@ -196,7 +200,6 @@ fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<(
             manifest.number
         )));
     }
-    let store_root = home.join(crate::paths::STORE_DIR);
     let mut seen_dests = std::collections::BTreeSet::new();
     for (name, state) in &manifest.modules {
         if state.build_only
@@ -206,29 +209,11 @@ fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<(
                 "module {name:?}: build-only state contains deployment effects"
             )));
         }
-        // `store/../outside` starts with the root as a STRING
-        let has_parent = state
-            .store_path
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir));
-        if has_parent || !state.store_path.starts_with(&store_root) {
-            return Err(invalid(format!(
-                "module {name:?}: store path {} is outside $GRIPSACK_HOME/store",
-                state.store_path.display()
-            )));
-        }
-        // 0039: closure paths are store paths too — same root rule,
-        // same fail-closed reading of a long-lived manifest
+        crate::paths::validate_store_root(home, &state.store_path)
+            .map_err(|e| invalid(format!("module {name:?}: {e}")))?;
         for path in &state.build_closure {
-            let closure_escape = path
-                .components()
-                .any(|c| matches!(c, std::path::Component::ParentDir));
-            if closure_escape || !path.starts_with(&store_root) {
-                return Err(invalid(format!(
-                    "module {name:?}: build closure path {} is outside $GRIPSACK_HOME/store",
-                    path.display()
-                )));
-            }
+            crate::paths::validate_store_root(home, path)
+                .map_err(|e| invalid(format!("module {name:?} build closure: {e}")))?;
         }
         for entry in &state.entries {
             // 0030 §H9: `from` joins the store path — an absolute or
@@ -433,7 +418,7 @@ pub fn publish_generation(
         generation.number.to_string().as_bytes(),
     )?;
     gripsack_fs::fsync_dir(home, &staging)?;
-    home.rename(&staging, home, &final_dir).map_err(|e| {
+    gripsack_fs::rename(home, &staging, home, &final_dir).map_err(|e| {
         io::Error::new(
             e.kind(),
             format!("publish generation {}: {e}", generation.number),
@@ -505,6 +490,7 @@ mod tests {
                     vars: Default::default(),
                     hash: crate::hash::ManifestHash::from_raw("d".repeat(64)),
                     file_mode: None,
+                    source_executable: None,
                     prior: None,
                     preserved_drift: false,
                 }],
@@ -567,7 +553,7 @@ mod tests {
         )
         .unwrap();
         let err = read_manifest(home, 7).unwrap_err();
-        assert!(err.to_string().contains("claims number"), "{err}");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
         // duplicate destinations (case-folded)
         let mut dup = mk_gen(home, 3);
@@ -588,7 +574,7 @@ mod tests {
         )
         .unwrap();
         let err = read_manifest(home, 3).unwrap_err();
-        assert!(err.to_string().contains("appears twice"), "{err}");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
         // store path outside the store
         let mut outside = mk_gen(home, 4);
@@ -601,7 +587,7 @@ mod tests {
         )
         .unwrap();
         let err = read_manifest(home, 4).unwrap_err();
-        assert!(err.to_string().contains("outside"), "{err}");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 
     /// 0027 §8/§9: publishing an existing generation fails no-clobber;

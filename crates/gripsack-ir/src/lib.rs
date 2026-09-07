@@ -1,7 +1,7 @@
 //! The IR contract between frontends and the core: types, spans,
 //! diagnostics, and the compiler passes every IR document goes through
 //! (plan/0001 §3.2, 0004, 0007). The schema lives in
-//! `schema/ir/v2.json`; change all three sides together
+//! `schema/ir/v3.json`; change all three sides together
 //! (`.agents/skills/gripsack-ir`).
 //!
 //! ```text
@@ -25,6 +25,7 @@ pub mod dependencies;
 pub mod diagnostic;
 pub mod model;
 pub mod parse;
+pub mod prepared;
 pub mod sema;
 pub mod span;
 pub mod step;

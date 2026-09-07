@@ -30,8 +30,6 @@ export interface ModuleSpec {
   steps?: Step[];
   /** Module-level smoke contract, run pre-flip (0007 §verify). */
   verify?: Verify;
-  /** Retry default for this module's steps (0007 §retries). */
-  retries?: number;
   /** Registered linter for this module's config payloads (0011) —
       the core drives it (0012). */
   lint?: string;
@@ -64,7 +62,6 @@ export interface IrModule {
   activate?: Intent[];
   steps?: Step[];
   verify?: Verify;
-  retries?: number;
   lint?: string;
   env?: IrEnvVar[];
   span?: Span;
@@ -107,7 +104,7 @@ export function module(name: string, spec: ModuleSpec): ModuleValue {
   // the backstop for JS callers, casts, and generated objects.
   const KNOWN = new Set([
     "fetch", "build", "install", "config", "depends", "activate",
-    "steps", "verify", "retries", "lint", "env",
+    "steps", "verify", "lint", "env",
   ]);
   const editDistance = (a: string, b: string): number => {
     let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
@@ -159,7 +156,6 @@ export function module(name: string, spec: ModuleSpec): ModuleValue {
   if (spec.activate?.length) ir.activate = spec.activate;
   if (spec.steps?.length) ir.steps = spec.steps;
   if (spec.verify) ir.verify = spec.verify;
-  if (spec.retries !== undefined) ir.retries = spec.retries;
   if (spec.lint !== undefined) ir.lint = spec.lint;
   if (spec.env !== undefined) {
     ir.env = Object.entries(spec.env).map(([name, value]) =>

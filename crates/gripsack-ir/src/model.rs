@@ -71,9 +71,6 @@ pub struct Module {
     /// pipeline, run pre-flip (0007 §verify).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verify: Option<Verify>,
-    /// Retry default for this module's steps (0007 §retries).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retries: Option<u32>,
     /// Registered linter for this module's config payloads (0011).
     /// Travels in the IR since 0012: the CORE drives the linter, the
     /// frontend only declares.

@@ -40,7 +40,7 @@ function view(over: Partial<EnvContext> = {}): EnvContext {
 // JSON.parse's inferred `any` is deliberate here: these tests assert
 // the wire shape of the emitted IR, field by field
 const emit = (env: Env, tags: string[] = []) => JSON.parse(emitIr(env, facts, tags));
-Deno.test("emitIr emits the IR v2 contract", () => {
+Deno.test("emitIr emits the IR v3 contract", () => {
   clearResources();
   const helix = module("helix", {
     fetch: githubRelease({
@@ -56,7 +56,7 @@ Deno.test("emitIr emits the IR v2 contract", () => {
 
   const ir = emit({ modules: [helix, git] }, ["gui"]);
 
-  assert.equal(ir.ir_version, 2);
+  assert.equal(ir.ir_version, 3);
   assert.deepEqual(ir.host.tags, ["gui"]);
 
   assert.equal(ir.modules.helix.fetch.kind, "github_release");

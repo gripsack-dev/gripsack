@@ -35,12 +35,12 @@ use tracing::{info, warn};
 /// resume runs from the record, not a re-read of the repo.
 pub(crate) fn collect(
     order: &[String],
-    steps_by_module: &BTreeMap<String, Vec<Step>>,
+    steps_by_module: &BTreeMap<String, gripsack_ir::prepared::PreparedModule>,
 ) -> Vec<store::activation::PendingIntent> {
     let mut caches = Vec::new();
     let mut rest = Vec::new();
     for name in order {
-        for (action, trigger) in step_intents(&steps_by_module[name.as_str()]) {
+        for (action, trigger) in step_intents(steps_by_module[name.as_str()].steps()) {
             // on_remove fires from the previous generation's record at
             // prune time (0035 F9) — never during activation
             if trigger == gripsack_ir::Trigger::OnRemove {

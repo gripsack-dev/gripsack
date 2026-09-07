@@ -323,7 +323,7 @@ import type { IrModule, ModuleValue } from "./module.ts";
 import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
-export const IR_VERSION = 2;
+export const IR_VERSION = 3;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,
@@ -620,8 +620,6 @@ export interface ModuleSpec {
   steps?: Step[];
   /** Module-level smoke contract, run pre-flip (0007 §verify). */
   verify?: Verify;
-  /** Retry default for this module's steps (0007 §retries). */
-  retries?: number;
   /** Registered linter for this module's config payloads (0011) —
       the core drives it (0012). */
   lint?: string;
@@ -654,7 +652,6 @@ export interface IrModule {
   activate?: Intent[];
   steps?: Step[];
   verify?: Verify;
-  retries?: number;
   lint?: string;
   env?: IrEnvVar[];
   span?: Span;
@@ -697,7 +694,7 @@ export function module(name: string, spec: ModuleSpec): ModuleValue {
   // the backstop for JS callers, casts, and generated objects.
   const KNOWN = new Set([
     "fetch", "build", "install", "config", "depends", "activate",
-    "steps", "verify", "retries", "lint", "env",
+    "steps", "verify", "lint", "env",
   ]);
   const editDistance = (a: string, b: string): number => {
     let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
@@ -749,7 +746,6 @@ export function module(name: string, spec: ModuleSpec): ModuleValue {
   if (spec.activate?.length) ir.activate = spec.activate;
   if (spec.steps?.length) ir.steps = spec.steps;
   if (spec.verify) ir.verify = spec.verify;
-  if (spec.retries !== undefined) ir.retries = spec.retries;
   if (spec.lint !== undefined) ir.lint = spec.lint;
   if (spec.env !== undefined) {
     ir.env = Object.entries(spec.env).map(([name, value]) =>
@@ -1062,7 +1058,7 @@ export function validateResourceRefs(refs: string[], owner: string): void {
  *
  * Most modules never write steps: the declarative fields are expanded
  * into the conventional pipeline by the core. Declare steps explicitly
- * for control — ordering, resource locks, retries, or a custom action.
+ * for control — ordering, resource locks, or a custom action.
  * `steps` and the declarative fields are mutually exclusive per module
  * (E103).
  */
@@ -1089,7 +1085,6 @@ export interface Step {
   resources?: string[];
   phase?: Phase;
   verify?: Verify;
-  retries?: number;
 }
 
 export interface StepOpts {
@@ -1097,7 +1092,6 @@ export interface StepOpts {
   resources?: string[];
   phase?: Phase;
   verify?: Verify;
-  retries?: number;
 }
 
 export function step(id: string, action: StepAction, opts?: StepOpts): Step {
@@ -1107,7 +1101,7 @@ export function step(id: string, action: StepAction, opts?: StepOpts): Step {
 
 /** Primitives auto-declare their contention domain in the core
  *  (pixi → `pixi-lock`, …) — `resources` is for your own shared
- *  state (0007 §4). Fetch steps retry by default. */
+ *  state (0007 §4). Retries are not part of the IR v3 contract. */
 export function fetchStep(fetch: Fetch, id = "fetch", opts?: StepOpts): Step {
   // runtime shape guard: an argument-order slip here would otherwise
   // surface as a byte-offset E000 from the core's deserializer, with
@@ -1201,7 +1195,7 @@ export function configStep(
 
 /** A structured action — the rung between primitives and shell
  *  (0007 §3): argv/env/cwd as data, no shell interpretation, declared
- *  `outputs` make it cacheable (0008 §4). */
+ *  `outputs` are enforced postconditions of the cached recipe (0041). */
 export function runStep(
   argv: string[],
   id = "run",
@@ -1223,8 +1217,8 @@ export function runStep(
 }
 
 /** The last rung, not the default (0007 §3): declared, flagged in
- *  `plan`. Declared `outputs` restore caching/satisfaction (0008 §4);
- *  without them the step always runs. */
+ *  `plan`. Successful artifact recipes cache; declared outputs are
+ *  enforced postconditions. Per-activation effects belong in hooks. */
 export function shellStep(
   script: string,
   id: string,
@@ -1319,7 +1313,7 @@ export function verifyDeployed(path: string): Verify {
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",

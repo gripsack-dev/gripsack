@@ -44,8 +44,8 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
         // E118-enforced) fetch step — update used to see only the
         // declarative field, so steps-style modules applied unpinned
         // with check/plan/update all silent about it
-        let steps = crate::expand::steps_of(module);
-        let Some(spec) = crate::identity::fetch_spec(module, &steps) else {
+        let plan = gripsack_ir::prepared::PreparedModule::new(module).map_err(ExecError::Gate)?;
+        let Some(spec) = plan.fetch() else {
             continue;
         };
         let old = lock
@@ -56,8 +56,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
         // the repo-overlay half of the pin — a config tree that gains
         // a file moves this WITHOUT moving any transport hash, and the
         // tree256 it invalidates must be re-pinned at the next apply
-        let repo256 =
-            crate::resolve::repo_overlay(module, &ctx.repo, &crate::expand::expand(module))?;
+        let repo256 = crate::resolve::repo_overlay(&plan, &ctx.repo)?;
         let old_repo = lock
             .modules
             .get(name.as_str())

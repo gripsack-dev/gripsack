@@ -204,7 +204,7 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
             // into one errors here (ENOTDIR) and the journal entry is
             // retained — recovery data is never dropped on a failed
             // removal (0029 §4)
-            match dest_dir.remove_file(dest_name) {
+            match gripsack_fs::remove_file(dest_dir, dest_name) {
                 Ok(()) => {}
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {}
                 Err(e) => return Err(e),

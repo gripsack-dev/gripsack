@@ -4,11 +4,11 @@
 //! computation, no phase state: the phase machine (module.rs)
 //! consumes the answer.
 
-use crate::ctx::{Ctx, ExecError};
+use crate::ctx::ExecError;
 use crate::lockfile;
 use crate::report::{ReportKind, StepReport};
 use crate::resolve::module_input;
-use gripsack_ir::step::{Step, StepAction};
+use gripsack_ir::prepared::PreparedModule;
 use gripsack_ir::{Ir, Module};
 use gripsack_store as store;
 use std::path::PathBuf;
@@ -54,30 +54,46 @@ impl ModuleIdentity {
 /// Resolve a module's identity and satisfaction: the payload hash
 /// joins the store-path input before the existence check, so first
 /// and second applies compute the same path (0008 §5).
-pub(crate) fn resolve(
-    name: &str,
-    module: &Module,
-    ir: &Ir,
-    steps: &[Step],
-    ctx: &Ctx,
-    locked: Option<&lockfile::LockEntry>,
-    lock: &lockfile::Lockfile,
-) -> Result<ModuleIdentity, ExecError> {
+#[derive(Clone, Copy)]
+pub(crate) enum Resolution {
+    Offline,
+    Execute,
+}
+
+pub(crate) struct IdentityInputs<'a> {
+    pub name: &'a str,
+    pub module: &'a Module,
+    pub ir: &'a Ir,
+    pub plan: &'a PreparedModule,
+    pub home: &'a std::path::Path,
+    pub repo: &'a std::path::Path,
+    pub locked: Option<&'a lockfile::LockEntry>,
+    pub lock: &'a lockfile::Lockfile,
+    pub mode: Resolution,
+}
+
+pub(crate) fn resolve(inputs: IdentityInputs<'_>) -> Result<ModuleIdentity, ExecError> {
+    let IdentityInputs {
+        name,
+        module,
+        ir,
+        plan,
+        home,
+        repo,
+        locked,
+        lock,
+        mode,
+    } = inputs;
     // 0014 §3: content is fully determined before execution unless
     // a build/custom/run step exists. Fetches pin content via the
     // lock's tree256; config-only modules hash their repo sources
     // at plan time. Anything else is input-addressed (recipe-named,
     // plan-time-computable, not content-guaranteed).
-    let content_addressed = !steps.iter().any(|s| {
-        matches!(
-            s.action,
-            StepAction::Build { .. } | StepAction::CustomShell { .. } | StepAction::Run { .. }
-        )
-    });
+    let content_addressed = !plan.has_recipe();
     // the fetch spec lives in module.fetch (declarative) or in a
     // fetch step (explicit steps) — one source of truth for identity
     // and the lockfile resolver alike
-    let fetch_spec = fetch_spec(module, steps);
+    let fetch_spec = plan.fetch();
     // the recipe left the path, so one re-fetch must PROVE byte
     // identity — publish dedups if it matches (the mirror swap)
     let spec_changed = match (locked, fetch_spec) {
@@ -94,7 +110,7 @@ pub(crate) fn resolve(
     let repo_drift = !spec_changed
         && pinned.is_some_and(|r| r.tree256.is_some())
         && match (
-            crate::resolve::repo_overlay(module, &ctx.repo, steps)?,
+            crate::resolve::repo_overlay(plan, repo)?,
             pinned.and_then(|r| r.repo256.as_ref()),
         ) {
             (Some(current), Some(lock)) => current != *lock,
@@ -111,48 +127,46 @@ pub(crate) fn resolve(
                 .and_then(|r| r.tree256.clone())
         };
         match locked_tree {
-            Some(tree) => (
-                store::content_path(&ctx.home, name, &tree),
-                false,
-                Some(tree),
-            ),
+            Some(tree) => (store::content_path(home, name, &tree), false, Some(tree)),
             None if fetch_spec.is_none() => {
                 // config-only: content is the repo's payload sources,
                 // computable without staging (overlay == staged tree)
-                let froms: Vec<String> = module
-                    .install
-                    .iter()
-                    .chain(module.config.iter())
-                    .map(|e| e.from.clone())
-                    .collect();
-                let tree = store::canonical_overlay_hash(&ctx.repo, &froms)?.to_string();
-                (
-                    store::content_path(&ctx.home, name, &tree),
-                    false,
-                    Some(tree),
-                )
+                let froms: Vec<String> = plan.entries().map(|e| e.from.clone()).collect();
+                let tree = store::canonical_overlay_hash(repo, &froms)?.to_string();
+                (store::content_path(home, name, &tree), false, Some(tree))
             }
             None => {
                 // deferred: the transport hash cannot name an
                 // unextracted tree — the first fetch finalizes the
                 // path at publish (0002 §3 TOFU)
-                let input = module_input(module, &ctx.repo, ir, lock, steps)?;
-                (store::store_path(&ctx.home, name, &input), true, None)
+                let input = module_input(name, module, repo, ir, lock, plan)?;
+                (store::store_path(home, name, &input), true, None)
             }
         }
     } else {
         let resolved = locked
             .and_then(|e| e.resolved.as_ref())
             .and_then(|r| r.sha256.clone())
-            .or_else(|| fetch_spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten()));
+            .or_else(|| match mode {
+                Resolution::Execute => {
+                    fetch_spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
+                }
+                Resolution::Offline => match fetch_spec {
+                    Some(
+                        gripsack_ir::FetchSpec::Tarball { sha256, .. }
+                        | gripsack_ir::FetchSpec::GithubRelease { sha256, .. },
+                    ) => sha256.clone(),
+                    _ => None,
+                },
+            });
         let input = match &resolved {
             Some(sha) => format!(
                 "{}|payload={sha}",
-                module_input(module, &ctx.repo, ir, lock, steps)?
+                module_input(name, module, repo, ir, lock, plan)?
             ),
-            None => module_input(module, &ctx.repo, ir, lock, steps)?,
+            None => module_input(name, module, repo, ir, lock, plan)?,
         };
-        let path = store::store_path(&ctx.home, name, &input);
+        let path = store::store_path(home, name, &input);
         // Deferred identity (finding C): no hash from the lock AND
         // none computable offline — the first fetch's sha finalizes
         // the path. Presence is meaningless until then: always fetch.
@@ -165,21 +179,5 @@ pub(crate) fn resolve(
         identity_pending,
         tree256,
         present,
-    })
-}
-
-/// A module's fetch spec wherever it was declared: the declarative
-/// `fetch` field, or the (single, E118-enforced) fetch step. The
-/// lockfile resolver and the identity resolution must see the same
-/// spec or steps-style modules pin differently than they resolve.
-pub(crate) fn fetch_spec<'a>(
-    module: &'a Module,
-    steps: &'a [Step],
-) -> Option<&'a gripsack_ir::FetchSpec> {
-    module.fetch.as_ref().or_else(|| {
-        steps.iter().find_map(|s| match &s.action {
-            StepAction::Fetch { fetch } => Some(fetch),
-            _ => None,
-        })
     })
 }

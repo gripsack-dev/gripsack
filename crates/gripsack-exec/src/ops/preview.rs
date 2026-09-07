@@ -33,7 +33,7 @@ pub fn preview_ops(
         }
     }
     let home = store::gripsack_home();
-    let steps_by_module = crate::expand::expand_all(&ir.modules);
+    let steps_by_module = crate::expand::expand_all(&ir.modules)?;
     // Build closures (0039): a build-only dep plans ZERO destination
     // ops — one marker line instead, naming the consumers. The same
     // whole-graph rule apply uses, so preview and apply agree.
@@ -50,16 +50,6 @@ pub fn preview_ops(
             }
         }
     }
-    // a locked, present payload resolves the store path offline
-    // (0035 F7): a deployed fetched module previews satisfied, not
-    // deferred
-    let store_source = |name: &str| -> Option<PathBuf> {
-        let entry = lock.modules.get(name)?;
-        let resolved = entry.resolved.as_ref()?;
-        let tree = resolved.tree256.as_deref().or(resolved.sha256.as_deref())?;
-        let path = store::content_path(&home, name, tree);
-        path.exists().then_some(path)
-    };
     for (name, steps) in &steps_by_module {
         if build_only.contains(name) {
             // the closure line (0039): fetch + stage, never deploy
@@ -84,7 +74,23 @@ pub fn preview_ops(
             });
             continue;
         }
-        for step in steps {
+        let locked = lock.modules.get(name);
+        let identity = crate::identity::resolve(crate::identity::IdentityInputs {
+            name,
+            module: &ir.modules[name],
+            ir,
+            plan: steps,
+            home: &home,
+            repo,
+            locked,
+            lock,
+            mode: crate::identity::Resolution::Offline,
+        })?;
+        let version = locked
+            .and_then(|entry| entry.resolved.as_ref())
+            .and_then(|pin| pin.version.as_deref());
+        let known = identity.present || (identity.content_addressed && steps.fetch().is_none());
+        for step in steps.steps() {
             let entries: &[Entry] = match &step.action {
                 gripsack_ir::StepAction::Install { entries }
                 | gripsack_ir::StepAction::ConfigDeploy { entries } => entries,
@@ -142,15 +148,28 @@ pub fn preview_ops(
                 };
                 // the content question decides how much of the decision
                 // plan can make offline
-                let repo_file = {
-                    let direct = repo.join(&entry.from);
-                    if direct.exists() {
-                        direct
-                    } else if let Some(store_dir) = store_source(name) {
-                        store_dir.join(&entry.from)
-                    } else {
-                        direct
-                    }
+                let source =
+                    crate::source::payload_source(&identity.store_path, &entry.from, version);
+                if !known || source.relative.contains('{') {
+                    ops.push(Op {
+                        module: name.clone(),
+                        dest,
+                        declared_to: entry.to.clone(),
+                        mode: entry.mode.clone(),
+                        kind: OpKind::Deferred,
+                        authority: None,
+                        observed: view.observed_identity(),
+                        intended: Intended::Removed,
+                        produces: None,
+                        note: Some("artifact → deploy (resolved at apply)".into()),
+                        removing: None,
+                    });
+                    continue;
+                }
+                let repo_file = if identity.present {
+                    source.path.clone()
+                } else {
+                    repo.join(&source.relative)
                 };
                 let deferred = match entry.mode {
                     Ownership::Merge => match std::fs::read_to_string(&repo_file) {
@@ -186,16 +205,12 @@ pub fn preview_ops(
                             crate::template::render_template(&b, &entry.vars, &entry.from).ok()
                         }) {
                             Some(rendered) => {
-                                let intent_mode = match &view.observed {
-                                    Some(crate::deploy::Observation::File { mode, .. }) => *mode,
-                                    _ => 0o644,
-                                };
                                 return_op(
                                     &mut ops,
                                     &view,
                                     ModeInput::Write {
                                         content: &rendered,
-                                        intent_mode,
+                                        permissions: WritePermissions::Preserve,
                                     },
                                 )?;
                                 continue;
@@ -219,7 +234,7 @@ pub fn preview_ops(
                                 &view,
                                 ModeInput::Write {
                                     content: &bytes,
-                                    intent_mode: if exec { 0o755 } else { 0o644 },
+                                    permissions: WritePermissions::Source { executable: exec },
                                 },
                             )?;
                             continue;
@@ -228,18 +243,7 @@ pub fn preview_ops(
                     },
                     Ownership::Owned => {
                         if repo_file.exists() {
-                            // the apply-time target is the STORE path,
-                            // not the repo file (0035 F7): compute the
-                            // content-addressed path offline or the
-                            // preview reads satisfied links as new
-                            let store_target = match crate::resolve::repo_overlay(
-                                &ir.modules[name],
-                                repo,
-                                &steps_by_module[name],
-                            )? {
-                                Some(tree) => store::content_path(&home, name, &tree),
-                                None => repo_file.clone(),
-                            };
+                            let store_target = source.path.clone();
                             let already = std::fs::read_link(&dest)
                                 .map(|t| t == store_target)
                                 .unwrap_or(false);
@@ -266,7 +270,7 @@ pub fn preview_ops(
                 if !deferred {
                     continue;
                 }
-                let note = if ir.modules[name].fetch.is_some() {
+                let note = if steps.fetch().is_some() {
                     "fetch → deploy (pin-resolved at apply)"
                 } else {
                     "steps → deploy"

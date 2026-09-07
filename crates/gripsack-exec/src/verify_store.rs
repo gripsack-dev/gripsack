@@ -63,8 +63,8 @@ pub fn verify_store(
                 }
                 // each arm recomputes in the entry's manifest domain
                 // (0031): merge/template are bytes-only; copies are
-                // mode-aware — the intent mode re-derived from the
-                // store payload's exec bit (0444 → 0644, 0555 → 0755);
+                // mode-aware using the recorded landed permissions;
+                // old unrecorded modes follow the payload's exec bit.
                 // owned links record the payload's store identity
                 let actual = match entry.mode {
                     gripsack_ir::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
@@ -90,20 +90,19 @@ pub fn verify_store(
                         .ok()
                         .map(|h| h.to_string()),
                     gripsack_ir::Ownership::TrackedCopy => std::fs::read(&src).ok().map(|bytes| {
-                        #[cfg(unix)]
-                        let exec = {
-                            use std::os::unix::fs::MetadataExt;
-                            std::fs::metadata(&src)
-                                .map(|m| m.mode() & 0o111 != 0)
-                                .unwrap_or(false)
-                        };
-                        #[cfg(not(unix))]
-                        let exec = false;
-                        gripsack_store::canonical_bytes_identity(
-                            &bytes,
-                            if exec { 0o755 } else { 0o644 },
-                        )
-                        .to_string()
+                        let mode = entry.file_mode.unwrap_or_else(|| {
+                            #[cfg(unix)]
+                            let exec = {
+                                use std::os::unix::fs::MetadataExt;
+                                std::fs::metadata(&src)
+                                    .map(|m| m.mode() & 0o111 != 0)
+                                    .unwrap_or(false)
+                            };
+                            #[cfg(not(unix))]
+                            let exec = false;
+                            if exec { 0o755 } else { 0o644 }
+                        });
+                        gripsack_store::canonical_bytes_identity(&bytes, mode).to_string()
                     }),
                 };
                 if let Some(h) = &actual

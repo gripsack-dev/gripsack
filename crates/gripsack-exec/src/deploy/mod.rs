@@ -240,19 +240,15 @@ pub(crate) fn deploy_entry(
     prev_map: &std::collections::BTreeMap<std::path::PathBuf, &store::DeployedEntry>,
     version: Option<&str>,
 ) -> Result<(String, ReportKind), ExecError> {
-    let from = match version {
-        // install keys substitute {version} (the locked tag) AND the
-        // platform placeholders (0016 §D1) — same surface as verify
-        Some(v) => gripsack_fetch::expand_platform(&entry.from).replace("{version}", v),
-        None => gripsack_fetch::expand_platform(&entry.from),
-    };
+    let prepared = crate::source::payload_source(store_path, &entry.from, version);
+    let from = prepared.relative;
     // Entry content is the store payload — always. The publish step
     // stages every repo-referenced `from` into the store, so a store
     // miss means a stale store (e.g. a config tree that gained a file
     // under an unmoved pin): that is an integrity failure, never a
     // reason to reach into the repo checkout and deploy a path the
     // store never published.
-    let source = store_path.join(&from);
+    let source = prepared.path;
     // the canonical physical key (0030 §P0-1): one observation, one
     // transition, one journal key per physical object
     let dest = store::canonical_dest(&entry.to).map_err(|e| ExecError::Step {
@@ -380,8 +376,8 @@ pub(crate) fn deploy_entry(
                 Some(r) => r.as_slice(),
                 None => &std::fs::read(&source)?,
             };
-            // the intended landed mode (0031): tracked copies manage
-            // executability — 0755 when the payload is exec, else 0644
+            // Tracked copies follow source executability; templates preserve
+            // their destination's permissions independently of their source.
             #[cfg(unix)]
             let src_exec = {
                 use std::os::unix::fs::PermissionsExt;
@@ -393,7 +389,13 @@ pub(crate) fn deploy_entry(
                 &view,
                 crate::ops::ModeInput::Write {
                     content,
-                    intent_mode: if src_exec { 0o755 } else { 0o644 },
+                    permissions: if entry.mode == Ownership::TrackedCopy {
+                        crate::ops::WritePermissions::Source {
+                            executable: src_exec,
+                        }
+                    } else {
+                        crate::ops::WritePermissions::Preserve
+                    },
                 },
             )?
         }
@@ -447,6 +449,7 @@ pub(crate) fn deploy_entry(
                 vars: entry.vars.clone(),
                 hash: produced.hash,
                 file_mode: produced.file_mode,
+                source_executable: produced.source_executable,
                 prior: captured_prior.or(produced.prior),
                 preserved_drift: produced.preserved_drift,
             });
@@ -543,6 +546,7 @@ mod tests {
             mode: Ownership::Owned,
             vars: Default::default(),
             file_mode: None,
+            source_executable: None,
             hash: gripsack_store::hash::ManifestHash::from_raw("x".repeat(64)),
             prior: None,
             preserved_drift: false,
