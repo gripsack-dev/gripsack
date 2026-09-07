@@ -28,11 +28,11 @@ mod embedded {
 /// 3. a deno on PATH (major ≥ 2) — last-resort fallback, used only
 ///    when the pinned one is unavailable (musl host, failed
 ///    download), and LOUD: a run-log warning, never a silent skew.
-pub fn ensure_deno(home: &Path) -> io::Result<PathBuf> {
+pub fn ensure_deno(home: &Path, context: &gripsack_fetch::FetchContext) -> io::Result<PathBuf> {
     if let Ok(deno) = std::env::var("GRIPSACK_DENO") {
         return Ok(PathBuf::from(deno));
     }
-    if let Some(deno) = pinned_deno(home)? {
+    if let Some(deno) = pinned_deno(home, context)? {
         return Ok(deno);
     }
     if let Some((deno, version)) = deno_on_path() {
@@ -54,7 +54,7 @@ pub fn ensure_deno(home: &Path) -> io::Result<PathBuf> {
 /// (musl) or the download failed and a caller fallback should get a
 /// chance — the download error is preserved for the no-fallback case
 /// by the caller re-trying and surfacing it.
-fn pinned_deno(home: &Path) -> io::Result<Option<PathBuf>> {
+fn pinned_deno(home: &Path, context: &gripsack_fetch::FetchContext) -> io::Result<Option<PathBuf>> {
     // deno ships glibc + macOS builds only: a downloaded binary on a
     // musl host (alpine, …) would fail at exec with an opaque loader
     // error — fail before the network round-trip, with the fix named
@@ -86,12 +86,16 @@ fn pinned_deno(home: &Path) -> io::Result<Option<PathBuf>> {
         api_url: None,
         sha256: Some(sha.to_string()),
     };
-    let staging = dir.with_file_name(format!(
-        "{}.staging",
-        dir.file_name().unwrap_or_default().to_string_lossy()
-    ));
-    let _ = std::fs::remove_dir_all(&staging);
-    match gripsack_fetch::fetch(&spec, &staging).map_err(io::Error::other) {
+    let parent = home.join("tools");
+    std::fs::create_dir_all(&parent)?;
+    let temporary = tempfile::Builder::new()
+        .prefix(".deno-")
+        .tempdir_in(&parent)?;
+    let staging = temporary.path();
+    match context
+        .fetch(&spec, staging, None)
+        .map_err(io::Error::other)
+    {
         Ok(_) => {
             // the zip holds `deno` at the root (verified against the
             // v2.9.6 asset layout at pin time)
@@ -116,11 +120,9 @@ fn pinned_deno(home: &Path) -> io::Result<Option<PathBuf>> {
                     .arg(&deno)
                     .status();
             }
-            let _ = std::fs::remove_dir_all(&staging);
             Ok(Some(deno))
         }
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&staging);
             // the caller falls back to a PATH deno (loudly); if there
             // is none, this error is the real cause — re-surface it
             if deno_on_path().is_some() {

@@ -34,6 +34,6 @@ export type { ProbeBuilder, ProbeKind, ProbeRequest } from "./probe.ts";
 export { CORE_RESOURCES, clearResources, resource } from "./resources.ts";
 export type { Resource } from "./resources.ts";
 export { buildStep, configStep, fetchStep, installStep, runStep, shellStep, step } from "./steps.ts";
-export type { Phase, Step, StepAction, StepOpts } from "./steps.ts";
+export type { Build, Phase, Step, StepAction, StepOpts } from "./steps.ts";
 export { verifyBinary, verifyDeployed, verifyFile, verifyShell } from "./verify.ts";
 export type { Verify } from "./verify.ts";

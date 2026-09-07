@@ -47,6 +47,9 @@ jobs:
           npx tsc
 
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          # same pin as the Dockerfile DENO_VERSION / host.rs DENO_RELEASE
+          deno-version: v2.9.6
 
       - name: Apply the example env (real eval, sandboxed Deno)
         env:

@@ -1,6 +1,11 @@
 //! A declaration spelling is not yet a filesystem path (0036, 0041).
 //! Preview and deployment use this same substitution/join boundary.
 
+mod acquire;
+mod overlay;
+pub(crate) use acquire::{FetchInputs, fetch, publish};
+pub(crate) use overlay::Overlay;
+
 use std::path::{Path, PathBuf};
 
 pub(crate) struct PayloadSource {

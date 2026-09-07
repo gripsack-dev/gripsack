@@ -47,6 +47,15 @@ pub(crate) fn run_all(
     prev: &BTreeMap<String, store::ModuleState>,
     lock: &Lockfile,
 ) -> Result<ScheduleOutcome, ExecError> {
+    let recipes = crate::resolve::RecipeGraph::new(
+        ir,
+        &ctx.repo,
+        steps_by_module,
+        order.iter().map(String::as_str),
+    )?;
+    let lineage = prev_by_dest(prev);
+    let run_span = tracing::Span::current();
+    let dispatcher = tracing::dispatcher::get_default(Clone::clone);
     // adjacency from module.depends; indegree counts unfinished deps
     let wanted: BTreeSet<&str> = order.iter().map(String::as_str).collect();
     let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
@@ -103,6 +112,8 @@ pub(crate) fn run_all(
     std::thread::scope(|scope| {
         for _ in 0..workers {
             scope.spawn(|| {
+                let _dispatch = tracing::dispatcher::set_default(&dispatcher);
+                let _run = run_span.enter();
                 loop {
                     // Readiness guarantees all dependencies have published.
                     // Copy only the closure paths and share an immutable pin
@@ -138,6 +149,7 @@ pub(crate) fn run_all(
                     let Some((name, build_env, current_lock)) = next else {
                         continue;
                     };
+                    let _module_span = tracing::info_span!("module", module = %name).entered();
                     let result = build_env.and_then(|build_env| {
                         run_one(
                             &name,
@@ -149,6 +161,8 @@ pub(crate) fn run_all(
                             Scheduled {
                                 build_env,
                                 build_only: build_only.contains(&name),
+                                recipes: &recipes,
+                                lineage: &lineage,
                             },
                         )
                     });
@@ -166,6 +180,7 @@ pub(crate) fn run_all(
                                     Arc::make_mut(&mut st.lock)
                                         .modules
                                         .insert(name.clone(), entry.clone());
+                                    recipes.invalidate(&name);
                                 }
                                 st.lock_entries.insert(name.clone(), entry);
                             }
@@ -254,9 +269,11 @@ pub(crate) fn prev_by_dest(
 /// What the scheduler adds to one module run beyond the static graph
 /// inputs (0039): the composed build closure and the build-only
 /// verdict. A struct, not two more positional arguments.
-struct Scheduled {
+struct Scheduled<'a> {
     build_env: crate::closure::BuildEnv,
     build_only: bool,
+    recipes: &'a crate::resolve::RecipeGraph,
+    lineage: &'a BTreeMap<PathBuf, &'a store::DeployedEntry>,
 }
 
 fn run_one(
@@ -266,7 +283,7 @@ fn run_one(
     ctx: &Ctx,
     prev: &BTreeMap<String, store::ModuleState>,
     lock: &Lockfile,
-    scheduled: Scheduled,
+    scheduled: Scheduled<'_>,
 ) -> Result<ModuleOutcome, ExecError> {
     let module: &Module = &ir.modules[name];
     let plan = &steps_by_module[name];
@@ -274,9 +291,9 @@ fn run_one(
         crate::module::ModuleInputs {
             name,
             module,
-            ir,
+            recipes: scheduled.recipes,
             plan,
-            prev_map: &prev_by_dest(prev),
+            prev_map: scheduled.lineage,
             prev_module: prev.get(name),
             locked: lock.modules.get(name),
             lock,

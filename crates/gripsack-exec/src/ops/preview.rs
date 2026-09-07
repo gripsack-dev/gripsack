@@ -34,6 +34,12 @@ pub fn preview_ops(
     }
     let home = store::gripsack_home();
     let steps_by_module = crate::expand::expand_all(&ir.modules)?;
+    let recipes = crate::resolve::RecipeGraph::new(
+        ir,
+        repo,
+        &steps_by_module,
+        ir.modules.keys().map(String::as_str),
+    )?;
     // Build closures (0039): a build-only dep plans ZERO destination
     // ops — one marker line instead, naming the consumers. The same
     // whole-graph rule apply uses, so preview and apply agree.
@@ -77,14 +83,12 @@ pub fn preview_ops(
         let locked = lock.modules.get(name);
         let identity = crate::identity::resolve(crate::identity::IdentityInputs {
             name,
-            module: &ir.modules[name],
-            ir,
+            recipes: &recipes,
             plan: steps,
             home: &home,
             repo,
             locked,
             lock,
-            mode: crate::identity::Resolution::Offline,
         })?;
         let version = locked
             .and_then(|entry| entry.resolved.as_ref())

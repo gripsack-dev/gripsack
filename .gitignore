@@ -6,3 +6,8 @@ typescript/dist/
 **/__pycache__/
 *.pyc
 demos/out/
+/repro/
+/fuzz/target/
+/fuzz/artifacts/
+/specs/states/
+/specs/*TTrace*

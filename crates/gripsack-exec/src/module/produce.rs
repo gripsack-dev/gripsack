@@ -3,9 +3,8 @@
 use super::ModuleRun;
 use crate::{
     ctx::ExecError,
-    lockfile,
     report::{ReportKind, StepReport, describe_fetch},
-    resolve::{module_input, resolve_spec},
+    source,
     util::{fresh_staging, progress},
     verify::run_shell,
 };
@@ -21,6 +20,7 @@ impl ModuleRun<'_> {
             if self.present {
                 continue;
             }
+            let _step = tracing::info_span!("step", step = %step.id).entered();
             let _guards = self.acquire_step(step)?;
             match &step.action {
                 StepAction::Fetch { fetch: spec } => self.fetch_step(step, spec)?,
@@ -59,46 +59,29 @@ impl ModuleRun<'_> {
     fn fetch_step(&mut self, step: &Step, spec: &gripsack_ir::FetchSpec) -> Result<(), ExecError> {
         progress(self.ctx, self.name, "fetching");
         let stage = self.staging.get_or_insert_with(|| fresh_staging(self.name));
-        // a changed fetch spec invalidates the lock entry — the args
-        // are the declaration, the pin follows them, never the reverse
-        // (a spec edit must not fail as "the mirror changed", which
-        // costs a confused ten minutes hand-editing the lockfile)
-        let spec_changed = self.locked.is_some_and(|e| e.fetch != *spec);
-        let locked = if spec_changed {
-            tracing::info!(
-                module = self.name,
-                "fetch spec changed — re-resolving the pin"
-            );
-            None
-        } else {
-            self.locked
-        };
-        // resolve to a concrete spec — the locked pin wins; else
-        // resolve now (trust on first use, 0002 §3)
-        let (concrete, meta) = resolve_spec(self.name, spec, locked)?;
-        if let Some(m) = &meta {
-            self.version = Some(m.version.clone());
-        }
-        // Plugin fetchers learn the pin — first-fetch (resolve, TOFU)
-        // and pinned re-fetch (reproduce) are different code paths for
-        // internal registries (0002 §4 `locked`).
-        let locked_json = locked
-            .and_then(|e| e.resolved.as_ref())
-            .and_then(|r| serde_json::to_value(r).ok());
-        let outcome = gripsack_fetch::fetch_with_locked(&concrete, stage, locked_json.as_ref())
-            .map_err(|e| match e {
-                // plugin diagnostics keep their envelope (0009 §2 —
-                // they render through the one renderer at apply)
-                gripsack_fetch::FetchError::Diagnostics(_) => ExecError::Fetch(e),
-                // everything else becomes a step error so the apply
-                // renderer can point at the module line (0004 §3)
-                other => ExecError::Step {
-                    module: self.name.to_string(),
-                    step: step.id.clone(),
-                    detail: other.to_string(),
-                },
-            })?;
-        let sha = outcome.hash.clone();
+        let pin = source::fetch(
+            self.ctx,
+            source::FetchInputs {
+                name: self.name,
+                spec,
+                locked: self.locked,
+                dest: stage,
+            },
+        )
+        .map_err(|error| match error {
+            ExecError::Fetch(gripsack_fetch::FetchError::Diagnostics(_)) => error,
+            other => ExecError::Step {
+                module: self.name.into(),
+                step: step.id.clone(),
+                detail: other.to_string(),
+            },
+        })?;
+        let resolved = pin.resolved.as_ref().expect("acquisition creates a pin");
+        let sha = resolved
+            .sha256
+            .as_deref()
+            .expect("acquisition hashes its payload");
+        self.version = resolved.version.clone();
         // Finalize a deferred identity (finding C): the first fetch's
         // sha joins the store-path input — identical to what the lock
         // gives every later apply. Presence was never checked against
@@ -106,44 +89,10 @@ impl ModuleRun<'_> {
         // Input-addressed only: content-addressed modules (0014)
         // finalize at publish, where the merged staging's tree exists.
         if self.identity_pending && !self.content_addressed {
-            let input = format!(
-                "{}|payload={sha}",
-                module_input(
-                    self.name,
-                    self.module,
-                    &self.ctx.repo,
-                    self.ir,
-                    self.lock,
-                    self.plan
-                )?
-            );
+            let input = format!("{}|payload={sha}", self.recipes.input(self.name, self.lock));
             self.store_path = store::store_path(&self.ctx.home, self.name, &input);
         }
-        // pin enforcement for kinds without download-level verification
-        if let Some(expected) = locked
-            .and_then(|e| e.resolved.as_ref())
-            .and_then(|r| r.sha256.as_ref())
-            && sha != *expected
-            && !matches!(concrete, gripsack_ir::FetchSpec::Tarball { .. })
-        {
-            return Err(ExecError::Fetch(gripsack_fetch::FetchError::HashMismatch {
-                url: format!("{} payload", self.name),
-                expected: expected.clone(),
-                actual: sha,
-            }));
-        }
-        let pin = locked.and_then(|e| e.resolved.as_ref());
-        self.lock_entry = Some(lockfile::LockEntry {
-            fetch: spec.clone(),
-            resolved: Some(fetched_pin(
-                meta.as_ref(),
-                &outcome,
-                &concrete,
-                pin,
-                sha,
-                crate::resolve::repo_overlay(self.plan, &self.ctx.repo)?,
-            )),
-        });
+        self.lock_entry = Some(pin);
         info!(step = %step.id, "fetched");
         self.reports.push(StepReport {
             module: self.name.to_string(),
@@ -232,108 +181,5 @@ impl ModuleRun<'_> {
             detail,
         })?;
         self.check_outputs(step, &dir, outputs)
-    }
-}
-/// Build the pin a fetch records. `meta` is a fresh resolution — None
-/// on a pinned re-fetch, where the lock's own fields ARE the pin and
-/// must survive the rewrite: dropping version breaks {version}
-/// substitution on the next warm-store deploy, and dropping
-/// url/api_url forces a re-resolve through the registry API on the
-/// next cold store.
-fn fetched_pin(
-    meta: Option<&gripsack_fetch::ResolvedRelease>,
-    outcome: &gripsack_fetch::fetch::FetchOutcome,
-    concrete: &gripsack_ir::FetchSpec,
-    pin: Option<&lockfile::Resolved>,
-    sha: String,
-    repo256: Option<String>,
-) -> lockfile::Resolved {
-    lockfile::Resolved {
-        // tree256 lands at publish, with the merged staging — never
-        // carried over from the old pin
-        tree256: None,
-        // a plugin's reported pin (upstream artifact url + version) is
-        // recorded so the next apply's `locked` tells it exactly what
-        // to reproduce; for resolved kinds, the resolution's own
-        // metadata; else the surviving lock fields
-        url: meta
-            .map(|m| m.url.clone())
-            .or_else(|| outcome.plugin_url.clone())
-            .or_else(|| pin.and_then(|r| r.url.clone())),
-        // git floats pin the resolved rev as the lock's version
-        // (0016 §D2) — the float re-reads it on every apply
-        version: meta
-            .map(|m| m.version.clone())
-            .or_else(|| outcome.plugin_version.clone())
-            .or_else(|| match concrete {
-                gripsack_ir::FetchSpec::Git { rev, .. } => rev.clone(),
-                _ => None,
-            })
-            .or_else(|| pin.and_then(|r| r.version.clone())),
-        sha256: Some(sha),
-        api_url: meta
-            .and_then(|m| m.api_url.clone())
-            .or_else(|| pin.and_then(|r| r.api_url.clone())),
-        // the repo-overlay half of the merged tree — presence checks
-        // and `grip update` compare it to catch config trees that
-        // change under an unmoved transport pin
-        repo256,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn locked_pin() -> lockfile::Resolved {
-        lockfile::Resolved {
-            url: Some("https://ghe.invalid/rel/asset.tar.gz".into()),
-            version: Some("15.2.0".into()),
-            sha256: Some("ab".repeat(32)),
-            tree256: Some("ef".repeat(32)),
-            api_url: Some("https://ghe.invalid/api/asset/1".into()),
-            repo256: None,
-        }
-    }
-
-    fn outcome() -> gripsack_fetch::fetch::FetchOutcome {
-        gripsack_fetch::fetch::FetchOutcome {
-            hash: "ab".repeat(32),
-            plugin_url: None,
-            plugin_version: None,
-        }
-    }
-
-    #[test]
-    fn fresh_resolution_wins_over_the_lock() {
-        let locked = locked_pin();
-        let meta = gripsack_fetch::ResolvedRelease {
-            version: "16.0.0".into(),
-            url: "https://ghe.invalid/rel/new.tar.gz".into(),
-            api_url: Some("https://ghe.invalid/api/asset/2".into()),
-            sha256: None,
-        };
-        let concrete = gripsack_ir::FetchSpec::Tarball {
-            url: meta.url.clone(),
-            sha256: None,
-            api_url: meta.api_url.clone(),
-        };
-        let got = fetched_pin(
-            Some(&meta),
-            &outcome(),
-            &concrete,
-            Some(&locked),
-            "ab".repeat(32),
-            None,
-        );
-        assert_eq!(
-            got.url.as_deref(),
-            Some("https://ghe.invalid/rel/new.tar.gz")
-        );
-        assert_eq!(got.version.as_deref(), Some("16.0.0"));
-        assert_eq!(
-            got.api_url.as_deref(),
-            Some("https://ghe.invalid/api/asset/2")
-        );
     }
 }

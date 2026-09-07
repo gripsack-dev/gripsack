@@ -138,3 +138,79 @@ fn atomic_file_link_and_tree_publication_are_ordered_at_every_cut() {
         }
     }
 }
+
+#[test]
+fn streamed_executable_publication_is_ordered_at_every_cut() {
+    let home = tempfile::tempdir().unwrap();
+    let cap = open(home.path()).unwrap();
+    let payload = b"#!/bin/sh\nexit 0\n";
+    let (result, trace) = fault::capture(false, || {
+        let mut source: &[u8] = payload;
+        atomic_copy_with_mode(&cap, Path::new("bin/gripsack"), &mut source, 0o755)
+    });
+    result.unwrap();
+    every_cut(&trace);
+    assert_eq!(
+        std::fs::read(home.path().join("bin/gripsack")).unwrap(),
+        payload
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(home.path().join("bin/gripsack"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+    }
+
+    // Calibrated mutants — single events relocated, not an exact-sequence
+    // assertion: a mode set AFTER the file fsync would let the rename
+    // publish durable bytes whose mode the fsync never covered, and a
+    // rename issued BEFORE the file fsync publishes dirty bytes outright.
+    // The cut model must reject both orderings, not merely record them.
+    let mode = trace
+        .iter()
+        .position(|e| e.boundary == B::Mode && e.edge == Edge::After)
+        .unwrap();
+    let mut mode_after_fsync = trace.clone();
+    let change = mode_after_fsync.remove(mode);
+    let sync = mode_after_fsync
+        .iter()
+        .position(|e| e.boundary == B::FileSync && e.edge == Edge::After && e.path == change.path)
+        .unwrap();
+    mode_after_fsync.insert(sync + 1, change);
+    assert!(
+        check(&mode_after_fsync, true).is_err(),
+        "mode-after-fsync mutation escaped the model"
+    );
+    let mut premature_rename = trace.clone();
+    let publish: Vec<usize> = premature_rename
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.boundary == B::FilePublish)
+        .map(|(i, _)| i)
+        .collect();
+    let rename: Vec<Event> = publish
+        .iter()
+        .rev()
+        .map(|&i| premature_rename.remove(i))
+        .collect();
+    assert_eq!(rename.len(), 2, "one rename: before and after edges");
+    let fsync = premature_rename
+        .iter()
+        .position(|e| {
+            e.boundary == B::FileSync && e.edge == Edge::Before && e.path == rename[0].path
+        })
+        .unwrap();
+    for (k, event) in rename.into_iter().enumerate() {
+        premature_rename.insert(fsync + k, event);
+    }
+    assert!(
+        check(&premature_rename, true).is_err(),
+        "premature-rename mutation escaped the model"
+    );
+}

@@ -2,12 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://gripsack.dev/schema/ir/v3.json",
   "title": "gripsack IR v3",
-  "description": "Typed frontend/core contract. Unknown structural fields are rejected; semantic checks additionally validate graphs and paths (0041).",
+  "description": "Typed frontend/core contract, aligned with the core's structural acceptance: deny-unknown structs plus the tagged-field pass (parse + pass 1.5). Unknown structural fields are rejected; optional fields may be explicit null (serde Option); integers are Rust u32 (spans). Semantic checks (graph, path and phase relationships) live in sema, not here. Authored-value constraints retained from the shipped v3 contract (sha256 hex, destination prefix, repo shape, minLength) are tighter than the parser on purpose: they constrain what a frontend may author, and only bound fields the parser also bound are claimed as parity.",
   "type": "object",
   "required": [
     "ir_version",
     "modules"
   ],
+  "additionalProperties": false,
   "properties": {
     "ir_version": {
       "const": 3
@@ -32,6 +33,7 @@
   "$defs": {
     "hostFacts": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "os": {
           "type": "string"
@@ -46,8 +48,8 @@
           }
         },
         "libc": {
-          "type": "string",
-          "description": "e.g. glibc-2.36, musl, darwin"
+          "type": ["string", "null"],
+          "description": "e.g. glibc-2.36, musl, darwin; null or absent when undetectable"
         }
       }
     },
@@ -57,26 +59,33 @@
         "file",
         "line"
       ],
+      "additionalProperties": false,
       "properties": {
         "file": {
           "type": "string"
         },
         "line": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 0,
+          "maximum": 4294967295
         },
         "col": {
-          "type": "integer",
-          "minimum": 1
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 4294967295
         }
       },
-      "description": "Source location of this node in frontend code (plan/0004 §2). Optional; built-in frontends MUST emit it at module level."
+      "description": "Source location of this node in frontend code (plan/0004 §2). Optional; built-in frontends MUST emit it at module level. line/col are Rust u32."
     },
     "module": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "fetch": {
-          "$ref": "#/$defs/fetch"
+          "anyOf": [
+            { "$ref": "#/$defs/fetch" },
+            { "type": "null" }
+          ]
         },
         "build": {
           "$ref": "#/$defs/build"
@@ -105,14 +114,26 @@
             "$ref": "#/$defs/intent"
           }
         },
-        "span": {
-          "$ref": "#/$defs/span"
+        "steps": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/step"
+              }
+            },
+            { "type": "null" }
+          ],
+          "description": "Explicit pipeline control (0007): present means the declarative fields above must all be empty (sema E103)"
         },
         "verify": {
-          "$ref": "#/$defs/verify"
+          "anyOf": [
+            { "$ref": "#/$defs/verify" },
+            { "type": "null" }
+          ]
         },
         "lint": {
-          "type": "string",
+          "type": ["string", "null"],
           "description": "Registered linter for this module's config payloads (0011); the core drives it (0012)"
         },
         "env": {
@@ -121,6 +142,12 @@
             "$ref": "#/$defs/envVar"
           },
           "description": "Environment contributions exported to the shell profile at activation (plan/0001 §3.10)"
+        },
+        "span": {
+          "anyOf": [
+            { "$ref": "#/$defs/span" },
+            { "type": "null" }
+          ]
         }
       }
     },
@@ -135,11 +162,25 @@
             "none",
             "custom_shell"
           ]
-        },
-        "script": {
-          "type": "string"
         }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": { "const": "none" }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "custom_shell" },
+            "script": { "type": "string" }
+          },
+          "required": ["kind", "script"],
+          "additionalProperties": false
+        }
+      ]
     },
     "entry": {
       "type": "object",
@@ -147,6 +188,7 @@
         "from",
         "to"
       ],
+      "additionalProperties": false,
       "properties": {
         "from": {
           "type": "string",
@@ -174,11 +216,14 @@
           "description": "template variables (mode template only)"
         },
         "marker": {
-          "type": "string",
+          "type": ["string", "null"],
           "description": "comment prefix for the managed block (mode merge only); default: inferred from the dest extension"
         },
         "span": {
-          "$ref": "#/$defs/span"
+          "anyOf": [
+            { "$ref": "#/$defs/span" },
+            { "type": "null" }
+          ]
         }
       }
     },
@@ -201,7 +246,10 @@
           "description": "Build dependencies provide store artifacts to build steps; runtime dependencies also deploy. Runtime incoming edges win over build-only use (0039)."
         },
         "span": {
-          "$ref": "#/$defs/span"
+          "anyOf": [
+            { "$ref": "#/$defs/span" },
+            { "type": "null" }
+          ]
         }
       },
       "additionalProperties": false
@@ -238,15 +286,88 @@
           "type": "string"
         },
         "span": {
-          "$ref": "#/$defs/span"
+          "anyOf": [
+            { "$ref": "#/$defs/span" },
+            { "type": "null" }
+          ]
         }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": { "const": "service" },
+            "name": { "type": "string" },
+            "user": { "type": "boolean" },
+            "trigger": { "$ref": "#/$defs/trigger" },
+            "span": {
+              "anyOf": [
+                { "$ref": "#/$defs/span" },
+                { "type": "null" }
+              ]
+            }
+          },
+          "required": ["kind", "name"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "fonts" },
+            "trigger": { "$ref": "#/$defs/trigger" },
+            "span": {
+              "anyOf": [
+                { "$ref": "#/$defs/span" },
+                { "type": "null" }
+              ]
+            }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "desktop_entry" },
+            "trigger": { "$ref": "#/$defs/trigger" },
+            "span": {
+              "anyOf": [
+                { "$ref": "#/$defs/span" },
+                { "type": "null" }
+              ]
+            }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "custom_shell" },
+            "script": { "type": "string" },
+            "trigger": { "$ref": "#/$defs/trigger" },
+            "span": {
+              "anyOf": [
+                { "$ref": "#/$defs/span" },
+                { "type": "null" }
+              ]
+            }
+          },
+          "required": ["kind", "script"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "trigger": {
+      "enum": [
+        "post_link",
+        "post_activate",
+        "on_remove"
+      ],
+      "default": "post_activate"
     },
     "resource": {
       "type": "object",
       "required": [
         "name"
       ],
+      "additionalProperties": false,
       "properties": {
         "name": {
           "type": "string",
@@ -260,30 +381,14 @@
         "id",
         "action"
       ],
+      "additionalProperties": false,
       "properties": {
         "id": {
           "type": "string",
           "minLength": 1
         },
         "action": {
-          "type": "object",
-          "required": [
-            "kind"
-          ],
-          "properties": {
-            "kind": {
-              "enum": [
-                "fetch",
-                "build",
-                "install",
-                "config_deploy",
-                "intent",
-                "verify",
-                "run",
-                "custom_shell"
-              ]
-            }
-          }
+          "$ref": "#/$defs/stepAction"
         },
         "needs": {
           "type": "array",
@@ -299,23 +404,193 @@
           }
         },
         "phase": {
+          "anyOf": [
+            { "$ref": "#/$defs/phase" },
+            { "type": "null" }
+          ]
+        },
+        "verify": {
+          "anyOf": [
+            { "$ref": "#/$defs/verify" },
+            { "type": "null" }
+          ]
+        },
+        "span": {
+          "anyOf": [
+            { "$ref": "#/$defs/span" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "stepAction": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
           "enum": [
             "fetch",
             "build",
             "install",
-            "config",
+            "config_deploy",
+            "intent",
             "verify",
-            "activate",
-            "custom"
+            "run",
+            "custom_shell"
           ]
-        },
-        "span": {
-          "$ref": "#/$defs/span"
-        },
-        "verify": {
-          "$ref": "#/$defs/verify"
         }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": { "const": "fetch" },
+            "fetch": { "$ref": "#/$defs/fetch" }
+          },
+          "required": ["kind", "fetch"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "build" },
+            "spec": { "$ref": "#/$defs/build" }
+          },
+          "required": ["kind", "spec"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "install" },
+            "entries": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/entry" }
+            }
+          },
+          "required": ["kind", "entries"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "config_deploy" },
+            "entries": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/entry" }
+            }
+          },
+          "required": ["kind", "entries"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "intent" },
+            "action": { "$ref": "#/$defs/action" },
+            "trigger": { "$ref": "#/$defs/trigger" }
+          },
+          "required": ["kind", "action"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "verify" },
+            "verify": { "$ref": "#/$defs/verify" }
+          },
+          "required": ["kind", "verify"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "run" },
+            "argv": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "cwd": { "type": ["string", "null"] },
+            "outputs": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "required": ["kind", "argv"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "custom_shell" },
+            "script": { "type": "string" },
+            "outputs": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "required": ["kind", "script"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "service",
+            "fonts",
+            "desktop_entry",
+            "custom_shell"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": { "const": "service" },
+            "name": { "type": "string" },
+            "user": { "type": "boolean" }
+          },
+          "required": ["kind", "name"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "fonts" }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "desktop_entry" }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "custom_shell" },
+            "script": { "type": "string" }
+          },
+          "required": ["kind", "script"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "phase": {
+      "enum": [
+        "fetch",
+        "build",
+        "install",
+        "config",
+        "verify",
+        "activate",
+        "custom"
+      ]
     },
     "sha256": {
       "type": "string",
@@ -342,9 +617,7 @@
       "oneOf": [
         {
           "properties": {
-            "kind": {
-              "const": "github_release"
-            },
+            "kind": { "const": "github_release" },
             "repo": {
               "type": "string",
               "pattern": "^[^/]+/[^/]+$"
@@ -353,13 +626,16 @@
               "type": "string"
             },
             "version": {
-              "type": "string"
+              "type": ["string", "null"]
             },
             "sha256": {
-              "$ref": "#/$defs/sha256"
+              "anyOf": [
+                { "$ref": "#/$defs/sha256" },
+                { "type": "null" }
+              ]
             },
             "base_url": {
-              "type": "string",
+              "type": ["string", "null"],
               "format": "uri"
             }
           },
@@ -367,52 +643,52 @@
             "kind",
             "repo",
             "asset"
-          ]
+          ],
+          "additionalProperties": false
         },
         {
           "properties": {
-            "kind": {
-              "const": "tarball"
-            },
+            "kind": { "const": "tarball" },
             "url": {
               "type": "string"
             },
             "sha256": {
-              "$ref": "#/$defs/sha256"
+              "anyOf": [
+                { "$ref": "#/$defs/sha256" },
+                { "type": "null" }
+              ]
             },
             "api_url": {
-              "type": "string",
+              "type": ["string", "null"],
               "description": "registry API asset endpoint (authenticated download path); produced by resolution, never written by frontends"
             }
           },
           "required": [
             "kind",
             "url"
-          ]
+          ],
+          "additionalProperties": false
         },
         {
           "properties": {
-            "kind": {
-              "const": "git"
-            },
+            "kind": { "const": "git" },
             "url": {
               "type": "string"
             },
             "rev": {
-              "type": "string",
+              "type": ["string", "null"],
               "minLength": 1
             }
           },
           "required": [
             "kind",
             "url"
-          ]
+          ],
+          "additionalProperties": false
         },
         {
           "properties": {
-            "kind": {
-              "const": "file"
-            },
+            "kind": { "const": "file" },
             "path": {
               "type": "string"
             }
@@ -420,62 +696,73 @@
           "required": [
             "kind",
             "path"
-          ]
+          ],
+          "additionalProperties": false
         },
         {
           "properties": {
-            "kind": {
-              "const": "plugin"
-            },
+            "kind": { "const": "plugin" },
             "name": {
               "type": "string",
               "minLength": 1
             },
             "args": {
-              "type": "object"
+              "anyOf": [
+                { "type": "object" },
+                { "type": "null" }
+              ],
+              "description": "plugin-defined; the parser admits any JSON value here, the authored contract is an object (or absent/null)"
             }
           },
           "required": [
             "kind",
             "name"
-          ]
+          ],
+          "additionalProperties": false
         },
         {
           "properties": {
-            "kind": {
-              "const": "brew"
-            },
+            "kind": { "const": "brew" },
             "formula": {
               "type": "string"
             },
+            "version": {
+              "type": ["string", "null"]
+            },
             "sha256": {
-              "$ref": "#/$defs/sha256"
+              "anyOf": [
+                { "$ref": "#/$defs/sha256" },
+                { "type": "null" }
+              ]
             }
           },
           "required": [
             "kind",
             "formula"
-          ]
+          ],
+          "additionalProperties": false
         },
         {
           "properties": {
-            "kind": {
-              "const": "pixi"
-            },
+            "kind": { "const": "pixi" },
             "package": {
               "type": "string"
             },
             "version": {
-              "type": "string"
+              "type": ["string", "null"]
             },
             "sha256": {
-              "$ref": "#/$defs/sha256"
+              "anyOf": [
+                { "$ref": "#/$defs/sha256" },
+                { "type": "null" }
+              ]
             }
           },
           "required": [
             "kind",
             "package"
-          ]
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -506,7 +793,45 @@
           "type": "string"
         }
       },
-      "description": "Smoke contract (0007): binary_runs {path,args} | file_exists {path} | shell {script}. Runs pre-flip."
+      "oneOf": [
+        {
+          "properties": {
+            "kind": { "const": "binary_runs" },
+            "path": { "type": "string" },
+            "args": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "required": ["kind", "path"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "file_exists" },
+            "path": { "type": "string" }
+          },
+          "required": ["kind", "path"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "shell" },
+            "script": { "type": "string" }
+          },
+          "required": ["kind", "script"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "const": "file_deployed" },
+            "path": { "type": "string" }
+          },
+          "required": ["kind", "path"],
+          "additionalProperties": false
+        }
+      ],
+      "description": "Smoke contract (0007): binary_runs {path,args} | file_exists {path} | shell {script} | file_deployed {path}. Runs pre-flip."
     },
     "envVar": {
       "type": "object",

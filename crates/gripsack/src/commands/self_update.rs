@@ -1,23 +1,19 @@
-//! `grip self-update` — a package manager that can't update itself is
-//! only half one (rootle's plans/0017 model, ported): tarball installs
-//! self-update through our own verified fetcher; brew/cargo/mise
-//! installs get their manager's command instead.
+//! Durable self-update for release installs; other channels retain delegation.
+
+mod installation;
+mod payload;
 
 use crate::render::Palette;
 use owo_colors::OwoColorize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
-/// How this binary was installed — decides whether we swap it or
-/// defer to the package manager that owns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Channel {
-    /// install.sh / release tarball — self-updates.
     Tarball,
     Brew,
     Cargo,
     Mise,
-    /// Unknown layout — self-update conservatively.
     Other,
 }
 
@@ -36,7 +32,7 @@ fn channel(exe: &Path) -> Channel {
     }
 }
 
-/// (major, minor, patch) — suffixes don't order.
+/// Retain the existing release ordering contract.
 fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
     let mut it = v.trim_start_matches('v').split('.');
     Some((
@@ -54,10 +50,9 @@ fn is_newer(latest: &str, current: &str) -> bool {
 }
 
 pub fn self_update(palette: Palette, check_only: bool) -> ExitCode {
-    let colored = palette.enabled;
     match run(check_only) {
         Ok(line) => {
-            if colored {
+            if palette.enabled {
                 println!("{}", line.green());
             } else {
                 println!("{line}");
@@ -65,7 +60,7 @@ pub fn self_update(palette: Palette, check_only: bool) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            if colored {
+            if palette.enabled {
                 eprintln!("{} {e}", "grip:".red().bold());
             } else {
                 eprintln!("grip: {e}");
@@ -76,97 +71,95 @@ pub fn self_update(palette: Palette, check_only: bool) -> ExitCode {
 }
 
 fn run(check_only: bool) -> Result<String, String> {
-    let current = env!("CARGO_PKG_VERSION");
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    // Resolve symlink installations to their actual target and capture before
+    // any network activity, including the Linux deleted-executable case.
+    let exe = installation::current_target().map_err(|e| e.to_string())?;
     let channel = channel(&exe);
-    let release = gripsack_fetch::resolve_self_release()
-        .map_err(|e| format!("cannot check for updates: {e}"))?;
-    let latest = release.version.as_str();
-    if !is_newer(latest, current) {
-        return Ok(format!("grip {current} is current"));
-    }
-    let (how, cmd) = match channel {
-        Channel::Brew => ("homebrew", "brew upgrade --cask gripsack"),
-        Channel::Cargo => ("cargo", "cargo install gripsack"),
-        Channel::Mise => ("mise", "mise up gripsack"),
-        _ => ("", ""),
+    let direct = matches!(channel, Channel::Tarball | Channel::Other);
+    // Check-only and delegated installs neither acquire a lock nor stage data.
+    let pinned = if direct && !check_only {
+        Some(installation::Installation::pin(&exe).map_err(|e| e.to_string())?)
+    } else {
+        None
     };
-    if !matches!(channel, Channel::Tarball | Channel::Other) {
-        return Ok(format!(
-            "{current} → {latest} — you installed via {how}: run `{cmd}`"
-        ));
-    }
-    if check_only {
-        return Ok(format!(
-            "{current} → {latest} available (run `grip self-update`)"
-        ));
+    let context = gripsack_fetch::FetchContext::default();
+    let release = context
+        .resolve_self_release()
+        .map_err(|e| format!("cannot check for updates: {e}"))?;
+    let latest = release.version.clone();
+    if !direct || check_only {
+        let current = env!("CARGO_PKG_VERSION");
+        if !is_newer(&latest, current) {
+            return Ok(format!("grip {current} is current"));
+        }
+        let delegated = match channel {
+            Channel::Brew => Some(("homebrew", "brew upgrade --cask gripsack")),
+            Channel::Cargo => Some(("cargo", "cargo install gripsack")),
+            Channel::Mise => Some(("mise", "mise up gripsack")),
+            _ => None,
+        };
+        return Ok(match delegated {
+            Some((how, cmd)) => {
+                format!("{current} → {latest} — you installed via {how}: run `{cmd}`")
+            }
+            None => format!("{current} → {latest} available (run `grip self-update`)"),
+        });
     }
 
-    // Dogfood: the same sha256-verified tarball fetch every module
-    // gets, then a staged write + atomic rename over self (the running
-    // process keeps the old inode; the next launch runs the new one).
+    let installed = pinned.expect("direct mutation pins the installation");
+    let _lock = installed
+        .lock()
+        .map_err(|e| format!("cannot lock executable: {e}"))?;
+    // The running process's build version is not evidence of what is now at
+    // the install path. Probe and compare stable installed metadata under lock.
+    let before = installed.snapshot().map_err(|e| e.to_string())?;
+    let current = payload::version(&exe)?;
+    installed
+        .require_snapshot(&before)
+        .map_err(|e| e.to_string())?;
+    if !is_newer(&latest, &current) {
+        return Ok(format!("grip {current} is current"));
+    }
+
+    let staging = tempfile::Builder::new()
+        .prefix("grip-self-update-")
+        .tempdir()
+        .map_err(|e| format!("cannot stage self-update: {e}"))?;
     let spec = gripsack_ir::FetchSpec::Tarball {
         url: release.url,
         sha256: Some(release.sha256),
         api_url: release.api_url,
     };
-    let staged_dir = exe_dir(&exe)?.join(".grip-self-update");
-    let _ = std::fs::remove_dir_all(&staged_dir);
-    std::fs::create_dir_all(&staged_dir).map_err(|e| e.to_string())?;
-    gripsack_fetch::fetch(&spec, &staged_dir)
+    context
+        .fetch(&spec, staging.path(), None)
         .map_err(|e| format!("download/verify failed: {e}"))?;
-    // the release tarball nests: gripsack-<version>-<triple>/grip
-    let new_grip = {
-        let root = staged_dir.join("grip");
-        if root.is_file() {
-            root
-        } else {
-            let nested: Vec<PathBuf> = std::fs::read_dir(&staged_dir)
-                .map_err(|e| e.to_string())?
-                .filter_map(|e| e.ok())
-                .map(|e| e.path().join("grip"))
-                .filter(|p| p.is_file())
-                .collect();
-            match nested.as_slice() {
-                [one] => one.clone(),
-                _ => {
-                    let _ = std::fs::remove_dir_all(&staged_dir);
-                    return Err(format!(
-                        "the release tarball has no single nested grip binary (found {})",
-                        nested.len()
-                    ));
-                }
-            }
-        }
-    };
-    let staged = exe.with_extension("update-tmp");
-    std::fs::copy(&new_grip, &staged).map_err(|e| e.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755));
+    let candidate = payload::select(staging.path()).map_err(|e| e.to_string())?;
+    let candidate_version = payload::version(&candidate)?;
+    if candidate_version.trim_start_matches('v') != latest.trim_start_matches('v') {
+        return Err(format!(
+            "release binary reports {candidate_version}, expected {latest}"
+        ));
     }
-    let _ = std::fs::remove_dir_all(&staged_dir);
-    std::fs::rename(&staged, &exe).map_err(|e| {
-        let _ = std::fs::remove_file(&staged);
+    let mut source = std::fs::File::open(&candidate).map_err(|e| e.to_string())?;
+    installed
+        .require_snapshot(&before)
+        .map_err(|e| e.to_string())?;
+    if let Err(e) = installed.publish(&mut source) {
+        if gripsack_fs::publication_occurred(&e) {
+            return Err(format!(
+                "executable changed to {latest}, but publication durability could not be confirmed: {e}; no rollback attempted"
+            ));
+        }
         if e.kind() == std::io::ErrorKind::PermissionDenied {
-            format!(
+            return Err(format!(
                 "cannot replace {}: {e} — rerun with sudo, or reinstall via install.sh",
                 exe.display()
-            )
-        } else {
-            format!("cannot replace {}: {e}", exe.display())
+            ));
         }
-    })?;
-    // keepachangelog anchor: ## [0.16.3] → #0163
+        return Err(format!("cannot replace {}: {e}", exe.display()));
+    }
     let anchor: String = latest.chars().filter(|c| c.is_ascii_digit()).collect();
     Ok(format!(
         "updated {current} → {latest} — takes effect on next launch · what's new: gripsack.dev/docs/changelog.html#{anchor}"
     ))
-}
-
-fn exe_dir(exe: &Path) -> Result<PathBuf, String> {
-    exe.parent()
-        .map(|p| p.to_path_buf())
-        .ok_or_else(|| "the running binary has no parent directory".to_string())
 }

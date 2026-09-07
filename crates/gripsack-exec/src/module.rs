@@ -39,7 +39,7 @@ pub(crate) struct ModuleOutcome {
 struct ModuleRun<'a> {
     name: &'a str,
     module: &'a gripsack_ir::Module,
-    ir: &'a gripsack_ir::Ir,
+    recipes: &'a crate::resolve::RecipeGraph,
     plan: &'a PreparedModule,
     ctx: &'a Ctx,
     prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
@@ -98,7 +98,7 @@ struct ModuleRun<'a> {
 pub(crate) struct ModuleInputs<'a> {
     pub name: &'a str,
     pub module: &'a gripsack_ir::Module,
-    pub ir: &'a gripsack_ir::Ir,
+    pub recipes: &'a crate::resolve::RecipeGraph,
     pub plan: &'a PreparedModule,
     pub prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
     pub prev_module: Option<&'a store::ModuleState>,
@@ -139,7 +139,7 @@ impl<'a> ModuleRun<'a> {
         let ModuleInputs {
             name,
             module,
-            ir,
+            recipes,
             plan,
             prev_map,
             prev_module,
@@ -152,14 +152,12 @@ impl<'a> ModuleRun<'a> {
         // the phase machine that executes against its answer
         let identity = crate::identity::resolve(crate::identity::IdentityInputs {
             name,
-            module,
-            ir,
+            recipes,
             plan,
             home: &ctx.home,
             repo: &ctx.repo,
             locked,
             lock,
-            mode: crate::identity::Resolution::Execute,
         })?;
         let reports = identity
             .satisfied_report(name)
@@ -168,7 +166,7 @@ impl<'a> ModuleRun<'a> {
         Ok(ModuleRun {
             name,
             module,
-            ir,
+            recipes,
             plan,
             ctx,
             prev_map,
@@ -216,15 +214,7 @@ impl<'a> ModuleRun<'a> {
         stage: &std::path::Path,
         dest: &std::path::Path,
     ) -> Result<(), ExecError> {
-        let rel = dest
-            .strip_prefix(&self.ctx.home)
-            .map_err(|_| ExecError::Step {
-                module: self.name.to_string(),
-                step: "publish".into(),
-                detail: format!("store path {} is not under $GRIPSACK_HOME", dest.display()),
-            })?;
-        gripsack_fs::publish_dir(self.ctx.home_dir()?, stage, rel)?;
-        Ok(())
+        crate::source::publish(self.ctx, self.name, stage, dest)
     }
 
     /// Stage repo-referenced files and publish into the store — once,
@@ -235,6 +225,7 @@ impl<'a> ModuleRun<'a> {
         if self.present {
             return Ok(());
         }
+        let _step = tracing::info_span!("step", step = "publish").entered();
         let stage = self
             .staging
             .take()
@@ -244,22 +235,12 @@ impl<'a> ModuleRun<'a> {
         // last file was dropped) must create it explicitly or the
         // publish rename fails with ENOENT.
         std::fs::create_dir_all(&stage)?;
-        for entry in self.plan.entries() {
-            let repo_file = self.ctx.repo.join(&entry.from);
-            let is_real_dir =
-                repo_file.is_dir() && !repo_file.symlink_metadata()?.file_type().is_symlink();
-            if is_real_dir {
-                // a directory `from` stages recursively (symlinks
-                // recreated, matching canonical_overlay_hash) — deploy
-                // must never link the repo checkout itself
-                gripsack_fs::copy_dir(&repo_file, &stage.join(&entry.from))?;
-            } else if repo_file.is_file() {
-                let dest = stage.join(&entry.from);
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::copy(&repo_file, &dest)?;
-            }
+        let overlay = crate::source::Overlay::capture(self.plan, &self.ctx.repo, &stage)?;
+        let repo256 = overlay.merge(&stage)?;
+        if let Some(entry) = &mut self.lock_entry
+            && let Some(pin) = &mut entry.resolved
+        {
+            pin.repo256 = repo256;
         }
         if !self.content_addressed {
             self.publish_staging(&stage, &self.store_path)?;
@@ -314,6 +295,7 @@ impl<'a> ModuleRun<'a> {
         for step in self.plan.steps() {
             match &step.action {
                 StepAction::Install { entries } | StepAction::ConfigDeploy { entries } => {
+                    let _step = tracing::info_span!("step", step = %step.id).entered();
                     progress(self.ctx, self.name, "deploying");
                     let _guards = self.acquire_step(step)?;
                     for entry in entries {

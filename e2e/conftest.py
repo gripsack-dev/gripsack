@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import io
 import os
+import stat
 import re
 import subprocess
 import sys
@@ -127,15 +128,35 @@ def sandbox(tmp_path, monkeypatch, request):
     rep = getattr(request.node, "rep_call", None)
     if rep is not None and rep.failed:
         runs = tmp_path / ".local/share/gripsack/runs"
-        logs = sorted(runs.glob("*.jsonl")) if runs.is_dir() else []
-        if logs:
-            tail = logs[-1].read_text(errors="replace").splitlines()[-25:]
+        log = latest_run_log(runs)
+        if log:
+            tail = log.read_text(errors="replace").splitlines()[-25:]
             print(
                 "\n--- grip run log ({}), last 25 lines ---\n{}".format(
-                    logs[-1].name, "\n".join(tail)
+                    log.name, "\n".join(tail)
                 ),
                 file=sys.stderr,
             )
+
+
+def latest_run_log(runs: Path) -> Path | None:
+    """The explicit pointer wins; mtime is only a broken-pointer fallback."""
+    try:
+        target = (runs / "latest").resolve(strict=True)
+        if target.parent == runs.resolve() and target.suffix == ".jsonl" and target.is_file():
+            return target
+    except (OSError, RuntimeError):
+        pass
+    candidates = []
+    if runs.is_dir():
+        for path in runs.glob("*.jsonl"):
+            try:
+                metadata = path.lstat()
+                if stat.S_ISREG(metadata.st_mode):
+                    candidates.append((metadata.st_mtime_ns, path.name, path))
+            except OSError:
+                continue
+    return max(candidates)[2] if candidates else None
 
 
 @pytest.hookimpl(hookwrapper=True)

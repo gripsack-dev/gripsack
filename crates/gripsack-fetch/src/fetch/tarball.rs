@@ -1,155 +1,145 @@
-//! `tarball:` — a URL (file:// or https) to an archive or bare binary.
+//! Verified transport bytes are spooled before any archive is interpreted.
 
-use super::FetchError;
-use super::archive;
-use std::io;
+use crate::{DownloadHash, FetchContext, FetchError, FetchIdentity, FetchOutcome};
+use std::io::{self, Read};
 use std::path::Path;
 
 pub(crate) fn fetch(
+    context: &FetchContext,
     url: &str,
-    sha256: Option<&str>,
+    expected: Option<&str>,
     api_url: Option<&str>,
     dest: &Path,
-) -> Result<String, FetchError> {
-    let bytes = read_url_authed(url, api_url)?;
-    let actual = archive::sha256(&bytes);
-    if let Some(expected) = sha256
-        && actual != *expected
+) -> Result<FetchOutcome, FetchError> {
+    let mut download = crate::spool::download(
+        reader(context, url, api_url)?,
+        context.limits().download_bytes.get(),
+    )?;
+    if let Some(expected) = expected
+        && expected != download.hash.as_str()
     {
         return Err(FetchError::HashMismatch {
-            url: url.to_string(),
-            expected: expected.to_string(),
-            actual,
+            url: url.into(),
+            expected: expected.into(),
+            actual: download.hash.into(),
         });
     }
     let bare_name = url
         .rsplit('/')
         .next()
-        .filter(|n| !n.is_empty())
+        .filter(|name| !name.is_empty())
         .unwrap_or("bin");
-    archive::extract(&bytes, dest, bare_name)?;
-    Ok(actual)
+    super::archive::extract(
+        download.file.as_file_mut(),
+        dest,
+        bare_name,
+        context.limits(),
+    )?;
+    Ok(FetchOutcome {
+        identity: FetchIdentity::Download(download.hash),
+        url: None,
+        version: None,
+    })
 }
 
-pub(crate) fn payload_hash(url: &str, api_url: Option<&str>) -> Result<Option<String>, FetchError> {
-    Ok(Some(archive::sha256(&read_url_authed(url, api_url)?)))
+pub(crate) fn payload_hash(
+    context: &FetchContext,
+    url: &str,
+    api_url: Option<&str>,
+) -> Result<DownloadHash, FetchError> {
+    crate::spool::copy_hashed(
+        reader(context, url, api_url)?,
+        io::sink(),
+        context.limits().download_bytes.get(),
+    )
 }
 
-/// Download with host-scoped auth. When the spec carries an API asset
-/// endpoint (github releases) AND a token is bound to that host, the
-/// download goes through the API with `Accept: application/octet-stream`
-/// — the browser URL needs a browser session on private/GHE releases
-/// and returns a SAML login page instead of bytes (enterprise finding
-/// #1). A `text/html` response is a login page, never an asset — fail
-/// with the cause, not a misleading hash mismatch.
-pub(crate) fn read_url_authed(url: &str, api_url: Option<&str>) -> Result<Vec<u8>, FetchError> {
-    if url.starts_with("file://") {
-        return read_url(url);
+pub(crate) fn reader(
+    context: &FetchContext,
+    url: &str,
+    api_url: Option<&str>,
+) -> Result<Box<dyn Read>, FetchError> {
+    if let Some(path) = url.strip_prefix("file://") {
+        return regular_file(Path::new(path)).map(|file| Box::new(file) as Box<dyn Read>);
     }
-    let via_api = api_url
-        .and_then(|api| crate::http::auth_header(api).map(|header| (api.to_string(), header)));
-    let (get_url, accept_octet) = match &via_api {
-        Some((api, _)) => (api.clone(), true),
-        None => (url.to_string(), false),
-    };
-    let mut request = crate::http::get(&get_url);
-    if let Some((_, header)) = &via_api {
+    let via_api = api_url.filter(|api| context.auth_header(api).is_some());
+    let request_url = via_api.unwrap_or(url);
+    let mut request = context.get(request_url);
+    if let Some(header) = context.auth_header(request_url) {
         request = request.set("Authorization", header);
-    } else if let Some(header) = crate::http::auth_header(&get_url) {
-        request = request.set("Authorization", &header);
     }
-    if accept_octet {
+    if via_api.is_some() {
         request = request.set("Accept", "application/octet-stream");
     }
-    let response = request.call().map_err(|e| FetchError::Http {
-        url: get_url.clone(),
-        reason: e.to_string(),
+    let response = request.call().map_err(|error| FetchError::Http {
+        url: request_url.into(),
+        reason: error.to_string(),
     })?;
     if response
         .header("content-type")
         .unwrap_or_default()
         .contains("text/html")
     {
-        return Err(FetchError::Http {
-            url: get_url,
-            reason: "the server returned an HTML page, not an asset — this looks \
-                     like a login/SSO redirect (a private release fetched without \
-                     a bound token?)"
-                .into(),
-        });
+        return Err(FetchError::Http { url: request_url.into(), reason: "server returned an HTML/login page instead of an asset; check host-bound authentication".into() });
     }
-    read_body(response.into_reader(), &get_url)
+    Ok(response.into_reader())
 }
 
-pub(crate) fn read_url(url: &str) -> Result<Vec<u8>, FetchError> {
-    if let Some(path) = url.strip_prefix("file://") {
-        return Ok(std::fs::read(path)?);
+pub(crate) fn regular_file(path: &Path) -> Result<std::fs::File, FetchError> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
     }
-    let response = crate::http::get(url).call().map_err(|e| FetchError::Http {
-        url: url.to_string(),
-        reason: e.to_string(),
-    })?;
-    read_body(response.into_reader(), url)
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{} is not a regular payload file", path.display()),
+        )
+        .into());
+    }
+    Ok(file)
 }
 
-/// One download cap for every body: 512 MiB, and hitting it is an
-/// error, not a truncation — `take(cap)` alone returns Ok at
-/// exactly the limit, and an unpinned tarball would then extract a
-/// silently partial payload.
-pub(crate) fn read_body<R: io::Read>(reader: R, url: &str) -> Result<Vec<u8>, FetchError> {
-    const CAP: u64 = 512 * 1024 * 1024;
-    let mut bytes = Vec::new();
-    io::Read::read_to_end(&mut io::Read::take(reader, CAP + 1), &mut bytes).map_err(|e| {
-        FetchError::Http {
-            url: url.to_string(),
-            reason: e.to_string(),
-        }
-    })?;
-    if bytes.len() as u64 > CAP {
-        return Err(FetchError::PayloadTooLarge {
-            what: format!("body of {url}"),
-            limit: CAP,
-        });
-    }
-    Ok(bytes)
+pub(crate) fn text(
+    context: &FetchContext,
+    url: &str,
+    api_url: Option<&str>,
+) -> Result<String, FetchError> {
+    let mut result = String::new();
+    crate::spool::Limited::new(
+        reader(context, url, api_url)?,
+        8 * 1024 * 1024,
+        "registry metadata",
+    )
+    .read_to_string(&mut result)?;
+    Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::FetchSpec;
-    use super::super::fetch;
-    use super::super::file::make_tarball;
-    use super::archive::sha256;
     use super::*;
+    use gripsack_ir::FetchSpec;
 
     #[test]
-    fn tarball_file_url_verifies_sha256() {
-        let dir = tempfile::tempdir().unwrap();
-        let tar = dir.path().join("hello.tar.gz");
-        make_tarball(&tar);
-        let url = format!("file://{}", tar.display());
-        let good = sha256(&std::fs::read(&tar).unwrap());
-        let dest = dir.path().join("out");
-        fetch(
-            &FetchSpec::Tarball {
-                url: url.clone(),
-                sha256: Some(good),
-                api_url: None,
-            },
-            &dest,
-        )
-        .unwrap();
-        assert!(dest.join("bin/hello").exists());
-
-        let err = fetch(
-            &FetchSpec::Tarball {
-                url,
-                sha256: Some("0".repeat(64)),
-                api_url: None,
-            },
-            &dir.path().join("out2"),
-        )
-        .unwrap_err();
-        assert!(matches!(err, FetchError::HashMismatch { .. }));
+    fn transport_mismatch_never_extracts_payload() {
+        let temporary = tempfile::tempdir().unwrap();
+        let archive = temporary.path().join("hello.tar.gz");
+        super::super::file::make_tarball(&archive);
+        let dest = temporary.path().join("out");
+        let context = FetchContext::default();
+        let spec = FetchSpec::Tarball {
+            url: format!("file://{}", archive.display()),
+            sha256: Some("0".repeat(64)),
+            api_url: None,
+        };
+        assert!(matches!(
+            context.fetch(&spec, &dest, None),
+            Err(FetchError::HashMismatch { .. })
+        ));
+        assert!(!dest.join("bin/hello").exists());
     }
 }

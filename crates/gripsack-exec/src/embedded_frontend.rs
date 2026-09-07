@@ -453,7 +453,7 @@ export type { ProbeBuilder, ProbeKind, ProbeRequest } from "./probe.ts";
 export { CORE_RESOURCES, clearResources, resource } from "./resources.ts";
 export type { Resource } from "./resources.ts";
 export { buildStep, configStep, fetchStep, installStep, runStep, shellStep, step } from "./steps.ts";
-export type { Phase, Step, StepAction, StepOpts } from "./steps.ts";
+export type { Build, Phase, Step, StepAction, StepOpts } from "./steps.ts";
 export { verifyBinary, verifyDeployed, verifyFile, verifyShell } from "./verify.ts";
 export type { Verify } from "./verify.ts";
 "#),
@@ -598,7 +598,7 @@ import type { Dependency } from "./deps.ts";
 import type { Dest, Ownership } from "./entries.ts";
 import type { Fetch } from "./fetch.ts";
 import type { Intent } from "./intents.ts";
-import type { Step } from "./steps.ts";
+import type { Build, Step } from "./steps.ts";
 import type { Verify } from "./verify.ts";
 
 export interface Span {
@@ -611,7 +611,7 @@ export interface ModuleSpec {
   /** Optional for dotfiles-only modules (0006 §2 level 1). Mutually
    *  exclusive with `steps` (0007 §1). */
   fetch?: Fetch;
-  build?: { kind: "none" } | { kind: "custom_shell"; script: string };
+  build?: Build;
   install?: Record<string, Dest>;
   config?: Record<string, Dest>;
   depends?: Dependency[];
@@ -645,7 +645,7 @@ export interface IrEnvVar {
 
 export interface IrModule {
   fetch?: Fetch;
-  build?: ModuleSpec["build"];
+  build?: Build;
   install?: IrEntry[];
   config?: IrEntry[];
   depends?: Dependency[];
@@ -1064,17 +1064,22 @@ export function validateResourceRefs(refs: string[], owner: string): void {
  */
 
 import type { Dest } from "./entries.ts";
+import type { IrEntry } from "./module.ts";
 import type { Fetch } from "./fetch.ts";
 import { validateResourceRefs } from "./resources.ts";
 import type { Verify } from "./verify.ts";
 
 export type Phase = "fetch" | "build" | "install" | "config" | "verify" | "activate" | "custom";
 
+/** Build recipes — the closed two-variant contract (schema/ir/v3
+ * `build`): `none`, or a flagged custom shell script. */
+export type Build = { kind: "none" } | { kind: "custom_shell"; script: string };
+
 export type StepAction =
   | { kind: "fetch"; fetch: Fetch }
-  | { kind: "build"; spec: Record<string, unknown> }
-  | { kind: "install"; entries: unknown[] }
-  | { kind: "config_deploy"; entries: unknown[] }
+  | { kind: "build"; spec: Build }
+  | { kind: "install"; entries: IrEntry[] }
+  | { kind: "config_deploy"; entries: IrEntry[] }
   | { kind: "run"; argv: string[]; env?: Record<string, string>; cwd?: string; outputs?: string[] }
   | { kind: "custom_shell"; script: string; outputs?: string[] };
 
@@ -1157,7 +1162,7 @@ export function installStep(
 }
 
 export function buildStep(
-  spec: Record<string, unknown>,
+  spec: Build,
   id = "build",
   opts?: StepOpts,
 ): Step {
@@ -1313,7 +1318,7 @@ export function verifyDeployed(path: string): Verify {
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",

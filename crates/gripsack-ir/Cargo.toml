@@ -10,3 +10,9 @@ repository.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# Real JSON Schema validation for the schema↔parser acceptance corpus
+# (0042 E). No remote refs in the IR schema, so nothing beyond the
+# core engine: default features pull reqwest/rustls.
+jsonschema = { version = "0.55", default-features = false }

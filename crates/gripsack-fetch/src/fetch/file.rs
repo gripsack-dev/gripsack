@@ -6,42 +6,52 @@ use super::archive;
 use std::io::Write as _;
 use std::path::Path;
 
-pub(crate) fn fetch(path: &str, dest: &Path) -> Result<String, FetchError> {
+pub(crate) fn fetch(
+    context: &crate::FetchContext,
+    path: &str,
+    dest: &Path,
+) -> Result<crate::FetchOutcome, FetchError> {
     let path = Path::new(path);
-    // metadata (follows): a symlink to a real payload is a payload.
-    // The TYPE gate is what keeps fifos/devices out — reading one
-    // blocks forever.
-    let ty = std::fs::metadata(path).map_err(FetchError::Io)?.file_type();
-    if ty.is_dir() {
-        archive::copy_tree(path, dest).map_err(FetchError::Io)?;
-        Ok(gripsack_store::canonical_tree_hash(path)?.to_string())
-    } else if ty.is_file() {
-        let bytes = std::fs::read(path)?;
-        let hash = archive::sha256(&bytes);
-        let bare_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("bin");
-        archive::extract(&bytes, dest, bare_name)?;
-        Ok(hash)
+    let identity = if std::fs::metadata(path)?.is_dir() {
+        archive::copy_tree_filtered(path, dest, &[], context.limits())?;
+        archive::validate_tree(dest, context.limits())?;
+        crate::FetchIdentity::Tree(gripsack_store::canonical_tree_hash(dest)?)
     } else {
-        // a fifo or device node would block the read forever
-        Err(FetchError::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("{} is not a regular file or directory", path.display()),
-        )))
-    }
+        let mut download = crate::spool::download(
+            super::tarball::regular_file(path)?,
+            context.limits().download_bytes.get(),
+        )?;
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("bin");
+        archive::extract(download.file.as_file_mut(), dest, name, context.limits())?;
+        crate::FetchIdentity::Download(download.hash)
+    };
+    Ok(crate::FetchOutcome {
+        identity,
+        url: None,
+        version: None,
+    })
 }
 
-pub(crate) fn payload_hash(path: &str) -> Result<Option<String>, FetchError> {
+pub(crate) fn payload_hash(
+    context: &crate::FetchContext,
+    path: &str,
+) -> Result<crate::FetchIdentity, FetchError> {
     let path = Path::new(path);
-    let ty = std::fs::metadata(path).map_err(FetchError::Io)?.file_type();
-    if ty.is_dir() {
-        Ok(Some(gripsack_store::canonical_tree_hash(path)?.to_string()))
-    } else if ty.is_file() {
-        Ok(Some(archive::sha256(&std::fs::read(path)?)))
+    if std::fs::metadata(path)?.is_dir() {
+        archive::validate_tree(path, context.limits())?;
+        Ok(crate::FetchIdentity::Tree(
+            gripsack_store::canonical_tree_hash(path)?,
+        ))
     } else {
-        Err(FetchError::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("{} is not a regular file or directory", path.display()),
-        )))
+        crate::spool::copy_hashed(
+            super::tarball::regular_file(path)?,
+            std::io::sink(),
+            context.limits().download_bytes.get(),
+        )
+        .map(crate::FetchIdentity::Download)
     }
 }
 
@@ -77,7 +87,15 @@ mod tests {
         let tar = dir.path().join("hello.tar.gz");
         make_tarball(&tar);
         let dest = dir.path().join("out");
-        fetch(&tar.to_string_lossy(), &dest).unwrap();
-        assert!(dest.join("bin/hello").exists());
+        fetch(
+            &crate::FetchContext::default(),
+            &tar.to_string_lossy(),
+            &dest,
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read(dest.join("bin/hello")).unwrap(),
+            b"#!/bin/sh\necho hello\n"
+        );
     }
 }

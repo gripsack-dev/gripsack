@@ -1,9 +1,12 @@
 //! Pass 1.5 — tagged-field validation (the contract, load-bearing):
-//! internally-tagged enums (fetch/steps/activate) can't use serde's
-//! deny_unknown_fields, so unknown fields inside a tagged node are
-//! checked by hand against per-kind allowlists. A leak like `baseUrl`
-//! (the TS frontend's, silently dropped for months) is a hard error,
-//! never silent data loss (0009, review finding B).
+//! internally-tagged enums (fetch, build, activate, verify, step
+//! actions) can't use serde's deny_unknown_fields, so unknown fields
+//! inside a tagged node are checked by hand against per-kind
+//! allowlists. A leak like `baseUrl` (the TS frontend's, silently
+//! dropped for months) is a hard error, never silent data loss (0009,
+//! review finding B). Every nested tagged node is closed: a step's
+//! fetch spec or verify check gets the same admission as a
+//! module-level one.
 
 use crate::diagnostic::{Diagnostic, codes};
 
@@ -17,6 +20,45 @@ fn allowed_fetch_fields(kind: &str) -> Option<&'static [&'static str]> {
         "plugin" => &["kind", "name", "args"],
         "brew" => &["kind", "formula", "version", "sha256"],
         "pixi" => &["kind", "package", "version", "sha256"],
+        _ => return None,
+    })
+}
+
+fn allowed_build_fields(kind: &str) -> Option<&'static [&'static str]> {
+    Some(match kind {
+        "none" => &["kind"],
+        "custom_shell" => &["kind", "script"],
+        _ => return None,
+    })
+}
+
+/// Activation actions — both standalone intents (where `trigger` and
+/// `span` sit beside the flattened action fields) and the `intent`
+/// step action's inner node.
+fn allowed_intent_fields(kind: &str) -> Option<&'static [&'static str]> {
+    Some(match kind {
+        "service" => &["kind", "name", "user", "trigger", "span"],
+        "fonts" | "desktop_entry" => &["kind", "trigger", "span"],
+        "custom_shell" => &["kind", "script", "trigger", "span"],
+        _ => return None,
+    })
+}
+
+/// The same actions without the intent envelope keys.
+fn allowed_action_fields(kind: &str) -> Option<&'static [&'static str]> {
+    Some(match kind {
+        "service" => &["kind", "name", "user"],
+        "fonts" | "desktop_entry" => &["kind"],
+        "custom_shell" => &["kind", "script"],
+        _ => return None,
+    })
+}
+
+fn allowed_verify_fields(kind: &str) -> Option<&'static [&'static str]> {
+    Some(match kind {
+        "binary_runs" => &["kind", "path", "args"],
+        "file_exists" | "file_deployed" => &["kind", "path"],
+        "shell" => &["kind", "script"],
         _ => return None,
     })
 }
@@ -53,6 +95,7 @@ fn allowed_step_fields(kind: &str) -> Option<&'static [&'static str]> {
         "intent" => &[
             "kind",
             "action",
+            "trigger",
             "needs",
             "resources",
             "verify",
@@ -157,6 +200,17 @@ pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
         if let Some(fetch) = module.get("fetch") {
             check_tagged(fetch, &path, allowed_fetch_fields, out);
         }
+        if let Some(build) = module.get("build") {
+            check_tagged(build, &path, allowed_build_fields, out);
+        }
+        if let Some(activate) = module.get("activate").and_then(|a| a.as_array()) {
+            for intent in activate {
+                check_tagged(intent, &path, allowed_intent_fields, out);
+            }
+        }
+        if let Some(verify) = module.get("verify") {
+            check_tagged(verify, &path, allowed_verify_fields, out);
+        }
         if let Some(steps) = module.get("steps").and_then(|s| s.as_array()) {
             for step in steps {
                 let id = step
@@ -191,8 +245,36 @@ pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
                         }
                     }
                 }
+                if let Some(verify) = step.get("verify") {
+                    check_tagged(verify, &step_path, allowed_verify_fields, out);
+                }
                 if let Some(action) = step.get("action") {
                     check_tagged(action, &step_path, allowed_step_fields, out);
+                    // Nested tagged nodes inside the action get the same
+                    // admission as their module-level twins.
+                    match kind.as_str() {
+                        "fetch" => {
+                            if let Some(fetch) = action.get("fetch") {
+                                check_tagged(fetch, &step_path, allowed_fetch_fields, out);
+                            }
+                        }
+                        "build" => {
+                            if let Some(spec) = action.get("spec") {
+                                check_tagged(spec, &step_path, allowed_build_fields, out);
+                            }
+                        }
+                        "verify" => {
+                            if let Some(verify) = action.get("verify") {
+                                check_tagged(verify, &step_path, allowed_verify_fields, out);
+                            }
+                        }
+                        "intent" => {
+                            if let Some(inner) = action.get("action") {
+                                check_tagged(inner, &step_path, allowed_action_fields, out);
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
         }

@@ -51,6 +51,8 @@ pub fn render_host_inputs(inputs: &HostInputs) -> String {
 pub struct EvalOutcome {
     pub ir_json: String,
     pub env: gripsack_config::EnvConfig,
+    /// Post-injection artifact clients; provisioning uses a separate context.
+    pub fetch: std::sync::Arc<gripsack_fetch::FetchContext>,
     pub host_inputs: HostInputs,
     /// The host entrypoint actually evaluated — the same resolution
     /// (--host > env.toml default_host > detected hostname) every
@@ -88,6 +90,17 @@ pub fn eval_repo(
             return Err(ExitCode::FAILURE);
         }
     };
+    let user = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .map(|home| gripsack_config::load_user(&home.join(".config/gripsack/config.toml")))
+        .transpose()
+        .map_err(|diagnostics| {
+            eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+            ExitCode::FAILURE
+        })?;
+    let config = gripsack_config::merge(user.as_ref(), &env);
+    let limits = acquisition_limits(&config.settings);
+    let provisioning = std::sync::Arc::new(gripsack_fetch::FetchContext::new(limits));
     // Rate budgets (0002 §throttle): [throttle] in env.toml overrides
     // fetcher-declared budgets; buckets persist across runs so
     // back-to-back applies share one budget.
@@ -95,7 +108,7 @@ pub fn eval_repo(
         &env.throttle,
         Some(gripsack_store::gripsack_home().join("throttle.json")),
     );
-    provision_plugins(&env)?;
+    provision_plugins(&config.fetchers, &env.linters, &provisioning)?;
     let host = host
         .map(str::to_string)
         .or_else(|| env.env.default_host.clone())
@@ -103,7 +116,7 @@ pub fn eval_repo(
     tracing::Span::current().record("host", &host);
 
     let home = gripsack_store::gripsack_home();
-    let deno = match gripsack_exec::ensure_deno(&home) {
+    let deno = match gripsack_exec::ensure_deno(&home, &provisioning) {
         Ok(deno) => deno,
         Err(e) => {
             eprintln!("grip: deno provisioning failed: {e}");
@@ -132,6 +145,10 @@ pub fn eval_repo(
     for (name, value) in &env.eval.env {
         unsafe { std::env::set_var(name, value) };
     }
+    let fetch = std::sync::Arc::new(gripsack_fetch::FetchContext::artifacts(
+        limits,
+        provisioning,
+    ));
     let driver = frontend_dir.join("src/cli.ts");
     // the allow-read grant and the driver's import base must be the
     // same path the child sees — canonical, not CWD-relative
@@ -164,6 +181,7 @@ pub fn eval_repo(
     Ok(EvalOutcome {
         ir_json: envelope.ir.to_string(),
         env,
+        fetch,
         host,
         host_inputs: HostInputs {
             facts: facts.clone(),
@@ -260,15 +278,37 @@ pub fn validate_sources(ir: &Ir, repo: &Path, palette: Palette) -> Result<(), Ex
     }
 }
 
-/// Provision one plugin; the fresh-install line is the trust notice
-/// (a new binary runs with your user rights — name its source).
+/// Named nonzero config limits become one command-owned acquisition policy.
+fn acquisition_limits(settings: &gripsack_config::Settings) -> gripsack_fetch::FetchLimits {
+    let defaults = gripsack_fetch::FetchLimits::default();
+    gripsack_fetch::FetchLimits {
+        concurrent: settings.acquisition_jobs.unwrap_or(defaults.concurrent),
+        download_bytes: settings
+            .download_limit_bytes
+            .unwrap_or(defaults.download_bytes),
+        expanded_bytes: settings
+            .expanded_limit_bytes
+            .unwrap_or(defaults.expanded_bytes),
+        archive_entries: settings
+            .archive_entry_limit
+            .unwrap_or(defaults.archive_entries),
+        decoder_bytes: settings
+            .decoder_memory_bytes
+            .unwrap_or(defaults.decoder_bytes),
+    }
+}
+
 /// Stage: declared plugins (0012 §move-2). `package = "owner/repo@tag"`
 /// on a [fetchers.x] or [linters.x] entry provisions the binary into
 /// the plugin store — declarative, sha256-verified, receipted.
 /// Fetchers and linters both resolve from the store downstream.
-fn provision_plugins(env: &gripsack_config::EnvConfig) -> Result<(), ExitCode> {
+fn provision_plugins(
+    fetchers: &BTreeMap<String, gripsack_config::FetcherSectionView>,
+    linters: &BTreeMap<String, gripsack_config::LinterSection>,
+    fetch: &gripsack_fetch::FetchContext,
+) -> Result<(), ExitCode> {
     let store = gripsack_fetch::plugins::PluginStore::new(&gripsack_store::gripsack_home());
-    for (name, section) in &env.fetchers {
+    for (name, section) in fetchers {
         // an explicit executable path (path = the registry-symmetric
         // name; plugin = its original alias) registers directly —
         // no provisioning, no network (the offline route)
@@ -290,27 +330,30 @@ fn provision_plugins(env: &gripsack_config::EnvConfig) -> Result<(), ExitCode> {
                 eprintln!("grip: [fetchers.{name}] declares both plugin and package — pick one");
                 return Err(ExitCode::FAILURE);
             }
-            provision(&store, name, package, "gripfetch")?;
+            provision(&store, fetch, name, package, "gripfetch")?;
         }
     }
-    for (name, section) in &env.linters {
+    for (name, section) in linters {
         if let Some(package) = &section.package
             && gripsack_fetch::plugins::parse_ref(package).is_some()
         {
-            provision(&store, name, package, "griplint")?;
+            provision(&store, fetch, name, package, "griplint")?;
         }
     }
     Ok(())
 }
 
+/// Provision one plugin; the fresh-install line is the trust notice
+/// (a new binary runs with your user rights — name its source).
 fn provision(
     store: &gripsack_fetch::plugins::PluginStore,
+    fetch: &gripsack_fetch::FetchContext,
     name: &str,
     package: &str,
     kind: &str,
 ) -> Result<(), ExitCode> {
     let before = store.receipt(&format!("{kind}-{name}"));
-    let bin = store.ensure(name, package, kind).map_err(|e| {
+    let bin = store.ensure(fetch, name, package, kind).map_err(|e| {
         eprintln!("grip: cannot provision {kind}-{name} from {package}: {e}");
         ExitCode::FAILURE
     })?;

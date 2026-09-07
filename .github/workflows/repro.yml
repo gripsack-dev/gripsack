@@ -1,0 +1,40 @@
+name: repro
+
+# Two-clean-build reproducibility comparison (plan/0042 F): the release
+# target compiled twice from scratch with every input held fixed — same
+# digest-pinned builder image (one image build, used by both runs),
+# same source, same Cargo.lock, same container path, fresh target dir
+# per build — then compared byte-for-byte. scripts/check_reproducible.sh
+# emits the actual comparison artifacts (per-build binaries, digests,
+# toolchain traces, report.md/report.json); they land on the run, not
+# in git.
+#
+# What a pass is NOT (stated in the report too): not a cross-time claim
+# (a deliberate toolchain bump changes inputs by design), not
+# cross-platform (darwin targets are separate builds), not an audit.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 2" # Tuesdays 06:00 UTC (offset from Mon/Wed workflows)
+  push:
+    tags: ["core-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Two clean release builds, compared
+        run: scripts/check_reproducible.sh
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: repro-report
+          path: repro/
+          if-no-files-found: error

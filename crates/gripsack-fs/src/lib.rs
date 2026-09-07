@@ -25,6 +25,8 @@
 //! through them.
 
 mod directories;
+mod streamed;
+pub use streamed::{atomic_copy_with_mode, publication_occurred};
 pub mod fault;
 pub use directories::{create_dir_all, open_or_create, remove_file, rename};
 use fault::{Boundary, operation};

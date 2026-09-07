@@ -1,0 +1,8 @@
+foreign
+# >>> gripsack module=m sha=abcd >>>
+first
+# <<< gripsack module=m <<<
+interstitial
+# >>> gripsack module=m sha=dcba >>>
+second
+# <<< gripsack module=m <<<

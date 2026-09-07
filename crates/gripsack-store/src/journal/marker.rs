@@ -174,3 +174,7 @@ pub(crate) fn classify(facts: &RecoveryFacts) -> Classification {
         (None, Some(_)) => Classification::Ambiguous,
     }
 }
+
+#[cfg(test)]
+#[path = "repeated_model.rs"]
+mod repeated_model;

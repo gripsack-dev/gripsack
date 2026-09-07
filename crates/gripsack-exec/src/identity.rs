@@ -7,9 +7,8 @@
 use crate::ctx::ExecError;
 use crate::lockfile;
 use crate::report::{ReportKind, StepReport};
-use crate::resolve::module_input;
+use crate::resolve::RecipeGraph;
 use gripsack_ir::prepared::PreparedModule;
-use gripsack_ir::{Ir, Module};
 use gripsack_store as store;
 use std::path::PathBuf;
 
@@ -51,38 +50,25 @@ impl ModuleIdentity {
     }
 }
 
-/// Resolve a module's identity and satisfaction: the payload hash
-/// joins the store-path input before the existence check, so first
-/// and second applies compute the same path (0008 §5).
-#[derive(Clone, Copy)]
-pub(crate) enum Resolution {
-    Offline,
-    Execute,
-}
-
 pub(crate) struct IdentityInputs<'a> {
     pub name: &'a str,
-    pub module: &'a Module,
-    pub ir: &'a Ir,
+    pub recipes: &'a RecipeGraph,
     pub plan: &'a PreparedModule,
     pub home: &'a std::path::Path,
     pub repo: &'a std::path::Path,
     pub locked: Option<&'a lockfile::LockEntry>,
     pub lock: &'a lockfile::Lockfile,
-    pub mode: Resolution,
 }
 
 pub(crate) fn resolve(inputs: IdentityInputs<'_>) -> Result<ModuleIdentity, ExecError> {
     let IdentityInputs {
         name,
-        module,
-        ir,
+        recipes,
         plan,
         home,
         repo,
         locked,
         lock,
-        mode,
     } = inputs;
     // 0014 §3: content is fully determined before execution unless
     // a build/custom/run step exists. Fetches pin content via the
@@ -116,7 +102,8 @@ pub(crate) fn resolve(inputs: IdentityInputs<'_>) -> Result<ModuleIdentity, Exec
             (Some(current), Some(lock)) => current != *lock,
             // an old lock can't vouch for the overlay — distrust
             (Some(_), None) => true,
-            (None, _) => false,
+            (None, Some(_)) => true,
+            (None, None) => false,
         };
     let (store_path, identity_pending, tree256) = if content_addressed {
         let locked_tree = if spec_changed || repo_drift {
@@ -139,34 +126,27 @@ pub(crate) fn resolve(inputs: IdentityInputs<'_>) -> Result<ModuleIdentity, Exec
                 // deferred: the transport hash cannot name an
                 // unextracted tree — the first fetch finalizes the
                 // path at publish (0002 §3 TOFU)
-                let input = module_input(name, module, repo, ir, lock, plan)?;
+                let input = recipes.input(name, lock);
                 (store::store_path(home, name, &input), true, None)
             }
         }
     } else {
         let resolved = locked
+            .filter(|_| !spec_changed)
             .and_then(|e| e.resolved.as_ref())
             .and_then(|r| r.sha256.clone())
-            .or_else(|| match mode {
-                Resolution::Execute => {
-                    fetch_spec.and_then(|s| gripsack_fetch::payload_hash(s).ok().flatten())
-                }
-                Resolution::Offline => match fetch_spec {
-                    Some(
-                        gripsack_ir::FetchSpec::Tarball { sha256, .. }
-                        | gripsack_ir::FetchSpec::GithubRelease { sha256, .. },
-                    ) => sha256.clone(),
-                    _ => None,
-                },
+            .or_else(|| match fetch_spec {
+                Some(
+                    gripsack_ir::FetchSpec::Tarball { sha256, .. }
+                    | gripsack_ir::FetchSpec::GithubRelease { sha256, .. },
+                ) => sha256.clone(),
+                _ => None,
             });
-        let input = match &resolved {
-            Some(sha) => format!(
-                "{}|payload={sha}",
-                module_input(name, module, repo, ir, lock, plan)?
-            ),
-            None => module_input(name, module, repo, ir, lock, plan)?,
+        let base = recipes.input(name, lock);
+        let path = match &resolved {
+            Some(sha) => store::store_path(home, name, &format!("{base}|payload={sha}")),
+            None => store::store_path(home, name, &base),
         };
-        let path = store::store_path(home, name, &input);
         // Deferred identity (finding C): no hash from the lock AND
         // none computable offline — the first fetch's sha finalizes
         // the path. Presence is meaningless until then: always fetch.

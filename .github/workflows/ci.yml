@@ -37,7 +37,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      # Exact toolchain pin (plan/0042 F): the same rustc the
+      # digest-pinned rust:alpine builder compiles with — 1.98.0
+      # (88d9e12ae 2026-08-18). Bumps are deliberate, proposed by
+      # scripts/check_pins.py; never a floating "stable".
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: "1.98.0"
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
@@ -61,6 +67,64 @@ jobs:
         run: |
           python -m pip install pytest
           python -m pytest -q
+
+  # Bounded, deterministic fuzz replay (plan/0042 E): the checked-in
+  # seed corpus through the real targets, OS-contained by bubblewrap —
+  # fail-closed, no uncontained fallback. Longer coverage-guided runs
+  # are scheduled in fuzz.yml, not here.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Replay the fuzz corpus (bounded container)
+        run: docker compose run --build --rm fuzz
+
+  # Executable docs gate (plan/0042 E): the important published TS
+  # examples are extracted from the WEBSITE source and evaluated
+  # against the actual packaged frontend/core with offline fixtures —
+  # no manually-maintained shadow copy. --selfcheck proves the harness
+  # fails on a deliberately broken example (negative calibration, the
+  # same pattern as the model gate's failing configs).
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # the website source (doc/*.md) — the examples' home
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: gripsack-dev/gripsack-dev.github.io
+          path: site
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: "1.98.0"
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.6
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22.23.2
+
+      - name: Build the candidate npm package (release workflow commands)
+        # npm ci → tsc (npm run build) → npm pack: exactly what
+        # release-typescript.yml ships, so CI tests the same artifact
+        # shape the registry serves
+        run: |
+          cd typescript
+          npm ci --no-audit --no-fund
+          npm run build
+          echo "SDK=$PWD/$(npm pack --silent)" >> "$GITHUB_ENV"
+
+      - name: Evaluate published examples against the packaged frontend + real core
+        run: |
+          cargo build -p gripsack
+          python3 scripts/check_examples.py --site site --core-repo . \
+            --grip target/debug/grip --deno "$(which deno)" \
+            --sdk "$SDK" --selfcheck
 
   audit:
     runs-on: ubuntu-latest

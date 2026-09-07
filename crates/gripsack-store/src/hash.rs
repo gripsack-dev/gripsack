@@ -110,7 +110,7 @@ pub fn canonical_file_hash(path: &Path) -> std::io::Result<PayloadHash> {
     } else if meta.is_file() {
         hasher.update(b"file\0");
         hasher.update([exec_byte(&meta)]);
-        hasher.update(std::fs::read(path)?);
+        append_contents(&mut hasher, std::fs::File::open(path)?)?;
     } else {
         // fifos, sockets, device nodes: reading one blocks forever (or
         // OOMs on /dev/zero) — a store entry is a regular file
@@ -140,7 +140,7 @@ pub fn canonical_file_hash_in(dir: &gripsack_fs::Dir, name: &Path) -> std::io::R
     } else if meta.is_file() {
         hasher.update(b"file\0");
         hasher.update([exec_byte_in(&meta)]);
-        hasher.update(dir.read(name)?);
+        append_contents(&mut hasher, dir.open(name)?)?;
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -148,6 +148,20 @@ pub fn canonical_file_hash_in(dir: &gripsack_fs::Dir, name: &Path) -> std::io::R
         ));
     }
     Ok(PayloadHash(hex(&hasher.finalize())))
+}
+
+/// Hash files through a fixed buffer: tree identity must not reintroduce
+/// a whole-payload allocation after bounded extraction.
+fn append_contents(hasher: &mut Sha256, mut reader: impl std::io::Read) -> std::io::Result<()> {
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => return Ok(()),
+            Ok(read) => hasher.update(&buffer[..read]),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 /// Canonical identity of in-memory contents WITH their permission
@@ -200,8 +214,26 @@ pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<
     let dir_hash = hex(&Sha256::digest(b"dir\0"));
     let mut entries: Vec<(String, String)> = Vec::new();
     for from in froms {
-        let source = repo.join(from);
-        if source.is_dir() && !source.symlink_metadata()?.file_type().is_symlink() {
+        let from = Path::new(from)
+            .components()
+            .filter(|component| *component != std::path::Component::CurDir)
+            .collect::<std::path::PathBuf>()
+            .to_string_lossy()
+            .into_owned();
+        let source = repo.join(&from);
+        let metadata = match source.symlink_metadata() {
+            Ok(metadata) => metadata,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        if metadata.is_dir() {
             // a directory `from` stages recursively at publish — hash
             // the same closure here or plan-time and publish-time
             // identity diverge
@@ -213,11 +245,13 @@ pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<
                 entries.push((dir.to_string_lossy().into_owned(), dir_hash.clone()));
                 ancestor = dir.parent();
             }
-            entries.push((from.clone(), dir_hash.clone()));
+            if !from.is_empty() {
+                entries.push((from.clone(), dir_hash.clone()));
+            }
             let mut rels = Vec::new();
             collect_entries(&source, &source, &mut rels)?;
             for rel in rels {
-                let rel_path = format!("{from}/{rel}");
+                let rel_path = Path::new(&from).join(&rel).to_string_lossy().into_owned();
                 let hash = if source.join(&rel).is_dir() && !source.join(&rel).is_symlink() {
                     dir_hash.clone()
                 } else {
@@ -227,8 +261,11 @@ pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<
             }
             continue;
         }
-        if !source.is_file() {
-            continue;
+        if !metadata.is_file() && !metadata.is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "overlay source is not a file, directory or symlink",
+            ));
         }
         // ancestor dirs are stage entries too (create_dir_all at
         // publish) — synthesize them or the digests diverge

@@ -1,0 +1,4 @@
+echo 'docs say <<< gripsack module=m <<< ends a block'
+# >>> gripsack module=m sha=abcd >>>
+echo '!! managed by gripsack says the docs'
+# <<< gripsack module=m <<<

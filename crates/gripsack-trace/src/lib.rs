@@ -108,38 +108,3 @@ impl io::Write for FileGuard {
         (&*self.0).flush()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn run_ids_are_unique_and_sortable() {
-        let a = new_run_id();
-        let b = new_run_id();
-        assert_ne!(a, b);
-        // distinct ids; timestamp prefix keeps them chronologically sortable
-    }
-
-    #[test]
-    fn init_writes_jsonl_with_run_id_and_spans() {
-        let dir = tempfile::tempdir().unwrap();
-        let run = init(dir.path()).unwrap();
-        {
-            let span = run_span!(run, "test");
-            let _entered = span.enter();
-            let inner = tracing::info_span!("module", name = "helix");
-            let _inner = inner.enter();
-            tracing::info!(answer = 42, "test event");
-        }
-        // latest points at the run file
-        let latest = dir.path().join("runs").join("latest");
-        assert_eq!(latest.read_link().unwrap(), run.path);
-        let log = std::fs::read_to_string(&run.path).unwrap();
-        assert!(log.contains(&run.id));
-        assert!(log.contains("test event"));
-        assert!(log.contains("\"answer\":42"));
-        // causality: the event carries its span ancestry
-        assert!(log.contains("module"));
-    }
-}

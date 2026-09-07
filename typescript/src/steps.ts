@@ -9,17 +9,22 @@
  */
 
 import type { Dest } from "./entries.ts";
+import type { IrEntry } from "./module.ts";
 import type { Fetch } from "./fetch.ts";
 import { validateResourceRefs } from "./resources.ts";
 import type { Verify } from "./verify.ts";
 
 export type Phase = "fetch" | "build" | "install" | "config" | "verify" | "activate" | "custom";
 
+/** Build recipes — the closed two-variant contract (schema/ir/v3
+ * `build`): `none`, or a flagged custom shell script. */
+export type Build = { kind: "none" } | { kind: "custom_shell"; script: string };
+
 export type StepAction =
   | { kind: "fetch"; fetch: Fetch }
-  | { kind: "build"; spec: Record<string, unknown> }
-  | { kind: "install"; entries: unknown[] }
-  | { kind: "config_deploy"; entries: unknown[] }
+  | { kind: "build"; spec: Build }
+  | { kind: "install"; entries: IrEntry[] }
+  | { kind: "config_deploy"; entries: IrEntry[] }
   | { kind: "run"; argv: string[]; env?: Record<string, string>; cwd?: string; outputs?: string[] }
   | { kind: "custom_shell"; script: string; outputs?: string[] };
 
@@ -102,7 +107,7 @@ export function installStep(
 }
 
 export function buildStep(
-  spec: Record<string, unknown>,
+  spec: Build,
   id = "build",
   opts?: StepOpts,
 ): Step {

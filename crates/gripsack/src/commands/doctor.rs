@@ -19,7 +19,7 @@ pub fn doctor(palette: Palette) -> ExitCode {
     let home = gripsack_store::gripsack_home();
 
     // deno is the eval runtime — required, no fallback exists.
-    match gripsack_exec::ensure_deno(&home) {
+    match gripsack_exec::ensure_deno(&home, &gripsack_fetch::FetchContext::default()) {
         Ok(deno) => {
             let version = std::process::Command::new(&deno)
                 .arg("--version")

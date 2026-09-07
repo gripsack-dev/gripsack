@@ -67,6 +67,7 @@ impl<'a> ModuleRun<'a> {
         });
         if !receipt_holds {
             for verify in checks {
+                let _step = tracing::info_span!("step", step = "verify").entered();
                 progress(self.ctx, self.name, "verifying");
                 run_verify(self.name, verify, &self.store_path, self.version.as_deref())?;
                 self.reports.push(StepReport {
