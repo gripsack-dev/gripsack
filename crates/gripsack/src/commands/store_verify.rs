@@ -28,6 +28,7 @@ pub fn store_verify(repair: bool, palette: Palette) -> ExitCode {
         take_over_entries: None,
         jobs: None,
         on_progress: None,
+        fetch: std::sync::Arc::new(gripsack_fetch::FetchContext::new(Default::default())),
     };
     match gripsack_exec::verify_store::verify_store(&ctx, repair) {
         Ok(reports) if reports.is_empty() => {

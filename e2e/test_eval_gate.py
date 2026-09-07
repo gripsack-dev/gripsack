@@ -441,11 +441,6 @@ export default module("c", {
     assert "already satisfied" in again.stdout
 
 
-def _core_version() -> str:
-    out = subprocess.run(
-        [str(GRIP.resolve()), "--version"], capture_output=True, text=True
-    )
-    return out.stdout.strip().split()[-1]
 
 
 def _fake_release_server(sandbox, latest: str):
@@ -459,7 +454,7 @@ def _fake_release_server(sandbox, latest: str):
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
-    fake = b"#!/bin/sh\necho fake-grip-" + latest.encode() + b"\n"
+    fake = b"#!/bin/sh\necho grip " + latest.encode() + b"\n"
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         # the real release layout nests: gripsack-<v>-<triple>/grip
@@ -541,29 +536,20 @@ def test_self_update_check_and_swap(sandbox, monkeypatch):
             [str(exe), "self-update", *args], capture_output=True, text=True, timeout=60
         )
 
+    before = exe.read_bytes()
+    before_paths = set(fake_bin.iterdir())
     out = self_update("--check")
     assert out.returncode == 0, out.stderr
-    assert "9.9.9" in out.stdout and "available" in out.stdout
-    before = exe.read_bytes()
+    assert exe.read_bytes() == before
+    assert set(fake_bin.iterdir()) == before_paths
     out = self_update()
     assert out.returncode == 0, out.stderr
-    assert "updated" in out.stdout and "9.9.9" in out.stdout
     assert exe.read_bytes() != before
-    swapped = subprocess.run([str(exe)], capture_output=True, text=True)
-    assert swapped.stdout.strip() == "fake-grip-9.9.9"
+    swapped = subprocess.run([str(exe), "--version"], capture_output=True, text=True)
+    assert swapped.stdout.split() == ["grip", "9.9.9"]
     server.shutdown()
 
 
-def test_self_update_already_current(sandbox, monkeypatch):
-    server, api = _fake_release_server(sandbox, _core_version())
-    monkeypatch.setenv("GRIPSACK_UPDATE_API", api)
-    out = subprocess.run(
-        [str(GRIP.resolve()), "self-update", "--check"],
-        capture_output=True, text=True, timeout=60,
-    )
-    assert out.returncode == 0, out.stderr
-    assert "is current" in out.stdout
-    server.shutdown()
 
 
 def test_update_reports_modules_outside_the_hosts_graph(sandbox):

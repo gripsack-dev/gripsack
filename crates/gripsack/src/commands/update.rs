@@ -31,6 +31,7 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
         take_over: false,
         take_over_entries: None,
         jobs: None,
+        fetch: std::sync::Arc::clone(&outcome.fetch),
     };
     gripsack_fetch::throttle::save_global();
     match gripsack_exec::update(&ir, &ctx) {

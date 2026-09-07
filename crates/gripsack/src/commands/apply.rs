@@ -93,6 +93,7 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
         host: outcome.host.clone(),
         take_over: opts.take_over,
         take_over_entries: opts.take_over_entries,
+        fetch: std::sync::Arc::clone(&outcome.fetch),
         jobs: opts.jobs.or_else(|| {
             std::env::var("GRIPSACK_JOBS")
                 .ok()

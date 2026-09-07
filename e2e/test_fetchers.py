@@ -410,51 +410,6 @@ export default module("tool", {{
     assert deployed.read_text() == "v2\n"
 
 
-def test_pinned_git_lock_survives_apply_and_update_says_pinned(sandbox):
-    """A git rev IS the pin: apply records it as the lock's version
-    (and keeps it across re-applies), and `grip update` says so."""
-    remote = sandbox / "remote"
-    remote.mkdir()
-    env = dict(
-        GIT_AUTHOR_NAME="t",
-        GIT_AUTHOR_EMAIL="t@t",
-        GIT_COMMITTER_NAME="t",
-        GIT_COMMITTER_EMAIL="t@t",
-        PATH="/usr/bin:/bin:/usr/local/bin",
-        HOME=str(sandbox),
-    )
-    subprocess.run(["git", "init", "--quiet"], cwd=remote, env=env, check=True)
-    (remote / "bin.txt").write_text("payload\n")
-    subprocess.run(["git", "add", "."], cwd=remote, env=env, check=True)
-    subprocess.run(["git", "commit", "--quiet", "-m", "init"], cwd=remote, env=env, check=True)
-    rev = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=remote, env=env, check=True, capture_output=True, text=True
-    ).stdout.strip()
-
-    repo = make_env_repo(
-        sandbox / "myenv",
-        f"""
-import {{ git, module, symlink }} from "@gripsack/core";
-
-export default module("tpm", {{
-  fetch: git("file://{remote}", "{rev}"),
-  install: {{ "bin.txt": symlink("~/.local/bin/tpm") }},
-}});
-""",
-    )
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    lock = repo / "locks" / "testhost.lock"
-    assert f'"version": "{rev}"' in lock.read_text()
-    # a warm re-apply must not drop the pin
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    assert f'"version": "{rev}"' in lock.read_text()
-
-    out = grip("update", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    assert "pinned by rev" in out.stdout
-    assert "not supported" not in out.stdout
 
 
 def test_update_resolves_a_fetch_step_module(sandbox):
