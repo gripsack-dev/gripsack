@@ -104,13 +104,19 @@ is exercised with fresh isolated state, not a sampled hard-coded list.
 The oracle is previous state, committed target, or explicitly preserved
 user drift, followed by successful recovery with correct contents/modes.
 
-Process abort and injected I/O failure prove those failure paths, not
+Abrupt process termination and injected I/O failure prove those paths, not
 all physical power losses. Separately drive an abstract persistence
 ordering check from the shipped primitives' operation trace, including
 permissions and fsync, and calibrate it with the old incorrect ordering.
 Keep the existing ownership/transaction/activation models; add no new
 protocol unless implementation actually changes a protocol. Document
 what the real-fault matrix and ordering model each prove.
+
+The process-loss cut uses SIGKILL, not SIGABRT: thousands of deliberate
+crashes must not invoke a host's diagnostic core-dump service. The matrix
+asserts the actual SIGKILL return status. This hardens the harness after a
+Linux hosted runner lost communication during CI; that runner's missing
+log does not establish the resource failure's cause. No cuts are removed.
 
 ### Persistence-matrix finding — record the mode actually written
 

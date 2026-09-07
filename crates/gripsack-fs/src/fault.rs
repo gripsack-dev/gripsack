@@ -46,7 +46,7 @@ fn checkpoint(boundary: Boundary, edge: Edge, path: &Path) -> io::Result<()> {
     struct Config {
         trace: Option<std::path::PathBuf>,
         cut: Option<usize>,
-        abort: bool,
+        kill: bool,
         ordinal: usize,
     }
     static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
@@ -55,7 +55,7 @@ fn checkpoint(boundary: Boundary, edge: Edge, path: &Path) -> io::Result<()> {
             cut: std::env::var("GRIPSACK_FS_CUT")
                 .ok()
                 .and_then(|s| s.parse().ok()),
-            abort: std::env::var("GRIPSACK_FS_FAULT").as_deref() == Ok("abort"),
+            kill: std::env::var("GRIPSACK_FS_FAULT").as_deref() == Ok("kill"),
             ordinal: 0,
         })
     });
@@ -83,8 +83,13 @@ fn checkpoint(boundary: Boundary, edge: Edge, path: &Path) -> io::Result<()> {
         writeln!(file, "{}\t{edge:?}\t{boundary:?}\t{path:?}", state.ordinal)?;
     }
     if state.cut == Some(state.ordinal) {
-        if state.abort {
-            std::process::abort();
+        if state.kill {
+            // Abrupt process loss without invoking host core-dump handlers.
+            // Only this process is targeted; no cleanup/destructors run.
+            rustix::process::kill_process(
+                rustix::process::getpid(),
+                rustix::process::Signal::KILL,
+            )?;
         }
         return Err(io::Error::other(format!("injected {edge:?} {boundary:?}")));
     }

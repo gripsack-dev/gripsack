@@ -2,10 +2,11 @@
 
 Real debug binary, real filesystem, isolated snapshot reset. Abrupt process loss
 and injected IO errors exercise recovery. The separate Rust trace model proves
-ordering under fsync assumptions; SIGABRT is NOT a physical power-loss simulator.
+ordering under fsync assumptions; SIGKILL is NOT a physical power-loss simulator.
 """
 import json
 import os
+import signal
 import shutil
 import stat
 import subprocess
@@ -79,7 +80,7 @@ def test_every_reachable_persistence_boundary(sandbox, scenario):
     assert any('activation.json' in row[3] for row in points)
     assert any('current' in row[3] for row in points)
 
-    for fault in ['error', 'abort']:
+    for fault in ['error', 'kill']:
         for cut, expected in enumerate(points, 1):
             for drift in [False, True]:
                 shutil.rmtree(home)
@@ -91,6 +92,8 @@ def test_every_reachable_persistence_boundary(sandbox, scenario):
                 context = f'{scenario} {fault} cut={cut}/{len(points)} {expected[1:3]} drift={drift}'
                 assert len(emitted) >= cut, context + '\n' + result.stderr
                 assert emitted[cut - 1][1:3] == expected[1:3], context + ': boundary sequence changed'
+                if fault == 'kill':
+                    assert result.returncode == -signal.SIGKILL, context + ': process was not killed'
                 if drift:
                     (home / '.matrix').write_text('user-change')
                     (home / '.matrix').chmod(0o640)

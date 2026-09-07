@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 cap-std = "4"
-rustix = { version = "1", features = ["fs"] }
+rustix = { version = "1", features = ["fs", "process"] }
 libc = "0.2"
 
 [dev-dependencies]
