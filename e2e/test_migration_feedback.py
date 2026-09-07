@@ -175,17 +175,20 @@ export default module('demo', {{ fetch: fileFetch('{archive}'), install: {{ payl
 
 
 def test_tuicr_supported_nested_configuration_and_stale_pin(sandbox):
-    def declaration(version):
-        return f'''import {{ module, githubRelease, trackedCopy }} from '@gripsack/core';
-export default module('tuicr', {{
-  fetch: githubRelease({{ repo: 'agavra/tuicr', version: '{version}', asset: 'tuicr.tar.gz' }}),
-  config: {{ 'config.toml': trackedCopy('~/.config/tuicr/config.toml') }},
+    repo = make_env_repo(sandbox / 'env', '''import { module, githubRelease, trackedCopy } from '@gripsack/core';
+export default module('tuicr', {
+  fetch: githubRelease({ repo: 'agavra/tuicr', asset: 'tuicr.tar.gz' }),
+  config: { 'config.toml': trackedCopy('~/.config/tuicr/config.toml') },
   lint: 'tuicr',
-}});'''
-    repo = make_env_repo(sandbox / 'env', declaration('v0.22.0'))
+});''')
     (repo / 'config.toml').write_text('show_pr_checks = true\nsearch_highlight = true\n[forge]\ncomment_type_prefix = false\n[export]\nlegend = false\nintro = ""\n')
-    clean = run(repo, 'check', '--host', 'testhost')
-    assert 'W10' not in clean.stdout + clean.stderr
-    (repo / 'modules/hello.ts').write_text(declaration('v0.19.0'))
-    stale = run(repo, 'check', '--host', 'testhost')
-    assert 'W10' in stale.stdout + stale.stderr
+    # Linters consume the host lock's resolved version, never the declaration.
+    # Reading a persisted resolution is offline; check must not contact GitHub.
+    (repo / 'locks').mkdir()
+    for version, stale in [('v0.22.0', False), ('v0.19.0', True)]:
+        (repo / 'locks/testhost.lock').write_text(json.dumps({'modules': {'tuicr': {
+            'fetch': {'kind': 'github_release', 'repo': 'agavra/tuicr', 'asset': 'tuicr.tar.gz'},
+            'resolved': {'version': version},
+        }}}))
+        result = run(repo, 'check', '--host', 'testhost')
+        assert ('W10' in result.stdout + result.stderr) == stale
