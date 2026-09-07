@@ -46,13 +46,12 @@ hash_domain!(
 );
 hash_domain!(
     BytesHash,
-    "Bytes-only content identity — the mode-UNMANAGED domain: rendered \
-     templates, merge blocks, a symlink target observed at a copy \
-     destination. Never interchangeable with `FileIdentity`."
+    "Bytes-only content identity: merge blocks and symlink targets \
+     observed at whole-file destinations. Never interchangeable with `FileIdentity`."
 );
 /// The manifest's deployed-entry identity (0029 §2, 0035): MODAL by
-/// ownership mode — a tracked copy's FileIdentity, a template's or
-/// merge block's BytesHash, a link's PayloadHash. The wire is a plain
+/// ownership mode — a copy/template's FileIdentity, a merge block's
+/// BytesHash plus hosting mode, a link's PayloadHash. The wire is a plain
 /// hex string (back-compat); the newtype's constructors make a raw
 /// string unconstructible in production code, so the modal domains
 /// can only ever be compared within their own mode's rows.
@@ -95,7 +94,7 @@ manifest_hash_from!(PayloadHash);
 hash_domain!(
     FileIdentity,
     "Mode-aware file identity (0031): bytes + full permission mode. The \
-     journal's identity domain and the tracked-copy manifest domain. \
+     journal's identity domain and the copy/template manifest domain. \
      Never interchangeable with `BytesHash`."
 );
 /// Canonical hash of a single file system entry (file, dir, or symlink).
@@ -179,8 +178,7 @@ pub fn canonical_bytes_identity(bytes: &[u8], mode: u32) -> FileIdentity {
     FileIdentity(hex(&hasher.finalize()))
 }
 
-/// Canonical hash of in-memory file contents (no executable bit) — for
-/// rendered templates and managed blocks, which have no store file.
+/// Canonical hash of in-memory content without permissions (managed blocks).
 pub fn canonical_bytes_hash(bytes: &[u8]) -> BytesHash {
     let mut hasher = Sha256::new();
     hasher.update(b"file\0");

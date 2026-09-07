@@ -75,3 +75,12 @@ check UpdatePublication.tla UpdatePublication.rollback.cfg NoDowngrade
 check UpdatePublication.tla UpdatePublication.post-failure-witness.cfg NeverPostFailure
 check UpdatePublication.tla UpdatePublication.concurrent-witness.cfg NeverIndependentLocks
 check UpdatePublication.tla UpdatePublication.recheck-witness.cfg NeverRecheckSkip
+for surface in copy template merge link; do
+    for mode in m0644 m0755 m0600; do
+        check FileMode.tla "cfg/filemode-$surface-$mode.cfg"
+    done
+done
+check FileMode.tla cfg/filemode-mutant-template-fixed0644.cfg ExecSurvivesDeploy
+check FileMode.tla cfg/filemode-mutant-bytes-only.cfg ChmodIsDrift
+check FileMode.tla cfg/filemode-mutant-prune.cfg PruneRespectsDrift
+check FileMode.tla cfg/filemode-mutant-rollback.cfg RollbackIsExact

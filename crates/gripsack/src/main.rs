@@ -115,6 +115,9 @@ enum Command {
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
+        /// Resolve without publishing sources or writing the lock; exit 1 on changes
+        #[arg(long)]
+        check: bool,
         modules: Vec<String>,
     },
     /// List generations and their status
@@ -222,8 +225,9 @@ fn main() -> ExitCode {
             host,
             repo,
             modules,
+            check,
         } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::update(&repo, host.as_deref(), modules, palette),
+            Ok(repo) => commands::update(&repo, host.as_deref(), modules, palette, check),
             Err(code) => code,
         },
         Command::Rollback { generation } => commands::rollback(generation, palette),

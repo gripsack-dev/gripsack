@@ -57,10 +57,8 @@ pub struct DeployedEntry {
     /// Modal by ownership mode; constructible only from the typed
     /// producers (0035).
     pub hash: crate::hash::ManifestHash,
-    /// The landed permission mode (0031) — tracked copies and
-    /// templates only; rollback re-applies it exactly. None on
-    /// pre-0.27 manifests (not recorded; the legacy rule restores),
-    /// links, and merge blocks.
+    /// The landed permission mode; merge records its hosting-file mode.
+    /// Rollback restores it exactly. Older receipts may omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_mode: Option<u32>,
     /// Source executability at deployment (0041). Content-only updates
@@ -94,6 +92,17 @@ impl DeployedEntry {
             None => crate::paths::canonical_dest(&self.to)
                 .unwrap_or_else(|_| std::path::PathBuf::from(&self.to)),
         }
+    }
+
+    /// Compare a whole-file receipt, including pre-0043 template receipts.
+    /// Legacy bytes-only hashes authorize nothing without a matching recorded
+    /// mode. New writes always record the full file identity.
+    pub fn matches_file(&self, bytes: &[u8], mode: u32) -> bool {
+        !self.preserved_drift
+            && (crate::canonical_bytes_identity(bytes, mode).as_str() == self.hash.as_str()
+                || (self.mode == Ownership::Template
+                    && self.file_mode == Some(mode)
+                    && crate::canonical_bytes_hash(bytes).as_str() == self.hash.as_str()))
     }
 }
 

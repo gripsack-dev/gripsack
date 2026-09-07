@@ -6,7 +6,7 @@ use crate::lockfile::{LockRead, Resolved};
 use crate::report::{UpdateReport, UpdateStatus};
 use gripsack_ir::{Ir, prepared::PreparedModule};
 
-pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
+pub fn update(ir: &Ir, ctx: &Ctx, check: bool) -> Result<Vec<UpdateReport>, ExecError> {
     let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
     let (order, missing) = crate::apply::scoped_order(ir, &ctx.only)?;
     let mut reports: Vec<_> = missing
@@ -69,7 +69,7 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
                         actual: actual.into(),
                     }));
                 }
-            } else {
+            } else if !check {
                 crate::source::publish(ctx, &name, staging.path(), &destination)?;
             }
             pin.tree256 = Some(tree);
@@ -78,7 +78,15 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
             .modules
             .get(&name)
             .and_then(|entry| entry.resolved.as_ref());
-        let status = if old.is_some_and(|old| same_source(old, pin)) {
+        let unchanged = if check {
+            lock.modules
+                .get(&name)
+                .is_some_and(|previous| previous.fetch == entry.fetch)
+                && old == Some(&*pin)
+        } else {
+            old.is_some_and(|old| same_source(old, pin))
+        };
+        let status = if unchanged {
             UpdateStatus::Unchanged
         } else {
             UpdateStatus::Bumped {
@@ -96,7 +104,9 @@ pub fn update(ir: &Ir, ctx: &Ctx) -> Result<Vec<UpdateReport>, ExecError> {
             status,
         });
     }
-    crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
+    if !check {
+        crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
+    }
     Ok(reports)
 }
 

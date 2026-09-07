@@ -130,13 +130,10 @@ pub(crate) fn execute_op(
             payload,
             marker,
             existing,
+            mode,
         } => {
             let (dest_dir, dest_name) = dest_capability(&op.dest)
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to)))?;
-            let module = op.module.clone();
-            let dest = op.dest.clone();
-            let marker = marker.clone();
-            let payload = payload.clone();
             crate::deploy::journaled(
                 home_dir,
                 &dest_dir,
@@ -155,28 +152,24 @@ pub(crate) fn execute_op(
                     };
                     let new = crate::template::upsert_block(
                         &latest,
-                        &module,
-                        &dest,
+                        &op.module,
+                        &op.dest,
                         marker.as_deref(),
-                        &String::from_utf8_lossy(&payload),
+                        &String::from_utf8_lossy(payload),
+                        *mode,
                     )
                     .map_err(std::io::Error::other)?;
-                    if dest_exists(&dest_dir, &dest_name) {
-                        // the foreign file's mode is preserved
-                        gripsack_fs::atomic_write(&dest_dir, &dest_name, new.as_bytes())
-                    } else {
-                        gripsack_fs::atomic_write_with_mode(
-                            &dest_dir,
-                            &dest_name,
-                            new.as_bytes(),
-                            0o644,
-                        )
-                    }
+                    gripsack_fs::atomic_write_with_mode(
+                        &dest_dir,
+                        &dest_name,
+                        new.as_bytes(),
+                        *mode,
+                    )
                 },
             )?;
             // the report names what the plan saw (0.21.1 review):
             // regenerated hand-edits, stripped duplicates
-            let note = super::plan::merge_notes_pub(&op.module, &payload, existing);
+            let note = super::plan::merge_notes_pub(&op.module, payload, existing);
             Ok((
                 OpReport {
                     summary: format!("merged {} → {}{}", op.module, op.declared_to, note),
@@ -223,8 +216,4 @@ pub(crate) fn execute_op(
             ))
         }
     }
-}
-
-fn dest_exists(dir: &gripsack_fs::Dir, name: &Path) -> bool {
-    dir.symlink_metadata(name).is_ok()
 }

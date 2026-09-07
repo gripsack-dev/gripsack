@@ -87,34 +87,47 @@ pub fn doctor(palette: Palette) -> ExitCode {
         }
     }
 
-    // The repo's own @gripsack/core pin (the deliberate-pin rule:
-    // node_modules shadows the embedded copy when present). It does
-    // not change what RUNS — but it is what the editor and tsc
-    // typecheck against, and a stale pin happily accepts authoring
-    // styles the current frontend removed (migration report 0.18.1:
-    // a ^0.17.5 pin typechecked a call the 0.18.x DSL rejects).
+    // Eval only considers the repo-root install (typescript/src/pin.ts).
+    // A declaration is not evidence that the installed frontend was upgraded.
     let repo = std::env::current_dir().unwrap_or_else(|_| ".".into());
-    if let Some(pin) = core_pin(&repo) {
-        let embedded = env!("CARGO_PKG_VERSION");
-        if pin_is_behind(&pin, embedded) {
-            // a stale pin is a WARNING, not a pass: `mark(true)`
-            // renders "ok" in green, and the old `.replace('✓', "!")`
-            // was a no-op on that string — the warning read as a pass
-            // (0.21.1 review).
-            // advise the minor LINE (^M.m.0), not the exact embedded
-            // patch: ^0.21.1 cannot resolve to a published 0.21.0, and
-            // the frontend doesn't re-publish on every core patch
-            // (0.21.1 review). With the lockstep rule (release skill),
-            // the latest published M.m.x carries the current types.
-            let minor_line: String = embedded.split('.').take(2).collect::<Vec<_>>().join(".");
+    let embedded = env!("CARGO_PKG_VERSION");
+    let minor_line = embedded.rsplit_once('.').map_or(embedded, |(line, _)| line);
+    match installed_core(&repo) {
+        Ok(Some(version)) if pin_is_behind(&version, embedded) => {
             println!(
-                "{}  repo pin: package.json pins @gripsack/core {pin}; the embedded \
-                 frontend is {embedded} — your editor typechecks against the older \
-                 types (npm i -D @gripsack/core@^{minor_line}.0)",
-                palette.warn("warn")
+                "{}  repo frontend: installed @gripsack/core {version} shadows embedded {embedded}; \
+                 update it (npm i -D @gripsack/core@^{minor_line}.0), or remove \
+                 node_modules/@gripsack/core to use the embedded frontend",
+                mark(false)
             );
-        } else {
-            println!("      repo pin: @gripsack/core {pin} (matches the embedded {embedded})");
+            ok = false;
+        }
+        Ok(Some(version)) => println!(
+            "{}  repo frontend: installed @gripsack/core {version} (eval uses this copy)",
+            mark(true)
+        ),
+        Err(error) => {
+            println!(
+                "{}  repo frontend: {error}; fix or remove node_modules/@gripsack/core",
+                mark(false)
+            );
+            ok = false;
+        }
+        Ok(None) => {
+            if let Some(pin) = core_pin(&repo) {
+                if pin_is_behind(&pin, embedded) {
+                    println!(
+                        "{}  repo pin: package.json declares @gripsack/core {pin}, no installed copy; \
+                         eval uses embedded {embedded} — update the declaration \
+                         (npm i -D @gripsack/core@^{minor_line}.0) or remove the pin",
+                        palette.warn("warn")
+                    );
+                } else {
+                    println!(
+                        "      repo pin: declared {pin}, no installed copy; eval uses embedded {embedded}"
+                    );
+                }
+            }
         }
     }
     println!("      home: {}", home.display());
@@ -124,6 +137,37 @@ pub fn doctor(palette: Palette) -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
+}
+
+fn installed_core(repo: &std::path::Path) -> Result<Option<String>, String> {
+    let dir = repo.join("node_modules/@gripsack/core");
+    let text = match std::fs::read_to_string(dir.join("package.json")) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("cannot read installed package.json: {e}")),
+    };
+    let pkg: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("invalid installed package.json: {e}"))?;
+    let version = pkg
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .filter(|v| version_line(v).is_some())
+        .ok_or("installed package.json has no valid version")?;
+    let dot = pkg.get("exports").and_then(|v| v.get("."));
+    let entry = dot
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            dot.and_then(|v| v.get("import").or_else(|| v.get("default")))
+                .and_then(serde_json::Value::as_str)
+        })
+        .or_else(|| pkg.get("main").and_then(serde_json::Value::as_str))
+        .unwrap_or("index.js");
+    if !dir.join(entry).is_file() {
+        return Err(format!(
+            "installed @gripsack/core {version} entry {entry} is missing"
+        ));
+    }
+    Ok(Some(version.to_string()))
 }
 
 /// The repo's `@gripsack/core` version spec from package.json
@@ -150,21 +194,15 @@ fn core_pin(repo: &std::path::Path) -> Option<String> {
 /// normal npm reality (patch releases don't always publish); a
 /// `^0.17.x` pin against `0.18.x` is the drift that matters.
 fn pin_is_behind(spec: &str, embedded: &str) -> bool {
-    let parse = |v: &str| -> Option<(u64, u64)> {
-        let digits: String = v
-            .trim_start_matches(['^', '~', '>', '=', ' '])
-            .chars()
-            .take_while(|c| c.is_ascii_digit() || *c == '.')
-            .collect();
-        let mut it = digits.split('.').map(str::parse::<u64>);
-        match (it.next(), it.next()) {
-            (Some(Ok(a)), Some(Ok(b))) => Some((a, b)),
-            _ => None,
-        }
-    };
+    let parse = |v: &str| version_line(v.trim_start_matches(['^', '~', '>', '=', ' ']));
     match (parse(spec), parse(embedded)) {
         (Some(pin), Some(emb)) => pin < emb,
         // unparseable spec (git URL, workspace:) — don't guess
         (Some(_), None) | (None, _) => false,
     }
+}
+
+fn version_line(version: &str) -> Option<(u64, u64)> {
+    let mut parts = version.split('.');
+    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
 }

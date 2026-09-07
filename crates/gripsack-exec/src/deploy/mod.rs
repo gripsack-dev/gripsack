@@ -376,8 +376,7 @@ pub(crate) fn deploy_entry(
                 Some(r) => r.as_slice(),
                 None => &std::fs::read(&source)?,
             };
-            // Tracked copies follow source executability; templates preserve
-            // their destination's permissions independently of their source.
+            // Whole-file outputs share the same source-executability policy.
             #[cfg(unix)]
             let src_exec = {
                 use std::os::unix::fs::PermissionsExt;
@@ -389,12 +388,8 @@ pub(crate) fn deploy_entry(
                 &view,
                 crate::ops::ModeInput::Write {
                     content,
-                    permissions: if entry.mode == Ownership::TrackedCopy {
-                        crate::ops::WritePermissions::Source {
-                            executable: src_exec,
-                        }
-                    } else {
-                        crate::ops::WritePermissions::Preserve
+                    permissions: crate::ops::WritePermissions::Source {
+                        executable: src_exec,
                     },
                 },
             )?
@@ -403,21 +398,12 @@ pub(crate) fn deploy_entry(
             let payload = std::fs::read_to_string(&source)
                 .map_err(|e| fail(format!("cannot read {}: {e}", source.display())))?;
             let existing = read_foreign_text(&dest);
-            #[cfg(unix)]
-            let dest_mode = {
-                use std::os::unix::fs::MetadataExt;
-                std::fs::metadata(&dest)
-                    .map(|m| m.mode() & 0o7777)
-                    .unwrap_or(0o644)
-            };
-            #[cfg(not(unix))]
-            let dest_mode = 0o644;
             crate::ops::plan_entry_op(
                 &view,
                 crate::ops::ModeInput::Merge {
                     payload: &payload,
                     existing,
-                    dest_mode,
+                    permissions: crate::ops::WritePermissions::Preserve,
                 },
             )?
         }

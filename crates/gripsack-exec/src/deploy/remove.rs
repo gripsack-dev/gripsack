@@ -19,6 +19,9 @@ pub fn remove_entry_deployed(
     module: &str,
     store_path: &Path,
 ) -> std::io::Result<bool> {
+    if entry.preserved_drift {
+        return Ok(false);
+    }
     match entry.mode {
         Ownership::Owned => {
             // removal authority is the EXACT expected target (0030
@@ -35,16 +38,14 @@ pub fn remove_entry_deployed(
             Ok(true)
         }
         Ownership::Merge => {
-            let existing = match dest_dir.read_to_string(dest_name) {
-                Ok(text) => text,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
-                Err(e) => return Err(e),
+            let observation = super::observe(dest_dir, dest_name)?;
+            let Some(super::Observation::File { bytes, mode }) = observation else {
+                return Ok(observation.is_none());
             };
+            let existing = String::from_utf8(bytes)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             match crate::template::extract_block(&existing, module) {
-                Some(content)
-                    if store::canonical_bytes_hash(content.as_bytes()).as_str()
-                        == entry.hash.as_str() =>
-                {
+                Some(_) if crate::template::block_intact(&existing, module, entry, mode) => {
                     let new = crate::template::remove_block(&existing, module)
                         .expect("block found above");
                     if new.trim().is_empty() {
@@ -57,39 +58,12 @@ pub fn remove_entry_deployed(
                 _ => Ok(false), // drifted block is the user's now
             }
         }
-        Ownership::Template => {
-            // bytes-only domain: only delete what we rendered
-            let current = match dest_dir.read(dest_name) {
-                Ok(b) => b,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
-                Err(e) => return Err(e),
+        Ownership::TrackedCopy | Ownership::Template => {
+            let observation = super::observe(dest_dir, dest_name)?;
+            let Some(super::Observation::File { bytes, mode }) = observation else {
+                return Ok(observation.is_none());
             };
-            if store::canonical_bytes_hash(&current).as_str() != entry.hash.as_str() {
-                return Ok(false);
-            }
-            remove_if_present(dest_dir, dest_name)?;
-            Ok(true)
-        }
-        Ownership::TrackedCopy => {
-            // mode-aware domain (0031): only delete bytes+mode
-            // identical to what we wrote — a chmodded copy is the
-            // user's now
-            let bytes = match dest_dir.read(dest_name) {
-                Ok(b) => b,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
-                Err(e) => return Err(e),
-            };
-            #[cfg(unix)]
-            let mode = {
-                use gripsack_fs::cap_std::fs::MetadataExt;
-                dest_dir
-                    .symlink_metadata(dest_name)
-                    .map(|m| m.mode() & 0o7777)
-                    .unwrap_or(0o644)
-            };
-            #[cfg(not(unix))]
-            let mode = 0o644;
-            if store::canonical_bytes_identity(&bytes, mode).as_str() != entry.hash.as_str() {
+            if !entry.matches_file(&bytes, mode) {
                 return Ok(false);
             }
             remove_if_present(dest_dir, dest_name)?;

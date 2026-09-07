@@ -8,7 +8,13 @@ use std::process::ExitCode;
 
 /// grip update: re-resolve, rewrite the lockfile, report what moved.
 /// Never deploys — `grip apply` does (0008 §5).
-pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Palette) -> ExitCode {
+pub fn update(
+    repo: &Path,
+    host: Option<&str>,
+    modules: Vec<String>,
+    palette: Palette,
+    check: bool,
+) -> ExitCode {
     if let Some(code) = trust_gate(repo) {
         return code;
     }
@@ -34,7 +40,7 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
         fetch: std::sync::Arc::clone(&outcome.fetch),
     };
     gripsack_fetch::throttle::save_global();
-    match gripsack_exec::update(&ir, &ctx) {
+    match gripsack_exec::update(&ir, &ctx, check) {
         Ok(reports) => {
             if reports.is_empty() {
                 println!("nothing to resolve yet — no resolvable fetches in the graph");
@@ -45,8 +51,14 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
                         gripsack_exec::UpdateStatus::Unchanged => {
                             println!("  {} {}", r.module.cyan(), "unchanged".dimmed())
                         }
-                        gripsack_exec::UpdateStatus::Bumped { .. } => {
-                            println!("  {} {}", r.module.cyan(), "bumped".yellow().bold())
+                        gripsack_exec::UpdateStatus::Bumped { old, new } => {
+                            println!(
+                                "  {} {} ({} → {})",
+                                r.module.cyan(),
+                                if check { "would bump" } else { "bumped" }.yellow().bold(),
+                                old.as_deref().unwrap_or("unlocked"),
+                                new
+                            )
                         }
                         gripsack_exec::UpdateStatus::Skipped { reason } => println!(
                             "  {} {}",
@@ -59,8 +71,14 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
                         gripsack_exec::UpdateStatus::Unchanged => {
                             println!("  {} unchanged", r.module)
                         }
-                        gripsack_exec::UpdateStatus::Bumped { .. } => {
-                            println!("  {} bumped", r.module)
+                        gripsack_exec::UpdateStatus::Bumped { old, new } => {
+                            println!(
+                                "  {} {} ({} → {})",
+                                r.module,
+                                if check { "would bump" } else { "bumped" },
+                                old.as_deref().unwrap_or("unlocked"),
+                                new
+                            )
                         }
                         gripsack_exec::UpdateStatus::Skipped { reason } => {
                             println!("  {} skipped ({reason})", r.module)
@@ -72,6 +90,10 @@ pub fn update(repo: &Path, host: Option<&str>, modules: Vec<String>, palette: Pa
                 .iter()
                 .any(|r| matches!(r.status, gripsack_exec::UpdateStatus::Bumped { .. }))
             {
+                if check {
+                    println!("updates available — lockfile and source cache unchanged");
+                    return ExitCode::FAILURE;
+                }
                 println!("lockfile updated — run `grip apply` to deploy");
             }
             ExitCode::SUCCESS

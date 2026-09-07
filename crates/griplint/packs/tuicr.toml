@@ -5,12 +5,14 @@
 tool = "tuicr"
 handles = ["config.toml"]
 format = "toml"
-# tables verified against the 0.2.x surface (latest v0.24.0, 2026-08);
-# "v0.2" because host lockfiles pin tag-style versions ("v0.24.0")
-supported = ["0.2", "v0.2"]
-series = "v0"
-coverage_warning = "key tables are written for tuicr 0.2.x; this module pins {version} — results may be stale"
+# Source: https://github.com/agavra/tuicr/blob/v0.25.0/src/config/mod.rs
+# Compared AppConfig/ForgeConfig/ExportConfig at every v0.20.0–v0.25.0 tag.
+# Additive union: 0.22 adds PR visibility/search/diff-watch; 0.23 reviewed.
+supported = ["0.20", "0.21", "0.22", "0.23", "0.24", "0.25"]
+series = "v0.20-v0.25"
+coverage_warning = "key tables are written for tuicr 0.20–0.25; this module pins {version} — results may be stale"
 
+# AppConfig keys/enums: https://github.com/agavra/tuicr/blob/v0.25.0/docs/CONFIG.md#options
 [files."config.toml".rules.""]
 theme = { types = ["string"] }
 appearance = { types = ["string"], choices = ["system", "dark", "light"] }
@@ -42,8 +44,15 @@ username = { types = ["string"] }
 diff_watch_interval_ms = { types = ["integer"] }
 backend = { types = ["string"], choices = ["libgit2", "cli"] }
 comment_types = { types = ["array"] }
+# Still accepted upstream; [export].legend supersedes this spelling.
+export_legend = { types = ["boolean"], deprecated = "export.legend" }
+
+# ForgeConfig: https://github.com/agavra/tuicr/blob/v0.25.0/docs/CONFIG.md#forge
+[files."config.toml".rules.forge]
 comment_type_prefix = { types = ["boolean"] }
-export_legend = { types = ["boolean"] }
+
+# ExportConfig: https://github.com/agavra/tuicr/blob/v0.25.0/docs/CONFIG.md#export
+[files."config.toml".rules.export]
 intro = { types = ["string"] }
 scope_line = { types = ["boolean"] }
 pr_metadata = { types = ["boolean"] }

@@ -233,3 +233,6 @@ mod tests {
 /// `plan_copy` decision function over every action sequence.
 #[cfg(test)]
 mod lineage_model;
+
+#[cfg(all(test, unix))]
+mod mode_model;

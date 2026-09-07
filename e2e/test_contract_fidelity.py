@@ -165,7 +165,9 @@ export default module('demo', {{ config: {{ payload: template('~/.private') }}, 
     destination.chmod(0o640)
     source.write_text(next_content)
     (repo / 'modules/hello.ts').write_text(declaration(2))
-    run(repo, 'apply', '--host', 'testhost')
+    # Explicitly acquire the changed mode; ordinary apply must preserve chmod
+    # drift without giving a later rollback permission to overwrite it.
+    run(repo, 'apply', '--host', 'testhost', '--take-over')
     assert current(sandbox)['number'] == 2
     assert destination.stat().st_mode & 0o777 == 0o640
     run(repo, 'rollback', '1')

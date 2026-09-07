@@ -183,47 +183,26 @@ pub fn preview_ops(
                                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
                                 Err(e) => return Err(e.into()),
                             };
-                            #[cfg(unix)]
-                            let dest_mode = {
-                                use std::os::unix::fs::MetadataExt;
-                                std::fs::metadata(&dest)
-                                    .map(|m| m.mode() & 0o7777)
-                                    .unwrap_or(0o644)
-                            };
-                            #[cfg(not(unix))]
-                            let dest_mode = 0o644;
                             ops.push(plan_entry_op(
                                 &view,
                                 ModeInput::Merge {
                                     payload: &payload,
                                     existing,
-                                    dest_mode,
+                                    permissions: WritePermissions::Preserve,
                                 },
                             )?);
                             continue;
                         }
                         Err(_) => true,
                     },
-                    Ownership::Template => {
-                        match std::fs::read(&repo_file).ok().and_then(|b| {
-                            crate::template::render_template(&b, &entry.vars, &entry.from).ok()
-                        }) {
-                            Some(rendered) => {
-                                return_op(
-                                    &mut ops,
-                                    &view,
-                                    ModeInput::Write {
-                                        content: &rendered,
-                                        permissions: WritePermissions::Preserve,
-                                    },
-                                )?;
-                                continue;
-                            }
-                            None => true,
-                        }
-                    }
-                    Ownership::TrackedCopy => match std::fs::read(&repo_file) {
+                    Ownership::TrackedCopy | Ownership::Template => match std::fs::read(&repo_file)
+                    {
                         Ok(bytes) => {
+                            let bytes = if entry.mode == Ownership::Template {
+                                crate::template::render_template(&bytes, &entry.vars, &entry.from)?
+                            } else {
+                                bytes
+                            };
                             #[cfg(unix)]
                             let exec = {
                                 use std::os::unix::fs::PermissionsExt;
