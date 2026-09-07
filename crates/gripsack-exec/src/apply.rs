@@ -74,6 +74,17 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         }
     })?;
     reports.extend(resumed);
+    // Debug harness seam: execute the shipped recovery/resume path, then stop
+    // before allocating or applying a new generation. Never present in release.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("GRIPSACK_FS_RECOVER_ONLY").is_some() {
+        return Ok(ApplyResult {
+            outcome: Outcome::Satisfied {
+                generation: current_gen,
+            },
+            reports,
+        });
+    }
     // the allocator is NOT current+1 (0026 §3): after a rollback,
     // current is lower than the highest generation on disk, and
     // reusing a number would rewrite immutable history. Allocate
@@ -127,7 +138,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             ),
         });
     }
-    let steps_by_module = expand::expand_all(&ir.modules);
+    let steps_by_module = expand::expand_all(&ir.modules)?;
     // physical destination uniqueness before anything mutates (0030)
     expand::check_physical_uniqueness(&ir.modules, &steps_by_module)?;
     // declare the generation this run builds BEFORE any mutation:
@@ -303,9 +314,9 @@ pub(crate) fn scoped_order(
     let mut frontier: Vec<&str> = only.iter().map(String::as_str).collect();
     while let Some(name) = frontier.pop() {
         if let Some(m) = ir.modules.get(name) {
-            for dep in &m.depends {
-                if wanted.insert(dep.module.as_str()) {
-                    frontier.push(dep.module.as_str());
+            for dep in gripsack_ir::dependencies::ordering_dependencies(name, m) {
+                if wanted.insert(dep) {
+                    frontier.push(dep);
                 }
             }
         }

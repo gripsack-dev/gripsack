@@ -60,7 +60,7 @@ pub fn read_pending(home: &Dir) -> io::Result<Option<PendingActivation>> {
 /// Drop the record — after the intents ran, or when the named
 /// generation is no longer current (superseded or rolled back).
 pub fn clear_pending(home: &Dir) -> io::Result<()> {
-    match home.remove_file(Path::new(REL)) {
+    match gripsack_fs::remove_file(home, Path::new(REL)) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),

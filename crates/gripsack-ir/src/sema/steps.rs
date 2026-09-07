@@ -3,9 +3,18 @@
 
 use crate::diagnostic::{Diagnostic, codes};
 use crate::model::{Build, Ir};
-use crate::step::{BARRIER_STEP_ID, SYNTHESIZED_STEP_IDS, StepAction};
+use crate::step::{BARRIER_STEP_ID, Phase, StepAction};
 
 pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
+    let mut prepared = std::collections::BTreeMap::new();
+    for (name, module) in &ir.modules {
+        match crate::prepared::PreparedModule::new(module) {
+            Ok(plan) => {
+                prepared.insert(name.as_str(), plan);
+            }
+            Err(diagnostic) => diagnostics.push(diagnostic),
+        }
+    }
     for (name, module) in &ir.modules {
         let Some(steps) = &module.steps else {
             continue;
@@ -58,6 +67,21 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
         }
         let mut seen = std::collections::BTreeSet::new();
         for step in steps {
+            if step.id.is_empty() || step.id.contains(':') {
+                diagnostics.push(
+                    Diagnostic::error(
+                        codes::DUPLICATE_STEP,
+                        format!(
+                            "invalid step id {:?}: expected a nonempty id without ':'",
+                            step.id
+                        ),
+                    )
+                    .with_label(
+                        step.span.clone().or_else(|| module.span.clone()),
+                        "step declared here",
+                    ),
+                );
+            }
             // E106: duplicate or reserved ids.
             if !seen.insert(step.id.as_str()) {
                 diagnostics.push(
@@ -83,18 +107,29 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
             // E104: unknown step refs.
             for need in &step.needs {
                 let unknown = match need.split_once(':') {
-                    Some((target_module, target_step)) => match ir.modules.get(target_module) {
-                        None => true,
-                        Some(target) => {
-                            !(target_step == BARRIER_STEP_ID
-                                || match &target.steps {
-                                    Some(target_steps) => {
-                                        target_steps.iter().any(|s| s.id == target_step)
-                                    }
-                                    None => SYNTHESIZED_STEP_IDS.contains(&target_step),
-                                })
+                    Some((target_module, target_step)) => {
+                        if target_module == name {
+                            diagnostics.push(Diagnostic::error(codes::UNKNOWN_STEP,
+                                format!("use sibling id {target_step:?}, not self-qualified {need:?}"))
+                                .with_label(step.span.clone().or_else(|| module.span.clone()), "step declared here"));
+                            false
+                        } else {
+                            match prepared.get(target_module).and_then(
+                                |plan: &crate::prepared::PreparedModule| {
+                                    plan.target_phase(target_step)
+                                },
+                            ) {
+                                None => true,
+                                Some(Phase::Activate) => {
+                                    diagnostics.push(Diagnostic::error(codes::STEP_PHASE_ORDER,
+                                        format!("step {:?} cannot wait for activation {need:?}; activation runs after the flip", step.id))
+                                        .with_label(step.span.clone().or_else(|| module.span.clone()), "step declared here"));
+                                    false
+                                }
+                                Some(_) => false,
+                            }
                         }
-                    },
+                    }
                     // `module:done` is always valid: the barrier exists
                     // for explicit and synthesized modules alike (0007 §2).
                     None => !steps.iter().any(|s| s.id == *need),
@@ -113,9 +148,9 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                 }
             }
         }
-        check_cycles(name, module, steps, diagnostics);
         check_phase_order(name, module, steps, diagnostics);
     }
+    check_module_cycles(ir, diagnostics);
 }
 
 /// Execution phase ranks (0007 §5): produce (fetch/build/custom) runs
@@ -124,7 +159,7 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
 fn phase_rank(phase: Option<crate::step::Phase>) -> u8 {
     use crate::step::Phase;
     match phase {
-        Some(Phase::Fetch) => 0,
+        Some(Phase::Fetch) => 1,
         // custom and unset phase land in the produce sweep
         Some(Phase::Build) | Some(Phase::Custom) | None => 1,
         Some(Phase::Install) | Some(Phase::Config) => 2,
@@ -146,7 +181,7 @@ fn check_phase_order(
         steps
             .iter()
             .find(|s| s.id == id)
-            .map(|s| phase_rank(s.phase))
+            .map(|s| phase_rank(Some(s.action.execution_phase())))
     };
     for step in steps {
         for need in &step.needs {
@@ -154,7 +189,7 @@ fn check_phase_order(
                 continue; // cross-module refs order modules (dep edges)
             }
             if let Some(need_rank) = rank_of(need)
-                && need_rank > phase_rank(step.phase)
+                && need_rank > phase_rank(Some(step.action.execution_phase()))
             {
                 diagnostics.push(
                     Diagnostic::error(
@@ -176,67 +211,42 @@ fn check_phase_order(
     }
 }
 
-// E120: a cycle in a module's step `needs` graph is unsatisfiable —
-// check it statically, with the same span treatment as E104.
-fn check_cycles(
-    name: &str,
-    module: &crate::model::Module,
-    steps: &[crate::step::Step],
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    // DFS with a color map; intra-module needs only (cross-module
-    // refs order modules, not steps)
-    let mut color: std::collections::BTreeMap<&str, u8> = std::collections::BTreeMap::new();
-    fn visit<'a>(
-        id: &'a str,
-        steps: &'a [crate::step::Step],
-        color: &mut std::collections::BTreeMap<&'a str, u8>,
-        path: &mut Vec<String>,
-    ) -> Option<Vec<String>> {
-        match color.get(id) {
-            Some(2) => return None,
-            Some(1) => {
-                let start = path.iter().position(|p| p == id).unwrap_or(0);
-                let mut cycle = path[start..].to_vec();
-                cycle.push(id.to_string());
-                return Some(cycle);
-            }
-            _ => {}
+// Cycles in the union of purpose edges and scheduling-only needs are invalid
+// even when each module's local step graph is acyclic.
+fn check_module_cycles(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
+    let mut remaining: std::collections::BTreeSet<&str> =
+        ir.modules.keys().map(String::as_str).collect();
+    loop {
+        let ready: Vec<_> = remaining
+            .iter()
+            .copied()
+            .filter(|name| {
+                crate::dependencies::ordering_dependencies(name, &ir.modules[*name])
+                    .iter()
+                    .all(|dep| !remaining.contains(dep))
+            })
+            .collect();
+        if ready.is_empty() {
+            break;
         }
-        color.insert(id, 1);
-        path.push(id.to_string());
-        if let Some(step) = steps.iter().find(|s| s.id == id) {
-            for need in &step.needs {
-                if !need.contains(':')
-                    && steps.iter().any(|s| s.id == *need)
-                    && let Some(cycle) = visit(need, steps, color, path)
-                {
-                    return Some(cycle);
-                }
-            }
+        for name in ready {
+            remaining.remove(name);
         }
-        path.pop();
-        color.insert(id, 2);
-        None
     }
-    let mut path = Vec::new();
-    for step in steps {
-        if let Some(cycle) = visit(&step.id, steps, &mut color, &mut path) {
-            diagnostics.push(
-                Diagnostic::error(
-                    codes::STEP_CYCLE,
-                    format!(
-                        "module {name:?}: step needs form a cycle: {}",
-                        cycle.join(" → ")
-                    ),
-                )
-                .with_label(
-                    step.span.clone().or_else(|| module.span.clone()),
-                    "in this module",
+    if let Some(name) = remaining.first() {
+        diagnostics.push(
+            Diagnostic::error(
+                codes::STEP_CYCLE,
+                format!(
+                    "module scheduling cycle blocks: {}",
+                    remaining.iter().copied().collect::<Vec<_>>().join(", ")
                 ),
-            );
-            return; // one cycle per module is diagnosis enough
-        }
+            )
+            .with_label(
+                ir.modules[*name].span.clone(),
+                "scheduling dependency declared here",
+            ),
+        );
     }
 }
 
@@ -258,7 +268,6 @@ mod tests {
             resources: vec![],
             phase: None,
             verify: None,
-            retries: None,
             span: None,
         }
     }

@@ -57,7 +57,7 @@ mod tests {
     use crate::model::*;
 
     const EXAMPLE: &str = r#"{
-        "ir_version": 2,
+        "ir_version": 3,
         "host": {"os": "linux", "arch": "x86_64", "tags": ["gui"]},
         "modules": {
             "helix": {
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn rejects_wrong_version() {
-        let bad = EXAMPLE.replace(r#""ir_version": 2"#, r#""ir_version": 99"#);
+        let bad = EXAMPLE.replace(r#""ir_version": 3"#, r#""ir_version": 99"#);
         let diagnostics = check(&bad).unwrap_err();
         assert_eq!(diagnostics[0].code, codes::VERSION);
     }
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn legacy_ir_is_rejected_before_decoding_renamed_fields() {
         let old = EXAMPLE
-            .replace(r#""ir_version": 2"#, r#""ir_version": 1"#)
+            .replace(r#""ir_version": 3"#, r#""ir_version": 1"#)
             .replace(r#""for":"#, r#""edge":"#);
         let diagnostics = check(&old).unwrap_err();
         assert_eq!(diagnostics[0].code, codes::VERSION);
@@ -155,7 +155,7 @@ mod tests {
     fn dotfiles_only_module_needs_no_source() {
         // 0006 §2 level 1: a module that only manages configs.
         let json = r#"{
-            "ir_version": 2,
+            "ir_version": 3,
             "modules": {
                 "helix": {
                     "config": [{"from": "config.toml",
@@ -170,7 +170,7 @@ mod tests {
     }
 
     const STEPPED: &str = r#"{
-        "ir_version": 2,
+        "ir_version": 3,
         "modules": {
             "helix": {
                 "steps": [
@@ -213,26 +213,10 @@ mod tests {
     }
 
     #[test]
-    fn verify_and_retries_roundtrip() {
-        let json = STEPPED.replace(
-            r#""needs": ["fetch"], "phase": "custom"}"#,
-            r#""needs": ["fetch"], "phase": "custom",
-             "verify": {"kind": "binary_runs", "path": "bin/hx", "args": ["--version"]},
-             "retries": 2}"#,
-        );
-        let ir = check(&json).unwrap();
-        let step = &ir.modules["helix"].steps.as_ref().unwrap()[1];
-        assert!(matches!(step.verify, Some(Verify::BinaryRuns { .. })));
-        assert_eq!(step.retries, Some(2));
-        let again = serde_json::to_string(&ir).unwrap();
-        check(&again).unwrap();
-    }
-
-    #[test]
     fn cross_module_ref_into_declarative_module() {
         let json = STEPPED.replace(
             r#""needs": ["fetch"]"#,
-            r#""needs": ["fetch", "rust:install"]"#,
+            r#""needs": ["fetch", "rust:fetch"]"#,
         );
         check(&json).unwrap();
         let bad = STEPPED.replace(r#""needs": ["fetch"]"#, r#""needs": ["fetch", "rust:wat"]"#);
@@ -303,24 +287,29 @@ mod tests {
     }
 
     #[test]
-    fn done_barrier_ref_is_always_valid() {
+    fn external_done_barrier_is_valid_but_self_barrier_is_rejected() {
         let json = STEPPED.replace(
             r#""needs": ["fetch"]"#,
             r#""needs": ["fetch", "rust:done"]"#,
         );
         check(&json).unwrap();
-        // and into an explicit-steps module too
+        // A module cannot wait for its own completion.
         let json = STEPPED.replace(
             r#""needs": ["fetch"]"#,
             r#""needs": ["fetch", "helix:done"]"#,
         );
-        check(&json).unwrap();
+        assert!(
+            check(&json)
+                .unwrap_err()
+                .iter()
+                .any(|d| d.code == codes::UNKNOWN_STEP)
+        );
     }
 
     #[test]
     fn merge_and_template_modes_pass_sema_with_vars_and_marker() {
         let json = r##"{
-            "ir_version": 2,
+            "ir_version": 3,
             "modules": {
                 "shell": {
                     "config": [
@@ -337,7 +326,7 @@ mod tests {
     #[test]
     fn destination_shaped_verify_path_is_e109() {
         let json = r#"{
-            "ir_version": 2,
+            "ir_version": 3,
             "modules": {
                 "gitui": {
                     "config": [{"from": "theme.ron", "to": "~/.config/gitui/theme.ron"}],
@@ -374,7 +363,7 @@ mod contract_tests {
         // the contract is load-bearing (review finding B): a camelCase
         // leak like baseUrl is a hard error, never silent data loss
         let json = r##"{
-            "ir_version": 2,
+            "ir_version": 3,
             "modules": {
                 "gh": {
                     "fetch": {"kind": "github_release", "repo": "a/b",

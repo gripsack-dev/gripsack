@@ -101,7 +101,6 @@ mod tests {
             resources: vec![],
             phase: None,
             verify: None,
-            retries: None,
             span: None,
         }
     }

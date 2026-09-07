@@ -150,12 +150,27 @@ pub fn load_env(path: &std::path::Path) -> Result<EnvConfig, Vec<Diagnostic>> {
 }
 
 /// The user layer (~/.config/gripsack/config.toml). A missing file is
-/// an empty layer, not an error.
+/// an empty layer, not an error. A dangling link is a broken layer, not absence.
 pub fn load_user(path: &std::path::Path) -> Result<UserConfig, Vec<Diagnostic>> {
-    let Ok(source) = std::fs::read_to_string(path) else {
-        return Ok(UserConfig::default());
+    let source = match std::fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(e)
+            if e.kind() == std::io::ErrorKind::NotFound
+                && matches!(
+                    std::fs::symlink_metadata(path),
+                    Err(missing) if missing.kind() == std::io::ErrorKind::NotFound
+                ) =>
+        {
+            return Ok(UserConfig::default());
+        }
+        Err(e) => {
+            return Err(vec![Diagnostic::error(
+                codes::CONFIG,
+                format!("cannot read {}: {e}", path.display()),
+            )]);
+        }
     };
-    parse_user(&source)
+    parse_as(&source, &path.display().to_string())
 }
 
 fn parse_env_as(source: &str, file: &str) -> Result<EnvConfig, Vec<Diagnostic>> {

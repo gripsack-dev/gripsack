@@ -36,9 +36,15 @@ pub fn run(
     let versions = versions::tool_versions(repo, host);
     for (name, module) in &ir.modules {
         let Some(lint) = &module.lint else { continue };
-        let mut paths: Vec<PathBuf> = module
-            .config
-            .iter()
+        let plan = match gripsack_ir::prepared::PreparedModule::new(module) {
+            Ok(plan) => plan,
+            Err(diagnostic) => {
+                out.push(diagnostic);
+                continue;
+            }
+        };
+        let mut paths: Vec<PathBuf> = plan
+            .config_entries()
             .map(|e| repo.join(&e.from))
             .filter(|p| p.is_file())
             .collect();

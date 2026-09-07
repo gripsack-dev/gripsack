@@ -58,13 +58,27 @@ pub fn verify_store(
                     continue;
                 }
                 let src = path.join(&entry.from);
-                if !src.is_file() || src.is_symlink() {
-                    continue;
-                }
+                let metadata = match std::fs::symlink_metadata(&src) {
+                    Ok(metadata) if metadata.is_file() => metadata,
+                    _ => continue,
+                };
+                #[cfg(unix)]
+                let source_exec = {
+                    use std::os::unix::fs::PermissionsExt;
+                    metadata.permissions().mode() & 0o111 != 0
+                };
+                #[cfg(not(unix))]
+                let source_exec = {
+                    let _ = metadata;
+                    false
+                };
+                let source_exec_changed = entry.mode == gripsack_ir::Ownership::TrackedCopy
+                    && entry
+                        .source_executable
+                        .is_some_and(|expected| expected != source_exec);
                 // each arm recomputes in the entry's manifest domain
                 // (0031): merge/template are bytes-only; copies are
-                // mode-aware — the intent mode re-derived from the
-                // store payload's exec bit (0444 → 0644, 0555 → 0755);
+                // mode-aware in the receipt's persisted format.
                 // owned links record the payload's store identity
                 let actual = match entry.mode {
                     gripsack_ir::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
@@ -90,38 +104,30 @@ pub fn verify_store(
                         .ok()
                         .map(|h| h.to_string()),
                     gripsack_ir::Ownership::TrackedCopy => std::fs::read(&src).ok().map(|bytes| {
-                        #[cfg(unix)]
-                        let exec = {
-                            use std::os::unix::fs::MetadataExt;
-                            std::fs::metadata(&src)
-                                .map(|m| m.mode() & 0o111 != 0)
-                                .unwrap_or(false)
-                        };
-                        #[cfg(not(unix))]
-                        let exec = false;
-                        gripsack_store::canonical_bytes_identity(
-                            &bytes,
-                            if exec { 0o755 } else { 0o644 },
-                        )
-                        .to_string()
+                        // Pre-0041 copy receipts hashed the nominal source mode,
+                        // even for private takeovers. The new source field marks
+                        // receipts whose hash includes the actual landed mode.
+                        let mode = entry
+                            .source_executable
+                            .and(entry.file_mode)
+                            .unwrap_or(if source_exec { 0o755 } else { 0o644 });
+                        gripsack_store::canonical_bytes_identity(&bytes, mode).to_string()
                     }),
                 };
                 if let Some(h) = &actual
-                    && h.as_str() != entry.hash.as_str()
+                    && (source_exec_changed || h.as_str() != entry.hash.as_str())
                 {
-                    return_corrupt(
-                        &mut out,
-                        repair,
-                        home,
-                        path,
-                        name,
-                        &format!(
+                    let detail = if source_exec_changed {
+                        format!("corrupt: {} source executable bit changed", src.display())
+                    } else {
+                        format!(
                             "corrupt: {} tampered (recorded {} ≠ {})",
                             src.display(),
                             hex_head(entry.hash.as_str()),
                             hex_head(h)
-                        ),
-                    )?;
+                        )
+                    };
+                    return_corrupt(&mut out, repair, home, path, name, &detail)?;
                     handled = true;
                     break;
                 }

@@ -1,0 +1,538 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gripsack.dev/schema/ir/v3.json",
+  "title": "gripsack IR v3",
+  "description": "Typed frontend/core contract. Unknown structural fields are rejected; semantic checks additionally validate graphs and paths (0041).",
+  "type": "object",
+  "required": [
+    "ir_version",
+    "modules"
+  ],
+  "properties": {
+    "ir_version": {
+      "const": 3
+    },
+    "host": {
+      "$ref": "#/$defs/hostFacts"
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resource"
+      },
+      "description": "Declared resources (0007 §4); step resources must resolve to these or core built-ins"
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/module"
+      }
+    }
+  },
+  "$defs": {
+    "hostFacts": {
+      "type": "object",
+      "properties": {
+        "os": {
+          "type": "string"
+        },
+        "arch": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "libc": {
+          "type": "string",
+          "description": "e.g. glibc-2.36, musl, darwin"
+        }
+      }
+    },
+    "span": {
+      "type": "object",
+      "required": [
+        "file",
+        "line"
+      ],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "col": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "description": "Source location of this node in frontend code (plan/0004 §2). Optional; built-in frontends MUST emit it at module level."
+    },
+    "module": {
+      "type": "object",
+      "properties": {
+        "fetch": {
+          "$ref": "#/$defs/fetch"
+        },
+        "build": {
+          "$ref": "#/$defs/build"
+        },
+        "install": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
+        },
+        "config": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
+        },
+        "depends": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency"
+          }
+        },
+        "activate": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/intent"
+          }
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "verify": {
+          "$ref": "#/$defs/verify"
+        },
+        "lint": {
+          "type": "string",
+          "description": "Registered linter for this module's config payloads (0011); the core drives it (0012)"
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/envVar"
+          },
+          "description": "Environment contributions exported to the shell profile at activation (plan/0001 §3.10)"
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "none",
+            "custom_shell"
+          ]
+        },
+        "script": {
+          "type": "string"
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^(/|~/)",
+          "description": "absolute or ~/-prefixed destination"
+        },
+        "mode": {
+          "enum": [
+            "owned",
+            "tracked_copy",
+            "merge",
+            "template"
+          ],
+          "default": "owned"
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "template variables (mode template only)"
+        },
+        "marker": {
+          "type": "string",
+          "description": "comment prefix for the managed block (mode merge only); default: inferred from the dest extension"
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "required": [
+        "module"
+      ],
+      "properties": {
+        "module": {
+          "type": "string",
+          "minLength": 1
+        },
+        "for": {
+          "enum": [
+            "runtime",
+            "build"
+          ],
+          "default": "runtime",
+          "description": "Build dependencies provide store artifacts to build steps; runtime dependencies also deploy. Runtime incoming edges win over build-only use (0039)."
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        }
+      },
+      "additionalProperties": false
+    },
+    "intent": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "trigger": {
+          "enum": [
+            "post_link",
+            "post_activate",
+            "on_remove"
+          ],
+          "default": "post_activate"
+        },
+        "kind": {
+          "enum": [
+            "service",
+            "fonts",
+            "desktop_entry",
+            "custom_shell"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "user": {
+          "type": "boolean"
+        },
+        "script": {
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "id",
+        "action"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fetch",
+                "build",
+                "install",
+                "config_deploy",
+                "intent",
+                "verify",
+                "run",
+                "custom_shell"
+              ]
+            }
+          }
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "sibling step ids or cross-module 'module:step' refs"
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "phase": {
+          "enum": [
+            "fetch",
+            "build",
+            "install",
+            "config",
+            "verify",
+            "activate",
+            "custom"
+          ]
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "verify": {
+          "$ref": "#/$defs/verify"
+        }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "fetch": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "github_release",
+            "tarball",
+            "git",
+            "file",
+            "plugin",
+            "brew",
+            "pixi"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "github_release"
+            },
+            "repo": {
+              "type": "string",
+              "pattern": "^[^/]+/[^/]+$"
+            },
+            "asset": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "base_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "kind",
+            "repo",
+            "asset"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "tarball"
+            },
+            "url": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "api_url": {
+              "type": "string",
+              "description": "registry API asset endpoint (authenticated download path); produced by resolution, never written by frontends"
+            }
+          },
+          "required": [
+            "kind",
+            "url"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "git"
+            },
+            "url": {
+              "type": "string"
+            },
+            "rev": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind",
+            "url"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "file"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "plugin"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "args": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "brew"
+            },
+            "formula": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "required": [
+            "kind",
+            "formula"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "pixi"
+            },
+            "package": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "required": [
+            "kind",
+            "package"
+          ]
+        }
+      ]
+    },
+    "verify": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "binary_runs",
+            "file_exists",
+            "shell",
+            "file_deployed"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "script": {
+          "type": "string"
+        }
+      },
+      "description": "Smoke contract (0007): binary_runs {path,args} | file_exists {path} | shell {script}. Runs pre-flip."
+    },
+    "envVar": {
+      "type": "object",
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "variable name; PATH-style list vars use prepend/append"
+        },
+        "op": {
+          "enum": [
+            "set",
+            "prepend",
+            "append"
+          ],
+          "default": "set"
+        },
+        "value": {
+          "type": "string",
+          "description": "`{store}` resolves to the module's store path"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

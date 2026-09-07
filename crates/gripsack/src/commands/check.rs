@@ -20,8 +20,9 @@ pub fn check(repo: &Path, host: Option<&str>, palette: Palette) -> ExitCode {
             // only, no side effects — two spellings of one directory
             // entry are a check-time error, rendered like any sema
             // diagnostic (code, spans, help)
-            let steps = gripsack_exec::expand::expand_all(&ir.modules);
-            match gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &steps) {
+            match gripsack_exec::expand::expand_all(&ir.modules).and_then(|plans| {
+                gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &plans)
+            }) {
                 Ok(()) => {}
                 Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
                     eprintln!("{}", crate::render::render_diagnostics(&[d], palette));

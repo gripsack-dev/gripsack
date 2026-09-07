@@ -1,6 +1,7 @@
 # 0039 — Build closures
 
-Status: **implemented for core/TS 0.35.0**; release gates and publication follow.
+Status: **shipped in core/TS 0.35.0**, PR #133. All four compose gates,
+native macOS CI, the example-env canary and publication workflows passed.
 
 ## Execution amendment — alpha IR cutover
 

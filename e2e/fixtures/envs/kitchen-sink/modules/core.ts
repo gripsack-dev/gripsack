@@ -29,7 +29,6 @@ export default module("core", {
   },
   env: { SINK_HOME: "{store}", "PATH+": "{store}/bin" },
   verify: verifyBinary("starship", ["--version"]),
-  retries: 2,
   lint: "helix",
   activate: [fonts(), service("kitchen-sink", true), desktopEntry()],
 });

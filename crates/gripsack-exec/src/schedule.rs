@@ -9,7 +9,7 @@ use crate::ctx::{Ctx, ExecError};
 use crate::lockfile::{LockEntry, Lockfile};
 use crate::module::{ModuleOutcome, run_module};
 use crate::report::StepReport;
-use gripsack_ir::{Ir, Module, Step};
+use gripsack_ir::{Ir, Module};
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::PathBuf;
@@ -41,7 +41,7 @@ struct State {
 
 pub(crate) fn run_all(
     ir: &Ir,
-    steps_by_module: &BTreeMap<String, Vec<Step>>,
+    steps_by_module: &BTreeMap<String, gripsack_ir::prepared::PreparedModule>,
     order: &[String],
     ctx: &Ctx,
     prev: &BTreeMap<String, store::ModuleState>,
@@ -54,12 +54,9 @@ pub(crate) fn run_all(
     for name in &wanted {
         let module = &ir.modules[*name];
         let mut deps = 0;
-        for dep in &module.depends {
-            if wanted.contains(dep.module.as_str()) {
-                dependents
-                    .entry(dep.module.as_str())
-                    .or_default()
-                    .push(name);
+        for dep in gripsack_ir::dependencies::ordering_dependencies(name, module) {
+            if wanted.contains(dep) {
+                dependents.entry(dep).or_default().push(name);
                 deps += 1;
             }
         }
@@ -265,20 +262,20 @@ struct Scheduled {
 fn run_one(
     name: &str,
     ir: &Ir,
-    steps_by_module: &BTreeMap<String, Vec<Step>>,
+    steps_by_module: &BTreeMap<String, gripsack_ir::prepared::PreparedModule>,
     ctx: &Ctx,
     prev: &BTreeMap<String, store::ModuleState>,
     lock: &Lockfile,
     scheduled: Scheduled,
 ) -> Result<ModuleOutcome, ExecError> {
     let module: &Module = &ir.modules[name];
-    let steps = &steps_by_module[name];
+    let plan = &steps_by_module[name];
     run_module(
         crate::module::ModuleInputs {
             name,
             module,
             ir,
-            steps,
+            plan,
             prev_map: &prev_by_dest(prev),
             prev_module: prev.get(name),
             locked: lock.modules.get(name),

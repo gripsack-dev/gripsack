@@ -86,7 +86,7 @@ First eval of an unfamiliar repo is an explicit trust decision
 Everything is fully typed — your editor gives you autocomplete and
 inline errors for free.
 
-## Build dependencies and IR v2
+## Build dependencies and IR v3
 
 `dep("compiler", { for: "build" })` supplies store artifacts to the
 consumer's build/custom/run steps through a prepended PATH and
@@ -97,12 +97,29 @@ Build closures follow build edges transitively, with graph-ordered
 PATH and deduplicated members. Runtime deps of a build tool still
 deploy normally. This is not a hermetic environment.
 
-Core/TypeScript **0.35.0 uses IR v2**. `for` replaces the v1 `edge`
-wire field, and the old positional `dep("rust", "build")` form is
-rejected. Update a pinned `@gripsack/core` to `^0.35.0`, or remove it
-to use the embedded frontend. Old lockfiles and generations remain
-readable; rollback restores files without rebuilding. GC retains
-closure paths for every generation that references them.
+Core/TypeScript **0.36.0 uses IR v3**. Remove module/step `retries`:
+the field was accepted but did not execute retries; it is now rejected.
+Update a pinned `@gripsack/core` to `^0.36.0`, or remove it to use the
+embedded frontend. v1/v2 input is rejected before decoding. Dependency
+purposes still use `for`, not `edge`, with `dep(name, { for: "build" })`.
+Old lockfiles and generations remain readable; rollback restores files
+without rebuilding. GC retains closure paths for every retained generation.
+
+## Execution contracts
+
+Explicit steps and declarative fields share source staging, config lint
+and module-level verification. Do not mix `steps` with
+`fetch`/`build`/`install`/`config`/`activate` fields.
+
+Cross-module `needs: ["producer:step"]` waits for the producer module's
+pre-activation work, including verification. This is module-granular
+ordering, not a global step scheduler. It adds no deployment role or PATH
+export; use `dep` for those. Activation targets, self-qualified refs and
+cycles are rejected. Use sibling ids within a module.
+
+Build, shell and run steps are cached artifact recipes. Declared `outputs`
+must exist after shell and run actions; omitting outputs does not mean
+"always run". Put repeatable activation effects in `customHook` instead.
 
 ## Development
 

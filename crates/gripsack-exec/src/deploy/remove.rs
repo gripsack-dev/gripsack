@@ -101,7 +101,7 @@ pub fn remove_entry_deployed(
 /// remove_file where NotFound is success (the goal state), anything
 /// else is a real error (0027 §1).
 fn remove_if_present(dest_dir: &gripsack_fs::Dir, dest_name: &Path) -> std::io::Result<()> {
-    match dest_dir.remove_file(dest_name) {
+    match gripsack_fs::remove_file(dest_dir, dest_name) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),

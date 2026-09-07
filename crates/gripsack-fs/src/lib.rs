@@ -24,6 +24,10 @@
 //! generations — hold a `Dir` opened at check time and never go
 //! through them.
 
+mod directories;
+pub mod fault;
+pub use directories::{create_dir_all, open_or_create, remove_file, rename};
+use fault::{Boundary, operation};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -38,13 +42,6 @@ pub fn open(path: &Path) -> io::Result<Dir> {
     Dir::open_ambient_dir(path, cap_std::ambient_authority())
 }
 
-/// [`open`] for roots that may not exist yet (first-run
-/// `$GRIPSACK_HOME`): create, then open.
-pub fn open_or_create(path: &Path) -> io::Result<Dir> {
-    std::fs::create_dir_all(path)?;
-    open(path)
-}
-
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Temp sibling names carry pid + a counter so concurrent writers in
@@ -56,7 +53,7 @@ fn temp_name(prefix: &str, name: &Path) -> PathBuf {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     PathBuf::from(format!(
-        ".{prefix}-{}-{}-{base}",
+        ".{prefix}-{}-{}-{base}.tmp",
         std::process::id(),
         TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     ))
@@ -81,7 +78,9 @@ pub fn fsync_dir(dir: &Dir, rel: &Path) -> io::Result<()> {
         rustix::fs::Mode::empty(),
     )
     .map_err(io::Error::from)?;
-    rustix::fs::fsync(fd).map_err(io::Error::from)
+    operation(Boundary::DirSync, rel, || {
+        rustix::fs::fsync(fd).map_err(io::Error::from)
+    })
 }
 
 /// Keep an existing destination's mode across a content-only update
@@ -119,7 +118,7 @@ fn create_temp(dir: &Dir, tmp: &Path) -> io::Result<cap_std::fs::File> {
     match dir.open_with(tmp, &opts) {
         Ok(file) => Ok(file),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-            dir.remove_file(tmp)?;
+            remove_file(dir, tmp)?;
             dir.open_with(tmp, &opts)
         }
         Err(e) => Err(e),
@@ -131,20 +130,22 @@ fn create_temp(dir: &Dir, tmp: &Path) -> io::Result<cap_std::fs::File> {
 /// Parent directories are created as needed.
 pub fn atomic_write(dir: &Dir, name: &Path, contents: &[u8]) -> io::Result<()> {
     let parent = parent_rel(name);
-    dir.create_dir_all(parent)?;
+    create_dir_all(dir, parent)?;
     let tmp = parent.join(temp_name("tmp-write", name));
     let result = (|| {
         let mut file = create_temp(dir, &tmp)?;
-        io::Write::write_all(&mut file, contents)?;
+        operation(Boundary::Write, name, || {
+            io::Write::write_all(&mut file, contents)
+        })?;
         // a content update is not a mode change (0026 §7): the fresh
         // temp file would otherwise land 0644&umask, silently
         // widening a 0600 secret or dropping an exec bit on update
-        preserve_mode(dir, name, &file)?;
-        file.sync_all()?;
-        dir.rename(&tmp, dir, name)
+        operation(Boundary::Mode, name, || preserve_mode(dir, name, &file))?;
+        operation(Boundary::FileSync, name, || file.sync_all())?;
+        operation(Boundary::FilePublish, name, || dir.rename(&tmp, dir, name))
     })();
     if result.is_err() {
-        let _ = dir.remove_file(&tmp);
+        let _ = remove_file(dir, &tmp);
     }
     result?;
     fsync_dir(dir, parent)
@@ -158,15 +159,17 @@ pub fn atomic_write(dir: &Dir, name: &Path, contents: &[u8]) -> io::Result<()> {
 pub fn symlink_replace(dir: &Dir, link: &Path, target: &Path) -> io::Result<()> {
     let parent = parent_rel(link);
     let tmp = parent.join(temp_name("tmp-link", link));
-    let _ = dir.remove_file(&tmp);
+    let _ = remove_file(dir, &tmp);
     // rustix, not Dir::symlink: cap-std validates the TARGET stays
     // inside the capability, but symlink creation writes bytes — no
     // resolution happens — and gripsack's links point at absolute
     // store paths by design (the generation flip, owned deploys).
-    rustix::fs::symlinkat(target, dir, &tmp)
-        .map_err(|e| io::Error::new(e.kind(), format!("symlink {link:?} -> {target:?}: {e}")))?;
-    if let Err(e) = dir.rename(&tmp, dir, link) {
-        let _ = dir.remove_file(&tmp);
+    operation(Boundary::Symlink, link, || {
+        rustix::fs::symlinkat(target, dir, &tmp).map_err(io::Error::from)
+    })
+    .map_err(|e| io::Error::new(e.kind(), format!("symlink {link:?} -> {target:?}: {e}")))?;
+    if let Err(e) = operation(Boundary::FilePublish, link, || dir.rename(&tmp, dir, link)) {
+        let _ = remove_file(dir, &tmp);
         return Err(io::Error::new(
             e.kind(),
             format!("link {link:?} -> {target:?}: {e}"),
@@ -198,10 +201,16 @@ pub fn publish_dir(home: &Dir, staging: &Path, dest: &Path) -> io::Result<()> {
     // recursive sync here.
     fsync_tree(home, staging)?;
     let parent = parent_rel(dest);
-    home.create_dir_all(parent)?;
-    match rustix::fs::renameat(rustix::fs::CWD, staging, home, dest) {
+    create_dir_all(home, parent)?;
+    match if fault::force_copy() {
+        Err(io::Error::from(rustix::io::Errno::XDEV))
+    } else {
+        operation(Boundary::TreePublish, dest, || {
+            rustix::fs::renameat(rustix::fs::CWD, staging, home, dest).map_err(io::Error::from)
+        })
+    } {
         Ok(()) => {}
-        Err(rustix::io::Errno::XDEV) => {
+        Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
             // staging lives in $TMPDIR, the store under $GRIPSACK_HOME —
             // on containers /tmp is routinely a tmpfs, so EXDEV is a
             // layout fact, not a user error. The copy must still be
@@ -215,7 +224,9 @@ pub fn publish_dir(home: &Dir, staging: &Path, dest: &Path) -> io::Result<()> {
             let sibling = parent.join(temp_name("publish", dest));
             let result = (|| {
                 copy_into_dir(staging, home, &sibling)?;
-                home.rename(&sibling, home, dest)
+                operation(Boundary::TreePublish, dest, || {
+                    home.rename(&sibling, home, dest)
+                })
             })();
             if let Err(e) = result {
                 let _ = home.remove_dir_all(&sibling);
@@ -256,16 +267,18 @@ fn fsync_tree(_dir: &Dir, staging: &Path) -> io::Result<()> {
             fsync_tree(_dir, &entry.path())?;
         } else if ty.is_file() {
             let file = std::fs::File::open(entry.path())?;
-            file.sync_all()?;
+            operation(Boundary::FileSync, &entry.path(), || file.sync_all())?;
         }
         // symlinks carry no bytes; their dir entries are synced by the
         // parent fsync below
     }
-    rustix::fs::fsync(std::fs::File::open(staging)?).map_err(io::Error::from)
+    operation(Boundary::DirSync, staging, || {
+        rustix::fs::fsync(std::fs::File::open(staging)?).map_err(io::Error::from)
+    })
 }
 
 fn copy_into_dir(src: &Path, dst: &Dir, rel: &Path) -> io::Result<()> {
-    dst.create_dir_all(rel)?;
+    create_dir_all(dst, rel)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
@@ -276,17 +289,22 @@ fn copy_into_dir(src: &Path, dst: &Dir, rel: &Path) -> io::Result<()> {
             let target = std::fs::read_link(entry.path())?;
             // symlinkat: payloads legitimately carry absolute-target
             // links (see symlink_replace)
-            rustix::fs::symlinkat(&target, dst, &to).map_err(io::Error::from)?;
+            operation(Boundary::Symlink, &to, || {
+                rustix::fs::symlinkat(&target, dst, &to).map_err(io::Error::from)
+            })?;
         } else {
             let mut opts = cap_std::fs::OpenOptions::new();
             opts.write(true).create_new(true);
             let mut file = dst.open_with(&to, &opts)?;
-            io::Write::write_all(&mut file, &std::fs::read(entry.path())?)?;
-            file.sync_all()?;
-            dst.set_permissions(
-                &to,
-                cap_std::fs::Permissions::from_std(entry.metadata()?.permissions()),
-            )?;
+            operation(Boundary::Write, &to, || {
+                std::io::copy(&mut std::fs::File::open(entry.path())?, &mut file).map(|_| ())
+            })?;
+            operation(Boundary::Mode, &to, || {
+                file.set_permissions(cap_std::fs::Permissions::from_std(
+                    entry.metadata()?.permissions(),
+                ))
+            })?;
+            operation(Boundary::FileSync, &to, || file.sync_all())?;
         }
     }
     // children durable before the dir's own metadata
@@ -331,7 +349,9 @@ fn read_only_files(dir: &Path) -> io::Result<()> {
             read_only_files(&path)?;
         } else {
             let mode = meta.permissions().mode();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode & !0o222))?;
+            operation(Boundary::Mode, &path, || {
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode & !0o222))
+            })?;
         }
     }
     Ok(())
@@ -368,19 +388,23 @@ pub fn atomic_write_with_mode(
 ) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let parent = parent_rel(name);
-    dir.create_dir_all(parent)?;
+    create_dir_all(dir, parent)?;
     let tmp = parent.join(temp_name("tmp-write", name));
     let result = (|| {
         let mut file = create_temp(dir, &tmp)?;
-        io::Write::write_all(&mut file, contents)?;
-        file.set_permissions(cap_std::fs::Permissions::from_std(
-            std::fs::Permissions::from_mode(mode),
-        ))?;
-        file.sync_all()?;
-        dir.rename(&tmp, dir, name)
+        operation(Boundary::Write, name, || {
+            io::Write::write_all(&mut file, contents)
+        })?;
+        operation(Boundary::Mode, name, || {
+            file.set_permissions(cap_std::fs::Permissions::from_std(
+                std::fs::Permissions::from_mode(mode),
+            ))
+        })?;
+        operation(Boundary::FileSync, name, || file.sync_all())?;
+        operation(Boundary::FilePublish, name, || dir.rename(&tmp, dir, name))
     })();
     if result.is_err() {
-        let _ = dir.remove_file(&tmp);
+        let _ = remove_file(dir, &tmp);
     }
     result?;
     fsync_dir(dir, parent)
@@ -460,246 +484,7 @@ fn flock(_file: &std::fs::File, _op: i32) -> io::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod persistence_model;
 
-    #[test]
-    fn atomic_write_lands_content_without_leftovers() {
-        let dir = tempfile::tempdir().unwrap();
-        let cap = open(dir.path()).unwrap();
-        atomic_write(&cap, Path::new("manifest.json"), br#"{"gen": 1}"#).unwrap();
-        assert_eq!(
-            std::fs::read(dir.path().join("manifest.json")).unwrap(),
-            br#"{"gen": 1}"#
-        );
-        // overwrite works, and no temp files linger
-        atomic_write(&cap, Path::new("manifest.json"), br#"{"gen": 2}"#).unwrap();
-        assert_eq!(
-            std::fs::read(dir.path().join("manifest.json")).unwrap(),
-            br#"{"gen": 2}"#
-        );
-        let entries: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
-        assert_eq!(entries.len(), 1);
-    }
-
-    #[test]
-    fn atomic_write_creates_parent_dirs() {
-        let dir = tempfile::tempdir().unwrap();
-        let cap = open(dir.path()).unwrap();
-        atomic_write(&cap, Path::new("journal/abc.json"), b"x").unwrap();
-        assert_eq!(
-            std::fs::read(dir.path().join("journal/abc.json")).unwrap(),
-            b"x"
-        );
-    }
-
-    #[test]
-    fn symlink_replace_flips_atomically() {
-        let dir = tempfile::tempdir().unwrap();
-        let cap = open(dir.path()).unwrap();
-        std::fs::create_dir_all(dir.path().join("gen/1")).unwrap();
-        std::fs::create_dir_all(dir.path().join("gen/2")).unwrap();
-        symlink_replace(&cap, Path::new("current"), Path::new("gen/1")).unwrap();
-        assert_eq!(
-            std::fs::read_link(dir.path().join("current")).unwrap(),
-            PathBuf::from("gen/1")
-        );
-        symlink_replace(&cap, Path::new("current"), Path::new("gen/2")).unwrap();
-        assert_eq!(
-            std::fs::read_link(dir.path().join("current")).unwrap(),
-            PathBuf::from("gen/2")
-        );
-        // no temp links linger
-        let entries: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
-        assert_eq!(entries.len(), 2);
-    }
-
-    #[test]
-    fn publish_refuses_an_existing_dest() {
-        let dir = tempfile::tempdir().unwrap();
-        let cap = open(dir.path()).unwrap();
-        let staging = tempfile::tempdir().unwrap();
-        std::fs::write(staging.path().join("payload"), b"v1").unwrap();
-        publish_dir(&cap, staging.path(), Path::new("store/aaa-m")).unwrap();
-        assert_eq!(
-            std::fs::read(dir.path().join("store/aaa-m/payload")).unwrap(),
-            b"v1"
-        );
-        let staging2 = tempfile::tempdir().unwrap();
-        let err = publish_dir(&cap, staging2.path(), Path::new("store/aaa-m")).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
-    }
-
-    #[test]
-    fn publish_lands_files_read_only() {
-        let dir = tempfile::tempdir().unwrap();
-        let cap = open(dir.path()).unwrap();
-        let staging = tempfile::tempdir().unwrap();
-        std::fs::write(staging.path().join("payload"), b"v1").unwrap();
-        publish_dir(&cap, staging.path(), Path::new("store/aaa-m")).unwrap();
-        let meta = std::fs::metadata(dir.path().join("store/aaa-m/payload")).unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(meta.permissions().mode() & 0o222, 0);
-    }
-
-    #[test]
-    fn copy_dir_preserves_symlinks_and_merges() {
-        let dir = tempfile::tempdir().unwrap();
-        let src = dir.path().join("src");
-        std::fs::create_dir_all(src.join("sub")).unwrap();
-        std::fs::write(src.join("sub/f"), b"bytes").unwrap();
-        std::os::unix::fs::symlink("f", src.join("sub/link")).unwrap();
-        // merge: the destination already holds a fetched payload dir
-        let dst = dir.path().join("dst");
-        std::fs::create_dir_all(dst.join("sub")).unwrap();
-        std::fs::write(dst.join("sub/payload"), b"fetched").unwrap();
-        copy_dir(&src, &dst).unwrap();
-        assert_eq!(std::fs::read(dst.join("sub/f")).unwrap(), b"bytes");
-        assert_eq!(std::fs::read(dst.join("sub/payload")).unwrap(), b"fetched");
-        let link = dst.join("sub/link");
-        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
-        assert_eq!(std::fs::read_link(link).unwrap(), Path::new("f"));
-    }
-
-    /// A content-only update keeps the destination's mode (0026 §7):
-    /// 0600 stays 0600, 0755 stays executable.
-    #[test]
-    fn atomic_write_preserves_the_destinations_mode() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let cap = open(dir.path()).unwrap();
-        let secret = dir.path().join("secret");
-        std::fs::write(&secret, b"v1").unwrap();
-        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o600)).unwrap();
-        atomic_write(&cap, Path::new("secret"), b"v2").unwrap();
-        let meta = std::fs::metadata(&secret).unwrap();
-        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
-        assert_eq!(std::fs::read(&secret).unwrap(), b"v2");
-
-        let tool = dir.path().join("tool");
-        std::fs::write(&tool, b"#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
-        atomic_write(&cap, Path::new("tool"), b"#!/bin/sh\n# v2\n").unwrap();
-        assert_eq!(
-            std::fs::metadata(&tool).unwrap().permissions().mode() & 0o777,
-            0o755
-        );
-    }
-
-    /// Recovery-grade write: the exact mode rides the rename — the
-    /// file never exists at a wider mode (0027 §6).
-    #[test]
-    fn atomic_write_with_mode_lands_exact_permissions() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let cap = open(dir.path()).unwrap();
-        atomic_write_with_mode(&cap, Path::new("secret"), b"s", 0o600).unwrap();
-        assert_eq!(
-            std::fs::metadata(dir.path().join("secret"))
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777,
-            0o600
-        );
-        // and it still replaces an existing symlink (file→link→crash
-        // recovery path)
-        std::os::unix::fs::symlink("/elsewhere", dir.path().join("link")).unwrap();
-        atomic_write_with_mode(&cap, Path::new("link"), b"s", 0o400).unwrap();
-        let meta = std::fs::metadata(dir.path().join("link")).unwrap();
-        assert!(meta.is_file());
-        assert_eq!(meta.permissions().mode() & 0o777, 0o400);
-    }
-
-    /// The EXDEV fallback across a REAL filesystem boundary: staging
-    /// on /dev/shm (tmpfs), the store in the test tempdir. Skipped
-    /// where /dev/shm does not exist (macOS). Asserts the copy
-    /// preserves the exec bit AND the store's read-only policy
-    /// (applied to staging before the copy) — the 0021 copy path
-    /// dropped both (0025 §G).
-    #[test]
-    fn publish_cross_filesystem_preserves_modes() {
-        let shm = Path::new("/dev/shm");
-        if !shm.is_dir() {
-            eprintln!("no /dev/shm — skipping the cross-filesystem test");
-            return;
-        }
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let cap = open(dir.path()).unwrap();
-        let staging = tempfile::tempdir_in(shm).unwrap();
-        let tool = staging.path().join("tool");
-        std::fs::write(&tool, b"#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::os::unix::fs::symlink("tool", staging.path().join("tool-link")).unwrap();
-
-        publish_dir(&cap, staging.path(), Path::new("store/exe-m")).unwrap();
-
-        let meta = std::fs::metadata(dir.path().join("store/exe-m/tool")).unwrap();
-        let mode = meta.permissions().mode();
-        assert!(mode & 0o111 != 0, "exec bit must survive EXDEV: {mode:o}");
-        assert_eq!(
-            mode & 0o222,
-            0,
-            "read-only policy must survive EXDEV: {mode:o}"
-        );
-        assert!(
-            dir.path()
-                .join("store/exe-m/tool-link")
-                .symlink_metadata()
-                .unwrap()
-                .file_type()
-                .is_symlink()
-        );
-    }
-
-    /// The adversary the migration exists for (plan/0021 acceptance):
-    /// a thread flips the `parent` PATH between a real directory and a
-    /// symlink to `evil` while writes land through a capability opened
-    /// on the real directory. Every write must reach the pinned inode
-    /// — never the directory the path currently resolves to. With
-    /// string-path writes this test loses `evil/pwned` within
-    /// iterations; with the capability it can never appear.
-    #[test]
-    fn writes_stay_on_the_pinned_inode_under_parent_swap() {
-        let root = tempfile::tempdir().unwrap();
-        let real = root.path().join("real");
-        let evil = root.path().join("evil");
-        std::fs::create_dir_all(&real).unwrap();
-        std::fs::create_dir_all(&evil).unwrap();
-        let parent = root.path().join("parent");
-        std::os::unix::fs::symlink(&real, &parent).unwrap();
-
-        // check time: the guard validated `parent` and opened it ONCE
-        let cap = open(&parent).unwrap();
-
-        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let flipper = {
-            let stop = stop.clone();
-            let (parent, real, evil) = (parent.clone(), real.clone(), evil.clone());
-            std::thread::spawn(move || {
-                let mut to_evil = false;
-                while !stop.load(Ordering::Relaxed) {
-                    let tmp = parent.with_extension("swapping");
-                    let target = if to_evil { &evil } else { &real };
-                    if std::os::unix::fs::symlink(target, &tmp).is_ok() {
-                        let _ = std::fs::rename(&tmp, &parent);
-                    }
-                    to_evil = !to_evil;
-                }
-            })
-        };
-
-        for i in 0..200 {
-            atomic_write(&cap, Path::new("data"), format!("write {i}").as_bytes()).unwrap();
-        }
-        stop.store(true, Ordering::Relaxed);
-        flipper.join().unwrap();
-
-        assert!(
-            !evil.join("data").exists(),
-            "a write escaped the pinned directory inode into the swapped-in target"
-        );
-        assert_eq!(std::fs::read(real.join("data")).unwrap(), b"write 199");
-    }
-}
+#[cfg(test)]
+mod tests;

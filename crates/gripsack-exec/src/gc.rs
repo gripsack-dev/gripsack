@@ -62,9 +62,6 @@ pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, Exe
 
     let mut referenced = std::collections::BTreeSet::new();
     for n in &generations {
-        if pruned.contains(n) {
-            continue;
-        }
         // fail CLOSED: an unparseable manifest must abort gc — dropping
         // its pins would collect referenced store paths and leave
         // dangling symlinks across the user's home (review finding G)
@@ -73,6 +70,9 @@ pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, Exe
             step: "gc".into(),
             detail: format!("manifest is corrupt — refusing to collect: {e}"),
         })?;
+        if pruned.contains(n) {
+            continue;
+        }
         for state in manifest.modules.values() {
             referenced.insert(state.store_path.clone());
             // Retained generations pin the consumer's transitive build closure.
@@ -189,6 +189,7 @@ mod tests {
                     vars: Default::default(),
                     hash: gripsack_store::hash::ManifestHash::from_raw("a".repeat(64)),
                     file_mode: None,
+                    source_executable: None,
                     prior: None,
                     preserved_drift: false,
                 }],

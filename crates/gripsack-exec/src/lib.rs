@@ -34,6 +34,7 @@ pub mod report;
 pub mod resolve;
 pub mod rollback;
 pub mod schedule;
+mod source;
 pub mod template;
 pub mod update;
 pub mod util;
@@ -68,20 +69,17 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
     let mut indegree: BTreeMap<&str, usize> = ir.modules.keys().map(|k| (k.as_str(), 0)).collect();
     let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for (name, module) in &ir.modules {
-        for dep in &module.depends {
+        for dep in gripsack_ir::dependencies::ordering_dependencies(name, module) {
             // sema (E101) catches this first; exec still refuses
             // honestly instead of misreporting a missing module as a
             // cycle (it would never enter `ready` and stick below)
-            if !indegree.contains_key(dep.module.as_str()) {
-                return Err(PlanError::UnknownDep(name.clone(), dep.module.clone()));
+            if !indegree.contains_key(dep) {
+                return Err(PlanError::UnknownDep(name.clone(), dep.to_owned()));
             }
             *indegree
                 .get_mut(name.as_str())
                 .expect("name is a graph key") += 1;
-            dependents
-                .entry(dep.module.as_str())
-                .or_default()
-                .push(name);
+            dependents.entry(dep).or_default().push(name);
         }
     }
     let mut ready: BTreeSet<&str> = indegree
@@ -120,10 +118,9 @@ pub fn waves(ir: &Ir) -> Result<Vec<Vec<String>>, PlanError> {
     let mut level: BTreeMap<&str, usize> = BTreeMap::new();
     for name in &order {
         let module = &ir.modules[name.as_str()];
-        let l = module
-            .depends
+        let l = gripsack_ir::dependencies::ordering_dependencies(name, module)
             .iter()
-            .map(|d| level.get(d.module.as_str()).copied().unwrap_or(0) + 1)
+            .map(|d| level.get(d).copied().unwrap_or(0) + 1)
             .max()
             .unwrap_or(0);
         level.insert(name.as_str(), l);
@@ -162,7 +159,6 @@ mod tests {
             env: vec![],
             steps: None,
             verify: None,
-            retries: None,
             lint: None,
             span: None,
         }

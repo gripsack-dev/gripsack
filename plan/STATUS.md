@@ -58,6 +58,8 @@ the fetcher registry stay the north star.
 | 0039 | Build closures | core/TS 0.35.0 | IR v2 `Dependency.for`; store-only build deps, graph-ordered PATH + GRIP_DEP_*, payload receipts, same-run dependency pins, generation-pinned GC, zero-destination op case + seeded journeys | library/header exports and controlled PATH (low priority, real-consumer/opt-in triggers); general env inheritance retains its existing roadmap priority | speculative verify/provisioning edge types; extra closure Op kind (marker suffices) |
 
 | 0038 | Journey harness | 0.34.0 | seeded random journeys + expectation model + system oracles; caught the preserved-verify bug on day one | wider world (more module kinds, parallel-applies stay TLA+'s) | — |
+| 0040 | Post-0.35 project sweep | review | boundary review + 13 isolated CLI probes; P1s approved and implemented by 0041 | P2 acquisition/process bounds, causal tracing, executable contract docs, reproducible toolchains/update policy | broad rewrites without a concrete consumer |
+| 0041 | P1 contract fidelity and persistence | core/TS 0.36.0 | fail-closed GC; one prepared view; ordering-only needs; output contracts; IR v3 removes inert retries; concrete preview; permission receipts and exact rollback; exhaustive recorded-cut matrix + ordering calibration; cohesive module/test splits | 0040 P2 backlog remains explicit on the roadmap | global step VM and partial retry engine |
 
 ## Settled rejections (all eras)
 

@@ -6,7 +6,7 @@ use crate::ctx::ExecError;
 use crate::report::{ReportKind, StepReport, describe_verify};
 use crate::util::progress;
 use crate::verify::run_verify;
-use gripsack_ir::{StepAction, Verify};
+use gripsack_ir::Verify;
 
 impl<'a> ModuleRun<'a> {
     // Return IR-owned references, not references to the phase machine: reporting
@@ -14,13 +14,8 @@ impl<'a> ModuleRun<'a> {
     fn checks(&self) -> (Vec<&'a Verify>, bool) {
         let mut skipped_destination = false;
         let checks = self
-            .steps
-            .iter()
-            .filter_map(|s| match &s.action {
-                StepAction::Verify { verify } => Some(verify),
-                _ => None,
-            })
-            .chain(self.pending_verifies.iter().copied())
+            .plan
+            .checks()
             .filter(|verify| {
                 if self.build_only && matches!(verify, Verify::FileDeployed { .. }) {
                     skipped_destination = true;

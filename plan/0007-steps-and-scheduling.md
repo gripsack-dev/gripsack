@@ -1,8 +1,21 @@
 # 0007 — Steps, resources, and scheduling
 
-- Status: draft
+- Status: historical design; current execution contract amended by 0041
 - Date: 2026-08-22
 - Amends: 0001 §3.1 (module shape), 0004 §4 (passes gain *expand*)
+
+## Current contract (0.36.0 / plan 0041)
+
+The sections below preserve the original design, not every shipped
+promise. The current core schedules whole modules; cross-module `needs`
+adds ordering-only prerequisites, never deployment roles or build exports.
+Activation targets and mixed module cycles are rejected before mutation.
+Within a module, `needs` orders work within the supported phase ordering.
+Shell/run/build steps are cached artifact recipes; declared outputs are
+checked postconditions, not a switch to "always run". Module verification
+and config lint apply to both declaration styles. Inert retry metadata
+was removed in IR v3; use activation hooks for effects. See
+[0041](0041-p1-contract-fidelity.md) for the authoritative decisions.
 
 ## 1. The model
 

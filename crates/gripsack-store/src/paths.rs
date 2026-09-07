@@ -35,6 +35,30 @@ pub fn content_path(home: &Path, name: &str, tree256: &str) -> PathBuf {
     home.join(STORE_DIR).join(format!("{prefix}-{name}"))
 }
 
+/// A persisted store reference names one object, not the store directory or a
+/// subdirectory inside an object. Existence is deliberately not required: a
+/// repair can remove an artifact while its generation still references it.
+pub fn validate_store_root(home: &Path, path: &Path) -> std::io::Result<()> {
+    let root = home.join(STORE_DIR);
+    let valid = path.is_absolute()
+        && path.strip_prefix(&root).ok().is_some_and(|relative| {
+            let mut parts = relative.components();
+            matches!(parts.next(), Some(std::path::Component::Normal(_))) && parts.next().is_none()
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "{} is not a direct store object under {}",
+                path.display(),
+                root.display()
+            ),
+        ))
+    }
+}
+
 /// Base directory for everything gripsack owns: store, generations, and
 /// the `current` symlink. `$GRIPSACK_HOME` wins, then
 /// `$XDG_DATA_HOME/gripsack`, then `~/.local/share/gripsack`.
@@ -44,18 +68,22 @@ pub fn gripsack_home() -> PathBuf {
     if let Some(dir) = std::env::var_os("GRIPSACK_HOME")
         && !dir.is_empty()
     {
-        return PathBuf::from(dir);
+        return std::path::absolute(dir).expect("cannot resolve GRIPSACK_HOME");
     }
     if let Some(data) = std::env::var_os("XDG_DATA_HOME")
         && !data.is_empty()
     {
-        return PathBuf::from(data).join("gripsack");
+        return std::path::absolute(PathBuf::from(data).join("gripsack"))
+            .expect("cannot resolve XDG_DATA_HOME");
     }
     // no HOME and no override: there is no defensible location, and
     // inventing one (cwd, /tmp) would scatter the store. Say it.
     std::env::var_os("HOME").map_or_else(
         || panic!("grip needs HOME, GRIPSACK_HOME, or XDG_DATA_HOME to place its store"),
-        |home| PathBuf::from(home).join(".local/share/gripsack"),
+        |home| {
+            std::path::absolute(PathBuf::from(home).join(".local/share/gripsack"))
+                .expect("cannot resolve HOME")
+        },
     )
 }
 

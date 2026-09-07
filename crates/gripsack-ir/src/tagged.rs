@@ -29,7 +29,6 @@ fn allowed_step_fields(kind: &str) -> Option<&'static [&'static str]> {
             "needs",
             "resources",
             "verify",
-            "retries",
             "span",
             "phase",
         ],
@@ -39,7 +38,6 @@ fn allowed_step_fields(kind: &str) -> Option<&'static [&'static str]> {
             "needs",
             "resources",
             "verify",
-            "retries",
             "span",
             "phase",
         ],
@@ -49,7 +47,6 @@ fn allowed_step_fields(kind: &str) -> Option<&'static [&'static str]> {
             "needs",
             "resources",
             "verify",
-            "retries",
             "span",
             "phase",
         ],
@@ -59,7 +56,6 @@ fn allowed_step_fields(kind: &str) -> Option<&'static [&'static str]> {
             "needs",
             "resources",
             "verify",
-            "retries",
             "span",
             "phase",
         ],
@@ -69,7 +65,6 @@ fn allowed_step_fields(kind: &str) -> Option<&'static [&'static str]> {
             "needs",
             "resources",
             "verify",
-            "retries",
             "span",
             "phase",
         ],
@@ -82,7 +77,6 @@ fn allowed_step_fields(kind: &str) -> Option<&'static [&'static str]> {
             "needs",
             "resources",
             "verify",
-            "retries",
             "span",
             "phase",
         ],
@@ -93,7 +87,6 @@ fn allowed_step_fields(kind: &str) -> Option<&'static [&'static str]> {
             "needs",
             "resources",
             "verify",
-            "retries",
             "span",
             "phase",
         ],
@@ -135,7 +128,7 @@ pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
         out.push(Diagnostic::error(
             codes::VERSION,
             format!("unsupported ir_version {version} (this core accepts {})", crate::parse::IR_VERSION),
-        ).with_help("update a pinned @gripsack/core to 0.35.0 or newer, or remove the pin to use the embedded frontend"));
+        ).with_help("update a pinned @gripsack/core to 0.36.0 or newer, or remove the pin to use the embedded frontend"));
         return;
     }
     let Some(modules) = value.get("modules").and_then(|m| m.as_object()) else {
@@ -186,7 +179,6 @@ pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
                     "needs",
                     "resources",
                     "verify",
-                    "retries",
                     "span",
                 ];
                 if let Some(obj) = step.as_object() {

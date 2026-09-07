@@ -103,7 +103,7 @@ Deno.test("driver evaluates a host into an envelope under the sandbox flags", ()
       tags: ["gui", "work"],
       libc: "glibc-2.36",
     });
-    assert.equal(envelope.ir.ir_version, 2);
+    assert.equal(envelope.ir.ir_version, 3);
     assert.ok(envelope.ir.modules.helix);
     assert.ok(envelope.ir.modules.demo, "facts-conditional module present");
     assert.equal(envelope.ir.modules.cuda, undefined, "unbound probe gates cuda out");

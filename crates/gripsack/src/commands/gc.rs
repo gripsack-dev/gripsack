@@ -6,6 +6,16 @@ use std::process::ExitCode;
 /// --dry-run previews without deleting (plan-before-apply, N6).
 pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
     let home = gripsack_store::gripsack_home();
+    let keep = match retention_policy() {
+        Ok(keep) => keep,
+        Err(diagnostics) => {
+            eprintln!(
+                "{}",
+                crate::render::render_diagnostics(&diagnostics, palette)
+            );
+            return ExitCode::FAILURE;
+        }
+    };
     // gc deletes store paths an in-flight apply may have published but
     // not yet flipped — it must hold the same lifecycle lock as apply
     // and rollback (finding D: same one-line fix, same family)
@@ -16,7 +26,6 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let keep = user_keep_generations();
     match gripsack_exec::gc(&home, keep, dry_run) {
         Ok(report) => {
             if dry_run {
@@ -56,18 +65,32 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
 /// keep_generations via the shared config layering (0005 §2): an
 /// env.toml next to your cwd wins (the same default apply uses
 /// without --repo), then the user layer — one merge, not a re-impl.
-fn user_keep_generations() -> Option<u32> {
-    let repo = std::env::current_dir()
-        .ok()
-        .map(|d| d.join("env.toml"))
-        .filter(|p| p.exists())
-        .and_then(|p| gripsack_config::load_env(&p).ok());
+fn retention_policy() -> Result<Option<u32>, Vec<gripsack_ir::Diagnostic>> {
+    use gripsack_ir::{Diagnostic, codes};
+    let cwd = std::env::current_dir().map_err(|e| {
+        vec![Diagnostic::error(
+            codes::CONFIG,
+            format!("cannot determine config directory: {e}"),
+        )]
+    })?;
+    let path = cwd.join("env.toml");
+    let repo = match std::fs::symlink_metadata(&path) {
+        Ok(_) => gripsack_config::load_env(&path)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
+        Err(e) => {
+            return Err(vec![Diagnostic::error(
+                codes::CONFIG,
+                format!("cannot inspect {}: {e}", path.display()),
+            )]);
+        }
+    };
     let user = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
-        .map(|h| h.join(".config/gripsack/config.toml"))
-        .and_then(|p| gripsack_config::load_user(&p).ok());
-    let merged = gripsack_config::merge(user.as_ref(), &repo.unwrap_or_default());
-    merged.settings.keep_generations
+        .map(|home| gripsack_config::load_user(&home.join(".config/gripsack/config.toml")))
+        .transpose()?;
+    Ok(gripsack_config::merge(user.as_ref(), &repo)
+        .settings
+        .keep_generations)
 }
 
 fn format_size(bytes: u64) -> String {

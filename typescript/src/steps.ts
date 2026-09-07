@@ -3,7 +3,7 @@
  *
  * Most modules never write steps: the declarative fields are expanded
  * into the conventional pipeline by the core. Declare steps explicitly
- * for control — ordering, resource locks, retries, or a custom action.
+ * for control — ordering, resource locks, or a custom action.
  * `steps` and the declarative fields are mutually exclusive per module
  * (E103).
  */
@@ -30,7 +30,6 @@ export interface Step {
   resources?: string[];
   phase?: Phase;
   verify?: Verify;
-  retries?: number;
 }
 
 export interface StepOpts {
@@ -38,7 +37,6 @@ export interface StepOpts {
   resources?: string[];
   phase?: Phase;
   verify?: Verify;
-  retries?: number;
 }
 
 export function step(id: string, action: StepAction, opts?: StepOpts): Step {
@@ -48,7 +46,7 @@ export function step(id: string, action: StepAction, opts?: StepOpts): Step {
 
 /** Primitives auto-declare their contention domain in the core
  *  (pixi → `pixi-lock`, …) — `resources` is for your own shared
- *  state (0007 §4). Fetch steps retry by default. */
+ *  state (0007 §4). Retries are not part of the IR v3 contract. */
 export function fetchStep(fetch: Fetch, id = "fetch", opts?: StepOpts): Step {
   // runtime shape guard: an argument-order slip here would otherwise
   // surface as a byte-offset E000 from the core's deserializer, with
@@ -142,7 +140,7 @@ export function configStep(
 
 /** A structured action — the rung between primitives and shell
  *  (0007 §3): argv/env/cwd as data, no shell interpretation, declared
- *  `outputs` make it cacheable (0008 §4). */
+ *  `outputs` are enforced postconditions of the cached recipe (0041). */
 export function runStep(
   argv: string[],
   id = "run",
@@ -164,8 +162,8 @@ export function runStep(
 }
 
 /** The last rung, not the default (0007 §3): declared, flagged in
- *  `plan`. Declared `outputs` restore caching/satisfaction (0008 §4);
- *  without them the step always runs. */
+ *  `plan`. Successful artifact recipes cache; declared outputs are
+ *  enforced postconditions. Per-activation effects belong in hooks. */
 export function shellStep(
   script: string,
   id: string,

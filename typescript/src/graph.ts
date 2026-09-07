@@ -9,7 +9,7 @@ import type { IrModule, ModuleValue } from "./module.ts";
 import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
-export const IR_VERSION = 2;
+export const IR_VERSION = 3;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,

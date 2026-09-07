@@ -116,6 +116,7 @@ pub struct ProducedEntry {
     pub vars: std::collections::BTreeMap<String, String>,
     pub hash: store::hash::ManifestHash,
     pub file_mode: Option<u32>,
+    pub source_executable: Option<bool>,
     pub prior: Option<store::Prior>,
     pub preserved_drift: bool,
 }
@@ -134,5 +135,7 @@ pub mod preview;
 mod model;
 
 pub(crate) use execute::execute_op;
-pub(crate) use plan::{DestView, ModeInput, plan_entry_op, plan_remove_op, plan_restore_op};
+pub(crate) use plan::{
+    DestView, ModeInput, WritePermissions, plan_entry_op, plan_remove_op, plan_restore_op,
+};
 pub use preview::preview_ops;

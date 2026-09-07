@@ -260,8 +260,9 @@ fn main() -> ExitCode {
                 Err(code) => return code,
             };
             {
-                let steps = gripsack_exec::expand::expand_all(&ir.modules);
-                match gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &steps) {
+                match gripsack_exec::expand::expand_all(&ir.modules).and_then(|plans| {
+                    gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &plans)
+                }) {
                     Ok(()) => {}
                     Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
                         eprintln!("{}", render::render_diagnostics(&[d], palette));

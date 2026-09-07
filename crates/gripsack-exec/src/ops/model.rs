@@ -105,6 +105,7 @@ mod tests {
             mode: Ownership::TrackedCopy,
             vars: Default::default(),
             file_mode: None,
+            source_executable: None,
             hash: store::canonical_bytes_identity(content.as_bytes(), 0o644).into(),
             prior: None,
             preserved_drift: preserved,
@@ -206,7 +207,7 @@ mod tests {
             &view,
             ModeInput::Write {
                 content: case.desired.as_bytes(),
-                intent_mode: 0o644,
+                permissions: crate::ops::WritePermissions::Exact(0o644),
             },
         )
         .unwrap();
@@ -241,6 +242,13 @@ mod tests {
                 assert_eq!(before, after, "an inert op moved the filesystem");
             }
             _ => unreachable!(),
+        }
+        if let Some(produced) = &op.produces {
+            assert_eq!(
+                live_manifest_identity(&dest).as_deref(),
+                Some(produced.hash.as_str()),
+                "the manifest receipt does not describe what execution left"
+            );
         }
     }
 
@@ -282,7 +290,7 @@ mod tests {
             &view,
             ModeInput::Write {
                 content: b"1",
-                intent_mode: 0o644,
+                permissions: crate::ops::WritePermissions::Exact(0o644),
             },
         )
         .unwrap();
@@ -305,6 +313,7 @@ mod tests {
             mode: Ownership::TrackedCopy,
             vars: Default::default(),
             file_mode: produced.file_mode,
+            source_executable: produced.source_executable,
             prior: None,
             hash: produced.hash.clone(),
             preserved_drift: false,
@@ -322,7 +331,7 @@ mod tests {
             &view,
             ModeInput::Write {
                 content: b"1",
-                intent_mode: 0o644,
+                permissions: crate::ops::WritePermissions::Exact(0o644),
             },
         )
         .unwrap();

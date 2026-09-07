@@ -63,6 +63,7 @@ impl DestView<'_> {
             vars: self.entry.vars.clone(),
             hash,
             file_mode,
+            source_executable: None,
             prior: None,
             preserved_drift: preserved,
         })
@@ -78,9 +79,11 @@ pub enum ModeInput<'a> {
         content_hash: store::hash::ManifestHash,
         already: bool,
     },
-    /// Tracked copy / template: the content bytes and the intended
-    /// landed mode (the copy rule 0644/0755; template preserves).
-    Write { content: &'a [u8], intent_mode: u32 },
+    /// Tracked copy / template: content plus source policy or exact restoration.
+    Write {
+        content: &'a [u8],
+        permissions: WritePermissions,
+    },
     /// Merge: the block payload, the foreign file's current text, and
     /// its mode (preserved across the splice).
     Merge {
@@ -102,8 +105,8 @@ pub(crate) fn plan_entry_op(view: &DestView, input: ModeInput) -> Result<Op, Exe
         } => Ok(plan_link(view, source, content_hash, already)),
         ModeInput::Write {
             content,
-            intent_mode,
-        } => Ok(plan_write(view, content, intent_mode)),
+            permissions,
+        } => Ok(plan_write(view, content, permissions)),
         ModeInput::Merge {
             payload,
             existing,
@@ -112,9 +115,51 @@ pub(crate) fn plan_entry_op(view: &DestView, input: ModeInput) -> Result<Op, Exe
     }
 }
 
-fn plan_write(view: &DestView, content: &[u8], intent_mode: u32) -> Op {
+/// Ordinary deployment follows source executability without widening
+/// acquired read/write permissions. Rollback restores an exact recorded mode.
+#[derive(Clone, Copy)]
+pub enum WritePermissions {
+    Source { executable: bool },
+    Preserve,
+    Exact(u32),
+}
+
+impl WritePermissions {
+    fn resolve(self, view: &DestView) -> u32 {
+        let executable = match self {
+            Self::Source { executable } => executable,
+            Self::Exact(mode) => return mode,
+            Self::Preserve => {
+                return match &view.observed {
+                    Some(crate::deploy::Observation::File { mode, .. }) => *mode,
+                    _ => 0o644,
+                };
+            }
+        };
+        let Some(prev) = view
+            .prev
+            .filter(|entry| entry.mode == Ownership::TrackedCopy && !entry.preserved_drift)
+        else {
+            return if executable { 0o755 } else { 0o644 };
+        };
+        let Some(mode) = prev.file_mode else {
+            return if executable { 0o755 } else { 0o644 };
+        };
+        if prev.source_executable.unwrap_or(mode & 0o111 != 0) == executable {
+            mode
+        } else if executable {
+            // Only classes already allowed to read gain execute access.
+            mode | ((mode & 0o444) >> 2)
+        } else {
+            mode & !0o111
+        }
+    }
+}
+
+fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) -> Op {
     use crate::deploy::CopyPlan;
     let entry = view.entry;
+    let intent_mode = permissions.resolve(view);
     let desired_hash: store::hash::ManifestHash = match entry.mode {
         Ownership::Template => store::canonical_bytes_hash(content).into(),
         _ => store::canonical_bytes_identity(content, intent_mode).into(),
@@ -132,13 +177,29 @@ fn plan_write(view: &DestView, content: &[u8], intent_mode: u32) -> Op {
         },
     };
     let prev_pair = view.prev.map(|e| (e.hash.as_str(), e.preserved_drift));
-    let plan = crate::deploy::plan_copy(
+    let mut plan = crate::deploy::plan_copy(
         desired_hash.as_str(),
         live.as_deref(),
         prev_pair,
         view.take_over,
     );
-    match plan {
+    // Templates deliberately compare bytes for drift. Exact rollback also
+    // restores permissions, but equal target bytes alone grant no mutation
+    // authority over a foreign or preserved file.
+    if matches!(plan, CopyPlan::Satisfied)
+        && entry.mode == Ownership::Template
+        && matches!(permissions, WritePermissions::Exact(_))
+        && matches!(&view.observed, Some(crate::deploy::Observation::File { mode, .. }) if *mode != intent_mode)
+    {
+        plan = if prev_pair
+            .is_some_and(|(hash, preserved)| !preserved && live.as_deref() == Some(hash))
+        {
+            CopyPlan::Update
+        } else {
+            CopyPlan::Preserve
+        };
+    }
+    let mut op = match plan {
         CopyPlan::Satisfied => {
             // satisfied means managed (0029 §2): the record clears any
             // prior preserve mark and holds the desired identity — an
@@ -148,20 +209,16 @@ fn plan_write(view: &DestView, content: &[u8], intent_mode: u32) -> Op {
                 None,
                 Intended::Object(view.observed_identity().expect("satisfied implies live")),
             );
-            op.produces = view.produces(desired_hash, view.prev.and_then(|e| e.file_mode), false);
+            let landed_mode = match &view.observed {
+                Some(crate::deploy::Observation::File { mode, .. }) => Some(*mode),
+                _ => None,
+            };
+            op.produces = view.produces(desired_hash, landed_mode, false);
             op
         }
         CopyPlan::Fresh | CopyPlan::Update => {
             let update = matches!(plan, CopyPlan::Update);
-            let mode = match entry.mode {
-                // templates preserve an existing file's mode (0026 §7);
-                // fresh lands 0644 — the write mirrors this exactly
-                Ownership::Template => match &view.observed {
-                    Some(crate::deploy::Observation::File { mode, .. }) => *mode,
-                    _ => 0o644,
-                },
-                _ => intent_mode,
-            };
+            let mode = intent_mode;
             let mut op = view.base(
                 OpKind::Write {
                     content: ContentSource::Bytes(content.to_vec()),
@@ -196,7 +253,11 @@ fn plan_write(view: &DestView, content: &[u8], intent_mode: u32) -> Op {
                 ))),
             );
             // the prior is captured at execution (0015 §4)
-            op.produces = view.produces(desired_hash, Some(mode), false);
+            let written_hash = match entry.mode {
+                Ownership::Template => store::canonical_bytes_hash(content).into(),
+                _ => store::canonical_bytes_identity(content, mode).into(),
+            };
+            op.produces = view.produces(written_hash, Some(mode), false);
             op
         }
         CopyPlan::Preserve => {
@@ -214,7 +275,14 @@ fn plan_write(view: &DestView, content: &[u8], intent_mode: u32) -> Op {
             );
             op
         }
+    };
+    if let Some(produced) = &mut op.produces
+        && !produced.preserved_drift
+        && let WritePermissions::Source { executable } = permissions
+    {
+        produced.source_executable = Some(executable);
     }
+    op
 }
 
 fn plan_link(
@@ -546,7 +614,7 @@ pub(crate) fn plan_restore_op(
                 &view,
                 ModeInput::Write {
                     content,
-                    intent_mode,
+                    permissions: WritePermissions::Exact(intent_mode),
                 },
             )?
         }
