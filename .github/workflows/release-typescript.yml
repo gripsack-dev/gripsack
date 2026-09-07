@@ -17,7 +17,9 @@ jobs:
         with:
           # exact pin (0042 F): refreshed deliberately via
           # scripts/check_pins.py (nodejs.org dist index)
-          node-version: 22.23.2
+          # setup-node only wires NODE_AUTH_TOKEN into .npmrc when a
+          # registry is declared; without it publish fails ENEEDAUTH.
+          registry-url: https://registry.npmjs.org/
 
       # npm test IS `deno test` (0013) — the runner has no deno
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
