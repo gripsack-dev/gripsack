@@ -7,6 +7,7 @@ pub(crate) fn resolve_spec(
     name: &str,
     spec: &gripsack_ir::FetchSpec,
     locked: Option<&crate::lockfile::LockEntry>,
+    context: &gripsack_fetch::FetchContext,
 ) -> Result<
     (
         gripsack_ir::FetchSpec,
@@ -22,7 +23,7 @@ pub(crate) fn resolve_spec(
             asset,
             version,
             base_url,
-            ..
+            sha256,
         } => {
             if let Some(url) = resolved.and_then(|r| r.url.clone()) {
                 return Ok((
@@ -34,81 +35,58 @@ pub(crate) fn resolve_spec(
                     None,
                 ));
             }
-            let release = gripsack_fetch::resolve_latest(
-                repo,
-                asset,
-                base_url.as_deref(),
-                version.as_deref(),
-            )
-            .map_err(|e| ExecError::Step {
-                module: name.to_string(),
-                step: "resolve".into(),
-                detail: e.to_string(),
-            })?;
+            let release = context
+                .resolve_latest(repo, asset, base_url.as_deref(), version.as_deref())
+                .map_err(|e| ExecError::Step {
+                    module: name.to_string(),
+                    step: "resolve".into(),
+                    detail: e.to_string(),
+                })?;
             Ok((
                 F::Tarball {
                     url: release.url.clone(),
-                    sha256: None,
+                    sha256: sha256.clone(),
                     api_url: release.api_url.clone(),
                 },
                 Some(release),
             ))
         }
         F::Brew {
-            formula, version, ..
-        } => {
-            let meta = gripsack_fetch::resolve_brew(formula).map_err(|e| ExecError::Step {
-                module: name.to_string(),
-                step: "resolve".into(),
-                detail: e.to_string(),
-            })?;
-            // brew floats to the current formula — the API only serves
-            // stable. A declared version must match it or the module
-            // fails clearly here, not as a sha mismatch later (brew
-            // review): grip update is the way to move the pin.
-            if let Some(want) = version
-                && meta.version != *want
-            {
-                return Err(ExecError::Step {
-                    module: name.to_string(),
-                    step: "resolve".into(),
-                    detail: format!(
-                        "brew serves {formula} {stable}, but the module pins {want} — \
-                         brew() floats to the current formula; `grip update` to move",
-                        stable = meta.version
-                    ),
-                });
-            }
-            let locked_sha = resolved.and_then(|r| r.sha256.clone());
-            Ok((
-                F::Brew {
-                    formula: formula.clone(),
-                    version: version.clone(),
-                    sha256: locked_sha,
-                },
-                Some(meta),
-            ))
-        }
+            formula,
+            version,
+            sha256,
+        } => Ok((
+            F::Brew {
+                formula: formula.clone(),
+                version: version.clone(),
+                sha256: resolved
+                    .and_then(|pin| pin.sha256.clone())
+                    .or_else(|| sha256.clone()),
+            },
+            None,
+        )),
         F::Pixi {
-            package, version, ..
-        } => {
-            let locked_sha = resolved.and_then(|r| r.sha256.clone());
-            Ok((
-                F::Pixi {
-                    package: package.clone(),
-                    version: version.clone(),
-                    sha256: locked_sha,
-                },
-                None,
-            ))
-        }
-        // rev-less git floats (0016 §D2): the locked pin wins; else
-        // resolve the remote's default-branch HEAD and pin it. The
-        // concrete spec always carries the rev into fetch.
+            package,
+            version,
+            sha256,
+        } => Ok((
+            F::Pixi {
+                package: package.clone(),
+                version: resolved
+                    .and_then(|pin| pin.version.clone())
+                    .or_else(|| version.clone()),
+                sha256: resolved
+                    .and_then(|pin| pin.sha256.clone())
+                    .or_else(|| sha256.clone()),
+            },
+            None,
+        )),
+        // The lock pins the resolved commit, including when the declaration
+        // names a mutable branch/tag. Update passes no old resolution.
         F::Git { url, rev } => {
-            let pinned = match (rev.clone(), resolved.and_then(|r| r.version.clone())) {
-                (Some(r), _) => r,
-                (None, Some(locked_rev)) => locked_rev,
+            let pinned = match (resolved.and_then(|r| r.version.clone()), rev.clone()) {
+                (Some(locked_rev), _) => locked_rev,
+                (None, Some(revision)) => revision,
                 (None, None) => {
                     gripsack_fetch::resolve_git_head(url).map_err(|e| ExecError::Step {
                         module: name.to_string(),
@@ -156,7 +134,9 @@ fn inject_locked_sha(
 /// repo cloned at a different absolute path, must not re-fetch the
 /// world. The regression test pins this: two IR documents differing
 mod input;
-pub(crate) use input::{module_input, repo_overlay};
+mod recipes;
+pub(crate) use input::repo_overlay;
+pub(crate) use recipes::RecipeGraph;
 
 #[cfg(test)]
 mod identity_tests {
@@ -177,7 +157,7 @@ mod identity_tests {
         let b: gripsack_ir::Module =
             serde_json::from_str(&json("/home/bob/dotfiles/modules/m.py", 47)).unwrap();
         let repo = std::path::Path::new("/nonexistent");
-        let ir = gripsack_ir::Ir {
+        let mut ir = gripsack_ir::Ir {
             ir_version: gripsack_ir::IR_VERSION,
             host: gripsack_ir::HostFacts {
                 os: "linux".into(),
@@ -188,24 +168,16 @@ mod identity_tests {
             modules: Default::default(),
             resources: Default::default(),
         };
-        let ia = super::module_input(
-            "m",
-            &a,
-            repo,
-            &ir,
-            &Default::default(),
-            &gripsack_ir::prepared::PreparedModule::new(&a).unwrap(),
-        )
-        .unwrap();
-        let ib = super::module_input(
-            "m",
-            &b,
-            repo,
-            &ir,
-            &Default::default(),
-            &gripsack_ir::prepared::PreparedModule::new(&b).unwrap(),
-        )
-        .unwrap();
+        ir.modules.insert("m".into(), a);
+        let plans = crate::expand::expand_all(&ir.modules).unwrap();
+        let ia = super::RecipeGraph::new(&ir, repo, &plans, ["m"])
+            .unwrap()
+            .input("m", &Default::default());
+        ir.modules.insert("m".into(), b);
+        let plans = crate::expand::expand_all(&ir.modules).unwrap();
+        let ib = super::RecipeGraph::new(&ir, repo, &plans, ["m"])
+            .unwrap()
+            .input("m", &Default::default());
         assert_eq!(ia, ib, "span/provenance must not change identity");
     }
 }

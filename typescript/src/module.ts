@@ -8,7 +8,7 @@ import type { Dependency } from "./deps.ts";
 import type { Dest, Ownership } from "./entries.ts";
 import type { Fetch } from "./fetch.ts";
 import type { Intent } from "./intents.ts";
-import type { Step } from "./steps.ts";
+import type { Build, Step } from "./steps.ts";
 import type { Verify } from "./verify.ts";
 
 export interface Span {
@@ -21,7 +21,7 @@ export interface ModuleSpec {
   /** Optional for dotfiles-only modules (0006 §2 level 1). Mutually
    *  exclusive with `steps` (0007 §1). */
   fetch?: Fetch;
-  build?: { kind: "none" } | { kind: "custom_shell"; script: string };
+  build?: Build;
   install?: Record<string, Dest>;
   config?: Record<string, Dest>;
   depends?: Dependency[];
@@ -55,7 +55,7 @@ export interface IrEnvVar {
 
 export interface IrModule {
   fetch?: Fetch;
-  build?: ModuleSpec["build"];
+  build?: Build;
   install?: IrEntry[];
   config?: IrEntry[];
   depends?: Dependency[];

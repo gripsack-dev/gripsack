@@ -111,6 +111,12 @@ pub struct LinterSection {
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub keep_generations: Option<u32>,
+    /// Artifact acquisition limits, independent of module worker count.
+    pub acquisition_jobs: Option<std::num::NonZeroUsize>,
+    pub download_limit_bytes: Option<std::num::NonZeroU64>,
+    pub expanded_limit_bytes: Option<std::num::NonZeroU64>,
+    pub archive_entry_limit: Option<std::num::NonZeroUsize>,
+    pub decoder_memory_bytes: Option<std::num::NonZeroU64>,
 }
 
 /// The merged, effective configuration after layering.
@@ -287,6 +293,26 @@ pub fn merge(user: Option<&UserConfig>, repo: &EnvConfig) -> Config {
             .settings
             .keep_generations
             .or_else(|| user.and_then(|u| u.settings.keep_generations)),
+        acquisition_jobs: repo
+            .settings
+            .acquisition_jobs
+            .or_else(|| user.and_then(|u| u.settings.acquisition_jobs)),
+        download_limit_bytes: repo
+            .settings
+            .download_limit_bytes
+            .or_else(|| user.and_then(|u| u.settings.download_limit_bytes)),
+        expanded_limit_bytes: repo
+            .settings
+            .expanded_limit_bytes
+            .or_else(|| user.and_then(|u| u.settings.expanded_limit_bytes)),
+        archive_entry_limit: repo
+            .settings
+            .archive_entry_limit
+            .or_else(|| user.and_then(|u| u.settings.archive_entry_limit)),
+        decoder_memory_bytes: repo
+            .settings
+            .decoder_memory_bytes
+            .or_else(|| user.and_then(|u| u.settings.decoder_memory_bytes)),
     };
     let mut sources: BTreeMap<String, FetcherSectionView> = BTreeMap::new();
     if let Some(user) = user {

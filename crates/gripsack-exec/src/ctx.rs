@@ -32,6 +32,9 @@ pub struct Ctx {
     /// `--jobs` on the CLI; GRIPSACK_JOBS for CI.
     pub jobs: Option<usize>,
 
+    /// Command-owned acquisition policy, clients and independent concurrency.
+    pub fetch: std::sync::Arc<gripsack_fetch::FetchContext>,
+
     /// The home capability (plan/0021), opened lazily on first use:
     /// read-only commands (plan, check) never materialize
     /// `$GRIPSACK_HOME`; mutation paths share ONE pinned root inode.

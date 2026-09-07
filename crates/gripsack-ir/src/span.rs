@@ -5,6 +5,7 @@ use std::fmt;
 /// Payload: threaded through passes, never recomputed, never part of
 /// store-path identity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Span {
     pub file: String,
     pub line: u32,

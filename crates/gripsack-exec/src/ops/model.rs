@@ -433,6 +433,7 @@ mod tests {
             take_over_entries: Default::default(),
             jobs: Some(1),
             home_dir: std::sync::OnceLock::new(),
+            fetch: std::sync::Arc::new(gripsack_fetch::FetchContext::new(Default::default())),
         }
     }
 }
