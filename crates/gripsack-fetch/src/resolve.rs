@@ -121,6 +121,7 @@ pub struct PluginRelease {
 /// returning the asset plus the validated pin (missing sidecar =
 /// failed install, never a warning — krew rule).
 fn asset_with_sidecar<'a>(
+    context: &crate::FetchContext,
     release: &'a Release,
     repo: &str,
     asset_name: &str,
@@ -147,13 +148,13 @@ fn asset_with_sidecar<'a>(
     })?;
     // the sidecar's first token is the hash
     let sha_text =
-        crate::fetch::tarball::read_url_authed(&sidecar.browser_download_url, Some(&sidecar.url))
+        crate::fetch::tarball::text(context, &sidecar.browser_download_url, Some(&sidecar.url))
             .map_err(|e| ResolveError::NoAsset {
-            repo: repo.to_string(),
-            asset: format!("readable sha256 sidecar ({e})"),
-            available: vec![],
-        })?;
-    let sha256 = String::from_utf8_lossy(&sha_text)
+                repo: repo.to_string(),
+                asset: format!("readable sha256 sidecar ({e})"),
+                available: vec![],
+            })?;
+    let sha256 = sha_text
         .split_whitespace()
         .next()
         .unwrap_or_default()
@@ -182,7 +183,9 @@ fn releases_tags(releases: &[Release]) -> Vec<String> {
     releases.iter().map(|r| r.tag_name.clone()).collect()
 }
 
-pub fn resolve_self_release() -> Result<SelfRelease, ResolveError> {
+pub(crate) fn resolve_self_release(
+    context: &crate::FetchContext,
+) -> Result<SelfRelease, ResolveError> {
     let target = crate::host::AssetTarget::current().ok_or_else(|| ResolveError::NoAsset {
         repo: "gripsack-dev/gripsack".into(),
         asset: "a supported platform".into(),
@@ -200,22 +203,27 @@ pub fn resolve_self_release() -> Result<SelfRelease, ResolveError> {
     // API involved) when the API fails. Never under the test seam: a
     // loopback fixture's error is the assertion, not a rate limit.
     if base == "https://api.github.com" {
-        return match self_release_via_api(target, &base) {
+        return match self_release_via_api(context, target, &base) {
             Ok(r) => Ok(r),
-            Err(api_err) => self_release_via_atom(target).map_err(|_| api_err),
+            Err(api_err) => self_release_via_atom(context, target).map_err(|_| api_err),
         };
     }
-    self_release_via_api(target, &base)
+    self_release_via_api(context, target, &base)
 }
 
 /// The web-tier fallback: `releases.atom` lists recent tags
 /// newest-first and is not rate-limited like the API; the tag names
 /// the version, and plain `releases/download` URLs need no API.
-fn self_release_via_atom(target: crate::host::AssetTarget) -> Result<SelfRelease, ResolveError> {
-    let feed = crate::http::get("https://github.com/gripsack-dev/gripsack/releases.atom")
-        .set("User-Agent", "gripsack")
-        .call()?
-        .into_string()?;
+fn self_release_via_atom(
+    context: &crate::FetchContext,
+    target: crate::host::AssetTarget,
+) -> Result<SelfRelease, ResolveError> {
+    let feed = context.text(
+        context
+            .get("https://github.com/gripsack-dev/gripsack/releases.atom")
+            .set("User-Agent", "gripsack")
+            .call()?,
+    )?;
     let tag = core_tag_from_atom(&feed).ok_or_else(|| ResolveError::NoAsset {
         repo: "gripsack-dev/gripsack".into(),
         asset: "a core-v* release in releases.atom".into(),
@@ -225,14 +233,14 @@ fn self_release_via_atom(target: crate::host::AssetTarget) -> Result<SelfRelease
     let asset = format!("gripsack-{version}-{}.tar.gz", target.triple());
     let url = format!("https://github.com/gripsack-dev/gripsack/releases/download/{tag}/{asset}");
     let sha_text =
-        crate::fetch::tarball::read_url_authed(&format!("{url}.sha256"), None).map_err(|e| {
+        crate::fetch::tarball::text(context, &format!("{url}.sha256"), None).map_err(|e| {
             ResolveError::NoAsset {
                 repo: "gripsack-dev/gripsack".into(),
                 asset: format!("readable sha256 sidecar ({e})"),
                 available: vec![],
             }
         })?;
-    let sha256 = String::from_utf8_lossy(&sha_text)
+    let sha256 = sha_text
         .split_whitespace()
         .next()
         .unwrap_or_default()
@@ -276,17 +284,18 @@ fn core_tag_from_atom(feed: &str) -> Option<String> {
 }
 
 fn self_release_via_api(
+    context: &crate::FetchContext,
     target: crate::host::AssetTarget,
     base: &str,
 ) -> Result<SelfRelease, ResolveError> {
     // three tag types (core/py/ts) per version in creation order —
     // page deep enough that core-v* never falls off
     let url = format!("{base}/repos/gripsack-dev/gripsack/releases?per_page=100");
-    let mut request = crate::http::get(&url).set("User-Agent", "gripsack");
-    if let Some(header) = crate::http::auth_header(&url) {
-        request = request.set("Authorization", &header);
+    let mut request = context.get(&url).set("User-Agent", "gripsack");
+    if let Some(header) = context.auth_header(&url) {
+        request = request.set("Authorization", header);
     }
-    let releases: Vec<Release> = request.call()?.into_json()?;
+    let releases: Vec<Release> = context.json(request.call()?)?;
     let tags = releases_tags(&releases);
     let release = releases
         .into_iter()
@@ -298,7 +307,8 @@ fn self_release_via_api(
         })?;
     let version = release.tag_name.trim_start_matches("core-v").to_string();
     let asset_name = format!("gripsack-{version}-{}.tar.gz", target.triple());
-    let (asset, sha256) = asset_with_sidecar(&release, "gripsack-dev/gripsack", &asset_name)?;
+    let (asset, sha256) =
+        asset_with_sidecar(context, &release, "gripsack-dev/gripsack", &asset_name)?;
     Ok(SelfRelease {
         version,
         url: asset.browser_download_url.clone(),
@@ -310,7 +320,8 @@ fn self_release_via_api(
 /// Resolve a plugin's release: the `<exe>-<tag>-<triple>.tar.gz` asset
 /// for this platform plus its sha256 sidecar (missing sidecar = failed
 /// install, never a warning — krew rule). `tag` pins; None = latest.
-pub fn resolve_plugin_release(
+pub(crate) fn resolve_plugin_release(
+    context: &crate::FetchContext,
     repo: &str,
     exe: &str,
     tag: Option<&str>,
@@ -325,14 +336,14 @@ pub fn resolve_plugin_release(
         Some(t) => format!("{base}/repos/{repo}/releases/tags/{t}"),
         None => format!("{base}/repos/{repo}/releases/latest"),
     };
-    let mut request = crate::http::get(&url).set("User-Agent", "gripsack");
-    if let Some(header) = crate::http::auth_header(&url) {
-        request = request.set("Authorization", &header);
+    let mut request = context.get(&url).set("User-Agent", "gripsack");
+    if let Some(header) = context.auth_header(&url) {
+        request = request.set("Authorization", header);
     }
     // tags may be written v1.0 or 1.0 — try the other form on 404
     // (the same convention pick_asset uses for asset names)
     let release: Release = match request.call() {
-        Ok(r) => r.into_json()?,
+        Ok(r) => context.json(r)?,
         Err(e) => {
             let alternate = tag.and_then(|t| {
                 if e.to_string().contains("404") {
@@ -347,11 +358,11 @@ pub fn resolve_plugin_release(
             });
             match alternate {
                 Some(url) => {
-                    let mut request = crate::http::get(&url).set("User-Agent", "gripsack");
-                    if let Some(header) = crate::http::auth_header(&url) {
-                        request = request.set("Authorization", &header);
+                    let mut request = context.get(&url).set("User-Agent", "gripsack");
+                    if let Some(header) = context.auth_header(&url) {
+                        request = request.set("Authorization", header);
                     }
-                    request.call()?.into_json()?
+                    context.json(request.call()?)?
                 }
                 None => return Err(ResolveError::Http(Box::new(e))),
             }
@@ -360,7 +371,7 @@ pub fn resolve_plugin_release(
     let tag_name = release.tag_name.clone();
     let bare = tag_name.strip_prefix('v').unwrap_or(&tag_name);
     let asset_name = format!("{exe}-{bare}-{}.tar.gz", target.triple());
-    let (asset, sha256) = asset_with_sidecar(&release, repo, &asset_name)?;
+    let (asset, sha256) = asset_with_sidecar(context, &release, repo, &asset_name)?;
     Ok(PluginRelease {
         version: tag_name,
         url: asset.browser_download_url.clone(),
@@ -392,7 +403,8 @@ fn normalize_base(base_url: Option<&str>) -> String {
 /// Resolve a release of `repo` to a concrete asset. `version` pins the
 /// tag (fetched by `/releases/tags/<tag>`); None resolves latest. Auth
 /// is host-scoped (http::auth_header) — tokens never cross hosts.
-pub fn resolve_latest(
+pub(crate) fn resolve_latest(
+    context: &crate::FetchContext,
     repo: &str,
     asset_pattern: &str,
     base_url: Option<&str>,
@@ -403,11 +415,11 @@ pub fn resolve_latest(
         Some(tag) => format!("{base}/repos/{repo}/releases/tags/{tag}"),
         None => format!("{base}/repos/{repo}/releases/latest"),
     };
-    let mut request = crate::http::get(&url).set("User-Agent", "gripsack");
-    if let Some(header) = crate::http::auth_header(&url) {
-        request = request.set("Authorization", &header);
+    let mut request = context.get(&url).set("User-Agent", "gripsack");
+    if let Some(header) = context.auth_header(&url) {
+        request = request.set("Authorization", header);
     }
-    let release: Release = request.call()?.into_json()?;
+    let release: Release = context.json(request.call()?)?;
     let assets: Vec<(String, String, String)> = release
         .assets
         .into_iter()
@@ -534,12 +546,12 @@ pub fn bottle_key(files: &std::collections::BTreeMap<String, BottleFile>) -> Opt
 
 /// Resolve a brew formula to a bottle URL — the sha256 comes from the
 /// formula JSON, so pinning needs no download.
-pub fn resolve_brew(formula: &str) -> Result<ResolvedRelease, ResolveError> {
+pub(crate) fn resolve_brew(
+    context: &crate::FetchContext,
+    formula: &str,
+) -> Result<ResolvedRelease, ResolveError> {
     let url = format!("https://formulae.brew.sh/api/formula/{formula}.json");
-    let f: Formula = crate::http::get(&url)
-        .set("User-Agent", "gripsack")
-        .call()?
-        .into_json()?;
+    let f: Formula = context.json(context.get(&url).set("User-Agent", "gripsack").call()?)?;
     let key = bottle_key(&f.bottle.stable.files).ok_or_else(|| ResolveError::NoAsset {
         repo: formula.to_string(),
         asset: "bottle for this platform".into(),
@@ -555,13 +567,16 @@ pub fn resolve_brew(formula: &str) -> Result<ResolvedRelease, ResolveError> {
 }
 
 /// ghcr.io blobs need an anonymous bearer token.
-pub fn ghcr_token(scope_repo: &str) -> Result<String, ResolveError> {
+pub(crate) fn ghcr_token(
+    context: &crate::FetchContext,
+    scope_repo: &str,
+) -> Result<String, ResolveError> {
     #[derive(Deserialize)]
     struct Token {
         token: String,
     }
     let url = format!("https://ghcr.io/token?scope=repository:{scope_repo}:pull");
-    let t: Token = crate::http::get(&url).call()?.into_json()?;
+    let t: Token = context.json(context.get(&url).call()?)?;
     Ok(t.token)
 }
 

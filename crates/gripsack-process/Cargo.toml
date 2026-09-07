@@ -1,0 +1,10 @@
+[package]
+name = "gripsack-process"
+description = "gripsack bounded process-group supervisor for protocol hosts (plan/0042 §B)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+libc = "0.2"

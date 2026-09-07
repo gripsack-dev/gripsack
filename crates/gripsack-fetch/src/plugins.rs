@@ -78,7 +78,13 @@ impl PluginStore {
 
     /// Provision `<kind>-<name>` from `owner/repo[@tag]`: satisfied when
     /// the receipt already records this tag. Returns the binary path.
-    pub fn ensure(&self, name: &str, package: &str, kind: &str) -> Result<PathBuf, FetchError> {
+    pub fn ensure(
+        &self,
+        context: &crate::FetchContext,
+        name: &str,
+        package: &str,
+        kind: &str,
+    ) -> Result<PathBuf, FetchError> {
         let exe = format!("{kind}-{name}");
         let (repo, tag) = parse_ref(package).ok_or_else(|| FetchError::Http {
             url: package.to_string(),
@@ -93,12 +99,11 @@ impl PluginStore {
             return Ok(bin); // satisfied — the receipt is the record
         }
 
-        let release =
-            crate::resolve::resolve_plugin_release(&repo, &exe, tag.as_deref()).map_err(|e| {
-                FetchError::Http {
-                    url: repo.clone(),
-                    reason: e.to_string(),
-                }
+        let release = context
+            .resolve_plugin_release(&repo, &exe, tag.as_deref())
+            .map_err(|e| FetchError::Http {
+                url: repo.clone(),
+                reason: e.to_string(),
             })?;
         // the tag names the on-disk version dir and the `current`
         // symlink target — it arrives from a network response, so a
@@ -113,22 +118,21 @@ impl PluginStore {
             });
         }
 
-        let staging = self.home.join("plugins").join(format!(".staging-{exe}"));
-        let _ = std::fs::remove_dir_all(&staging);
-        std::fs::create_dir_all(&staging)?;
-
-        // download + verify BEFORE anything lands (checksum mandatory)
-        let bytes =
-            crate::fetch::tarball::read_url_authed(&release.url, release.api_url.as_deref())?;
-        let actual = crate::fetch::archive::sha256(&bytes);
-        if actual != release.sha256 {
-            return Err(FetchError::HashMismatch {
+        let parent = self.home.join("plugins");
+        std::fs::create_dir_all(&parent)?;
+        let temporary = tempfile::Builder::new()
+            .prefix(&format!(".staging-{exe}-"))
+            .tempdir_in(&parent)?;
+        let staging = temporary.path();
+        context.fetch(
+            &gripsack_ir::FetchSpec::Tarball {
                 url: release.url.clone(),
-                expected: release.sha256.clone(),
-                actual,
-            });
-        }
-        crate::fetch::archive::extract(&bytes, &staging, &exe)?;
+                sha256: Some(release.sha256.clone()),
+                api_url: release.api_url.clone(),
+            },
+            staging,
+            None,
+        )?;
 
         // the binary must be at the bundle root or under bin/
         let staged = if staging.join(&exe).is_file() {
@@ -136,7 +140,6 @@ impl PluginStore {
         } else if staging.join("bin").join(&exe).is_file() {
             staging.join("bin").join(&exe)
         } else {
-            let _ = std::fs::remove_dir_all(&staging);
             return Err(FetchError::Http {
                 url: release.url.clone(),
                 reason: format!("the bundle has no {exe} at its root or under bin/"),
@@ -152,7 +155,6 @@ impl PluginStore {
         let _ = std::fs::remove_dir_all(&version_dir);
         std::fs::create_dir_all(&version_dir)?;
         std::fs::rename(&staged, version_dir.join(&exe))?;
-        let _ = std::fs::remove_dir_all(&staging);
 
         // receipt LAST — a failed step leaves no phantom install
         let receipt = Receipt {

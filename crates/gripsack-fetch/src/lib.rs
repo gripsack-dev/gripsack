@@ -11,21 +11,25 @@
 //! every returned byte against the lockfile before it enters the store
 //! ```
 //!
-//! Discovery only, for now; the protocol host lands with the executor.
+//! Command-owned acquisition combines bounded transports with reusable clients.
 
+mod context;
 pub mod fetch;
 pub mod host;
 pub(crate) mod http;
+mod identity;
+mod limits;
 pub mod plugins;
 pub mod resolve;
+mod spool;
 pub mod throttle;
 
-pub use fetch::{FetchError, fetch, fetch_with_locked, payload_hash, resolve_git_head};
+pub use context::FetchContext;
+pub use fetch::{FetchError, FetchOutcome, resolve_git_head};
 pub use host::{AssetTarget, DENO_RELEASE, PIXI_RELEASE, resolve as resolve_host_asset};
-pub use resolve::{
-    ResolvedRelease, SelfRelease, expand_platform, resolve_brew, resolve_latest,
-    resolve_self_release,
-};
+pub use identity::{DownloadHash, FetchIdentity};
+pub use limits::FetchLimits;
+pub use resolve::{ResolvedRelease, SelfRelease, expand_platform};
 
 use std::path::PathBuf;
 
