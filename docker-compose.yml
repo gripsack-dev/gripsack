@@ -83,8 +83,11 @@ services:
       dockerfile: Dockerfile
       target: fuzz
     # Bubblewrap builds nested user/mount/network namespaces for the fuzz
-    # sandbox; inside CI's docker the unprivileged path is denied, so grant
-    # the caps bwrap needs during namespace setup (dropped inside anyway).
+    # sandbox. Nested-namespace hosts (GitHub runners' docker) deny the
+    # unprivileged path at pivot_root/proc/loopback; the outer container
+    # being privileged only permits CONSTRUCTING the sandbox — every
+    # capability is still dropped inside it by bwrap itself.
+    privileged: true
     security_opt:
       - seccomp=unconfined
       - apparmor=unconfined
