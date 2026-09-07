@@ -53,6 +53,11 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
     assert_eq!(shape(&first), shape(&second));
 
     if let Ok(outcome) = &first {
+        // Payload modes are attacker-chosen data (an entry may legitimately
+        // land 0o000); re-own the harness's private trees before reading
+        // them, so audits assert containment, not permission luck.
+        relax(&s.fixed("archive/out-a"));
+        relax(&s.fixed("archive/out-b"));
         // Transport digest computed independently over the same source
         // must equal the acquired identity (same Download domain).
         let hashed = context
@@ -111,6 +116,33 @@ fn audit(dest: &Path) -> (usize, u64) {
         }
     }
     (entries, bytes)
+}
+
+/// Grant owner rwx on every regular file and directory under `root`,
+/// without following symlinks. The trees are the harness's own; this only
+/// undoes payload-declared permission bits so reads and walks succeed.
+fn relax(root: &Path) {
+    let mut pending = vec![root.to_owned()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let metadata = std::fs::symlink_metadata(&path).unwrap();
+            if metadata.is_symlink() {
+                continue;
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = metadata.permissions().mode();
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode | 0o700))
+                    .unwrap();
+            }
+            if metadata.is_dir() {
+                pending.push(path);
+            }
+        }
+    }
 }
 
 /// Lexically resolve `target` against the link's parent; the walk must

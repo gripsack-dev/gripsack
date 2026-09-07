@@ -83,8 +83,12 @@ def main() -> None:
                 if args.mode == "replay":
                     contained += [target, f"/tmp/work/corpus/{target}"]
                 else:
+                    # Per-input budget: bounded archive decodes legitimately
+                    # take seconds (bomb rejection streams to the expanded cap
+                    # before failing); a 5s cut turned the timeout report
+                    # itself into a crash before the reporting hooks existed.
                     contained += [f"/tmp/work/corpus/{target}", "-seed=42", "-max_len=65536",
-                                  f"-max_total_time={fuzz_seconds}", "-timeout=5",
+                                  f"-max_total_time={fuzz_seconds}", "-timeout=25",
                                   "-rss_limit_mb=512",
                                   "-malloc_limit_mb=128", "-artifact_prefix=/tmp/work/artifacts/"]
                 # OS limits apply to deterministic replay as well as libFuzzer.
