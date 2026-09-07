@@ -58,6 +58,7 @@ pub enum OpKind {
         payload: Vec<u8>,
         marker: Option<String>,
         existing: String,
+        mode: u32,
     },
     /// Remove the destination, or restore its prior (the entry's
     /// lineage decides; merge splices only our block out).

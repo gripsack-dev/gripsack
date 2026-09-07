@@ -1,0 +1,1 @@
+[{"code":"A03","severity":"warning","message":"'export_legend' is deprecated","labels":[{"span":{"file":"<input>","line":1,"col":1},"note":""}],"help":"renamed to 'export.legend'"}]

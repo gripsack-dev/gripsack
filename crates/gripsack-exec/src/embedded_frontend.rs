@@ -1318,7 +1318,7 @@ export function verifyDeployed(path: string): Verify {
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",

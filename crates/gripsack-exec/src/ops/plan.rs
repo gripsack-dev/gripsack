@@ -89,7 +89,7 @@ pub enum ModeInput<'a> {
     Merge {
         payload: &'a str,
         existing: Option<String>,
-        dest_mode: u32,
+        permissions: WritePermissions,
     },
 }
 
@@ -110,8 +110,8 @@ pub(crate) fn plan_entry_op(view: &DestView, input: ModeInput) -> Result<Op, Exe
         ModeInput::Merge {
             payload,
             existing,
-            dest_mode,
-        } => plan_merge(view, payload, existing, dest_mode),
+            permissions,
+        } => plan_merge(view, payload, existing, permissions),
     }
 }
 
@@ -136,10 +136,10 @@ impl WritePermissions {
                 };
             }
         };
-        let Some(prev) = view
-            .prev
-            .filter(|entry| entry.mode == Ownership::TrackedCopy && !entry.preserved_drift)
-        else {
+        let Some(prev) = view.prev.filter(|entry| {
+            matches!(entry.mode, Ownership::TrackedCopy | Ownership::Template)
+                && !entry.preserved_drift
+        }) else {
             return if executable { 0o755 } else { 0o644 };
         };
         let Some(mode) = prev.file_mode else {
@@ -158,23 +158,24 @@ impl WritePermissions {
 
 fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) -> Op {
     use crate::deploy::CopyPlan;
-    let entry = view.entry;
-    let intent_mode = permissions.resolve(view);
-    let desired_hash: store::hash::ManifestHash = match entry.mode {
-        Ownership::Template => store::canonical_bytes_hash(content).into(),
-        _ => store::canonical_bytes_identity(content, intent_mode).into(),
+    let observed_mode = match &view.observed {
+        Some(crate::deploy::Observation::File { mode, .. }) => Some(*mode),
+        _ => None,
     };
-    // the manifest-domain live identity (mode-aware for copies,
-    // bytes-only for templates; a foreign link hashes its target)
+    let intent_mode = permissions.resolve(view);
+    let desired_hash: store::hash::ManifestHash =
+        store::canonical_bytes_identity(content, intent_mode).into();
+    // the manifest-domain live identity, mode-aware for every surface
+    // that lands bytes (0043: templates joined copies); a foreign link
+    // hashes its target
     let live = match &view.observed {
         None => None,
         Some(crate::deploy::Observation::Symlink { target }) => {
             Some(store::canonical_bytes_hash(target.as_encoded_bytes()).to_string())
         }
-        Some(crate::deploy::Observation::File { bytes, mode }) => match entry.mode {
-            Ownership::Template => Some(store::canonical_bytes_hash(bytes).to_string()),
-            _ => Some(store::canonical_bytes_identity(bytes, *mode).to_string()),
-        },
+        Some(crate::deploy::Observation::File { bytes, mode }) => {
+            Some(store::canonical_bytes_identity(bytes, *mode).to_string())
+        }
     };
     let prev_pair = view.prev.map(|e| (e.hash.as_str(), e.preserved_drift));
     let mut plan = crate::deploy::plan_copy(
@@ -183,21 +184,14 @@ fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) ->
         prev_pair,
         view.take_over,
     );
-    // Templates deliberately compare bytes for drift. Exact rollback also
-    // restores permissions, but equal target bytes alone grant no mutation
-    // authority over a foreign or preserved file.
-    if matches!(plan, CopyPlan::Satisfied)
-        && entry.mode == Ownership::Template
-        && matches!(permissions, WritePermissions::Exact(_))
-        && matches!(&view.observed, Some(crate::deploy::Observation::File { mode, .. }) if *mode != intent_mode)
+    // Read old template receipts without promoting bytes-only or preserved
+    // observations into authority. The recorded permissions must also match.
+    if plan == CopyPlan::Preserve
+        && let Some(prev) = view.prev
+        && let Some(crate::deploy::Observation::File { bytes, mode }) = &view.observed
+        && prev.matches_file(bytes, *mode)
     {
-        plan = if prev_pair
-            .is_some_and(|(hash, preserved)| !preserved && live.as_deref() == Some(hash))
-        {
-            CopyPlan::Update
-        } else {
-            CopyPlan::Preserve
-        };
+        plan = CopyPlan::Update;
     }
     let mut op = match plan {
         CopyPlan::Satisfied => {
@@ -253,10 +247,7 @@ fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) ->
                 ))),
             );
             // the prior is captured at execution (0015 §4)
-            let written_hash = match entry.mode {
-                Ownership::Template => store::canonical_bytes_hash(content).into(),
-                _ => store::canonical_bytes_identity(content, mode).into(),
-            };
+            let written_hash = store::canonical_bytes_identity(content, mode).into();
             op.produces = view.produces(written_hash, Some(mode), false);
             op
         }
@@ -270,7 +261,7 @@ fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) ->
             // (0029 §2) — it authorizes nothing
             op.produces = view.produces(
                 store::hash::ManifestHash::from_raw(live.expect("Preserve implies a live object")),
-                None,
+                observed_mode,
                 true,
             );
             op
@@ -342,19 +333,46 @@ fn plan_merge(
     view: &DestView,
     payload: &str,
     existing: Option<String>,
-    dest_mode: u32,
+    permissions: WritePermissions,
 ) -> Result<Op, ExecError> {
     let fail = |detail: String| ExecError::Step {
         module: view.module.to_string(),
         step: "deploy".into(),
         detail,
     };
+    let mode = permissions.resolve(view);
     let block = payload.trim_end_matches('\n');
     let hash = store::hash::ManifestHash::from(store::canonical_bytes_hash(block.as_bytes()));
     let existing = existing.unwrap_or_default();
     let extracted = crate::template::extract_block(&existing, view.module);
-    let block_total = crate::template::find_blocks(&existing, view.module).len();
-    let satisfied = block_total == 1
+    let recorded_mode = crate::template::marker_mode(&existing, view.module);
+    if let Some(crate::deploy::Observation::File {
+        mode: live_mode, ..
+    }) = &view.observed
+        && extracted.is_some()
+        && recorded_mode
+            .or_else(|| {
+                view.prev
+                    .filter(|e| !e.preserved_drift)
+                    .and_then(|e| e.file_mode)
+            })
+            .is_some_and(|recorded| recorded != *live_mode)
+    {
+        let mut op = view.base(
+            OpKind::Preserved,
+            None,
+            Intended::Object(view.observed_identity().expect("merge block implies live")),
+        );
+        op.produces = view.produces(
+            store::canonical_bytes_hash(extracted.as_ref().unwrap().as_bytes()).into(),
+            Some(*live_mode),
+            true,
+        );
+        return Ok(op);
+    }
+    let satisfied = crate::template::find_blocks(&existing, view.module).len() == 1
+        && recorded_mode == Some(mode)
+        && matches!(&view.observed, Some(crate::deploy::Observation::File { mode: live, .. }) if *live == mode)
         && extracted
             .as_deref()
             .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()).as_str() == hash.as_str());
@@ -364,7 +382,7 @@ fn plan_merge(
             None,
             Intended::Object(view.observed_identity().expect("satisfied implies live")),
         );
-        op.produces = view.produces(hash, None, false);
+        op.produces = view.produces(hash, Some(mode), false);
         return Ok(op);
     }
     let spliced = crate::template::upsert_block(
@@ -373,21 +391,23 @@ fn plan_merge(
         &view.dest,
         view.entry.marker.as_deref(),
         payload,
+        mode,
     )
     .map_err(fail)?;
     let mut op = view.base(
         OpKind::MergeUpsert {
             payload: payload.as_bytes().to_vec(),
             marker: view.entry.marker.clone(),
-            existing: existing.clone(),
+            existing,
+            mode,
         },
         Some(Authority::Update),
         Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
             spliced.as_bytes(),
-            dest_mode,
+            mode,
         ))),
     );
-    op.produces = view.produces(hash, None, false);
+    op.produces = view.produces(hash, Some(mode), false);
     Ok(op)
 }
 
@@ -439,29 +459,17 @@ pub(crate) fn plan_remove_op(
     if entry.mode == Ownership::Merge {
         // the file is foreign — prune removes only our block, and only
         // if the block is still what we deployed
-        let existing = match dest_dir.read_to_string(&dest_name) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(e.into()),
+        let existing = match crate::deploy::observe(&dest_dir, &dest_name)? {
+            Some(crate::deploy::Observation::File { bytes, mode }) => (bytes, mode),
+            None => return Ok(None),
+            _ => return kept(format!("kept {} — hosting file replaced", entry.to)),
         };
+        let (bytes, splice_mode) = existing;
+        let existing = String::from_utf8(bytes).map_err(|e| fail(e.to_string()))?;
         match crate::template::extract_block(&existing, module) {
-            Some(content)
-                if store::canonical_bytes_hash(content.as_bytes()).as_str()
-                    == entry.hash.as_str() =>
-            {
+            Some(_) if crate::template::block_intact(&existing, module, entry, splice_mode) => {
                 let new =
                     crate::template::remove_block(&existing, module).expect("block found above");
-                // the splice preserves the foreign file's mode
-                #[cfg(unix)]
-                let splice_mode = {
-                    use gripsack_fs::cap_std::fs::MetadataExt;
-                    dest_dir
-                        .symlink_metadata(&dest_name)
-                        .map(|m| m.mode() & 0o7777)
-                        .unwrap_or(0o644)
-                };
-                #[cfg(not(unix))]
-                let splice_mode = 0o644;
                 let intended = if new.trim().is_empty() {
                     Intended::Removed
                 } else {
@@ -485,7 +493,10 @@ pub(crate) fn plan_remove_op(
                 }));
             }
             Some(_) => {
-                return kept(format!("kept {} — block modified since deploy", entry.to));
+                return kept(format!(
+                    "kept {} — block or hosting-file mode modified since deploy",
+                    entry.to
+                ));
             }
             None => return Ok(None), // block already gone
         }
@@ -558,7 +569,7 @@ pub(crate) fn plan_restore_op(
         prev,
         take_over: false, // rollback never absorbs
     };
-    let op = match entry.mode {
+    let mut op = match entry.mode {
         Ownership::Owned => {
             if !source.exists() {
                 return Ok(None);
@@ -631,25 +642,23 @@ pub(crate) fn plan_restore_op(
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
                 Err(_) => return Ok(None),
             };
-            #[cfg(unix)]
-            let dest_mode = {
-                use std::os::unix::fs::MetadataExt;
-                std::fs::metadata(&view.dest)
-                    .map(|m| m.mode() & 0o7777)
-                    .unwrap_or(0o644)
-            };
-            #[cfg(not(unix))]
-            let dest_mode = 0o644;
             plan_entry_op(
                 &view,
                 ModeInput::Merge {
                     payload: &payload,
                     existing,
-                    dest_mode,
+                    permissions: entry
+                        .file_mode
+                        .map_or(WritePermissions::Preserve, WritePermissions::Exact),
                 },
             )?
         }
     };
+    if let Some(produced) = &mut op.produces
+        && !produced.preserved_drift
+    {
+        produced.source_executable = entry.source_executable;
+    }
     Ok(Some(op))
 }
 

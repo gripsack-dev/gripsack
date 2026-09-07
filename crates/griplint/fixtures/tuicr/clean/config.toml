@@ -12,3 +12,20 @@ comment_types = [
     { id = "issue", color = "red", definition = "must fix" },
     { id = "note", color = "blue" },
 ]
+
+# Introduced in 0.22; all nested sections also exist in 0.20.
+show_pr_checks = true
+show_pr_comments = true
+search_highlight = true
+diff_watch_interval_ms = 500
+
+[forge]
+comment_type_prefix = false
+
+[export]
+intro = ""
+scope_line = false
+pr_metadata = true
+comments_header = "Comments"
+remote_comments_header = "Remote"
+legend = false

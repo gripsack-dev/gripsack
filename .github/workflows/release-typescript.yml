@@ -15,6 +15,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
+          node-version: 22.23.2
           # exact pin (0042 F): refreshed deliberately via
           # scripts/check_pins.py (nodejs.org dist index)
           # setup-node only wires NODE_AUTH_TOKEN into .npmrc when a

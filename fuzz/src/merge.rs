@@ -18,12 +18,12 @@ pub(crate) fn exercise(input: &[u8]) {
         let _ = extract_block(existing, module);
         let _ = remove_block(existing, module);
         for dest in ["config.sh", "config.html", "config.jsonc", ".vimrc"] {
-            if let Ok(out) = upsert_block(existing, module, Path::new(dest), None, payload) {
+            if let Ok(out) = upsert_block(existing, module, Path::new(dest), None, payload, 0o644) {
                 let _ = find_blocks(&out, module);
                 let _ = extract_block(&out, module);
                 let _ = marker_sha(&out, module);
                 let _ = remove_block(&out, module);
-                let _ = upsert_block(&out, module, Path::new(dest), Some("#!"), payload);
+                let _ = upsert_block(&out, module, Path::new(dest), Some("#!"), payload, 0o644);
             }
         }
     }
@@ -37,12 +37,20 @@ pub(crate) fn exercise(input: &[u8]) {
     };
     let copies = input.first().map_or(1, |byte| (byte % 4 + 1) as usize);
     let foreign = format!("foreign-{digest}{eol}");
-    let first = upsert_block(&foreign, "m", Path::new("config.sh"), None, &digest).unwrap();
+    let first = upsert_block(&foreign, "m", Path::new("config.sh"), None, &digest, 0o644).unwrap();
     let duplicated = first.repeat(copies);
-    let repaired = upsert_block(&duplicated, "m", Path::new("config.sh"), None, &digest).unwrap();
+    let repaired = upsert_block(
+        &duplicated,
+        "m",
+        Path::new("config.sh"),
+        None,
+        &digest,
+        0o644,
+    )
+    .unwrap();
     assert_eq!(find_blocks(&repaired, "m").len(), 1);
     assert_eq!(
-        upsert_block(&repaired, "m", Path::new("config.sh"), None, &digest).unwrap(),
+        upsert_block(&repaired, "m", Path::new("config.sh"), None, &digest, 0o644).unwrap(),
         repaired
     );
     let removed = remove_block(&duplicated, "m").unwrap();

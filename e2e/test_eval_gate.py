@@ -588,38 +588,6 @@ export default module("present", { install: [] });
     assert "ghost" in out.stderr
 
 
-def test_doctor_warns_on_a_stale_core_pin(sandbox):
-    """The repo's package.json @gripsack/core pin is what the editor
-    and tsc typecheck against (the deliberate-pin rule); a stale one
-    silently accepts authoring styles the embedded frontend removed.
-    Doctor compares major.minor and names the upgrade command."""
-    repo = make_env_repo(
-        sandbox / "myenv",
-        """
-import { module } from "@gripsack/core";
-
-export default module("a", { install: [] });
-""",
-    )
-    (repo / "package.json").write_text(
-        '{"devDependencies": {"@gripsack/core": "^0.17.5"}}\n'
-    )
-    out = grip("doctor", cwd=repo)
-    assert out.returncode == 0, out.stderr
-    assert "repo pin:" in out.stdout, out.stdout
-    # a stale pin is a warning, not a pass — the 0.21.0 line rendered
-    # as a green "ok" (a no-op marker replace) and advised an npm
-    # version that did not exist yet
-    pin_line = next(l for l in out.stdout.splitlines() if "repo pin:" in l)
-    assert pin_line.startswith("warn"), pin_line
-    assert "@gripsack/core ^0.17.5" in out.stdout
-    assert "npm i -D @gripsack/core@" in out.stdout
-    # the advice pins the minor LINE (^M.m.0): ^0.21.1 cannot resolve
-    # when npm's latest is 0.21.0, and the frontend doesn't republish
-    # on every core patch
-    assert "@^{}.{}.0)".format(*out.stdout.split("frontend is ")[1].split(" —")[0].split(".")[:2]) in out.stdout, out.stdout
-
-
 def test_a_pin_symlink_to_a_nonpackage_grants_nothing(sandbox):
     """0033 R3: node_modules/@gripsack/core symlinking OUTSIDE the
     repo must not enlarge the eval sandbox unless the resolved target

@@ -16,6 +16,7 @@ pub fn verify_store(
 ) -> Result<Vec<(String, ReportKind, String)>, ExecError> {
     let mut out = Vec::new();
     let home = &ctx.home;
+    let current = gripsack_store::current_generation(home)?;
     // enumeration errors are real (0027 §2) — verify must not read
     // "cannot list generations" as "nothing to verify"
     for n in gripsack_store::list_generations(home)? {
@@ -51,6 +52,28 @@ pub fn verify_store(
             // check honest (a raw file hash can never match those).
             let mut handled = false;
             for entry in &state.entries {
+                // Only the active generation claims the live destination.
+                // Drift is not store corruption: --repair must never remove a
+                // valid store artifact because its deployed file was chmodded.
+                if current == Some(n)
+                    && let Some(expected) = entry.file_mode
+                    && matches!(
+                        entry.mode,
+                        gripsack_ir::Ownership::Template | gripsack_ir::Ownership::Merge
+                    )
+                    && let Ok(Some(crate::deploy::Observation::File { mode, .. })) =
+                        crate::deploy::observe_readonly(&entry.key())
+                    && mode != expected
+                {
+                    out.push((
+                        name.clone(),
+                        ReportKind::Warned,
+                        format!(
+                            "drift: {} mode 0{mode:o} differs from recorded 0{expected:o}",
+                            entry.to
+                        ),
+                    ));
+                }
                 // a preserved-drift entry records an OBSERVATION, not
                 // a store deployment (0029 §2) — there is no store
                 // content claim to verify
@@ -72,13 +95,15 @@ pub fn verify_store(
                     let _ = metadata;
                     false
                 };
-                let source_exec_changed = entry.mode == gripsack_ir::Ownership::TrackedCopy
-                    && entry
-                        .source_executable
-                        .is_some_and(|expected| expected != source_exec);
+                let source_exec_changed = matches!(
+                    entry.mode,
+                    gripsack_ir::Ownership::TrackedCopy | gripsack_ir::Ownership::Template
+                ) && entry
+                    .source_executable
+                    .is_some_and(|expected| expected != source_exec);
                 // each arm recomputes in the entry's manifest domain
-                // (0031): merge/template are bytes-only; copies are
-                // mode-aware in the receipt's persisted format.
+                // (0043): merge blocks are bytes-only; whole-file outputs
+                // include permissions. Historical receipts retain their domain.
                 // owned links record the payload's store identity
                 let actual = match entry.mode {
                     gripsack_ir::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
@@ -99,7 +124,20 @@ pub fn verify_store(
                             )
                             .ok()
                         })
-                        .map(|r| gripsack_store::canonical_bytes_hash(&r).to_string()),
+                        .map(|rendered| {
+                            let legacy = gripsack_store::canonical_bytes_hash(&rendered);
+                            if legacy.as_str() == entry.hash.as_str() {
+                                legacy.to_string()
+                            } else {
+                                let mode = entry.file_mode.unwrap_or(if source_exec {
+                                    0o755
+                                } else {
+                                    0o644
+                                });
+                                gripsack_store::canonical_bytes_identity(&rendered, mode)
+                                    .to_string()
+                            }
+                        }),
                     gripsack_ir::Ownership::Owned => gripsack_store::canonical_file_hash(&src)
                         .ok()
                         .map(|h| h.to_string()),

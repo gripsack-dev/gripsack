@@ -3,6 +3,43 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.38.0] — 2026-09-07
+
+Migration feedback, permission identity, and honest read-only updates (0043).
+
+### Added
+
+- **`grip update --check`** resolves and acquires into private scratch, reports
+  would-be pin changes, and leaves the lockfile and source cache unpublished.
+  Exit 0 means current; exit 1 means changes are available. Recipes never run.
+- **Permission-policy model coverage**: a corrected `FileMode.tla`, twelve
+  positive lanes and four named counterexamples, plus a Rust explorer driving
+  the shipped planner/executor through copy, template, merge, and link modes.
+
+### Fixed
+
+- **Executable templates stay executable.** Templates and tracked copies share
+  fresh 0755/0644 source-executability policy and preserve acquired access on
+  updates. SHA-256 identity includes rendered bytes and full permissions.
+  Chmod-only drift is visible in plan, preserved with a warning on apply and
+  rollback, and never authorizes prune—even after repeated observations.
+  Templates add no in-file banner; their manifest is the identity record.
+- **Merge markers record the hosting-file mode** alongside the block hash.
+  New hosts use planner-selected 0644; existing hosts keep their permissions.
+  Old markers upgrade in place. Chmod drift guards reapply and prune without
+  changing unmanaged content; store verification reports destination drift
+  without treating it as store corruption or deleting healthy artifacts.
+- **Doctor checks the installed frontend**, not just the declared npm range.
+  A stale local `node_modules/@gripsack/core` is a MISS even with a newer
+  package.json declaration. Advice names both updating and removing the pin.
+- **Tuicr pack coverage is 0.20–0.25**, with real `[forge]` and `[export]`
+  sections and a migration hint for `export_legend`. Supported v0.22 configs
+  no longer produce the stale-coverage warning; v0.19 still does.
+
+IR remains v3; old lockfiles and generations remain readable. Legacy template
+receipts authorize changes only when both the bytes hash and recorded mode
+match. Core and `@gripsack/core` ship together at 0.38.0.
+
 ## [0.37.0] — 2026-09-07
 
 Complete source pins, bounded acquisition, and stronger protocol evidence

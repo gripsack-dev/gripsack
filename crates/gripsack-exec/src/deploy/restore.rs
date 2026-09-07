@@ -6,24 +6,6 @@ use gripsack_ir::Ownership;
 use gripsack_store as store;
 use std::path::Path;
 
-/// re-renders with the recorded vars; merge re-upserts only the block
-/// into the foreign file).
-/// The destination's current full permission mode, if it exists
-/// (0026 §7's preserve rule, made explicit at plan time so the
-/// journaled intent can name the landed identity exactly).
-fn live_mode(dest: &Path) -> Option<u32> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        std::fs::metadata(dest).ok().map(|m| m.mode() & 0o7777)
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = dest;
-        None
-    }
-}
-
 /// Capture a destination's current state for a take-over (0015
 /// §4): real-file bytes go to the content-addressed prior blob store,
 /// a symlink's target is recorded verbatim. None = nothing there (or
@@ -109,21 +91,18 @@ pub(crate) fn restore_prior(
 /// deployed? (Merge blocks are checked by block hash at the call
 /// sites — a foreign file is never "intact" as a whole.)
 pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, store_path: &Path) -> bool {
+    if entry.preserved_drift {
+        return false;
+    }
     match entry.mode {
         Ownership::Owned => std::fs::read_link(dest)
             .map(|t| t == store_path.join(&entry.from))
             .unwrap_or(false),
         Ownership::Merge => false, // merge never carries a prior
-        Ownership::Template => std::fs::read(dest)
-            .map(|b| store::canonical_bytes_hash(&b).as_str() == entry.hash.as_str())
-            .unwrap_or(false),
-        Ownership::TrackedCopy => std::fs::read(dest)
-            .ok()
-            .and_then(|bytes| {
-                let mode = live_mode(dest)?;
-                Some(store::canonical_bytes_identity(&bytes, mode).as_str() == entry.hash.as_str())
-            })
-            .unwrap_or(false),
+        Ownership::TrackedCopy | Ownership::Template => {
+            matches!(super::observe_readonly(dest),
+                Ok(Some(super::Observation::File { bytes, mode })) if entry.matches_file(&bytes, mode))
+        }
     }
 }
 
