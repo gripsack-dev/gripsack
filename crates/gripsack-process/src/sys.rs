@@ -78,7 +78,11 @@ pub(super) fn kill_group(pid: libc::pid_t) -> io::Result<()> {
     // leader; this is never the parent's group or an arbitrary supplied PID.
     if unsafe { libc::killpg(pid, libc::SIGKILL) } < 0 {
         let error = io::Error::last_os_error();
-        if error.raw_os_error() != Some(libc::ESRCH) {
+        // ESRCH: the group is gone. EPERM: Darwin returns it for a
+        // group whose members are all zombies (libuv's precedent treats
+        // it as "already dead"). A live group of our own descendants
+        // cannot legitimately EPERM — we spawned its leader.
+        if !matches!(error.raw_os_error(), Some(libc::ESRCH) | Some(libc::EPERM)) {
             return Err(error);
         }
     }

@@ -85,9 +85,12 @@ impl Guard {
             {
                 record(&mut error, e);
             }
-            // No further group signals after a successful reap. Only reap
-            // after termination succeeded, or ownership has already been lost.
-            if self.killed && self.owned {
+            // No further group signals after a successful reap. Reap once
+            // the group kill succeeded OR the leader is already observed
+            // exited: a zombie-only group may refuse the kill (Darwin's
+            // EPERM) while still holding the PID unreaped — refusing to
+            // reap it would spin until the deadline with nothing to signal.
+            if (self.killed || self.exited) && self.owned {
                 match self.observe() {
                     Ok(true) => match sys::reap(self.pid) {
                         Ok(Some(s)) => {
