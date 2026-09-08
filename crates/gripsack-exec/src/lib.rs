@@ -28,6 +28,7 @@ pub mod frontend;
 pub mod gc;
 pub mod identity;
 pub mod lockfile;
+pub mod managed_blocks;
 pub mod module;
 pub mod ops;
 pub mod report;
@@ -46,9 +47,15 @@ pub use ctx::{Ctx, ExecError, Outcome, ProgressCallback};
 pub use env::render_env_file;
 pub use frontend::{ensure_deno, ensure_ts_frontend};
 pub use gc::{GcReport, gc, why_owns};
-pub use report::{ApplyResult, ReportKind, StepReport, UpdateReport, UpdateStatus};
+pub use report::{
+    ApplyResult, ReportKind, StepReport, UpdateCheckOutcome, UpdateReport, UpdateStatus,
+    UpdateSummary,
+};
 pub use rollback::rollback_generation;
-pub use update::update;
+pub use source::preflight::{
+    DeferredLayoutCheck, LayoutEvidence, inspect_known as inspect_known_layouts,
+};
+pub use update::{UpdateMode, update};
 pub use util::acquire_lifecycle_lock;
 
 use gripsack_ir::Ir;

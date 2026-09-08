@@ -125,8 +125,8 @@ pub(crate) fn fetch(
 }
 
 fn failure(package: &str, reason: impl Into<String>) -> FetchError {
-    FetchError::Http {
-        url: package.into(),
+    FetchError::Source {
+        resource: package.into(),
         reason: reason.into(),
     }
 }

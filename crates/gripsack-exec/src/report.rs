@@ -41,32 +41,28 @@ pub fn describe_fetch(spec: &gripsack_ir::FetchSpec) -> String {
     }
 }
 
-pub(crate) fn describe_verify(verify: &Verify, version: Option<&str>) -> String {
-    // show the path as it ACTUALLY ran: platform placeholders (0016
-    // §D1) plus the locked tag — same substitution as verify/deploy
-    let sub = |path: &str| {
-        let expanded = gripsack_fetch::expand_platform(path);
-        match version {
-            Some(v) => expanded.replace("{version}", v),
-            None => expanded,
-        }
-    };
-    match verify {
-        Verify::BinaryRuns { path, .. } => format!("verified {} runs", sub(path)),
-        Verify::FileExists { path } => format!("verified {path} exists"),
+pub(crate) fn describe_verify(
+    verify: &Verify,
+    version: Option<&str>,
+) -> Result<String, gripsack_fetch::PlaceholderError> {
+    let sub = |path: &str| gripsack_fetch::placeholders::payload_path(path, version);
+    Ok(match verify {
+        Verify::BinaryRuns { path, .. } => format!("verified {} runs", sub(path)?),
+        Verify::FileExists { path } => format!("verified {} exists", sub(path)?),
         Verify::Shell { .. } => "verified (shell check)".to_string(),
         Verify::FileDeployed { path } => format!("verified {path} deployed"),
-    }
+    })
 }
 
 /// One line of an update report.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub struct UpdateReport {
     pub module: String,
     pub status: UpdateStatus,
+    pub layout: crate::source::preflight::LayoutEvidence,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum UpdateStatus {
     Unchanged,
     /// New or bumped pin — apply to deploy it.
@@ -79,4 +75,98 @@ pub enum UpdateStatus {
     Skipped {
         reason: &'static str,
     },
+    Failed {
+        error: Box<crate::ctx::ExecError>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateCheckOutcome {
+    Current,
+    ChangesAvailable,
+    Incomplete,
+}
+
+#[derive(Debug, Default)]
+pub struct UpdateSummary {
+    pub unchanged: usize,
+    pub changed: usize,
+    pub skipped: usize,
+    pub failed: usize,
+}
+
+impl UpdateSummary {
+    pub fn from_reports(reports: &[UpdateReport]) -> Self {
+        let mut summary = Self::default();
+        for report in reports {
+            match report.status {
+                UpdateStatus::Unchanged => summary.unchanged += 1,
+                UpdateStatus::Bumped { .. } => summary.changed += 1,
+                UpdateStatus::Skipped { .. } => summary.skipped += 1,
+                UpdateStatus::Failed { .. } => summary.failed += 1,
+            }
+        }
+        summary
+    }
+
+    pub fn outcome(&self) -> UpdateCheckOutcome {
+        if self.failed != 0 {
+            UpdateCheckOutcome::Incomplete
+        } else if self.changed != 0 {
+            UpdateCheckOutcome::ChangesAvailable
+        } else {
+            UpdateCheckOutcome::Current
+        }
+    }
+}
+
+#[cfg(test)]
+mod update_model {
+    use super::*;
+    #[test]
+    fn every_survey_order_preserves_error_over_change_precedence() {
+        for first in 0..4 {
+            for second in 0..4 {
+                for third in 0..4 {
+                    let kinds = [first, second, third];
+                    let reports = kinds
+                        .into_iter()
+                        .map(|kind| UpdateReport {
+                            module: "fixture".into(),
+                            layout: Default::default(),
+                            status: match kind {
+                                0 => UpdateStatus::Unchanged,
+                                1 => UpdateStatus::Bumped {
+                                    old: None,
+                                    new: "v2".into(),
+                                },
+                                2 => UpdateStatus::Failed {
+                                    error: Box::new(crate::ctx::ExecError::Step {
+                                        module: "fixture".into(),
+                                        step: "resolve".into(),
+                                        detail: "unavailable".into(),
+                                    }),
+                                },
+                                _ => UpdateStatus::Skipped {
+                                    reason: "no fetch source",
+                                },
+                            },
+                        })
+                        .collect::<Vec<_>>();
+                    let expected = if kinds.contains(&2) {
+                        UpdateCheckOutcome::Incomplete
+                    } else if kinds.contains(&1) {
+                        UpdateCheckOutcome::ChangesAvailable
+                    } else {
+                        UpdateCheckOutcome::Current
+                    };
+                    assert_eq!(UpdateSummary::from_reports(&reports).outcome(), expected);
+                }
+            }
+        }
+        assert_eq!(
+            UpdateSummary::from_reports(&[]).outcome(),
+            UpdateCheckOutcome::Current
+        );
+    }
 }

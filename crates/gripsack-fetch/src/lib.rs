@@ -19,6 +19,7 @@ pub mod host;
 pub(crate) mod http;
 mod identity;
 mod limits;
+pub mod placeholders;
 pub mod plugins;
 pub mod resolve;
 mod spool;
@@ -27,9 +28,11 @@ pub mod throttle;
 pub use context::FetchContext;
 pub use fetch::{FetchError, FetchOutcome, resolve_git_head};
 pub use host::{AssetTarget, DENO_RELEASE, PIXI_RELEASE, resolve as resolve_host_asset};
+pub use http::{HttpFailure, HttpFailureKind, RetryStopReason};
 pub use identity::{DownloadHash, FetchIdentity};
 pub use limits::FetchLimits;
-pub use resolve::{ResolvedRelease, SelfRelease, expand_platform};
+pub use placeholders::{PlaceholderError, expand_platform};
+pub use resolve::{ResolvedRelease, SelfRelease};
 
 use std::path::PathBuf;
 

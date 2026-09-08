@@ -240,7 +240,14 @@ pub(crate) fn deploy_entry(
     prev_map: &std::collections::BTreeMap<std::path::PathBuf, &store::DeployedEntry>,
     version: Option<&str>,
 ) -> Result<(String, ReportKind), ExecError> {
-    let prepared = crate::source::payload_source(store_path, &entry.from, version);
+    let prepared =
+        crate::source::payload_source(store_path, &entry.from, version).map_err(|error| {
+            ExecError::Step {
+                module: module.into(),
+                step: "deploy".into(),
+                detail: error.to_string(),
+            }
+        })?;
     let from = prepared.relative;
     // Entry content is the store payload — always. The publish step
     // stages every repo-referenced `from` into the store, so a store
@@ -397,12 +404,10 @@ pub(crate) fn deploy_entry(
         Ownership::Merge => {
             let payload = std::fs::read_to_string(&source)
                 .map_err(|e| fail(format!("cannot read {}: {e}", source.display())))?;
-            let existing = read_foreign_text(&dest);
             crate::ops::plan_entry_op(
                 &view,
                 crate::ops::ModeInput::Merge {
                     payload: &payload,
-                    existing,
                     permissions: crate::ops::WritePermissions::Preserve,
                 },
             )?
@@ -468,18 +473,6 @@ pub(crate) fn dest_resolves_into(dest: &Path, repo: &Path) -> bool {
     };
     let tail = dest.strip_prefix(ancestor).expect("ancestor is a prefix");
     ancestor_canon.join(tail).starts_with(&repo_canon)
-}
-
-/// Read a foreign (user-owned) destination as text: absent counts as
-/// empty (merge creates the file); anything unreadable or non-UTF-8
-/// is None — callers must refuse to splice onto it, never fall back
-/// to "" and replace the file.
-pub(crate) fn read_foreign_text(dest: &Path) -> Option<String> {
-    match std::fs::read_to_string(dest) {
-        Ok(text) => Some(text),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(String::new()),
-        Err(_) => None,
-    }
 }
 
 #[cfg(test)]

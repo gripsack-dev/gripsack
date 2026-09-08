@@ -84,11 +84,9 @@ pub enum ModeInput<'a> {
         content: &'a [u8],
         permissions: WritePermissions,
     },
-    /// Merge: the block payload, the foreign file's current text, and
-    /// its mode (preserved across the splice).
+    /// Merge payload and permissions; hosting text is the view's one observation.
     Merge {
         payload: &'a str,
-        existing: Option<String>,
         permissions: WritePermissions,
     },
 }
@@ -109,9 +107,8 @@ pub(crate) fn plan_entry_op(view: &DestView, input: ModeInput) -> Result<Op, Exe
         } => Ok(plan_write(view, content, permissions)),
         ModeInput::Merge {
             payload,
-            existing,
             permissions,
-        } => plan_merge(view, payload, existing, permissions),
+        } => plan_merge(view, payload, permissions),
     }
 }
 
@@ -332,73 +329,70 @@ fn plan_link(
 fn plan_merge(
     view: &DestView,
     payload: &str,
-    existing: Option<String>,
     permissions: WritePermissions,
 ) -> Result<Op, ExecError> {
     let fail = |detail: String| ExecError::Step {
         module: view.module.to_string(),
         step: "deploy".into(),
-        detail,
+        detail: format!("{}: {detail}", view.entry.to),
     };
+    let existing = match &view.observed {
+        None => "",
+        Some(crate::deploy::Observation::File { bytes, .. }) => std::str::from_utf8(bytes)
+            .map_err(|e| fail(format!("hosting file is not UTF-8: {e}")))?,
+        Some(crate::deploy::Observation::Symlink { .. }) => {
+            return Err(fail(
+                "hosting file is a symlink; refusing to replace foreign ownership".into(),
+            ));
+        }
+    };
+    let blocks = crate::managed_blocks::ManagedBlockSet::parse(existing, view.module)
+        .map_err(|e| fail(e.to_string()))?;
     let mode = permissions.resolve(view);
-    let block = payload.trim_end_matches('\n');
-    let hash = store::hash::ManifestHash::from(store::canonical_bytes_hash(block.as_bytes()));
-    let existing = existing.unwrap_or_default();
-    let extracted = crate::template::extract_block(&existing, view.module);
-    let recorded_mode = crate::template::marker_mode(&existing, view.module);
     if let Some(crate::deploy::Observation::File {
         mode: live_mode, ..
     }) = &view.observed
-        && extracted.is_some()
-        && recorded_mode
-            .or_else(|| {
-                view.prev
-                    .filter(|e| !e.preserved_drift)
-                    .and_then(|e| e.file_mode)
-            })
-            .is_some_and(|recorded| recorded != *live_mode)
+        && !blocks.is_empty()
+        && blocks.mode_conflicts(*live_mode, view.prev)
     {
         let mut op = view.base(
             OpKind::Preserved,
             None,
-            Intended::Object(view.observed_identity().expect("merge block implies live")),
+            Intended::Object(view.observed_identity().expect("block implies live")),
         );
+        // An explicitly non-authoritative observation of the whole hosting text.
         op.produces = view.produces(
-            store::canonical_bytes_hash(extracted.as_ref().unwrap().as_bytes()).into(),
+            store::canonical_bytes_hash(existing.as_bytes()).into(),
             Some(*live_mode),
             true,
         );
         return Ok(op);
     }
-    let satisfied = crate::template::find_blocks(&existing, view.module).len() == 1
-        && recorded_mode == Some(mode)
+    let hash = crate::managed_blocks::content_hash(payload);
+    if blocks.satisfied(&hash, mode)
         && matches!(&view.observed, Some(crate::deploy::Observation::File { mode: live, .. }) if *live == mode)
-        && extracted
-            .as_deref()
-            .is_some_and(|c| store::canonical_bytes_hash(c.as_bytes()).as_str() == hash.as_str());
-    if satisfied {
+    {
         let mut op = view.base(
             OpKind::Satisfied,
             None,
             Intended::Object(view.observed_identity().expect("satisfied implies live")),
         );
-        op.produces = view.produces(hash, Some(mode), false);
+        op.produces = view.produces(hash.into(), Some(mode), false);
         return Ok(op);
     }
-    let spliced = crate::template::upsert_block(
-        &existing,
-        view.module,
-        &view.dest,
-        view.entry.marker.as_deref(),
-        payload,
-        mode,
-    )
-    .map_err(fail)?;
+    let spliced = blocks
+        .upsert(
+            view.module,
+            &view.dest,
+            view.entry.marker.as_deref(),
+            payload,
+            mode,
+        )
+        .map_err(|e| fail(e.to_string()))?;
     let mut op = view.base(
         OpKind::MergeUpsert {
             payload: payload.as_bytes().to_vec(),
             marker: view.entry.marker.clone(),
-            existing,
             mode,
         },
         Some(Authority::Update),
@@ -407,7 +401,8 @@ fn plan_merge(
             mode,
         ))),
     );
-    op.produces = view.produces(hash, Some(mode), false);
+    op.produces = view.produces(hash.into(), Some(mode), false);
+    op.note = blocks.report_note();
     Ok(op)
 }
 
@@ -466,11 +461,13 @@ pub(crate) fn plan_remove_op(
         };
         let (bytes, splice_mode) = existing;
         let existing = String::from_utf8(bytes).map_err(|e| fail(e.to_string()))?;
-        match crate::template::extract_block(&existing, module) {
-            Some(_) if crate::template::block_intact(&existing, module, entry, splice_mode) => {
-                let new =
-                    crate::template::remove_block(&existing, module).expect("block found above");
-                let intended = if new.trim().is_empty() {
+        let blocks = crate::managed_blocks::ManagedBlockSet::parse(&existing, module)
+            .map_err(|e| fail(e.to_string()))?;
+        match blocks.blocks() {
+            [] => return Ok(None),
+            _ if blocks.intact(entry, splice_mode) => {
+                let new = blocks.remove().expect("intact implies a block");
+                let intended = if new.is_empty() {
                     Intended::Removed
                 } else {
                     Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
@@ -492,13 +489,12 @@ pub(crate) fn plan_remove_op(
                     removing: Some((entry.clone(), store_path.to_path_buf())),
                 }));
             }
-            Some(_) => {
+            _ => {
                 return kept(format!(
                     "kept {} — block or hosting-file mode modified since deploy",
                     entry.to
                 ));
             }
-            None => return Ok(None), // block already gone
         }
     }
     // the drift guard runs FIRST (0026 §6) — a kept destination is
@@ -635,18 +631,16 @@ pub(crate) fn plan_restore_op(
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
                 Err(e) => return Err(fail(format!("{e}"))),
             };
-            // a dest that is not text cannot host the block — leave
-            // the foreign file alone (Skipped)
-            let existing = match std::fs::read_to_string(&view.dest) {
-                Ok(t) => Some(t),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                Err(_) => return Ok(None),
-            };
+            match &view.observed {
+                None => {}
+                Some(crate::deploy::Observation::File { bytes, .. })
+                    if std::str::from_utf8(bytes).is_ok() => {}
+                _ => return Ok(None),
+            }
             plan_entry_op(
                 &view,
                 ModeInput::Merge {
                     payload: &payload,
-                    existing,
                     permissions: entry
                         .file_mode
                         .map_or(WritePermissions::Preserve, WritePermissions::Exact),
@@ -660,33 +654,4 @@ pub(crate) fn plan_restore_op(
         produced.source_executable = entry.source_executable;
     }
     Ok(Some(op))
-}
-
-/// The merge upsert's report notes (0.21.1 review), derived from the
-/// op's inputs — the renderer and the executor agree by construction.
-pub(crate) fn merge_notes_pub(module: &str, payload: &[u8], existing: &str) -> String {
-    let block_total = crate::template::find_blocks(existing, module).len();
-    let extracted = crate::template::extract_block(existing, module);
-    let hand_edited = extracted.as_deref().is_some_and(|content| {
-        crate::template::marker_sha(existing, module).is_some_and(|recorded| {
-            recorded != store::canonical_bytes_hash(content.as_bytes()).as_str()[..16]
-        })
-    });
-    let mut notes = Vec::new();
-    if hand_edited {
-        notes.push("hand-edited block regenerated".to_string());
-    }
-    if block_total > 1 {
-        notes.push(format!(
-            "removed {} duplicate block{}",
-            block_total - 1,
-            if block_total == 2 { "" } else { "s" }
-        ));
-    }
-    let _ = payload;
-    if notes.is_empty() {
-        String::new()
-    } else {
-        format!(" ({})", notes.join(", "))
-    }
 }

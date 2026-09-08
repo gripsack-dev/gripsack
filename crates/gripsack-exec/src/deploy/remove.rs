@@ -44,18 +44,18 @@ pub fn remove_entry_deployed(
             };
             let existing = String::from_utf8(bytes)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-            match crate::template::extract_block(&existing, module) {
-                Some(_) if crate::template::block_intact(&existing, module, entry, mode) => {
-                    let new = crate::template::remove_block(&existing, module)
-                        .expect("block found above");
-                    if new.trim().is_empty() {
-                        remove_if_present(dest_dir, dest_name)?;
-                    } else {
-                        gripsack_fs::atomic_write(dest_dir, dest_name, new.as_bytes())?;
-                    }
-                    Ok(true)
+            let blocks = crate::managed_blocks::ManagedBlockSet::parse(&existing, module)
+                .map_err(std::io::Error::other)?;
+            if blocks.intact(entry, mode) {
+                let new = blocks.remove().expect("intact implies a block");
+                if new.is_empty() {
+                    remove_if_present(dest_dir, dest_name)?;
+                } else {
+                    gripsack_fs::atomic_write(dest_dir, dest_name, new.as_bytes())?;
                 }
-                _ => Ok(false), // drifted block is the user's now
+                Ok(true)
+            } else {
+                Ok(false)
             }
         }
         Ownership::TrackedCopy | Ownership::Template => {

@@ -129,7 +129,6 @@ pub(crate) fn execute_op(
         OpKind::MergeUpsert {
             payload,
             marker,
-            existing,
             mode,
         } => {
             let (dest_dir, dest_name) = dest_capability(&op.dest)
@@ -150,15 +149,17 @@ pub(crate) fn execute_op(
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
                         Err(e) => return Err(e),
                     };
-                    let new = crate::template::upsert_block(
-                        &latest,
-                        &op.module,
-                        &op.dest,
-                        marker.as_deref(),
-                        &String::from_utf8_lossy(payload),
-                        *mode,
-                    )
-                    .map_err(std::io::Error::other)?;
+                    let blocks = crate::managed_blocks::ManagedBlockSet::parse(&latest, &op.module)
+                        .map_err(std::io::Error::other)?;
+                    let new = blocks
+                        .upsert(
+                            &op.module,
+                            &op.dest,
+                            marker.as_deref(),
+                            &String::from_utf8_lossy(payload),
+                            *mode,
+                        )
+                        .map_err(std::io::Error::other)?;
                     gripsack_fs::atomic_write_with_mode(
                         &dest_dir,
                         &dest_name,
@@ -169,7 +170,7 @@ pub(crate) fn execute_op(
             )?;
             // the report names what the plan saw (0.21.1 review):
             // regenerated hand-edits, stripped duplicates
-            let note = super::plan::merge_notes_pub(&op.module, payload, existing);
+            let note = op.note.as_deref().unwrap_or("");
             Ok((
                 OpReport {
                     summary: format!("merged {} → {}{}", op.module, op.declared_to, note),

@@ -3,6 +3,51 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.39.0] — 2026-09-08
+
+Complete surveys, explicit version spelling, and transport evidence (0044).
+
+### Fixed
+
+- **Merge never discards an unowned tail after an unmatched marker.** One
+  lossless scan supplies inspection and rewriting. Malformed/nested/interleaved
+  markers fail before mutation. Every duplicate contributes mode and edit
+  evidence, so reordering duplicates cannot bypass a chmod guard. Foreign bytes
+  are retained rather than broadly trimmed or normalized.
+- **Uncomputable previews fail**, instead of printing a warning then a successful
+  plan. Available matching payloads also receive offline layout preflight.
+- **Enterprise authentication failures explain host binding** during resolution
+  and locked cold downloads: missing credentials, unbound/mismatched GH_HOST,
+  and rejected bound credentials are distinct. URL credentials/query material
+  are redacted in transport diagnostics.
+
+### Added
+
+- **Complete `update --check` surveys** report unchanged, would-change, failed
+  and inapplicable modules, with an incomplete summary when anything failed.
+  Exit **0** means complete/current; **1** means complete/changes available;
+  **2** means incomplete or operational failure. No source-cache or lock publication.
+- **`{version.bare}`** removes exactly one leading lowercase `v` in GitHub asset
+  patterns and payload install/config/verify paths. Raw `{version}` path semantics
+  and its legacy raw-first asset search remain unchanged; lockfiles keep raw tags.
+- **Exact source-only layout preflight** runs after acquisition/overlay and before
+  publication. A known missing path fails with the pattern, tag, concrete path and
+  observed top-level entries. Recipe outputs and executable verification remain
+  explicitly deferred; read-only commands do not run them.
+- **Bounded HTTP retries** cover classified transient GET failures: three policy
+  attempts, one 600s operation deadline and at most 30s retry waiting. Server
+  cooldowns are respected, partial spools restart from zero, and transfer-byte
+  accounting spans retries. Terminal errors name attempts and the stopping reason;
+  known cooldowns avoid hammering subsequent same-host requests.
+- Four focused TLA+ models, five positive configurations and eleven calibrated
+  negatives, paired with real parser/reducer/retry/authentication model bridges
+  and offline CLI regressions.
+
+IR remains v3; `{version.bare}` requires core 0.39.0 or newer. Core and SDK ship
+together at 0.39.0. GH_HOST remains explicit credential authority: base_url is
+not a token grant. Opt-in gh credential reuse and read-only recipe-output
+inventories remain on the roadmap. No RHEL/Space deployment is claimed.
+
 ## [0.38.0] — 2026-09-07
 
 Migration feedback, permission identity, and honest read-only updates (0043).

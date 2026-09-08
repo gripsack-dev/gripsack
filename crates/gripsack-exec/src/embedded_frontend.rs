@@ -192,7 +192,9 @@ export function dep(module: string, opts: DepOptions = {}): Dependency {
   return { module, for: edge, ...(span ? { span } : {}) };
 }
 "#),
-    ("src/entries.ts", r#"/** Deployment destinations with ownership modes (0001 §3.7). */
+    ("src/entries.ts", r#"/** Deployment destinations with ownership modes (0001 §3.7).
+ * Source keys accept `{version}` (raw locked tag), `{version.bare}` (one
+ * leading lowercase v removed), and the core's platform placeholders. */
 
 export type Ownership = "owned" | "tracked_copy" | "merge" | "template";
 
@@ -252,8 +254,9 @@ export type Fetch =
   | { kind: "pixi"; package: string; version?: string; sha256?: string };
 
 /**
- * GitHub release fetcher. `asset` patterns accept `{version}` (the
- * tag, either v-form) and the platform placeholders (0016 §D1):
+ * GitHub release fetcher. `{version.bare}` strips exactly one leading lowercase
+ * v from the locked tag. Legacy `{version}` tries raw then stripped asset names.
+ * The platform placeholders (0016 §D1) are:
  * `{system}` (x86_64-linux, flake-style), `{target}` (the rust
  * triple, musl for linux), `{arch}` (x86_64|aarch64), `{arch.go}`
  * (amd64|arm64), `{os}` (linux|darwin) — expanded by the core from the
@@ -1318,7 +1321,7 @@ export function verifyDeployed(path: string): Verify {
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.38.0",
+  "version": "0.39.0",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",

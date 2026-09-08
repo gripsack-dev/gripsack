@@ -257,14 +257,11 @@ pub fn diff_section(
     host: &str,
     adopting: &std::collections::BTreeSet<String>,
     palette: Palette,
-) -> String {
+) -> Result<String, gripsack_exec::ExecError> {
     let home = gripsack_store::gripsack_home();
-    // plan's diff is best-effort display; an unreadable current is
-    // still fail-closed everywhere it gates a mutation
-    let current = gripsack_store::current_generation(&home)
-        .ok()
-        .flatten()
-        .and_then(|n| gripsack_store::read_manifest(&home, n).ok());
+    let current = gripsack_store::current_generation(&home)?
+        .map(|number| gripsack_store::read_manifest(&home, number))
+        .transpose()?;
     let c = |s: &str| {
         if palette.enabled {
             s.cyan().to_string()
@@ -291,15 +288,16 @@ pub fn diff_section(
     // deferred; a cold or unpinned one stays deferred
     let lock = match gripsack_exec::lockfile::read(repo, host) {
         gripsack_exec::lockfile::LockRead::Parsed(lock) => lock,
-        _ => Default::default(),
-    };
-    let ops = match gripsack_exec::ops::preview_ops(ir, repo, current.as_ref(), adopting, &lock) {
-        Ok(ops) => ops,
-        Err(e) => {
-            out.push(format!("  (cannot compute the preview: {e})"));
-            return out.join("\n");
+        gripsack_exec::lockfile::LockRead::Missing => Default::default(),
+        gripsack_exec::lockfile::LockRead::Corrupt(detail) => {
+            return Err(gripsack_exec::ExecError::Step {
+                module: "*".into(),
+                step: "lockfile".into(),
+                detail,
+            });
         }
     };
+    let ops = gripsack_exec::ops::preview_ops(ir, repo, current.as_ref(), adopting, &lock)?;
     let mut by_module: std::collections::BTreeMap<&str, Vec<String>> =
         std::collections::BTreeMap::new();
     for op in &ops {
@@ -370,7 +368,7 @@ pub fn diff_section(
     if out.len() == 1 {
         out.push("  nothing would change".into());
     }
-    out.join("\n")
+    Ok(out.join("\n"))
 }
 
 #[cfg(test)]

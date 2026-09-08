@@ -58,8 +58,8 @@ pub(crate) fn fetch(
 }
 
 fn failure(name: &str, reason: String) -> FetchError {
-    FetchError::Http {
-        url: name.to_owned(),
+    FetchError::Source {
+        resource: name.to_owned(),
         reason,
     }
 }

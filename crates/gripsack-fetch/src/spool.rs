@@ -62,7 +62,7 @@ pub(crate) struct Download {
     pub hash: DownloadHash,
 }
 
-pub(crate) fn download(reader: impl Read, limit: u64) -> Result<Download, FetchError> {
+pub(crate) fn download(reader: impl Read, limit: u64) -> io::Result<Download> {
     let mut file = tempfile::Builder::new()
         .prefix("grip-download-")
         .tempfile()?;
@@ -74,7 +74,7 @@ pub(crate) fn copy_hashed(
     reader: impl Read,
     mut output: impl Write,
     limit: u64,
-) -> Result<DownloadHash, FetchError> {
+) -> io::Result<DownloadHash> {
     let mut reader = Limited::new(reader, limit, "download");
     let mut digest = Sha256::new();
     let mut buffer = [0; 64 * 1024];

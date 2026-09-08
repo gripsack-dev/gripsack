@@ -52,6 +52,7 @@ pub(crate) fn payload_hash(
             context.limits().download_bytes.get(),
         )
         .map(crate::FetchIdentity::Download)
+        .map_err(FetchError::from)
     }
 }
 

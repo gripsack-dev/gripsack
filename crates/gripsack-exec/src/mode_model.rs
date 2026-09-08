@@ -61,7 +61,6 @@ fn plan(
     let input = if entry.mode == Ownership::Merge {
         ModeInput::Merge {
             payload: std::str::from_utf8(content).unwrap(),
-            existing: std::fs::read_to_string(dest).ok(),
             permissions: policy,
         }
     } else {
@@ -228,7 +227,13 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
         );
         assert_eq!(permissions(dest), expected);
         assert_eq!(
-            crate::template::marker_mode(&std::fs::read_to_string(dest).unwrap(), "m"),
+            crate::managed_blocks::ManagedBlockSet::parse(
+                &std::fs::read_to_string(dest).unwrap(),
+                "m"
+            )
+            .unwrap()
+            .blocks()[0]
+                .mode,
             Some(expected)
         );
         let unchanged = plan(

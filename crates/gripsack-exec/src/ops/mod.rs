@@ -50,14 +50,11 @@ pub enum OpKind {
     Link { target: PathBuf },
     /// Tracked copy / template: write content at exactly this mode.
     Write { content: ContentSource, mode: u32 },
-    /// Merge: upsert our block in the foreign file. `existing` is the
-    /// plan-time file text — the report's notes derive from it; the
-    /// splice itself re-derives from the latest content at the
-    /// mutation (0029 §3).
+    /// Merge upsert, re-derived from the guarded live content at mutation.
+    /// Inspection/report notes are computed once by the planner.
     MergeUpsert {
         payload: Vec<u8>,
         marker: Option<String>,
-        existing: String,
         mode: u32,
     },
     /// Remove the destination, or restore its prior (the entry's

@@ -11,10 +11,7 @@ pub(crate) fn fetch(
     api_url: Option<&str>,
     dest: &Path,
 ) -> Result<FetchOutcome, FetchError> {
-    let mut download = crate::spool::download(
-        reader(context, url, api_url)?,
-        context.limits().download_bytes.get(),
-    )?;
+    let mut download = download(context, url, api_url)?;
     if let Some(expected) = expected
         && expected != download.hash.as_str()
     {
@@ -47,42 +44,30 @@ pub(crate) fn payload_hash(
     url: &str,
     api_url: Option<&str>,
 ) -> Result<DownloadHash, FetchError> {
-    crate::spool::copy_hashed(
-        reader(context, url, api_url)?,
-        io::sink(),
-        context.limits().download_bytes.get(),
-    )
+    if let Some(path) = url.strip_prefix("file://") {
+        return crate::spool::copy_hashed(
+            regular_file(Path::new(path))?,
+            io::sink(),
+            context.limits().download_bytes.get(),
+        )
+        .map_err(FetchError::from);
+    }
+    context.download_hash(url, api_url)
 }
 
-pub(crate) fn reader(
+pub(crate) fn download(
     context: &FetchContext,
     url: &str,
     api_url: Option<&str>,
-) -> Result<Box<dyn Read>, FetchError> {
+) -> Result<crate::spool::Download, FetchError> {
     if let Some(path) = url.strip_prefix("file://") {
-        return regular_file(Path::new(path)).map(|file| Box::new(file) as Box<dyn Read>);
+        return crate::spool::download(
+            regular_file(Path::new(path))?,
+            context.limits().download_bytes.get(),
+        )
+        .map_err(FetchError::from);
     }
-    let via_api = api_url.filter(|api| context.auth_header(api).is_some());
-    let request_url = via_api.unwrap_or(url);
-    let mut request = context.get(request_url);
-    if let Some(header) = context.auth_header(request_url) {
-        request = request.set("Authorization", header);
-    }
-    if via_api.is_some() {
-        request = request.set("Accept", "application/octet-stream");
-    }
-    let response = request.call().map_err(|error| FetchError::Http {
-        url: request_url.into(),
-        reason: error.to_string(),
-    })?;
-    if response
-        .header("content-type")
-        .unwrap_or_default()
-        .contains("text/html")
-    {
-        return Err(FetchError::Http { url: request_url.into(), reason: "server returned an HTML/login page instead of an asset; check host-bound authentication".into() });
-    }
-    Ok(response.into_reader())
+    context.download(url, crate::http::RequestKind::Artifact { api_url })
 }
 
 pub(crate) fn regular_file(path: &Path) -> Result<std::fs::File, FetchError> {
@@ -109,14 +94,17 @@ pub(crate) fn text(
     url: &str,
     api_url: Option<&str>,
 ) -> Result<String, FetchError> {
-    let mut result = String::new();
-    crate::spool::Limited::new(
-        reader(context, url, api_url)?,
-        8 * 1024 * 1024,
-        "registry metadata",
-    )
-    .read_to_string(&mut result)?;
-    Ok(result)
+    if let Some(path) = url.strip_prefix("file://") {
+        let mut result = String::new();
+        crate::spool::Limited::new(
+            regular_file(Path::new(path))?,
+            8 * 1024 * 1024,
+            "registry metadata",
+        )
+        .read_to_string(&mut result)?;
+        return Ok(result);
+    }
+    context.text(url, crate::http::RequestKind::Artifact { api_url })
 }
 
 #[cfg(test)]

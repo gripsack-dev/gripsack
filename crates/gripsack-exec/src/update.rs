@@ -1,23 +1,43 @@
-//! Resolve and materialize sources without deploying or running recipes.
-//! The lockfile is replaced once, only after every selected source succeeds.
-
+//! Per-module preparation is shared; only the publishing driver may commit sources.
+mod prepare;
 use crate::ctx::{Ctx, ExecError};
 use crate::lockfile::{LockRead, Resolved};
 use crate::report::{UpdateReport, UpdateStatus};
 use gripsack_ir::{Ir, prepared::PreparedModule};
 
-pub fn update(ir: &Ir, ctx: &Ctx, check: bool) -> Result<Vec<UpdateReport>, ExecError> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateMode {
+    Publish,
+    Check,
+}
+
+pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>, ExecError> {
     let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
     let (order, missing) = crate::apply::scoped_order(ir, &ctx.only)?;
-    let mut reports: Vec<_> = missing
+    let mut reports = Vec::new();
+    for name in missing
         .into_iter()
-        .map(|module| UpdateReport {
-            module,
-            status: UpdateStatus::Skipped {
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        let status = if mode == UpdateMode::Check {
+            UpdateStatus::Failed {
+                error: Box::new(ExecError::Step {
+                    module: name.clone(),
+                    step: "selection".into(),
+                    detail: "not in this host's graph".into(),
+                }),
+            }
+        } else {
+            UpdateStatus::Skipped {
                 reason: "not in this host's graph",
-            },
-        })
-        .collect();
+            }
+        };
+        reports.push(UpdateReport {
+            module: name,
+            status,
+            layout: Default::default(),
+        });
+    }
     let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
         LockRead::Parsed(lock) => lock,
         LockRead::Missing => Default::default(),
@@ -26,7 +46,7 @@ pub fn update(ir: &Ir, ctx: &Ctx, check: bool) -> Result<Vec<UpdateReport>, Exec
                 module: "*".into(),
                 step: "lockfile".into(),
                 detail: format!(
-                    "{} is corrupt ({reason}) — delete it to re-pin from scratch",
+                    "{} is corrupt ({reason}) — restore it or delete it to re-pin deliberately",
                     crate::lockfile::path(&ctx.repo, &ctx.host).display()
                 ),
             });
@@ -35,54 +55,39 @@ pub fn update(ir: &Ir, ctx: &Ctx, check: bool) -> Result<Vec<UpdateReport>, Exec
     for name in order {
         let _module = tracing::info_span!("module", module = %name).entered();
         let plan = PreparedModule::new(&ir.modules[&name]).map_err(ExecError::Gate)?;
-        let Some(spec) = plan.fetch() else {
+        if plan.fetch().is_none() {
+            reports.push(UpdateReport {
+                module: name,
+                status: UpdateStatus::Skipped {
+                    reason: "no fetch source",
+                },
+                layout: Default::default(),
+            });
             continue;
-        };
-        let staging = tempfile::Builder::new().prefix("grip-update-").tempdir()?;
-        // No old resolution here: update deliberately refreshes floating sources.
-        // Inline versions/revisions/digests remain enforced by the declaration.
-        let mut entry = crate::source::fetch(
-            ctx,
-            crate::source::FetchInputs {
-                name: &name,
-                spec,
-                locked: None,
-                dest: staging.path(),
-            },
-        )?;
-        let pin = entry.resolved.as_mut().expect("acquisition creates a pin");
-        let overlay = crate::source::Overlay::capture(&plan, &ctx.repo, staging.path())?;
-        pin.repo256 = if plan.has_recipe() {
-            overlay.into_hash()
-        } else {
-            overlay.merge(staging.path())?
-        };
-        if !plan.has_recipe() {
-            let tree = gripsack_store::canonical_tree_hash(staging.path())?.to_string();
-            let destination = gripsack_store::content_path(&ctx.home, &name, &tree);
-            if destination.exists() {
-                let actual = gripsack_store::canonical_tree_hash(&destination)?;
-                if actual.as_str() != tree {
-                    return Err(ExecError::Fetch(gripsack_fetch::FetchError::HashMismatch {
-                        url: destination.display().to_string(),
-                        expected: tree,
-                        actual: actual.into(),
-                    }));
-                }
-            } else if !check {
-                crate::source::publish(ctx, &name, staging.path(), &destination)?;
-            }
-            pin.tree256 = Some(tree);
         }
-        let old = lock
-            .modules
-            .get(&name)
-            .and_then(|entry| entry.resolved.as_ref());
-        let unchanged = if check {
-            lock.modules
-                .get(&name)
-                .is_some_and(|previous| previous.fetch == entry.fetch)
-                && old == Some(&*pin)
+        let prepared = match prepare::PreparedUpdate::acquire(ctx, &name, &plan) {
+            Ok(prepared) => prepared,
+            Err(error) if mode == UpdateMode::Check => {
+                reports.push(UpdateReport {
+                    module: name,
+                    status: UpdateStatus::Failed {
+                        error: Box::new(error),
+                    },
+                    layout: Default::default(),
+                });
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        let pin = prepared
+            .entry
+            .resolved
+            .as_ref()
+            .expect("acquisition creates a pin");
+        let old_entry = lock.modules.get(&name);
+        let old = old_entry.and_then(|entry| entry.resolved.as_ref());
+        let unchanged = if mode == UpdateMode::Check {
+            old_entry == Some(&prepared.entry)
         } else {
             old.is_some_and(|old| same_source(old, pin))
         };
@@ -98,13 +103,17 @@ pub fn update(ir: &Ir, ctx: &Ctx, check: bool) -> Result<Vec<UpdateReport>, Exec
                     .expect("source identity"),
             }
         };
-        lock.modules.insert(name.clone(), entry);
+        if mode == UpdateMode::Publish {
+            prepared.publish(ctx, &name)?;
+        }
+        lock.modules.insert(name.clone(), prepared.entry);
         reports.push(UpdateReport {
             module: name,
             status,
+            layout: prepared.layout,
         });
     }
-    if !check {
+    if mode == UpdateMode::Publish {
         crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
     }
     Ok(reports)
@@ -115,6 +124,6 @@ fn same_source(old: &Resolved, new: &Resolved) -> bool {
         && old.repo256 == new.repo256
         && match (&old.version, &new.version) {
             (Some(old), Some(new)) => old == new,
-            _ => true, // filling missing metadata is not a payload bump
+            _ => true,
         }
 }

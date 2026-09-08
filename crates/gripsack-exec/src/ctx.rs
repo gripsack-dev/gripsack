@@ -77,6 +77,12 @@ pub enum ExecError {
     Io(#[from] io::Error),
     #[error("fetch failed: {0}")]
     Fetch(#[from] FetchError),
+    #[error("step resolve failed in {module}: {error}")]
+    Resolve {
+        module: String,
+        #[source]
+        error: Box<gripsack_fetch::resolve::ResolveError>,
+    },
     #[error("verify failed for {module}: {detail}")]
     Verify { module: String, detail: String },
     #[error("step {step} failed in {module}: {detail}")]

@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Built-in budgets for the registries the internal fetchers call.
 /// Downloads (release CDNs, tarball mirrors) are deliberately not
@@ -132,21 +132,33 @@ impl Throttle {
     /// Block until one token is available for `domain`; unknown
     /// domains are unthrottled.
     pub fn acquire(&self, domain: &str) {
+        self.acquire_before(domain, None);
+    }
+
+    fn acquire_before(&self, domain: &str, deadline: Option<Instant>) -> bool {
         loop {
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                return false;
+            }
             let wait = {
                 let mut buckets = self.buckets.lock().expect("throttle mutex");
                 match buckets.get_mut(domain) {
-                    None => return,
+                    None => return true,
                     Some(bucket) => {
                         let wait = bucket.refill();
                         if wait.is_zero() {
                             bucket.tokens -= 1.0;
-                            return;
+                            return true;
                         }
                         wait
                     }
                 }
             };
+            if deadline
+                .is_some_and(|deadline| wait >= deadline.saturating_duration_since(Instant::now()))
+            {
+                return false;
+            }
             std::thread::sleep(wait);
         }
     }
@@ -245,6 +257,16 @@ pub fn global() -> Option<&'static Throttle> {
 pub fn acquire_url(url: &str) {
     if let Some(t) = global() {
         t.acquire_url(url);
+    }
+}
+
+pub(crate) fn acquire_url_until(url: &str, deadline: Instant) -> bool {
+    if Instant::now() >= deadline {
+        return false;
+    }
+    match (global(), url_host(url)) {
+        (Some(throttle), Some(host)) => throttle.acquire_before(&host, Some(deadline)),
+        _ => true,
     }
 }
 

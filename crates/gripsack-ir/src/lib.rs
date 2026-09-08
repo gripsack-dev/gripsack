@@ -25,6 +25,7 @@ pub mod dependencies;
 pub mod diagnostic;
 pub mod model;
 pub mod parse;
+pub mod placeholders;
 pub mod prepared;
 pub mod sema;
 pub mod span;

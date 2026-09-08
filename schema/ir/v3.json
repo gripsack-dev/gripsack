@@ -192,6 +192,7 @@
       "properties": {
         "from": {
           "type": "string",
+          "description": "Payload-relative source. {version} uses the raw locked version; {version.bare} strips exactly one leading lowercase v; platform placeholders are expanded by the core.",
           "minLength": 1
         },
         "to": {
@@ -623,7 +624,8 @@
               "pattern": "^[^/]+/[^/]+$"
             },
             "asset": {
-              "type": "string"
+              "type": "string",
+              "description": "Asset pattern. {version.bare} has one exact stripped spelling; legacy {version} tries the raw tag first, then its one-v-stripped spelling. Platform placeholders are supported."
             },
             "version": {
               "type": ["string", "null"]
@@ -797,7 +799,7 @@
         {
           "properties": {
             "kind": { "const": "binary_runs" },
-            "path": { "type": "string" },
+            "path": { "type": "string", "description": "Payload-relative path; supports {version}, {version.bare}, and platform placeholders." },
             "args": {
               "type": "array",
               "items": { "type": "string" }
@@ -809,7 +811,7 @@
         {
           "properties": {
             "kind": { "const": "file_exists" },
-            "path": { "type": "string" }
+            "path": { "type": "string", "description": "Payload-relative path; supports {version}, {version.bare}, and platform placeholders." }
           },
           "required": ["kind", "path"],
           "additionalProperties": false

@@ -15,19 +15,13 @@ pub(crate) fn run_verify(
         module: name.to_string(),
         detail,
     };
-    // {version} is the locked tag; the platform placeholders (0016 §D1)
-    // come from this machine's facts — one substitution surface for
-    // verify keys and deploy's install keys
-    let subst = |p: &String| {
-        let expanded = gripsack_fetch::expand_platform(p);
-        match version {
-            Some(v) => expanded.replace("{version}", v),
-            None => expanded,
-        }
+    let subst = |path: &str| {
+        gripsack_fetch::placeholders::payload_path(path, version)
+            .map_err(|error| fail(error.to_string()))
     };
     match verify {
         Verify::BinaryRuns { path, args } => {
-            let bin = store_path.join(subst(path));
+            let bin = store_path.join(subst(path)?);
             let status = std::process::Command::new(&bin)
                 .args(args)
                 .stdout(std::process::Stdio::null())
@@ -39,8 +33,9 @@ pub(crate) fn run_verify(
             }
         }
         Verify::FileExists { path } => {
-            if !store_path.join(subst(path)).exists() {
-                return Err(fail(format!("{} missing in payload", path)));
+            let concrete = subst(path)?;
+            if !store_path.join(&concrete).exists() {
+                return Err(fail(format!("{concrete} missing in payload (from {path})")));
             }
         }
         Verify::FileDeployed { path } => {

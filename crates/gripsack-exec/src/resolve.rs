@@ -37,10 +37,9 @@ pub(crate) fn resolve_spec(
             }
             let release = context
                 .resolve_latest(repo, asset, base_url.as_deref(), version.as_deref())
-                .map_err(|e| ExecError::Step {
+                .map_err(|error| ExecError::Resolve {
                     module: name.to_string(),
-                    step: "resolve".into(),
-                    detail: e.to_string(),
+                    error: Box::new(error),
                 })?;
             Ok((
                 F::Tarball {

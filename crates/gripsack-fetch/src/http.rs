@@ -2,9 +2,17 @@
 //! No client is global: provisioning and artifact contexts capture different
 //! environment phases, and a subsequent command can use new proxy/CA settings.
 
+mod body;
+mod failure;
+mod request;
+mod retry;
 mod roots;
+pub(crate) use failure::safe_location;
+pub use failure::{HttpFailure, HttpFailureKind};
+pub(crate) use request::RequestKind;
+pub use retry::RetryStopReason;
 
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 pub(crate) struct Client {
@@ -12,6 +20,7 @@ pub(crate) struct Client {
     certificates: roots::Locations,
     proxy: Option<ureq::Proxy>,
     policy: Policy,
+    cooldowns: Mutex<std::collections::BTreeMap<String, request::Cooldown>>,
 }
 
 /// Deliberately not Debug: authentication material never enters tracing.
@@ -28,6 +37,7 @@ impl Policy {
             std::env::var(primary)
                 .or_else(|_| std::env::var(fallback))
                 .ok()
+                .filter(|token| !token.trim().is_empty())
                 .map(|t| format!("Bearer {t}"))
         };
         Self {
@@ -51,6 +61,29 @@ impl Policy {
             self.enterprise.as_deref()
         } else {
             None
+        }
+    }
+
+    fn authentication(&self, url: &str) -> failure::AuthenticationDisposition {
+        use failure::AuthenticationDisposition;
+        let host = host_port(url).map(|(host, _)| host);
+        if host
+            .as_deref()
+            .is_some_and(|host| matches!(host, "github.com" | "api.github.com"))
+        {
+            if self.github.is_some() {
+                AuthenticationDisposition::PublicBound
+            } else {
+                AuthenticationDisposition::Absent
+            }
+        } else if self.header(url).is_some() {
+            AuthenticationDisposition::EnterpriseBound
+        } else if self.enterprise.is_some() {
+            AuthenticationDisposition::EnterpriseUnbound {
+                configured_host: self.enterprise_host.clone(),
+            }
+        } else {
+            AuthenticationDisposition::Absent
         }
     }
 
@@ -87,11 +120,11 @@ impl Client {
             certificates: roots::Locations::capture(),
             proxy,
             policy: Policy::from_env(),
+            cooldowns: Mutex::new(Default::default()),
         }
     }
 
-    pub(crate) fn get(&self, url: &str) -> ureq::Request {
-        crate::throttle::acquire_url(url);
+    fn request(&self, url: &str) -> ureq::Request {
         let (direct, proxied) = self.agents.get_or_init(|| {
             let tls = tls_config(&self.certificates);
             let builder = || {
@@ -114,10 +147,6 @@ impl Client {
         } else {
             proxied.get(url)
         }
-    }
-
-    pub(crate) fn auth_header(&self, url: &str) -> Option<&str> {
-        self.policy.header(url)
     }
 }
 
@@ -199,6 +228,37 @@ mod tests {
         let mut unbound = policy;
         unbound.enterprise_host = None;
         assert!(unbound.header("https://ghe.internal/archive").is_none());
+    }
+
+    #[test]
+    fn credential_routing_model_uses_actual_host_selector() {
+        for public in [false, true] {
+            for enterprise in [false, true] {
+                for bound in [None, Some("enterprise-one"), Some("enterprise-two")] {
+                    let policy = Policy {
+                        no_proxy: String::new(),
+                        github: public.then(|| "public-canary".into()),
+                        enterprise: enterprise.then(|| "enterprise-canary".into()),
+                        enterprise_host: bound.map(str::to_string),
+                    };
+                    for host in [
+                        "github.com",
+                        "api.github.com",
+                        "enterprise-one",
+                        "enterprise-two",
+                    ] {
+                        let expected = if matches!(host, "github.com" | "api.github.com") {
+                            public.then_some("public-canary")
+                        } else if Some(host) == bound {
+                            enterprise.then_some("enterprise-canary")
+                        } else {
+                            None
+                        };
+                        assert_eq!(policy.header(&format!("https://{host}/resource")), expected);
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -107,12 +107,15 @@ pub fn verify_store(
                 // owned links record the payload's store identity
                 let actual = match entry.mode {
                     gripsack_ir::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
-                        gripsack_store::canonical_bytes_hash(
-                            String::from_utf8_lossy(&b)
-                                .trim_end_matches('\n')
-                                .as_bytes(),
-                        )
-                        .to_string()
+                        let text = String::from_utf8_lossy(&b);
+                        let legacy = gripsack_store::canonical_bytes_hash(
+                            text.trim_end_matches('\n').as_bytes(),
+                        );
+                        if legacy.as_str() == entry.hash.as_str() {
+                            legacy.to_string()
+                        } else {
+                            crate::managed_blocks::content_hash(&text).to_string()
+                        }
                     }),
                     gripsack_ir::Ownership::Template => std::fs::read(&src)
                         .ok()
