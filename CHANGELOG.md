@@ -3,7 +3,7 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
-## [0.39.0] — 2026-09-08
+## [0.39.0] — 2026-09-09
 
 Complete surveys, explicit version spelling, and transport evidence (0044).
 
