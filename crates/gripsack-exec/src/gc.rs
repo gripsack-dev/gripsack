@@ -22,8 +22,35 @@ pub struct GcReport {
 /// only referenced by a pruned generation become collectable too.
 /// `dry_run` reports without deleting (0003: plan-before-apply
 /// applies to the destructive commands too, N6).
-pub fn gc(home: &Path, keep: Option<u32>, dry_run: bool) -> Result<GcReport, ExecError> {
+///
+/// Requires a [`LifecycleSession`] (0045 F4): gc deletes store paths
+/// an in-flight apply may have published but not yet flipped, so the
+/// serialization contract is part of the signature, not a caller
+/// convention.
+pub fn gc(
+    session: &crate::LifecycleSession,
+    keep: Option<u32>,
+    dry_run: bool,
+) -> Result<GcReport, ExecError> {
+    let home = session.home();
     let mut report = GcReport::default();
+    // 0045 F3: recovery state is load-bearing. A journaled prior blob
+    // may be referenced by NO retained manifest, so collecting before
+    // reconcile would destroy the bytes recovery needs. Refuse —
+    // dry-run included: the deletion set is unsound while recovery is
+    // pending, and a preview that lies is worse than no preview. An
+    // unreadable journal fails closed (pending_recovery errors).
+    let home_cap = gripsack_fs::open_or_create(home)?;
+    if let Some(pending) = store::journal::pending_recovery(&home_cap)? {
+        return Err(ExecError::Step {
+            module: "*".into(),
+            step: "gc".into(),
+            detail: format!(
+                "recovery state is pending ({pending}) — run `grip apply` or \
+                 `grip rollback` to reconcile before collecting; nothing was deleted"
+            ),
+        });
+    }
     // fail closed (0027 §2): enumeration errors propagate — gc's
     // deletion set derives from this inventory, and "cannot read"
     // must never read as "nothing referenced"
@@ -223,7 +250,12 @@ mod tests {
     fn collects_only_unreferenced_store_paths() {
         let dir = setup();
         let home = dir.path();
-        let report = gc(home, None, false).unwrap();
+        let report = gc(
+            &crate::LifecycleSession::acquire(home).unwrap(),
+            None,
+            false,
+        )
+        .unwrap();
         assert_eq!(report.store_removed.len(), 1);
         assert!(report.store_removed[0].ends_with("zzz-orphan"));
         assert!(home.join("store/aaa-m").exists());
@@ -234,7 +266,12 @@ mod tests {
     fn keep_generations_prunes_oldest_and_their_paths() {
         let dir = setup();
         let home = dir.path();
-        let report = gc(home, Some(2), false).unwrap();
+        let report = gc(
+            &crate::LifecycleSession::acquire(home).unwrap(),
+            Some(2),
+            false,
+        )
+        .unwrap();
         assert_eq!(report.generations_removed, vec![1]);
         assert!(!store::generation_dir(home, 1).exists());
         assert!(store::generation_dir(home, 3).exists());
@@ -253,10 +290,103 @@ mod tests {
     fn never_prunes_the_current_generation() {
         let dir = setup();
         let home = dir.path();
-        let report = gc(home, Some(1), false).unwrap();
+        let report = gc(
+            &crate::LifecycleSession::acquire(home).unwrap(),
+            Some(1),
+            false,
+        )
+        .unwrap();
         assert!(store::generation_dir(home, 3).exists());
         assert!(!report.generations_removed.contains(&3));
         assert!(home.join("store/ccc-m").exists());
+    }
+
+    /// The F3 scenario (0045): a crash between record and flip leaves
+    /// a journaled prior blob that NO retained manifest references —
+    /// collecting it would make recovery impossible.
+    fn setup_crash_window() -> (tempfile::TempDir, PathBuf) {
+        let dir = setup();
+        let home = dir.path();
+        let cap = gripsack_fs::open_or_create(home).unwrap();
+        // a run declared its target and journaled one destination
+        store::journal::begin_run(&cap, Some(3), 4, store::journal::RunOp::Apply).unwrap();
+        let dest = home.join("dest.txt");
+        fs::write(&dest, b"user bytes\n").unwrap();
+        let blob = store::journal::store_prior_blob_in(&cap, b"user bytes\n").unwrap();
+        let prior = store::journal::Prior::File {
+            hash: blob.clone(),
+            mode: 0o644,
+        };
+        store::journal::record(&cap, &dest, &prior, &store::journal::Intended::Removed).unwrap();
+        // sanity: the blob exists and no manifest references it
+        let blob_path = home.join("prior").join(&blob);
+        assert!(blob_path.exists());
+        (dir, blob_path)
+    }
+
+    #[test]
+    fn unfinished_recovery_blocks_collection() {
+        let (dir, blob) = setup_crash_window();
+        let home = dir.path();
+        let session = crate::LifecycleSession::acquire(home).unwrap();
+        for dry_run in [false, true] {
+            let err = gc(&session, Some(1), dry_run)
+                .expect_err("gc must refuse while recovery is pending");
+            let text = err.to_string();
+            assert!(text.contains("recovery state is pending"), "{text}");
+            assert!(text.contains("reconcile"), "{text}");
+        }
+        // nothing was deleted — not the blob, not the orphan, no generation
+        assert!(blob.exists());
+        assert!(home.join("store/zzz-orphan").exists());
+        assert_eq!(store::list_generations(home).unwrap(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn reconciled_journal_unblocks_collection() {
+        let (dir, blob) = setup_crash_window();
+        let home = dir.path();
+        // the crash is reconciled (as the next apply would): the
+        // destination did not exist before the run, so the
+        // journaled state is consumed and the journal drains
+        let notes =
+            store::journal::reconcile(&gripsack_fs::open_or_create(home).unwrap(), home).unwrap();
+        assert!(!notes.is_empty());
+        let session = crate::LifecycleSession::acquire(home).unwrap();
+        gc(&session, Some(1), false).unwrap();
+        // the blob's generation pins lapsed WITH the journal — safe
+        assert!(!blob.exists());
+    }
+
+    #[test]
+    fn quarantined_entries_block_collection() {
+        let (dir, _blob) = setup_crash_window();
+        let home = dir.path();
+        // reconcile refuses the (fabricated, tag-valid but
+        // blob-missing) entry? No: fabricate a MALFORMED entry so
+        // reconcile quarantines it, then gc must still refuse.
+        let cap = gripsack_fs::open_or_create(home).unwrap();
+        fs::write(home.join("journal").join("garbage.json"), b"not json").unwrap();
+        assert!(store::journal::reconcile(&cap, home).is_err());
+        let session = crate::LifecycleSession::acquire(home).unwrap();
+        let err = gc(&session, Some(1), true).expect_err("quarantine blocks gc");
+        assert!(err.to_string().contains("quarantined"), "{err}");
+        assert!(home.join("journal/quarantine/garbage.json").exists());
+    }
+
+    #[test]
+    fn a_session_for_another_home_authorizes_nothing_here() {
+        // F4: the session carries its home — gc cannot be pointed at
+        // a different home than the lock covers.
+        let (dir, _blob) = setup_crash_window();
+        let other = tempfile::tempdir().unwrap();
+        let session = crate::LifecycleSession::acquire(other.path()).unwrap();
+        assert_ne!(session.home(), dir.path());
+        // using the session operates on ITS home (empty — nothing to
+        // collect), never on `dir`'s: the API takes no home argument.
+        let report = gc(&session, None, true).unwrap();
+        assert!(report.store_removed.is_empty());
+        assert_eq!(store::list_generations(dir.path()).unwrap(), vec![1, 2, 3]);
     }
 
     #[test]

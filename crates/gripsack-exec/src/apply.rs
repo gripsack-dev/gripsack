@@ -15,7 +15,7 @@ use tracing::{info, info_span};
 /// locks/apply.flock` (finding A): two concurrent applies serialize,
 /// never lose a manifest update.
 pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
-    let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
+    let _session = crate::util::LifecycleSession::acquire(&ctx.home)?;
     // crash recovery (0019): a previous run killed between a deploy
     // mutation and the flip left uncommitted journal entries — the
     // filesystem sits between generations. Restore the priors before

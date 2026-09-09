@@ -4,18 +4,21 @@
 //! carry `tree256` in the manifest, so whole-tree verification needs
 //! no lockfile lookup (and never depends on the ambient hostname).
 
-use crate::ctx::{Ctx, ExecError};
+use crate::ctx::ExecError;
 use crate::report::ReportKind;
 
 /// Every store path, re-hashed against the lockfile's recorded pins.
 /// Corrupt paths are reported; with `repair` they're removed (the next
 /// apply re-fetches — publish_dir's refusal becomes a republish).
+/// Requires a [`LifecycleSession`] (0045 F4): repair deletes store
+/// paths, so it runs under the same serialization as apply/gc —
+/// expressed in the signature, not left to the caller.
 pub fn verify_store(
-    ctx: &Ctx,
+    session: &crate::LifecycleSession,
     repair: bool,
 ) -> Result<Vec<(String, ReportKind, String)>, ExecError> {
     let mut out = Vec::new();
-    let home = &ctx.home;
+    let home = session.home();
     let current = gripsack_store::current_generation(home)?;
     // enumeration errors are real (0027 §2) — verify must not read
     // "cannot list generations" as "nothing to verify"

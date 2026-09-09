@@ -12,7 +12,7 @@ pub enum UpdateMode {
 }
 
 pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>, ExecError> {
-    let _lifecycle_lock = crate::util::acquire_lifecycle_lock(&ctx.home)?;
+    let _session = crate::util::LifecycleSession::acquire(&ctx.home)?;
     let (order, missing) = crate::apply::scoped_order(ir, &ctx.only)?;
     let mut reports = Vec::new();
     for name in missing

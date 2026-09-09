@@ -56,7 +56,7 @@ pub use source::preflight::{
     DeferredLayoutCheck, LayoutEvidence, inspect_known as inspect_known_layouts,
 };
 pub use update::{UpdateMode, update};
-pub use util::acquire_lifecycle_lock;
+pub use util::LifecycleSession;
 
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};

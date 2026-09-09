@@ -76,3 +76,53 @@ def test_valid_repo_precedence_and_missing_artifact_references(sandbox):
     out = grip('gc', cwd=repo)
     assert out.returncode == 0, out.stderr
     assert not (home / 'generations/1').exists()
+
+
+def test_unfinished_recovery_blocks_gc_then_recovers(sandbox):
+    """0045 F3: a crash window leaves a journaled prior blob that no
+    retained manifest references. GC must refuse (nothing deleted,
+    dry-run included); after the next apply reconciles, GC passes and
+    the recovered bytes are intact."""
+    import hashlib
+
+    repo, home = setup(sandbox)
+    # crash window: run marker + one journaled entry + its prior blob
+    journal = home / 'journal'
+    journal.mkdir(exist_ok=True)
+    (journal / 'run.json').write_text(
+        '{"previous_generation": 2, "target_generation": 3, "op": "apply"}')
+    blob_bytes = b'user bytes only the journal references\n'
+    blob = hashlib.sha256(blob_bytes).hexdigest()
+    (home / 'prior').mkdir(exist_ok=True)
+    (home / 'prior' / blob).write_bytes(blob_bytes)
+    dest = str(sandbox / '.owned')
+    entry = {
+        'v': 1,
+        'dest': dest,
+        'prior': {'kind': 'file', 'hash': blob, 'mode': 420},
+        'after': {'kind': 'removed'},
+    }
+    (journal / (hashlib.sha256(dest.encode()).hexdigest() + '.json')).write_text(
+        json.dumps(entry))
+    store_before = {p.name for p in (home / 'store').iterdir()}
+
+    for args in (['gc'], ['gc', '--dry-run']):
+        out = grip(*args, cwd=repo)
+        assert out.returncode != 0, f'{args}: must refuse while recovery is pending'
+        assert 'recovery state is pending' in out.stderr, out.stderr
+        assert {p.name for p in (home / 'store').iterdir()} == store_before
+        assert (home / 'prior' / blob).exists(), 'recovery evidence is never collected'
+        assert (home / 'generations/2').exists()
+
+    # the next apply reconciles from the intact prior: the journal
+    # recorded a removal intent for a destination that still holds the
+    # prior bytes — live IS the prior, so the entry just drains
+    out = grip('apply', '--host', 'testhost', cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not list(journal.glob('*.json')), 'journal drained'
+    assert (sandbox / '.owned').read_text() == 'two'
+
+    out = grip('gc', cwd=repo)
+    assert out.returncode == 0, out.stderr
+    # the orphaned blob is collectable only NOW that recovery is done
+    assert not (home / 'prior' / blob).exists()

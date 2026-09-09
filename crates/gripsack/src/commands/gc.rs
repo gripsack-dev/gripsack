@@ -17,16 +17,16 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
         }
     };
     // gc deletes store paths an in-flight apply may have published but
-    // not yet flipped — it must hold the same lifecycle lock as apply
-    // and rollback (finding D: same one-line fix, same family)
-    let _lifecycle_lock = match gripsack_exec::acquire_lifecycle_lock(&home) {
-        Ok(guard) => guard,
+    // not yet flipped — the session IS the serialization contract
+    // (0045 F4): gripsack_exec::gc cannot run without one.
+    let session = match gripsack_exec::LifecycleSession::acquire(&home) {
+        Ok(session) => session,
         Err(e) => {
             eprintln!("grip: cannot take the apply lock: {e}");
             return ExitCode::FAILURE;
         }
     };
-    match gripsack_exec::gc(&home, keep, dry_run) {
+    match gripsack_exec::gc(&session, keep, dry_run) {
         Ok(report) => {
             if dry_run {
                 println!("{}", palette.dim("gc (dry run): nothing deleted"));
