@@ -1,0 +1,27 @@
+[package]
+name = "gripsack-policy"
+description = "gripsack decision kernels — pure, contract-checked policy functions (plan/0046)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Opted into verification: `cargo verus verify -p gripsack-policy`
+# (scripts/check_verus.sh, the compose `verify` gate). Ordinary cargo
+# builds compile the same source with specifications erased — vstd's
+# published shim layer; no verifier is needed to build grip.
+[package.metadata.verus]
+verify = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    "cfg(verus_only)",
+    "cfg(verus_keep_ghost)",
+    "cfg(verus_keep_ghost_body)",
+] }
+
+[dependencies]
+# The Verus standard library, published from the same commit as the
+# pinned verifier (toolchain table in scripts/check_verus.sh). Exact
+# pin: a verification toolchain never floats.
+vstd = "=0.0.0-2026-09-06-0133"

@@ -28,3 +28,4 @@ gripsack-fetch = { version = "0.40.0", path = "crates/gripsack-fetch" }
 griplint = { version = "0.40.0", path = "crates/griplint" }
 gripsack-lint = { version = "0.40.0", path = "crates/gripsack-lint" }
 gripsack-process = { version = "0.40.0", path = "crates/gripsack-process" }
+gripsack-policy = { version = "0.40.0", path = "crates/gripsack-policy" }
