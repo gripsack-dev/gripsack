@@ -107,7 +107,7 @@ pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, store_path: &P
 }
 
 /// The intended post-prune identity of a destination (0026 §6):
-/// the restored prior's identity when a prior exists, REMOVED
+/// the restored prior's identity when a prior exists, removal
 /// otherwise. Known BEFORE the mutation, from the prior blob —
 /// never observed afterward.
 pub fn prune_intent(

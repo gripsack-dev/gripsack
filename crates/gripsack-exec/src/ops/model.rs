@@ -233,8 +233,8 @@ mod tests {
         match op.kind {
             OpKind::Write { .. } | OpKind::Link { .. } | OpKind::MergeUpsert { .. } => {
                 assert_eq!(
-                    after.as_ref().map(|i| i.to_wire()),
-                    Some(op.intended.to_wire()),
+                    after.as_ref(),
+                    op.intended.as_object(),
                     "the executed op did not land its intent"
                 );
             }

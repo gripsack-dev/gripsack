@@ -138,7 +138,7 @@ pub(crate) fn journaled(
     expected_before: Expect,
     mutate: impl FnOnce() -> std::io::Result<()>,
 ) -> std::io::Result<()> {
-    use store::journal::{Intended, ObjectIdentity};
+    use store::journal::Intended;
     // the live object must still be the one the drift decision was
     // made against — a write between decision and capture aborts
     // instead of clobbering it. (There is no portable content-CAS:
@@ -171,11 +171,10 @@ pub(crate) fn journaled(
         return Err(std::io::Error::other(format!(
             "{} did not reach its intended state (expected {}, found {})",
             dest.display(),
-            intended.to_wire(),
+            intended,
             live.as_ref()
-                .map(ObjectIdentity::to_wire)
-                .as_deref()
-                .unwrap_or("absent")
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "absent".into())
         )));
     }
     Ok(())

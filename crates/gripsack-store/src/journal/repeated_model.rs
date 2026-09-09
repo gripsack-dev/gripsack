@@ -20,9 +20,18 @@
 //! after EACH crash, including after one destination has been recovered.
 
 use super::{Classification, RecoveryFacts, classify};
-use crate::journal::recover::{Recovery, decide_from};
-use crate::journal::{PriorSerde, REMOVED};
+use crate::journal::recover::{RecoveryDecision, decide_from};
+use crate::journal::{Intended, ObjectIdentity};
 use std::collections::HashSet;
+
+/// The symbolic vocabulary, mapped to the production's typed
+/// identities (0045 F1): stand-ins ride the Link variant — typed
+/// equality is what the kernel exercises, so only the equality
+/// relationships between symbols matter. Cross-variant inequality is
+/// pinned separately (journal::tests).
+fn ident(content: &'static str) -> ObjectIdentity {
+    ObjectIdentity::Link(content.to_string())
+}
 
 type Content = Option<&'static str>;
 const ALL: u8 = 3;
@@ -204,18 +213,17 @@ fn successors(n: Node, s: Scenario, policy: Policy) -> Vec<Node> {
                 }
                 let mut next = d;
                 if let Some(entry) = d.entries[i] {
-                    let prior = match entry.prior {
-                        Some(id) => PriorSerde::Symlink { target: id.into() },
-                        None => PriorSerde::Absent,
+                    let intended = match entry.intended {
+                        Some(content) => Intended::Object(ident(content)),
+                        None => Intended::Removed,
                     };
                     match decide_from(
-                        d.dest[i],
-                        entry.intended.unwrap_or(REMOVED),
-                        entry.prior,
-                        &prior,
+                        d.dest[i].map(ident).as_ref(),
+                        &intended,
+                        entry.prior.map(ident).as_ref(),
                     ) {
-                        Recovery::Restore(_) => next.dest[i] = entry.prior,
-                        Recovery::Keep(_) | Recovery::Unchanged => {}
+                        RecoveryDecision::Restore => next.dest[i] = entry.prior,
+                        RecoveryDecision::Keep | RecoveryDecision::Unchanged => {}
                     }
                 }
                 out.push(n.issued(next, Phase::Restore(done | bit), true));

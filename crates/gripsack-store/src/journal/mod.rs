@@ -51,14 +51,39 @@ pub enum ObjectIdentity {
     Link(String),
 }
 
-impl ObjectIdentity {
-    /// The journal wire form (entries are one-version artifacts; the
-    /// string round-trips through `Entry::after`). Recovery compares
-    /// wire forms — canonical strings — never parses variants back.
-    pub fn to_wire(&self) -> String {
+impl std::fmt::Display for ObjectIdentity {
+    /// Human rendering for reports and error messages — never a
+    /// comparison form (typed equality is the only comparison).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ObjectIdentity::File(id) => id.to_string(),
-            ObjectIdentity::Link(target) => target.clone(),
+            ObjectIdentity::File(id) => write!(f, "file {id}"),
+            ObjectIdentity::Link(target) => write!(f, "link → {target}"),
+        }
+    }
+}
+
+impl ObjectIdentity {
+    /// Typed construction of the wire form (0045 F1).
+    pub(crate) fn to_serde(&self) -> IntendedSerde {
+        match self {
+            ObjectIdentity::File(id) => IntendedSerde::File {
+                identity: id.clone(),
+            },
+            ObjectIdentity::Link(target) => IntendedSerde::Link {
+                target: target.clone(),
+            },
+        }
+    }
+}
+
+impl From<&IntendedSerde> for ObjectIdentity {
+    fn from(wire: &IntendedSerde) -> Self {
+        match wire {
+            IntendedSerde::File { identity } => ObjectIdentity::File(identity.clone()),
+            IntendedSerde::Link { target } => ObjectIdentity::Link(target.clone()),
+            // callers never convert the removal marker — see
+            // Intended::from_wire
+            IntendedSerde::Removed => unreachable!("Removed carries no object identity"),
         }
     }
 }
@@ -75,10 +100,43 @@ pub enum Intended {
 }
 
 impl Intended {
-    pub fn to_wire(&self) -> String {
+    /// Does this live identity satisfy the intent? Typed equality
+    /// only (0045 F1): a link can never satisfy a file intent, no
+    /// matter how its target spells.
+    pub(crate) fn satisfied_by(&self, live: &ObjectIdentity) -> bool {
+        matches!(self, Intended::Object(intended) if intended == live)
+    }
+
+    /// The object identity, when the intent is an object.
+    pub fn as_object(&self) -> Option<&ObjectIdentity> {
         match self {
-            Intended::Removed => REMOVED.to_string(),
-            Intended::Object(id) => id.to_wire(),
+            Intended::Removed => None,
+            Intended::Object(identity) => Some(identity),
+        }
+    }
+
+    fn to_serde(&self) -> IntendedSerde {
+        match self {
+            Intended::Removed => IntendedSerde::Removed,
+            Intended::Object(identity) => identity.to_serde(),
+        }
+    }
+
+    /// Back to the typed intent (recovery's admission boundary:
+    /// identities arrive decoded, never re-parsed from strings).
+    pub(crate) fn from_wire(wire: &IntendedSerde) -> Intended {
+        match wire {
+            IntendedSerde::Removed => Intended::Removed,
+            object => Intended::Object(ObjectIdentity::from(object)),
+        }
+    }
+}
+
+impl std::fmt::Display for Intended {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Intended::Removed => f.write_str("removed"),
+            Intended::Object(identity) => identity.fmt(f),
         }
     }
 }
@@ -99,18 +157,125 @@ pub enum Prior {
     Symlink { target: String },
 }
 
-/// One journal entry, one JSON file in the journal dir.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// One journal entry, one JSON file in the journal dir. Constructed
+/// by [`record`]; read back through [`Entry::from_wire`] only.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Entry {
+    /// Wire format version — always [`ENTRY_WIRE_VERSION`] on write.
+    v: u8,
     /// The destination path, as written (post `~` expansion).
     pub dest: String,
     pub prior: PriorSerde,
-    /// The INTENDED post-mutation identity (0026 §6): canonical
-    /// content hash, link target, or the REMOVED sentinel — recorded
-    /// BEFORE the mutation, so recovery makes a three-way decision
-    /// (live == intended → restore prior; live == prior → the
-    /// mutation never landed; else → someone's edit, keep it).
-    pub after: String,
+    /// The INTENDED post-mutation identity, TAGGED (0026 §6, 0045
+    /// F1): recorded BEFORE the mutation, so recovery makes a
+    /// three-way decision (live == intended → restore prior;
+    /// live == prior → the mutation never landed; else → someone's
+    /// edit, keep it). Tagged because the pre-0.40 bare string let a
+    /// symlink target spell a file identity or the removal sentinel.
+    pub after: IntendedSerde,
+}
+
+/// The journal entry wire version this binary writes and reads.
+pub(crate) const ENTRY_WIRE_VERSION: u8 = 1;
+
+/// Wire shape of [`Intended`] (0045 F1): tagged, so the three
+/// variants are disjoint by construction. `FileIdentity` rides as its
+/// transparent newtype — no naked hash strings.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum IntendedSerde {
+    Removed,
+    File { identity: crate::hash::FileIdentity },
+    Link { target: String },
+}
+
+/// Why a journal entry was refused at the wire boundary (0045 F1).
+/// Every rejection fails closed: the file is quarantined with its
+/// evidence intact, never reinterpreted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WireRejection {
+    /// A pre-0.40 entry (bare-string `after`): the variant cannot be
+    /// proven from the string, so it is never guessed.
+    Legacy,
+    /// A wire version this binary does not understand.
+    UnsupportedVersion(u8),
+    /// Neither parseable nor a known format.
+    Malformed(String),
+}
+
+impl std::fmt::Display for WireRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WireRejection::Legacy => f.write_str(
+                "pre-0.40 untagged entry — its intent cannot be proven from the \
+                 bare string, so it is retained for inspection instead of guessed",
+            ),
+            WireRejection::UnsupportedVersion(v) => {
+                write!(
+                    f,
+                    "journal entry wire version {v} is newer than this grip understands"
+                )
+            }
+            WireRejection::Malformed(why) => write!(f, "malformed journal entry: {why}"),
+        }
+    }
+}
+
+impl Entry {
+    /// A current-version entry (production writes go through
+    /// [`record`]; this constructor exists for tooling and fuzz).
+    pub fn new(dest: String, prior: PriorSerde, after: IntendedSerde) -> Entry {
+        Entry {
+            v: ENTRY_WIRE_VERSION,
+            dest,
+            prior,
+            after,
+        }
+    }
+
+    /// Decode a persisted entry into validated types BEFORE any
+    /// decision runs on it (0045 F1): legacy, foreign-version and
+    /// malformed entries are rejected here, never reinterpreted by
+    /// the recovery kernel.
+    pub fn from_wire(bytes: &[u8]) -> Result<Entry, WireRejection> {
+        let value: serde_json::Value =
+            serde_json::from_slice(bytes).map_err(|e| WireRejection::Malformed(e.to_string()))?;
+        let object = value
+            .as_object()
+            .ok_or_else(|| WireRejection::Malformed("not a JSON object".to_string()))?;
+        // The pre-0.40 shape had a bare-string `after` and no `v`.
+        if let Some(after) = object.get("after")
+            && after.is_string()
+        {
+            return Err(WireRejection::Legacy);
+        }
+        match object.get("v") {
+            None => Err(WireRejection::Malformed("no wire version `v`".to_string())),
+            Some(v) => {
+                let version = v
+                    .as_u64()
+                    .and_then(|n| u8::try_from(n).ok())
+                    .ok_or_else(|| WireRejection::Malformed("`v` is not a byte".to_string()))?;
+                if version != ENTRY_WIRE_VERSION {
+                    return Err(WireRejection::UnsupportedVersion(version));
+                }
+                #[derive(serde::Deserialize)]
+                struct Wire {
+                    dest: String,
+                    prior: PriorSerde,
+                    after: IntendedSerde,
+                }
+                let wire: Wire = serde_json::from_value(value.clone())
+                    .map_err(|e| WireRejection::Malformed(e.to_string()))?;
+                Ok(Entry {
+                    v: ENTRY_WIRE_VERSION,
+                    dest: wire.dest,
+                    prior: wire.prior,
+                    after: wire.after,
+                })
+            }
+        }
+    }
 }
 
 /// Wire shape of [`Prior`] — the blob-store hash rides along for
@@ -144,12 +309,11 @@ impl From<&Prior> for PriorSerde {
     }
 }
 
-/// The `after` identity recorded for a journaled REMOVAL: nothing
-/// should be there. Distinctive enough to never collide with a real
-/// content hash or link target — a destination that exists again at
-/// reconcile reads as user content and is kept (0025 §B).
-pub const REMOVED: &str = "gripsack:removed";
-
+// The pre-0.40 `after` identity for a journaled REMOVAL was the bare
+// string `"gripsack:removed"` — distinctive, but not disjoint from a
+// symlink target (0045 F1). The tagged `IntendedSerde` replaced it;
+// the literal survives only in `WireRejection::Legacy`'s detection
+// of entries written before the tagged format.
 /// Where the journal lives.
 pub fn dir(home: &Path) -> PathBuf {
     home.join("journal")
@@ -245,7 +409,9 @@ fn tighten_blob(_home: &Dir, _rel: &Path) -> io::Result<()> {
 fn entry_rel(dest: &Path) -> PathBuf {
     Path::new("journal").join(format!(
         "{}.json",
-        crate::hash::hex_sha256(dest.to_string_lossy().as_bytes(),)
+        // the OS bytes, not a lossy spelling: two destinations may
+        // never share an entry file because one was undecodable
+        crate::hash::hex_sha256(dest.as_os_str().as_encoded_bytes())
     ))
 }
 
@@ -313,13 +479,23 @@ pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io:
 
 /// Record the intent to mutate `dest`: prior state AND the intended
 /// post-mutation identity, durable BEFORE the mutation lands
-/// (0026 §6 — persisting intent up front closes the window where a
-/// post-crash user edit was indistinguishable from the mutation).
 pub fn record(home: &Dir, dest: &Path, prior: &Prior, after: &Intended) -> io::Result<()> {
+    // 0045 F1: a lossy destination spelling would be restored to a
+    // DIFFERENT path after a crash — refuse to journal it. The object
+    // is untouched (record runs before the mutation) and the failed
+    // run compensates. Destinations originate in the UTF-8 IR, so
+    // this is defense in depth, not a user-facing rule.
+    let dest_str = dest.to_str().ok_or_else(|| {
+        io::Error::other(format!(
+            "destination {} is not valid UTF-8 — refusing to journal it (the object is untouched)",
+            dest.display()
+        ))
+    })?;
     let entry = Entry {
-        dest: dest.to_string_lossy().into_owned(),
+        v: ENTRY_WIRE_VERSION,
+        dest: dest_str.to_string(),
         prior: prior.into(),
-        after: after.to_wire(),
+        after: after.to_serde(),
     };
     gripsack_fs::atomic_write(
         home,
@@ -353,7 +529,7 @@ fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
         Err(e) => return Err(e),
     };
     let mut out = Vec::new();
-    let mut quarantined = 0usize;
+    let mut quarantined: Vec<String> = Vec::new();
     for entry in entries {
         let name = entry?.file_name();
         if name == "run.json" {
@@ -370,29 +546,110 @@ fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
         if rel.extension().is_some_and(|e| e != "json") {
             continue;
         }
-        match home.read(&rel).and_then(|b| {
-            serde_json::from_slice::<Entry>(&b)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-        }) {
+        // Admission (0045 F1): the entry decodes into validated types
+        // here or not at all — legacy, unsupported-version and
+        // malformed entries are quarantined with their reason, never
+        // reinterpreted.
+        match home
+            .read(&rel)
+            .map_err(|e| WireRejection::Malformed(e.to_string()))
+            .and_then(|b| Entry::from_wire(&b))
+        {
             Ok(parsed) => out.push((rel, parsed)),
-            Err(_) => {
+            Err(rejection) => {
                 let quarantine = Path::new("journal").join("quarantine");
                 gripsack_fs::create_dir_all(home, &quarantine)?;
                 let _ = home.rename(&rel, home, quarantine.join(&name));
-                quarantined += 1;
+                quarantined.push(format!("{}: {rejection}", name.to_string_lossy()));
             }
         }
     }
-    if quarantined > 0 {
+    if !quarantined.is_empty() {
         return Err(io::Error::other(format!(
-            "{} journal entr{} could not be parsed — moved to journal/quarantine \
+            "{} journal entr{} could not be admitted — moved to journal/quarantine \
              under $GRIPSACK_HOME; inspect and remove them to continue \
-             (recovery metadata is never ignored)",
-            quarantined,
-            if quarantined == 1 { "y" } else { "ies" },
+             (recovery metadata is never ignored):\n  {}",
+            quarantined.len(),
+            if quarantined.len() == 1 { "y" } else { "ies" },
+            quarantined.join("\n  "),
         )));
     }
     Ok(Some(out))
+}
+
+/// Unfinished recovery state, for GC admission (0045 F3): a run
+/// marker, journal entries, or a quarantined entry all mean recovery
+/// has not run to completion and its evidence (prior blobs included)
+/// is still load-bearing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PendingRecovery {
+    /// A declared run whose outcome was never classified.
+    pub run_marker: bool,
+    /// Uncommitted journal entries awaiting reconcile.
+    pub entries: usize,
+    /// Quarantined entries nobody has inspected yet.
+    pub quarantined: usize,
+}
+
+impl std::fmt::Display for PendingRecovery {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts: Vec<String> = Vec::new();
+        if self.run_marker {
+            parts.push("a run marker".to_string());
+        }
+        if self.entries > 0 {
+            parts.push(format!(
+                "{} uncommitted entr{}",
+                self.entries,
+                if self.entries == 1 { "y" } else { "ies" }
+            ));
+        }
+        if self.quarantined > 0 {
+            parts.push(format!(
+                "{} quarantined entr{}",
+                self.quarantined,
+                if self.quarantined == 1 { "y" } else { "ies" }
+            ));
+        }
+        f.write_str(&parts.join(", "))
+    }
+}
+
+/// Is there recovery state a destructive command must not destroy
+/// (0045 F3)? Read-only: no cleanup, no quarantine moves — admission
+/// never mutates the evidence it inspects. An unreadable journal is
+/// an error (fail closed), never "nothing pending".
+pub fn pending_recovery(home: &Dir) -> io::Result<Option<PendingRecovery>> {
+    let mut pending = PendingRecovery {
+        run_marker: false,
+        entries: 0,
+        quarantined: 0,
+    };
+    match home.read_dir("journal") {
+        Ok(entries) => {
+            for entry in entries {
+                let name = entry?.file_name();
+                if name == "run.json" {
+                    pending.run_marker = true;
+                } else if name == "quarantine" {
+                    // an unreadable quarantine fails closed like any
+                    // other unreadable recovery metadata
+                    match home.read_dir("journal/quarantine") {
+                        Ok(quarantined) => pending.quarantined = quarantined.count(),
+                        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                        Err(e) => return Err(e),
+                    }
+                } else if Path::new(&name).extension().is_some_and(|e| e == "json")
+                    && !name.to_string_lossy().starts_with(".tmp-write-")
+                {
+                    pending.entries += 1;
+                }
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    Ok((pending.run_marker || pending.entries > 0 || pending.quarantined > 0).then_some(pending))
 }
 
 /// The drift guard, same philosophy as everywhere else: a known
@@ -406,12 +663,23 @@ fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
 /// 0025 crash-window e2e exposed.)
 pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<ObjectIdentity>> {
     match dest_dir.symlink_metadata(dest_name) {
-        Ok(meta) if meta.file_type().is_symlink() => Ok(Some(ObjectIdentity::Link(
-            dest_dir
-                .read_link_contents(dest_name)?
-                .to_string_lossy()
-                .into_owned(),
-        ))),
+        Ok(meta) if meta.file_type().is_symlink() => {
+            let target = dest_dir.read_link_contents(dest_name)?;
+            // 0045 F1 (item 7): the same rule as capture, applied to
+            // observation — a non-UTF-8 target lossily compared could
+            // spell a journaled identity through replacement
+            // characters. Refuse instead: the object is untouched,
+            // the journal entry (if any) is retained.
+            let Some(target) = target.to_str() else {
+                return Err(io::Error::other(format!(
+                    "{} is a symlink with a non-UTF-8 target — gripsack cannot \
+                     establish its identity; move it aside to continue (it is \
+                     preserved; nothing was deleted)",
+                    dest_name.display()
+                )));
+            };
+            Ok(Some(ObjectIdentity::Link(target.to_string())))
+        }
         Ok(meta) => {
             // mode-aware (0031): the journal's file identity covers
             // the full permission set — a chmod between the drift
