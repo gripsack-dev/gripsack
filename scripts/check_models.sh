@@ -31,11 +31,14 @@ check() {
             # The negative must name exactly one temporal property, and it
             # must be the intended one: a temporal failure can then never
             # calibrate a different liveness claim by accident.
+            # TLC's VIOLATION_LIVENESS exit is 13. The message may omit the
+            # property name; the unique declaration above binds that evidence.
             props=$(grep -c '^[[:space:]]*PROPERT' "$cfg")
             named=$(grep '^[[:space:]]*PROPERT' "$cfg" | tr -s ' \t' ' ' | tr -d '\r' \
                 | sed 's/^ *//')
             if [ "$props" -ne 1 ] || [ "$named" != "PROPERTY $property" ] \
-                || ! grep -Eq 'Temporal propert(y|ies) .* (was|were) violated' "$log"; then
+                || [ "$status" -ne 13 ] \
+                || ! grep -Eq 'Temporal propert(y|ies)( .*)? (was|were) violated' "$log"; then
                 cat "$log"; echo "FAIL: $config did not solely violate $property" >&2; exit 1
             fi
             ;;
