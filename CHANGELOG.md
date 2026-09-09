@@ -3,6 +3,58 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.40.0] — 2026-09-10
+
+Recovery admission hardening and editor-reachable frontends (0045).
+
+### Fixed
+
+- **Journal identities are tagged and versioned on the wire.** The
+  pre-0.40 bare-string encoding let a post-crash symlink whose target
+  spelled the removal sentinel (`gripsack:removed`) or a file identity
+  pass for the mutation itself, so recovery could "restore" over a user
+  edit. Entry intents are now `{"kind": "removed" | "file" | "link"}`
+  records; the recovery kernel compares typed values; non-UTF-8 symlink
+  targets and non-UTF-8 destinations are refused at admission with the
+  object preserved. **Pre-0.40 journal entries are never
+  reinterpreted**: they quarantine with a named reason and block
+  recovery until inspected — a 0.39 crash window needs a hand-check of
+  `$GRIPSACK_HOME/journal/quarantine/` (the interrupted run's edits are
+  restored by hand or the entry deleted).
+- **A run marker missing `previous_generation` is rejected at parse.**
+  The key is required on the wire (explicit `null` remains the
+  fresh-machine form); previously a torn marker silently read as a
+  fresh machine.
+- **`gc` refuses while recovery is unfinished.** A run marker, journal
+  entry or quarantined entry blocks collection — dry-run included, with
+  nothing deleted — because a journaled prior blob may be referenced by
+  no retained manifest. Run `grip apply` (or `rollback`) to reconcile,
+  then collect.
+
+### Added
+
+- **The embedded frontend is editor-reachable.** The npm package and
+  the materialized `$GRIPSACK_HOME/frontend/ts-<version>/` tree now
+  resolve types straight from `src/index.ts` — no phantom `dist/` in
+  `types` — and materialization flips a stable
+  `$GRIPSACK_HOME/frontend/current` symlink. Point an editor at it —
+  symlink `node_modules/@gripsack/core` → `frontend/current` or a
+  tsconfig `paths` entry — with `npm i -D @types/node` and
+  `noEmit` + `allowImportingTsExtensions` in tsconfig. `grip doctor`
+  prints the exact wiring. The package keeps shipping compiled
+  `dist/` as the runtime entry: Deno never type-strips under a real
+  (non-symlinked) `node_modules`, so the deliberate pin executes the
+  compiled form while editors read the source.
+- **Mutation authority is a type.** `LifecycleSession` owns the
+  lifecycle lock and the home it covers; `gc`, `rollback` and
+  `store verify --repair` cannot run without one — the lock is no
+  longer a caller convention for library consumers.
+- `verification/guarantees.md` opens the guarantee ledger: four
+  entries with admission boundaries, trusted components, bridges and
+  calibrations.
+
+IR remains v3. Core and SDK ship together at 0.40.0.
+
 ## [0.39.0] — 2026-09-09
 
 Complete surveys, explicit version spelling, and transport evidence (0044).
