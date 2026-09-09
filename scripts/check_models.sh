@@ -84,3 +84,22 @@ check FileMode.tla cfg/filemode-mutant-template-fixed0644.cfg ExecSurvivesDeploy
 check FileMode.tla cfg/filemode-mutant-bytes-only.cfg ChmodIsDrift
 check FileMode.tla cfg/filemode-mutant-prune.cfg PruneRespectsDrift
 check FileMode.tla cfg/filemode-mutant-rollback.cfg RollbackIsExact
+
+# 0044 protocol/policy contracts. Real-code bridges remain separate: a model
+# checks its abstraction, not an arbitrary implementation or parser.
+check UpdateSurvey.tla cfg/update-survey.cfg
+check UpdateSurvey.tla cfg/update-survey-empty.cfg
+check UpdateSurvey.tla cfg/update-survey-stop-first.cfg CompleteSurvey
+check UpdateSurvey.tla cfg/update-survey-exit-conflation.cfg HonestExit
+check UpdateSurvey.tla cfg/update-survey-publication.cfg NoPublication
+check HttpRetry.tla cfg/http-retry.cfg
+check HttpRetry.tla cfg/http-retry-terminal-replay.cfg NoTerminalReplay
+check HttpRetry.tla cfg/http-retry-deadline-reset.cfg FixedDeadline
+check HttpRetry.tla cfg/http-retry-attempt-overflow.cfg BoundedAttempts
+check CredentialRouting.tla cfg/credential-routing.cfg
+check CredentialRouting.tla cfg/credential-routing-base-authority.cfg TokensStayBound
+check CredentialRouting.tla cfg/credential-routing-redirect-forwarding.cfg NoRedirectDisclosure
+check MergeBoundary.tla cfg/merge-boundary.cfg
+check MergeBoundary.tla cfg/merge-boundary-unclosed-marker.cfg ForeignTextPreserved
+check MergeBoundary.tla cfg/merge-boundary-first-mode.cfg AllModeEvidenceRequired
+check MergeBoundary.tla cfg/merge-boundary-first-prune.cfg PruneNeedsWholeEvidence

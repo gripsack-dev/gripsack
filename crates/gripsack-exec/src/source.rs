@@ -3,6 +3,7 @@
 
 mod acquire;
 mod overlay;
+pub(crate) mod preflight;
 pub(crate) use acquire::{FetchInputs, fetch, publish};
 pub(crate) use overlay::Overlay;
 
@@ -17,12 +18,8 @@ pub(crate) fn payload_source(
     root: &Path,
     declaration: &str,
     version: Option<&str>,
-) -> PayloadSource {
-    let expanded = gripsack_fetch::expand_platform(declaration);
-    let relative = match version {
-        Some(version) => expanded.replace("{version}", version),
-        None => expanded,
-    };
+) -> Result<PayloadSource, gripsack_fetch::PlaceholderError> {
+    let relative = gripsack_fetch::placeholders::payload_path(declaration, version)?;
     let path = root.join(&relative);
-    PayloadSource { relative, path }
+    Ok(PayloadSource { relative, path })
 }

@@ -1,4 +1,6 @@
-/** Deployment destinations with ownership modes (0001 §3.7). */
+/** Deployment destinations with ownership modes (0001 §3.7).
+ * Source keys accept `{version}` (raw locked tag), `{version.bare}` (one
+ * leading lowercase v removed), and the core's platform placeholders. */
 
 export type Ownership = "owned" | "tracked_copy" | "merge" | "template";
 

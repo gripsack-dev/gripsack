@@ -25,7 +25,18 @@ pub(crate) fn fetch(ctx: &Ctx, inputs: FetchInputs<'_>) -> Result<LockEntry, Exe
     let (concrete, meta) = crate::resolve::resolve_spec(name, spec, locked, &ctx.fetch)?;
     let previous = locked.and_then(|entry| entry.resolved.as_ref());
     let locked_json = previous.map(serde_json::to_value).transpose()?;
-    let outcome = ctx.fetch.fetch(&concrete, dest, locked_json.as_ref())?;
+    let outcome = ctx
+        .fetch
+        .fetch(&concrete, dest, locked_json.as_ref())
+        .map_err(|error| {
+            let error = match spec {
+                FetchSpec::GithubRelease { base_url, .. } => {
+                    error.with_github_context(base_url.as_deref())
+                }
+                _ => error,
+            };
+            ExecError::Fetch(error)
+        })?;
     if let Some(expected) = previous.and_then(|pin| pin.sha256.as_ref())
         && expected != outcome.identity.as_str()
     {

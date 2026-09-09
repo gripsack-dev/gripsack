@@ -5,7 +5,6 @@ use crate::limits::AcquisitionGate;
 use crate::{DownloadHash, FetchError, FetchIdentity, FetchLimits, FetchOutcome};
 use gripsack_ir::FetchSpec;
 use serde::de::DeserializeOwned;
-use std::io::{self, Read};
 use std::path::Path;
 
 pub struct FetchContext {
@@ -44,28 +43,38 @@ impl FetchContext {
         self.limits
     }
 
-    pub(crate) fn get(&self, url: &str) -> ureq::Request {
-        self.network.get(url)
+    pub(crate) fn json<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        kind: crate::http::RequestKind<'_>,
+    ) -> Result<T, FetchError> {
+        self.network.json(url, kind)
     }
 
-    pub(crate) fn auth_header(&self, url: &str) -> Option<&str> {
-        self.network.auth_header(url)
+    pub(crate) fn text(
+        &self,
+        url: &str,
+        kind: crate::http::RequestKind<'_>,
+    ) -> Result<String, FetchError> {
+        self.network.text(url, kind)
     }
 
-    pub(crate) fn json<T: DeserializeOwned>(&self, response: ureq::Response) -> io::Result<T> {
-        serde_json::from_reader(crate::spool::Limited::new(
-            response.into_reader(),
-            8 * 1024 * 1024,
-            "registry metadata",
-        ))
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+    pub(crate) fn download(
+        &self,
+        url: &str,
+        kind: crate::http::RequestKind<'_>,
+    ) -> Result<crate::spool::Download, FetchError> {
+        self.network
+            .download(url, kind, self.limits.download_bytes.get())
     }
 
-    pub(crate) fn text(&self, response: ureq::Response) -> io::Result<String> {
-        let mut text = String::new();
-        crate::spool::Limited::new(response.into_reader(), 8 * 1024 * 1024, "registry metadata")
-            .read_to_string(&mut text)?;
-        Ok(text)
+    pub(crate) fn download_hash(
+        &self,
+        url: &str,
+        api_url: Option<&str>,
+    ) -> Result<DownloadHash, FetchError> {
+        self.network
+            .payload_hash(url, api_url, self.limits.download_bytes.get())
     }
 
     pub fn resolve_latest(
@@ -202,10 +211,7 @@ impl FetchContext {
             FetchSpec::File { path } => file::payload_hash(self, path).map(Some),
             FetchSpec::Brew { formula, .. } => self
                 .resolve_brew(formula)
-                .map_err(|error| FetchError::Http {
-                    url: formula.clone(),
-                    reason: error.to_string(),
-                })?
+                .map_err(FetchError::from)?
                 .sha256
                 .map(|hash| {
                     DownloadHash::parse(&hash)

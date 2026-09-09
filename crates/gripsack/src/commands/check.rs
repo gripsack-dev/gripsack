@@ -33,6 +33,19 @@ pub fn check(repo: &Path, host: Option<&str>, palette: Palette) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             }
+            match gripsack_exec::inspect_known_layouts(&ir, repo, &outcome.host) {
+                Ok(layouts) => {
+                    for (module, evidence) in layouts {
+                        if let Some(summary) = evidence.summary() {
+                            println!("  {module}: {summary}");
+                        }
+                    }
+                }
+                Err(error) => {
+                    eprintln!("grip: {error}");
+                    return ExitCode::FAILURE;
+                }
+            }
             let host = &ir.host;
             println!(
                 "{} {} modules · host {}/{} · tags: {}",

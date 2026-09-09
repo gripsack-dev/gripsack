@@ -9,11 +9,7 @@ use crate::model::{Ir, Verify};
 use crate::span::Span;
 use crate::step::StepAction;
 
-/// The placeholder contract (0016 §D1) — validated here, expanded in
-/// gripsack-fetch (`host::AssetTarget::placeholders`).
-const KNOWN: &[&str] = &[
-    "version", "system", "target", "arch", "arch.go", "arch.x64", "os",
-];
+use crate::placeholders::SUPPORTED;
 
 /// `{...}` runs in a string, as raw names.
 fn placeholders(text: &str) -> Vec<&str> {
@@ -35,7 +31,7 @@ fn placeholders(text: &str) -> Vec<&str> {
 /// Nearest known placeholder by edit distance, when plausible.
 /// (Same ratio rule as griplint's did-you-mean.)
 fn suggest(typo: &str) -> Option<&'static str> {
-    KNOWN
+    SUPPORTED
         .iter()
         .map(|c| (*c, similarity(typo, c)))
         .filter(|(_, r)| *r >= 0.6)
@@ -91,13 +87,49 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                 ),
                 crate::model::FetchSpec::Brew { .. } | crate::model::FetchSpec::Pixi { .. } => {}
             }
+            let unsupported = match spec {
+                crate::model::FetchSpec::Tarball { url, .. } => Some(url.as_str()),
+                crate::model::FetchSpec::File { path } => Some(path.as_str()),
+                crate::model::FetchSpec::Plugin { args, .. } => args
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|object| object.values())
+                    .filter_map(|value| value.as_str())
+                    .find(|value| value.contains("{version.bare}")),
+                _ => None,
+            };
+            if unsupported.is_some_and(|pattern| pattern.contains("{version.bare}")) {
+                diagnostics.push(Diagnostic::error(codes::UNKNOWN_PLACEHOLDER,
+                    "{version.bare} needs a resolved version; use it in a GitHub asset or payload path")
+                    .with_label(module_span.clone(), format!("module {name:?} here")));
+            }
         }
         for entry in module.install.iter().chain(module.config.iter()) {
             strings.push((&entry.from, &entry.span));
         }
+        if let Some(steps) = &module.steps {
+            for step in steps {
+                match &step.action {
+                    StepAction::Install { entries } | StepAction::ConfigDeploy { entries } => {
+                        strings.extend(
+                            entries
+                                .iter()
+                                .map(|entry| (entry.from.as_str(), &entry.span)),
+                        )
+                    }
+                    _ => {}
+                }
+            }
+        }
         let mut verifies: Vec<&Verify> = module.verify.as_ref().into_iter().collect();
         if let Some(steps) = &module.steps {
-            verifies.extend(steps.iter().filter_map(|s| s.verify.as_ref()));
+            verifies.extend(steps.iter().flat_map(|step| {
+                let action = match &step.action {
+                    StepAction::Verify { verify } => Some(verify),
+                    _ => None,
+                };
+                action.into_iter().chain(step.verify.iter())
+            }));
         }
         for verify in verifies {
             match verify {
@@ -109,7 +141,7 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
         }
         for (text, span) in strings {
             for placeholder in placeholders(text) {
-                if KNOWN.contains(&placeholder) {
+                if SUPPORTED.contains(&placeholder) {
                     continue;
                 }
                 let mut d = Diagnostic::error(

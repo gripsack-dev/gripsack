@@ -5,12 +5,13 @@
 //! Auth: `GITHUB_TOKEN`/`GH_TOKEN` if set (60/hr anonymous otherwise).
 //! `base_url` covers GitHub Enterprise.
 
+use crate::http::RequestKind;
 use serde::Deserialize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ResolveError {
-    #[error("http: {0}")]
-    Http(Box<ureq::Error>),
+    #[error(transparent)]
+    Acquisition(#[from] crate::FetchError),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
     #[error("no release asset matching {asset:?} in {repo} (have: {})", .available.join(", "))]
@@ -23,11 +24,16 @@ pub enum ResolveError {
     NoReleases(String),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Placeholder(#[from] crate::PlaceholderError),
 }
 
-impl From<ureq::Error> for ResolveError {
-    fn from(e: ureq::Error) -> Self {
-        ResolveError::Http(Box::new(e))
+impl ResolveError {
+    pub fn http_status(&self) -> Option<u16> {
+        match self {
+            Self::Acquisition(error) => error.http_status(),
+            _ => None,
+        }
     }
 }
 
@@ -59,30 +65,6 @@ struct Asset {
     url: String,
 }
 
-/// Expand the platform placeholders (0016 §D1) against this machine's
-/// target. Unknown platforms leave the pattern untouched — the failure
-/// surfaces as a no-matching-asset error naming what IS available.
-pub fn expand_platform(pattern: &str) -> String {
-    let mut out = pattern.to_string();
-    if let Some(target) = crate::host::AssetTarget::current() {
-        for (placeholder, value) in target.placeholders() {
-            out = out.replace(placeholder, &value);
-        }
-    }
-    out
-}
-
-/// The asset pattern's `{version}` placeholder, expanded against a tag.
-/// `v25.07` and `25.07` both match.
-pub fn expand_asset_pattern(pattern: &str, tag: &str) -> Vec<String> {
-    let bare = tag.strip_prefix('v').unwrap_or(tag);
-    let platform = expand_platform(pattern);
-    vec![
-        platform.replace("{version}", tag),
-        platform.replace("{version}", bare),
-    ]
-}
-
 /// Match an asset list against a pattern; pure — unit-tested offline.
 /// `assets` is (name, browser URL, API URL).
 pub fn pick_asset(
@@ -91,7 +73,7 @@ pub fn pick_asset(
     tag: &str,
     assets: &[(String, String, String)],
 ) -> Result<ResolvedRelease, ResolveError> {
-    for candidate in expand_asset_pattern(pattern, tag) {
+    for candidate in crate::placeholders::asset_patterns(pattern, tag)? {
         if let Some((_, url, api_url)) = assets.iter().find(|(name, _, _)| *name == candidate) {
             return Ok(ResolvedRelease {
                 version: tag.to_string(),
@@ -219,10 +201,8 @@ fn self_release_via_atom(
     target: crate::host::AssetTarget,
 ) -> Result<SelfRelease, ResolveError> {
     let feed = context.text(
-        context
-            .get("https://github.com/gripsack-dev/gripsack/releases.atom")
-            .set("User-Agent", "gripsack")
-            .call()?,
+        "https://github.com/gripsack-dev/gripsack/releases.atom",
+        RequestKind::Text,
     )?;
     let tag = core_tag_from_atom(&feed).ok_or_else(|| ResolveError::NoAsset {
         repo: "gripsack-dev/gripsack".into(),
@@ -291,11 +271,7 @@ fn self_release_via_api(
     // three tag types (core/py/ts) per version in creation order —
     // page deep enough that core-v* never falls off
     let url = format!("{base}/repos/gripsack-dev/gripsack/releases?per_page=100");
-    let mut request = context.get(&url).set("User-Agent", "gripsack");
-    if let Some(header) = context.auth_header(&url) {
-        request = request.set("Authorization", header);
-    }
-    let releases: Vec<Release> = context.json(request.call()?)?;
+    let releases: Vec<Release> = context.json(&url, RequestKind::GithubMetadata)?;
     let tags = releases_tags(&releases);
     let release = releases
         .into_iter()
@@ -336,17 +312,13 @@ pub(crate) fn resolve_plugin_release(
         Some(t) => format!("{base}/repos/{repo}/releases/tags/{t}"),
         None => format!("{base}/repos/{repo}/releases/latest"),
     };
-    let mut request = context.get(&url).set("User-Agent", "gripsack");
-    if let Some(header) = context.auth_header(&url) {
-        request = request.set("Authorization", header);
-    }
     // tags may be written v1.0 or 1.0 — try the other form on 404
     // (the same convention pick_asset uses for asset names)
-    let release: Release = match request.call() {
-        Ok(r) => context.json(r)?,
+    let release: Release = match context.json(&url, RequestKind::GithubMetadata) {
+        Ok(release) => release,
         Err(e) => {
             let alternate = tag.and_then(|t| {
-                if e.to_string().contains("404") {
+                if e.http_status() == Some(404) {
                     let alt = t
                         .strip_prefix('v')
                         .map(|b| b.to_string())
@@ -357,14 +329,8 @@ pub(crate) fn resolve_plugin_release(
                 }
             });
             match alternate {
-                Some(url) => {
-                    let mut request = context.get(&url).set("User-Agent", "gripsack");
-                    if let Some(header) = context.auth_header(&url) {
-                        request = request.set("Authorization", header);
-                    }
-                    context.json(request.call()?)?
-                }
-                None => return Err(ResolveError::Http(Box::new(e))),
+                Some(url) => context.json(&url, RequestKind::GithubMetadata)?,
+                None => return Err(e.into()),
             }
         }
     };
@@ -415,11 +381,7 @@ pub(crate) fn resolve_latest(
         Some(tag) => format!("{base}/repos/{repo}/releases/tags/{tag}"),
         None => format!("{base}/repos/{repo}/releases/latest"),
     };
-    let mut request = context.get(&url).set("User-Agent", "gripsack");
-    if let Some(header) = context.auth_header(&url) {
-        request = request.set("Authorization", header);
-    }
-    let release: Release = context.json(request.call()?)?;
+    let release: Release = context.json(&url, RequestKind::GithubMetadata)?;
     let assets: Vec<(String, String, String)> = release
         .assets
         .into_iter()
@@ -551,7 +513,7 @@ pub(crate) fn resolve_brew(
     formula: &str,
 ) -> Result<ResolvedRelease, ResolveError> {
     let url = format!("https://formulae.brew.sh/api/formula/{formula}.json");
-    let f: Formula = context.json(context.get(&url).set("User-Agent", "gripsack").call()?)?;
+    let f: Formula = context.json(&url, RequestKind::Metadata)?;
     let key = bottle_key(&f.bottle.stable.files).ok_or_else(|| ResolveError::NoAsset {
         repo: formula.to_string(),
         asset: "bottle for this platform".into(),
@@ -576,7 +538,7 @@ pub(crate) fn ghcr_token(
         token: String,
     }
     let url = format!("https://ghcr.io/token?scope=repository:{scope_repo}:pull");
-    let t: Token = context.json(context.get(&url).call()?)?;
+    let t: Token = context.json(&url, RequestKind::Metadata)?;
     Ok(t.token)
 }
 

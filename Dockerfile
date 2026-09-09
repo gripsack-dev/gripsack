@@ -67,11 +67,11 @@ RUN cargo build --locked -p gripsack
 # canonical runner scripts/check_models.sh — positive protocols AND
 # calibrated counterexamples (each negative config must violate exactly
 # the invariant/temporal property it names; parser errors never count).
-# tla2tools is checksum-pinned; v1.8.0 is deliberately ahead of the
-# latest stable tag (v1.7.4). Base image digest-pinned like the rest.
+# tla2tools is checksum-pinned to v1.8.0's 2026-09-08 prerelease asset.
+# Digest verified against the release API; base image digest-pinned like the rest.
 FROM eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 AS model
 ARG TLA_TOOLS_VERSION=1.8.0
-ARG TLA_TOOLS_SHA256=b658b4e504fdf0b721caf7066320f6b6fe5805f4dd2f717d0e47baba4097205e
+ARG TLA_TOOLS_SHA256=4c7bb1f6b050d56c197ee9ddd6e57fe521eae175f5043c9fb98b169f7b2d5407
 ADD --checksum=sha256:${TLA_TOOLS_SHA256} https://github.com/tlaplus/tlaplus/releases/download/v${TLA_TOOLS_VERSION}/tla2tools.jar /tla/tla2tools.jar
 WORKDIR /work
 COPY specs ./specs

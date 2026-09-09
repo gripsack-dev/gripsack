@@ -228,7 +228,13 @@ fn main() -> ExitCode {
             check,
         } => match commands::resolve_repo(repo.as_deref()) {
             Ok(repo) => commands::update(&repo, host.as_deref(), modules, palette, check),
-            Err(code) => code,
+            Err(code) => {
+                if check {
+                    ExitCode::from(2)
+                } else {
+                    code
+                }
+            }
         },
         Command::Rollback { generation } => commands::rollback(generation, palette),
         Command::Trust { command } => commands::trust(command, palette),
@@ -278,6 +284,19 @@ fn main() -> ExitCode {
                     }
                 }
             }
+            match gripsack_exec::inspect_known_layouts(&ir, &repo, &outcome.host) {
+                Ok(layouts) => {
+                    for (module, evidence) in layouts {
+                        if let Some(summary) = evidence.summary() {
+                            println!("  {module}: {summary}");
+                        }
+                    }
+                }
+                Err(error) => {
+                    eprintln!("grip: {error}");
+                    return ExitCode::FAILURE;
+                }
+            }
             // host-inputs header (0013 D6): the facts that went in and
             // the probes the core bound — what keeps hardware-reactive
             // plans from reading as nondeterminism.
@@ -287,10 +306,14 @@ fn main() -> ExitCode {
             );
             let waves = gripsack_exec::waves(&ir).unwrap_or_default();
             if modules.is_empty() {
-                println!(
-                    "{}",
-                    render::diff_section(&ir, &repo, &outcome.host, &Default::default(), palette)
-                );
+                match render::diff_section(&ir, &repo, &outcome.host, &Default::default(), palette)
+                {
+                    Ok(section) => println!("{section}"),
+                    Err(error) => {
+                        eprintln!("grip: cannot compute the preview: {error}");
+                        return ExitCode::FAILURE;
+                    }
+                }
             }
             match modules.first() {
                 Some(name) => {

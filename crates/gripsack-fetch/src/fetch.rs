@@ -16,14 +16,18 @@ pub use git::resolve_head as resolve_git_head;
 pub enum FetchError {
     #[error("io: {0}")]
     Io(io::Error),
-    #[error("sha256 mismatch for {url}: expected {expected}, got {actual}")]
+    #[error(transparent)]
+    Http(Box<crate::http::HttpFailure>),
+    #[error(transparent)]
+    Resolution(Box<crate::resolve::ResolveError>),
+    #[error("sha256 mismatch for {}: expected {expected}, got {actual}", crate::http::safe_location(.url))]
     HashMismatch {
         url: String,
         expected: String,
         actual: String,
     },
-    #[error("http error fetching {url}: {reason}")]
-    Http { url: String, reason: String },
+    #[error("source error fetching {}: {reason}", crate::http::safe_location(.resource))]
+    Source { resource: String, reason: String },
     #[error("{what} exceeds the {limit} byte cap — refusing to truncate silently")]
     PayloadTooLarge { what: String, limit: u64 },
     #[error("payload exceeds the {limit} entry cap")]
@@ -54,6 +58,32 @@ impl From<io::Error> for FetchError {
         } else {
             Self::Io(error)
         }
+    }
+}
+
+impl From<crate::http::HttpFailure> for FetchError {
+    fn from(error: crate::http::HttpFailure) -> Self {
+        Self::Http(Box::new(error))
+    }
+}
+impl From<crate::resolve::ResolveError> for FetchError {
+    fn from(error: crate::resolve::ResolveError) -> Self {
+        Self::Resolution(Box::new(error))
+    }
+}
+impl FetchError {
+    pub fn http_status(&self) -> Option<u16> {
+        match self {
+            Self::Http(error) => error.status(),
+            Self::Resolution(error) => error.http_status(),
+            _ => None,
+        }
+    }
+    pub fn with_github_context(mut self, base_url: Option<&str>) -> Self {
+        if let Self::Http(error) = &mut self {
+            error.github_context(base_url);
+        }
+        self
     }
 }
 

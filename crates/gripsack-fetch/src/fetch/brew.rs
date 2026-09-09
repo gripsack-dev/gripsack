@@ -24,56 +24,44 @@ pub(crate) fn fetch(
             api_url: None,
             sha256: field("sha256").map(str::to_owned),
         },
-        _ => context
-            .resolve_brew(formula)
-            .map_err(|error| FetchError::Http {
-                url: formula.into(),
-                reason: error.to_string(),
-            })?,
+        _ => context.resolve_brew(formula).map_err(FetchError::from)?,
     };
     if let Some(expected) = version
         && expected != resolved.version
     {
-        return Err(FetchError::Http {
-            url: formula.into(),
+        return Err(FetchError::Source {
+            resource: formula.into(),
             reason: format!(
                 "bottle version {} does not match declared version {expected}",
                 resolved.version
             ),
         });
     }
-    let parsed = url::Url::parse(&resolved.url).map_err(|error| FetchError::Http {
-        url: resolved.url.clone(),
+    let parsed = url::Url::parse(&resolved.url).map_err(|error| FetchError::Source {
+        resource: resolved.url.clone(),
         reason: error.to_string(),
     })?;
-    let reader = if parsed.host_str() == Some("ghcr.io") {
+    let mut download = if parsed.host_str() == Some("ghcr.io") {
         let scope = parsed
             .path()
             .strip_prefix("/v2/")
             .and_then(|path| path.split_once("/blobs/"))
             .map(|(repository, _)| repository)
-            .ok_or_else(|| FetchError::Http {
-                url: resolved.url.clone(),
+            .ok_or_else(|| FetchError::Source {
+                resource: resolved.url.clone(),
                 reason: "bottle URL has no registry repository".into(),
             })?;
-        let token =
-            crate::resolve::ghcr_token(context, scope).map_err(|error| FetchError::Http {
-                url: resolved.url.clone(),
-                reason: error.to_string(),
-            })?;
-        context
-            .get(&resolved.url)
-            .set("Authorization", &format!("Bearer {token}"))
-            .call()
-            .map_err(|error| FetchError::Http {
-                url: resolved.url.clone(),
-                reason: error.to_string(),
-            })?
-            .into_reader()
+        let token = crate::resolve::ghcr_token(context, scope).map_err(FetchError::from)?;
+        let authorization = format!("Bearer {token}");
+        context.download(
+            &resolved.url,
+            crate::http::RequestKind::RegistryArtifact {
+                authorization: &authorization,
+            },
+        )?
     } else {
-        super::tarball::reader(context, &resolved.url, None)?
+        super::tarball::download(context, &resolved.url, None)?
     };
-    let mut download = crate::spool::download(reader, context.limits().download_bytes.get())?;
     let identity = FetchIdentity::Download(download.hash);
     crate::context::check_hash(
         &resolved.url,

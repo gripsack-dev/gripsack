@@ -86,8 +86,8 @@ pub struct ToolRelease {
 
 /// The (url, sha256) for the host we're running on.
 pub fn resolve(release: &ToolRelease) -> Result<(String, &'static str), FetchError> {
-    let target = AssetTarget::current().ok_or_else(|| FetchError::Http {
-        url: release.url_template.to_string(),
+    let target = AssetTarget::current().ok_or_else(|| FetchError::Source {
+        resource: release.url_template.to_string(),
         reason: format!(
             "unsupported host platform ({}-{}) — linux and macOS are supported (Windows: use WSL)",
             std::env::consts::OS,
@@ -99,8 +99,8 @@ pub fn resolve(release: &ToolRelease) -> Result<(String, &'static str), FetchErr
         .iter()
         .find(|(t, _)| *t == target)
         .map(|(_, s)| *s)
-        .ok_or_else(|| FetchError::Http {
-            url: release.url_template.to_string(),
+        .ok_or_else(|| FetchError::Source {
+            resource: release.url_template.to_string(),
             reason: format!("no pinned hash for {:?} at {}", target, release.version),
         })?;
     let url = release

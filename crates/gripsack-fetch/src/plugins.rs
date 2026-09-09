@@ -86,8 +86,8 @@ impl PluginStore {
         kind: &str,
     ) -> Result<PathBuf, FetchError> {
         let exe = format!("{kind}-{name}");
-        let (repo, tag) = parse_ref(package).ok_or_else(|| FetchError::Http {
-            url: package.to_string(),
+        let (repo, tag) = parse_ref(package).ok_or_else(|| FetchError::Source {
+            resource: package.to_string(),
             reason: format!(
                 "package must be owner/repo[@tag] for plugin provisioning (got {package:?})"
             ),
@@ -101,16 +101,13 @@ impl PluginStore {
 
         let release = context
             .resolve_plugin_release(&repo, &exe, tag.as_deref())
-            .map_err(|e| FetchError::Http {
-                url: repo.clone(),
-                reason: e.to_string(),
-            })?;
+            .map_err(FetchError::from)?;
         // the tag names the on-disk version dir and the `current`
         // symlink target — it arrives from a network response, so a
         // `a/../../evil` tag must not walk out of the plugin store
         if !safe_segment(&release.version) {
-            return Err(FetchError::Http {
-                url: repo.clone(),
+            return Err(FetchError::Source {
+                resource: repo.clone(),
                 reason: format!(
                     "release tag {:?} is not a safe version directory name",
                     release.version
@@ -140,8 +137,8 @@ impl PluginStore {
         } else if staging.join("bin").join(&exe).is_file() {
             staging.join("bin").join(&exe)
         } else {
-            return Err(FetchError::Http {
-                url: release.url.clone(),
+            return Err(FetchError::Source {
+                resource: release.url.clone(),
                 reason: format!("the bundle has no {exe} at its root or under bin/"),
             });
         };
@@ -167,8 +164,8 @@ impl PluginStore {
         gripsack_fs::atomic_write_at(
             &receipt_dir,
             toml::to_string(&receipt)
-                .map_err(|e| FetchError::Http {
-                    url: repo.clone(),
+                .map_err(|e| FetchError::Source {
+                    resource: repo.clone(),
                     reason: e.to_string(),
                 })?
                 .as_bytes(),

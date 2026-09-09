@@ -1,13 +1,12 @@
 use crate::commands::{check_ir, eval_repo, trust_gate};
 use crate::render::Palette;
-use gripsack_exec::Ctx;
+use gripsack_exec::{Ctx, UpdateCheckOutcome, UpdateMode, UpdateStatus, UpdateSummary};
 use gripsack_store as store;
 use owo_colors::OwoColorize;
 use std::path::Path;
 use std::process::ExitCode;
 
-/// grip update: re-resolve, rewrite the lockfile, report what moved.
-/// Never deploys — `grip apply` does (0008 §5).
+/// Survey failures are data; setup failures abort with the distinct error exit.
 pub fn update(
     repo: &Path,
     host: Option<&str>,
@@ -15,98 +14,100 @@ pub fn update(
     palette: Palette,
     check: bool,
 ) -> ExitCode {
-    if let Some(code) = trust_gate(repo) {
-        return code;
+    let failed = if check {
+        ExitCode::from(2)
+    } else {
+        ExitCode::FAILURE
+    };
+    if trust_gate(repo).is_some() {
+        return failed;
     }
     let outcome = match eval_repo(repo, host, palette) {
-        Ok(o) => o,
-        Err(code) => return code,
+        Ok(outcome) => outcome,
+        Err(_) => return failed,
     };
     let ir = match check_ir(&outcome.ir_json, palette) {
         Ok(ir) => ir,
-        Err(code) => return code,
+        Err(_) => return failed,
     };
-    let host_name = outcome.host.clone();
     let ctx = Ctx {
         home: store::gripsack_home(),
         home_dir: Default::default(),
-        repo: repo.to_path_buf(),
+        repo: repo.into(),
         only: modules,
-        host: host_name,
+        host: outcome.host.clone(),
         on_progress: None,
         take_over: false,
         take_over_entries: None,
         jobs: None,
         fetch: std::sync::Arc::clone(&outcome.fetch),
     };
+    let mode = if check {
+        UpdateMode::Check
+    } else {
+        UpdateMode::Publish
+    };
+    let result = gripsack_exec::update(&ir, &ctx, mode);
     gripsack_fetch::throttle::save_global();
-    match gripsack_exec::update(&ir, &ctx, check) {
-        Ok(reports) => {
-            if reports.is_empty() {
-                println!("nothing to resolve yet — no resolvable fetches in the graph");
-            }
-            for r in &reports {
-                if palette.enabled {
-                    match &r.status {
-                        gripsack_exec::UpdateStatus::Unchanged => {
-                            println!("  {} {}", r.module.cyan(), "unchanged".dimmed())
-                        }
-                        gripsack_exec::UpdateStatus::Bumped { old, new } => {
-                            println!(
-                                "  {} {} ({} → {})",
-                                r.module.cyan(),
-                                if check { "would bump" } else { "bumped" }.yellow().bold(),
-                                old.as_deref().unwrap_or("unlocked"),
-                                new
-                            )
-                        }
-                        gripsack_exec::UpdateStatus::Skipped { reason } => println!(
-                            "  {} {}",
-                            r.module.cyan(),
-                            format!("skipped ({reason})").dimmed()
-                        ),
-                    }
-                } else {
-                    match &r.status {
-                        gripsack_exec::UpdateStatus::Unchanged => {
-                            println!("  {} unchanged", r.module)
-                        }
-                        gripsack_exec::UpdateStatus::Bumped { old, new } => {
-                            println!(
-                                "  {} {} ({} → {})",
-                                r.module,
-                                if check { "would bump" } else { "bumped" },
-                                old.as_deref().unwrap_or("unlocked"),
-                                new
-                            )
-                        }
-                        gripsack_exec::UpdateStatus::Skipped { reason } => {
-                            println!("  {} skipped ({reason})", r.module)
-                        }
-                    }
-                }
-            }
-            if reports
-                .iter()
-                .any(|r| matches!(r.status, gripsack_exec::UpdateStatus::Bumped { .. }))
-            {
-                if check {
-                    println!("updates available — lockfile and source cache unchanged");
-                    return ExitCode::FAILURE;
-                }
-                println!("lockfile updated — run `grip apply` to deploy");
-            }
-            ExitCode::SUCCESS
+    let reports = match result {
+        Ok(reports) => reports,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return failed;
         }
-        Err(e) => {
-            // colors follow the terminal (main.rs): piped output stays
-            // plain
-            if palette.enabled {
-                eprintln!("{}", format!("error: {e}").red().bold());
+    };
+    if reports.is_empty() {
+        println!("nothing to resolve — no selected modules");
+    }
+    for report in &reports {
+        let status = match &report.status {
+            UpdateStatus::Unchanged => "unchanged".to_string(),
+            UpdateStatus::Bumped { old, new } => format!(
+                "{} ({} → {new})",
+                if check { "would bump" } else { "bumped" },
+                old.as_deref().unwrap_or("unlocked")
+            ),
+            UpdateStatus::Skipped { reason } => format!("skipped ({reason})"),
+            UpdateStatus::Failed { error } => format!("failed: {error}"),
+        };
+        if palette.enabled {
+            let status = match report.status {
+                UpdateStatus::Failed { .. } => palette.error(&status),
+                UpdateStatus::Bumped { .. } => palette.warn(&status),
+                _ => palette.dim(&status),
+            };
+            println!("  {} {status}", report.module.cyan());
+        } else {
+            println!("  {} {status}", report.module);
+        }
+        if let Some(layout) = report.layout.summary() {
+            println!("    {layout}");
+        }
+    }
+    let summary = UpdateSummary::from_reports(&reports);
+    if check {
+        let disposition = summary.outcome();
+        println!(
+            "survey {}: {} unchanged, {} would change, {} skipped, {} failed — lockfile and source cache unchanged",
+            if disposition == UpdateCheckOutcome::Incomplete {
+                "incomplete"
             } else {
-                eprintln!("error: {e}");
-            }
-            ExitCode::FAILURE
+                "complete"
+            },
+            summary.unchanged,
+            summary.changed,
+            summary.skipped,
+            summary.failed
+        );
+        match disposition {
+            UpdateCheckOutcome::Current => ExitCode::SUCCESS,
+            UpdateCheckOutcome::ChangesAvailable => ExitCode::from(1),
+            UpdateCheckOutcome::Incomplete => ExitCode::from(2),
         }
+    } else {
+        if summary.changed != 0 {
+            println!("lockfile updated — run `grip apply` to deploy");
+        }
+        ExitCode::SUCCESS
     }
 }

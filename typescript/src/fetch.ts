@@ -10,8 +10,9 @@ export type Fetch =
   | { kind: "pixi"; package: string; version?: string; sha256?: string };
 
 /**
- * GitHub release fetcher. `asset` patterns accept `{version}` (the
- * tag, either v-form) and the platform placeholders (0016 §D1):
+ * GitHub release fetcher. `{version.bare}` strips exactly one leading lowercase
+ * v from the locked tag. Legacy `{version}` tries raw then stripped asset names.
+ * The platform placeholders (0016 §D1) are:
  * `{system}` (x86_64-linux, flake-style), `{target}` (the rust
  * triple, musl for linux), `{arch}` (x86_64|aarch64), `{arch.go}`
  * (amd64|arm64), `{os}` (linux|darwin) — expanded by the core from the

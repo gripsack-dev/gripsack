@@ -152,9 +152,7 @@ pub fn preview_ops(
                 };
                 // the content question decides how much of the decision
                 // plan can make offline
-                let source =
-                    crate::source::payload_source(&identity.store_path, &entry.from, version);
-                if !known || source.relative.contains('{') {
+                if !known {
                     ops.push(Op {
                         module: name.clone(),
                         dest,
@@ -170,6 +168,13 @@ pub fn preview_ops(
                     });
                     continue;
                 }
+                let source =
+                    crate::source::payload_source(&identity.store_path, &entry.from, version)
+                        .map_err(|error| ExecError::Step {
+                            module: name.clone(),
+                            step: "plan".into(),
+                            detail: error.to_string(),
+                        })?;
                 let repo_file = if identity.present {
                     source.path.clone()
                 } else {
@@ -178,16 +183,10 @@ pub fn preview_ops(
                 let deferred = match entry.mode {
                     Ownership::Merge => match std::fs::read_to_string(&repo_file) {
                         Ok(payload) => {
-                            let existing = match std::fs::read_to_string(&dest) {
-                                Ok(t) => Some(t),
-                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                                Err(e) => return Err(e.into()),
-                            };
                             ops.push(plan_entry_op(
                                 &view,
                                 ModeInput::Merge {
                                     payload: &payload,
-                                    existing,
                                     permissions: WritePermissions::Preserve,
                                 },
                             )?);

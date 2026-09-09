@@ -1,4 +1,4 @@
-use gripsack_exec::template::{extract_block, find_blocks, marker_sha, remove_block, upsert_block};
+use gripsack_exec::managed_blocks::ManagedBlockSet;
 use std::path::Path;
 
 pub(crate) fn exercise(input: &[u8]) {
@@ -7,55 +7,67 @@ pub(crate) fn exercise(input: &[u8]) {
     };
     let (existing, payload) = text.split_once('\0').unwrap_or((text, "replacement\n"));
     for module in ["m", "other"] {
-        let blocks = find_blocks(existing, module);
+        let Ok(blocks) = ManagedBlockSet::parse(existing, module) else {
+            continue;
+        };
         assert!(
             blocks
+                .blocks()
                 .iter()
-                .all(|(open, close)| open < close && *close < existing.lines().count())
+                .all(|block| block.range.start < block.range.end
+                    && block.range.end <= existing.len())
         );
-        assert!(blocks.windows(2).all(|pair| pair[0].1 < pair[1].0));
-        let _ = marker_sha(existing, module);
-        let _ = extract_block(existing, module);
-        let _ = remove_block(existing, module);
+        assert!(
+            blocks
+                .blocks()
+                .windows(2)
+                .all(|pair| pair[0].range.end <= pair[1].range.start)
+        );
+        // Independently collect only the source's unowned slices.
+        let mut foreign = String::new();
+        let mut cursor = 0;
+        for block in blocks.blocks() {
+            foreign.push_str(&existing[cursor..block.range.start]);
+            cursor = block.range.end;
+        }
+        foreign.push_str(&existing[cursor..]);
+        if let Some(removed) = blocks.remove() {
+            assert_eq!(removed, foreign)
+        }
         for dest in ["config.sh", "config.html", "config.jsonc", ".vimrc"] {
-            if let Ok(out) = upsert_block(existing, module, Path::new(dest), None, payload, 0o644) {
-                let _ = find_blocks(&out, module);
-                let _ = extract_block(&out, module);
-                let _ = marker_sha(&out, module);
-                let _ = remove_block(&out, module);
-                let _ = upsert_block(&out, module, Path::new(dest), Some("#!"), payload, 0o644);
+            if let Ok(output) = blocks.upsert(module, Path::new(dest), None, payload, 0o644) {
+                let output_blocks = ManagedBlockSet::parse(&output, module).unwrap();
+                assert_eq!(output_blocks.blocks().len(), 1);
+                if !blocks.is_empty() {
+                    assert_eq!(output_blocks.remove().unwrap(), foreign)
+                }
             }
         }
     }
-    // Input-derived controlled grammar: marker-like arbitrary input is exercised
-    // above; here the expected external content is independently knowable.
     let digest = gripsack_store::hash::hex_sha256(input);
-    let eol = if input.first().is_some_and(|byte| byte & 1 != 0) {
+    let newline = if input.first().is_some_and(|byte| byte & 1 != 0) {
         "\r\n"
     } else {
         "\n"
     };
     let copies = input.first().map_or(1, |byte| (byte % 4 + 1) as usize);
-    let foreign = format!("foreign-{digest}{eol}");
-    let first = upsert_block(&foreign, "m", Path::new("config.sh"), None, &digest, 0o644).unwrap();
+    let foreign = format!("foreign-{digest}{newline}");
+    let first = ManagedBlockSet::parse(&foreign, "m")
+        .unwrap()
+        .upsert("m", Path::new("config.sh"), None, &digest, 0o644)
+        .unwrap();
     let duplicated = first.repeat(copies);
-    let repaired = upsert_block(
-        &duplicated,
-        "m",
-        Path::new("config.sh"),
-        None,
-        &digest,
-        0o644,
-    )
-    .unwrap();
-    assert_eq!(find_blocks(&repaired, "m").len(), 1);
+    let parsed = ManagedBlockSet::parse(&duplicated, "m").unwrap();
+    assert_eq!(parsed.remove().unwrap(), foreign.repeat(copies));
+    let repaired = parsed
+        .upsert("m", Path::new("config.sh"), None, &digest, 0o644)
+        .unwrap();
+    let parsed = ManagedBlockSet::parse(&repaired, "m").unwrap();
+    assert_eq!(parsed.blocks().len(), 1);
     assert_eq!(
-        upsert_block(&repaired, "m", Path::new("config.sh"), None, &digest, 0o644).unwrap(),
+        parsed
+            .upsert("m", Path::new("config.sh"), None, &digest, 0o644)
+            .unwrap(),
         repaired
     );
-    let removed = remove_block(&duplicated, "m").unwrap();
-    assert!(find_blocks(&removed, "m").is_empty());
-    // Removal trims trailing blanks, not internal unowned separator lines.
-    let expected = format!("{foreign}{eol}").repeat(copies - 1) + &foreign;
-    assert_eq!(removed, expected);
 }

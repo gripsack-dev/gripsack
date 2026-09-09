@@ -15,8 +15,8 @@ pub fn resolve_head(url: &str) -> Result<String, FetchError> {
     let text = String::from_utf8_lossy(&out);
     let sha = text.split_whitespace().next().unwrap_or("");
     if !matches!(sha.len(), 40 | 64) || !sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(FetchError::Http {
-            url: url.into(),
+        return Err(FetchError::Source {
+            resource: url.into(),
             reason: "git ls-remote returned no HEAD object ID".into(),
         });
     }
@@ -38,8 +38,8 @@ fn run(command: &mut std::process::Command, url: &str) -> Result<Vec<u8>, FetchE
     if !matches!(outcome.reason, gripsack_process::StopReason::Exited)
         || !outcome.status.is_some_and(|status| status.success())
     {
-        return Err(FetchError::Http {
-            url: url.into(),
+        return Err(FetchError::Source {
+            resource: url.into(),
             reason: format!(
                 "git stopped ({:?}, {:?}): {}",
                 outcome.reason,
@@ -66,8 +66,8 @@ pub(crate) fn fetch(
         || rev.is_empty()
         || rev.starts_with('-')
     {
-        return Err(FetchError::Http {
-            url: url.to_string(),
+        return Err(FetchError::Source {
+            resource: url.to_string(),
             reason: format!("invalid rev {rev:?}: expected a sha or ref name"),
         });
     }
@@ -87,8 +87,8 @@ pub(crate) fn fetch(
     let output = run(&mut command, url)?;
     let commit = String::from_utf8_lossy(&output).trim().to_owned();
     if !matches!(commit.len(), 40 | 64) || !commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(FetchError::Http {
-            url: url.into(),
+        return Err(FetchError::Source {
+            resource: url.into(),
             reason: "git checkout has no valid commit object ID".into(),
         });
     }
