@@ -51,7 +51,8 @@
 //! changes NOTHING and keeps the journal intact (fail closed).
 
 use super::marker::{Classification, RecoveryFacts, classify};
-use super::recover::{Recovery, decide_from};
+use super::recover::{RecoveryDecision, decide_from};
+use super::{Intended, ObjectIdentity};
 
 /// Abstract contents. One destination is enough: the protocol
 /// journals destinations independently, so a multi-destination run
@@ -61,15 +62,48 @@ const PRIOR: u8 = 0; // the content deployed before this run
 const DEPLOYED: u8 = 1; // the content this run deploys
 const USER_EDIT: u8 = 2; // a post-crash user edit
 
+/// A content symbol as the production's typed identity (0045 F1):
+/// stand-ins ride the Link variant — the kernel exercises typed
+/// equality, so only the symbols' equality relationships matter.
+/// Cross-variant inequality is pinned separately (journal::tests).
+fn ident(symbol: &'static str) -> ObjectIdentity {
+    ObjectIdentity::Link(symbol.to_string())
+}
+
+fn symbol(content: u8) -> &'static str {
+    match content {
+        PRIOR => "0",
+        DEPLOYED => "1",
+        _ => "2", // USER_EDIT
+    }
+}
+
+/// A journaled intent in model terms: land content, or remove.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum Intent {
+    Land(u8),
+    Remove,
+}
+
+impl Intent {
+    fn to_typed(self) -> Intended {
+        match self {
+            Intent::Land(content) => Intended::Object(ident(symbol(content))),
+            Intent::Remove => Intended::Removed,
+        }
+    }
+}
+
 /// The abstract filesystem.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct Disk {
     /// None = the destination is absent (removal runs exercise this).
     dest: Option<u8>,
     current: Option<u64>,
-    /// One journal entry: (prior content, intended content). The
-    /// intended of a removal run is the REMOVED sentinel.
-    entry: Option<(Option<u8>, &'static str)>,
+    /// One journal entry: (prior content, intended state). The
+    /// intended of a removal run is `Intent::Remove` (the typed
+    /// removal marker, 0045 F1 — no sentinel string).
+    entry: Option<(Option<u8>, Intent)>,
     /// The run marker: (previous, target). Legacy (pre-0.23) markers
     /// carry `None` for previous and classify by the 0.22 direction
     /// rule — kept so the counterexample test can express them.
@@ -141,8 +175,8 @@ fn step_effect(disk: &mut Disk, i: usize, prev: u64, target: u64, kind: RunKind)
         0 => disk.marker = Some((Some(prev), target)),
         1 => {
             disk.entry = Some(match kind {
-                RunKind::Deploy => (disk.dest, "1"),
-                RunKind::Prune => (disk.dest, super::REMOVED),
+                RunKind::Deploy => (disk.dest, Intent::Land(DEPLOYED)),
+                RunKind::Prune => (disk.dest, Intent::Remove),
             })
         }
         2 => match kind {
@@ -221,24 +255,11 @@ fn recover(
         }
         Classification::Uncommitted => {
             if let Some((prior, intended)) = disk.entry {
-                let live = disk.dest.map(|c| {
-                    match c {
-                        PRIOR => "0",
-                        DEPLOYED => "1",
-                        _ => "2", // USER_EDIT
-                    }
-                });
-                let prior_id = prior.map(|c| if c == PRIOR { "0" } else { "1" });
-                match decide_from(
-                    live,
-                    intended,
-                    prior_id,
-                    // the message placeholder; the decision never
-                    // reads it
-                    &super::PriorSerde::Absent,
-                ) {
-                    Recovery::Restore(_) => disk.dest = prior,
-                    Recovery::Unchanged | Recovery::Keep(_) => {}
+                let live = disk.dest.map(|c| ident(symbol(c)));
+                let prior_id = prior.map(|c| ident(symbol(c)));
+                match decide_from(live.as_ref(), &intended.to_typed(), prior_id.as_ref()) {
+                    RecoveryDecision::Restore => disk.dest = prior,
+                    RecoveryDecision::Unchanged | RecoveryDecision::Keep => {}
                 }
             }
             disk.entry = None;

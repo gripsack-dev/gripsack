@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 
 use super::marker::{Classification, RecoveryFacts, classify, cleanup, run_marker};
 use super::{
-    Entry, ObjectIdentity, PriorSerde, dest_capability, live_identity, prior_blob_rel,
+    Entry, Intended, ObjectIdentity, PriorSerde, dest_capability, live_identity, prior_blob_rel,
     prior_identity, read_uncommitted,
 };
 
@@ -154,46 +154,69 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
 
 /// Three-way, intent-based (0026 §6): the entry recorded the intended
 /// post-state BEFORE the mutation, so a post-crash edit is
-/// distinguishable from the mutation itself.
+/// distinguishable from the mutation itself. Identities arrive
+/// DECODED (0045 F1): `Entry::from_wire` validated the persisted
+/// intent at admission; the kernel compares typed values, never
+/// strings.
 fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry, home: &Dir) -> io::Result<Recovery> {
     let live = live_identity(dest_dir, dest_name)?;
     let prior_id = prior_identity(&entry.prior, home)?;
-    // the pure decision algebra compares CANONICAL WIRE STRINGS (the
-    // model checker drives it with abstract values); the types guard
-    // construction, the wire guards the boundary
-    Ok(decide_from(
-        live.as_ref().map(ObjectIdentity::to_wire).as_deref(),
-        &entry.after,
-        prior_id.as_ref().map(ObjectIdentity::to_wire).as_deref(),
-        &entry.prior,
-    ))
+    let intended = Intended::from_wire(&entry.after);
+    Ok(
+        match decide_from(live.as_ref(), &intended, prior_id.as_ref()) {
+            RecoveryDecision::Restore => Recovery::Restore(describe_prior(&entry.prior)),
+            RecoveryDecision::Keep => {
+                Recovery::Keep("changed since the interrupted run — your edit stands".into())
+            }
+            RecoveryDecision::Unchanged => Recovery::Unchanged,
+        },
+    )
 }
 
-/// The recovery decision as a pure function of the three identities
-/// (0028): the model checker drives THIS code with abstract states —
-/// the protocol's decision logic is what gets checked, not a parallel
-/// reimplementation.
-pub(crate) fn decide_from(
-    live: Option<&str>,
-    intended: &str,
-    prior_id: Option<&str>,
-    prior: &PriorSerde,
-) -> Recovery {
-    let restore_what = || match prior {
+/// The report text for a restore — presentation, kept OUT of the
+/// decision kernel (0045 F1: the pure outcome never carries its
+/// formatting).
+fn describe_prior(prior: &PriorSerde) -> String {
+    match prior {
         PriorSerde::Absent => "removed (was absent before the interrupted run)".into(),
         PriorSerde::File { .. } => "prior bytes restored".into(),
         PriorSerde::Symlink { target } => format!("prior symlink → {target} restored"),
-    };
+    }
+}
+
+/// The recovery outcome as a pure decision (0045 F1) — the model
+/// checkers drive this, so it carries no rendered text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RecoveryDecision {
+    /// Restore the prior state.
+    Restore,
+    /// The destination drifted after the crash — the user's now.
+    Keep,
+    /// Live state IS the prior: the mutation never landed.
+    Unchanged,
+}
+
+/// The recovery decision as a pure function of the three typed
+/// identities (0028, 0045 F1): the model checker drives THIS code
+/// with abstract states — the protocol's decision logic is what gets
+/// checked, not a parallel reimplementation. Typed equality makes the
+/// old wire-collision class (a link target spelling a file identity
+/// or the removal sentinel) unrepresentable.
+pub(crate) fn decide_from(
+    live: Option<&ObjectIdentity>,
+    intended: &Intended,
+    prior_id: Option<&ObjectIdentity>,
+) -> RecoveryDecision {
     match live {
-        // the mutation landed intact (or the intended removal held)
-        Some(l) if l == intended => Recovery::Restore(restore_what()),
+        // the mutation landed intact
+        Some(l) if intended.satisfied_by(l) => RecoveryDecision::Restore,
         // live IS the prior: the mutation never landed
-        Some(l) if Some(l) == prior_id => Recovery::Unchanged,
-        Some(_) => Recovery::Keep("changed since the interrupted run — your edit stands".into()),
-        // absent now: a landed removal (intended REMOVED) or a never-
-        // landed creation — either way the prior comes back
-        None if prior_id.is_some() => Recovery::Restore(restore_what()),
-        None => Recovery::Unchanged,
+        Some(l) if Some(l) == prior_id => RecoveryDecision::Unchanged,
+        Some(_) => RecoveryDecision::Keep,
+        // absent now: a landed removal or a never-landed creation —
+        // either way the prior comes back
+        None if prior_id.is_some() => RecoveryDecision::Restore,
+        None => RecoveryDecision::Unchanged,
     }
 }
 

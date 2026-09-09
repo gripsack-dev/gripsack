@@ -32,25 +32,38 @@ export function resolveCoreUrl(repo: string, self: string): string {
   if (existsSync(pkgFile)) {
     const pkg = JSON.parse(readFileSync(pkgFile, "utf8")) as {
       main?: string;
+      types?: string;
       exports?: Record<string, unknown>;
     };
     const dot = pkg.exports?.["."];
     const entry = typeof dot === "string"
       ? dot
-      : (dot as { import?: unknown; default?: unknown } | undefined);
-    const rel =
+      : (dot as { import?: unknown; types?: unknown; default?: unknown } | undefined);
+    const conditions = (typeof entry === "object" && entry !== null ? entry : {}) as {
+      import?: unknown;
+      types?: unknown;
+      default?: unknown;
+    };
+    // the runtime entry (0.40: dist/ for a copied npm install — Deno
+    // cannot type-strip under node_modules), falling back to the
+    // source entry when no compiled tree exists (the materialized
+    // frontend symlinked into node_modules — its realpath escapes
+    // node_modules, so type stripping is allowed there)
+    const candidates = [
       (typeof entry === "string" ? entry : undefined) ??
-      (entry && typeof entry === "object"
-        ? ((entry.import ?? entry.default) as string | undefined)
-        : undefined) ??
-      pkg.main ??
-      "index.js";
-    return pathToFileURL(join(pkgDir, rel)).href;
+        (conditions.import ?? conditions.default) as string | undefined,
+      pkg.main,
+      (conditions.types ?? pkg.types) as string | undefined,
+      "index.js",
+    ];
+    for (const rel of candidates) {
+      if (rel && existsSync(join(pkgDir, rel))) {
+        return pathToFileURL(join(pkgDir, rel)).href;
+      }
+    }
   }
-  // the sibling entry of THIS file: index.ts in the embedded tree,
-  // index.js in a tsc-built dist (string literals are not rewritten
-  // by rewriteRelativeImportExtensions — only import specifiers are)
-  return new URL(`./index${self.slice(-3)}`, self).href;
+  // the sibling entry of THIS file: the embedded tree is source-only
+  return new URL("./index.ts", self).href;
 }
 
 export const coreUrl = resolveCoreUrl(resolve(process.argv[2] ?? "."), import.meta.url);

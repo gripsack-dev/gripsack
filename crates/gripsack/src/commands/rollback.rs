@@ -10,10 +10,10 @@ use tracing::info;
 /// state before returning.
 pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
     let home = store::gripsack_home();
-    // rollback rewrites deployments and flips — same lifecycle race as
-    // apply, so it holds the same lock (finding A)
-    let _lifecycle_lock = match gripsack_exec::acquire_lifecycle_lock(&home) {
-        Ok(guard) => guard,
+    // rollback rewrites deployments and flips — the session IS the
+    // lifecycle-lock contract (0045 F4), not a caller convention.
+    let session = match gripsack_exec::LifecycleSession::acquire(&home) {
+        Ok(session) => session,
         Err(e) => {
             eprintln!("grip: cannot take the apply lock: {e}");
             return ExitCode::FAILURE;
@@ -55,7 +55,7 @@ pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
         },
         None => None,
     };
-    match gripsack_exec::rollback_generation(&home, current_manifest.as_ref(), &manifest) {
+    match gripsack_exec::rollback_generation(&session, current_manifest.as_ref(), &manifest) {
         Ok(notes) => {
             for note in notes {
                 println!("  {note}");

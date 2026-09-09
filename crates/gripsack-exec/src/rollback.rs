@@ -20,12 +20,15 @@ use store::journal::RunOp;
 
 /// Roll back to `target`'s manifest. Returns typed recovery notes
 /// (restores, drift keeps, skips) for the caller to surface by
-/// severity. Must run under the lifecycle lock.
+/// severity. Requires a [`LifecycleSession`] (0045 F4): rollback
+/// rewrites deployments and flips the generation pointer, so the
+/// lock is part of the signature, not prose.
 pub fn rollback_generation(
-    home_path: &Path,
+    session: &crate::LifecycleSession,
     current: Option<&store::Generation>,
     target: &store::Generation,
 ) -> Result<Vec<store::journal::RecoveryNote>, ExecError> {
+    let home_path = session.home();
     let home = gripsack_fs::open_or_create(home_path)?;
     // the clean-floor rule, same as apply: an interrupted run's
     // entries resolve BEFORE this run mutates anything

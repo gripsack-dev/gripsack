@@ -408,7 +408,7 @@ fn plan_merge(
 
 /// A Remove op (prune-on-undeclare, rollback's current-only
 /// destinations): removal authority is the manifest entry, the intent
-/// is the prior's restoration or REMOVED (0026 §6). None when nothing
+/// is the prior's restoration or removal (0026 §6). None when nothing
 /// needs doing; Preserved when the drift guard keeps the destination
 /// (a drifted merge block, a modified copy — the user's now).
 pub(crate) fn plan_remove_op(

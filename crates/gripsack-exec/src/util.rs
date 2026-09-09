@@ -11,10 +11,35 @@ use std::path::{Path, PathBuf};
 /// apply, trust, and tool provisioning.
 pub use gripsack_fs::FlockGuard;
 
-/// Hold the apply lifecycle lock (`apply.flock`) — the public handle
-/// for apply and rollback.
-pub fn acquire_lifecycle_lock(home: &Path) -> io::Result<FlockGuard> {
-    gripsack_fs::FlockGuard::acquire(&home.join("locks"), "apply")
+/// One serialized mutation lifecycle (0045 F4): owns the
+/// `$GRIPSACK_HOME/locks/apply.flock` guard AND the home it locks.
+/// Public mutation APIs (`gc`, `rollback_generation`,
+/// `verify_store`) take `&LifecycleSession` instead of a bare home,
+/// so the lock can no longer be a caller convention — and a session
+/// for home A can never authorize a mutation in home B. `apply` and
+/// `update` acquire a session internally (their public shape is
+/// unchanged). There is deliberately no "assume locked" constructor.
+pub struct LifecycleSession {
+    _guard: FlockGuard,
+    home: PathBuf,
+}
+
+impl LifecycleSession {
+    /// Take the lifecycle lock for `home`; blocks while another
+    /// gripsack process holds it.
+    pub fn acquire(home: &Path) -> io::Result<Self> {
+        let guard = gripsack_fs::FlockGuard::acquire(&home.join("locks"), "apply")?;
+        Ok(Self {
+            _guard: guard,
+            home: home.to_path_buf(),
+        })
+    }
+
+    /// The home THIS session's lock serializes — the only home its
+    /// mutation authority covers.
+    pub fn home(&self) -> &Path {
+        &self.home
+    }
 }
 
 /// Test-only kill switch (plan/0025 acceptance):

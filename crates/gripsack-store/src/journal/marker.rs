@@ -11,16 +11,18 @@ use super::run_marker_rel;
 
 /// The run marker: which generation this journal's entries belong to.
 /// Written before the first mutation; the flip makes it true.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize)]
 pub(crate) struct RunMarker {
     /// The generation current pointed at when the run began (0026 §4):
     /// reconcile decides by EXACT equality — current == target is
     /// committed, current == previous is uncommitted, anything else is
     /// ambiguous and blocks. Numeric inequalities misclassify a
     /// crashed roll-FORWARD (current < target before the flip).
-    /// Null is a fresh machine's first run. The field is REQUIRED on
-    /// the wire (no serde default): a marker missing it is torn or
-    /// corrupt and fails closed, never mistaken for a fresh run.
+    /// Null is a fresh machine's first run. The KEY is required on
+    /// the wire (0045 F2): serde would silently read a missing key as
+    /// `None`, so deserialization is manual below — a marker missing
+    /// it is torn or corrupt and fails closed, never mistaken for a
+    /// fresh run.
     pub(crate) previous_generation: Option<u64>,
     pub(crate) target_generation: u64,
     /// Apply builds a NEWER generation (committed once `current`
@@ -28,6 +30,98 @@ pub(crate) struct RunMarker {
     /// commit condition inverts (committed once `current` comes back
     /// DOWN to the target) — 0025 §A.
     pub(crate) op: RunOp,
+}
+
+// Manual `Deserialize` (0045 F2): the derived impl cannot express
+// "key must be present, value may be null" — serde fills a missing
+// `Option` field with `None`, which would read a torn marker as a
+// fresh machine's first run and misclassify recovery. Unknown keys
+// stay tolerated (a newer grip's marker is inspected, not executed,
+// by an older one); duplicates, wrong types and oversized numbers are
+// rejected.
+impl<'de> serde::Deserialize<'de> for RunMarker {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{Error, IgnoredAny, MapAccess, Visitor};
+
+        enum Field {
+            PreviousGeneration,
+            TargetGeneration,
+            Op,
+            Unknown,
+        }
+
+        impl<'de> serde::Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                Ok(match <&str>::deserialize(deserializer)? {
+                    "previous_generation" => Field::PreviousGeneration,
+                    "target_generation" => Field::TargetGeneration,
+                    "op" => Field::Op,
+                    _ => Field::Unknown,
+                })
+            }
+        }
+
+        struct MarkerVisitor;
+
+        impl<'de> Visitor<'de> for MarkerVisitor {
+            type Value = RunMarker;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a run marker with previous_generation, target_generation and op")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<RunMarker, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                // None = key not seen; Some(None) = seen, null (fresh
+                // machine); Some(Some(n)) = seen, a generation.
+                let mut previous: Option<Option<u64>> = None;
+                let mut target: Option<u64> = None;
+                let mut op: Option<RunOp> = None;
+                while let Some(field) = map.next_key()? {
+                    match field {
+                        Field::PreviousGeneration => {
+                            if previous.is_some() {
+                                return Err(A::Error::duplicate_field("previous_generation"));
+                            }
+                            previous = Some(map.next_value()?);
+                        }
+                        Field::TargetGeneration => {
+                            if target.is_some() {
+                                return Err(A::Error::duplicate_field("target_generation"));
+                            }
+                            target = Some(map.next_value()?);
+                        }
+                        Field::Op => {
+                            if op.is_some() {
+                                return Err(A::Error::duplicate_field("op"));
+                            }
+                            op = Some(map.next_value()?);
+                        }
+                        Field::Unknown => {
+                            let _ = map.next_value::<IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(RunMarker {
+                    previous_generation: previous
+                        .ok_or_else(|| A::Error::missing_field("previous_generation"))?,
+                    target_generation: target
+                        .ok_or_else(|| A::Error::missing_field("target_generation"))?,
+                    op: op.ok_or_else(|| A::Error::missing_field("op"))?,
+                })
+            }
+        }
+
+        deserializer.deserialize_map(MarkerVisitor)
+    }
 }
 
 /// What the run is doing — the reconcile commit decision differs by

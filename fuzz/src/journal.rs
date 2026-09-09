@@ -1,5 +1,5 @@
 use crate::sandbox::Sandbox;
-use gripsack_store::journal::{Entry, PriorSerde};
+use gripsack_store::journal::{Entry, IntendedSerde, PriorSerde};
 
 /// An optional NUL separates arbitrary marker bytes from arbitrary Entry JSON.
 /// No marker representation is declared here: only reconcile parses run.json.
@@ -8,22 +8,27 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         Some(i) => (&input[..i], &input[i + 1..]),
         None => (input, input),
     };
-    let parsed = serde_json::from_slice::<Entry>(entry_bytes);
+    // Admission is the fuzzed boundary (0045 F1): arbitrary bytes go
+    // in, a validated entry or a typed rejection comes out — never a
+    // reinterpreted legacy string.
+    let parsed = Entry::from_wire(entry_bytes);
     if let Ok(entry) = &parsed {
         let encoded = serde_json::to_vec(entry).unwrap();
-        assert_eq!(&serde_json::from_slice::<Entry>(&encoded).unwrap(), entry);
+        assert_eq!(&Entry::from_wire(&encoded).unwrap(), entry);
     }
     let blob = gripsack_store::journal::store_prior_blob_in(s.cap(), b"bounded prior\n").unwrap();
     s.write("objects/prior-target", b"fixed target\n");
     let target = s.fixed("objects/prior-target").to_str().unwrap().to_owned();
     let dest = s.fixed("objects/destination").to_str().unwrap().to_owned();
-    let mut entry = parsed.unwrap_or(Entry {
-        dest: String::new(),
-        prior: PriorSerde::File {
-            hash: String::new(),
-            mode: 0o600,
-        },
-        after: gripsack_store::journal::REMOVED.to_owned(),
+    let mut entry = parsed.unwrap_or_else(|_| {
+        Entry::new(
+            String::new(),
+            PriorSerde::File {
+                hash: String::new(),
+                mode: 0o600,
+            },
+            IntendedSerde::Removed,
+        )
     });
     // This is the sole transition from readonly arbitrary data to mutation data.
     entry.dest = dest;

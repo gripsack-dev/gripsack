@@ -68,12 +68,24 @@ pub fn doctor(palette: Palette) -> ExitCode {
     // materializing here is idempotent; a MISS means a build without
     // the repo's typescript tree (crates.io builds).
     match gripsack_exec::ensure_ts_frontend(&home, env!("CARGO_PKG_VERSION")) {
-        Ok(Some(dir)) => println!(
-            "{}  frontend: embedded TypeScript {} (materialized at {})",
-            mark(true),
-            env!("CARGO_PKG_VERSION"),
-            dir.display()
-        ),
+        Ok(Some(dir)) => {
+            println!(
+                "{}  frontend: embedded TypeScript {} (materialized at {})",
+                mark(true),
+                env!("CARGO_PKG_VERSION"),
+                dir.display()
+            );
+            // 0045: the stable link + the src-pointing package.json make
+            // the embedded frontend resolvable by any tsc-based editor
+            let current = dir.parent().unwrap_or(&dir).join("current");
+            println!(
+                "      {} symlink node_modules/@gripsack/core → {} — or tsconfig \
+                 \"paths\": {{\"@gripsack/core\": [\"{}\"]}}",
+                palette.warn("editor:"),
+                current.display(),
+                current.join("src/index.ts").display(),
+            );
+        }
         Ok(None) => {
             println!(
                 "{}  frontend: this build carries no embedded TypeScript frontend",

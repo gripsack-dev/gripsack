@@ -50,7 +50,9 @@ const TEMPLATE: &[(&str, &str)] = &[
 /// editors give autocomplete + inline errors on module code. Also the
 /// deliberate pin (0013 D3) — the repo's install shadows the embedded
 /// frontend, so it must shadow a COMPATIBLE version: pin to this
-/// grip's major.minor, floating the patch.
+/// grip's major.minor, floating the patch. 0.40: the package ships its
+/// TypeScript source, so `@types/node` rides along (the DSL's source
+/// imports node: modules).
 fn package_json() -> String {
     let version = env!("CARGO_PKG_VERSION")
         .rsplit_once('.')
@@ -63,6 +65,7 @@ fn package_json() -> String {
   "type": "module",
   "devDependencies": {{
     "@gripsack/core": "^{version}",
+    "@types/node": "^26",
     "typescript": "^7"
   }}
 }}

@@ -42,7 +42,8 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
     }
     gripsack_store::flip(s.cap(), s.home(), 3).unwrap();
     let keep = input.first().map(|n| u32::from(*n % 5));
-    let report = gripsack_exec::gc(s.home(), keep, true).unwrap();
+    let session = gripsack_exec::LifecycleSession::acquire(s.home()).unwrap();
+    let report = gripsack_exec::gc(&session, keep, true).unwrap();
     assert!(!report.generations_removed.contains(&3));
     assert!(
         !report.store_removed.contains(&s.fixed("store/a")),
@@ -67,6 +68,6 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         "generations/1/manifest.json",
         b"{\"number\":-1,\"modules\":{}}",
     );
-    assert!(gripsack_exec::gc(s.home(), Some(0), true).is_err());
+    assert!(gripsack_exec::gc(&session, Some(0), true).is_err());
     assert!(s.fixed("store/orphan/payload").exists());
 }

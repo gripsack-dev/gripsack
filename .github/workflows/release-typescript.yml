@@ -37,18 +37,21 @@ jobs:
           test "ts-v$ver" = "$GITHUB_REF_NAME" || {
             echo "::error::tag $GITHUB_REF_NAME != package version ts-v$ver"; exit 1; }
 
-      - name: Build
+      - name: Build and pack
         run: |
           cd typescript
           npm ci
           npm test
-          # dist is the published artifact — "test only" used to publish
-          # an EMPTY package (main/types point at dist; nobody consumed
-          # the registry copy until the dotfiles repo installed it)
+          # 0.40: tsc emits dist/ (the Deno pin's runtime form —
+          # node_modules never type-strips) and typechecks src/
           npm run build
-          # the package must contain the compiled frontend + types
-          tar tzf "$(npm pack --silent)" | grep -q "dist/src/index.js" || {
-            echo "::error::npm tarball has no dist/src/index.js — publish would ship an empty package"
+          # the package must contain both artifact forms
+          packed="$(npm pack --silent)"
+          tar tzf "$packed" | grep -q "package/dist/src/index.js" || {
+            echo "::error::npm tarball has no dist/src/index.js — the deliberate pin would break"
+            exit 1; }
+          tar tzf "$packed" | grep -q "package/src/index.ts" || {
+            echo "::error::npm tarball has no src/index.ts — editors get no types"
             exit 1; }
 
       - name: Publish to npm
