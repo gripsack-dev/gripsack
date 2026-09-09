@@ -606,6 +606,7 @@ dependencies = [
  "gripsack-fetch",
  "gripsack-fs",
  "gripsack-ir",
+ "gripsack-policy",
  "gripsack-store",
  "libc",
  "serde",

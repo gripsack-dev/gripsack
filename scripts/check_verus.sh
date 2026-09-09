@@ -19,8 +19,9 @@
 set -eu
 
 CRATE=crates/gripsack-policy
-# classify + its contract obligations; if the kernel grows, grow this.
-MIN_OBLIGATIONS=3
+# classify + plan_copy + plan_link and their contract obligations;
+# if the kernel set grows, grow this floor.
+MIN_OBLIGATIONS=7
 
 echo "== positive: cargo verus verify -p gripsack-policy --locked"
 if ! out="$(cargo verus verify -p gripsack-policy --locked 2>&1)"; then
