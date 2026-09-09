@@ -171,14 +171,18 @@ pub fn ensure_ts_frontend(home: &Path, core_version: &str) -> io::Result<Option<
     if embedded::FRONTEND_FILES.is_empty() {
         return Ok(None);
     }
-    let dir = home.join("frontend").join(format!("ts-{core_version}"));
+    let frontend = home.join("frontend");
+    let versioned = format!("ts-{core_version}");
+    let dir = frontend.join(&versioned);
     if dir.join(".complete").exists() {
+        point_current(&frontend, &versioned);
         return Ok(Some(dir));
     }
     // same concurrent-apply race as ensure_deno: another grip may be
     // EXECUTING these files while we write them (ETXTBSY)
     let _materialize_lock = crate::util::FlockGuard::acquire(home, "provision-frontend")?;
     if dir.join(".complete").exists() {
+        point_current(&frontend, &versioned);
         return Ok(Some(dir));
     }
     for (rel, source) in embedded::FRONTEND_FILES {
@@ -186,8 +190,40 @@ pub fn ensure_ts_frontend(home: &Path, core_version: &str) -> io::Result<Option<
         gripsack_fs::atomic_write_at(&dest, source.as_bytes())?;
     }
     gripsack_fs::atomic_write_at(&dir.join(".complete"), b"ok\n")?;
+    point_current(&frontend, &versioned);
     Ok(Some(dir))
 }
+
+/// `$GRIPSACK_HOME/frontend/current` → the materialized
+/// `ts-<version>` (0045): a stable path for editor tooling — tsconfig
+/// `paths` or a `node_modules/@gripsack/core` symlink — so the
+/// version segment never leaks into repo config. Relative target,
+/// flipped by atomic rename (same rule as generations' `current`).
+/// An editor convenience, never eval's load path: failures warn.
+#[cfg(unix)]
+fn point_current(frontend: &Path, versioned: &str) {
+    if let Err(e) = point_current_inner(frontend, versioned) {
+        tracing::warn!(
+            "frontend/current link not updated ({e}) — editor tooling may resolve a stale frontend"
+        );
+    }
+}
+
+#[cfg(unix)]
+fn point_current_inner(frontend: &Path, versioned: &str) -> io::Result<()> {
+    let current = frontend.join("current");
+    if std::fs::read_link(&current).is_ok_and(|target| target == Path::new(versioned)) {
+        return Ok(());
+    }
+    let tmp = frontend.join(".current.tmp");
+    let _ = std::fs::remove_file(&tmp);
+    std::os::unix::fs::symlink(versioned, &tmp)?;
+    std::fs::rename(&tmp, &current)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn point_current(_frontend: &Path, _versioned: &str) {}
 
 #[cfg(test)]
 mod tests {
@@ -235,5 +271,34 @@ mod tests {
             .unwrap()
             .expect("embed present");
         assert_eq!(again, dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn materialize_flips_the_stable_current_link() {
+        let home = tempfile::tempdir().unwrap();
+        let dir = ensure_ts_frontend(home.path(), "9.9.9")
+            .unwrap()
+            .expect("embed present");
+        let current = home.path().join("frontend/current");
+        assert_eq!(
+            std::fs::read_link(&current).unwrap(),
+            Path::new("ts-9.9.9"),
+            "current points at the materialized version"
+        );
+        assert!(
+            current.join("package.json").is_file(),
+            "resolves through the link"
+        );
+        // an upgrade re-points the link; the old tree survives (a
+        // running older grip may still be executing from it)
+        ensure_ts_frontend(home.path(), "9.9.10")
+            .unwrap()
+            .expect("embed present");
+        assert_eq!(
+            std::fs::read_link(&current).unwrap(),
+            Path::new("ts-9.9.10")
+        );
+        assert!(dir.join(".complete").exists());
     }
 }

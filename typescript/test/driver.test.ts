@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -202,6 +202,59 @@ Deno.test("the repo's pinned @gripsack/core wins (deliberate pin)", () => {
       const envelope = JSON.parse(r.stdout);
       assert.equal(envelope.ir.ir_version, 999, "the pinned copy answered, not the embedded one");
       assert.equal(envelope.ir.pin, "won");
+    },
+  );
+});
+
+Deno.test("a src-only pinned package resolves through its types entry (0.40 fallback)", () => {
+  // The materialized embedded tree symlinked into node_modules: its
+  // package.json names dist/src/index.js which does not exist there —
+  // the resolver must fall back to the src entry. The symlink target
+  // lives OUTSIDE node_modules (the realpath escape that makes Deno's
+  // type stripping legal), exactly like $GRIPSACK_HOME/frontend/current.
+  // Plain JS-compatible source keeps the fake loadable either way.
+  const FAKE = `export const parseInputs = (_t) => ({
+    host: "lap", facts: { os: "linux", arch: "x86_64", libc: null, hostname: "b" },
+    tags: [], probes: {}, settings: {},
+  });
+  export const createProbeBuilder = () => ({
+    probe: { executable: () => false, file_exists: () => false },
+    requests: [],
+  });
+  export const emitIr = (_env, _facts, tags) => JSON.stringify({ ir_version: 998, pin: "src-won", tags }, null, 2);
+  export const defineEnv = (fn) => fn;
+  export const mergeTags = (a, b) => [...(a ?? []), ...b];
+  export const module = (name, spec) => ({ __gripsack: "module", name, ir: spec });
+  export const trackedCopy = (to) => ({ to, mode: "tracked_copy" });
+  export const githubRelease = (spec) => ({ kind: "github_release", ...spec });
+  export const symlink = (to) => ({ to, mode: "owned" });
+  `;
+  withRepo(
+    {
+      "hosts/lap.ts": HOST,
+      ".frontend/package.json": JSON.stringify({
+        name: "@gripsack/core",
+        version: "9.9.9",
+        type: "module",
+        main: "./dist/src/index.js",
+        types: "./src/index.ts",
+        exports: { ".": { types: "./src/index.ts", import: "./dist/src/index.js" } },
+      }),
+      ".frontend/src/index.ts": FAKE,
+    },
+    (repo) => {
+      // the pin is a SYMLINK (like node_modules/@gripsack/core →
+      // $GRIPSACK_HOME/frontend/current), never copied files —
+      // copied .ts under node_modules is rightfully refused by Deno
+      mkdirSync(join(repo, "node_modules", "@gripsack"), { recursive: true });
+      symlinkSync(
+        join("..", "..", ".frontend"),
+        join(repo, "node_modules", "@gripsack", "core"),
+      );
+      const r = runDriver(repo, baseInputs);
+      assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
+      const envelope = JSON.parse(r.stdout);
+      assert.equal(envelope.ir.pin, "src-won", "the src fallback answered");
     },
   );
 });

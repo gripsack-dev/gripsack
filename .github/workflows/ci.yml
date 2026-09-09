@@ -112,7 +112,8 @@ jobs:
       - name: Build the candidate npm package (release workflow commands)
         # npm ci → tsc (npm run build) → npm pack: exactly what
         # release-typescript.yml ships, so CI tests the same artifact
-        # shape the registry serves
+        # shape the registry serves (0.40: src/ for types, dist/ for
+        # the Deno pin — node_modules never type-strips)
         run: |
           cd typescript
           npm ci --no-audit --no-fund
