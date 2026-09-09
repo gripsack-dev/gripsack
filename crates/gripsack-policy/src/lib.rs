@@ -14,6 +14,7 @@
 use vstd::prelude::*;
 
 pub mod ownership;
+pub mod retention;
 
 verus! {
 

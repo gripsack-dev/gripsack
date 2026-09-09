@@ -19,9 +19,10 @@
 set -eu
 
 CRATE=crates/gripsack-policy
-# classify + plan_copy + plan_link and their contract obligations;
-# if the kernel set grows, grow this floor.
-MIN_OBLIGATIONS=7
+# classify + plan_copy + plan_link + the retention kernels (admission,
+# prune, delete, membership helpers) and their contracts; if the
+# kernel set grows, grow this floor.
+MIN_OBLIGATIONS=20
 
 echo "== positive: cargo verus verify -p gripsack-policy --locked"
 if ! out="$(cargo verus verify -p gripsack-policy --locked 2>&1)"; then
@@ -49,10 +50,9 @@ echo "positive: $line"
 
 echo "== calibration: a semantic mutant must fail its postcondition"
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
 # a standalone copy — the kernel crate has no workspace dependencies
-mkdir -p "$tmp/mutant/src"
-cp "$CRATE/src/lib.rs" "$tmp/mutant/src/lib.rs"
+mkdir -p "$tmp/mutant"
+cp -r "$CRATE/src" "$tmp/mutant/src"
 sed -e 's/name = "gripsack-policy"/name = "gripsack-policy-mutant"/' \
     -e 's/^version\.workspace = true/version = "0.0.0"/' \
     -e 's/^edition\.workspace = true/edition = "2024"/' \
