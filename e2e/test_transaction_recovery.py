@@ -30,6 +30,9 @@ export default module("demo", {
 
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, "a torn marker must block"
+    # 0045 F2: the rejection is the PARSER's (the field is required on
+    # the wire), not a downstream classification accident
+    assert "previous_generation" in out.stderr, out.stderr
     assert (journal / "run.json").exists(), "the journal is retained"
 
 
@@ -386,10 +389,12 @@ export default module("a", {{
     half = b"v=newer (half-deployed)\n"
     conf.write_bytes(half)
     dest = str(conf)
+    # the tagged wire shape (0045 F1): versioned, variant-explicit
     entry = {
+        "v": 1,
         "dest": dest,
         "prior": {"kind": "file", "hash": prior_sha, "mode": 420},
-        "after": canonical_sha(half),
+        "after": {"kind": "file", "identity": canonical_sha(half)},
     }
     (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
         json.dumps(entry)
@@ -437,9 +442,10 @@ export default module("a", {{
     (home / "prior" / prior_sha).write_bytes(b"v=new\n")
     dest = str(conf)
     entry = {
+        "v": 1,
         "dest": dest,
         "prior": {"kind": "file", "hash": prior_sha, "mode": 420},
-        "after": canonical_sha(b"half\n"),
+        "after": {"kind": "file", "identity": canonical_sha(b"half\n")},
     }
     (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
         json.dumps(entry)
@@ -451,3 +457,51 @@ export default module("a", {{
     assert out.returncode == 0, out.stderr
     assert "kept" in out.stdout, out.stdout
     assert conf.read_text() == "my own edit\n"
+
+
+def test_legacy_untagged_entry_fails_closed(sandbox):
+    """0045 F1: a pre-0.40 journal entry (bare-string `after`, no wire
+    version) is never reinterpreted — its variant cannot be proven
+    from the string. Recovery blocks, the entry is quarantined with
+    its evidence, and the destination is untouched."""
+    import hashlib
+    import json
+
+    payload = make_tarball(sandbox / "a.tar.gz", {"conf.txt": b"v=new\n"})
+    repo = make_env_repo(
+        sandbox / "myenv",
+        f"""
+import {{ fileFetch, module, trackedCopy }} from "@gripsack/core";
+
+export default module("a", {{
+  fetch: fileFetch("{payload}"),
+  config: {{ "conf.txt": trackedCopy("~/.config/a/conf.txt") }},
+}});
+""",
+    )
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    conf = sandbox / ".config/a/conf.txt"
+
+    home = sandbox / ".local/share/gripsack"
+    journal = home / "journal"
+    journal.mkdir(parents=True, exist_ok=True)
+    prior_sha = hashlib.sha256(b"v=new\n").hexdigest()
+    (home / "prior").mkdir(exist_ok=True)
+    (home / "prior" / prior_sha).write_bytes(b"v=new\n")
+    dest = str(conf)
+    # exactly what 0.39 wrote: no `v`, `after` a bare string
+    legacy = {
+        "dest": dest,
+        "prior": {"kind": "file", "hash": prior_sha, "mode": 420},
+        "after": canonical_sha(b"v=newer\n"),
+    }
+    (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
+        json.dumps(legacy)
+    )
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, "legacy entries block, never guessed"
+    assert "pre-0.40" in out.stderr, out.stderr
+    assert len(list((journal / "quarantine").glob("*.json"))) == 1
+    assert conf.read_text() == "v=new\n", "the destination is untouched"
