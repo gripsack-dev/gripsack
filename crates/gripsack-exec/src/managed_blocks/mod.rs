@@ -136,18 +136,21 @@ impl<'a> ManagedBlockSet<'a> {
     }
 
     fn splice(&self, replacement: &str) -> String {
-        let removed: usize = self.blocks.iter().map(|block| block.range.len()).sum();
-        let mut output = String::with_capacity(self.text.len() - removed + replacement.len());
-        let mut cursor = 0;
-        for (index, block) in self.blocks.iter().enumerate() {
-            output.push_str(&self.text[cursor..block.range.start]);
-            if index == 0 {
-                output.push_str(replacement)
-            }
-            cursor = block.range.end;
-        }
-        output.push_str(&self.text[cursor..]);
-        output
+        // the verified kernel (0047): byte-exact contract over spans —
+        // ranges arrive line-aligned from the parser, so the output is
+        // valid UTF-8; from_utf8 failing would be a parser bug, not a
+        // user error
+        let spans: Vec<gripsack_policy::merge::Span> = self
+            .blocks
+            .iter()
+            .map(|block| gripsack_policy::merge::Span {
+                start: block.range.start,
+                end: block.range.end,
+            })
+            .collect();
+        let bytes =
+            gripsack_policy::merge::splice_bytes(self.text.as_bytes(), &spans, replacement.as_bytes());
+        String::from_utf8(bytes).expect("block ranges are line-aligned and replacement is UTF-8")
     }
 
     pub fn report_note(&self) -> Option<String> {
