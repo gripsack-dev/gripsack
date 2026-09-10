@@ -677,6 +677,7 @@ dependencies = [
 name = "gripsack-ir"
 version = "0.41.0"
 dependencies = [
+ "gripsack-policy",
  "jsonschema",
  "serde",
  "serde_json",
