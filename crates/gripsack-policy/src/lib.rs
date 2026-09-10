@@ -13,8 +13,11 @@
 //! rendering stays out of the kernels.
 use vstd::prelude::*;
 
+pub mod graph;
+pub mod merge;
 pub mod ownership;
 pub mod retention;
+pub mod schedule;
 
 verus! {
 

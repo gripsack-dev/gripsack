@@ -95,7 +95,7 @@ pub fn contains_identity(haystack: &[&str], needle: &str) -> (result: bool)
     while i < haystack.len()
         invariant
             i <= haystack.len(),
-            forall|j: int| 0 <= j < i ==> haystack@[j]@ != needle@,
+            forall|j: int| #![auto] 0 <= j < i ==> haystack@[j]@ != needle@,
         decreases haystack.len() - i,
     {
         if haystack[i] == needle {

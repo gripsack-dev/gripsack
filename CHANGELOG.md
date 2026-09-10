@@ -3,6 +3,43 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.42.0] — 2026-09-10
+
+Verified merge, build-closure and scheduling foundations (0047): the
+second verification round moves the byte-integrity heart of merge mode
+and the scheduler's decision logic behind machine-checked contracts —
+and the scheduler's production decisions now ARE the proved kernel.
+
+### Added
+
+- **Proven merge splice.** `ManagedBlockSet` removal/upsert run
+  through a verified byte-level kernel: the output keeps every foreign
+  byte verbatim and in order, and replacing a block with its own
+  bytes is exactly the identity. The marker-grammar parser side
+  (Layer 2) stays on the roadmap with its bound recorded.
+- **Proven build closures.** The build-reachable set is now computed
+  by a kernel proved sound and complete against a path-reachability
+  specification — cyclic graphs included — and the build-only verdict
+  is exactly build-minus-runtime.
+- **The scheduler's decisions are proved, and production uses the
+  proof's code.** `run_all` routes every readiness, dependent-release
+  and failure-latch decision through `PureScheduler`: a module starts
+  only after every dependency finished successfully, at most once,
+  and never after any failure. The threads and the mutex/condvar
+  bridge are unchanged and stay under journey/e2e test — decisions
+  are proved, mechanics are tested.
+- **Calibration grows to four mutants.** The `verify` gate now also
+  proves the proofs see their contracts: a splice that drops the
+  foreign tail, a closure that loses a reachable module, and a
+  scheduler that starts work after a failure must each fail a named
+  contract.
+- `verification/guarantees.md`: `MERGE-SPLICE-001`,
+  `GRAPH-CLOSURE-001` and `SCHEDULER-001` are **checked**.
+
+IR remains v3. Core and SDK ship together at 0.42.0. The SDK is
+byte-identical to 0.40.0's frontend; the matching version keeps
+`doctor`'s pin comparisons honest.
+
 ## [0.41.0] — 2026-09-10
 
 Verified decision kernels (0046): the recovery, ownership and GC

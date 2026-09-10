@@ -1,5 +1,12 @@
 //! The ready-queue scheduler (0007 §5): a module becomes ready when
 //! its dependencies have finished; up to N = cores run concurrently.
+//! The DECISIONS — what's ready, when a completion releases its
+//! dependents, when failure latches — are the verified pure kernel
+//! `gripsack_policy::schedule::PureScheduler` (0047 §3): a module
+//! provably starts only after every dependency finished OK, at most
+//! once, and never after any failure. The threads translate
+//! names↔indices at the boundary; the mutex/condvar bridge stays
+//! tested (journeys, e2e), not wrapped.
 //! Named resources (0007 §4) serialize through flock files under
 //! `$GRIPSACK_HOME/locks/` — in-process parallelism and two concurrent
 //! `grip` runs both respect them. The generation flip stays the single
@@ -10,8 +17,9 @@ use crate::lockfile::{LockEntry, Lockfile};
 use crate::module::{ModuleOutcome, run_module};
 use crate::report::StepReport;
 use gripsack_ir::{Ir, Module};
+use gripsack_policy::schedule::PureScheduler;
 use gripsack_store as store;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use std::sync::{Arc, Condvar, Mutex};
@@ -28,8 +36,11 @@ pub(crate) struct ScheduleOutcome {
 }
 
 struct State {
-    ready: VecDeque<String>,
-    running: BTreeSet<String>,
+    /// The decision kernel (0047 §3): readiness, dependent release,
+    /// the failure latch — all proved. Indices name-sort, so its FIFO
+    /// order matches the pre-kernel name-sorted readiness exactly.
+    kernel: PureScheduler,
+    running: BTreeSet<usize>,
     error: Option<(String, ExecError, store::ModuleState)>,
     modules: BTreeMap<String, store::ModuleState>,
     /// Ready consumers see dependency pins resolved in this run, not merely
@@ -56,21 +67,25 @@ pub(crate) fn run_all(
     let lineage = prev_by_dest(prev);
     let run_span = tracing::Span::current();
     let dispatcher = tracing::dispatcher::get_default(Clone::clone);
-    // adjacency from module.depends; indegree counts unfinished deps
+    // The kernel's input view (0047 §3): name-sorted indices (so the
+    // FIFO order matches the pre-kernel name-sorted readiness), edges
+    // restricted to this run's wanted set and deduplicated — the
+    // kernel's admission requires in-range, duplicate-free edges.
     let wanted: BTreeSet<&str> = order.iter().map(String::as_str).collect();
-    let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-    let mut indegree: BTreeMap<&str, usize> = BTreeMap::new();
-    for name in &wanted {
-        let module = &ir.modules[*name];
-        let mut deps = 0;
-        for dep in gripsack_ir::dependencies::ordering_dependencies(name, module) {
-            if wanted.contains(dep) {
-                dependents.entry(dep).or_default().push(name);
-                deps += 1;
-            }
-        }
-        indegree.insert(name, deps);
-    }
+    let names: Vec<&str> = wanted.iter().copied().collect();
+    let index_of: BTreeMap<&str, usize> = names.iter().enumerate().map(|(i, n)| (*n, i)).collect();
+    let deps: Vec<Vec<usize>> = names
+        .iter()
+        .map(|name| {
+            let module = &ir.modules[*name];
+            gripsack_ir::dependencies::ordering_dependencies(name, module)
+                .iter()
+                .filter_map(|dep| index_of.get(dep).copied())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        })
+        .collect();
 
     let build_only = gripsack_ir::dependencies::build_only_modules(&ir.modules);
     let closures: BTreeMap<&str, Vec<&str>> = wanted
@@ -87,11 +102,7 @@ pub(crate) fn run_all(
         .collect();
 
     let state = Mutex::new(State {
-        ready: indegree
-            .iter()
-            .filter(|(_, d)| **d == 0)
-            .map(|(n, _)| n.to_string())
-            .collect(),
+        kernel: PureScheduler::new(&deps),
         running: BTreeSet::new(),
         error: None,
         modules: BTreeMap::new(),
@@ -100,8 +111,7 @@ pub(crate) fn run_all(
         lock_entries: BTreeMap::new(),
     });
     let condvar = Condvar::new();
-    let dependents = &dependents;
-    let indegree = &Mutex::new(indegree);
+    let names = &names;
 
     let workers = ctx.jobs.unwrap_or_else(|| {
         std::thread::available_parallelism()
@@ -115,9 +125,11 @@ pub(crate) fn run_all(
                 let _dispatch = tracing::dispatcher::set_default(&dispatcher);
                 let _run = run_span.enter();
                 loop {
-                    // Readiness guarantees all dependencies have published.
-                    // Copy only the closure paths and share an immutable pin
-                    // snapshot; completion updates it before releasing readers.
+                    // Readiness guarantees all dependencies have published:
+                    // the kernel starts a module only when every dependency
+                    // finished OK (proved, 0047 §3). Copy only the closure
+                    // paths and share an immutable pin snapshot; completion
+                    // updates it before releasing readers.
                     let next = {
                         let mut st = state.lock().expect("scheduler state");
                         loop {
@@ -132,13 +144,17 @@ pub(crate) fn run_all(
                                 st = condvar.wait(st).expect("scheduler state");
                                 continue;
                             }
-                            if let Some(name) = st.ready.pop_front() {
-                                st.running.insert(name.clone());
-                                let build_env = crate::closure::BuildEnv::compose(
-                                    &closures[name.as_str()],
-                                    &st.modules,
-                                );
-                                break Some((name, build_env, Arc::clone(&st.lock)));
+                            if let Some(idx) = st.kernel.start_next() {
+                                st.running.insert(idx);
+                                let name = names[idx];
+                                let build_env =
+                                    crate::closure::BuildEnv::compose(&closures[name], &st.modules);
+                                break Some((
+                                    idx,
+                                    name.to_string(),
+                                    build_env,
+                                    Arc::clone(&st.lock),
+                                ));
                             }
                             if st.running.is_empty() {
                                 return; // queue drained, nothing in flight
@@ -146,7 +162,7 @@ pub(crate) fn run_all(
                             st = condvar.wait(st).expect("scheduler state");
                         }
                     };
-                    let Some((name, build_env, current_lock)) = next else {
+                    let Some((idx, name, build_env, current_lock)) = next else {
                         continue;
                     };
                     let _module_span = tracing::info_span!("module", module = %name).entered();
@@ -168,7 +184,7 @@ pub(crate) fn run_all(
                     });
                     drop(current_lock);
                     let mut st = state.lock().expect("scheduler state");
-                    st.running.remove(&name);
+                    st.running.remove(&idx);
                     match result {
                         Ok(outcome) if outcome.error.is_none() => {
                             st.reports.push((name.clone(), outcome.reports));
@@ -184,27 +200,15 @@ pub(crate) fn run_all(
                                 }
                                 st.lock_entries.insert(name.clone(), entry);
                             }
-                            if let Some(deps) = dependents.get(name.as_str()) {
-                                let mut indeg = indegree.lock().expect("scheduler indegree");
-                                let mut st_ready = Vec::new();
-                                for dependent in deps {
-                                    let d =
-                                        indeg.get_mut(dependent).expect("dependent in indegree");
-                                    *d -= 1;
-                                    if *d == 0 {
-                                        st_ready.push(dependent.to_string());
-                                    }
-                                }
-                                drop(indeg);
-                                for ready in st_ready {
-                                    st.ready.push_back(ready);
-                                }
-                            }
+                            // the kernel releases exactly the dependents
+                            // whose last dependency this was (proved)
+                            st.kernel.finish_ok(idx);
                         }
                         Ok(outcome) => {
                             // a phase failed mid-module: keep the
-                            // partial state for the run-rollback, stop
-                            // scheduling new work
+                            // partial state for the run-rollback; the
+                            // kernel latch means nothing further starts
+                            st.kernel.finish_fail(idx);
                             if st.error.is_none() {
                                 let e = outcome.error.expect("marked by the guard");
                                 st.error = Some((name.clone(), e, outcome.state));
@@ -212,6 +216,7 @@ pub(crate) fn run_all(
                             st.reports.push((name.clone(), outcome.reports));
                         }
                         Err(e) => {
+                            st.kernel.finish_fail(idx);
                             if st.error.is_none() {
                                 st.error = Some((
                                     name.clone(),

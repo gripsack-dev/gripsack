@@ -20,9 +20,16 @@ set -eu
 
 CRATE=crates/gripsack-policy
 # classify + plan_copy + plan_link + the retention kernels (admission,
-# prune, delete, membership helpers) and their contracts; if the
-# kernel set grows, grow this floor.
-MIN_OBLIGATIONS=20
+# prune, delete, membership helpers), the merge splice kernel, the
+# graph closure kernels and the scheduler transition system, with
+# their contracts; if the kernel set grows, grow this floor.
+MIN_OBLIGATIONS=50
+
+# verification results are cached by cargo — the gate always runs a
+# CLEAN verification (a stale cache is not evidence)
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+export CARGO_TARGET_DIR="$tmp/target"
 
 echo "== positive: cargo verus verify -p gripsack-policy --locked"
 if ! out="$(cargo verus verify -p gripsack-policy --locked 2>&1)"; then
@@ -48,32 +55,64 @@ if [ "$verified" -lt "$MIN_OBLIGATIONS" ]; then
 fi
 echo "positive: $line"
 
-echo "== calibration: a semantic mutant must fail its postcondition"
-tmp="$(mktemp -d)"
-# a standalone copy — the kernel crate has no workspace dependencies
-mkdir -p "$tmp/mutant"
-cp -r "$CRATE/src" "$tmp/mutant/src"
-sed -e 's/name = "gripsack-policy"/name = "gripsack-policy-mutant"/' \
-    -e 's/^version\.workspace = true/version = "0.0.0"/' \
-    -e 's/^edition\.workspace = true/edition = "2024"/' \
-    -e '/^license\.workspace/d' -e '/^repository\.workspace/d' \
-    "$CRATE/Cargo.toml" > "$tmp/mutant/Cargo.toml"
-# the mutant: ambiguity misread as commitment (a crashed roll-forward
-# falsely committing is the 0.22 bug class this classifier exists to kill)
-sed -i 's/(Some(_), _) => Classification::Ambiguous,/(Some(_), _) => Classification::Committed,/' \
-    "$tmp/mutant/src/lib.rs"
-if ! grep -q '(Some(_), _) => Classification::Committed,' "$tmp/mutant/src/lib.rs"; then
-    echo "FAIL: the calibration mutant did not apply — the kernel changed shape; recalibrate"
-    exit 1
-fi
-if out2="$(cd "$tmp/mutant" && cargo verus verify 2>&1)"; then
-    echo "FAIL: the mutant VERIFIED — the proof does not see the classification table"
-    exit 1
-fi
-echo "$out2" | grep -m3 "postcondition not satisfied" || {
-    echo "$out2" | tail -20
-    echo "FAIL: the mutant failed without a named postcondition — unrecognised failure, not calibration evidence"
-    exit 1
+echo "== calibration: semantic mutants must fail their postconditions"
+
+# One calibration mutant per kernel family. Each replaces an exact
+# source string; the replacement must APPLY (a stale pattern fails the
+# harness, not the proof) and the mutated crate must fail verification
+# with a named unsatisfied postcondition — a crash, parse error or
+# missing solver is not calibration evidence.
+run_mutant() {
+    name="$1"; file="$2"; from="$3"; to="$4"
+    rm -rf "$tmp/mutant"
+    mkdir -p "$tmp/mutant"
+    export CARGO_TARGET_DIR="$tmp/target-$name"
+    cp -r "$CRATE/src" "$tmp/mutant/src"
+    sed -e 's/name = "gripsack-policy"/name = "gripsack-policy-mutant"/' \
+        -e 's/^version\.workspace = true/version = "0.0.0"/' \
+        -e 's/^edition\.workspace = true/edition = "2024"/' \
+        -e '/^license\.workspace/d' -e '/^repository\.workspace/d' \
+        "$CRATE/Cargo.toml" > "$tmp/mutant/Cargo.toml"
+    target="$tmp/mutant/src/$file"
+    if ! grep -qF "$from" "$target"; then
+        echo "FAIL: mutant pattern for $name no longer matches $file — the kernel changed shape; recalibrate"
+        exit 1
+    fi
+    sed -i "s|$(printf '%s' "$from" | sed 's/[&|\\[]/\\&/g')|$(printf '%s' "$to" | sed 's/[&|\\]/\\&/g')|" "$target"
+    if out2="$(cd "$tmp/mutant" && cargo verus verify 2>&1)"; then
+        echo "FAIL: the $name mutant VERIFIED — the proof does not see the contract"
+        exit 1
+    fi
+    echo "$out2" | grep -m1 "not satisfied" >/dev/null || {
+        echo "$out2" | tail -20
+        echo "FAIL: the $name mutant failed without a named unsatisfied contract — unrecognised failure, not calibration evidence"
+        exit 1
+    }
+    echo "calibration: $name mutant rejected on its contract"
 }
-echo "calibration: mutant rejected on its postcondition"
+
+# classifier: ambiguity misread as commitment (the 0.22 bug class)
+run_mutant "classifier" lib.rs \
+    '(Some(_), _) => Classification::Ambiguous,' \
+    '(Some(_), _) => Classification::Committed,'
+
+# merge splice: the final foreign tail dropped from the output (the
+# "merge silently ate my config" class)
+run_mutant "merge-splice" merge.rs \
+    '    out.extend_from_slice(&text[cursor..]);' \
+    ''
+
+# graph closure: a visited node never recorded in the result — the "a
+# reachable module missing from the build closure" class — must fail
+# the result-membership contract
+run_mutant "graph-closure" graph.rs \
+    '                    result.push(target);' \
+    ''
+# scheduler: starting work after the failure latch — the "a failed
+# dependency authorized its consumer" class — must fail the named
+# postcondition (old(self).failed ==> result.is_none())
+run_mutant "scheduler-latch" schedule.rs \
+    '        if self.failed || self.head >= self.ready.len() {' \
+    '        if self.head >= self.ready.len() {'
+
 echo "verify gate: OK"
