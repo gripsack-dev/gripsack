@@ -348,7 +348,7 @@ pub(crate) fn deploy_entry(
     };
     // a foreign destination blocks apply (the renderer shows the same
     // op as "needs --take-over")
-    if op.authority == Some(crate::ops::Authority::Foreign) {
+    if op.authority() == Some(crate::ops::Authority::Foreign) {
         return Err(ExecError::Step {
             module: module.to_string(),
             step: "deploy".into(),
@@ -358,10 +358,11 @@ pub(crate) fn deploy_entry(
             ),
         });
     }
-    let (report, captured_prior) = crate::ops::execute_op(ctx.home_dir()?, &ctx.home, &op)?;
+    let (report, captured_prior) =
+        crate::ops::execute_op(ctx.home_dir()?, &ctx.home, op.as_executable()?)?;
     // the manifest entry: what the op produces, or the previous entry
     // carried forward (satisfied)
-    match op.produces {
+    match op.produces() {
         Some(produced) => {
             out.push(store::DeployedEntry {
                 // the EXPANDED key — rollback and store verify re-join
@@ -371,10 +372,10 @@ pub(crate) fn deploy_entry(
                 key: Some(dest.clone()),
                 mode: entry.mode.clone(),
                 vars: entry.vars.clone(),
-                hash: produced.hash,
+                hash: produced.hash.clone(),
                 file_mode: produced.file_mode,
                 source_executable: produced.source_executable,
-                prior: captured_prior.or(produced.prior),
+                prior: captured_prior.or_else(|| produced.prior.clone()),
                 preserved_drift: produced.preserved_drift,
             });
         }

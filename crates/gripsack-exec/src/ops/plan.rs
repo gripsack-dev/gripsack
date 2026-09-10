@@ -36,19 +36,18 @@ impl DestView<'_> {
     }
 
     fn base(&self, kind: OpKind, authority: Option<Authority>, intended: Intended) -> Op {
-        Op {
-            module: self.module.to_string(),
-            dest: self.dest.clone(),
-            declared_to: self.entry.to.clone(),
-            mode: self.entry.mode.clone(),
+        Op::new(
+            self.module.to_string(),
+            self.dest.clone(),
+            self.entry.to.clone(),
+            self.entry.mode.clone(),
             kind,
             authority,
-            observed: self.observed_identity(),
+            self.observed_identity(),
             intended,
-            produces: None,
-            note: None,
-            removing: None,
-        }
+            None,
+            None,
+        )
     }
 
     fn produces(
@@ -195,22 +194,21 @@ fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) ->
             // satisfied means managed (0029 §2): the record clears any
             // prior preserve mark and holds the desired identity — an
             // observation recorded as drift must not stick forever
-            let mut op = view.base(
-                OpKind::Satisfied,
-                None,
-                Intended::Object(view.observed_identity().expect("satisfied implies live")),
-            );
             let landed_mode = match &view.observed {
                 Some(crate::deploy::Observation::File { mode, .. }) => Some(*mode),
                 _ => None,
             };
-            op.produces = view.produces(desired_hash, landed_mode, false);
-            op
+            view.base(
+                OpKind::Satisfied,
+                None,
+                Intended::Object(view.observed_identity().expect("satisfied implies live")),
+            )
+            .with_produces(view.produces(desired_hash, landed_mode, false))
         }
         CopyPlan::Fresh | CopyPlan::Update => {
             let update = matches!(plan, CopyPlan::Update);
             let mode = intent_mode;
-            let mut op = view.base(
+            view.base(
                 OpKind::Write {
                     content: ContentSource::Bytes(content.to_vec()),
                     mode,
@@ -223,9 +221,8 @@ fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) ->
                 Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
                     content, mode,
                 ))),
-            );
-            op.produces = view.produces(desired_hash, Some(mode), false);
-            op
+            )
+            .with_produces(view.produces(desired_hash, Some(mode), false))
         }
         CopyPlan::TakeOver => {
             // adoption keeps the live mode (0033 R1)
@@ -233,7 +230,9 @@ fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) ->
                 Some(crate::deploy::Observation::File { mode, .. }) => *mode,
                 _ => intent_mode,
             };
-            let mut op = view.base(
+            // the prior is captured at execution (0015 §4)
+            let written_hash = store::canonical_bytes_identity(content, mode).into();
+            view.base(
                 OpKind::Write {
                     content: ContentSource::Bytes(content.to_vec()),
                     mode,
@@ -242,29 +241,25 @@ fn plan_write(view: &DestView, content: &[u8], permissions: WritePermissions) ->
                 Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
                     content, mode,
                 ))),
-            );
-            // the prior is captured at execution (0015 §4)
-            let written_hash = store::canonical_bytes_identity(content, mode).into();
-            op.produces = view.produces(written_hash, Some(mode), false);
-            op
+            )
+            .with_produces(view.produces(written_hash, Some(mode), false))
         }
         CopyPlan::Preserve => {
-            let mut op = view.base(
+            // the record holds the OBSERVED identity, marked preserved
+            // (0029 §2) — it authorizes nothing
+            view.base(
                 OpKind::Preserved,
                 None,
                 Intended::Object(view.observed_identity().expect("preserve implies live")),
-            );
-            // the record holds the OBSERVED identity, marked preserved
-            // (0029 §2) — it authorizes nothing
-            op.produces = view.produces(
+            )
+            .with_produces(view.produces(
                 store::hash::ManifestHash::from_raw(live.expect("Preserve implies a live object")),
                 observed_mode,
                 true,
-            );
-            op
+            ))
         }
     };
-    if let Some(produced) = &mut op.produces
+    if let Some(produced) = op.produces_mut()
         && !produced.preserved_drift
         && let WritePermissions::Source { executable } = permissions
     {
@@ -290,33 +285,27 @@ fn plan_link(
     let recorded = view.prev.is_some_and(|e| !e.preserved_drift);
     let link_intent = Intended::Object(ObjectIdentity::Link(source.to_string_lossy().into_owned()));
     match crate::deploy::plan_link(exists, ours, recorded, view.take_over) {
-        LinkPlan::Link if already => {
-            let mut op = view.base(OpKind::Satisfied, None, link_intent);
-            op.produces = view.produces(content_hash, None, false);
-            op
-        }
-        LinkPlan::Link => {
-            let mut op = view.base(
+        LinkPlan::Link if already => view
+            .base(OpKind::Satisfied, None, link_intent)
+            .with_produces(view.produces(content_hash, None, false)),
+        LinkPlan::Link => view
+            .base(
                 OpKind::Link {
                     target: source.to_path_buf(),
                 },
                 Some(Authority::Fresh),
                 link_intent,
-            );
-            op.produces = view.produces(content_hash, None, false);
-            op
-        }
-        LinkPlan::TakeOver => {
-            let mut op = view.base(
+            )
+            .with_produces(view.produces(content_hash, None, false)),
+        LinkPlan::TakeOver => view
+            .base(
                 OpKind::Link {
                     target: source.to_path_buf(),
                 },
                 Some(Authority::TakeOver),
                 link_intent,
-            );
-            op.produces = view.produces(content_hash, None, false);
-            op
-        }
+            )
+            .with_produces(view.produces(content_hash, None, false)),
         // rendered "foreign — needs --take-over"; apply refuses
         LinkPlan::Refuse => view.base(
             OpKind::Preserved,
@@ -355,30 +344,30 @@ fn plan_merge(
         && !blocks.is_empty()
         && blocks.mode_conflicts(*live_mode, view.prev)
     {
-        let mut op = view.base(
-            OpKind::Preserved,
-            None,
-            Intended::Object(view.observed_identity().expect("block implies live")),
-        );
         // An explicitly non-authoritative observation of the whole hosting text.
-        op.produces = view.produces(
-            store::canonical_bytes_hash(existing.as_bytes()).into(),
-            Some(*live_mode),
-            true,
-        );
-        return Ok(op);
+        return Ok(view
+            .base(
+                OpKind::Preserved,
+                None,
+                Intended::Object(view.observed_identity().expect("block implies live")),
+            )
+            .with_produces(view.produces(
+                store::canonical_bytes_hash(existing.as_bytes()).into(),
+                Some(*live_mode),
+                true,
+            )));
     }
     let hash = crate::managed_blocks::content_hash(payload);
     if blocks.satisfied(&hash, mode)
         && matches!(&view.observed, Some(crate::deploy::Observation::File { mode: live, .. }) if *live == mode)
     {
-        let mut op = view.base(
-            OpKind::Satisfied,
-            None,
-            Intended::Object(view.observed_identity().expect("satisfied implies live")),
-        );
-        op.produces = view.produces(hash.into(), Some(mode), false);
-        return Ok(op);
+        return Ok(view
+            .base(
+                OpKind::Satisfied,
+                None,
+                Intended::Object(view.observed_identity().expect("satisfied implies live")),
+            )
+            .with_produces(view.produces(hash.into(), Some(mode), false)));
     }
     let spliced = blocks
         .upsert(
@@ -389,20 +378,21 @@ fn plan_merge(
             mode,
         )
         .map_err(|e| fail(e.to_string()))?;
-    let mut op = view.base(
-        OpKind::MergeUpsert {
-            payload: payload.as_bytes().to_vec(),
-            marker: view.entry.marker.clone(),
-            mode,
-        },
-        Some(Authority::Update),
-        Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
-            spliced.as_bytes(),
-            mode,
-        ))),
-    );
-    op.produces = view.produces(hash.into(), Some(mode), false);
-    op.note = blocks.report_note();
+    let op = view
+        .base(
+            OpKind::MergeUpsert {
+                payload: payload.as_bytes().to_vec(),
+                marker: view.entry.marker.clone(),
+                mode,
+            },
+            Some(Authority::Update),
+            Intended::Object(ObjectIdentity::File(store::canonical_bytes_identity(
+                spliced.as_bytes(),
+                mode,
+            ))),
+        )
+        .with_produces(view.produces(hash.into(), Some(mode), false))
+        .with_note(blocks.report_note());
     Ok(op)
 }
 
@@ -434,22 +424,21 @@ pub(crate) fn plan_remove_op(
         .map_err(|e| fail(format!("cannot inspect {}: {e}", entry.to)))?;
     let kept = |note: String| {
         tracing::warn!("{note}");
-        Ok(Some(Op {
-            module: module.to_string(),
-            dest: dest.clone(),
-            declared_to: entry.to.clone(),
-            mode: entry.mode.clone(),
-            kind: OpKind::Preserved,
-            authority: None,
-            observed: observed.clone(),
-            intended: match &observed {
+        Ok(Some(Op::new(
+            module.to_string(),
+            dest.clone(),
+            entry.to.clone(),
+            entry.mode.clone(),
+            OpKind::Preserved,
+            None,
+            observed.clone(),
+            match &observed {
                 Some(o) => Intended::Object(o.clone()),
                 None => Intended::Removed,
             },
-            produces: None,
-            note: None,
-            removing: None,
-        }))
+            None,
+            None,
+        )))
     };
     if entry.mode == Ownership::Merge {
         // the file is foreign — prune removes only our block, and only
@@ -475,19 +464,21 @@ pub(crate) fn plan_remove_op(
                         splice_mode,
                     )))
                 };
-                return Ok(Some(Op {
-                    module: module.to_string(),
+                return Ok(Some(Op::new(
+                    module.to_string(),
                     dest,
-                    declared_to: entry.to.clone(),
-                    mode: entry.mode.clone(),
-                    kind: OpKind::Remove,
-                    authority: Some(Authority::Update),
+                    entry.to.clone(),
+                    entry.mode.clone(),
+                    OpKind::Remove(RemoveTarget {
+                        entry: entry.clone(),
+                        store_path: store_path.to_path_buf(),
+                    }),
+                    Some(Authority::Update),
                     observed,
                     intended,
-                    produces: None,
-                    note: None,
-                    removing: Some((entry.clone(), store_path.to_path_buf())),
-                }));
+                    None,
+                    None,
+                )));
             }
             _ => {
                 return kept(format!(
@@ -507,19 +498,21 @@ pub(crate) fn plan_remove_op(
     }
     let intended =
         crate::deploy::restore::prune_intent(entry, home).map_err(|e| fail(format!("{e}")))?;
-    Ok(Some(Op {
-        module: module.to_string(),
+    Ok(Some(Op::new(
+        module.to_string(),
         dest,
-        declared_to: entry.to.clone(),
-        mode: entry.mode.clone(),
-        kind: OpKind::Remove,
-        authority: Some(Authority::Update),
+        entry.to.clone(),
+        entry.mode.clone(),
+        OpKind::Remove(RemoveTarget {
+            entry: entry.clone(),
+            store_path: store_path.to_path_buf(),
+        }),
+        Some(Authority::Update),
         observed,
         intended,
-        produces: None,
-        note: None,
-        removing: Some((entry.clone(), store_path.to_path_buf())),
-    }))
+        None,
+        None,
+    )))
 }
 
 /// A restore op for rollback (0034): the desired state is the TARGET

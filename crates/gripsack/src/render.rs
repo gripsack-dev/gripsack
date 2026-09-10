@@ -302,55 +302,52 @@ pub fn diff_section(
         std::collections::BTreeMap::new();
     for op in &ops {
         use gripsack_exec::ops::{Authority, OpKind};
-        let line = match &op.kind {
-            OpKind::Link { .. } | OpKind::Write { .. } => match op.authority {
+        let line = match op.kind() {
+            OpKind::Link { .. } | OpKind::Write { .. } => match op.authority() {
                 Some(Authority::Fresh) => {
                     let from = op
-                        .produces
-                        .as_ref()
+                        .produces()
                         .map(|p| p.from.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| op.declared_to.clone());
-                    format!("  + {from} → {} (new)", op.declared_to)
+                        .unwrap_or_else(|| op.declared_to().to_string());
+                    format!("  + {from} → {} (new)", op.declared_to())
                 }
                 Some(Authority::Update) => {
                     let from = op
-                        .produces
-                        .as_ref()
+                        .produces()
                         .map(|p| p.from.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| op.declared_to.clone());
-                    format!("  ~ {from} → {} (update)", op.declared_to)
+                        .unwrap_or_else(|| op.declared_to().to_string());
+                    format!("  ~ {from} → {} (update)", op.declared_to())
                 }
                 Some(Authority::TakeOver) => {
                     // 0015 §7 S6: this take-over is the point of the
                     // command — say so, don't demand a flag
-                    format!("  ↻ {} will be adopted (prior recorded)", op.declared_to)
+                    format!("  ↻ {} will be adopted (prior recorded)", op.declared_to())
                 }
-                _ => format!("  ? {}", op.declared_to),
+                _ => format!("  ? {}", op.declared_to()),
             },
             OpKind::MergeUpsert { .. } => {
                 let from = op
-                    .produces
-                    .as_ref()
+                    .produces()
                     .map(|p| p.from.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| op.declared_to.clone());
-                format!("  ~ {from} → {} (update)", op.declared_to)
+                    .unwrap_or_else(|| op.declared_to().to_string());
+                format!("  ~ {from} → {} (update)", op.declared_to())
             }
-            OpKind::Remove => format!("  - {} (prune)", op.declared_to),
-            OpKind::Satisfied => format!("  = {} (satisfied)", op.declared_to),
-            OpKind::Preserved => match op.authority {
+            OpKind::Remove(_) => format!("  - {} (prune)", op.declared_to()),
+            OpKind::Satisfied => format!("  = {} (satisfied)", op.declared_to()),
+            OpKind::Preserved => match op.authority() {
                 Some(Authority::Foreign) => {
                     format!(
                         "  ! {} exists, not ours — needs --take-over",
-                        op.declared_to
+                        op.declared_to()
                     )
                 }
-                _ => format!("  ~ {} drifted — kept (apply preserves)", op.declared_to),
+                _ => format!("  ~ {} drifted — kept (apply preserves)", op.declared_to()),
             },
             OpKind::RunEffect | OpKind::Deferred => {
-                format!("  · {}", op.note.as_deref().unwrap_or("deferred"))
+                format!("  · {}", op.note().unwrap_or("deferred"))
             }
         };
-        by_module.entry(&op.module).or_default().push(line);
+        by_module.entry(op.module()).or_default().push(line);
     }
     for (name, lines) in &by_module {
         // one marker note per module, not per step (dedup)

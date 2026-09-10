@@ -18,37 +18,41 @@ fn dest_capability(dest: &Path) -> std::io::Result<(gripsack_fs::Dir, PathBuf)> 
 pub(crate) fn execute_op(
     home_dir: &gripsack_fs::Dir,
     home: &Path,
-    op: &Op,
+    op: ExecutableOp<'_>,
 ) -> Result<(OpReport, Option<store::Prior>), ExecError> {
+    let op = op.0;
     let fail = |detail: String| ExecError::Step {
-        module: op.module.clone(),
+        module: op.module().to_string(),
         step: "deploy".into(),
         detail,
     };
-    match &op.kind {
-        // marker ops never execute — plan-time only
+    match op.kind() {
+        // the ExecutableOp conversion already refused markers
+        // (0046) — this arm is a classified error, never a panic
         OpKind::RunEffect | OpKind::Deferred => {
-            unreachable!("marker ops are preview-only; the scheduler runs their steps directly")
+            Err(fail("a preview-only marker op reached the executor".into()))
         }
         OpKind::Satisfied => Ok((
             OpReport {
                 // the mode's voice (0.21.1): a satisfied merge block
                 // is not an unchanged file
                 summary: match op.mode {
-                    gripsack_ir::Ownership::Merge => format!("{} block unchanged", op.declared_to),
-                    _ => format!("{} unchanged", op.declared_to),
+                    gripsack_ir::Ownership::Merge => {
+                        format!("{} block unchanged", op.declared_to())
+                    }
+                    _ => format!("{} unchanged", op.declared_to()),
                 },
                 kind: ReportKind::Satisfied,
             },
             None,
         )),
         OpKind::Preserved => {
-            let note = match op.authority {
+            let note = match op.authority() {
                 Some(Authority::Foreign) => format!(
                     "{} exists, not deployed by gripsack — kept (needs --take-over)",
-                    op.declared_to
+                    op.declared_to()
                 ),
-                _ => format!("{} drifted — kept", op.declared_to),
+                _ => format!("{} drifted — kept", op.declared_to()),
             };
             tracing::warn!("{}", note);
             Ok((
@@ -60,10 +64,10 @@ pub(crate) fn execute_op(
             ))
         }
         OpKind::Link { target } => {
-            let (dest_dir, dest_name) = dest_capability(&op.dest)
-                .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to)))?;
+            let (dest_dir, dest_name) = dest_capability(op.dest())
+                .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
             // 0015 §4: a genuine take-over records what was there first
-            let prior = if op.authority == Some(Authority::TakeOver) {
+            let prior = if op.authority() == Some(Authority::TakeOver) {
                 crate::deploy::restore::capture_prior(&dest_dir, &dest_name, home_dir)?
             } else {
                 None
@@ -72,14 +76,14 @@ pub(crate) fn execute_op(
                 home_dir,
                 &dest_dir,
                 &dest_name,
-                &op.dest,
-                op.intended.clone(),
-                op.observed.clone(),
+                op.dest(),
+                op.intended().clone(),
+                op.observed().cloned(),
                 || gripsack_fs::symlink_replace(&dest_dir, &dest_name, target),
             )?;
             Ok((
                 OpReport {
-                    summary: format!("linked {} → {}", op.module, op.declared_to),
+                    summary: format!("linked {} → {}", op.module(), op.declared_to()),
                     kind: ReportKind::Installed,
                 },
                 prior,
@@ -93,13 +97,13 @@ pub(crate) fn execute_op(
                 ContentSource::DeferredFetch => {
                     return Err(fail(format!(
                         "{}: content not staged (deferred fetch reached execution)",
-                        op.declared_to
+                        op.declared_to()
                     )));
                 }
             };
-            let (dest_dir, dest_name) = dest_capability(&op.dest)
-                .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to)))?;
-            let prior = if op.authority == Some(Authority::TakeOver) {
+            let (dest_dir, dest_name) = dest_capability(op.dest())
+                .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
+            let prior = if op.authority() == Some(Authority::TakeOver) {
                 crate::deploy::restore::capture_prior(&dest_dir, &dest_name, home_dir)?
             } else {
                 None
@@ -108,19 +112,19 @@ pub(crate) fn execute_op(
                 home_dir,
                 &dest_dir,
                 &dest_name,
-                &op.dest,
-                op.intended.clone(),
-                op.observed.clone(),
+                op.dest(),
+                op.intended().clone(),
+                op.observed().cloned(),
                 || gripsack_fs::atomic_write_with_mode(&dest_dir, &dest_name, &bytes, *mode),
             )?;
-            let verb = match op.authority {
+            let verb = match op.authority() {
                 Some(Authority::Update) => "updated",
                 Some(Authority::TakeOver) => "took over",
                 _ => "copied",
             };
             Ok((
                 OpReport {
-                    summary: format!("{} {} → {}", verb, op.module, op.declared_to),
+                    summary: format!("{} {} → {}", verb, op.module(), op.declared_to()),
                     kind: ReportKind::Configured,
                 },
                 prior,
@@ -131,15 +135,15 @@ pub(crate) fn execute_op(
             marker,
             mode,
         } => {
-            let (dest_dir, dest_name) = dest_capability(&op.dest)
-                .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to)))?;
+            let (dest_dir, dest_name) = dest_capability(op.dest())
+                .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
             crate::deploy::journaled(
                 home_dir,
                 &dest_dir,
                 &dest_name,
-                &op.dest,
-                op.intended.clone(),
-                op.observed.clone(),
+                op.dest(),
+                op.intended().clone(),
+                op.observed().cloned(),
                 || {
                     // re-derive from the LATEST foreign content (0029
                     // §3): an outside-block write lands in the output
@@ -149,12 +153,13 @@ pub(crate) fn execute_op(
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
                         Err(e) => return Err(e),
                     };
-                    let blocks = crate::managed_blocks::ManagedBlockSet::parse(&latest, &op.module)
-                        .map_err(std::io::Error::other)?;
+                    let blocks =
+                        crate::managed_blocks::ManagedBlockSet::parse(&latest, op.module())
+                            .map_err(std::io::Error::other)?;
                     let new = blocks
                         .upsert(
-                            &op.module,
-                            &op.dest,
+                            op.module(),
+                            op.dest(),
                             marker.as_deref(),
                             &String::from_utf8_lossy(payload),
                             *mode,
@@ -173,19 +178,19 @@ pub(crate) fn execute_op(
             let note = op.note.as_deref().unwrap_or("");
             Ok((
                 OpReport {
-                    summary: format!("merged {} → {}{}", op.module, op.declared_to, note),
+                    summary: format!("merged {} → {}{}", op.module(), op.declared_to(), note),
                     kind: ReportKind::Configured,
                 },
                 None,
             ))
         }
-        OpKind::Remove => {
-            let (entry, store_path) = op
-                .removing
-                .clone()
-                .expect("a Remove op carries its manifest entry");
-            let (dest_dir, dest_name) = dest_capability(&op.dest)
-                .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to)))?;
+        OpKind::Remove(target) => {
+            // the variant CARRIES the removal authority (0046) — no
+            // expect, no invalid state
+            let entry = target.entry.clone();
+            let store_path = target.store_path.clone();
+            let (dest_dir, dest_name) = dest_capability(op.dest())
+                .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
             let entry_cloned = entry.clone();
             let home_path = home.to_path_buf();
             let module_name = op.module.clone();
@@ -193,9 +198,9 @@ pub(crate) fn execute_op(
                 home_dir,
                 &dest_dir,
                 &dest_name,
-                &op.dest,
-                op.intended.clone(),
-                op.observed.clone(),
+                op.dest(),
+                op.intended().clone(),
+                op.observed().cloned(),
                 || {
                     crate::deploy::remove_or_restore_prior(
                         &dest_dir,
@@ -210,7 +215,7 @@ pub(crate) fn execute_op(
             )?;
             Ok((
                 OpReport {
-                    summary: format!("removed {}", op.declared_to),
+                    summary: format!("removed {}", op.declared_to()),
                     kind: ReportKind::Configured,
                 },
                 None,
