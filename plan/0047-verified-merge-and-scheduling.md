@@ -98,6 +98,35 @@ with the bound recorded in the ledger.
   impossible by construction (a pinned artifact either matches the
   named production commit or the gate says so).
 
+## Solver lessons (recorded, not re-learned)
+
+The scheduler round surfaced four Verus behaviors that each cost
+verification rounds; future kernel work should reach for these
+directly:
+
+- **`assert forall … by` assumes the antecedent only under
+  `implies`.** With the spec-level `==>` spelling the by-block does
+  NOT get the antecedent's facts (observed on Verus
+  0.2026.09.06.8dea4a2; minimal repro verified both ways). Write
+  `assert forall|…| … implies …` in proof blocks.
+- **Snapshot entry state into ghost locals; never reason about
+  `old(self)` after a mutation.** Post-mutation `old(self).field@[i]`
+  terms failed to connect to current-state facts even with matching
+  triggers; `let ghost pre_x = self.x@;` at entry gives plain locals
+  that cannot be re-seated.
+- **int↔usize comparisons do not collapse across casts.** `i != m as
+  int` does not yield `i as usize != m`. `lemma_cast_collapse`
+  (schedule.rs) discharges it; the seq-length bound comes from
+  `axiom_spec_len` (broadcast).
+- **Loop bodies drop pre-loop facts about untouched fields.** Facts
+  like "module is not finished yet" must be restated as loop
+  invariants even when no statement in the loop writes that field.
+
+Layer 2's bound: the marker-grammar parser port (scan → valid_spans)
+was time-boxed and exceeded; the splice kernel's admission predicate
+is the contract boundary until it lands (MERGE-SPLICE-001 records the
+exclusion).
+
 ## Non-goals
 
 No permission-policy, marker-style or CRLF proof work (0044's models

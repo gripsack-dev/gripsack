@@ -20,9 +20,10 @@ set -eu
 
 CRATE=crates/gripsack-policy
 # classify + plan_copy + plan_link + the retention kernels (admission,
-# prune, delete, membership helpers) and their contracts; if the
-# kernel set grows, grow this floor.
-MIN_OBLIGATIONS=30
+# prune, delete, membership helpers), the merge splice kernel, the
+# graph closure kernels and the scheduler transition system, with
+# their contracts; if the kernel set grows, grow this floor.
+MIN_OBLIGATIONS=50
 
 # verification results are cached by cargo — the gate always runs a
 # CLEAN verification (a stale cache is not evidence)
@@ -100,5 +101,18 @@ run_mutant "classifier" lib.rs \
 run_mutant "merge-splice" merge.rs \
     '    out.extend_from_slice(&text[cursor..]);' \
     ''
+
+# graph closure: a visited node never recorded in the result — the "a
+# reachable module missing from the build closure" class — must fail
+# the result-membership contract
+run_mutant "graph-closure" graph.rs \
+    '                    result.push(target);' \
+    ''
+# scheduler: starting work after the failure latch — the "a failed
+# dependency authorized its consumer" class — must fail the named
+# postcondition (old(self).failed ==> result.is_none())
+run_mutant "scheduler-latch" schedule.rs \
+    '        if self.failed || self.head >= self.ready.len() {' \
+    '        if self.head >= self.ready.len() {'
 
 echo "verify gate: OK"

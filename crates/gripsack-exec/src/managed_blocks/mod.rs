@@ -148,8 +148,11 @@ impl<'a> ManagedBlockSet<'a> {
                 end: block.range.end,
             })
             .collect();
-        let bytes =
-            gripsack_policy::merge::splice_bytes(self.text.as_bytes(), &spans, replacement.as_bytes());
+        let bytes = gripsack_policy::merge::splice_bytes(
+            self.text.as_bytes(),
+            &spans,
+            replacement.as_bytes(),
+        );
         String::from_utf8(bytes).expect("block ranges are line-aligned and replacement is UTF-8")
     }
 

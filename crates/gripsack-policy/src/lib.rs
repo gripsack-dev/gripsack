@@ -17,6 +17,7 @@ pub mod graph;
 pub mod merge;
 pub mod ownership;
 pub mod retention;
+pub mod schedule;
 
 verus! {
 
