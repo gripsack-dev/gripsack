@@ -85,12 +85,17 @@ fn plan(
 }
 
 fn execute(ctx: &Ctx, op: &Op) -> store::DeployedEntry {
-    execute_op(ctx.home_dir().unwrap(), &ctx.home, op).unwrap();
-    let p = op.produces.as_ref().unwrap();
+    execute_op(
+        ctx.home_dir().unwrap(),
+        &ctx.home,
+        op.as_executable().unwrap(),
+    )
+    .unwrap();
+    let p = op.produces().unwrap();
     store::DeployedEntry {
         from: p.from.clone(),
-        to: op.declared_to.clone(),
-        key: Some(op.dest.clone()),
+        to: op.declared_to().to_string(),
+        key: Some(op.dest().to_path_buf()),
         mode: p.mode.clone(),
         vars: p.vars.clone(),
         hash: p.hash.clone(),
@@ -132,7 +137,7 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
                     "{ownership:?}, source={source_mode:o}"
                 );
                 let unchanged = plan(&ctx, &entry, Some(&first), b"one", source, false);
-                assert!(matches!(unchanged.kind, OpKind::Satisfied));
+                assert!(matches!(unchanged.kind(), OpKind::Satisfied));
                 let updated = execute(
                     &ctx,
                     &plan(&ctx, &entry, Some(&first), b"two", source, false),
@@ -178,7 +183,7 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
                 for _ in 0..2 {
                     let drift = plan(&ctx, &entry, Some(&prev), b"one", source, false);
                     assert!(
-                        matches!(drift.kind, OpKind::Preserved),
+                        matches!(drift.kind(), OpKind::Preserved),
                         "chmod must not be satisfied"
                     );
                     prev = execute(&ctx, &drift);
@@ -187,10 +192,15 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
                         .unwrap()
                         .unwrap();
                     assert!(
-                        matches!(prune.kind, OpKind::Preserved),
+                        matches!(prune.kind(), OpKind::Preserved),
                         "observation became delete authority"
                     );
-                    execute_op(ctx.home_dir().unwrap(), &ctx.home, &prune).unwrap();
+                    execute_op(
+                        ctx.home_dir().unwrap(),
+                        &ctx.home,
+                        prune.as_executable().unwrap(),
+                    )
+                    .unwrap();
                     assert_eq!(std::fs::read(dest).unwrap(), b"one");
                 }
                 cases += 1;
@@ -244,7 +254,7 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
             WritePermissions::Preserve,
             false,
         );
-        assert!(matches!(unchanged.kind, OpKind::Satisfied));
+        assert!(matches!(unchanged.kind(), OpKind::Satisfied));
         let drift_mode = if expected == 0o600 { 0o644 } else { 0o600 };
         chmod(dest, drift_mode);
         let original = std::fs::read(dest).unwrap();
@@ -258,13 +268,18 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
                 WritePermissions::Preserve,
                 false,
             );
-            assert!(matches!(drift.kind, OpKind::Preserved));
+            assert!(matches!(drift.kind(), OpKind::Preserved));
             prev = execute(&ctx, &drift);
             let prune = plan_remove_op("m", &prev, dir.path(), &ctx.home)
                 .unwrap()
                 .unwrap();
-            assert!(matches!(prune.kind, OpKind::Preserved));
-            execute_op(ctx.home_dir().unwrap(), &ctx.home, &prune).unwrap();
+            assert!(matches!(prune.kind(), OpKind::Preserved));
+            execute_op(
+                ctx.home_dir().unwrap(),
+                &ctx.home,
+                prune.as_executable().unwrap(),
+            )
+            .unwrap();
             assert_eq!(std::fs::read(dest).unwrap(), original);
             assert_eq!(permissions(dest), drift_mode);
         }
@@ -283,7 +298,12 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
         let prune = plan_remove_op("m", &converged, dir.path(), &ctx.home)
             .unwrap()
             .unwrap();
-        execute_op(ctx.home_dir().unwrap(), &ctx.home, &prune).unwrap();
+        execute_op(
+            ctx.home_dir().unwrap(),
+            &ctx.home,
+            prune.as_executable().unwrap(),
+        )
+        .unwrap();
         if initial.is_some() {
             assert_eq!(std::fs::read(dest).unwrap(), b"foreign\n");
             assert_eq!(permissions(dest), expected);
@@ -319,7 +339,12 @@ fn links_carry_the_payload_mode_without_normalizing_it() {
             },
         )
         .unwrap();
-        execute_op(ctx.home_dir().unwrap(), &ctx.home, &op).unwrap();
+        execute_op(
+            ctx.home_dir().unwrap(),
+            &ctx.home,
+            op.as_executable().unwrap(),
+        )
+        .unwrap();
         assert_eq!(std::fs::read_link(&entry.to).unwrap(), source);
         assert_eq!(permissions(Path::new(&entry.to)), mode);
     }

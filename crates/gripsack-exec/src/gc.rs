@@ -34,60 +34,65 @@ pub fn gc(
 ) -> Result<GcReport, ExecError> {
     let home = session.home();
     let mut report = GcReport::default();
-    // 0045 F3: recovery state is load-bearing. A journaled prior blob
-    // may be referenced by NO retained manifest, so collecting before
-    // reconcile would destroy the bytes recovery needs. Refuse —
-    // dry-run included: the deletion set is unsound while recovery is
-    // pending, and a preview that lies is worse than no preview. An
-    // unreadable journal fails closed (pending_recovery errors).
-    let home_cap = gripsack_fs::open_or_create(home)?;
-    if let Some(pending) = store::journal::pending_recovery(&home_cap)? {
-        return Err(ExecError::Step {
-            module: "*".into(),
-            step: "gc".into(),
-            detail: format!(
-                "recovery state is pending ({pending}) — run `grip apply` or \
-                 `grip rollback` to reconcile before collecting; nothing was deleted"
-            ),
-        });
-    }
     // fail closed (0027 §2): enumeration errors propagate — gc's
     // deletion set derives from this inventory, and "cannot read"
-    // must never read as "nothing referenced"
+    // must never read as "nothing referenced". An unreadable journal
+    // fails the same way (pending_recovery errors).
+    let home_cap = gripsack_fs::open_or_create(home)?;
+    let pending = store::journal::pending_recovery(&home_cap)?;
     let generations = store::list_generations(home)?;
     let current = store::current_generation(home)?;
-    // the active generation must be IN the inventory before any plan
-    // is computed — a current without a directory is corruption
-    if let Some(c) = current
-        && !generations.contains(&c)
-    {
-        return Err(ExecError::Step {
-            module: "*".into(),
-            step: "gc".into(),
-            detail: format!(
-                "current generation {c} has no directory on disk — refusing to collect"
-            ),
-        });
+
+    // Admission as a total function (0045 F3, 0046): the kernel's
+    // biconditionals mean a forgotten check is a type-level impossibility.
+    use gripsack_policy::retention::GcAdmission;
+    match gripsack_policy::retention::admit_gc(pending.is_some(), current, &generations) {
+        // recovery state is load-bearing: a journaled prior blob may
+        // be referenced by NO retained manifest, so collecting before
+        // reconcile would destroy the bytes recovery needs. Refused
+        // dry-run included: the deletion set is unsound while recovery
+        // is pending, and a preview that lies is worse than no preview.
+        GcAdmission::RecoveryPending => {
+            return Err(ExecError::Step {
+                module: "*".into(),
+                step: "gc".into(),
+                detail: format!(
+                    "recovery state is pending ({}) — run `grip apply` or \
+                     `grip rollback` to reconcile before collecting; nothing was deleted",
+                    pending.expect("RecoveryPending implies pending state")
+                ),
+            });
+        }
+        // the active generation must be IN the inventory before any
+        // plan is computed — a current without a directory is corruption
+        GcAdmission::CorruptCurrent => {
+            return Err(ExecError::Step {
+                module: "*".into(),
+                step: "gc".into(),
+                detail: format!(
+                    "current generation {} has no directory on disk — refusing to collect",
+                    current.expect("CorruptCurrent implies a current generation")
+                ),
+            });
+        }
+        GcAdmission::Admitted => {}
     }
 
     // what WOULD be pruned (dry-run must preview the post-prune state,
-    // or it under-reports collectable paths)
-    let mut pruned = std::collections::BTreeSet::new();
-    if let Some(keep) = keep {
-        let keep = keep as usize;
-        if generations.len() > keep {
-            let excess = generations.len() - keep;
-            for n in &generations[..excess] {
-                if Some(*n) == current {
-                    continue; // never the active one — keep one extra instead
-                }
-                pruned.insert(*n);
-                report.generations_removed.push(*n);
-            }
-        }
-    }
+    // or it under-reports collectable paths). The kernel (0046): pruned
+    // generations come from the inventory and never name the current
+    // generation — proved, not reviewed.
+    let pruned: std::collections::BTreeSet<u64> =
+        gripsack_policy::retention::plan_prune(&generations, current, keep)
+            .into_iter()
+            .collect();
+    report.generations_removed = pruned.iter().copied().collect();
 
-    let mut referenced = std::collections::BTreeSet::new();
+    // Root computation (the trusted adapter around the proven deletion
+    // kernel): retained generations pin their store paths, their build
+    // closures, and their prior blobs. Completeness of these roots at
+    // production time is a separate obligation (handoff §5.3).
+    let mut referenced: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for n in &generations {
         // fail CLOSED: an unparseable manifest must abort gc — dropping
         // its pins would collect referenced store paths and leave
@@ -101,10 +106,10 @@ pub fn gc(
             continue;
         }
         for state in manifest.modules.values() {
-            referenced.insert(state.store_path.clone());
+            referenced.insert(utf8_path(&state.store_path)?);
             // Retained generations pin the consumer's transitive build closure.
             for path in &state.build_closure {
-                referenced.insert(path.clone());
+                referenced.insert(utf8_path(path)?);
             }
         }
         // 0015 §4: generations pin prior blobs the same way — a prior
@@ -112,7 +117,7 @@ pub fn gc(
         for state in manifest.modules.values() {
             for entry in &state.entries {
                 if let Some(store::Prior::File { hash, .. }) = &entry.prior {
-                    referenced.insert(store::prior_blob_path(home, hash));
+                    referenced.insert(utf8_path(&store::prior_blob_path(home, hash))?);
                 }
             }
         }
@@ -123,34 +128,61 @@ pub fn gc(
         }
     }
 
+    let referenced: Vec<&str> = referenced.iter().map(String::as_str).collect();
+
+    // The deletion kernel (0046): delete == candidates minus roots,
+    // extensionally — and monotone in the root set.
     let store_dir = home.join(store::STORE_DIR);
     if store_dir.is_dir() {
+        let mut candidates: Vec<String> = Vec::new();
         for entry in std::fs::read_dir(&store_dir)? {
-            let path = entry?.path();
-            if !referenced.contains(&path) {
-                report.bytes_freed += dir_size(&path)?;
-                if !dry_run {
-                    std::fs::remove_dir_all(&path)?;
-                }
-                report.store_removed.push(path);
+            candidates.push(utf8_path(&entry?.path())?);
+        }
+        let candidate_refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+        for doomed in gripsack_policy::retention::plan_delete(&referenced, &candidate_refs) {
+            let path = Path::new(doomed);
+            report.bytes_freed += dir_size(path)?;
+            if !dry_run {
+                std::fs::remove_dir_all(path)?;
             }
+            report.store_removed.push(path.to_path_buf());
         }
     }
     // prior blobs (0015 §4): same reachability rule, flat dir of files
     let prior_dir = home.join("prior");
     if prior_dir.is_dir() {
+        let mut candidates: Vec<String> = Vec::new();
         for entry in std::fs::read_dir(&prior_dir)? {
-            let path = entry?.path();
-            if !referenced.contains(&path) {
-                report.bytes_freed += dir_size(&path)?;
-                if !dry_run {
-                    std::fs::remove_file(&path)?;
-                }
-                report.store_removed.push(path);
+            candidates.push(utf8_path(&entry?.path())?);
+        }
+        let candidate_refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+        for doomed in gripsack_policy::retention::plan_delete(&referenced, &candidate_refs) {
+            let path = Path::new(doomed);
+            report.bytes_freed += dir_size(path)?;
+            if !dry_run {
+                std::fs::remove_file(path)?;
             }
+            report.store_removed.push(path.to_path_buf());
         }
     }
     Ok(report)
+}
+
+/// GC inventory and roots are path strings (0046): a non-UTF-8 entry
+/// cannot be compared for membership honestly, so admission refuses —
+/// the same rule the journal adopted in 0045 F1. Fail closed: no
+/// deletion plan over a partial inventory.
+fn utf8_path(path: &Path) -> Result<String, ExecError> {
+    path.to_str()
+        .map(str::to_string)
+        .ok_or_else(|| ExecError::Step {
+            module: "*".into(),
+            step: "gc".into(),
+            detail: format!(
+                "{} is not valid UTF-8 — refusing to compute a deletion set",
+                path.display()
+            ),
+        })
 }
 
 fn dir_size(path: &Path) -> io::Result<u64> {

@@ -43,6 +43,16 @@ pub enum Authority {
     Foreign,
 }
 
+/// Removal authority for a Remove op (0046): the manifest entry being
+/// removed (its prior is the restore target) and its store path (the
+/// exact-link guard, 0030 §15). Carried BY the variant — a Remove
+/// without it is unconstructible, so the executor never `expect`s.
+#[derive(Debug, Clone)]
+pub struct RemoveTarget {
+    pub entry: store::DeployedEntry,
+    pub store_path: PathBuf,
+}
+
 /// What an operation does to its destination.
 #[derive(Debug, Clone)]
 pub enum OpKind {
@@ -57,9 +67,9 @@ pub enum OpKind {
         marker: Option<String>,
         mode: u32,
     },
-    /// Remove the destination, or restore its prior (the entry's
-    /// lineage decides; merge splices only our block out).
-    Remove,
+    /// Remove the destination, or restore its prior (the removal
+    /// target's lineage decides; merge splices only our block out).
+    Remove(RemoveTarget),
     /// The live object already matches the intent.
     Satisfied,
     /// A run/shell step — an opaque effect (0033 R5): the preview
@@ -73,37 +83,191 @@ pub enum OpKind {
     Preserved,
 }
 
-/// One planned operation.
+/// One planned operation (0034, hardened 0046): fields are private and
+/// the planner's one constructor enforces the coherence table, so every
+/// executable op carries authority, observation, intent and payload
+/// consistently — a Remove without its removal authority, or a marker
+/// op carrying execution data, is unrepresentable outside this module's
+/// planner code.
 #[derive(Debug, Clone)]
 pub struct Op {
-    pub module: String,
+    module: String,
     /// The canonical physical destination (0030 §P0-1).
-    pub dest: PathBuf,
+    dest: PathBuf,
     /// The declared spelling (provenance for reports).
-    pub declared_to: String,
+    declared_to: String,
     /// The ownership mode (provenance: reports speak in the mode's
     /// voice — a satisfied merge block is not an unchanged file).
-    pub mode: Ownership,
-    pub kind: OpKind,
-    /// None on inert ops (Satisfied/Preserved).
-    pub authority: Option<Authority>,
+    mode: Ownership,
+    kind: OpKind,
+    /// None on inert ops (Satisfied/Preserved) and markers.
+    authority: Option<Authority>,
     /// The ONE observation at plan time (0030 §P0-2) — the journal
     /// precondition re-validates it at the mutation.
-    pub observed: Option<ObjectIdentity>,
+    observed: Option<ObjectIdentity>,
     /// The intended end state, journal domain (inert ops: the
     /// observation restated).
-    pub intended: Intended,
+    intended: Intended,
     /// The manifest entry this deploy produces (None on inert ops:
     /// Satisfied keeps the previous entry, Preserved re-records the
     /// observation).
-    pub produces: Option<ProducedEntry>,
+    produces: Option<ProducedEntry>,
     /// The preview note for marker ops (Deferred/RunEffect) — why the
     /// decision can't be computed offline.
-    pub note: Option<String>,
-    /// Removal authority for Remove ops: the manifest entry being
-    /// removed (its prior is the restore target) and its store path
-    /// (the exact-link guard, 0030 §15).
-    pub removing: Option<(store::DeployedEntry, PathBuf)>,
+    note: Option<String>,
+}
+
+impl Op {
+    /// The coherence table (0046), checked at construction and after
+    /// every planner adjustment (debug builds):
+    ///
+    /// - Link/Write/MergeUpsert carry authority at birth (the manifest
+    ///   record may arrive later — fetched identities pin late, 0014;
+    ///   its presence is enforced at the execution boundary instead,
+    ///   see [`Op::as_executable`]);
+    /// - Remove carries Update authority and no manifest record;
+    /// - Satisfied carries no authority;
+    /// - markers (Deferred/RunEffect) carry a note and nothing else.
+    fn check(&self) {
+        match &self.kind {
+            OpKind::Link { .. } | OpKind::Write { .. } | OpKind::MergeUpsert { .. } => {
+                debug_assert!(
+                    self.authority.is_some(),
+                    "a deploy op carries its authority"
+                );
+            }
+            OpKind::Remove(_) => {
+                debug_assert_eq!(self.authority, Some(Authority::Update));
+                debug_assert!(self.produces.is_none());
+            }
+            OpKind::Satisfied => debug_assert!(self.authority.is_none()),
+            OpKind::RunEffect | OpKind::Deferred => {
+                debug_assert!(self.note.is_some(), "a marker op explains itself");
+                debug_assert!(self.authority.is_none() && self.produces.is_none());
+            }
+            OpKind::Preserved => {}
+        }
+    }
+
+    /// The planner's one constructor (0034, 0046): see [`Op::check`]
+    /// for the coherence table.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        module: String,
+        dest: PathBuf,
+        declared_to: String,
+        mode: Ownership,
+        kind: OpKind,
+        authority: Option<Authority>,
+        observed: Option<ObjectIdentity>,
+        intended: Intended,
+        produces: Option<ProducedEntry>,
+        note: Option<String>,
+    ) -> Op {
+        let op = Op {
+            module,
+            dest,
+            declared_to,
+            mode,
+            kind,
+            authority,
+            observed,
+            intended,
+            produces,
+            note,
+        };
+        op.check();
+        op
+    }
+
+    /// The planner fills in the manifest record once it computes it
+    /// (fetches pin identities late); coherence re-checked.
+    pub(crate) fn with_produces(mut self, produces: Option<ProducedEntry>) -> Op {
+        self.produces = produces;
+        self.check();
+        self
+    }
+
+    /// The planner's note attachment (merge reports, marker reasons).
+    pub(crate) fn with_note(mut self, note: Option<String>) -> Op {
+        self.note = note;
+        self.check();
+        self
+    }
+
+    /// `produces` content access for the planner's late field fills.
+    pub(crate) fn produces_mut(&mut self) -> Option<&mut ProducedEntry> {
+        self.produces.as_mut()
+    }
+}
+
+/// An op cleared for execution (0046): marker ops (Deferred/RunEffect)
+/// cannot get here — the conversion IS the check, so the executor's
+/// match has no `unreachable!` arm.
+pub(crate) struct ExecutableOp<'a>(pub(crate) &'a Op);
+impl Op {
+    /// Preview-only markers fail the conversion with a classified
+    /// error (a planner bug, reported, never a panic). Deploy ops must
+    /// carry their manifest record by now (0014's late pinning is
+    /// done at planning's end — an executed deploy always records).
+    pub(crate) fn as_executable(&self) -> Result<ExecutableOp<'_>, crate::ctx::ExecError> {
+        match &self.kind {
+            OpKind::RunEffect | OpKind::Deferred => Err(crate::ctx::ExecError::Step {
+                module: self.module.clone(),
+                step: "deploy".into(),
+                detail: "a preview-only marker op reached execution — a planner bug".into(),
+            }),
+            OpKind::Link { .. } | OpKind::Write { .. } | OpKind::MergeUpsert { .. }
+                if self.produces.is_none() =>
+            {
+                Err(crate::ctx::ExecError::Step {
+                    module: self.module.clone(),
+                    step: "deploy".into(),
+                    detail: "a deploy op reached execution without its manifest record \
+                             — a planner bug"
+                        .into(),
+                })
+            }
+            _ => Ok(ExecutableOp(self)),
+        }
+    }
+}
+
+impl Op {
+    // --- read accessors (the fields stay private — 0046) ---
+
+    pub fn module(&self) -> &str {
+        &self.module
+    }
+    /// The canonical physical destination (0030 §P0-1).
+    pub fn dest(&self) -> &Path {
+        &self.dest
+    }
+    /// The declared spelling (provenance for reports).
+    pub fn declared_to(&self) -> &str {
+        &self.declared_to
+    }
+    pub fn mode(&self) -> &Ownership {
+        &self.mode
+    }
+    pub fn kind(&self) -> &OpKind {
+        &self.kind
+    }
+    pub fn authority(&self) -> Option<Authority> {
+        self.authority
+    }
+    pub fn observed(&self) -> Option<&ObjectIdentity> {
+        self.observed.as_ref()
+    }
+    pub fn intended(&self) -> &Intended {
+        &self.intended
+    }
+    pub fn produces(&self) -> Option<&ProducedEntry> {
+        self.produces.as_ref()
+    }
+    pub fn note(&self) -> Option<&str> {
+        self.note.as_deref()
+    }
 }
 
 /// What a deploying op records in the manifest.

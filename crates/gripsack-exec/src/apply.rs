@@ -504,10 +504,10 @@ fn prune_undeclared(
             let Some(op) = crate::ops::plan_remove_op(name, entry, &state.store_path, home)? else {
                 continue;
             };
-            if matches!(op.kind, crate::ops::OpKind::Preserved) {
+            if matches!(op.kind(), crate::ops::OpKind::Preserved) {
                 continue; // plan_remove_op already warned
             }
-            crate::ops::execute_op(home_dir, home, &op)?;
+            crate::ops::execute_op(home_dir, home, op.as_executable()?)?;
             info!(
                 "{} {}",
                 if entry.prior.is_some() {

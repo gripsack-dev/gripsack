@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 gripsack-fs.workspace = true
+gripsack-policy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 gripsack-ir.workspace = true

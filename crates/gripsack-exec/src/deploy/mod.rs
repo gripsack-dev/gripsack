@@ -47,81 +47,15 @@ pub(crate) fn observe(
     }
 }
 
-/// The copy/template disposition decision as a pure function
-/// (0029 §2 — the lineage model in the harness drives THIS code).
-/// `prev` is (the previous manifest's hash, whether it was preserved
-/// drift). The authorization rule that was missing: only
-/// last-written managed content may be updated; preserved drift
-/// NEVER promotes to authority — reconvergence (live == desired) is
-/// the only way back.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CopyPlan {
-    /// Nothing live: create.
-    Fresh,
-    /// Live IS the desired content.
-    Satisfied,
-    /// Live is what gripsack last wrote (managed): authorized update.
-    Update,
-    /// Live is foreign or drifted: preserve and report.
-    Preserve,
-    /// Explicit user consent to absorb whatever is live.
-    TakeOver,
-}
-
-pub(crate) fn plan_copy(
-    desired: &str,
-    live: Option<&str>,
-    prev: Option<(&str, bool)>,
-    take_over: bool,
-) -> CopyPlan {
-    let Some(live) = live else {
-        return CopyPlan::Fresh;
-    };
-    // explicit consent/absorb ALWAYS captures the origin — even when
-    // the bytes already match (adopt relies on this to open the epoch)
-    if take_over {
-        return CopyPlan::TakeOver;
-    }
-    if live == desired {
-        return CopyPlan::Satisfied;
-    }
-    match prev {
-        // managed and live is our last write: the clean update path
-        // (never a fresh take-over — the epoch's origin stands)
-        Some((written, false)) if live == written => CopyPlan::Update,
-        // explicit consent outranks preservation: --take-over absorbs
-        // whatever is live and begins a new epoch with it as origin
-        _ if take_over => CopyPlan::TakeOver,
-        // preserved drift never authorizes — only reconvergence
-        // (handled above) ends the drift state
-        _ => CopyPlan::Preserve,
-    }
-}
-
-/// The owned-link disposition as a pure function (0033 R7) — the
-/// lineage explorer drives THIS, like plan_copy for copies. `exists`:
-/// anything at the destination; `ours`: a link into the store;
-/// `recorded`: a previous manifest entry that is NOT preserved drift
-/// (preserved drift authorizes nothing, including a mode change).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LinkPlan {
-    /// Nothing there (or already ours to redeploy): point the link.
-    Link,
-    /// Absorb the foreign object --take-over (a prior is captured).
-    TakeOver,
-    /// A foreign object blocks the deploy — move it or --take-over.
-    Refuse,
-}
-
-pub(crate) fn plan_link(exists: bool, ours: bool, recorded: bool, take_over: bool) -> LinkPlan {
-    if exists && !ours && !recorded && !take_over {
-        LinkPlan::Refuse
-    } else if take_over && !ours && !recorded {
-        LinkPlan::TakeOver
-    } else {
-        LinkPlan::Link
-    }
-}
+/// The copy/link authority kernels live in gripsack-policy (0046):
+/// ONE implementation — production planning, the lineage explorer
+/// (which drives these through materialized filesystem states) and
+/// the Verus proofs share it. The authority rules (0029 §2, 0033 R7):
+/// preserved drift NEVER promotes to authority — reconvergence
+/// (live == desired) is the only way back; a managed update requires
+/// agreement with the last managed write; explicit take-over always
+/// absorbs, capturing the origin even when the bytes already match.
+pub(crate) use gripsack_policy::ownership::{CopyPlan, LinkPlan, plan_copy, plan_link};
 
 /// What the precondition expects of the live object before the
 /// mutation — None: the destination must be ABSENT, anything
@@ -414,7 +348,7 @@ pub(crate) fn deploy_entry(
     };
     // a foreign destination blocks apply (the renderer shows the same
     // op as "needs --take-over")
-    if op.authority == Some(crate::ops::Authority::Foreign) {
+    if op.authority() == Some(crate::ops::Authority::Foreign) {
         return Err(ExecError::Step {
             module: module.to_string(),
             step: "deploy".into(),
@@ -424,10 +358,11 @@ pub(crate) fn deploy_entry(
             ),
         });
     }
-    let (report, captured_prior) = crate::ops::execute_op(ctx.home_dir()?, &ctx.home, &op)?;
+    let (report, captured_prior) =
+        crate::ops::execute_op(ctx.home_dir()?, &ctx.home, op.as_executable()?)?;
     // the manifest entry: what the op produces, or the previous entry
     // carried forward (satisfied)
-    match op.produces {
+    match op.produces() {
         Some(produced) => {
             out.push(store::DeployedEntry {
                 // the EXPANDED key — rollback and store verify re-join
@@ -437,10 +372,10 @@ pub(crate) fn deploy_entry(
                 key: Some(dest.clone()),
                 mode: entry.mode.clone(),
                 vars: entry.vars.clone(),
-                hash: produced.hash,
+                hash: produced.hash.clone(),
                 file_mode: produced.file_mode,
                 source_executable: produced.source_executable,
-                prior: captured_prior.or(produced.prior),
+                prior: captured_prior.or_else(|| produced.prior.clone()),
                 preserved_drift: produced.preserved_drift,
             });
         }

@@ -63,21 +63,20 @@ pub fn preview_ops(
                 .get(name.as_str())
                 .map(|c| c.join(", "))
                 .unwrap_or_default();
-            ops.push(Op {
-                module: name.clone(),
-                dest: PathBuf::new(),
-                declared_to: String::new(),
-                mode: Ownership::Merge, // unused on marker ops
-                kind: OpKind::RunEffect,
-                authority: None,
-                observed: None,
-                intended: Intended::Removed,
-                produces: None,
-                note: Some(format!(
+            ops.push(Op::new(
+                name.clone(),
+                PathBuf::new(),
+                String::new(),
+                Ownership::Merge, // unused on marker ops
+                OpKind::RunEffect,
+                None,
+                None,
+                Intended::Removed,
+                None,
+                Some(format!(
                     "{name}: fetch + stage for build ({consumers}) — not deployed"
                 )),
-                removing: None,
-            });
+            ));
             continue;
         }
         let locked = lock.modules.get(name);
@@ -102,22 +101,21 @@ pub fn preview_ops(
                 // silent no-op (0033 R5)
                 gripsack_ir::StepAction::Run { .. }
                 | gripsack_ir::StepAction::CustomShell { .. } => {
-                    ops.push(Op {
-                        module: name.clone(),
-                        dest: PathBuf::new(),
-                        declared_to: String::new(),
-                        mode: Ownership::Merge, // unused on marker ops
-                        kind: OpKind::RunEffect,
-                        authority: None,
-                        observed: None,
-                        intended: Intended::Removed,
-                        produces: None,
-                        note: Some(
+                    ops.push(Op::new(
+                        name.clone(),
+                        PathBuf::new(),
+                        String::new(),
+                        Ownership::Merge, // unused on marker ops
+                        OpKind::RunEffect,
+                        None,
+                        None,
+                        Intended::Removed,
+                        None,
+                        Some(
                             "has run/shell steps — opaque effects, apply may change the system"
                                 .to_string(),
                         ),
-                        removing: None,
-                    });
+                    ));
                     continue;
                 }
                 _ => continue,
@@ -153,19 +151,18 @@ pub fn preview_ops(
                 // the content question decides how much of the decision
                 // plan can make offline
                 if !known {
-                    ops.push(Op {
-                        module: name.clone(),
+                    ops.push(Op::new(
+                        name.clone(),
                         dest,
-                        declared_to: entry.to.clone(),
-                        mode: entry.mode.clone(),
-                        kind: OpKind::Deferred,
-                        authority: None,
-                        observed: view.observed_identity(),
-                        intended: Intended::Removed,
-                        produces: None,
-                        note: Some("artifact → deploy (resolved at apply)".into()),
-                        removing: None,
-                    });
+                        entry.to.clone(),
+                        entry.mode.clone(),
+                        OpKind::Deferred,
+                        None,
+                        view.observed_identity(),
+                        Intended::Removed,
+                        None,
+                        Some("artifact → deploy (resolved at apply)".into()),
+                    ));
                     continue;
                 }
                 let source =
@@ -257,19 +254,18 @@ pub fn preview_ops(
                 } else {
                     "steps → deploy"
                 };
-                ops.push(Op {
-                    module: name.clone(),
+                ops.push(Op::new(
+                    name.clone(),
                     dest,
-                    declared_to: entry.to.clone(),
-                    mode: entry.mode.clone(),
-                    kind: OpKind::Deferred,
-                    authority: None,
-                    observed: view.observed_identity(),
-                    intended: Intended::Removed,
-                    produces: None,
-                    note: Some(note.to_string()),
-                    removing: None,
-                });
+                    entry.to.clone(),
+                    entry.mode.clone(),
+                    OpKind::Deferred,
+                    None,
+                    view.observed_identity(),
+                    Intended::Removed,
+                    None,
+                    Some(note.to_string()),
+                ));
             }
         }
     }
@@ -281,8 +277,8 @@ pub fn preview_ops(
         // decided yet). Only marker ops (RunEffect) carry no dest.
         let declared: std::collections::BTreeSet<String> = ops
             .iter()
-            .filter(|o| !matches!(o.kind, OpKind::RunEffect))
-            .map(|o| o.dest.to_string_lossy().into_owned())
+            .filter(|o| !matches!(o.kind(), OpKind::RunEffect))
+            .map(|o| o.dest().to_string_lossy().into_owned())
             .collect();
         for (name, state) in &prev.modules {
             for entry in &state.entries {

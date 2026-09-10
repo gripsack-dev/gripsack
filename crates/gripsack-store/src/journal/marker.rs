@@ -230,44 +230,14 @@ pub(crate) fn run_marker(home: &Dir) -> io::Result<Option<RunMarker>> {
     }
 }
 
-/// The commit classification as a pure function (0028), exact
-/// equality only: current == target is committed, current == previous
-/// is uncommitted, anything else is ambiguous and blocks. A marker
-/// without `previous_generation` never reaches here — the field is
-/// required on the wire and a torn marker fails closed at parse.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Classification {
-    Committed,
-    Uncommitted,
-    Ambiguous,
-}
-
-/// The classifier's whole input, named: the facts a run marker
-/// carries, plus the live `current` read at recovery time. (A struct,
-/// not positional `Option<u64>`-flavored arguments.)
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct RecoveryFacts {
-    /// The generation the run started from — None is a fresh
-    /// machine's first run.
-    pub(crate) previous: Option<u64>,
-    /// The generation the run was building toward.
-    pub(crate) target: u64,
-    /// `current` on disk when recovery ran.
-    pub(crate) current: Option<u64>,
-}
-
-pub(crate) fn classify(facts: &RecoveryFacts) -> Classification {
-    match (facts.previous, facts.current) {
-        (Some(_), Some(c)) if c == facts.target => Classification::Committed,
-        (Some(prev), Some(c)) if c == prev => Classification::Uncommitted,
-        (Some(_), _) => Classification::Ambiguous,
-        // a fresh machine's first run: current at the target means the
-        // flip landed; absent means it never did
-        (None, Some(c)) if c == facts.target => Classification::Committed,
-        (None, None) => Classification::Uncommitted,
-        (None, Some(_)) => Classification::Ambiguous,
-    }
-}
+/// The commit classifier is the production kernel in
+/// `gripsack-policy` (0046) — ONE implementation serves this
+/// recovery path, the Rust explorers, and the verifier
+/// (`cargo verus verify -p gripsack-policy` proves the exact
+/// classification table). A marker without `previous_generation`
+/// never reaches it — the field is required on the wire and a torn
+/// marker fails closed at parse.
+pub(crate) use gripsack_policy::{Classification, RecoveryFacts, classify};
 
 #[cfg(test)]
 #[path = "repeated_model.rs"]

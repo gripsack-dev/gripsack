@@ -3,6 +3,46 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.41.0] — 2026-09-10
+
+Verified decision kernels (0046): the recovery, ownership and GC
+decision functions now carry machine-checked contracts.
+
+### Added
+
+- **Machine-proven policy kernels.** A new `gripsack-policy` crate
+  holds the decision functions the transaction protocol leans on,
+  verified by Verus against contracts derived from the authority rules
+  (not the branch structure): the commit classifier (Committed ⟺
+  current == target; Uncommitted ⟺ current == previous ≠ target or a
+  fresh machine with no current; Ambiguous otherwise — target
+  precedence explicit), the ownership decisions (preserved drift never
+  authorizes; updates require agreement with the last managed write),
+  and GC planning (admission failure yields no destructive plan; the
+  current generation is never pruned; the deletion set is exactly
+  candidates-minus-roots, and growing roots cannot grow deletions).
+  Production, the Rust explorers and the verifier share ONE
+  implementation — there is no parallel "verified" copy.
+- **`docker compose run --build --rm verify`** — the new gate:
+  positive proofs plus a seeded semantic mutant that must fail its
+  named postcondition, running in CI's required `test` job. Toolchain
+  pinned (Verus 0.2026.09.06.8dea4a2, Rust 1.98.0 — the repo's
+  existing pin, Z3 4.16.0). Plain cargo and the musl release build
+  compile the same annotated source with specifications erased — no
+  verifier needed to build or run grip.
+- **Operation contracts are structural.** `Op` fields are private with
+  a coherence-checked constructor; a removal carries its authority in
+  the variant; a preview-only marker op reaching execution is a
+  classified error, never a panic. One planner still serves plan,
+  apply and rollback.
+- `verification/guarantees.md`: `CLASSIFY-001`, `OWNERSHIP-001` and
+  `GC-RECOVERY-001` are **checked**; the ledger records admission
+  boundaries, trusted components and calibrations.
+
+IR remains v3. Core and SDK ship together at 0.41.0. The SDK is
+byte-identical to 0.40.0's frontend; the matching version keeps
+`doctor`'s pin comparisons honest.
+
 ## [0.40.0] — 2026-09-10
 
 Recovery admission hardening and editor-reachable frontends (0045).

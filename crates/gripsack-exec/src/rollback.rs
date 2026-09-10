@@ -219,12 +219,12 @@ fn plan(
                 }
                 match crate::ops::plan_remove_op(name, entry, sp, home_path)? {
                     None => {} // already gone
-                    Some(op) if matches!(op.kind, crate::ops::OpKind::Preserved) => {
+                    Some(op) if matches!(op.kind(), crate::ops::OpKind::Preserved) => {
                         notes.push(RecoveryNote {
                             severity: NoteSeverity::Warn,
                             message: format!(
                                 "kept {} — drifted since the current generation; your edit stands",
-                                op.dest.display()
+                                op.dest().display()
                             ),
                         });
                     }
@@ -245,13 +245,13 @@ fn plan(
                             dest.display()
                         ),
                     }),
-                    Some(op) => match op.kind {
+                    Some(op) => match op.kind() {
                         crate::ops::OpKind::Satisfied => {} // already there
                         crate::ops::OpKind::Preserved => notes.push(RecoveryNote {
                             severity: NoteSeverity::Warn,
                             message: format!(
                                 "kept {} — foreign content stands there; your edit stands",
-                                op.dest.display()
+                                op.dest().display()
                             ),
                         }),
                         _ => ops.push(op),
@@ -277,13 +277,13 @@ fn plan(
                             dest.display()
                         ),
                     }),
-                    Some(op) => match op.kind {
+                    Some(op) => match op.kind() {
                         crate::ops::OpKind::Satisfied => {}
                         crate::ops::OpKind::Preserved => notes.push(RecoveryNote {
                             severity: NoteSeverity::Warn,
                             message: format!(
                                 "kept {} — drifted since the current generation; your edit stands",
-                                op.dest.display()
+                                op.dest().display()
                             ),
                         }),
                         _ => ops.push(op),
@@ -363,7 +363,7 @@ fn execute(
     ops: &[crate::ops::Op],
 ) -> Result<(), ExecError> {
     for op in ops {
-        crate::ops::execute_op(home, home_path, op)?;
+        crate::ops::execute_op(home, home_path, op.as_executable()?)?;
     }
     Ok(())
 }

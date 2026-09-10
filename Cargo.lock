@@ -281,6 +281,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
+name = "convert_case"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
+
+[[package]]
 name = "core-foundation"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -547,7 +553,7 @@ dependencies = [
 
 [[package]]
 name = "griplint"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -560,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "clap",
  "dialoguer",
@@ -585,7 +591,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-config"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -594,12 +600,13 @@ dependencies = [
 
 [[package]]
 name = "gripsack-exec"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "gripsack-config",
  "gripsack-fetch",
  "gripsack-fs",
  "gripsack-ir",
+ "gripsack-policy",
  "gripsack-store",
  "libc",
  "serde",
@@ -611,7 +618,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fetch"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "bzip2",
  "crc32fast",
@@ -644,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fs"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "cap-std",
  "libc",
@@ -668,7 +675,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-ir"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "jsonschema",
  "serde",
@@ -678,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-lint"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "griplint",
  "gripsack-config",
@@ -691,18 +698,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "gripsack-policy"
+version = "0.41.0"
+dependencies = [
+ "vstd",
+]
+
+[[package]]
 name = "gripsack-process"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "gripsack-store"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "gripsack-fs",
  "gripsack-ir",
+ "gripsack-policy",
  "serde",
  "serde_json",
  "sha2",
@@ -712,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-trace"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "gripsack-fs",
  "gripsack-store",
@@ -2022,10 +2037,75 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "verus_builtin"
+version = "0.0.0-2026-09-06-0133"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "856c9979b5ed3b75a2371d8667602da1839ab0cbb3720a2c1c8a182bcdb27cf7"
+
+[[package]]
+name = "verus_builtin_macros"
+version = "0.0.0-2026-09-06-0133"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "466bb5ed102507ccbcd002410e73716c9eb27b602980d81bbd176860ace8a89b"
+dependencies = [
+ "convert_case",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+ "synstructure",
+ "verus_prettyplease",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_prettyplease"
+version = "0.0.0-2026-09-06-0133"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71956c0dcf55f57fd5a5335fff16981f7e0912d2e887914518c5a64fe36c063c"
+dependencies = [
+ "proc-macro2",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_state_machines_macros"
+version = "0.0.0-2026-09-06-0133"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f78ea16629331605a440e9e0a259dd3492a78212186ba82253ad0988127407f"
+dependencies = [
+ "indexmap",
+ "proc-macro2",
+ "quote",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_syn"
+version = "0.0.0-2026-09-06-0133"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d8b53574934e1f608dfccd809ce17f3733d6eb99c14ce8220326121929e1637"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
 name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
+
+[[package]]
+name = "vstd"
+version = "0.0.0-2026-09-06-0133"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e5391d6f656ab9a485169f7e9fe87d3db1f0a6aa116fcb630dd0bef224170e7"
+dependencies = [
+ "verus_builtin",
+ "verus_builtin_macros",
+ "verus_state_machines_macros",
+]
 
 [[package]]
 name = "wasi"

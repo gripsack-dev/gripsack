@@ -215,7 +215,7 @@ mod tests {
         // the planner IS the algebra: same decision
         let expected = expected_shape(expected_plan(case, &dest));
         assert_eq!(
-            actual_shape(&op.kind, op.authority),
+            actual_shape(op.kind(), op.authority()),
             expected,
             "case: live={:?} desired={} prev={:?} take_over={}",
             live_label(&case.live),
@@ -228,13 +228,18 @@ mod tests {
         // nothing
         let before = store::journal::live_identity(&dest_dir, &dest_name).unwrap();
         let ctx = model_ctx(home);
-        let (_report, _prior) = execute_op(ctx.home_dir().unwrap(), &ctx.home, &op).unwrap();
+        let (_report, _prior) = execute_op(
+            ctx.home_dir().unwrap(),
+            &ctx.home,
+            op.as_executable().unwrap(),
+        )
+        .unwrap();
         let after = store::journal::live_identity(&dest_dir, &dest_name).unwrap();
-        match op.kind {
+        match op.kind() {
             OpKind::Write { .. } | OpKind::Link { .. } | OpKind::MergeUpsert { .. } => {
                 assert_eq!(
                     after.as_ref(),
-                    op.intended.as_object(),
+                    op.intended().as_object(),
                     "the executed op did not land its intent"
                 );
             }
@@ -243,7 +248,7 @@ mod tests {
             }
             _ => unreachable!(),
         }
-        if let Some(produced) = &op.produces {
+        if let Some(produced) = &op.produces() {
             assert_eq!(
                 live_manifest_identity(&dest).as_deref(),
                 Some(produced.hash.as_str()),
@@ -294,9 +299,14 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(matches!(op.kind, OpKind::Write { .. }));
-        let _ = execute_op(ctx.home_dir().unwrap(), &ctx.home, &op).unwrap();
-        let produced = op.produces.expect("a write produces an entry");
+        assert!(matches!(op.kind(), OpKind::Write { .. }));
+        let _ = execute_op(
+            ctx.home_dir().unwrap(),
+            &ctx.home,
+            op.as_executable().unwrap(),
+        )
+        .unwrap();
+        let produced = op.produces().expect("a write produces an entry");
 
         // the same file declared by its absolute spelling: prev's key
         // joins the lineage, and the op is satisfied — not a prune,
@@ -336,9 +346,9 @@ mod tests {
         )
         .unwrap();
         assert!(
-            matches!(op.kind, OpKind::Satisfied),
+            matches!(op.kind(), OpKind::Satisfied),
             "the absolute spelling of a deployed file must plan satisfied, got {:?}",
-            op.kind
+            op.kind()
         );
     }
 

@@ -78,6 +78,39 @@ COPY specs ./specs
 COPY scripts/check_models.sh ./scripts/check_models.sh
 RUN sh scripts/check_models.sh /tla/tla2tools.jar
 
+# The verification gate (plan/0046): cargo-verus over the policy
+# kernels, positive proof + seeded-mutant calibration, via the
+# canonical runner scripts/check_verus.sh. Verus ships no musl or
+# aarch64-linux prebuilt and wants glibc ≥ 2.39, so this stage is
+# ubuntu:24.04 + amd64 by design — the musl release and macOS lanes
+# never see the verifier. Base, verifier, toolchain and solver are
+# all digest/version-pinned; the verifier's Rust (1.98.0) is the
+# repo's pinned toolchain.
+FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 AS verify
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+    curl ca-certificates unzip build-essential \
+    && rm -rf /var/lib/apt/lists/*
+ARG VERUS_RELEASE=0.2026.09.06.8dea4a2
+ARG VERUS_SHA256=13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16
+ARG Z3_VERSION=4.16.0
+ARG Z3_SHA256=7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e
+ADD --checksum=sha256:${VERUS_SHA256} https://github.com/verus-lang/verus/releases/download/release/${VERUS_RELEASE}/verus-${VERUS_RELEASE}-x86-linux.zip /tmp/verus.zip
+ADD --checksum=sha256:${Z3_SHA256} https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/z3-${Z3_VERSION}-x64-glibc-2.39.zip /tmp/z3.zip
+RUN unzip -q /tmp/verus.zip -d /opt && unzip -q /tmp/z3.zip -d /opt \
+    && rm /tmp/verus.zip /tmp/z3.zip \
+    && curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.98.0 \
+       --component rustc-dev --component llvm-tools --component rustfmt
+ENV PATH="/opt/verus-x86-linux:/root/.cargo/bin:$PATH" \
+    VERUS_Z3_PATH="/opt/z3-${Z3_VERSION}-x64-glibc-2.39/bin/z3" \
+    RUSTUP_TOOLCHAIN=1.98.0
+WORKDIR /app
+# the workspace skeleton: the lockfile references every member
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY fuzz ./fuzz
+COPY scripts/check_verus.sh ./scripts/check_verus.sh
+RUN sh scripts/check_verus.sh
+
 # TypeScript frontend tests (plan/0005 §1, plan/0013 D1): `deno test`
 # on the source tree — no transpile chain, no node_modules. The image
 # tag is the same version DENO_RELEASE pins in

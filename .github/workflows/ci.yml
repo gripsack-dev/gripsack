@@ -27,6 +27,11 @@ jobs:
       - name: Transaction model (TLC)
         run: docker compose run --build --rm model
 
+      # the policy kernels, machine-proven + mutant-calibrated (0046);
+      # part of the REQUIRED gate so proofs cannot fail optionally
+      - name: Policy kernels (Verus)
+        run: docker compose run --build --rm verify
+
   # macOS behavioral round (plan/0020's queued item): the release
   # matrix builds on macOS; this RUNS the full flow suite there —
   # APFS semantics, case-insensitivity, symlink topology, Gatekeeper
