@@ -982,7 +982,7 @@
    "mandatory_deliverable": "Real Mac VM qualification for the required managed-worker path",
    "required_acceptance_evidence": "Pinned setup without Homebrew dependence, verified virtualization, constrained mounts including no default home exposure, socket/resource/lifecycle/cleanup evidence on Apple Silicon; other claimed architectures qualified separately",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "blocked",
    "required_platform_capability_lanes": [
     "macos"
    ],
@@ -993,7 +993,14 @@
     "constrained mounts incl. no default home exposure",
     "socket/resource/lifecycle/cleanup evidence"
    ],
-   "evidence_records": []
+   "evidence_records": [],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "blocked"
+    }
+   ]
   },
   {
    "id": "B0-03",
@@ -1024,7 +1031,7 @@
    "mandatory_deliverable": "Concrete integration/guarantee inventory",
    "required_acceptance_evidence": "Supported LLB operation/field matrix, protocol states/fences, exact proof families and production mappings, independent emitted-LLB inspection witness, scheduler guarantee migration plan",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "implemented_unverified",
    "required_platform_capability_lanes": [
     "pure"
    ],
@@ -1036,7 +1043,34 @@
     "independent emitted-LLB inspection witness defined",
     "scheduler guarantee migration plan written"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "pure",
+     "date": "2026-09-24",
+     "entry_points": [
+      "plan/0051-b0-qualification.md"
+     ],
+     "environment": "documentation deliverable at 176eaec + plan/0049 worktree state",
+     "command": "record authored: LLB operation/field matrix, bridge protocol states/fences, proof families with production mappings, emitted-LLB inspection witness mechanism, scheduler guarantee migration plan",
+     "result": "pass",
+     "report": "plan/0051-b0-qualification.md",
+     "commit": "176eaecd85a95b4f29ed49293a889c7bf16cc8c8 dirty=176eaecd85a95b4f29ed49293a889c7bf16cc8c8",
+     "cases_covered": [
+      "Supported LLB operation/field matrix",
+      "protocol states/fences",
+      "exact proof families and production mappings",
+      "independent emitted-LLB inspection witness",
+      "scheduler guarantee migration plan"
+     ]
+    }
+   ],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    }
+   ]
   },
   {
    "id": "B1-01",
