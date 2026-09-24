@@ -116,8 +116,12 @@ environment requires that environment's matching `prefix`.
 This A1 authoring surface remains **read-only**. `grip check` evaluates and admits
 the workspace without a host file or `env.toml` and lists named outputs.
 `grip plan`, `apply` and `update` reject workspace execution with E124
-before host effects; A2/A2-P/E/B own realization and scheduling. An
-`isolated_linux` declaration does not bootstrap a builder in `check`.
+before host effects. The diagnostic names the first unavailable output,
+its declaration span and owning milestone: isolated Linux recipes
+need B2, schedule registration E2/E3, task prerequisites E1, and
+historical v4 declarations remain read-only pending A5 migration.
+`grip check` never bootstraps BuildKit or a scheduler.
+
 The legacy `hosts/<name>.ts` path emits a v5 modules-compatibility
 envelope until the A5 migration; the core keeps v3 and historical v4
 readers. It is not a workspace executor.

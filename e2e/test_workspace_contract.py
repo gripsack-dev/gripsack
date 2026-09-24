@@ -165,6 +165,8 @@ def test_historical_v4_workspace_cannot_become_empty_module_apply(sandbox):
     assert result.returncode != 0
     assert "E124" in result.stderr, result.stderr
     assert "gripsack.ts:1" in result.stderr
+    assert "old.ts:5" in result.stderr
+    assert "A5 migration" in result.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 

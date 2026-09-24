@@ -32,25 +32,13 @@ impl Ir {
         self.workspace.is_some() || self.workspace_v4.is_some()
     }
 
-    /// No workspace version has an executor yet. The same pre-effect
-    /// error is used by the CLI and direct library entrypoints.
+    /// No workspace version has an executor yet. One output-specific
+    /// E124 decision serves the CLI and direct executor entrypoints.
     pub fn workspace_execution_error(
         &self,
         operation: &str,
     ) -> Option<crate::diagnostic::Diagnostic> {
-        let span = self
-            .workspace
-            .as_ref()
-            .map(|w| &w.span)
-            .or_else(|| self.workspace_v4.as_ref().map(|w| &w.span))?;
-        Some(
-            crate::diagnostic::Diagnostic::error(
-                crate::diagnostic::codes::WORKSPACE_EXEC_UNAVAILABLE,
-                format!("{operation} cannot execute workspace outputs yet"),
-            )
-            .with_label(Some(span.clone()), "workspace declared here")
-            .with_help("grip check validates and lists named outputs; realization and task execution belong to A2/A2-P/E/B"),
-        )
+        crate::workspace::execution_gate::execution_error(self, operation)
     }
 }
 

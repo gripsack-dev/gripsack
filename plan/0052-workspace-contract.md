@@ -338,7 +338,7 @@ E2E/golden: v5 regenerated golden corpus, strict historical v4 schema/parser/ser
 |---|---|
 | Internal frontend evaluation (`commands/eval.rs`, used by `check`/`plan`/`apply`) | Sandboxed Deno emits v5; declaration eval runs no build or host effects and needs no fake host file for a workspace |
 | `grip check` (`commands/check.rs`) | v4/v5 workspace sema and named-output listing; no personal-profile mutation or builder startup |
-| `grip plan` / `grip apply` / `grip update` | E124 rejects v4/v5 workspace execution before effects, in the CLI and direct executor APIs; legacy versioned module maps retain their executor |
+| `grip plan` / `grip apply` / `grip update` | E124 rejects v4/v5 workspace execution before effects, in the CLI and direct executor APIs. The first unavailable output is labeled with its capability owner and source span (v4 is historical A5 migration), plus the workspace origin; legacy versioned module maps retain their executor |
 | Build checks | Distinct command or explicit execution flag (exact spelling an A1/A2-P CLI decision); `check` does not suddenly run workloads |
 | `grip run --env …` / `grip shell …` | A2-P-owned (provisional spellings); A1 defines only the admitted environment/task shapes |
 | Unavailable executor (`isolated_linux` before B2, schedule registration before E3, host runBash without declared toolchain pin) | Explicit E-code diagnostic at admission naming the capability, the declaring span and the owning milestone; **no silent fallback** |
@@ -710,14 +710,39 @@ post-integration compose chain passed Rust fmt/clippy/tests, real CLI
 e2e **275/275**, and fresh Verus **61 verified / 0 errors** with
 **five** mutants. Its TS image reused the fresh 62-test layer and
 its TLC model image was **CACHED**, not a fresh model check.
-Source-bound CI/Mac evidence, exact per-capability E124 attribution,
+Source-bound CI/Mac evidence, remaining capability-owner combinations,
 cross-language goldens for every output kind and a production
 schema/name-index proof remain open. A1-02, A1-06 and A1-07 stay
 **in_progress**; no release.
 
-## 14. Honesty register
+## 14. A1-06 capability-specific E124 packet (not closure)
 
-- This document began as a design candidate; §§9–13 record read-only
+`gripsack-ir/src/workspace/execution_gate.rs` now owns the same
+pre-effect E124 decision used by the CLI and direct executor APIs.
+It names the first declared output's unavailable capability, owner
+milestone and declaration span; the workspace origin remains a second
+label. An isolated Linux recipe names B2, schedule registration
+E2/E3, task prerequisites E1, and historical v4 workspaces are
+explicitly read-only A5 migration inputs, never silently promoted
+to v5 execution. `grip check` still admits and lists outputs with no
+builder; neither version can apply as an empty module map.
+
+The real isolated-worker CLI case **failed before** this change with
+only a generic workspace-root E124 and **passed after** with B2 and
+the recipe's source line. Rust IR **69** tests and the direct-executor
+E124 guard **1** passed; the focused CLI cases for isolated recipes,
+inert schedules/task prerequisites and historical v4 **3/3** passed.
+
+The final Linux compose chain passed Rust fmt/clippy/tests, fresh
+Deno **62/62**, real CLI e2e **276/276**, and fresh Verus
+**61 verified / 0 errors** with **five** calibrated mutants.
+The TLC model gate reused a **CACHED** layer. Other capability-owner
+combinations, source-bound CI/Mac evidence and A1-06's diagnostic
+registry proof remain open. No workspace execution or release.
+
+## 15. Honesty register
+
+- This document began as a design candidate; §§9–14 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

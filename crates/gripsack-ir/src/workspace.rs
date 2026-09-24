@@ -4,10 +4,10 @@
 //! closed by the pass-1.5 tagged-field walk (`tagged.rs`), plain structs
 //! by `deny_unknown_fields` — no field is ever silently dropped.
 //!
-//! Admission judges structure only. Whether a declared capability can
-//! execute on this build is a separate, explicit rejection lane owned by
-//! the CLI/plan surfaces (E124), never a silent fallback and never
-//! decided here.
+//! Admission judges structure only. The shared execution gate
+//! (`execution_gate.rs`) labels an unavailable output with E124
+//! before CLI or direct executor entrypoints can open a home, lockfile,
+//! worker or scheduler. It never authorizes execution or a fallback.
 //!
 //! One type family per child module, re-exported flat:
 //! `catalog` owns the envelope and nine outputs, `command` the
@@ -16,6 +16,7 @@
 
 mod catalog;
 mod command;
+pub(crate) mod execution_gate;
 mod file;
 mod layout;
 mod platform;

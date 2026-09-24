@@ -333,7 +333,6 @@ def test_check_success_json_lists_the_named_outputs(sandbox):
     assert not (sandbox / ".config/demo/settings.conf").exists()
 
 
-
 def test_check_never_provisions_a_builder(sandbox):
     """A1 no-builder guarantee: even an isolated_linux recipe checks
     clean without BuildKit/Lima materializing anywhere."""
@@ -360,5 +359,50 @@ def test_check_never_provisions_a_builder(sandbox):
     planned = grip("plan", cwd=repo)
     assert planned.returncode != 0
     assert "E124" in planned.stderr
-    assert "gripsack.ts:6" in planned.stderr
+    assert "isolated_linux" in planned.stderr and "B2" in planned.stderr
+    assert "gripsack.ts:2" in planned.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+def test_schedule_and_task_prerequisite_capabilities_keep_their_owners(sandbox):
+    repo = sandbox / "inert-schedule"
+    repo.mkdir()
+    task = {
+        "kind": "task", "name": "build", "span": {"file": "tasks.ts", "line": 8},
+        "run": {
+            "kind": "exec", "span": {"file": "tasks.ts", "line": 9},
+            "argv": [{"kind": "literal", "value": "true"}],
+        },
+    }
+    schedule = {
+        "kind": "schedule", "name": "daily", "span": {"file": "schedule.ts", "line": 4},
+        "task": "build", "trigger": {"kind": "daily", "time": "03:30"}, "scope": "user",
+    }
+    document = {
+        "ir_version": 5,
+        "host": {"os": "linux", "arch": "x86_64"},
+        "workspace": {
+            "span": {"file": "gripsack.ts", "line": 1},
+            "outputs": [schedule, task],
+        },
+    }
+    path = repo / "schedule.ir.json"
+    path.write_text(json.dumps(document))
+    inert = grip("plan", "--ir", str(path), cwd=repo)
+    assert inert.returncode != 0
+    assert "E124" in inert.stderr and "schedule registration" in inert.stderr
+    assert "E2/E3" in inert.stderr and "schedule.ts:4" in inert.stderr
+
+    prerequisite = {
+        **task, "deps": ["verify"],
+    }
+    verify = {
+        **task, "name": "verify", "span": {"file": "tasks.ts", "line": 12},
+    }
+    document["workspace"]["outputs"] = [prerequisite, verify]
+    path.write_text(json.dumps(document))
+    invoked = grip("plan", "--ir", str(path), cwd=repo)
+    assert invoked.returncode != 0
+    assert "E124" in invoked.stderr and "task prerequisite" in invoked.stderr
+    assert "E1" in invoked.stderr and "tasks.ts:8" in invoked.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
