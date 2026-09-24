@@ -30,6 +30,9 @@ pub fn update(
         Ok(ir) => ir,
         Err(_) => return failed,
     };
+    if crate::commands::reject_workspace_execution(&ir, "grip update", palette).is_err() {
+        return failed;
+    }
     let ctx = Ctx {
         home: store::gripsack_home(),
         home_dir: Default::default(),

@@ -9,7 +9,13 @@ import type { IrModule, ModuleValue } from "./module.ts";
 import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
-export const IR_VERSION = 3;
+/** The single current frontend version (0052 §1): the workspace
+ *  emitter and this legacy modules path BOTH emit v4 — the legacy
+ *  path is the bounded v4 modules-compatibility envelope (no
+ *  `workspace` key), the workspace path emits the v4 workspace
+ *  envelope (no `modules` key). The core admits the `3..=4` range
+ *  through versioned readers. */
+export const IR_VERSION = 4;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,
@@ -65,11 +71,16 @@ export function mergeTags(envTags: string[] | undefined, cliTags: string[]): str
   return [...(envTags ?? []), ...cliTags].filter((t, i, all) => all.indexOf(t) === i);
 }
 
-/** Serialize a returned environment as IR JSON. Duplicate module
- *  names throw with both declaration sites; stray objects throw with
- *  what they are. Key order is part of the contract (golden corpus):
- *  `ir_version, host, modules[, resources]`, host keys
- *  `os, arch, tags[, libc]` — hostname never crosses into the IR. */
+/** Serialize a returned environment as the v4 legacy-modules IR
+ *  envelope (`{ir_version: 4, host, modules[, resources]}` — never a
+ *  `workspace` key; the schema admits exactly one of the two). This
+ *  is the bounded compatibility path for `hosts/<name>.ts`
+ *  entrypoints (0052 §2.1); new workspaces use `emitWorkspaceIr`.
+ *  Duplicate module names throw with both declaration sites; stray
+ *  objects throw with what they are. Key order is part of the
+ *  contract (golden corpus): `ir_version, host, modules
+ *  [, resources]`, host keys `os, arch, tags[, libc]` — hostname
+ *  never crosses into the IR. */
 export function emitIr(env: Env, facts: HostFacts, tags: string[]): string {
   const resources = declaredResources();
   const modules: Record<string, IrModule> = {};

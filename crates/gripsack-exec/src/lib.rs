@@ -176,6 +176,7 @@ mod tests {
             ir_version: gripsack_ir::IR_VERSION,
             host: Default::default(),
             resources: vec![],
+            workspace: None,
             modules: entries
                 .iter()
                 .map(|(name, deps)| (name.to_string(), module_with_deps(deps)))

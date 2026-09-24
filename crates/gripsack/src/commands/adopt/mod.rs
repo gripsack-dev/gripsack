@@ -27,6 +27,15 @@ pub fn adopt(
     palette: Palette,
 ) -> ExitCode {
     let repo = std::env::current_dir().unwrap_or_else(|_| ".".into());
+    if repo.join("gripsack.ts").is_file() {
+        let diagnostic = gripsack_ir::Diagnostic::error(
+            gripsack_ir::codes::WORKSPACE_EXEC_UNAVAILABLE,
+            "grip adopt cannot modify a workspace profile yet",
+        )
+        .with_help("A2 owns workspace file deployment; use grip check to validate gripsack.ts without host effects");
+        eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+        return ExitCode::FAILURE;
+    }
     if !repo.join("env.toml").is_file() {
         eprintln!(
             "grip: {} is not an env repo (no env.toml) — run `grip init` first",

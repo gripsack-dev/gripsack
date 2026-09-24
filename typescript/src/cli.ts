@@ -41,6 +41,50 @@ async function main(): Promise<void> {
   if (inputsPath === undefined) die("--inputs <path> is required (the core always passes it)");
 
   const inputs = core.parseInputs(readFileSync(inputsPath, "utf8"), inputsPath);
+
+  // workspace entry (0052 A1): a root gripsack.ts wins when present —
+  // a project needs no fake hosts/<name>.ts to declare outputs; the
+  // core-injected facts (not a hostname selection) feed the eval.
+  // Otherwise the existing hosts/<host>.ts path runs unchanged.
+  const workspaceFile = join(repo, "gripsack.ts");
+  if (existsSync(workspaceFile)) {
+    if (typeof core.emitWorkspaceIr !== "function") {
+      die(
+        `the pinned @gripsack/core at ${coreUrl} predates the workspace frontend ` +
+          `(0052 A1) — update or remove the repo's node_modules/@gripsack/core pin`,
+      );
+    }
+    // same up-front existence rule as hosts/: an import error after
+    // this point is a real defect and passes through as a traceback
+    const workspaceMod = (await import(pathToFileURL(workspaceFile).href)) as {
+      default?: unknown;
+    };
+    const workspaceFn = workspaceMod.default;
+    if (typeof workspaceFn !== "function") {
+      die(
+        "gripsack.ts must default-export defineWorkspace((ctx) => workspace({ outputs: [...] })) " +
+          "(0052 A1)",
+      );
+    }
+    const { probe, requests } = core.createProbeBuilder(inputs.probes);
+    const value = (workspaceFn as (ctx: unknown) => unknown)({
+      facts: inputs.facts,
+      tags: inputs.tags,
+      probe,
+      settings: inputs.settings,
+    });
+    if (value instanceof Promise) {
+      die("gripsack.ts must synchronously return a workspace({...}) value (got a promise)");
+    }
+    const payload = {
+      ir: JSON.parse(core.emitWorkspaceIr(value as never, inputs.facts, inputs.tags)),
+      diagnostics: [],
+      probe_requests: requests,
+    };
+    process.stdout.write(JSON.stringify(payload) + "\n");
+    return;
+  }
+
   // host entrypoint: selected by the core (hostname / [env]
   // default_host / --host), named in the inputs envelope
   const hostFile = join(repo, "hosts", `${inputs.host}.ts`);

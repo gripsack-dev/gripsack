@@ -10,6 +10,8 @@
 
 use crate::diagnostic::{Diagnostic, codes};
 
+mod workspace;
+
 /// kind → allowed keys (the tag itself plus the variant's fields).
 fn allowed_fetch_fields(kind: &str) -> Option<&'static [&'static str]> {
     Some(match kind {
@@ -143,6 +145,20 @@ fn check_tagged(
     allowed: fn(&str) -> Option<&'static [&'static str]>,
     out: &mut Vec<Diagnostic>,
 ) {
+    check_tagged_at(node, path, allowed, None, out);
+}
+
+/// `span` labels the rejection at the nearest declaring node. The v4
+/// workspace walk passes it (v4 spans are mandatory; A1-06 requires
+/// source-carrying rejection); the v3 module walk passes None and keeps
+/// its span-free message — v3 behavior preserved.
+fn check_tagged_at(
+    node: &serde_json::Value,
+    path: &str,
+    allowed: fn(&str) -> Option<&'static [&'static str]>,
+    span: Option<&crate::Span>,
+    out: &mut Vec<Diagnostic>,
+) {
     let Some(obj) = node.as_object() else { return };
     let Some(kind) = obj.get("kind").and_then(|k| k.as_str()) else {
         return;
@@ -150,30 +166,110 @@ fn check_tagged(
     if let Some(fields) = allowed(kind) {
         for key in obj.keys() {
             if !fields.contains(&key.as_str()) {
-                out.push(Diagnostic::error(
+                let diagnostic = Diagnostic::error(
                     codes::MALFORMED,
                     format!("unknown field `{key}` in a {kind} node ({path})"),
-                ));
+                );
+                out.push(match span {
+                    Some(span) => diagnostic.with_label(Some(span.clone()), "declared here"),
+                    None => diagnostic,
+                });
             }
         }
     }
 }
 
+/// A v4 workspace node's own `span`, read from the raw JSON before
+/// serde. None when absent or malformed — the caller falls back to the
+/// enclosing node's span.
+fn raw_node_span(node: &serde_json::Value) -> Option<crate::Span> {
+    node.get("span")
+        .and_then(|s| serde_json::from_value::<crate::Span>(s.clone()).ok())
+}
+
 /// Walk the IR JSON, validating every tagged node. Runs at parse time,
-/// before serde drops unknown fields — the pass order matters.
+/// before serde drops unknown fields — the pass order matters. Also owns
+/// the version-dispatched envelope shape (0052 §2.1): serde cannot
+/// express the v4 cross-key exclusivity, so it is admitted here on raw
+/// keys before deserialization.
 pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
         return; // pass 1 reports the syntax error itself
     };
-    if let Some(version) = value.get("ir_version").and_then(|v| v.as_u64())
-        && version != u64::from(crate::parse::IR_VERSION)
-    {
-        out.push(Diagnostic::error(
-            codes::VERSION,
-            format!("unsupported ir_version {version} (this core accepts {})", crate::parse::IR_VERSION),
-        ).with_help("update a pinned @gripsack/core to 0.36.0 or newer, or remove the pin to use the embedded frontend"));
-        return;
+    let version = value.get("ir_version").and_then(|v| v.as_u64());
+    if let Some(version) = version {
+        if !(u64::from(crate::parse::LEGACY_IR_VERSION)..=u64::from(crate::parse::IR_VERSION))
+            .contains(&version)
+        {
+            out.push(Diagnostic::error(
+                codes::VERSION,
+                format!(
+                    "unsupported ir_version {version} (this core accepts {}..={})",
+                    crate::parse::LEGACY_IR_VERSION,
+                    crate::parse::IR_VERSION
+                ),
+            ).with_help("update a pinned @gripsack/core to a release that emits ir_version 4, or remove the pin to use the embedded frontend"));
+            return;
+        }
+        if let Some(root) = value.as_object() {
+            envelope_check(root, version, out);
+        }
     }
+    check_modules_tagged(&value, out);
+    if version == Some(u64::from(crate::parse::IR_VERSION)) {
+        workspace::check(&value, out);
+    }
+}
+
+/// The v3/v4 envelope split (plan/0052 §2.1, schema/ir/v4.json root
+/// `oneOf`): v3 is the strict module map — required `modules`, no
+/// `workspace`, optional `host`; v4 requires core-injected `host` facts
+/// and exactly one of `workspace` or legacy `modules`.
+fn envelope_check(
+    root: &serde_json::Map<String, serde_json::Value>,
+    version: u64,
+    out: &mut Vec<Diagnostic>,
+) {
+    let has_workspace = root.contains_key("workspace");
+    let has_modules = root.contains_key("modules");
+    if version == u64::from(crate::parse::LEGACY_IR_VERSION) {
+        if has_workspace {
+            out.push(Diagnostic::error(
+                codes::MALFORMED,
+                "`workspace` requires ir_version 4; an ir_version 3 envelope declares a module map",
+            )
+            .with_help("emit ir_version 4 for workspace declarations, or remove the workspace key"));
+        }
+        if !has_modules {
+            out.push(Diagnostic::error(
+                codes::MALFORMED,
+                "missing field `modules`: an ir_version 3 envelope declares a module map",
+            ));
+        }
+    } else if version == u64::from(crate::parse::IR_VERSION) {
+        if !root.contains_key("host") {
+            out.push(Diagnostic::error(
+                codes::MALFORMED,
+                "ir_version 4 requires core-injected `host` facts (schema/ir/v4.json)",
+            ));
+        }
+        match (has_workspace, has_modules) {
+            (true, true) => out.push(Diagnostic::error(
+                codes::MALFORMED,
+                "ir_version 4 envelope declares both `workspace` and `modules`; exactly one is allowed",
+            )),
+            (false, false) => out.push(Diagnostic::error(
+                codes::MALFORMED,
+                "ir_version 4 envelope declares neither `workspace` nor `modules`; exactly one is required",
+            )),
+            _ => {}
+        }
+    }
+}
+
+/// The v3 module map — walked for ir_version 3 and for the v4
+/// legacy-modules compatibility branch alike.
+fn check_modules_tagged(value: &serde_json::Value, out: &mut Vec<Diagnostic>) {
     let Some(modules) = value.get("modules").and_then(|m| m.as_object()) else {
         return;
     };

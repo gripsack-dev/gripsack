@@ -1,0 +1,54 @@
+{
+  "diagnostics": [],
+  "ir": {
+    "host": {
+      "arch": "x86_64",
+      "libc": "glibc-2.36",
+      "os": "linux",
+      "tags": []
+    },
+    "ir_version": 4,
+    "workspace": {
+      "outputs": [
+        {
+          "files": [
+            {
+              "content": {
+                "kind": "literal",
+                "text": "setting=1\n"
+              },
+              "destination": {
+                "kind": "tracked_copy",
+                "path": "~/.config/demo/settings.conf"
+              }
+            }
+          ],
+          "kind": "profile",
+          "name": "dotfiles"
+        },
+        {
+          "commands": {
+            "tool": "bin/tool"
+          },
+          "kind": "package",
+          "layout": "relocatable",
+          "name": "native-tool",
+          "producer": {
+            "kind": "provider",
+            "provider": {
+              "fetch": {
+                "kind": "file",
+                "path": "tool.bin"
+              }
+            }
+          },
+          "target": {
+            "arch": "x86_64",
+            "os": "linux"
+          }
+        }
+      ]
+    }
+  },
+  "probe_requests": []
+}

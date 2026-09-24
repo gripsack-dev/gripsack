@@ -25,7 +25,10 @@ pub use adopt::adopt;
 pub use apply::{ApplyOptions, apply, apply_scoped};
 pub use check::check;
 pub use doctor::doctor;
-pub use eval::{check_ir, eval_repo, render_host_inputs, validate_sources, validated_ir};
+pub use eval::{
+    check_ir, eval_repo, reject_workspace_execution, render_host_inputs, validate_sources,
+    validated_ir,
+};
 pub use gc::gc;
 pub use generations::generations;
 pub use init::init;

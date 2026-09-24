@@ -861,18 +861,38 @@
    "mandatory_deliverable": "One workspace/output contract separating packages, environments, tasks, schedules, build checks, profiles, images and hooks",
    "required_acceptance_evidence": "Schema/Rust/TS conformance, runtime unknown-field/type rejection, project entry without fake hostname, profile compatibility and explicit unavailable-capability errors; no implied implementation of later executors",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "implemented_unverified",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates",
     "ci",
-    "proofs"
+    "proofs",
+    "linux-amd64",
+    "macos-arm64"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "Schema/Rust/TypeScript v4 catalog conformance across all nine typed output kinds",
+    "Decoded unknown-field, kind, type and duplicate-output rejection with source spans",
+    "Project gripsack.ts checks without hosts/<name>.ts or env.toml, including dotfiles-only profile and provider-backed package",
+    "Legacy v3 reader and existing profile inspect/apply/rollback remain compatible",
+    "Unavailable workspace plan/apply/update/adopt reject with E124 before activation, without builder bootstrap",
+    "Production-connected A1 semantic admission proof correspondence remains required at A1 closure"
    ],
-   "evidence_records": []
+   "evidence_kinds": ["runner", "formal", "review"],
+   "evidence_records": [],
+   "lane_status": {
+    "pure": "implemented_unverified",
+    "container-gates": "implemented_unverified",
+    "ci": "in_progress",
+    "proofs": "in_progress",
+    "linux-amd64": "implemented_unverified",
+    "macos-arm64": "blocked"
+   },
+   "status_history": [
+    {"date": "2026-09-24", "from": "pending", "to": "implemented_unverified"}
+   ],
+   "implementation_notes": "Read-only workspace v4 admission and CLI check landed; focused e2e 5/5 and golden 2/2 observed. Source-bound runner reports, full A1 proof family, native Mac and CI protection evidence remain open; no realization or schedule execution is claimed."
   },
   {
    "id": "A1-02",

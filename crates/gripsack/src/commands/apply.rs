@@ -71,6 +71,9 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
         Ok(ir) => ir,
         Err(code) => return code,
     };
+    if let Err(code) = crate::commands::reject_workspace_execution(&ir, "grip apply", palette) {
+        return code;
+    }
     let spinner = if palette.enabled {
         let pb = indicatif::ProgressBar::new_spinner();
         pb.set_style(

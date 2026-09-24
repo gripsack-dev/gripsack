@@ -371,6 +371,7 @@ mod tests {
                 ir_version: gripsack_ir::IR_VERSION,
                 host: Default::default(),
                 resources: vec![],
+                workspace: None,
                 modules: [
                     (
                         "consumer".into(),

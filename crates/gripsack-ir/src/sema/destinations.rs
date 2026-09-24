@@ -107,7 +107,7 @@ mod tests {
 
     fn ir_with(steps: Vec<Step>) -> Ir {
         Ir {
-            ir_version: crate::IR_VERSION,
+            ir_version: crate::LEGACY_IR_VERSION,
             host: Default::default(),
             resources: vec![],
             modules: [(
@@ -119,6 +119,7 @@ mod tests {
             )]
             .into_iter()
             .collect(),
+            workspace: None,
         }
     }
 
@@ -159,7 +160,7 @@ mod case_tests {
 
     fn ir_with_host(os: &str, tos: &[&str]) -> Ir {
         Ir {
-            ir_version: crate::IR_VERSION,
+            ir_version: crate::LEGACY_IR_VERSION,
             host: crate::model::HostFacts {
                 os: os.into(),
                 arch: "x86_64".into(),
@@ -187,6 +188,7 @@ mod case_tests {
                     )
                 })
                 .collect(),
+            workspace: None,
         }
     }
 

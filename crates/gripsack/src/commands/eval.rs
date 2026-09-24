@@ -76,19 +76,26 @@ pub fn eval_repo(
     palette: Palette,
 ) -> Result<EvalOutcome, ExitCode> {
     let env_path = repo.join("env.toml");
-    if !env_path.exists() {
+    if !env_path.exists() && !repo.join("gripsack.ts").is_file() {
         eprintln!(
-            "grip: no env.toml in {} — is this an env repo?",
+            "grip: no env.toml or gripsack.ts in {} — is this a gripsack repo?",
             repo.display()
         );
         return Err(ExitCode::FAILURE);
     }
-    let env = match gripsack_config::load_env(&env_path) {
-        Ok(env) => env,
-        Err(diagnostics) => {
-            eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
-            return Err(ExitCode::FAILURE);
+    // A project workspace needs no machine-named host entry or
+    // env.toml. The latter remains an optional explicit policy layer;
+    // missing settings never grant extra evaluator permissions.
+    let env = if env_path.exists() {
+        match gripsack_config::load_env(&env_path) {
+            Ok(env) => env,
+            Err(diagnostics) => {
+                eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+                return Err(ExitCode::FAILURE);
+            }
         }
+    } else {
+        gripsack_config::EnvConfig::default()
     };
     let user = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
@@ -239,6 +246,27 @@ pub fn check_ir(json: &str, palette: Palette) -> Result<Ir, ExitCode> {
         eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
         ExitCode::FAILURE
     })
+}
+
+/// Read-only workspace admission is available before the A2/E/B
+/// executors. No module executor may mistake an admitted catalog for
+/// an empty personal profile and silently report success.
+pub fn reject_workspace_execution(
+    ir: &Ir,
+    operation: &str,
+    palette: Palette,
+) -> Result<(), ExitCode> {
+    let Some(workspace) = &ir.workspace else {
+        return Ok(());
+    };
+    let diagnostic = gripsack_ir::Diagnostic::error(
+        gripsack_ir::codes::WORKSPACE_EXEC_UNAVAILABLE,
+        format!("{operation} cannot execute workspace outputs yet"),
+    )
+    .with_label(Some(workspace.span.clone()), "workspace declared here")
+    .with_help("grip check validates and lists named outputs; realization and task execution belong to A2/A2-P/E/B");
+    eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+    Err(ExitCode::FAILURE)
 }
 
 /// E110: a fetch-less module can only deploy repo files — a missing

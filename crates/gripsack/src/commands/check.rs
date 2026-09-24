@@ -16,6 +16,20 @@ pub fn check(repo: &Path, host: Option<&str>, palette: Palette) -> ExitCode {
     };
     match validated_ir(&outcome, repo, host, palette) {
         Ok(ir) => {
+            if let Some(workspace) = &ir.workspace {
+                let host = &ir.host;
+                println!(
+                    "{} {} named outputs · host {}/{}",
+                    palette.good("check: ok"),
+                    workspace.outputs.len(),
+                    host.os,
+                    host.arch
+                );
+                for output in &workspace.outputs {
+                    println!("  {} ({})", output.name(), output.kind());
+                }
+                return ExitCode::SUCCESS;
+            }
             // physical destination uniqueness (0030 §P0-1): reads
             // only, no side effects — two spellings of one directory
             // entry are a check-time error, rendered like any sema

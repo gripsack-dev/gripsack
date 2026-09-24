@@ -3,7 +3,7 @@ use crate::step::Step;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ir {
     pub ir_version: u32,
@@ -13,7 +13,54 @@ pub struct Ir {
     /// these or the core's built-ins, else E107.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resources: Vec<Resource>,
+    /// The v3 module map. Required on the wire for ir_version 3 and for
+    /// the v4 legacy-modules branch — the version-dispatched envelope
+    /// check in `tagged.rs` enforces that before serde; `default` exists
+    /// so a v4 workspace envelope (which forbids `modules`) can share
+    /// this root.
+    #[serde(default)]
     pub modules: BTreeMap<String, Module>,
+    /// The v4 workspace declaration (schema/ir/v4.json, plan/0052 §2.1).
+    /// Mutually exclusive with `modules` on the wire; rejected together
+    /// by the envelope check before deserialization.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<crate::workspace::Workspace>,
+}
+
+/// Version-aware serialization (hand-written — a `skip_serializing_if`
+/// predicate sees only the field, never the sibling version/workspace
+/// state). `modules` is ALWAYS emitted for module-map documents so a
+/// valid v3 `{ir_version: 3, modules: {}}` round-trips byte-shaped and
+/// strict v3 readers stay satisfied; it is omitted ONLY for a v4
+/// workspace document, whose schema forbids the key (XOR envelope).
+impl Serialize for Ir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let omit_modules = self.workspace.is_some() && self.modules.is_empty();
+        let mut len = 2; // ir_version, host
+        if !self.resources.is_empty() {
+            len += 1;
+        }
+        if !omit_modules {
+            len += 1;
+        }
+        if self.workspace.is_some() {
+            len += 1;
+        }
+        let mut state = serializer.serialize_struct("Ir", len)?;
+        state.serialize_field("ir_version", &self.ir_version)?;
+        state.serialize_field("host", &self.host)?;
+        if !self.resources.is_empty() {
+            state.serialize_field("resources", &self.resources)?;
+        }
+        if !omit_modules {
+            state.serialize_field("modules", &self.modules)?;
+        }
+        if let Some(workspace) = &self.workspace {
+            state.serialize_field("workspace", workspace)?;
+        }
+        state.end()
+    }
 }
 
 /// A named, declared resource — a marker closing the namespace so typos

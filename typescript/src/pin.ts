@@ -126,8 +126,40 @@ export const verifyBinary = api.verifyBinary;
 export const verifyDeployed = api.verifyDeployed;
 export const verifyFile = api.verifyFile;
 export const verifyShell = api.verifyShell;
+export const artifact = api.artifact;
+export const artifactFile = api.artifactFile;
+export const check = api.check;
+export const daily = api.daily;
+export const defineWorkspace = api.defineWorkspace;
+export const emitWorkspaceIr = api.emitWorkspaceIr;
+export const environment = api.environment;
+export const exec = api.exec;
+export const file = api.file;
+export const hook = api.hook;
+export const hostPath = api.hostPath;
+export const identity = api.identity;
+export const image = api.image;
+export const lit = api.lit;
+export const literalText = api.literalText;
+export const managedBlock = api.managedBlock;
+export const packageCommand = api.packageCommand;
+export const pkg = api.pkg;
+export const profile = api.profile;
+export const provider = api.provider;
+export const recipe = api.recipe;
+export const repoFile = api.repoFile;
+export const runBash = api.runBash;
+export const schedule = api.schedule;
+export const symlinkTo = api.symlinkTo;
+export const targetPlatform = api.targetPlatform;
+export const task = api.task;
+export const templateText = api.templateText;
+export const trackedCopyTo = api.trackedCopyTo;
+export const weekly = api.weekly;
+export const workspace = api.workspace;
 
 export type {
+  CheckSpec,
   Condition,
   Dependency,
   Dest,
@@ -135,25 +167,60 @@ export type {
   Env,
   EnvContext,
   EnvFn,
+  EnvironmentSpec,
+  ExecSpec,
   FactView,
   Fetch,
+  HookSpec,
   HostFacts,
-  Intent,
+  ImageSpec,
   Inputs,
+  Intent,
   IrEntry,
   IrModule,
   ModuleSpec,
   ModuleValue,
   Ownership,
+  PackageSpec,
   Phase,
   ProbeBuilder,
   ProbeKind,
   ProbeRequest,
+  ProfileSpec,
+  RecipeSpec,
   Resource,
+  RunBashSpec,
+  ScheduleSpec,
   Span,
   Step,
   StepAction,
   StepOpts,
+  TaskSpec,
   Trigger,
   Verify,
+  WorkspaceArg,
+  WorkspaceArtifactRef,
+  WorkspaceCalendar,
+  WorkspaceCommand,
+  WorkspaceContent,
+  WorkspaceContext,
+  WorkspaceDestination,
+  WorkspaceExecCommand,
+  WorkspaceFile,
+  WorkspaceFileSpec,
+  WorkspaceFn,
+  WorkspaceHostPath,
+  WorkspaceLiteral,
+  WorkspaceOutput,
+  WorkspaceOutputKind,
+  WorkspaceOutputNode,
+  WorkspacePackageCommand,
+  WorkspacePath,
+  WorkspacePlatform,
+  WorkspaceProducer,
+  WorkspaceRunBashCommand,
+  WorkspaceSource,
+  WorkspaceSpec,
+  WorkspaceValue,
+  WorkspaceWeekday,
 } from "./index.ts";

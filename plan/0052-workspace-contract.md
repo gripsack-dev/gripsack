@@ -1,7 +1,7 @@
-# 0052 — A1 workspace contract: v4 wire grammar, ownership map and cutover design
+# 0052 — A1 workspace contract and read-only v4 admission
 
-Status: **design freeze candidate — contract only; nothing in this document is implemented or verified** · Owner: implementation agent (A1 contract slice) · Date: 2026-09-24
-Scope: Epic A / A1 contract freeze (rows A1-01…A1-12; **A1-07 partial** — the delivery ledger and closure checker land in the 0049/0051 integration slice, not here)
+Status: **A1-01 implementation in progress; full A1 and release unverified** · Owner: implementation agent · Date: 2026-09-24
+Scope: Epic A / A1 (rows A1-01…A1-12; A1-07 partial in plan/0049)
 Sources: bundle edition 5 — `START_HERE.md`, master plan §§3–5, 7–8; Epic A §§3.1–3.5, §7 rows A1-01…A1-12, §§8.2–8.3; local plans 0003 §8, 0013, 0035, 0036, 0048 §§6/9/10; live checkout at the time of writing.
 Coordination: plan/0050 (E0 vocabulary/scenarios), plan/0051 (B0 LLB matrix), plan/0049 (H0 inventory/ledger). Plan 0048 §9 release classes still bind every public release; this plan makes no release claim.
 
@@ -73,12 +73,14 @@ v3's envelope is `{ ir_version, host?, resources?, modules: {name: Module} }` �
 {
   "ir_version": 4,
   "workspace": {
-    "name": "…",                 // optional; provenance span mandatory
-    "inputs": { /* captured source/import identities, §4 */ },
-    "mutation_locks": [ /* reachable pure lock refs, §2.2; NOT portable pins */ ],
-    "outputs": {                 // named-output catalog; one declaration namespace
-      "<name>": { "kind": "package|environment|task|schedule|profile|recipe|check|image|hook", … }
-    }
+    "span": {"file": "gripsack.ts", "line": 1},
+    "name": "…",                 // optional full-A1 target
+    "inputs": { /* captured source/import identities, A1-05 */ },
+    "mutation_locks": [ /* reachable pure lock refs, A1-12; NOT portable pins */ ],
+    "outputs": [                // array preserves duplicate names + both spans for admission
+      { "name": "tool", "kind": "package", "span": …, … },
+      { "name": "personal", "kind": "profile", "span": …, … }
+    ]
   },
   "host": { /* core-injected OS/arch/ABI facts; NOT a hostname selector or global build target */ }
 }
@@ -87,6 +89,11 @@ v3's envelope is `{ ir_version, host?, resources?, modules: {name: Module} }` �
 Rules:
 
 - `outputs` names are the single catalog namespace; a collision is an admission error naming **both** declaration spans (A1-06). Local step labels and module names are *not* catalog names and carry no cache/deployment identity (Epic A §3.2).
+- The A1-01 read-only admission slice initially accepts `span` and
+  `outputs` only; it **rejects** (does not ignore) `name`, `inputs` and
+  `mutation_locks` until A1-05/A1-12 implement their normalization
+  and identity rules in this v4 cutover. No v4 public release is
+  authorized with those mandatory A1 rows incomplete.
 - A project needs no fake `hosts/<name>.ts` file or personal profile to
   declare a package. The core still injects host facts to admit native
   processes, environments and profiles; each recipe/output also carries
@@ -279,8 +286,8 @@ E2E/golden: `e2e/fixtures/golden/` (regenerated + new v4 fixtures), `e2e/test_go
 | Entry (live path) | v4 behavior |
 |---|---|
 | Internal frontend evaluation (`commands/eval.rs`, used by `check`/`plan`/`apply`) | Sandboxed Deno eval (0013 D2 unchanged) emits v4; declaration evaluation runs no build or host effects and needs no fake `hosts/<name>.ts` for a project workspace |
-| `grip check` (`commands/check.rs`) | eval + v4 admission + sema + linters, then stop — zero effects, **never provisions a builder** (A1-06 evidence; master plan §6) |
-| `grip plan` / `grip apply` | Admission → ownership planning → effects for profile-owned outputs only; preview is read-only; a failed preparation/validation never switches the selected generation |
+| `grip check` (`commands/check.rs`) | Sandboxed eval + v4 admission + sema, then list named workspace outputs; no profile mutation or builder startup (frontend runtime may be provisioned) |
+| `grip plan` / `grip apply` | A1-01 rejects workspace execution with E124 before effects; A2 will extend the common ownership planner to workspace profiles. Legacy v4 module flows retain their existing behavior during migration |
 | Build checks | Distinct command or explicit execution flag (exact spelling an A1/A2-P CLI decision); `check` does not suddenly run workloads |
 | `grip run --env …` / `grip shell …` | A2-P-owned (provisional spellings); A1 defines only the admitted environment/task shapes |
 | Unavailable executor (`isolated_linux` before B2, schedule registration before E3, host runBash without declared toolchain pin) | Explicit E-code diagnostic at admission naming the capability, the declaring span and the owning milestone; **no silent fallback** |
@@ -320,17 +327,19 @@ TLA+/TLC extension (rendered-candidate validation, deployment observation, retai
 
 ### 5.2 Delivery checker calibration (A1-07 — **partial in this slice**)
 
-The integration slice (plan/0049 lineage) owns `verification/delivery.json`, `scripts/check_delivery.py`, runner-evidence admission in `scripts/delivery_evidence.py`, and their calibrated CI gate. Its `scripts/check_architecture.py` enforces current protected crate dependency direction; existing `gripsack-ir/tests/schema_acceptance.rs` checks v3 schema/parser parity in the Rust gate. **A1-07 remains partial:** the v4 schema/TS/Rust conformance, complete lane/case inventory and module/API cutover are not yet implemented. This design supplies the target module ownership (§3), not passing evidence for that cutover.
+The integration slice (plan/0049 lineage) owns `verification/delivery.json`, `scripts/check_delivery.py`, runner-evidence admission in `scripts/delivery_evidence.py`, and their calibrated CI gate. Its `scripts/check_architecture.py` enforces current protected crate dependency direction. The Rust gate now exercises both the v3 schema/parser parity and v4 schema admission tests, while TypeScript and real CLI tests cover the first v4 workspace corpus. **A1-07 remains partial:** full cross-language golden coverage across output kinds, complete lane/case inventory and module/API cutover are not yet implemented. The §3 module map names the target ownership, not passing evidence for that cutover.
 
 ### 5.3 Export/migration inventory (A1-09, A1-10, A1-12)
 
-The live `typescript/src/index.ts` exports **40 runtime values and 29 types**
-(not 27 exports). The table inventories every symbol and its destination;
-this is a migration contract, not an assertion that the new API exists.
-`advanced` is an explicit stability tier, never a second execution
-path. v3 serialized values keep their versioned reader.
+At the v3 baseline, `typescript/src/index.ts` exported **40 runtime
+values and 29 types** (not 27 exports). The table inventories those
+baseline symbols and their cutover destinations. The current partial
+v4 slice adds workspace exports but has **not** retired legacy root
+constructors; A1-09/A1-10/A1-12 migration remains open. `advanced`
+is an explicit stability tier, never a second execution path.
+V3 serialized values keep their versioned reader.
 
-| Current runtime exports | Cutover destination and owner |
+| v3 baseline runtime exports | Cutover destination and owner |
 |---|---|
 | `dep` | Typed artifact/runtime/ordering refs replace module-name dependencies; retire root constructor (A1-02, A5-05). |
 | `merge`, `symlink`, `template`, `trackedCopy` | Orthogonal content vs destination policy; `symlink`/tracked copy remain conveniences, `merge` becomes `managedBlock`, `template` renders content only; retain v3 stored tags' meanings (A1-11, A2-06, A5-06). |
@@ -345,7 +354,7 @@ path. v3 serialized values keep their versioned reader.
 | `buildStep`, `configStep`, `fetchStep`, `installStep`, `runStep`, `shellStep`, `step` | Retire public universal phase pipeline and duplicated script constructors; local ordered command/action lists in recipes/tasks, typed profile files and shared `exec`/`runBash`; v3 compat reader only (A1-03, A1-09, A5-05, B2-07). |
 | `verifyBinary`, `verifyDeployed`, `verifyFile`, `verifyShell` | Retain typed check-construction conveniences with explicit subject/stage; build validation, invocation postconditions and deployment pre-flip checks remain different lifecycles (A1-08, A1-10). |
 
-| Current type exports | Cutover destination |
+| v3 baseline type exports | Cutover destination |
 |---|---|
 | `Dependency`, `Edge` | Typed graph roles/references, advanced IR projection; no stringly module dependency as ordinary authoring (A1-02). |
 | `Dest`, `Ownership` | Typed file destination-policy authoring; old serialized `Ownership` variants still readable (A1-11). |
@@ -391,7 +400,7 @@ All rows: **design frozen here; implementation pending; no evidence claimed.** "
 
 | Row | Contract sections | Representative case (evidence to produce) | Proof/calibration target |
 |---|---|---|---|
-| A1-01 workspace/output contract | §2.1, §3.2 | `grip check` passes on a workspace with no `host` and only a package output; unknown field rejected with span; unavailable executor errors explicitly | Schema/Rust/TS conformance; admission kernel |
+| A1-01 workspace/output contract | §2.1, §3.2 | `grip check` passes on a workspace with no fake hostname entry or `env.toml` and only a package output; unknown field rejected with span; unavailable executor errors explicitly | Schema/Rust/TS conformance; admission kernel |
 | A1-02 typed outputs/edges | §2.2 edges, §4 | Cycle, invalid ref, wrong output kind, incompatible target/layout each rejected naming declaration spans; graph adapters exercise production policy | Graph/closure kernel + dropped-validation-edge mutant |
 | A1-03 immutable authoring, runBash | §2.2 CommandSpec | Fluent ≡ object IR byte-identical modulo spans; `${}` interpolation rejected at its span; pinned interpreter required; argv/env boundaries preserved; dedent line map points at original lines | Normalization kernel (fluent/object equivalence) |
 | A1-04 separate identities | §4 | Script/toolchain/policy change invalidates; file/line/label-only change preserves recipe identity; consumer rewiring does not rebuild package | Identity kernel + provenance-exclusion property + mutants |
@@ -419,9 +428,62 @@ Per the IR skill, one PR series touching all three parties:
 - [ ] E2E: hostile decoded-IR cases, graduated-example admission, diagnostics parity, no-builder `check` proof
 - [ ] `AGENTS.md`/docs updated (IR-v2 staleness fixed); ledger/STATUS/checker updated by the **integration owner in the same series**, not this slice
 
-## 9. Honesty register
+## 9. A1-01 read-only implementation packet (not A1 closure)
 
-- This document is a design freeze. **No code, schema, test or fixture has been changed by it, and no behavior above is claimed to exist.**
-- Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior; this plan authorizes no publication.
-- A1-07's checker/ledger evidence is explicitly partial here and owned by the integration slice.
-- Where the bundle prose and the live checkout disagreed (0003 §8 unknown-field tolerance), this plan records the live fact (§1) rather than inheriting the stale sentence.
+The schema/Rust/TypeScript slice adds `schema/ir/v4.json`, versioned
+`gripsack-ir` admission (strict v3 reader + v4 workspace or legacy
+module envelope), pure workspace output constructors, an embedded Deno
+driver preferring `gripsack.ts`, and `grip check` catalog inspection
+without `hosts/<host>.ts` or `env.toml`. Rust sema checks duplicate
+names with both spans, the current named references/kinds, task
+prerequisite cycles, source spans and illegal command contexts. Full
+cross-role cycle/kind/selector and target/layout graph admission remains
+A1-02; the read-only v4 workspace does not execute. `grip plan`,
+`apply`, `update` and `adopt` reject workspace execution with E124
+before host effects; no builder or OS scheduler is provisioned. The
+v4 corpus includes a literal dotfile profile and a provider-backed
+package without a synthetic recipe.
+
+Focused observed evidence: container-built real CLI workspace e2e
+**5/5 passed**; golden corpus regenerated in the e2e container
+**2/2 passed**, with the prior kitchen-sink output changing only
+`ir_version: 3 → 4`. Draft 2020-12 schema admission accepts both a
+literal-only profile and provider-only package. `npm run build` +
+`npm pack` served the compiled SDK to a separate Node 24 process;
+its installed root export emitted a v4 profile workspace without
+legacy `modules`. Integrated compose gates on 2026-09-24
+(14:07–14:26 UTC) **all passed**: Rust fmt/clippy/tests (40
+`gripsack-ir` unit, 5 v4 schema acceptance, 3 workspace admission
+cases), TypeScript Deno tests **53 passed**, full real e2e **251
+passed**, TLC image `RUN` **CACHED**, and the existing Verus policy
+kernels executed **56 verified / 0 errors** plus four calibrated
+mutants. A second complete compose pass after the Rust tagged-walker
+and workspace-model module splits and `cargo fmt --all` also passed
+(Rust fmt/clippy/tests, Deno tests, **251/251** e2e, TLC gate and
+Verus **56 verified / 0 errors** with four mutants). The existing
+policy proofs do **not** prove the new A1 workspace admission kernel;
+new production-connected Verus obligations remain mandatory. Native
+macOS, TLAPS and exact source-bound delivery evidence are not supplied
+by these Linux worktree observations.
+
+**Not delivered by this packet:** A1-02–A1-06 and A1-08–A1-12
+identities, per-platform pins, pure mutation locks, ownership
+materialization, source-built artifacts, task/schedule executors,
+compact root-export retirement, four executed examples and the
+production Verus A1 normalization/admission obligations. A1-07
+checker/architecture work is partial (plan/0049). The existing v3
+stored `Ownership`/`Action`/`Trigger`/`EnvVar`/`FetchSpec` wire meanings
+remain unchanged. A1-01 is not `verified` in the delivery ledger until
+its full source-bound reports and Mac/proof/CI lanes are complete.
+
+## 10. Honesty register
+
+- This document began as a design candidate; §9 records one read-only
+  admission packet, not a completion or release claim for A1.
+- Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
+  this plan authorizes no publication.
+- A1-07's checker/ledger and protected dependency gate remain partial
+  in plan/0049 and their own delivery rows.
+- Where older plan 0003/skill unknown-field tolerance conflicted with
+  strict v3/v4 readers, this plan and their amended rules record the
+  live version boundary (§1).

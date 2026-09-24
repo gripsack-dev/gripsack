@@ -29,6 +29,58 @@ export default defineEnv((ctx) => ({
 registered by import side effect — the function *returns* the
 environment, so `Inputs → Environment` is testable and cacheable.
 
+## A workspace is a function (IR v4)
+
+A root `gripsack.ts` — preferred over `hosts/<name>.ts` when present —
+default-exports `defineWorkspace` and returns a `workspace({ outputs })`
+value. No hostname selection and no fake host file: the core injects
+the same facts/probes context, and the emitter produces the v4
+workspace envelope (`{ir_version: 4, host, workspace}`):
+
+```ts
+// gripsack.ts
+import { defineWorkspace, workspace, recipe, pkg, targetPlatform } from "@gripsack/core";
+import { githubRelease } from "@gripsack/core";
+
+const tools = recipe("tools", {
+  source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
+  execution: "native",
+  output_kind: "tree",
+  target: targetPlatform({ os: "linux", arch: "x86_64" }),
+});
+
+export default defineWorkspace(() =>
+  workspace({
+    outputs: [
+      tools,
+      pkg("tools-bin", {
+        producer: "tools", // or provider(githubRelease({…})) — no synthetic recipe
+        commands: { tools: "bin/tools" },
+        target: targetPlatform({ os: "linux", arch: "x86_64" }),
+        layout: "relocatable",
+      }),
+    ],
+  }));
+```
+
+Outputs are the nine typed kinds — `recipe`, `pkg`, `environment`,
+`task`, `schedule`, `check`, `image`, `profile`, `hook` — each a pure,
+frozen value with a mandatory source span. Duplicate catalog names
+show both declaration sites; invalid references show the referring
+declaration (and the conflicting target where applicable); dependency
+cycles show the causal path. `runBash` bodies are literal text (`${…}`
+interpolation is rejected; dynamic values enter through typed
+`env`/`argv` refs) and require a declared `packageCommand` interpreter,
+never ambient Bash.
+
+This A1-01 slice is **read-only**. `grip check` evaluates and admits
+the workspace without a host file or `env.toml` and lists named outputs.
+`grip plan`, `apply` and `update` reject workspace execution with E124
+before host effects; A2/A2-P/E/B own realization and scheduling. An
+`isolated_linux` declaration does not bootstrap a builder in `check`.
+The legacy `hosts/<name>.ts` path remains a v4 modules-compatibility
+envelope until the A5 migration; it is not a workspace executor.
+
 ## Probes are requests, not effects
 
 The sandbox cannot run probes, so `ctx.probe.executable(name)` /
@@ -71,6 +123,9 @@ First eval of an unfamiliar repo is an explicit trust decision
 | area | exports |
 |---|---|
 | hosts | `defineEnv`, `Env`, `EnvContext`, `EnvFn` |
+| workspace | `defineWorkspace`, `workspace`, `emitWorkspaceIr`, `WorkspaceValue`, `WorkspaceContext` |
+| outputs | `recipe`, `pkg`, `environment`, `task`, `schedule`, `check`, `image`, `profile`, `hook`, `provider`, `targetPlatform` |
+| commands/files | `exec`, `runBash`, `file`, `lit`, `artifact`, `hostPath`, `packageCommand`, `repoFile`, `artifactFile`, `identity`, `literalText`, `templateText`, `symlinkTo`, `trackedCopyTo`, `managedBlock`, `daily`, `weekly` |
 | modules | `module`, `define`, `Module`, `ModuleSpec`, `ModuleValue` |
 | probes | `ctx.probe` (`executable`, `file_exists`), `ProbeRequest` |
 | facts | `HostFacts` (core-injected), `when`, `hasTag`, `Condition` |

@@ -3,8 +3,14 @@
 use crate::diagnostic::{Diagnostic, codes};
 use crate::model::Ir;
 
-/// The only IR version this core accepts (for now).
-pub const IR_VERSION: u32 = 3;
+/// The legacy module-graph IR version (schema/ir/v3.json), retained
+/// behind version dispatch (plan/0052 §1 resolution 3, §2.3).
+pub const LEGACY_IR_VERSION: u32 = 3;
+/// The current IR version — the one the frontend emits
+/// (schema/ir/v4.json, workspace admission).
+pub const IR_VERSION: u32 = 4;
+/// The declared ir_version range this core accepts: `3..=4`.
+pub const ACCEPTED_IR_VERSIONS: std::ops::RangeInclusive<u32> = LEGACY_IR_VERSION..=IR_VERSION;
 
 /// Parse IR JSON into the typed model (E000 malformed, E100 version).
 /// Pass 1.5 (tagged-field validation) runs BEFORE serde drops unknown

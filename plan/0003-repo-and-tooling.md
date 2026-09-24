@@ -116,11 +116,21 @@ until `apply` exists; the placeholder tape exercises `--version` and
 ## 8. Versioning and IR compatibility
 
 - Package versions are independent; the **IR version** is the real
-  contract. The core declares the IR range it accepts; the frontend
-  declares what it emits; `grip doctor` flags mismatches.
+  contract. The core accepts an explicit version range (currently
+  strict v3 modules and v4 workspace/legacy-module envelopes); the
+  frontend emits exactly one version (currently v4). `grip doctor`
+  reports incompatible pins.
 - Pre-1.0: keep package versions loosely synced to spare confusion.
-- IR readers MUST tolerate unknown fields (forward compatibility);
-  writers never emit fields the schema doesn't describe.
+- The actual v3/v4 readers reject unknown structural fields (serde
+  `deny_unknown_fields` plus the tagged-field pre-pass). The old
+  unknown-field-tolerance sentence was not implemented and MUST NOT be
+  used to justify an unversioned schema change. A new field is
+  backwards-compatible only if the older declared reader explicitly
+  supports that extension point; otherwise bump `ir_version` and
+  retain a versioned reader. Writers emit only schema-described fields.
+  Persisted generation/lock formats are separate contracts; changing
+  their IR-derived serde values requires a compatible reader or tested
+  migration, never an implicit reinterpretation.
 
 ## 9. Branch protection
 

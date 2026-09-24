@@ -22,6 +22,9 @@ pub fn plan_ir(path: &Path, palette: Palette) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Err(code) = crate::commands::reject_workspace_execution(&ir, "grip plan", palette) {
+        return code;
+    }
     tracing::info!(modules = ir.modules.len(), "ir parsed and validated");
     let host = &ir.host;
     println!(
@@ -70,6 +73,9 @@ pub fn plan_module(path: &Path, name: &str, palette: Palette) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Err(code) = crate::commands::reject_workspace_execution(&ir, "grip plan", palette) {
+        return code;
+    }
     if !ir.modules.contains_key(name) {
         eprintln!(
             "grip: no module {name:?} in the graph (have: {})",

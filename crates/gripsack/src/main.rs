@@ -56,9 +56,9 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// Fetch, build, and deploy modules — one new generation per run
+    /// Fetch, build and deploy legacy modules; workspace effects require A2
     Apply {
-        /// Host entrypoint (default: this machine's hostname)
+        /// Legacy host entrypoint (workspace uses gripsack.ts instead)
         #[arg(long)]
         host: Option<String>,
         /// Env repo path or git URL (default: current directory)
@@ -73,18 +73,17 @@ enum Command {
         #[arg(long)]
         jobs: Option<usize>,
     },
-    /// Validate the env — eval, IR sema, linters — and stop (0011 §9).
-    /// Zero side effects; exit code is the CI signal.
+    /// Validate a workspace catalog or legacy env without host activation.
+    /// The provisioned frontend may be prepared; no builder starts.
     Check {
-        /// Host entrypoint (default: this machine's hostname)
+        /// Legacy host entrypoint (ignored for gripsack.ts workspaces)
         #[arg(long)]
         host: Option<String>,
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
     },
-    /// Show what an apply would change, without changing anything.
-    /// For now: validate IR and show the execution waves.
+    /// Inspect legacy module operations; workspace execution is not yet available
     Plan {
         #[arg(long)]
         host: Option<String>,
@@ -108,7 +107,7 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
-    /// Re-resolve and rewrite the lockfile (never deploys — apply after)
+    /// Re-resolve legacy module pins; workspace locks are not yet executable
     Update {
         #[arg(long)]
         host: Option<String>,
@@ -269,6 +268,9 @@ fn main() -> ExitCode {
                 Ok(ir) => ir,
                 Err(code) => return code,
             };
+            if let Err(code) = commands::reject_workspace_execution(&ir, "grip plan", palette) {
+                return code;
+            }
             {
                 match gripsack_exec::expand::expand_all(&ir.modules).and_then(|plans| {
                     gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &plans)

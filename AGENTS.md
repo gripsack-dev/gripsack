@@ -41,7 +41,7 @@ archived.
 | Path | Contents |
 |---|---|
 | `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the landed/deferred/rejected ledger — update it in the same PR |
-| `schema/ir/v3.json` | THE current contract between frontend and core (the frontend emits `IR_VERSION = 3`); v1/v2 retained as history |
+| `schema/ir/v4.json` | Current emitted contract: v4 workspace catalog or v4 legacy modules; the core also reads strict v3 for existing pinned frontends. v1–v3 schemas remain history, never a license to reinterpret retained state |
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
 | `crates/gripsack-store` | store paths, generations, GC |
 | `crates/gripsack-exec` | DAG scheduling |
@@ -74,8 +74,11 @@ archived.
 - **IR changes touch all three sides in one PR**: `schema/`,
   `crates/gripsack-ir`, `typescript/`. Bump `ir_version` on breaking
   change.
-- **Provenance is mandatory** — every IR node carries `source: {file,
-  line}` from the frontend that emitted it.
+- **Provenance is mandatory** — every semantic IR declaration carries
+  its emitting source location (`span: {file, line, col?}` on the
+  current wire); nested field values inherit their declaring node's
+  location. Legacy v3 optional spans remain readable, never a reason
+  to omit v4 provenance.
 - The core never evaluates code and never sees credentials. The
   frontend runs sandboxed (no env vars, no network, no subprocesses);
   host facts arrive via the inputs envelope, effects as probes. The

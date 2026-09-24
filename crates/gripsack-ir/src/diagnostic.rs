@@ -50,6 +50,29 @@ pub mod codes {
     pub const UNKNOWN_EDGE: &str = "E122";
     /// Two build dependencies normalize to the same GRIP_DEP_* identifier.
     pub const BUILD_DEP_ENV_COLLISION: &str = "E123";
+    /// A declared workspace capability has no available executor on this
+    /// build (isolated_linux before B2, schedule registration before E3,
+    /// …). Emitted by the CLI plan/apply lanes before any effect — never
+    /// a silent host fallback (plan/0052 §3.2).
+    pub const WORKSPACE_EXEC_UNAVAILABLE: &str = "E124";
+    /// Two workspace outputs declare the same catalog name (0052 §2.1).
+    pub const DUPLICATE_WORKSPACE_OUTPUT: &str = "E125";
+    /// A workspace reference names no admitted output, or one of the
+    /// wrong kind (0052 §2.2 edges).
+    pub const UNKNOWN_WORKSPACE_REF: &str = "E126";
+    /// A cycle in the workspace task dependency graph.
+    pub const WORKSPACE_CYCLE: &str = "E127";
+    /// A typed command reference in a position that cannot run it:
+    /// package_command as an environment value, or a run_bash
+    /// interpreter that is not a pinned package_command (0052 §2.2).
+    pub const BAD_WORKSPACE_CONTEXT: &str = "E128";
+    /// A workspace span with an empty file or a line/column below 1 —
+    /// v4 provenance is mandatory and well-formed.
+    pub const BAD_WORKSPACE_SPAN: &str = "E129";
+    /// A workspace value outside the admitted grammar: empty output
+    /// catalog, empty output name, malformed calendar time, or a file
+    /// content/origin combination the grammar forbids (0052 §2.2).
+    pub const INVALID_WORKSPACE_VALUE: &str = "E130";
 }
 
 // ---------------------------------------------------------------- diagnostics
