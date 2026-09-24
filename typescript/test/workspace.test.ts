@@ -1,13 +1,13 @@
-/** Workspace contract tests (0052 A1): the v4 workspace envelope,
- *  the nine typed output constructors, run_bash literal/interpreter
- *  boundaries with dedent source maps, typed reference/cycle
- *  validation, and the no-registry purity guarantee. */
+/** Workspace v5 contract: named outputs, immutable command authoring,
+ *  reference admission, literal Bash and pure deterministic emission. */
 
 import assert from "node:assert/strict";
 import { emitIr, module } from "../src/index.ts";
 import {
   artifact,
   artifactFile,
+  bash,
+  bashBody,
   check,
   daily,
   emitWorkspaceIr,
@@ -37,7 +37,7 @@ import {
   weekly,
   workspace,
 } from "../src/workspace.ts";
-import type { WorkspaceValue } from "../src/workspace.ts";
+import type { WorkspaceArg, WorkspaceValue } from "../src/workspace.ts";
 import { githubRelease, tarball } from "../src/fetch.ts";
 import type { HostFacts } from "../src/index.ts";
 
@@ -350,14 +350,22 @@ Deno.test("constructors reject unknown fields for JS callers and casts", () => {
   );
 });
 
-Deno.test("run_bash rejects interpolation at the declaration span", () => {
+Deno.test("Bash body interpolation rejects the literal at its source line", async () => {
+  const file = (await Deno.readTextFile(new URL(import.meta.url))).split("\n");
+  const site = file.findIndex((line) => line.trim() === "echo \\${HOME} && true") + 1;
+  assert.ok(site > 0);
   assert.throws(
-    () =>
-      runBash({
-        interpreter: packageCommand("bash", "bash"),
-        body: "echo ${HOME} && true",
-      }),
-    /literal text — "\$\{" interpolation is rejected \(declared at .*workspace\.test\.ts:\d+\)/,
+    () => bashBody`
+      echo before
+      echo \${HOME} && true
+    `,
+    (error: unknown) => error instanceof Error &&
+      error.message.includes(`workspace.test.ts:${site}`) &&
+      error.message.includes("interpolation is rejected"),
+  );
+  assert.throws(
+    () => runBash({ interpreter: packageCommand("bash", "bash"), body: "echo ${HOME}" }),
+    /interpolation is rejected/,
   );
 });
 
@@ -372,18 +380,85 @@ Deno.test("run_bash requires a pinned package_command interpreter", () => {
   );
 });
 
-Deno.test("run_bash dedents multi-line bodies with a source line_map", () => {
-  const cmd = runBash({
-    interpreter: packageCommand("bash", "bash"),
-    body: `
+Deno.test("run_bash maps dedented lines to the original template, not the call", async () => {
+  const body = bashBody`
       echo one
       echo two
-    `,
-  });
-  assert.equal(cmd.kind, "run_bash");
+    `;
+  const cmd = runBash({ interpreter: packageCommand("bash", "bash"), body });
   assert.equal(cmd.body, "echo one\necho two");
-  assert.deepEqual(cmd.line_map, [cmd.span.line + 1, cmd.span.line + 2]);
+  const file = (await Deno.readTextFile(new URL(import.meta.url))).split("\n");
+  const originalLine = (text: string) => file.findIndex((line) => line.trim() === text) + 1;
+  assert.deepEqual(cmd.line_map, [originalLine("echo one"), originalLine("echo two")]);
+  assert.ok(cmd.line_map![0]! < cmd.span.line, "body location precedes command construction");
   assert.match(cmd.span.file, /workspace\.test\.ts$/);
+  const withoutDedent = bashBody`echo top
+echo bottom`;
+  const raw = runBash({ interpreter: packageCommand("bash", "bash"), body: withoutDedent });
+  const openingLine = file.findIndex((line) => line.trim().startsWith("const withoutDedent = bashBody`echo top")) + 1;
+  assert.ok(openingLine > 0 && file[openingLine]!.trim().startsWith("echo bottom"));
+  assert.deepEqual(raw.line_map, [openingLine, openingLine + 1]);
+  assert.throws(
+    () => runBash({ interpreter: packageCommand("bash", "bash"), body: "\n  echo one" }),
+    /multiline body needs bashBody/,
+  );
+  assert.throws(
+    () => runBash({ interpreter: packageCommand("bash", "bash"), body: "echo one\necho two" }),
+    /multiline body needs bashBody/,
+  );
+});
+
+Deno.test("Bash fluent and object forms normalize without sharing mutable state", () => {
+  const source = bashBody`echo "ready"`;
+  const base = bash(packageCommand("bash", "bash")).body(source);
+  const fluent = base
+    .env("Z", lit("two words"))
+    .env("A", artifact("payload", "src"))
+    .cwd(hostPath("/tmp/build"))
+    .build();
+  const object = runBash({
+    interpreter: packageCommand("bash", "bash"),
+    body: source,
+    env: { Z: lit("two words"), A: artifact("payload", "src") },
+    cwd: hostPath("/tmp/build"),
+    span: fluent.span,
+  });
+  assert.equal(JSON.stringify(fluent), JSON.stringify(object));
+  assert.equal(base.build().env, undefined);
+  assert.deepEqual(Object.keys(fluent.env ?? {}), ["A", "Z"]);
+  assert.throws(() => bash(lit("bash") as never), /declared packageCommand/);
+});
+
+Deno.test("fluent exec and object form emit the same command, preserving branches", () => {
+  const base = exec(packageCommand("tools", "jq"));
+  const withArg = base.arg(artifact("input", "data/file name.txt"));
+  const fluent = withArg
+    .env("Z_OUTPUT", lit("two words"))
+    .env("A_INPUT", artifact("input", "."))
+    .cwd(hostPath("/tmp/build"))
+    .build();
+  const object = exec({
+    argv: [packageCommand("tools", "jq"), artifact("input", "data/file name.txt")],
+    env: { Z_OUTPUT: lit("two words"), A_INPUT: artifact("input", ".") },
+    cwd: hostPath("/tmp/build"),
+    span: fluent.span,
+  });
+  assert.equal(JSON.stringify(fluent), JSON.stringify(object));
+  assert.deepEqual(Object.keys(fluent.env ?? {}), ["A_INPUT", "Z_OUTPUT"]);
+  assert.deepEqual(base.build().argv, [packageCommand("tools", "jq")]);
+  assert.equal(withArg.build().env, undefined);
+  assert.ok(Object.isFrozen(fluent));
+  assert.throws(() => (fluent.argv as WorkspaceArg[]).push(lit("changed")), TypeError);
+  assert.throws(() => base.env("COMMAND", packageCommand("tools", "jq")), /environment values are/);
+  assert.throws(() => exec(hostPath("/bin/jq") as never), /kind must be/);
+});
+
+Deno.test("environment names survive cloning even when shadowing a prototype key", () => {
+  const env = Object.fromEntries([["__proto__", lit("literal value")]]);
+  const fromFluent = exec(lit("env")).env("__proto__", lit("literal value")).build();
+  const fromObject = exec({ argv: [lit("env")], env, span: fromFluent.span });
+  assert.equal(JSON.stringify(fromObject), JSON.stringify(fromFluent));
+  assert.deepEqual(JSON.parse(JSON.stringify(fromObject)).env["__proto__"], lit("literal value"));
 });
 
 Deno.test("file origin is optional only for literal content", () => {

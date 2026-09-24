@@ -22,7 +22,8 @@
  *  admission), commands.ts, files.ts, outputs.ts and emit.ts.
  *  This file is the supported re-export surface. */
 
-export { artifact, exec, hostPath, lit, packageCommand, runBash } from "./workspace/commands.ts";
+export { artifact, bash, bashBody, exec, hostPath, lit, packageCommand, runBash } from "./workspace/commands.ts";
+export type { BashBuilder, BashCommandBuilder, ExecBuilder } from "./workspace/commands.ts";
 export {
   artifactFile,
   file,
@@ -36,6 +37,7 @@ export {
 } from "./workspace/files.ts";
 export { emitWorkspaceIr } from "./workspace/emit.ts";
 export type {
+  BashBody,
   CheckNode,
   CheckSpec,
   EnvironmentNode,

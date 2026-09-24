@@ -1,9 +1,10 @@
-"""v4 workspace admission through the shipped grip binary (A1-01).
+"""Versioned workspace admission through the shipped grip binary (A1).
 
-Direct --ir cases exercise the core even when no TypeScript driver is
-involved: a decoded workspace cannot become an empty legacy module
-profile, and malformed catalog entries must fail before effects.
+Direct --ir cases exercise the core alongside the real v5 TypeScript
+frontend; read-only workspace values cannot become an empty legacy
+module profile or cause effects before an A2 executor exists.
 """
+
 from __future__ import annotations
 
 import copy
@@ -73,6 +74,70 @@ def test_project_workspace_check_is_read_only_and_consumers_fail(sandbox):
         assert "E124" in result.stderr, (command, result.stderr)
         assert not (sandbox / ".config/demo/settings.conf").exists()
         assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):
+    repo = sandbox / "fluent"
+    repo.mkdir()
+    (repo / "gripsack.ts").write_text(
+        'import { defineWorkspace, workspace, pkg, provider, fileFetch, '
+        'targetPlatform, task, bash, bashBody, packageCommand, exec, lit } '
+        'from "@gripsack/core";\n'
+        'const shell = pkg("shell", { producer: provider(fileFetch("shell.bin")), '
+        'commands: { bash: "bin/bash" }, '
+        'target: targetPlatform({ os: "linux", arch: "x86_64" }), '
+        'layout: { kind: "relocatable" } });\n'
+        'const script = task("script", { run: bash(packageCommand("shell", "bash"))'
+        '.body(bashBody`\n  echo "$INPUT"\n`)'
+        '.env("INPUT", lit("two words")).build() });\n'
+        'const argv = task("argv", { run: exec(lit("echo"))'
+        '.arg(lit("two words")).build() });\n'
+        'export default defineWorkspace(() => workspace({ outputs: [shell, script, argv] }));\n'
+    )
+    checked = grip("check", cwd=repo)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    assert "shell (package)" in checked.stdout
+    assert "script (task)" in checked.stdout
+    assert "argv (task)" in checked.stdout
+    result = grip("plan", cwd=repo)
+    assert result.returncode != 0
+    assert "E124" in result.stderr, result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+def test_bash_interpolation_rejected_by_frontend_and_decoded_ir(sandbox):
+    repo = sandbox / "literal-bash"
+    repo.mkdir()
+    (repo / "gripsack.ts").write_text(
+        'import { bashBody } from "@gripsack/core";\n'
+        'const bad = bashBody`\n'
+        '  echo \\${HOME}\n'
+        '`;\n'
+        'export default bad;\n'
+    )
+    frontend = grip("check", cwd=repo)
+    assert frontend.returncode != 0
+    assert "E130" in frontend.stderr
+    assert "gripsack.ts:3" in frontend.stderr
+
+    recipe, package = recipe_and_package()
+    task = {
+        "kind": "task", "name": "bad", "span": {"file": "bad.ts", "line": 5},
+        "run": {
+            "kind": "run_bash", "span": {"file": "bad.ts", "line": 8},
+            "interpreter": {
+                "kind": "package_command", "package": "tool", "command": "tool",
+            },
+            "body": "echo ok\necho ${HOME}",
+            "line_map": [9, 55],
+        },
+    }
+    decoded = run_plan_ir(sandbox, workspace_ir(recipe, package, task))
+    assert decoded.returncode != 0
+    assert "E130" in decoded.stderr
+    assert "bad.ts:55" in decoded.stderr
+    assert "E124" not in decoded.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_workspace_plan_refuses_instead_of_planning_empty_legacy_profile(sandbox):

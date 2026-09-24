@@ -939,18 +939,33 @@
    "mandatory_deliverable": "Immutable fluent and object authoring, typed artifact arguments and literal-body `runBash`",
    "required_acceptance_evidence": "Equivalent forms normalize identically; pinned Bash/options, dedent line mapping, rejected interpolation, argv/env boundary preservation, explicit host policy; hooks keep their lifecycle semantics",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates",
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "Equivalent object and immutable fluent exec/Bash forms normalize byte-identically modulo source spans; builder branches do not share mutable state",
+    "Literal Bash bodies reject interpolation at the declaring source line and map dedented generated lines to the original template, never a guessed command callsite",
+    "Typed argv and artifact references preserve argument boundaries; environment values remain data, including prototype-shadowing keys; ambient host interpreters are rejected",
+    "Declared Bash interpreters must resolve to pinned bytes through the lockfile and strict Bash options must be admitted before execution",
+    "Recipe host access policy stays explicit and hooks retain post_link/post_activate/on_remove lifecycle semantics",
+    "Production-connected normalization proof for fluent/object equivalence and an attributable mutant run before A1 closure"
    ],
-   "evidence_records": []
+   "evidence_records": [],
+   "lane_status": {
+    "pure": "in_progress",
+    "container-gates": "in_progress",
+    "ci": "in_progress",
+    "proofs": "in_progress"
+   },
+   "status_history": [
+    {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
+   ],
+   "implementation_notes": "Read-only v5 frontend now has immutable fluent exec/Bash builders using the same object normalization, canonical data-only env keys, typed argv, a literal Bash source-location helper and accurate multiline dedent maps. Rust sema rejects `${` in forged decoded Bash IR with E130, using the original script line when a source map is present; its focused regression failed before and passed after the fix. Deno 63 passed fresh in the focused container, npm build passed, real CLI focused workspace cases 18/18. Full post-correction Linux compose passed Rust fmt/clippy/tests, e2e 264/264 and fresh Verus 61/0 with five mutants; the final TypeScript and TLC model image layers were cached after earlier fresh TS/proof runs. The v5 wire still lacks resolved interpreter bytes and strict Bash options; JS evaluates template expressions before the tag can reject them. A versioned wire/executor policy cutover, static interpolation guard, production normalization proof/mutant and source-bound CI remain open. No A1-03 closure or release is claimed."
   },
   {
    "id": "A1-04",

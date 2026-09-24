@@ -601,6 +601,10 @@ An omitted producer, publication check or local sequencing edge
 fails admission with E131 and source labels. No proof-only
 implementation substitutes for that production adapter.
 
+`verification/guarantees.md` records this narrow kernel as
+WORKSPACE-ROLES-001; the unproved schema/name-index bridge is an
+explicit exclusion, not a completed A1-02 proof family.
+
 Fresh post-edit Linux compose gates passed Rust fmt/clippy/tests,
 Deno **61/61**, real CLI e2e **262/262** (workspace cases
 **16/16**, goldens **2/2**) and Verus **61 verified / 0 errors**
@@ -618,10 +622,60 @@ tool or unrelated lemma. Worktree gates do not supply source-bound
 CI reports or prove the entire schema→name-index adapter refinement.
 No recipe, task, schedule, image or OS worker is executed by A1.
 
-## 12. Honesty register
+## 12. A1-03 command authoring packet (not A1-03 closure)
 
-- This document began as a design candidate; §§9–11 record read-only
-  admission, static-graph and typed-target/policy packets, not a
+The v5 authoring SDK now accepts `exec({argv,…})` or
+`exec(program).arg(…).env(…).cwd(…).build()`, and
+`runBash({interpreter,body,…})` or
+`bash(packageCommand(…)).body(…).env(…).build()`. Builder branches
+are immutable; both forms use the same existing v5 IR normalization.
+Environment keys are emitted in a stable order, including own
+`__proto__` entries, while argv values retain their individual
+literal/artifact/package-command boundaries.
+
+`bashBody` captures the template-opening source span. Dedent maps
+generated lines to those original script lines, not to the later
+`runBash` invocation. Single-line strings remain valid; an unlocated
+multiline string is rejected rather than assigned a false map.
+
+Decoded `--ir` callers cannot bypass literal-body admission: Rust
+sema rejects `${` with E130, labeling the original script line when
+the emitted `line_map` supplies one, else the command declaration.
+
+The interpreter must name an exported command of a declared package;
+the command remains a *description*, so hook trigger stages and
+explicit recipe host-access policy are not inferred from its body.
+
+The v5 schema and Rust command types are unchanged by this authoring
+packet: no new IR field was silently added to a strict reader. The
+v5 package-command reference is not a resolved byte pin and the wire
+has no strict Bash options field. Both require a versioned cutover
+before execution; a JavaScript `${…}` expression is evaluated before
+a template tag can reject it, so static pre-evaluation rejection is
+also still open. Production normalization proof/calibration and
+source-bound CI evidence remain required.
+
+Observed on this Linux worktree: Deno **63/63**, `npm run build`
+passed; the real sandboxed CLI exercised fluent exec/Bash
+declarations and rejected both frontend and forged decoded Bash
+interpolation in **18/18** focused workspace cases. The decoded
+Rust regression failed before the E130 fix (accepted the hostile
+script) and passed afterward with original-line attribution.
+Workspace `plan` still refuses execution with E124 before effects.
+
+The post-correction Linux compose chain passed Rust fmt/clippy/tests,
+real CLI e2e **264/264**, and fresh Verus **61 verified / 0 errors**
+with **five** calibrated mutants. TypeScript **63/63** ran fresh in
+the focused container gate; the final compose TS image reused that
+test layer. The model gate also reused a **CACHED** TLC layer, not a
+fresh model run. None is source-bound CI evidence or the missing
+normalization proof. This packet does not close A1-03 or authorize
+execution/release.
+
+## 13. Honesty register
+
+- This document began as a design candidate; §§9–12 record read-only
+  admission, graph, typed-target and command-authoring packets, not a
   completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
   this plan authorizes no publication.

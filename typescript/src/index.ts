@@ -40,6 +40,8 @@ export type { Verify } from "./verify.ts";
 export {
   artifact,
   artifactFile,
+  bash,
+  bashBody,
   check,
   daily,
   defineWorkspace,
@@ -71,8 +73,12 @@ export {
   workspace,
 } from "./workspace.ts";
 export type {
+  BashBody,
+  BashBuilder,
+  BashCommandBuilder,
   CheckSpec,
   EnvironmentSpec,
+  ExecBuilder,
   ExecSpec,
   HookSpec,
   ImageSpec,

@@ -1,7 +1,7 @@
-//! Provenance and combined-value admission: workspace spans are mandatory AND
-//! well-formed (E129), and values the grammar admits only in combination
-//! — a non-empty catalog, non-empty output names, HH:MM calendar clocks,
-//! a file origin for non-literal content — are rejected with E130.
+//! Provenance and combined-value admission: workspace spans are mandatory
+//! and well-formed (E129). Values admitted only in combination — nonempty
+//! catalogs/names, calendar clocks, file origins and literal Bash bodies
+//! — are checked before an E124 execution-capability decision (E130).
 
 use crate::diagnostic::{Diagnostic, codes};
 use crate::span::Span;
@@ -128,6 +128,14 @@ fn check_values(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
                 );
         }
         match output {
+            WorkspaceOutput::Recipe(recipe) => {
+                for command in &recipe.steps {
+                    check_bash_body(command, diagnostics);
+                }
+            }
+            WorkspaceOutput::Task(task) => check_bash_body(&task.run, diagnostics),
+            WorkspaceOutput::Check(check) => check_bash_body(&check.run, diagnostics),
+            WorkspaceOutput::Hook(hook) => check_bash_body(&hook.run, diagnostics),
             WorkspaceOutput::Schedule(schedule) => {
                 let time = match &schedule.trigger {
                     WorkspaceCalendar::Daily { time } => time,
@@ -171,6 +179,47 @@ fn check_values(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
             _ => {}
         }
     }
+}
+
+/// The decoded wire is not necessarily produced by the TypeScript
+/// constructor: a direct --ir caller cannot bypass the literal-body
+/// boundary. A source map names the original script line after dedent;
+/// without one, label the command rather than inventing a line.
+fn check_bash_body(command: &WorkspaceCommand, diagnostics: &mut Vec<Diagnostic>) {
+    let WorkspaceCommand::RunBash {
+        span,
+        body,
+        line_map,
+        ..
+    } = command
+    else {
+        return;
+    };
+    let Some(index) = body.find("${") else {
+        return;
+    };
+    let generated_line = body[..index].bytes().filter(|byte| *byte == b'\n').count();
+    let mut site = span.clone();
+    let label = match line_map
+        .get(generated_line)
+        .copied()
+        .filter(|line| *line > 0)
+    {
+        Some(source_line) => {
+            site.line = source_line;
+            site.col = None;
+            "interpolation in original Bash body"
+        }
+        None => "command declared here (no script source map)",
+    };
+    diagnostics.push(
+        Diagnostic::error(
+            codes::INVALID_WORKSPACE_VALUE,
+            "run_bash body contains `${`, which is not a literal script declaration; \
+             pass dynamic values through typed environment/argv bindings",
+        )
+        .with_label(Some(site), label),
+    );
 }
 
 /// HH:MM local time, 00–23 : 00–59 — the schema's
@@ -227,6 +276,21 @@ mod tests {
             code_of(&doc(&format!("{task},{schedule}")))
                 .contains(&codes::INVALID_WORKSPACE_VALUE.into())
         );
+    }
+
+    #[test]
+    fn decoded_bash_interpolation_rejects_at_original_script_line() {
+        let script = r#"{
+            "kind": "task", "name": "script", "span": {"file": "grip.ts", "line": 5},
+            "run": {"kind": "run_bash", "span": {"file": "grip.ts", "line": 8},
+                    "interpreter": {"kind": "package_command", "package": "hello", "command": "hello"},
+                    "body": "echo first\necho ${EVIL}", "line_map": [20, 23]}}"#;
+        let invalid = crate::check(&doc(&format!("{RECIPE},{PACKAGE},{script}"))).unwrap_err();
+        let body = invalid
+            .iter()
+            .find(|diagnostic| diagnostic.code == codes::INVALID_WORKSPACE_VALUE)
+            .expect("a decoded Bash interpolation must fail before realization");
+        assert_eq!(body.labels[0].span.as_ref().unwrap().line, 23);
     }
 
     #[test]

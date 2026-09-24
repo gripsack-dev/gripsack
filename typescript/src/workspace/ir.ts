@@ -342,11 +342,19 @@ export interface ExecSpec {
   span?: Span;
 }
 
+/** Authoring-only literal Bash text with the opening template's location.
+ *  Emission lowers this to body + a generated-line source map; it is
+ *  never serialized as an extra workspace IR node. */
+export interface BashBody {
+  readonly text: string;
+  readonly span: Span;
+}
+
 export interface RunBashSpec {
-  /** Literal text ONLY — `${…}` interpolation is rejected; dynamic
-   *  values enter through typed `env`/`argv` bindings. A leading
-   *  newline triggers dedent with a `line_map` back to the source. */
-  body: string;
+  /** Literal text ONLY. Use bashBody`...` for multiline scripts so
+   *  dedented lines point back to the actual template location.
+   *  A plain string is supported for single-line bodies only. */
+  body: string | BashBody;
   /** Pinned `packageCommand("<package>", "<command>")` — never an
    *  ambient host shell. */
   interpreter: WorkspaceArg;

@@ -71,7 +71,7 @@ pub mod codes {
     pub const BAD_WORKSPACE_SPAN: &str = "E129";
     /// A workspace value outside the admitted grammar: empty output
     /// catalog/name, malformed calendar time, file origin/content
-    /// mismatch or unsafe artifact selector (0052 §2.2).
+    /// mismatch, unsafe artifact selector or Bash body interpolation.
     pub const INVALID_WORKSPACE_VALUE: &str = "E130";
     /// A required workspace producer or validation edge vanished from
     /// the admitted graph projection. Fail closed, never publish from

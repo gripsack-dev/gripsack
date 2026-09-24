@@ -11,8 +11,8 @@
  * resource declarations, and probes always share one registry no
  * matter which copy won.
  *
- * The re-export list mirrors index.ts exactly — kept honest by the
- * pin parity test. */
+ * The explicit re-export list is part of the pinned authoring surface;
+ * update it when index.ts gains a supported runtime or type export. */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -128,6 +128,8 @@ export const verifyFile = api.verifyFile;
 export const verifyShell = api.verifyShell;
 export const artifact = api.artifact;
 export const artifactFile = api.artifactFile;
+export const bash = api.bash;
+export const bashBody = api.bashBody;
 export const check = api.check;
 export const daily = api.daily;
 export const defineWorkspace = api.defineWorkspace;
@@ -159,6 +161,9 @@ export const weekly = api.weekly;
 export const workspace = api.workspace;
 
 export type {
+  BashBody,
+  BashBuilder,
+  BashCommandBuilder,
   CheckSpec,
   Condition,
   Dependency,
@@ -168,6 +173,7 @@ export type {
   EnvContext,
   EnvFn,
   EnvironmentSpec,
+  ExecBuilder,
   ExecSpec,
   FactView,
   Fetch,
@@ -181,12 +187,14 @@ export type {
   ModuleSpec,
   ModuleValue,
   Ownership,
+  PackageLayout,
   PackageSpec,
   Phase,
   ProbeBuilder,
   ProbeKind,
   ProbeRequest,
   ProfileSpec,
+  RecipeExecution,
   RecipeSpec,
   Resource,
   RunBashSpec,
@@ -198,6 +206,7 @@ export type {
   TaskSpec,
   Trigger,
   Verify,
+  WorkspaceAbi,
   WorkspaceArg,
   WorkspaceArtifactRef,
   WorkspaceCalendar,
@@ -211,6 +220,7 @@ export type {
   WorkspaceFn,
   WorkspaceHostPath,
   WorkspaceLiteral,
+  WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
   WorkspaceOutputNode,

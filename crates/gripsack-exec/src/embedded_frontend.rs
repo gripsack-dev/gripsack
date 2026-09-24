@@ -562,6 +562,8 @@ export type { Verify } from "./verify.ts";
 export {
   artifact,
   artifactFile,
+  bash,
+  bashBody,
   check,
   daily,
   defineWorkspace,
@@ -593,8 +595,12 @@ export {
   workspace,
 } from "./workspace.ts";
 export type {
+  BashBody,
+  BashBuilder,
+  BashCommandBuilder,
   CheckSpec,
   EnvironmentSpec,
+  ExecBuilder,
   ExecSpec,
   HookSpec,
   ImageSpec,
@@ -939,8 +945,8 @@ export function callerSpan(): Span | undefined {
  * resource declarations, and probes always share one registry no
  * matter which copy won.
  *
- * The re-export list mirrors index.ts exactly — kept honest by the
- * pin parity test. */
+ * The explicit re-export list is part of the pinned authoring surface;
+ * update it when index.ts gains a supported runtime or type export. */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -1056,6 +1062,8 @@ export const verifyFile = api.verifyFile;
 export const verifyShell = api.verifyShell;
 export const artifact = api.artifact;
 export const artifactFile = api.artifactFile;
+export const bash = api.bash;
+export const bashBody = api.bashBody;
 export const check = api.check;
 export const daily = api.daily;
 export const defineWorkspace = api.defineWorkspace;
@@ -1087,6 +1095,9 @@ export const weekly = api.weekly;
 export const workspace = api.workspace;
 
 export type {
+  BashBody,
+  BashBuilder,
+  BashCommandBuilder,
   CheckSpec,
   Condition,
   Dependency,
@@ -1096,6 +1107,7 @@ export type {
   EnvContext,
   EnvFn,
   EnvironmentSpec,
+  ExecBuilder,
   ExecSpec,
   FactView,
   Fetch,
@@ -1109,12 +1121,14 @@ export type {
   ModuleSpec,
   ModuleValue,
   Ownership,
+  PackageLayout,
   PackageSpec,
   Phase,
   ProbeBuilder,
   ProbeKind,
   ProbeRequest,
   ProfileSpec,
+  RecipeExecution,
   RecipeSpec,
   Resource,
   RunBashSpec,
@@ -1126,6 +1140,7 @@ export type {
   TaskSpec,
   Trigger,
   Verify,
+  WorkspaceAbi,
   WorkspaceArg,
   WorkspaceArtifactRef,
   WorkspaceCalendar,
@@ -1139,6 +1154,7 @@ export type {
   WorkspaceFn,
   WorkspaceHostPath,
   WorkspaceLiteral,
+  WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
   WorkspaceOutputNode,
@@ -1542,15 +1558,16 @@ export function verifyDeployed(path: string): Verify {
 import { rejectUnknownFields } from "../fields.ts";
 import type { Span } from "../module.ts";
 import type {
+  BashBody,
   ExecSpec,
   RunBashSpec,
   WorkspaceArg,
   WorkspaceArtifactRef,
-  WorkspaceCommand,
   WorkspaceExecCommand,
   WorkspaceHostPath,
   WorkspaceLiteral,
   WorkspacePackageCommand,
+  WorkspacePath,
   WorkspaceRunBashCommand,
 } from "./ir.ts";
 import {
@@ -1560,9 +1577,14 @@ import {
   asPath,
   asRecord,
   asSelector,
+  asSpan,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
+
+/** Frontend-side form of core INVALID_WORKSPACE_VALUE for literal
+ *  Bash text. A1-06 still owns structured frontend diagnostics. */
+const INVALID_BASH_BODY_CODE = "E130";
 
 /** A literal string — valid as an argv/env argument or a cwd path. */
 export function lit(value: string): WorkspaceLiteral {
@@ -1597,21 +1619,58 @@ export function packageCommand(pkg: string, command: string): WorkspacePackageCo
   });
 }
 
-/** Direct argv execution with typed argument references. */
-export function exec(spec: ExecSpec): WorkspaceCommand {
+/** Fluent exec authoring; each method returns a new immutable branch.
+ *  `build()` uses the same normalization as object-form `exec({ argv })`. */
+export interface ExecBuilder {
+  arg(value: WorkspaceArg): ExecBuilder;
+  env(name: string, value: WorkspaceArg): ExecBuilder;
+  cwd(path: WorkspacePath): ExecBuilder;
+  build(): WorkspaceExecCommand;
+}
+
+function execBuilder(spec: ExecSpec): ExecBuilder {
+  return Object.freeze({
+    arg(value: WorkspaceArg): ExecBuilder {
+      const arg = freezeDeep(asArg(value, "exec(...).arg"));
+      return execBuilder({ ...spec, argv: [...spec.argv, arg] });
+    },
+    env(name: string, value: WorkspaceArg): ExecBuilder {
+      const key = asName(name, "exec(...).env(name)");
+      const entry = asEnv({ [key]: value }, "exec(...).env")!;
+      return execBuilder({ ...spec, env: { ...spec.env, ...freezeDeep(entry) } });
+    },
+    cwd(path: WorkspacePath): ExecBuilder {
+      return execBuilder({ ...spec, cwd: freezeDeep(asPath(path, "exec(...).cwd")) });
+    },
+    build(): WorkspaceExecCommand {
+      return exec(spec);
+    },
+  });
+}
+
+/** Direct argv execution: object form or an immutable fluent builder.
+ *  Only typed arguments cross the argv/env boundary, never shell text. */
+export function exec(spec: ExecSpec): WorkspaceExecCommand;
+export function exec(program: WorkspaceArg): ExecBuilder;
+export function exec(spec: ExecSpec | WorkspaceArg): WorkspaceExecCommand | ExecBuilder {
   const what = "exec(...)";
-  asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["argv", "env", "cwd", "span"]);
-  if (!Array.isArray(spec.argv)) throw new Error(`${what}: argv must be an array`);
-  const span = nodeSpan(spec.span, what);
-  const argv = spec.argv.map((a, i) => asArg(a, `${what}: argv[${i}]`));
-  const env = asEnv(spec.env, `${what}: env`);
+  const value = asRecord(spec, what);
+  if (value.kind !== undefined) {
+    const program = freezeDeep(asArg(spec, `${what}: program`));
+    return execBuilder({ argv: [program], span: nodeSpan(undefined, what) });
+  }
+  rejectUnknownFields(what, value, ["argv", "env", "cwd", "span"]);
+  const fields = spec as ExecSpec;
+  if (!Array.isArray(fields.argv)) throw new Error(`${what}: argv must be an array`);
+  const span = nodeSpan(fields.span, what);
+  const argv = fields.argv.map((a, i) => asArg(a, `${what}: argv[${i}]`));
+  const env = asEnv(fields.env, `${what}: env`);
   const node: WorkspaceExecCommand = {
     kind: "exec",
     span,
     argv,
     ...(env ? { env } : {}),
-    ...(spec.cwd !== undefined ? { cwd: asPath(spec.cwd, `${what}: cwd`) } : {}),
+    ...(fields.cwd !== undefined ? { cwd: asPath(fields.cwd, `${what}: cwd`) } : {}),
   };
   return freezeDeep(node);
 }
@@ -1626,7 +1685,10 @@ function commonPrefix(a: string, b: string): string {
  *  its source line (A1-06): the core's diagnostics point at the
  *  user's file, not at the dedented script. */
 function dedent(body: string, span: Span): { text: string; lineMap?: number[] } {
-  if (!body.startsWith("\n")) return { text: body };
+  if (!body.startsWith("\n")) {
+    if (!body.includes("\n")) return { text: body };
+    return { text: body, lineMap: body.split("\n").map((_, i) => span.line + i) };
+  }
   const lines = body.split("\n");
   const start = 1; // the leading newline itself
   let end = lines.length;
@@ -1645,21 +1707,59 @@ function dedent(body: string, span: Span): { text: string; lineMap?: number[] } 
   };
 }
 
+/** Capture the opening source line of a literal Bash template.
+ *  Values in a JS interpolation are evaluated before this tag is
+ *  called, so only literal text belongs here; static authoring checks
+ *  must still guard potentially effectful expressions. */
+export function bashBody(parts: TemplateStringsArray, ...values: unknown[]): BashBody {
+  const span = nodeSpan(undefined, "bashBody`...`");
+  if (values.length !== 0 || parts.raw.length !== 1) {
+    const before = parts.raw[0] ?? "";
+    const line = span.line + before.split("\n").length - 1;
+    throw new Error(
+      `${INVALID_BASH_BODY_CODE} bashBody: interpolation is not a literal Bash body (declared at ${span.file}:${line}); ` +
+        `pass dynamic values through typed env/argv bindings`,
+    );
+  }
+  const text = parts.raw[0]!;
+  rejectBashInterpolation(text, span, "bashBody`...`");
+  return freezeDeep({ text, span });
+}
+
+function rejectBashInterpolation(body: string, span: Span, where: string): void {
+  const site = body.indexOf("${");
+  if (site === -1) return;
+  const line = span.line + body.slice(0, site).split("\n").length - 1;
+  throw new Error(
+    `${INVALID_BASH_BODY_CODE} ${where}: body is literal text — "\${" interpolation is rejected ` +
+      `(declared at ${span.file}:${line}); pass dynamic values through typed env/argv bindings`,
+  );
+}
+
 /** A literal Bash body run under a pinned package interpreter. The
  *  command is a DESCRIPTION; the enclosing recipe/task/check/hook
  *  admits the execution context. */
-export function runBash(spec: RunBashSpec): WorkspaceCommand {
+export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
   const what = "runBash(...)";
   asRecord(spec, what);
   rejectUnknownFields(what, spec, ["body", "interpreter", "env", "cwd", "span"]);
-  if (typeof spec.body !== "string") throw new Error(`${what}: body must be a string`);
   const span = nodeSpan(spec.span, what);
-  if (spec.body.includes("${")) {
-    throw new Error(
-      `${what}: body is literal text — "\${" interpolation is rejected ` +
-        `(declared at ${span.file}:${span.line}); pass dynamic values through typed env/argv bindings`,
-    );
+  let body: string;
+  let bodySpan: Span;
+  if (typeof spec.body === "string") {
+    body = spec.body;
+    bodySpan = span;
+    if (body.includes("\n")) {
+      throw new Error(`${what}: multiline body needs bashBody\`...\` to preserve original source lines`);
+    }
+  } else {
+    const source = asRecord(spec.body, `${what}: body`);
+    rejectUnknownFields(`${what}: body`, source, ["text", "span"]);
+    if (typeof source.text !== "string") throw new Error(`${what}: body.text must be a string`);
+    body = source.text;
+    bodySpan = asSpan(source.span, `${what}: body`);
   }
+  rejectBashInterpolation(body, bodySpan, what);
   const interpreter = asArg(spec.interpreter, `${what}: interpreter`);
   if (interpreter.kind !== "package_command") {
     throw new Error(
@@ -1667,7 +1767,7 @@ export function runBash(spec: RunBashSpec): WorkspaceCommand {
         `ambient host shells are never discovered (A1-03)`,
     );
   }
-  const { text, lineMap } = dedent(spec.body, span);
+  const { text, lineMap } = dedent(body, bodySpan);
   const env = asEnv(spec.env, `${what}: env`);
   const node: WorkspaceRunBashCommand = {
     kind: "run_bash",
@@ -1679,6 +1779,50 @@ export function runBash(spec: RunBashSpec): WorkspaceCommand {
     ...(lineMap ? { line_map: lineMap } : {}),
   };
   return freezeDeep(node);
+}
+
+/** A body is required before a Bash command can be constructed. */
+export interface BashBuilder {
+  body(body: RunBashSpec["body"]): BashCommandBuilder;
+}
+
+/** Immutable Bash command authoring after a literal body is supplied. */
+export interface BashCommandBuilder {
+  env(name: string, value: WorkspaceArg): BashCommandBuilder;
+  cwd(path: WorkspacePath): BashCommandBuilder;
+  build(): WorkspaceRunBashCommand;
+}
+
+function bashCommandBuilder(spec: RunBashSpec): BashCommandBuilder {
+  return Object.freeze({
+    env(name: string, value: WorkspaceArg): BashCommandBuilder {
+      const key = asName(name, "bash(...).env(name)");
+      const entry = asEnv({ [key]: value }, "bash(...).env")!;
+      return bashCommandBuilder({ ...spec, env: { ...spec.env, ...freezeDeep(entry) } });
+    },
+    cwd(path: WorkspacePath): BashCommandBuilder {
+      return bashCommandBuilder({ ...spec, cwd: freezeDeep(asPath(path, "bash(...).cwd")) });
+    },
+    build(): WorkspaceRunBashCommand {
+      return runBash(spec);
+    },
+  });
+}
+
+/** Start a Bash command with a declared package interpreter, never a
+ *  host-shell name. `body(...).build()` lowers through `runBash({…})`. */
+export function bash(interpreter: WorkspacePackageCommand): BashBuilder {
+  const pin = asArg(interpreter, "bash(interpreter)");
+  if (pin.kind !== "package_command") {
+    throw new Error("bash(interpreter) requires a declared packageCommand");
+  }
+  const span = nodeSpan(undefined, "bash(...)");
+  const stablePin = freezeDeep(pin);
+  return Object.freeze({
+    body(body: RunBashSpec["body"]): BashCommandBuilder {
+      return bashCommandBuilder({ interpreter: stablePin, body: freezeDeep(body), span });
+    },
+  });
 }
 "#),
     ("src/workspace/emit.ts", r#"/** v5 workspace emission: named references, role admission and cycles. */
@@ -2455,11 +2599,19 @@ export interface ExecSpec {
   span?: Span;
 }
 
+/** Authoring-only literal Bash text with the opening template's location.
+ *  Emission lowers this to body + a generated-line source map; it is
+ *  never serialized as an extra workspace IR node. */
+export interface BashBody {
+  readonly text: string;
+  readonly span: Span;
+}
+
 export interface RunBashSpec {
-  /** Literal text ONLY — `${…}` interpolation is rejected; dynamic
-   *  values enter through typed `env`/`argv` bindings. A leading
-   *  newline triggers dedent with a `line_map` back to the source. */
-  body: string;
+  /** Literal text ONLY. Use bashBody`...` for multiline scripts so
+   *  dedented lines point back to the actual template location.
+   *  A plain string is supported for single-line bodies only. */
+  body: string | BashBody;
   /** Pinned `packageCommand("<package>", "<command>")` — never an
    *  ambient host shell. */
   interpreter: WorkspaceArg;
@@ -3152,18 +3304,20 @@ export function asEnv(
 ): Record<string, WorkspaceArg> | undefined {
   if (v === undefined) return undefined;
   const rec = asRecord(v, where);
-  const out: Record<string, WorkspaceArg> = {};
-  for (const [k, arg] of Object.entries(rec)) {
-    const a = asArg(arg, `${where}["${k}"]`);
+  // Environment order does not change command identity: object and
+  // fluent inputs must emit identical bytes regardless of insertion order.
+  const entries: [string, WorkspaceArg][] = [];
+  for (const k of Object.keys(rec).sort()) {
+    const a = asArg(rec[k], `${where}["${k}"]`);
     if (a.kind === "package_command") {
       throw new Error(
         `${where}["${k}"] cannot be a package_command reference; environment values are ` +
           `data (literal or artifact) — invoke package commands from exec argv or a run_bash interpreter pin`,
       );
     }
-    out[k] = a;
+    entries.push([k, a]);
   }
-  return Object.keys(out).length > 0 ? out : undefined;
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 export function asNames(v: unknown, where: string): string[] | undefined {
@@ -3338,11 +3492,11 @@ export function freezeDeep<T>(value: T): T {
     return Object.freeze(value.map(freezeDeep)) as unknown as T;
   }
   if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = freezeDeep(v);
-    }
-    return Object.freeze(out) as T;
+    // fromEntries preserves own "__proto__" keys rather than assigning
+    // through Object.prototype's setter and silently dropping an env var.
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => [key, freezeDeep(entry)] as const);
+    return Object.freeze(Object.fromEntries(entries)) as T;
   }
   return value;
 }
@@ -3381,7 +3535,8 @@ export function duplicateError(name: string, first: Span, again: Span): Error {
  *  admission), commands.ts, files.ts, outputs.ts and emit.ts.
  *  This file is the supported re-export surface. */
 
-export { artifact, exec, hostPath, lit, packageCommand, runBash } from "./workspace/commands.ts";
+export { artifact, bash, bashBody, exec, hostPath, lit, packageCommand, runBash } from "./workspace/commands.ts";
+export type { BashBuilder, BashCommandBuilder, ExecBuilder } from "./workspace/commands.ts";
 export {
   artifactFile,
   file,
@@ -3395,6 +3550,7 @@ export {
 } from "./workspace/files.ts";
 export { emitWorkspaceIr } from "./workspace/emit.ts";
 export type {
+  BashBody,
   CheckNode,
   CheckSpec,
   EnvironmentNode,

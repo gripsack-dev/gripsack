@@ -137,18 +137,20 @@ export function asEnv(
 ): Record<string, WorkspaceArg> | undefined {
   if (v === undefined) return undefined;
   const rec = asRecord(v, where);
-  const out: Record<string, WorkspaceArg> = {};
-  for (const [k, arg] of Object.entries(rec)) {
-    const a = asArg(arg, `${where}["${k}"]`);
+  // Environment order does not change command identity: object and
+  // fluent inputs must emit identical bytes regardless of insertion order.
+  const entries: [string, WorkspaceArg][] = [];
+  for (const k of Object.keys(rec).sort()) {
+    const a = asArg(rec[k], `${where}["${k}"]`);
     if (a.kind === "package_command") {
       throw new Error(
         `${where}["${k}"] cannot be a package_command reference; environment values are ` +
           `data (literal or artifact) — invoke package commands from exec argv or a run_bash interpreter pin`,
       );
     }
-    out[k] = a;
+    entries.push([k, a]);
   }
-  return Object.keys(out).length > 0 ? out : undefined;
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 export function asNames(v: unknown, where: string): string[] | undefined {
@@ -323,11 +325,11 @@ export function freezeDeep<T>(value: T): T {
     return Object.freeze(value.map(freezeDeep)) as unknown as T;
   }
   if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = freezeDeep(v);
-    }
-    return Object.freeze(out) as T;
+    // fromEntries preserves own "__proto__" keys rather than assigning
+    // through Object.prototype's setter and silently dropping an env var.
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => [key, freezeDeep(entry)] as const);
+    return Object.freeze(Object.fromEntries(entries)) as T;
   }
   return value;
 }

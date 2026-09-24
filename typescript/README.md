@@ -71,7 +71,37 @@ declaration (and the conflicting target where applicable); dependency
 cycles show the causal path. `runBash` bodies are literal text (`${…}`
 interpolation is rejected; dynamic values enter through typed
 `env`/`argv` refs) and require a declared `packageCommand` interpreter,
-never ambient Bash.
+never ambient Bash. The reference identifies a package command; its
+bytes are pinned only when core resolves the lockfile. The read-only
+v5 wire has no resolved Bash digest or strict-options field yet.
+
+Object and immutable fluent command forms lower to the same command
+IR, aside from their declaration spans:
+
+```ts
+import { bash, bashBody, exec, lit, packageCommand } from "@gripsack/core";
+
+const args = exec(packageCommand("tools", "jq"))
+  .arg(lit("--sort-keys")).arg(lit("two words"))
+  .env("MODE", lit("strict")).build();
+// Same command as exec({ argv: [packageCommand("tools", "jq"),
+//   lit("--sort-keys"), lit("two words")], env: { MODE: lit("strict") } }).
+
+const script = bash(packageCommand("shell", "bash"))
+  .body(bashBody`
+    echo "$INPUT"
+  `)
+  .env("INPUT", lit("two words")).build();
+```
+
+`bashBody` captures the template's source line before dedenting, so a
+generated script error can map back to the original line. A plain
+string is supported only for single-line `runBash({ body })`; multiline
+strings without an original body location are rejected rather than
+given a false `line_map`. JavaScript evaluates template expressions
+before calling a tag: do not put `${…}` expressions in `bashBody`.
+The frontend rejects them when invoked, but this is **not** a static
+pre-evaluation check. No workspace command executes before A2.
 
 Recipe execution is explicit: `{ kind: "host", access: "unconfined" }`
 declares host filesystem/kernel/network access, or
@@ -136,7 +166,7 @@ First eval of an unfamiliar repo is an explicit trust decision
 | hosts | `defineEnv`, `Env`, `EnvContext`, `EnvFn` |
 | workspace | `defineWorkspace`, `workspace`, `emitWorkspaceIr`, `WorkspaceValue`, `WorkspaceContext` |
 | outputs | `recipe`, `pkg`, `environment`, `task`, `schedule`, `check`, `image`, `profile`, `hook`, `provider`, `targetPlatform` |
-| commands/files | `exec`, `runBash`, `file`, `lit`, `artifact`, `hostPath`, `packageCommand`, `repoFile`, `artifactFile`, `identity`, `literalText`, `templateText`, `symlinkTo`, `trackedCopyTo`, `managedBlock`, `daily`, `weekly` |
+| commands/files | `exec` (object or fluent), `bash`, `bashBody`, `runBash`, `file`, `lit`, `artifact`, `hostPath`, `packageCommand`, `repoFile`, `artifactFile`, `identity`, `literalText`, `templateText`, `symlinkTo`, `trackedCopyTo`, `managedBlock`, `daily`, `weekly` |
 | modules | `module`, `define`, `Module`, `ModuleSpec`, `ModuleValue` |
 | probes | `ctx.probe` (`executable`, `file_exists`), `ProbeRequest` |
 | facts | `HostFacts` (core-injected), `when`, `hasTag`, `Condition` |
