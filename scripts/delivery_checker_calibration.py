@@ -77,6 +77,17 @@ def fixture(tmp: Path) -> tuple[dict, Path]:
     (tmp / "verification/reports").mkdir(parents=True)
     (tmp / REPORT).write_text(MARKER + "\n")
     ledger = json.loads(LEDGER.read_text())
+    # This scratch ledger includes real in-progress rows with source-bound
+    # evidence. Preserve their report bytes exactly: calibration must
+    # isolate H0/A0 closure, not fail because its temp repo lost A1 logs.
+    for requirement in ledger["requirements"]:
+        for evidence in requirement.get("evidence_records", []):
+            report = Path(evidence["report"])
+            target = tmp / report
+            if target.is_file():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((REPO / report).read_bytes())
     # Synthetic support matrix ONLY for a checker fixture. The real
     # ledger must retain the handover's unresolved platform lanes.
     for req in ledger["requirements"]:
