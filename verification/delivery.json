@@ -106,7 +106,7 @@
    "mandatory_deliverable": "Live-repository reconciliation and baseline",
    "required_acceptance_evidence": "Actual revision/worktree state, applicable instructions, already-landed mappings, original gate results, and available/missing tools/platforms",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "verified",
    "required_platform_capability_lanes": [
     "container-gates"
    ],
@@ -117,7 +117,39 @@
     "unmodified baseline gate results at 176eaec recorded before new-work attribution",
     "available/missing tools and platforms inventoried (docker+compose yes; Mac/launchd/virtualization-capable Mac CI missing; go/deno host binaries absent, container-provided)"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "docker compose run --build --rm {test,ts-test,e2e,model,verify}",
+      "cargo test -p gripsack-fetch"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; rust 1.98.0 / deno 2.9.6 / TLC / Verus via container gates; baseline gates PASS at 176eaec pristine worktree 2026-09-24 07:14-07:35 UTC",
+     "command": "pristine-worktree gates (see plan/0049 baseline table); A0-tree gates green (see A0_GATES in plan/0049); plan/0049 \u00a7H0-01",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "ba8632d6c3000d3cc6b16def3fda824630a4bfac",
+     "cases_covered": [
+      "recorded revision, worktree state and preserved local plan/0048 work",
+      "read AGENTS.md, plan/STATUS.md, verification/guarantees.md, named contract plans",
+      "unmodified baseline gate results at 176eaec recorded before new-work attribution",
+      "available/missing tools and platforms inventoried (docker+compose yes; Mac/launchd/virtualization-capable Mac CI missing; go/deno host binaries absent, container-provided)"
+     ]
+    }
+   ],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    },
+    {
+     "date": "2026-09-24",
+     "from": "implemented_unverified",
+     "to": "verified"
+    }
+   ]
   },
   {
    "id": "H0-02",
@@ -127,7 +159,7 @@
    "mandatory_deliverable": "Complete delivery and support inventory",
    "required_acceptance_evidence": "Every global/A/B/C/D/E delivery ID registered with owner milestone, tranche, required platform/capability lanes, evidence kinds, and initial honest status; future rows may remain pending",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "verified",
    "required_platform_capability_lanes": [
     "pure"
    ],
@@ -138,7 +170,39 @@
     "future rows remain pending with lane_inventory_state marking live registration still required before any closure claim",
     "handover checksums verified before import"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "pure",
+     "date": "2026-09-24",
+     "entry_points": [
+      "verification/delivery.json",
+      "scripts/check_delivery.py --validate"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; rust 1.98.0 / deno 2.9.6 / TLC / Verus via container gates; baseline gates PASS at 176eaec pristine worktree 2026-09-24 07:14-07:35 UTC",
+     "command": "python3 scripts/check_delivery.py --validate && python3 scripts/delivery_checker_calibration.py",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "ba8632d6c3000d3cc6b16def3fda824630a4bfac",
+     "cases_covered": [
+      "all 178 delivery IDs registered with owner milestone, tranche scope and status",
+      "near-term rows (H0/A0/B0/E0/A1) carry populated platform/capability lanes and conjunctive case inventories",
+      "future rows remain pending with lane_inventory_state marking live registration still required before any closure claim",
+      "handover checksums verified before import"
+     ]
+    }
+   ],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    },
+    {
+     "date": "2026-09-24",
+     "from": "implemented_unverified",
+     "to": "verified"
+    }
+   ]
   },
   {
    "id": "G-01",
@@ -260,7 +324,7 @@
    "mandatory_deliverable": "Pure OS/architecture/version-aware bottle selection",
    "required_acceptance_evidence": "Intel Mac/Linux lexical counterexample; Apple Silicon with only incompatible/Linux tags; older macOS, unknown/all tags and unsupported architectures; useful errors; unchanged URL/hash transport",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "verified",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates"
@@ -276,7 +340,43 @@
     "useful errors name the host facts and per-tag rejection reasons",
     "URL/hash transport unchanged (locked pins bypass selection; ResolvedRelease fields unchanged)"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "docker compose run --build --rm {test,ts-test,e2e,model,verify}",
+      "cargo test -p gripsack-fetch"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; rust 1.98.0 / deno 2.9.6 / TLC / Verus via container gates; baseline gates PASS at 176eaec pristine worktree 2026-09-24 07:14-07:35 UTC",
+     "command": "cargo test -p gripsack-fetch (61 tests incl. 13 bottle-selection cases); container gates on A0 tree (see A0_GATES in plan/0049)",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "ba8632d6c3000d3cc6b16def3fda824630a4bfac",
+     "cases_covered": [
+      "Intel-Mac lexical counterexample: x86_64_linux must not be selected on macOS",
+      "Apple Silicon offered only incompatible/Linux tags: refused with reasons",
+      "older macOS: newest runnable bottle chosen; none runnable: refusal names the required macOS version",
+      "unknown tags reported as unrecognized, never matched",
+      "`all` admitted only as last resort under validated policy",
+      "unsupported architectures fail clearly (no arm64_linux guess for arbitrary arch)",
+      "useful errors name the host facts and per-tag rejection reasons",
+      "URL/hash transport unchanged (locked pins bypass selection; ResolvedRelease fields unchanged)"
+     ]
+    }
+   ],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    },
+    {
+     "date": "2026-09-24",
+     "from": "implemented_unverified",
+     "to": "verified"
+    }
+   ]
   },
   {
    "id": "A1-01",

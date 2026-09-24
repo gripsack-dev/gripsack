@@ -78,6 +78,7 @@ def case_fake_verified(tmp: Path) -> str:
     ledger = base()
     row = requirement(ledger, "H0-02")
     row["status"] = "verified"
+    row["evidence_records"] = []
     out = run(write(tmp, ledger), "--validate")
     assert out.returncode != 0 and "not evidence" in out.stderr, out.stderr
     return "verified without evidence rejected"

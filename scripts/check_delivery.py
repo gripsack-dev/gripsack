@@ -56,12 +56,17 @@ class Violations:
                 print(f"  - {item}", file=sys.stderr)
             return 1
         print(f"ok: {summary}")
-        return 0
+
 def repo_root(directory: Path) -> Path:
-    """Report paths are repo-root relative; walk up from the ledger."""
+    """Report paths are repo-root relative; walk up from the ledger,
+    then fall back to the process CWD (mutant-ledger calibration copies
+    live outside any repo while citing the real repo's reports)."""
     for candidate in [directory, *directory.parents]:
         if (candidate / ".git").exists():
             return candidate
+    cwd = Path.cwd()
+    if (cwd / ".git").exists():
+        return cwd
     return directory
 
 
