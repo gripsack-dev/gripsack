@@ -19,6 +19,7 @@ import {
   asDestination,
   asName,
   asRecord,
+  asSelector,
   asSource,
   freezeDeep,
   nodeSpan,
@@ -37,7 +38,7 @@ export function artifactFile(output: string, selector: string): WorkspaceSource 
   return freezeDeep({
     kind: "artifact_file",
     output: asName(output, "artifactFile(output)"),
-    selector: asName(selector, "artifactFile(selector)"),
+    selector: asSelector(selector, "artifactFile(selector)"),
   });
 }
 

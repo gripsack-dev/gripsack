@@ -88,8 +88,11 @@ function kitchenSink(): WorkspaceValue {
     run: exec({ argv: [packageCommand("tools-bin", "tools"), lit("--version")] }),
     subject: "tools-bin",
   });
+  // Explicit environment/image package selections cannot place a
+  // fixed-prefix package. Other fixed-prefix references stay
+  // descriptive while executor/prefix policy remains A1-02/A2-04.
   const dev = environment("dev", {
-    packages: ["tools-bin", "bash"],
+    packages: ["bash"],
     target: linux,
     env: { TOOLS_HOME: artifact("tools-bin", ".") },
   });
@@ -129,7 +132,7 @@ function kitchenSink(): WorkspaceValue {
     schedules: ["nightly"],
     hooks: ["reload"],
   });
-  const ci = image("ci", { packages: ["tools-bin"], target: linux });
+  const ci = image("ci", { packages: ["bash"], target: linux });
   return workspace({
     outputs: [
       bashSrc,
@@ -266,8 +269,8 @@ Deno.test("emitWorkspaceIr emits the v4 workspace envelope", () => {
   assert.deepEqual(byName.me.hooks, ["reload"]);
 
   // image / environment / check
-  assert.deepEqual(byName.ci.packages, ["tools-bin"]);
-  assert.deepEqual(byName.dev.packages, ["tools-bin", "bash"]);
+  assert.deepEqual(byName.ci.packages, ["bash"]);
+  assert.deepEqual(byName.dev.packages, ["bash"]);
   assert.deepEqual(byName.dev.env, {
     TOOLS_HOME: { kind: "artifact", output: "tools-bin", selector: "." },
   });

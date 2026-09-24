@@ -57,10 +57,10 @@ pub mod codes {
     pub const WORKSPACE_EXEC_UNAVAILABLE: &str = "E124";
     /// Two workspace outputs declare the same catalog name (0052 §2.1).
     pub const DUPLICATE_WORKSPACE_OUTPUT: &str = "E125";
-    /// A workspace reference names no admitted output, or one of the
-    /// wrong kind (0052 §2.2 edges).
+    /// A workspace reference names no output/command, names the wrong
+    /// kind, or binds incompatible target/layout declarations (§2.2).
     pub const UNKNOWN_WORKSPACE_REF: &str = "E126";
-    /// A cycle in the workspace task dependency graph.
+    /// A cycle in the workspace production/build/runtime/task graph.
     pub const WORKSPACE_CYCLE: &str = "E127";
     /// A typed command reference in a position that cannot run it:
     /// package_command as an environment value, or a run_bash
@@ -70,8 +70,8 @@ pub mod codes {
     /// v4 provenance is mandatory and well-formed.
     pub const BAD_WORKSPACE_SPAN: &str = "E129";
     /// A workspace value outside the admitted grammar: empty output
-    /// catalog, empty output name, malformed calendar time, or a file
-    /// content/origin combination the grammar forbids (0052 §2.2).
+    /// catalog/name, malformed calendar time, file origin/content
+    /// mismatch or unsafe artifact selector (0052 §2.2).
     pub const INVALID_WORKSPACE_VALUE: &str = "E130";
 }
 

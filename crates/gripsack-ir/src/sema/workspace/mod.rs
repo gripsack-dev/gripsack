@@ -1,26 +1,19 @@
-//! Workspace catalog admission (plan/0052 §2.1–2.2): duplicate output
-//! names, typed references, task-graph cycles, command-context admission
-//! and mandatory-span/value sanity. A v3 or v4 legacy-modules document
-//! carries no workspace; the pass is a no-op then. Execution capability
-//! is a separate lane (E124, CLI plan/apply) — this pass judges
-//! structure only and never falls back silently.
-//!
-//! One concern per submodule, orchestrated below in a fixed order:
-//! `names` builds the catalog (E125), `span_value` checks provenance
-//! (E129) and combined values (E130), `refs` validates typed references
-//! (E126, command admission shared with `context`, E128), `cycles`
-//! rejects task dependency cycles (E127).
+//! Workspace catalog admission (plan/0052 §2.1–2.2): one typed
+//! projection collects named-output edges and command-context
+//! violations. Catalog, span and value checks run before resolved
+//! references, context checks and dependency-cycle admission. A v3 or
+//! v4 legacy-modules document carries no workspace; this pass is a
+//! no-op. Execution capability is separate (E124).
 
 mod context;
 mod cycles;
+mod graph;
 mod names;
 mod refs;
 mod span_value;
 
-use crate::diagnostic::{Diagnostic, codes};
+use crate::diagnostic::Diagnostic;
 use crate::model::Ir;
-use crate::span::Span;
-use names::Catalog;
 
 pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
     let Some(workspace) = &ir.workspace else {
@@ -28,66 +21,10 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
     };
     let catalog = names::check(workspace, diagnostics);
     span_value::check(workspace, diagnostics);
-    refs::check(workspace, &catalog, diagnostics);
-    cycles::check(workspace, diagnostics);
-}
-
-/// E126 — a typed reference must name an admitted output of the expected
-/// kind. A wrong-kind rejection labels both sites: the referencing
-/// declaration and the mismatched target.
-fn expect(
-    catalog: &Catalog,
-    referenced: &str,
-    expected: &[&str],
-    relation: &str,
-    at: &Span,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    match catalog.outputs.get(referenced) {
-        None => diagnostics.push(
-            Diagnostic::error(
-                codes::UNKNOWN_WORKSPACE_REF,
-                format!("{relation} references unknown workspace output `{referenced}`"),
-            )
-            .with_label(Some(at.clone()), "reference declared here"),
-        ),
-        Some(target) if !expected.contains(&target.kind()) => diagnostics.push(
-            Diagnostic::error(
-                codes::UNKNOWN_WORKSPACE_REF,
-                format!(
-                    "{relation} must reference a {} output; `{referenced}` is a {} output",
-                    expected.join(" or "),
-                    target.kind()
-                ),
-            )
-            .with_label(Some(at.clone()), "reference declared here")
-            .with_label(
-                Some(target.span().clone()),
-                format!("`{referenced}` declared here"),
-            ),
-        ),
-        Some(_) => {}
-    }
-}
-
-/// An artifact reference (`artifact` arg/path, `artifact_file` source)
-/// must name an admitted output; any kind may carry artifacts.
-fn expect_artifact(
-    catalog: &Catalog,
-    referenced: &str,
-    relation: &str,
-    at: &Span,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    if !catalog.outputs.contains_key(referenced) {
-        diagnostics.push(
-            Diagnostic::error(
-                codes::UNKNOWN_WORKSPACE_REF,
-                format!("{relation} references unknown workspace output `{referenced}`"),
-            )
-            .with_label(Some(at.clone()), "reference declared here"),
-        );
-    }
+    let projection = graph::collect(workspace);
+    refs::check(&projection, &catalog, diagnostics);
+    context::check(&projection, diagnostics);
+    cycles::check(&projection, &catalog, diagnostics);
 }
 
 /// Shared fixtures for the submodules' unit tests.

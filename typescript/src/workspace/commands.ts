@@ -26,6 +26,7 @@ import {
   asName,
   asPath,
   asRecord,
+  asSelector,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
@@ -37,12 +38,14 @@ export function lit(value: string): WorkspaceLiteral {
 }
 
 /** A reference to `<selector>` inside the artifact of output
- *  `<output>` — valid as an argv/env argument or a cwd path. */
+ *  `<output>` — valid as an argv/env argument or a cwd path. The
+ *  selector is `.` (the whole artifact) or a normalized relative
+ *  POSIX path; escapes are rejected at declaration. */
 export function artifact(output: string, selector: string): WorkspaceArtifactRef {
   return freezeDeep({
     kind: "artifact",
     output: asName(output, "artifact(output)"),
-    selector: asName(selector, "artifact(selector)"),
+    selector: asSelector(selector, "artifact(selector)"),
   });
 }
 

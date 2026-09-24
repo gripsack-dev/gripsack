@@ -93,7 +93,8 @@ export function asArg(v: unknown, where: string): WorkspaceArg {
     if (typeof rec.value !== "string") throw new Error(`${where}.value must be a string`);
   } else {
     for (const field of ARG_FIELDS[kind]!) {
-      if (field !== "kind") asName(rec[field], `${where}.${field}`);
+      if (field === "selector") asSelector(rec[field], `${where}.${field}`);
+      else if (field !== "kind") asName(rec[field], `${where}.${field}`);
     }
   }
   return v as WorkspaceArg;
@@ -110,12 +111,33 @@ export function asPath(v: unknown, where: string): WorkspacePath {
     if (typeof rec.value !== "string") throw new Error(`${where}.value must be a string`);
   } else {
     for (const field of ARG_FIELDS[kind]!) {
-      if (field !== "kind") asName(rec[field], `${where}.${field}`);
+      if (field === "selector") asSelector(rec[field], `${where}.${field}`);
+      else if (field !== "kind") asName(rec[field], `${where}.${field}`);
     }
   }
   return v as WorkspacePath;
 }
 
+/** An artifact selector: `.` (the whole artifact) or a normalized
+ *  relative POSIX path — no leading slash, no empty, `.` or `..`
+ *  segments. Anything else could escape the addressed artifact. */
+export function asSelector(v: unknown, where: string): string {
+  const s = asName(v, where);
+  if (s === ".") return s;
+  if (s.includes("\0") || s.startsWith("/") ||
+    s.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) {
+    throw new Error(
+      `${where}: selector must be "." or a normalized relative POSIX path ` +
+        `(no NUL, leading "/", empty, "." or ".." segments) — got ${JSON.stringify(s)}`,
+    );
+  }
+  return s;
+}
+
+/** Environment values are DATA — literal text or an artifact
+ *  reference. A package_command here would invoke a program from a
+ *  value position, which v4 never admits (0052 §2.2, core E128):
+ *  invoke tools from exec argv or a run_bash interpreter pin. */
 export function asEnv(
   v: Record<string, WorkspaceArg> | undefined,
   where: string,
@@ -123,7 +145,16 @@ export function asEnv(
   if (v === undefined) return undefined;
   const rec = asRecord(v, where);
   const out: Record<string, WorkspaceArg> = {};
-  for (const [k, arg] of Object.entries(rec)) out[k] = asArg(arg, `${where}["${k}"]`);
+  for (const [k, arg] of Object.entries(rec)) {
+    const a = asArg(arg, `${where}["${k}"]`);
+    if (a.kind === "package_command") {
+      throw new Error(
+        `${where}["${k}"] cannot be a package_command reference; environment values are ` +
+          `data (literal or artifact) — invoke package commands from exec argv or a run_bash interpreter pin`,
+      );
+    }
+    out[k] = a;
+  }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -189,7 +220,7 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
   if (rec.kind === "artifact_file") {
     rejectUnknownFields(where, rec, ["kind", "output", "selector"]);
     asName(rec.output, `${where}.output`);
-    asName(rec.selector, `${where}.selector`);
+    asSelector(rec.selector, `${where}.selector`);
     return v as WorkspaceSource;
   }
   throw new Error(`${where}: kind must be "repo_file" or "artifact_file"`);

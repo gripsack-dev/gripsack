@@ -902,18 +902,34 @@
    "mandatory_deliverable": "Typed outputs, execution/target/ABI/layout and distinct build/runtime/ordering edges",
    "required_acceptance_evidence": "Invalid references, cycles, kinds, selectors, incompatible targets/layouts and missing runtime/tool references rejected with declaration spans; actual graph adapters exercise the production policy",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates",
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "Decoded recipe/package/check/task/output references reject missing and wrong kinds with declaration spans",
+    "Artifact selectors reject escapes and invalid output kinds; referenced package commands resolve exported tool names",
+    "Production/build-input/runtime and task-prerequisite cycles reject with involved declaration spans; validation edges remain mandatory publication gates",
+    "Producer/package/environment/image target and ABI mismatches reject with both declaration spans; fixed-prefix consumers declare compatible destinations",
+    "Ordered local command sequencing is distinct from production, runtime, task prerequisite, validation and retention roles",
+    "Actual v4 graph adapters use the production policy kernel, including the build-only projection and required checks",
+    "Production-connected graph/closure proof and a dropped-validation-edge mutant run at A1 closure"
    ],
-   "evidence_records": []
+   "evidence_records": [],
+   "lane_status": {
+    "pure": "in_progress",
+    "container-gates": "in_progress",
+    "ci": "in_progress",
+    "proofs": "in_progress"
+   },
+   "status_history": [
+    {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
+   ],
+   "implementation_notes": "Static v4 graph admission subset: typed roles, artifact selector/kind/reference/cycle checks, conservative target/layout selection rules. Linux worktree observations: Rust 59 IR tests, Deno 59 tests, real CLI focused 11/11, final compose chain passed with 257/257 full e2e (TLC/Verus final layers cached; fresh prior existing policy Verus 56/0 plus four mutants are not A1 proofs). Full A1-02 ABI/prefix/ordering policy, production-connected graph kernel/proof/mutant, source-bound CI and runner evidence remain open; no executor or release claim."
   },
   {
    "id": "A1-03",

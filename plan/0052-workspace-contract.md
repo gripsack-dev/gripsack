@@ -434,11 +434,11 @@ The schema/Rust/TypeScript slice adds `schema/ir/v4.json`, versioned
 `gripsack-ir` admission (strict v3 reader + v4 workspace or legacy
 module envelope), pure workspace output constructors, an embedded Deno
 driver preferring `gripsack.ts`, and `grip check` catalog inspection
-without `hosts/<host>.ts` or `env.toml`. Rust sema checks duplicate
-names with both spans, the current named references/kinds, task
-prerequisite cycles, source spans and illegal command contexts. Full
-cross-role cycle/kind/selector and target/layout graph admission remains
-A1-02; the read-only v4 workspace does not execute. `grip plan`,
+without `hosts/<host>.ts` or `env.toml`. At the A1-01 packet boundary,
+Rust sema checked duplicate names with both spans, named
+references/kinds, task prerequisite cycles, source spans and illegal
+command contexts. §10 records the subsequent A1-02 static-graph
+admission packet; the v4 workspace remains read-only. `grip plan`,
 `apply`, `update` and `adopt` reject workspace execution with E124
 before host effects; no builder or OS scheduler is provisioned. The
 v4 corpus includes a literal dotfile profile and a provider-backed
@@ -476,10 +476,55 @@ stored `Ownership`/`Action`/`Trigger`/`EnvVar`/`FetchSpec` wire meanings
 remain unchanged. A1-01 is not `verified` in the delivery ledger until
 its full source-bound reports and Mac/proof/CI lanes are complete.
 
-## 10. Honesty register
+## 10. A1-02 static graph admission packet (not A1-02 closure)
 
-- This document began as a design candidate; §9 records one read-only
-  admission packet, not a completion or release claim for A1.
+No wire shape or version changed in this packet: `schema/ir/v4.json`
+retains its structural grammar. The Rust decoded-IR reader now
+projects named catalog edges into distinct production, build-input,
+runtime, task-prerequisite, validation and retention roles. TypeScript
+emission uses the corresponding typed roles. Ordered recipe commands
+remain local list order; no false build or retention edge is invented.
+Both readers reject missing/wrong-kind artifact and check-subject
+references, missing exported tool commands, dependency cycles
+(including a recipe building with the package it produces), unsafe
+artifact selectors and command-environment invocations. Core
+diagnostics label declaration spans; emitter graph errors name their
+sites. Constructor-time guards are not all source-labeled yet
+(A1-06). Publication checks and consumer wiring do not make spurious
+production cycles. Only recipes and packages are addressable as file
+artifacts; selectors are `.` or normalized relative POSIX paths
+(no NUL, absolute path, empty/`.`/`..` segment).
+
+For package→recipe and package→environment/image selection, v4
+requires **exact os/arch/ABI/minimum-OS target equality**; this is a
+conservative declared identity, *not* a claim that arbitrary ABI or
+macOS versions are compatible. Core-injected host facts do not prohibit
+cross-target declarations. A `fixed_prefix` package may be declared,
+but cannot be selected into an environment/image: the current wire
+has no consumer installation prefix, so admission refuses rather than
+inventing one. This does not claim complete prefix/layout negotiation
+for all command or profile consumers (A1-02/A2-04 remain open).
+
+Observed on the Linux worktree after this change: Rust
+`cargo test -p gripsack-ir --offline` **59 passed** across five suites;
+Deno container **59 passed**; container-built real CLI
+`test_workspace_contract.py` **11 passed** (including six new decoded
+graph rejections before E124). The final post-edit compose chain
+passed Rust fmt/clippy/tests, Deno tests and full real e2e
+**257/257**. TLC and Verus final image layers were **CACHED**;
+the preceding fresh verify image ran the existing policy kernels
+**56 verified / 0 errors** and rejected four named mutants. None of
+those existing proofs establishes the new v4 production graph.
+Source-bound runner/CI reports, a production adapter to the verified
+graph-closure kernel, its new Verus correspondence and a
+dropped-validation-edge mutant remain open. This packet authorizes
+neither workspace execution nor A1-02 closure.
+
+## 11. Honesty register
+
+- This document began as a design candidate; §§9–10 record read-only
+  admission and static-graph packets, not completion or release claims
+  for A1.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
   this plan authorizes no publication.
 - A1-07's checker/ledger and protected dependency gate remain partial

@@ -3,8 +3,8 @@
  *  (shared runtime guards), commands.ts (exec/runBash + dedent),
  *  files.ts (origin/content/destination axes), outputs.ts (the nine
  *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+ *  selector/target/cycle admission + the v4 envelope).
+ *  ../workspace.ts is the supported re-export surface. */
 
 import type { HostFacts } from "../facts.ts";
 import { IR_VERSION } from "../graph.ts";
@@ -12,43 +12,94 @@ import type { Span } from "../module.ts";
 import type {
   PackageNode,
   WorkspaceArg,
+  WorkspaceArtifactRef,
   WorkspaceCommand,
   WorkspaceOutputKind,
   WorkspaceOutputNode,
+  WorkspacePackageCommand,
   WorkspacePath,
+  WorkspacePlatform,
   WorkspaceValue,
 } from "./ir.ts";
-import { asName, asRecord, asSpan, duplicateError, spanAt } from "./validate.ts";
+import { asName, asRecord, asSelector, asSpan, duplicateError, spanAt } from "./validate.ts";
+
+/** Catalog roles never conflate publication checks or retention with
+ * production closure. Ordered local commands are intra-output and
+ * keep their list order; no catalog `ordering` edge is fabricated. */
+type EdgeRole = "production" | "build_input" | "runtime" | "task_prereq" | "validation" | "retention";
 
 interface Edge {
   from: string;
   to: string;
   span: Span;
   expected: readonly WorkspaceOutputKind[];
-  why: string;
-  /** Dependency edges feed cycle detection; validation/consumer
-   *  edges (checks, subjects, profile wiring) are checked for
-   *  existence and kind but can legitimately close a loop. */
-  dep: boolean;
+  role: EdgeRole;
 }
 
-/** Outputs whose artifacts an `artifact` reference may address. */
-const ARTIFACT_KINDS: readonly WorkspaceOutputKind[] = ["recipe", "package", "image"];
+function isDependency(role: EdgeRole): boolean {
+  return role === "production" || role === "build_input" ||
+    role === "runtime" || role === "task_prereq";
+}
 
-function commandEdges(cmd: WorkspaceCommand, from: string, edges: Edge[]): void {
+/** Outputs whose artifacts an `artifact` reference may address —
+ *  recipes and packages carry artifacts; images (and every consumer
+ *  kind) do not (0052 §2.2). */
+const ARTIFACT_KINDS: readonly WorkspaceOutputKind[] = ["recipe", "package"];
+
+/** Selector admission at emit: constructors guard their own values,
+ *  but hand-built nodes reach the emitter unchecked — reject escapes
+ *  here too, naming the source span (core E130). */
+function checkSelector(selector: string, span: Span, site: string): void {
+  try {
+    asSelector(selector, site);
+  } catch (e) {
+    throw new Error(`workspace: ${(e as Error).message} (referenced at ${spanAt(span)})`);
+  }
+}
+
+/** Environment values are data — a package_command in a value
+ *  position would invoke a program where only bytes are admitted
+ *  (0052 §2.2, core E128). */
+function envValueError(from: string, key: string, span: Span): Error {
+  return new Error(
+    `workspace: output '${from}' environment variable '${key}' cannot be a package_command ` +
+      `reference; environment values are data (literal or artifact) — invoke package commands ` +
+      `from exec argv or a run_bash interpreter pin (referenced at ${spanAt(span)})`,
+  );
+}
+
+function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges: Edge[]): void {
+  const artifactEdge = (a: WorkspaceArtifactRef): void => {
+    checkSelector(a.selector, cmd.span, `output '${from}' artifact reference`);
+    edges.push({ from, to: a.output, span: cmd.span, expected: ARTIFACT_KINDS, role });
+  };
+  const packageEdge = (a: WorkspacePackageCommand): void => {
+    edges.push({ from, to: a.package, span: cmd.span, expected: ["package"], role });
+  };
+  /** Command position (exec argv, run_bash interpreter pin, cwd): the
+   *  only places a tool invocation is legal. */
   const argEdge = (a: WorkspaceArg | WorkspacePath): void => {
-    if (a.kind === "artifact") {
-      edges.push({ from, to: a.output, span: cmd.span, expected: ARTIFACT_KINDS, why: "artifact", dep: true });
-    } else if (a.kind === "package_command") {
-      edges.push({ from, to: a.package, span: cmd.span, expected: ["package"], why: "package_command", dep: true });
-    }
+    if (a.kind === "artifact") artifactEdge(a);
+    else if (a.kind === "package_command") packageEdge(a);
   };
   if (cmd.kind === "exec") {
     cmd.argv.forEach(argEdge);
   } else {
-    argEdge(cmd.interpreter);
+    // a run_bash body runs under a pinned package interpreter only —
+    // a literal or artifact interpreter is ambient host discovery
+    if (cmd.interpreter.kind !== "package_command") {
+      throw new Error(
+        `workspace: output '${from}' run_bash interpreter must be a package_command reference ` +
+          `pinning the tool through a declared package; a literal or artifact interpreter is ` +
+          `ambient host discovery, which v4 never admits (referenced at ${spanAt(cmd.span)})`,
+      );
+    }
+    packageEdge(cmd.interpreter);
   }
-  for (const a of Object.values(cmd.env ?? {})) argEdge(a);
+  for (const [key, a] of Object.entries(cmd.env ?? {})) {
+    if (a.kind === "package_command") throw envValueError(from, key, cmd.span);
+    argEdge(a);
+  }
   if (cmd.cwd) argEdge(cmd.cwd);
 }
 
@@ -57,65 +108,124 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
   const names = (
     list: string[] | undefined,
     expected: readonly WorkspaceOutputKind[],
-    why: string,
-    dep: boolean,
+    role: EdgeRole,
   ): void => {
     for (const to of list ?? []) {
-      edges.push({ from: node.name, to, span: node.span, expected, why, dep });
+      edges.push({ from: node.name, to, span: node.span, expected, role });
     }
   };
   switch (node.kind) {
     case "recipe":
-      for (const c of node.steps ?? []) commandEdges(c, node.name, edges);
-      names(node.checks, ["check"], "checks", false);
+      for (const c of node.steps ?? []) commandEdges(c, node.name, "build_input", edges);
+      names(node.checks, ["check"], "validation");
       break;
     case "package":
       if (node.producer.kind === "recipe") {
-        names([node.producer.recipe], ["recipe"], "producer", true);
+        names([node.producer.recipe], ["recipe"], "production");
       }
-      names(node.runtime, ["package"], "runtime", true);
+      names(node.runtime, ["package"], "runtime");
       break;
     case "environment":
-      names(node.packages, ["package"], "packages", true);
-      for (const a of Object.values(node.env ?? {})) {
+      names(node.packages, ["package"], "runtime");
+      for (const [key, a] of Object.entries(node.env ?? {})) {
+        if (a.kind === "package_command") throw envValueError(node.name, key, node.span);
         if (a.kind === "artifact") {
-          edges.push({ from: node.name, to: a.output, span: node.span, expected: ARTIFACT_KINDS, why: "artifact", dep: true });
-        } else if (a.kind === "package_command") {
-          edges.push({ from: node.name, to: a.package, span: node.span, expected: ["package"], why: "package_command", dep: true });
+          checkSelector(a.selector, node.span, `environment '${node.name}' variable '${key}'`);
+          edges.push({ from: node.name, to: a.output, span: node.span, expected: ARTIFACT_KINDS, role: "runtime" });
         }
       }
       break;
     case "task":
-      commandEdges(node.run, node.name, edges);
-      names(node.deps, ["task"], "deps", true);
-      names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "environment", true);
-      names(node.checks, ["check"], "checks", false);
+      commandEdges(node.run, node.name, "runtime", edges);
+      names(node.deps, ["task"], "task_prereq");
+      names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "runtime");
+      names(node.checks, ["check"], "validation");
       break;
     case "schedule":
-      names([node.task], ["task"], "task", false);
+      names([node.task], ["task"], "retention");
       break;
     case "check":
-      commandEdges(node.run, node.name, edges);
-      names([node.subject], ["recipe", "package", "environment", "task", "schedule", "check", "image", "profile", "hook"], "subject", false);
+      commandEdges(node.run, node.name, "runtime", edges);
+      names([node.subject], ["recipe", "package", "environment", "task", "schedule", "check", "image", "profile", "hook"], "validation");
       break;
     case "image":
-      names(node.packages, ["package"], "packages", true);
+      names(node.packages, ["package"], "runtime");
       break;
     case "profile":
       for (const f of node.files ?? []) {
         if (f.source?.kind === "artifact_file") {
-          edges.push({ from: node.name, to: f.source.output, span: f.span, expected: ARTIFACT_KINDS, why: "artifact_file", dep: true });
+          checkSelector(f.source.selector, f.span, `profile '${node.name}' file source`);
+          edges.push({ from: node.name, to: f.source.output, span: f.span, expected: ARTIFACT_KINDS, role: "runtime" });
         }
       }
-      names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "environment", false);
-      names(node.schedules, ["schedule"], "schedules", false);
-      names(node.hooks, ["hook"], "hooks", false);
+      names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "retention");
+      names(node.schedules, ["schedule"], "retention");
+      names(node.hooks, ["hook"], "retention");
       break;
     case "hook":
-      commandEdges(node.run, node.name, edges);
+      commandEdges(node.run, node.name, "runtime", edges);
       break;
   }
   return edges;
+}
+
+/** Per-output target identity: exact os/arch/abi/minimum_os equality
+ *  between a provider and its consumer — the conservative v4 rule.
+ *  The injected host facts are never consulted, so a workspace
+ *  targeting another platform is admitted as declared. */
+function sameTarget(a: WorkspacePlatform, b: WorkspacePlatform): boolean {
+  return a.os === b.os && a.arch === b.arch &&
+    (a.abi ?? null) === (b.abi ?? null) &&
+    (a.minimum_os ?? null) === (b.minimum_os ?? null);
+}
+
+function requireSameTarget(
+  relation: string,
+  consumer: WorkspaceOutputNode & { target: WorkspacePlatform },
+  provider: WorkspaceOutputNode & { target: WorkspacePlatform },
+): void {
+  if (!sameTarget(consumer.target, provider.target)) {
+    throw new Error(
+      `workspace: ${relation} — target of '${provider.name}' ` +
+        `(${JSON.stringify(provider.target)}) does not equal target of '${consumer.name}' ` +
+        `(${JSON.stringify(consumer.target)}); exact os/arch/abi/minimum_os equality is the v4 ` +
+        `target identity ('${consumer.name}' declared at ${spanAt(consumer.span)}, ` +
+        `'${provider.name}' declared at ${spanAt(provider.span)})`,
+    );
+  }
+}
+
+/** Target and layout admission over resolved references (run after the
+ *  reference pass, so every lookup is guaranteed present and typed):
+ *  a package's target must equal its producer recipe's, an environment
+ *  or image selection must equal the consumer's target, and a
+ *  fixed_prefix package cannot enter a selection — the v4 wire has no
+ *  consumer prefix slot to install it at. */
+function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>): void {
+  for (const node of catalog.values()) {
+    if (node.kind === "package" && node.producer.kind === "recipe") {
+      const recipe = catalog.get(node.producer.recipe)!;
+      if (recipe.kind === "recipe") {
+        requireSameTarget(`package '${node.name}' producer target mismatch`, node, recipe);
+      }
+    }
+    if (node.kind === "environment" || node.kind === "image") {
+      for (const name of node.packages) {
+        const selected = catalog.get(name)!;
+        if (selected.kind !== "package") continue; // the reference pass rejected this
+        requireSameTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
+        if (selected.layout === "fixed_prefix") {
+          throw new Error(
+            `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with layout ` +
+              `'fixed_prefix' but declares no install prefix — the v4 wire has no consumer prefix ` +
+              `slot, so fixed_prefix packages cannot be selected yet ` +
+              `('${node.name}' declared at ${spanAt(node.span)}, ` +
+              `'${selected.name}' declared at ${spanAt(selected.span)})`,
+          );
+        }
+      }
+    }
+  }
 }
 
 function orList(kinds: readonly string[]): string {
@@ -126,10 +236,15 @@ function orList(kinds: readonly string[]): string {
 
 /** Serialize a workspace value as the v4 workspace IR envelope —
  *  `{ir_version: 4, host, workspace}`, never `modules` (the schema
- *  admits exactly one of the two). Every typed reference is checked
- *  against the catalog: unknown names, wrong output kinds and
- *  dependency cycles throw naming the declaration spans. Host facts
- *  are core-injected; the hostname never crosses into the IR. */
+ *  admits exactly one of the two). Admission mirrors the decoded core:
+ *  every typed reference is checked against the catalog (unknown names,
+ *  wrong output kinds), artifact selectors must be normalized relative
+ *  paths, environment values are data only, per-output targets must
+ *  match exactly between producer/consumer, fixed_prefix packages
+ *  cannot enter a prefix-less selection, and dependency cycles throw —
+ *  all naming the declaration spans. Host facts are core-injected for
+ *  the envelope only, never consulted for target admission; the
+ *  hostname never crosses into the IR. */
 export function emitWorkspaceIr(
   value: WorkspaceValue,
   facts: HostFacts,
@@ -200,7 +315,7 @@ export function emitWorkspaceIr(
             `declared at ${spanAt(target.span)})`,
         );
       }
-      if (e.dep) depEdges.push(e);
+      if (isDependency(e.role)) depEdges.push(e);
     }
     if (node.kind === "recipe") for (const c of node.steps ?? []) collectCommandKeys(c);
     if (node.kind === "task" || node.kind === "check" || node.kind === "hook") {
@@ -217,6 +332,8 @@ export function emitWorkspaceIr(
       );
     }
   }
+
+  checkTargetsAndLayouts(catalog);
 
   // dependency cycles over production/build edges only — validation
   // edges (a recipe gated by a check on the package it produces) may

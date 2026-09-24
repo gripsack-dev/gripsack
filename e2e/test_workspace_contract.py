@@ -126,3 +126,137 @@ def test_duplicate_named_outputs_report_both_declaration_sites(sandbox):
     assert "gripsack.ts:9" in result.stderr
     assert "gripsack.ts:19" in result.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+def recipe_and_package():
+    target = {"os": "linux", "arch": "x86_64"}
+    recipe = {
+        "kind": "recipe",
+        "name": "build",
+        "span": {"file": "gripsack.ts", "line": 2},
+        "source": {
+            "fetch": {"kind": "file", "path": "tool.bin"},
+            "span": {"file": "gripsack.ts", "line": 2},
+        },
+        "execution": "native",
+        "output_kind": "tree",
+        "target": target,
+    }
+    package = {
+        "kind": "package",
+        "name": "tool",
+        "span": {"file": "gripsack.ts", "line": 3},
+        "producer": {"kind": "recipe", "recipe": "build"},
+        "commands": {"tool": "bin/tool"},
+        "target": target,
+        "layout": "relocatable",
+    }
+    return recipe, package
+
+
+def test_decoded_artifact_reference_rejects_non_artifact_with_both_sites(sandbox):
+    task = {
+        "kind": "task",
+        "name": "not-an-artifact",
+        "span": {"file": "gripsack.ts", "line": 15},
+        "run": {
+            "kind": "exec",
+            "span": {"file": "gripsack.ts", "line": 15},
+            "argv": [{"kind": "literal", "value": "true"}],
+        },
+    }
+    profile = dotfile_profile()
+    profile["files"][0]["source"] = {
+        "kind": "artifact_file",
+        "output": "not-an-artifact",
+        "selector": "config",
+    }
+    profile["files"][0]["content"] = {"kind": "identity"}
+    result = run_plan_ir(sandbox, workspace_ir(task, profile))
+    assert result.returncode != 0
+    assert "E126" in result.stderr, result.stderr
+    assert "gripsack.ts:10" in result.stderr
+    assert "gripsack.ts:15" in result.stderr
+    assert "E124" not in result.stderr
+
+
+def test_decoded_check_subject_must_exist_before_execution(sandbox):
+    check = {
+        "kind": "check",
+        "name": "verify",
+        "span": {"file": "gripsack.ts", "line": 16},
+        "subject": "no-such-output",
+        "run": {
+            "kind": "exec",
+            "span": {"file": "gripsack.ts", "line": 16},
+            "argv": [{"kind": "literal", "value": "true"}],
+        },
+    }
+    result = run_plan_ir(sandbox, workspace_ir(check))
+    assert result.returncode != 0
+    assert "E126" in result.stderr and "no-such-output" in result.stderr
+    assert "gripsack.ts:16" in result.stderr
+    assert "E124" not in result.stderr
+
+
+def test_decoded_recipe_tool_cycle_is_rejected_before_execution(sandbox):
+    recipe, package = recipe_and_package()
+    recipe["steps"] = [
+        {
+            "kind": "exec",
+            "span": {"file": "gripsack.ts", "line": 4},
+            "argv": [
+                {"kind": "package_command", "package": "tool", "command": "tool"},
+            ],
+        }
+    ]
+    result = run_plan_ir(sandbox, workspace_ir(recipe, package))
+    assert result.returncode != 0
+    assert "E127" in result.stderr, result.stderr
+    assert "gripsack.ts:2" in result.stderr
+    assert "gripsack.ts:3" in result.stderr
+    assert "E124" not in result.stderr
+
+
+def test_decoded_artifact_selector_rejects_parent_escape(sandbox):
+    recipe, package = recipe_and_package()
+    profile = dotfile_profile()
+    profile["files"][0]["source"] = {
+        "kind": "artifact_file",
+        "output": "tool",
+        "selector": "../secrets",
+    }
+    profile["files"][0]["content"] = {"kind": "identity"}
+    result = run_plan_ir(sandbox, workspace_ir(recipe, package, profile))
+    assert result.returncode != 0
+    assert "selector" in result.stderr and "gripsack.ts:10" in result.stderr
+    assert "E124" not in result.stderr
+
+
+def test_decoded_package_target_mismatch_rejects_with_both_sites(sandbox):
+    recipe, package = recipe_and_package()
+    package["target"] = {"os": "macos", "arch": "aarch64"}
+    result = run_plan_ir(sandbox, workspace_ir(recipe, package))
+    assert result.returncode != 0
+    assert "target" in result.stderr
+    assert "gripsack.ts:2" in result.stderr
+    assert "gripsack.ts:3" in result.stderr
+    assert "E124" not in result.stderr
+
+
+def test_decoded_fixed_prefix_package_cannot_enter_prefixless_environment(sandbox):
+    recipe, package = recipe_and_package()
+    package["layout"] = "fixed_prefix"
+    environment = {
+        "kind": "environment",
+        "name": "tools",
+        "span": {"file": "gripsack.ts", "line": 6},
+        "packages": ["tool"],
+        "target": package["target"],
+    }
+    result = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
+    assert result.returncode != 0
+    assert "fixed_prefix" in result.stderr
+    assert "gripsack.ts:3" in result.stderr
+    assert "gripsack.ts:6" in result.stderr
+    assert "E124" not in result.stderr
