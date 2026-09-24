@@ -10,7 +10,8 @@ import type {
   WorkspaceOutputNode,
   WorkspacePlatform,
 } from "./ir.ts";
-import { asRecord, spanAt } from "./validate.ts";
+import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
+import { asRecord } from "./validate.ts";
 
 function asVersion(value: unknown, where: string): WorkspaceOsVersion {
   const version = asRecord(value, where);
@@ -100,31 +101,45 @@ function requireCompatibleTarget(
   if (supplied.os !== requested.os || supplied.arch !== requested.arch ||
     (supplied.abi ?? null) !== (requested.abi ?? null) ||
     !floorAtMost(supplied.minimum_os, requested.minimum_os)) {
-    throw new Error(
-      `workspace: ${relation} — target of '${provider.name}' (${JSON.stringify(supplied)}) ` +
+    throw new DiagnosticError({
+      code: diagnosticCodes.unknownWorkspaceRef,
+      severity: "error",
+      message:
+        `workspace: ${relation} — target of '${provider.name}' (${JSON.stringify(supplied)}) ` +
         `cannot satisfy target of '${consumer.name}' (${JSON.stringify(requested)}): ` +
-        `OS/arch/ABI must match and provider minimum OS must not exceed the consumer ` +
-        `('${consumer.name}' declared at ${spanAt(consumer.span)}, ` +
-        `'${provider.name}' declared at ${spanAt(provider.span)})`,
-    );
+        `OS/arch/ABI must match and provider minimum OS must not exceed the consumer`,
+      labels: [
+        { span: consumer.span, note: `consumer '${consumer.name}' declared here` },
+        { span: provider.span, note: `provider '${provider.name}' declared here` },
+      ],
+    });
   }
 }
 
 /** Resolved catalog references have already passed kind/existence
  * checks. Hand-built nodes still pass every runtime shape guard here. */
 export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>): void {
+  const guard = (node: WorkspaceOutputNode, run: () => void): void => {
+    try {
+      run();
+    } catch (error) {
+      throw errorAt(
+        diagnosticCodes.invalidWorkspaceValue,
+        (error as Error).message,
+        node.span,
+        "declared here",
+      );
+    }
+  };
   for (const node of catalog.values()) {
     if ("target" in node) {
-      try { asPlatform(node.target, `${node.kind} '${node.name}' target`); }
-      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+      guard(node, () => void asPlatform(node.target, `${node.kind} '${node.name}' target`));
     }
     if (node.kind === "recipe") {
-      try { asExecution(node.execution, `recipe '${node.name}' execution`); }
-      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+      guard(node, () => void asExecution(node.execution, `recipe '${node.name}' execution`));
     }
     if (node.kind === "package") {
-      try { asLayout(node.layout, `package '${node.name}' layout`); }
-      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+      guard(node, () => void asLayout(node.layout, `package '${node.name}' layout`));
       if (node.producer.kind === "recipe") {
         const recipe = catalog.get(node.producer.recipe)!;
         if (recipe.kind === "recipe") {
@@ -133,8 +148,7 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
       }
     }
     if (node.kind === "environment" && node.prefix !== undefined) {
-      try { asInstallPrefix(node.prefix, `environment '${node.name}' prefix`); }
-      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+      guard(node, () => void asInstallPrefix(node.prefix, `environment '${node.name}' prefix`));
     }
     if (node.kind === "environment" || node.kind === "image") {
       for (const name of node.packages) {
@@ -143,13 +157,18 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
         requireCompatibleTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
         if (selected.layout.kind === "fixed_prefix" &&
           (node.kind === "image" || node.prefix !== selected.layout.prefix)) {
-          throw new Error(
-            `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with ` +
+          throw new DiagnosticError({
+            code: diagnosticCodes.unknownWorkspaceRef,
+            severity: "error",
+            message:
+              `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with ` +
               `layout fixed_prefix at '${selected.layout.prefix}' but declares no matching ` +
-              `install prefix (image prefix materialization is unavailable until B4) ` +
-              `('${node.name}' declared at ${spanAt(node.span)}, ` +
-              `'${selected.name}' declared at ${spanAt(selected.span)})`,
-          );
+              `install prefix (image prefix materialization is unavailable until B4)`,
+            labels: [
+              { span: node.span, note: `'${node.name}' declared here` },
+              { span: selected.span, note: `'${selected.name}' declared here` },
+            ],
+          });
         }
       }
     }

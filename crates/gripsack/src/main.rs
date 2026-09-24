@@ -82,6 +82,10 @@ enum Command {
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
+        /// Emit the check report as one JSON document on stdout — the
+        /// same diagnostics the terminal renders (0052 A1-06)
+        #[arg(long)]
+        json: bool,
     },
     /// Inspect legacy module operations; workspace execution is not yet available
     Plan {
@@ -208,8 +212,15 @@ fn main() -> ExitCode {
             ),
             Err(code) => code,
         },
-        Command::Check { host, repo } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::check(&repo, host.as_deref(), palette),
+        Command::Check { host, repo, json } => match commands::resolve_repo(repo.as_deref()) {
+            Ok(repo) => {
+                let sink = if json {
+                    render::DiagnosticSink::json()
+                } else {
+                    render::DiagnosticSink::terminal(palette, &repo)
+                };
+                commands::check(&repo, host.as_deref(), sink)
+            }
             Err(code) => code,
         },
         Command::Gc { dry_run } => commands::gc(palette, dry_run),
@@ -258,17 +269,18 @@ fn main() -> ExitCode {
             if let Some(code) = commands::trust_gate(&repo) {
                 return code;
             }
-            let outcome = match commands::eval_repo(&repo, host.as_deref(), palette) {
+            let mut sink = render::DiagnosticSink::terminal(palette, &repo);
+            let outcome = match commands::eval_repo(&repo, host.as_deref(), &mut sink) {
                 Ok(o) => o,
                 Err(code) => return code,
             };
             // the same validation pipeline check/apply run (0033 R5):
             // a plan that succeeds where apply would fail is a lie
-            let ir = match commands::validated_ir(&outcome, &repo, host.as_deref(), palette) {
+            let ir = match commands::validated_ir(&outcome, &repo, host.as_deref(), &mut sink) {
                 Ok(ir) => ir,
                 Err(code) => return code,
             };
-            if let Err(code) = commands::reject_workspace_execution(&ir, "grip plan", palette) {
+            if let Err(code) = commands::reject_workspace_execution(&ir, "grip plan", &mut sink) {
                 return code;
             }
             {
@@ -277,7 +289,10 @@ fn main() -> ExitCode {
                 }) {
                     Ok(()) => {}
                     Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
-                        eprintln!("{}", render::render_diagnostics(&[d], palette));
+                        eprintln!(
+                            "{}",
+                            render::render_diagnostics_bounded(&[d], palette, &repo)
+                        );
                         return ExitCode::FAILURE;
                     }
                     Err(e) => {

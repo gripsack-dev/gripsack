@@ -5,6 +5,8 @@
 //! Bad or duplicate names are diagnosed before this pass, so all kernel
 //! indices are bounded. No effect, lock resolution or executor here.
 
+mod coverage;
+
 use super::graph::{EdgeRole, Projection};
 use super::names::Catalog;
 use crate::diagnostic::{Diagnostic, codes};
@@ -128,6 +130,7 @@ pub(super) fn check(
 ) {
     let indexed = index_view(projection, catalog);
     check_local_order(workspace, projection, diagnostics);
+    coverage::check(workspace, projection, &indexed.indices, diagnostics);
     for output in &workspace.outputs {
         if let WorkspaceOutput::Package(package) = output
             && let WorkspaceProducer::Recipe { recipe } = &package.producer
@@ -214,16 +217,65 @@ mod tests {
             .edges
             .retain(|edge| edge.role != EdgeRole::Validation && edge.role != EdgeRole::Production);
         super::check(workspace, &projection, &catalog, &mut diagnostics);
-        let missing: Vec<&Diagnostic> = diagnostics
-            .iter()
-            .filter(|d| d.code == codes::REQUIRED_WORKSPACE_EDGE_MISSING)
-            .collect();
-        assert_eq!(missing.len(), 2, "both mandatory relations fail admission");
-        for diagnostic in missing {
-            assert_eq!(diagnostic.labels.len(), 2);
-            assert!(diagnostic.message.contains("required"));
+        for (role, source, target) in [("production", 3, 2), ("validation", 2, 8)] {
+            let failure = diagnostics
+                .iter()
+                .find(|diagnostic| {
+                    diagnostic.code == codes::REQUIRED_WORKSPACE_EDGE_MISSING
+                        && diagnostic.message.contains(role)
+                        && diagnostic.labels.len() == 2
+                })
+                .expect("a mandatory relation must retain both declaration sites");
+            let lines: Vec<u32> = failure
+                .labels
+                .iter()
+                .filter_map(|label| label.span.as_ref().map(|span| span.line))
+                .collect();
+            assert_eq!(lines, vec![source, target]);
         }
     }
+    #[test]
+    fn omitted_build_input_and_runtime_edges_fail_admission() {
+        let recipe = RECIPE.replace(
+            r#""execution": {"kind": "host", "access": "unconfined"}"#,
+            r#""steps": [{"kind": "exec", "span": {"file": "grip.ts", "line": 4},
+                 "argv": [{"kind": "artifact", "output": "src", "selector": "."}]}],
+               "execution": {"kind": "host", "access": "unconfined"}"#,
+        );
+        let package = PACKAGE.replace(
+            r#""commands": {"hello": "bin/hello"}"#,
+            r#""commands": {"hello": "bin/hello"}, "runtime": ["src"]"#,
+        );
+        let provider = r#"{
+            "kind": "package", "name": "src", "span": {"file": "grip.ts", "line": 11},
+            "producer": {"kind": "provider", "provider": {
+                "fetch": {"kind": "file", "path": "src.bin"},
+                "span": {"file": "grip.ts", "line": 11}}},
+            "commands": {"tool": "bin/tool"},
+            "target": {"os": "linux", "arch": "x86_64"},
+            "layout": {"kind": "relocatable"}}"#;
+        let ir = crate::parse(&doc(&format!("{recipe},{package},{provider}"))).unwrap();
+        let workspace = ir.workspace.as_ref().unwrap();
+        let mut diagnostics = Vec::new();
+        let catalog = super::super::names::check(workspace, &mut diagnostics);
+        let mut projection = super::super::graph::collect(workspace);
+        projection
+            .edges
+            .retain(|edge| edge.role != EdgeRole::BuildInput && edge.role != EdgeRole::Runtime);
+        super::check(workspace, &projection, &catalog, &mut diagnostics);
+        let missing: Vec<&str> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == codes::REQUIRED_WORKSPACE_EDGE_MISSING)
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect();
+        assert!(
+            missing
+                .iter()
+                .any(|message| message.contains("build input"))
+        );
+        assert!(missing.iter().any(|message| message.contains("runtime")));
+    }
+
     #[test]
     fn adjacent_local_steps_lower_to_ordering_not_build_edges() {
         let recipe = RECIPE.replace(

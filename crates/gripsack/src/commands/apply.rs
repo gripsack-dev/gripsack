@@ -63,15 +63,16 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
         return code;
     }
     let host = opts.host.as_deref();
-    let outcome = match eval_repo(repo, host, palette) {
+    let mut sink = crate::render::DiagnosticSink::terminal(palette, repo);
+    let outcome = match eval_repo(repo, host, &mut sink) {
         Ok(o) => o,
         Err(code) => return code,
     };
-    let ir = match crate::commands::validated_ir(&outcome, repo, host, palette) {
+    let ir = match crate::commands::validated_ir(&outcome, repo, host, &mut sink) {
         Ok(ir) => ir,
         Err(code) => return code,
     };
-    if let Err(code) = crate::commands::reject_workspace_execution(&ir, "grip apply", palette) {
+    if let Err(code) = crate::commands::reject_workspace_execution(&ir, "grip apply", &mut sink) {
         return code;
     }
     let spinner = if palette.enabled {
@@ -142,14 +143,17 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
             // plugin diagnostics render through the one renderer (0009 §2)
             eprintln!(
                 "{}",
-                crate::render::render_diagnostics(&diagnostics, palette)
+                crate::render::render_diagnostics_bounded(&diagnostics, palette, repo)
             );
             ExitCode::FAILURE
         }
         Err(gripsack_exec::ExecError::Gate(d)) => {
             // pre-mutation validity gates carry their own spans —
             // render them as-is, same as sema (0030 §P0-1)
-            eprintln!("{}", crate::render::render_diagnostics(&[d], palette));
+            eprintln!(
+                "{}",
+                crate::render::render_diagnostics_bounded(&[d], palette, repo)
+            );
             ExitCode::FAILURE
         }
         Err(e) => {
@@ -172,7 +176,10 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
             if let Some(span) = span {
                 d = d.with_label(Some(span), "raised here");
             }
-            eprintln!("{}", crate::render::render_diagnostics(&[d], palette));
+            eprintln!(
+                "{}",
+                crate::render::render_diagnostics_bounded(&[d], palette, repo)
+            );
             ExitCode::FAILURE
         }
     }

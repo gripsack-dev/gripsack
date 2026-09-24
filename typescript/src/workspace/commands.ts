@@ -1,6 +1,7 @@
 /** v5 immutable exec/runBash commands, typed arguments and dedent maps. */
 
 import { rejectUnknownFields } from "../fields.ts";
+import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
 import type { Span } from "../module.ts";
 import type {
   BashBody,
@@ -26,10 +27,6 @@ import {
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
-
-/** Frontend-side form of core INVALID_WORKSPACE_VALUE for literal
- *  Bash text. A1-06 still owns structured frontend diagnostics. */
-const INVALID_BASH_BODY_CODE = "E130";
 
 /** A literal string — valid as an argv/env argument or a cwd path. */
 export function lit(value: string): WorkspaceLiteral {
@@ -161,10 +158,13 @@ export function bashBody(parts: TemplateStringsArray, ...values: unknown[]): Bas
   if (values.length !== 0 || parts.raw.length !== 1) {
     const before = parts.raw[0] ?? "";
     const line = span.line + before.split("\n").length - 1;
-    throw new Error(
-      `${INVALID_BASH_BODY_CODE} bashBody: interpolation is not a literal Bash body (declared at ${span.file}:${line}); ` +
-        `pass dynamic values through typed env/argv bindings`,
-    );
+    throw new DiagnosticError({
+      code: diagnosticCodes.invalidWorkspaceValue,
+      severity: "error",
+      message: "bashBody: interpolation is not a literal Bash body",
+      labels: [{ span: { file: span.file, line }, note: "interpolation evaluated here" }],
+      help: "pass dynamic values through typed env/argv bindings",
+    });
   }
   const text = parts.raw[0]!;
   rejectBashInterpolation(text, span, "bashBody`...`");
@@ -175,10 +175,13 @@ function rejectBashInterpolation(body: string, span: Span, where: string): void 
   const site = body.indexOf("${");
   if (site === -1) return;
   const line = span.line + body.slice(0, site).split("\n").length - 1;
-  throw new Error(
-    `${INVALID_BASH_BODY_CODE} ${where}: body is literal text — "\${" interpolation is rejected ` +
-      `(declared at ${span.file}:${line}); pass dynamic values through typed env/argv bindings`,
-  );
+  throw new DiagnosticError({
+    code: diagnosticCodes.invalidWorkspaceValue,
+    severity: "error",
+    message: `${where}: body is literal text — "\${" interpolation is rejected`,
+    labels: [{ span: { file: span.file, line }, note: "interpolation rejected here" }],
+    help: "pass dynamic values through typed env/argv bindings",
+  });
 }
 
 /** A literal Bash body run under a pinned package interpreter. The
@@ -195,7 +198,12 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
     body = spec.body;
     bodySpan = span;
     if (body.includes("\n")) {
-      throw new Error(`${what}: multiline body needs bashBody\`...\` to preserve original source lines`);
+      throw errorAt(
+        diagnosticCodes.invalidWorkspaceValue,
+        `${what}: multiline body needs bashBody\`...\` to preserve original source lines`,
+        span,
+        "body declared here",
+      );
     }
   } else {
     const source = asRecord(spec.body, `${what}: body`);
@@ -207,9 +215,12 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
   rejectBashInterpolation(body, bodySpan, what);
   const interpreter = asArg(spec.interpreter, `${what}: interpreter`);
   if (interpreter.kind !== "package_command") {
-    throw new Error(
+    throw errorAt(
+      diagnosticCodes.badWorkspaceContext,
       `${what}: interpreter must be a pinned packageCommand("<package>", "<command>") — ` +
         `ambient host shells are never discovered (A1-03)`,
+      span,
+      "interpreter declared here",
     );
   }
   const { text, lineMap } = dedent(body, bodySpan);
@@ -253,15 +264,19 @@ function bashCommandBuilder(spec: RunBashSpec): BashCommandBuilder {
     },
   });
 }
-
 /** Start a Bash command with a declared package interpreter, never a
  *  host-shell name. `body(...).build()` lowers through `runBash({…})`. */
 export function bash(interpreter: WorkspacePackageCommand): BashBuilder {
+  const span = nodeSpan(undefined, "bash(...)");
   const pin = asArg(interpreter, "bash(interpreter)");
   if (pin.kind !== "package_command") {
-    throw new Error("bash(interpreter) requires a declared packageCommand");
+    throw errorAt(
+      diagnosticCodes.badWorkspaceContext,
+      "bash(interpreter) requires a declared packageCommand — ambient host shells are never discovered (A1-03)",
+      span,
+      "interpreter declared here",
+    );
   }
-  const span = nodeSpan(undefined, "bash(...)");
   const stablePin = freezeDeep(pin);
   return Object.freeze({
     body(body: RunBashSpec["body"]): BashCommandBuilder {

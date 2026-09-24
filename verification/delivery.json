@@ -929,7 +929,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Current v5 read-only graph uses production gripsack-policy build-closure plus a verified edge-role classifier (fresh 61 Verus obligations/0 errors; five calibrated mutants including dropped required validation). Strict historical v4 workspace/schema reader and v3 modules reader remain available. Schema/Rust/TS migrated together to explicit recipe execution, typed ABI/minimum-OS, fixed-prefix environment selection and local ordering edges; worktree observations: 67 Rust IR tests, 61 Deno tests, focused real CLI 16/16 and regenerated golden 2/2. Full post-edit Linux compose gates passed Rust test, TS 61/61, e2e 262/262 and verify 61/0 with five mutants; TLC model gate passed with CACHED layer, not a fresh model run. Source-bound CI evidence and a complete formal schema-to-name-index adapter correspondence remain open. No workspace executor, Mac claim or public release is authorized."
+   "implementation_notes": "Current v5 read-only graph uses production gripsack-policy build-closure and a verified edge-role classifier (fresh 61 Verus obligations/0 errors; five calibrated mutants including dropped required validation). Strict historical v4 workspace/schema and v3 module readers remain available. Schema/Rust/TS migrated together to explicit execution, typed ABI/minimum-OS, fixed-prefix environment selection and local ordering. The production adapter additionally compares decoded per-output role cardinalities with its graph projection, rejecting dropped build-input/runtime references with E131 and source spans (focused adapter tests 4/4); this is not a formal schema-to-name-index or same-role reference identity proof. Final Linux compose passed Rust fmt/clippy/tests, focused fresh Deno 62/62, e2e 275/275 and fresh Verus 61/0 with five mutants; the final TS and TLC model layers were CACHED. Source-bound CI and full adapter refinement remain open. No workspace executor, Mac claim or public release is authorized."
   },
   {
    "id": "A1-03",
@@ -1017,18 +1017,34 @@
    "mandatory_deliverable": "Readable and structured source-aware diagnostics",
    "required_acceptance_evidence": "Real CLI/API failures for typo, type, collision, target and missing capability; both collision sources and dedented script locations; JSON agrees with terminal facts; check/preview does not provision a builder",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates",
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "Frontend typo/type errors carry an allocated E-code and the user declaration span; engine/user exceptions remain distinguishable",
+    "Missing/wrong-kind references and incompatible target/layout reports label both consumer and provider; duplicate catalog names label both declarations",
+    "Literal Bash interpolation and dedented script failures retain the original source line in both frontend and decoded IR paths",
+    "Terminal and check --json agree on diagnostic code/severity/message/labels/help; successful output catalogs and legacy modules preserve host facts",
+    "Read-only check/preview does not start BuildKit or a scheduler; unavailable capabilities fail with an E124 code, owning milestone and exact declaration site",
+    "Snippet reads stay bounded to the evaluated repo capability; malformed coordinates and out-of-repo symlinks never leak file bytes",
+    "Registry parity, positive/negative runner reports and source-bound CI/proof lanes remain required for closure"
    ],
-   "evidence_records": []
+   "evidence_records": [],
+   "lane_status": {
+    "pure": "in_progress",
+    "container-gates": "in_progress",
+    "ci": "in_progress",
+    "proofs": "in_progress"
+   },
+   "status_history": [
+    {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
+   ],
+   "implementation_notes": "The real frontend emits core Diagnostic-shaped errors and grip check --json renders the same codes/labels as terminal output; wrong-kind, collision, target, typo, ambient Bash and dedented script cases passed focused real CLI 29/29. Bounded source snippets use a pinned repo directory capability (1 MiB max, no out-of-repo reads), with invalid-coordinate, outside-path and symlink regressions. Focused Rust renderer 5/5 and Deno 62/62 passed; the final Linux compose passed Rust fmt/clippy/tests, e2e 275/275 and fresh Verus 61/0 plus five mutants, with TS/model image layers CACHED. Source-bound CI, capability-specific E124 attribution and full diagnostic-registry conformance remain open; no A1-06 closure or release."
   },
   {
    "id": "A1-07",
@@ -1045,9 +1061,13 @@
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "AGENTS, plan/STATUS and module ownership records agree on current v5 and retained strict v4 workspace reader",
+    "Protected policy/IR/store dependency direction and rustls-only policy cover every Cargo workspace member, including fuzz and future non-crates members",
+    "Renamed TLS packages, target-specific dependencies, missing protected crates and a clean control are calibrated through parsed TOML workspaces",
+    "v3/v4/v5 schema/parser acceptance and TypeScript golden corpus exercise every admitted output kind with negative drift calibration",
+    "The protected test CI job runs delivery inventory/closure and architecture self-check; runner reports bind all required cases and lanes to exact source revisions"
    ],
    "evidence_records": [],
    "status_history": [
@@ -1057,7 +1077,7 @@
      "to": "in_progress"
     }
    ],
-   "implementation_notes": "Delivery checker and bounded runner-evidence admission plus calibrated dependency-direction guard wired into protected CI test; v4 schema/caller migrations, full case/platform inventory, and source-bound acceptance evidence remain open."
+   "implementation_notes": "The protected architecture checker derives members from root Cargo workspace membership (including fuzz) and rejects aliased OpenSSL, target-specific forbidden edges and missing protected crates through calibrated negative scratch manifests. The required CI test job already invokes this checker; the delivery inventory/closure checker is calibrated, strict v3/v4/v5 schema corpora exist and AGENTS/plan ownership records were updated earlier. Final Linux compose passed Rust fmt/clippy/tests, fresh e2e 275/275 and Verus 61/0 with five mutants; TS and model image layers were CACHED. Full cross-language golden coverage, source-bound CI/Mac runner evidence and the compact API cutover remain open; no A1-07 closure or release."
   },
   {
    "id": "A1-08",

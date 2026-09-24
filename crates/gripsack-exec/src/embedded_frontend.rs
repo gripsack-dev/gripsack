@@ -13,13 +13,15 @@ pub static FRONTEND_FILES: &[(&str, &str)] = &[
  * Imports the repo's host entrypoint, calls its `defineEnv` function
  * with the core-injected context, and prints the eval envelope on
  * stdout: {"ir": …, "diagnostics": [], "probe_requests": […]}.
- * Error diagnostics exit 1 (tracebacks are the frontend's domain; the
- * core passes stderr through untouched, 0005 §4).
+ * Error diagnostics exit 1: source-aware authoring failures cross as
+ * structured envelope diagnostics (A1-06, diagnostic.ts); real defects
+ * stay tracebacks — the core passes stderr through untouched (0005 §4).
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { asDiagnostic, authoringDiagnostic } from "./diagnostic.ts";
 import { core, coreUrl } from "./pin.ts";
 import type { Env } from "./graph.ts";
 
@@ -62,34 +64,46 @@ async function main(): Promise<void> {
           `(0052 A1) — update or remove the repo's node_modules/@gripsack/core pin`,
       );
     }
-    // same up-front existence rule as hosts/: an import error after
-    // this point is a real defect and passes through as a traceback
-    const workspaceMod = (await import(pathToFileURL(workspaceFile).href)) as {
-      default?: unknown;
-    };
-    const workspaceFn = workspaceMod.default;
-    if (typeof workspaceFn !== "function") {
-      die(
-        "gripsack.ts must default-export defineWorkspace((ctx) => workspace({ outputs: [...] })) " +
-          "(0052 A1)",
-      );
-    }
+    // Source-aware authoring failures cross as envelope diagnostics the
+    // core renders like its own (terminal and --json carry the same
+    // facts). Outputs are constructed at module top level, so the
+    // import itself is inside the boundary; engine errors (syntax,
+    // unresolved imports) rethrow to the traceback path (0005 §4).
     const { probe, requests } = core.createProbeBuilder(inputs.probes);
-    const value = (workspaceFn as (ctx: unknown) => unknown)({
-      facts: inputs.facts,
-      tags: inputs.tags,
-      probe,
-      settings: inputs.settings,
-    });
-    if (value instanceof Promise) {
-      die("gripsack.ts must synchronously return a workspace({...}) value (got a promise)");
+    try {
+      const workspaceMod = (await import(pathToFileURL(workspaceFile).href)) as {
+        default?: unknown;
+      };
+      const workspaceFn = workspaceMod.default;
+      if (typeof workspaceFn !== "function") {
+        die(
+          "gripsack.ts must default-export defineWorkspace((ctx) => workspace({ outputs: [...] })) " +
+            "(0052 A1)",
+        );
+      }
+      const value = (workspaceFn as (ctx: unknown) => unknown)({
+        facts: inputs.facts,
+        tags: inputs.tags,
+        probe,
+        settings: inputs.settings,
+      });
+      if (value instanceof Promise) {
+        die("gripsack.ts must synchronously return a workspace({...}) value (got a promise)");
+      }
+      const payload = {
+        ir: JSON.parse(core.emitWorkspaceIr(value as never, inputs.facts, inputs.tags)),
+        diagnostics: [],
+        probe_requests: requests,
+      };
+      process.stdout.write(JSON.stringify(payload) + "\n");
+    } catch (error) {
+      const diagnostic = asDiagnostic(error) ?? authoringDiagnostic(error);
+      if (diagnostic === undefined) throw error;
+      process.stdout.write(
+        JSON.stringify({ ir: null, diagnostics: [diagnostic], probe_requests: requests }) + "\n",
+      );
+      process.exit(1);
     }
-    const payload = {
-      ir: JSON.parse(core.emitWorkspaceIr(value as never, inputs.facts, inputs.tags)),
-      diagnostics: [],
-      probe_requests: requests,
-    };
-    process.stdout.write(JSON.stringify(payload) + "\n");
     return;
   }
 
@@ -234,6 +248,160 @@ export function dep(module: string, opts: DepOptions = {}): Dependency {
   const edge = opts.for === undefined ? "runtime" : opts.for;
   const span = callerSpan();
   return { module, for: edge, ...(span ? { span } : {}) };
+}
+"#),
+    ("src/diagnostic.ts", r#"/** Structured source-aware diagnostics (A1-06) — the frontend half of
+ *  the core's compiler-style Diagnostic (crates/gripsack-ir/src/
+ *  diagnostic.rs). The eval envelope carries these to the core, which
+ *  renders the same facts to the terminal and to `grip check --json`;
+ *  tooling matches on `code`, never on message text.
+ *
+ *  Codes are allocated by the core registry only — the constants below
+ *  mirror it, they do not extend it. */
+
+import type { Span } from "./module.ts";
+
+/** Wire shape of one label (core `Label`): the span is null when no
+ *  source node carries the context and the note alone explains it. */
+export interface DiagnosticLabel {
+  span: Span | null;
+  note: string;
+}
+
+/** Wire shape of one diagnostic — the core's eval envelope
+ *  deserializes this verbatim into `gripsack_ir::Diagnostic`
+ *  (`severity` is the lowercase serde spelling). */
+export interface FrontendDiagnostic {
+  code: string;
+  severity: "error" | "warning";
+  message: string;
+  labels: DiagnosticLabel[];
+  help?: string;
+}
+
+/** Registry codes the workspace frontend raises, mirroring
+ *  `crates/gripsack-ir/src/diagnostic.rs` `codes` — new codes are
+ *  allocated THERE, never here. */
+export const diagnosticCodes = {
+  duplicateWorkspaceOutput: "E125",
+  unknownWorkspaceRef: "E126",
+  workspaceCycle: "E127",
+  badWorkspaceContext: "E128",
+  invalidWorkspaceValue: "E130",
+} as const;
+
+/** An authoring failure carrying its structured diagnostic. Thrown
+ *  instead of a plain Error where the throw site knows the precise
+ *  source facts: both collision declarations, reference plus
+ *  declaration spans, the mapped interpolation line. */
+export class DiagnosticError extends Error {
+  readonly diagnostic: FrontendDiagnostic;
+  constructor(diagnostic: FrontendDiagnostic) {
+    super(diagnostic.message);
+    this.name = "DiagnosticError";
+    this.diagnostic = diagnostic;
+  }
+}
+
+/** One-label error diagnostic at a declaration span. */
+export function errorAt(
+  code: string,
+  message: string,
+  span: Span,
+  note: string,
+): DiagnosticError {
+  return new DiagnosticError({
+    code,
+    severity: "error",
+    message,
+    labels: [{ span, note }],
+  });
+}
+
+/** Source coordinates cross into Rust u32 fields. Reject malformed
+ *  labels before the core deserializes or attempts to render them. */
+const MAX_SOURCE_COORDINATE = 0xffff_ffff;
+
+function sourceCoordinate(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) &&
+    value >= 1 && value <= MAX_SOURCE_COORDINATE;
+}
+
+function isSpan(value: unknown): value is Span {
+  if (typeof value !== "object" || value === null) return false;
+  const rec = value as Record<string, unknown>;
+  return typeof rec.file === "string" && rec.file.length > 0 &&
+    sourceCoordinate(rec.line) &&
+    (rec.col === undefined || sourceCoordinate(rec.col));
+}
+
+function isFrontendDiagnostic(value: unknown): value is FrontendDiagnostic {
+  if (typeof value !== "object" || value === null) return false;
+  const rec = value as Record<string, unknown>;
+  return typeof rec.code === "string" &&
+    (rec.severity === "error" || rec.severity === "warning") &&
+    typeof rec.message === "string" &&
+    Array.isArray(rec.labels) &&
+    rec.labels.every((label) =>
+      typeof label === "object" && label !== null &&
+      typeof (label as DiagnosticLabel).note === "string" &&
+      ((label as DiagnosticLabel).span === null || isSpan((label as DiagnosticLabel).span))
+    ) &&
+    (rec.help === undefined || typeof rec.help === "string");
+}
+
+/** Extract the diagnostic from a thrown DiagnosticError. The winning
+ *  @gripsack/core pin may be a different module instance than this
+ *  driver (0013 D3), so `instanceof` across that boundary is
+ *  unreliable — the tagged shape is the transport contract. */
+export function asDiagnostic(error: unknown): FrontendDiagnostic | undefined {
+  if (!(error instanceof Error) || error.name !== "DiagnosticError") return undefined;
+  const carried = (error as { diagnostic?: unknown }).diagnostic;
+  return isFrontendDiagnostic(carried) ? carried : undefined;
+}
+
+/** Frames of the frontend package itself (embedded copy or a repo's
+ *  pinned @gripsack/core, src or dist) are internal; the first frame
+ *  outside them is the user's declaration site. Same frame rule as
+ *  module.ts's callerSpan, applied to a caught error's stack. */
+function isPackageFrame(path: string, selfDir: string): boolean {
+  return path.startsWith(selfDir) || path.includes("/node_modules/@gripsack/core/");
+}
+
+function spanFromStack(stack: string | undefined, selfDir: string): Span | undefined {
+  if (!stack) return undefined;
+  for (const line of stack.split("\n").slice(1)) {
+    const match = line.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
+    if (!match || !match[1]) continue;
+    const file = match[1].replace(/^file:\/\//, "");
+    if (!isPackageFrame(file, selfDir)) {
+      return { file, line: Number(match[2]), col: Number(match[3]) };
+    }
+  }
+  return undefined;
+}
+
+/** Wrap a plain authoring-guard Error as E130 with the user's
+ *  declaration site recovered from the stack: constructor guards throw
+ *  from inside the package, so the first frame outside it is the call
+ *  the user wrote. Errors thrown by user code itself (first frame is
+ *  theirs) and engine errors (SyntaxError/TypeError/…) are real
+ *  defects — they stay tracebacks on stderr (0005 §4). */
+export function authoringDiagnostic(error: unknown): FrontendDiagnostic | undefined {
+  if (!(error instanceof Error) || error.name !== "Error") return undefined;
+  const selfDir = new URL(".", import.meta.url).pathname;
+  const frames = error.stack?.split("\n").slice(1) ?? [];
+  const first = frames[0]?.match(/\(?([^()\s]+):(\d+):(\d+)\)?$/);
+  if (!first || !first[1]) return undefined;
+  const throwSite = first[1].replace(/^file:\/\//, "");
+  if (!isPackageFrame(throwSite, selfDir)) return undefined;
+  const span = spanFromStack(error.stack, selfDir);
+  return {
+    code: diagnosticCodes.invalidWorkspaceValue,
+    severity: "error",
+    message: error.message,
+    labels: [{ span: span ?? null, note: "in this declaration" }],
+  };
 }
 "#),
     ("src/entries.ts", r#"/** Deployment destinations with ownership modes (0001 §3.7).
@@ -1556,6 +1724,7 @@ export function verifyDeployed(path: string): Verify {
     ("src/workspace/commands.ts", r#"/** v5 immutable exec/runBash commands, typed arguments and dedent maps. */
 
 import { rejectUnknownFields } from "../fields.ts";
+import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
 import type { Span } from "../module.ts";
 import type {
   BashBody,
@@ -1581,10 +1750,6 @@ import {
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
-
-/** Frontend-side form of core INVALID_WORKSPACE_VALUE for literal
- *  Bash text. A1-06 still owns structured frontend diagnostics. */
-const INVALID_BASH_BODY_CODE = "E130";
 
 /** A literal string — valid as an argv/env argument or a cwd path. */
 export function lit(value: string): WorkspaceLiteral {
@@ -1716,10 +1881,13 @@ export function bashBody(parts: TemplateStringsArray, ...values: unknown[]): Bas
   if (values.length !== 0 || parts.raw.length !== 1) {
     const before = parts.raw[0] ?? "";
     const line = span.line + before.split("\n").length - 1;
-    throw new Error(
-      `${INVALID_BASH_BODY_CODE} bashBody: interpolation is not a literal Bash body (declared at ${span.file}:${line}); ` +
-        `pass dynamic values through typed env/argv bindings`,
-    );
+    throw new DiagnosticError({
+      code: diagnosticCodes.invalidWorkspaceValue,
+      severity: "error",
+      message: "bashBody: interpolation is not a literal Bash body",
+      labels: [{ span: { file: span.file, line }, note: "interpolation evaluated here" }],
+      help: "pass dynamic values through typed env/argv bindings",
+    });
   }
   const text = parts.raw[0]!;
   rejectBashInterpolation(text, span, "bashBody`...`");
@@ -1730,10 +1898,13 @@ function rejectBashInterpolation(body: string, span: Span, where: string): void 
   const site = body.indexOf("${");
   if (site === -1) return;
   const line = span.line + body.slice(0, site).split("\n").length - 1;
-  throw new Error(
-    `${INVALID_BASH_BODY_CODE} ${where}: body is literal text — "\${" interpolation is rejected ` +
-      `(declared at ${span.file}:${line}); pass dynamic values through typed env/argv bindings`,
-  );
+  throw new DiagnosticError({
+    code: diagnosticCodes.invalidWorkspaceValue,
+    severity: "error",
+    message: `${where}: body is literal text — "\${" interpolation is rejected`,
+    labels: [{ span: { file: span.file, line }, note: "interpolation rejected here" }],
+    help: "pass dynamic values through typed env/argv bindings",
+  });
 }
 
 /** A literal Bash body run under a pinned package interpreter. The
@@ -1750,7 +1921,12 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
     body = spec.body;
     bodySpan = span;
     if (body.includes("\n")) {
-      throw new Error(`${what}: multiline body needs bashBody\`...\` to preserve original source lines`);
+      throw errorAt(
+        diagnosticCodes.invalidWorkspaceValue,
+        `${what}: multiline body needs bashBody\`...\` to preserve original source lines`,
+        span,
+        "body declared here",
+      );
     }
   } else {
     const source = asRecord(spec.body, `${what}: body`);
@@ -1762,9 +1938,12 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
   rejectBashInterpolation(body, bodySpan, what);
   const interpreter = asArg(spec.interpreter, `${what}: interpreter`);
   if (interpreter.kind !== "package_command") {
-    throw new Error(
+    throw errorAt(
+      diagnosticCodes.badWorkspaceContext,
       `${what}: interpreter must be a pinned packageCommand("<package>", "<command>") — ` +
         `ambient host shells are never discovered (A1-03)`,
+      span,
+      "interpreter declared here",
     );
   }
   const { text, lineMap } = dedent(body, bodySpan);
@@ -1808,15 +1987,19 @@ function bashCommandBuilder(spec: RunBashSpec): BashCommandBuilder {
     },
   });
 }
-
 /** Start a Bash command with a declared package interpreter, never a
  *  host-shell name. `body(...).build()` lowers through `runBash({…})`. */
 export function bash(interpreter: WorkspacePackageCommand): BashBuilder {
+  const span = nodeSpan(undefined, "bash(...)");
   const pin = asArg(interpreter, "bash(interpreter)");
   if (pin.kind !== "package_command") {
-    throw new Error("bash(interpreter) requires a declared packageCommand");
+    throw errorAt(
+      diagnosticCodes.badWorkspaceContext,
+      "bash(interpreter) requires a declared packageCommand — ambient host shells are never discovered (A1-03)",
+      span,
+      "interpreter declared here",
+    );
   }
-  const span = nodeSpan(undefined, "bash(...)");
   const stablePin = freezeDeep(pin);
   return Object.freeze({
     body(body: RunBashSpec["body"]): BashCommandBuilder {
@@ -1841,7 +2024,8 @@ import type {
   WorkspacePath,
   WorkspaceValue,
 } from "./ir.ts";
-import { asName, asRecord, asSelector, asSpan, duplicateError, spanAt } from "./validate.ts";
+import { asName, asRecord, asSelector, asSpan, duplicateError } from "./validate.ts";
+import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
 import { checkTargetsAndLayouts } from "./target.ts";
 
 /** Catalog roles never conflate publication checks or retention with
@@ -1869,23 +2053,31 @@ const ARTIFACT_KINDS: readonly WorkspaceOutputKind[] = ["recipe", "package"];
 
 /** Selector admission at emit: constructors guard their own values,
  *  but hand-built nodes reach the emitter unchecked — reject escapes
- *  here too, naming the source span (core E130). */
+ *  here too, labeling the source span (core E130). */
 function checkSelector(selector: string, span: Span, site: string): void {
   try {
     asSelector(selector, site);
-  } catch (e) {
-    throw new Error(`workspace: ${(e as Error).message} (referenced at ${spanAt(span)})`);
+  } catch (error) {
+    throw errorAt(
+      diagnosticCodes.invalidWorkspaceValue,
+      `workspace: ${(error as Error).message}`,
+      span,
+      "referenced here",
+    );
   }
 }
 
 /** Environment values are data — a package_command in a value
  *  position would invoke a program where only bytes are admitted
  *  (0052 §2.2, core E128). */
-function envValueError(from: string, key: string, span: Span): Error {
-  return new Error(
+function envValueError(from: string, key: string, span: Span): DiagnosticError {
+  return errorAt(
+    diagnosticCodes.badWorkspaceContext,
     `workspace: output '${from}' environment variable '${key}' cannot be a package_command ` +
       `reference; environment values are data (literal or artifact) — invoke package commands ` +
-      `from exec argv or a run_bash interpreter pin (referenced at ${spanAt(span)})`,
+      `from exec argv or a run_bash interpreter pin`,
+    span,
+    "referenced here",
   );
 }
 
@@ -1909,10 +2101,13 @@ function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges
     // a run_bash body runs under a pinned package interpreter only —
     // a literal or artifact interpreter is ambient host discovery
     if (cmd.interpreter.kind !== "package_command") {
-      throw new Error(
+      throw errorAt(
+        diagnosticCodes.badWorkspaceContext,
         `workspace: output '${from}' run_bash interpreter must be a package_command reference ` +
           `pinning the tool through a declared package; a literal or artifact interpreter is ` +
-          `ambient host discovery, which workspace IR never admits (referenced at ${spanAt(cmd.span)})`,
+          `ambient host discovery, which workspace IR never admits`,
+        cmd.span,
+        "referenced here",
       );
     }
     packageEdge(cmd.interpreter);
@@ -2065,17 +2260,25 @@ export function emitWorkspaceIr(
     for (const e of outputEdges(node)) {
       const target = catalog.get(e.to);
       if (!target) {
-        throw new Error(
-          `workspace: output '${e.from}' references unknown output '${e.to}' ` +
-            `(referenced at ${spanAt(e.span)})`,
+        throw errorAt(
+          diagnosticCodes.unknownWorkspaceRef,
+          `workspace: output '${e.from}' references unknown output '${e.to}'`,
+          e.span,
+          "referenced here",
         );
       }
       if (!e.expected.includes(target.kind)) {
-        throw new Error(
-          `workspace: output '${e.from}' expects '${e.to}' to be ${orList(e.expected)} — ` +
-            `it is a '${target.kind}' (referenced at ${spanAt(e.span)}, ` +
-            `declared at ${spanAt(target.span)})`,
-        );
+        throw new DiagnosticError({
+          code: diagnosticCodes.unknownWorkspaceRef,
+          severity: "error",
+          message:
+            `workspace: output '${e.from}' expects '${e.to}' to be ${orList(e.expected)} — ` +
+            `it is a '${target.kind}'`,
+          labels: [
+            { span: e.span, note: "referenced here" },
+            { span: target.span, note: `'${e.to}' declared here as a '${target.kind}'` },
+          ],
+        });
       }
       if (isDependency(e.role)) depEdges.push(e);
     }
@@ -2088,13 +2291,15 @@ export function emitWorkspaceIr(
   for (const { pkg: target, command, span } of commandKeys) {
     if (!(command in target.commands)) {
       const have = Object.keys(target.commands).join(", ");
-      throw new Error(
-        `workspace: package '${target.name}' has no command '${command}' ` +
-          `(referenced at ${spanAt(span)}${have ? `; it provides: ${have}` : ""})`,
-      );
+      throw new DiagnosticError({
+        code: diagnosticCodes.unknownWorkspaceRef,
+        severity: "error",
+        message: `workspace: package '${target.name}' has no command '${command}'`,
+        labels: [{ span, note: "referenced here" }],
+        ...(have ? { help: `package '${target.name}' provides: ${have}` } : {}),
+      });
     }
   }
-
   checkTargetsAndLayouts(catalog);
 
   // dependency cycles over production/build edges only — validation
@@ -2116,14 +2321,15 @@ export function emitWorkspaceIr(
       if (s === undefined) visit(e.to);
       else if (s === "visiting") {
         const cycle = [...stack.slice(stack.indexOf(e.to)), e.to];
-        throw new Error(
-          `workspace: dependency cycle ${cycle.join(" -> ")} (` +
-            cycle
-              .slice(0, -1)
-              .map((c) => `'${c}' declared at ${spanAt(catalog.get(c)!.span)}`)
-              .join(", ") +
-            `)`,
-        );
+        throw new DiagnosticError({
+          code: diagnosticCodes.workspaceCycle,
+          severity: "error",
+          message: `workspace: dependency cycle ${cycle.join(" -> ")}`,
+          labels: cycle.slice(0, -1).map((name) => ({
+            span: catalog.get(name)!.span,
+            note: `'${name}' declared here`,
+          })),
+        });
       }
     }
     stack.pop();
@@ -3019,7 +3225,8 @@ import type {
   WorkspaceOutputNode,
   WorkspacePlatform,
 } from "./ir.ts";
-import { asRecord, spanAt } from "./validate.ts";
+import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
+import { asRecord } from "./validate.ts";
 
 function asVersion(value: unknown, where: string): WorkspaceOsVersion {
   const version = asRecord(value, where);
@@ -3109,31 +3316,45 @@ function requireCompatibleTarget(
   if (supplied.os !== requested.os || supplied.arch !== requested.arch ||
     (supplied.abi ?? null) !== (requested.abi ?? null) ||
     !floorAtMost(supplied.minimum_os, requested.minimum_os)) {
-    throw new Error(
-      `workspace: ${relation} — target of '${provider.name}' (${JSON.stringify(supplied)}) ` +
+    throw new DiagnosticError({
+      code: diagnosticCodes.unknownWorkspaceRef,
+      severity: "error",
+      message:
+        `workspace: ${relation} — target of '${provider.name}' (${JSON.stringify(supplied)}) ` +
         `cannot satisfy target of '${consumer.name}' (${JSON.stringify(requested)}): ` +
-        `OS/arch/ABI must match and provider minimum OS must not exceed the consumer ` +
-        `('${consumer.name}' declared at ${spanAt(consumer.span)}, ` +
-        `'${provider.name}' declared at ${spanAt(provider.span)})`,
-    );
+        `OS/arch/ABI must match and provider minimum OS must not exceed the consumer`,
+      labels: [
+        { span: consumer.span, note: `consumer '${consumer.name}' declared here` },
+        { span: provider.span, note: `provider '${provider.name}' declared here` },
+      ],
+    });
   }
 }
 
 /** Resolved catalog references have already passed kind/existence
  * checks. Hand-built nodes still pass every runtime shape guard here. */
 export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>): void {
+  const guard = (node: WorkspaceOutputNode, run: () => void): void => {
+    try {
+      run();
+    } catch (error) {
+      throw errorAt(
+        diagnosticCodes.invalidWorkspaceValue,
+        (error as Error).message,
+        node.span,
+        "declared here",
+      );
+    }
+  };
   for (const node of catalog.values()) {
     if ("target" in node) {
-      try { asPlatform(node.target, `${node.kind} '${node.name}' target`); }
-      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+      guard(node, () => void asPlatform(node.target, `${node.kind} '${node.name}' target`));
     }
     if (node.kind === "recipe") {
-      try { asExecution(node.execution, `recipe '${node.name}' execution`); }
-      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+      guard(node, () => void asExecution(node.execution, `recipe '${node.name}' execution`));
     }
     if (node.kind === "package") {
-      try { asLayout(node.layout, `package '${node.name}' layout`); }
-      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+      guard(node, () => void asLayout(node.layout, `package '${node.name}' layout`));
       if (node.producer.kind === "recipe") {
         const recipe = catalog.get(node.producer.recipe)!;
         if (recipe.kind === "recipe") {
@@ -3142,8 +3363,7 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
       }
     }
     if (node.kind === "environment" && node.prefix !== undefined) {
-      try { asInstallPrefix(node.prefix, `environment '${node.name}' prefix`); }
-      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+      guard(node, () => void asInstallPrefix(node.prefix, `environment '${node.name}' prefix`));
     }
     if (node.kind === "environment" || node.kind === "image") {
       for (const name of node.packages) {
@@ -3152,13 +3372,18 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
         requireCompatibleTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
         if (selected.layout.kind === "fixed_prefix" &&
           (node.kind === "image" || node.prefix !== selected.layout.prefix)) {
-          throw new Error(
-            `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with ` +
+          throw new DiagnosticError({
+            code: diagnosticCodes.unknownWorkspaceRef,
+            severity: "error",
+            message:
+              `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with ` +
               `layout fixed_prefix at '${selected.layout.prefix}' but declares no matching ` +
-              `install prefix (image prefix materialization is unavailable until B4) ` +
-              `('${node.name}' declared at ${spanAt(node.span)}, ` +
-              `'${selected.name}' declared at ${spanAt(selected.span)})`,
-          );
+              `install prefix (image prefix materialization is unavailable until B4)`,
+            labels: [
+              { span: node.span, note: `'${node.name}' declared here` },
+              { span: selected.span, note: `'${selected.name}' declared here` },
+            ],
+          });
         }
       }
     }
@@ -3168,6 +3393,7 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
     ("src/workspace/validate.ts", r#"/** Runtime structural guards for v5 workspace authoring values. */
 
 import { rejectUnknownFields } from "../fields.ts";
+import { DiagnosticError, diagnosticCodes } from "../diagnostic.ts";
 import type { Fetch } from "../fetch.ts";
 import { callerSpan } from "../module.ts";
 import type { Span } from "../module.ts";
@@ -3501,14 +3727,19 @@ export function freezeDeep<T>(value: T): T {
   return value;
 }
 
-export function spanAt(span: Span): string {
-  return `${span.file}:${span.line}`;
-}
-
-export function duplicateError(name: string, first: Span, again: Span): Error {
-  return new Error(
-    `duplicate output '${name}' (first declared at ${spanAt(first)}, again at ${spanAt(again)})`,
-  );
+/** A catalog-name collision carries BOTH declaration spans as labels
+ *  (A1-06: terminal and JSON show both sources, like core E125). */
+export function duplicateError(name: string, first: Span, again: Span): DiagnosticError {
+  return new DiagnosticError({
+    code: diagnosticCodes.duplicateWorkspaceOutput,
+    severity: "error",
+    message:
+      `duplicate output '${name}' — output names are the single catalog namespace (0052 §2.1)`,
+    labels: [
+      { span: first, note: "first declared here" },
+      { span: again, note: "also declared here" },
+    ],
+  });
 }
 "#),
     ("src/workspace.ts", r#"/** Workspace declarations (0052 A1): the supported surface for the

@@ -122,6 +122,16 @@ The legacy `hosts/<name>.ts` path emits a v5 modules-compatibility
 envelope until the A5 migration; the core keeps v3 and historical v4
 readers. It is not a workspace executor.
 
+`grip check --json` emits one versioned document on stdout:
+`{version: 1, ok, diagnostics, host?, outputs?, modules?, layouts?}`.
+Diagnostics use the same codes, labels, spans and help as terminal
+output; failures exit nonzero. Readable snippets come only from files
+under the evaluated repo's pinned directory capability, at most 1 MiB
+per file. Out-of-repo labels remain visible without reading their
+contents; JSON carries diagnostic facts, not source-file bytes.
+Operational failures such as a denied trust gate still report stderr
+and may have no structured diagnostic in the JSON document.
+
 ## Probes are requests, not effects
 
 The sandbox cannot run probes, so `ctx.probe.executable(name)` /

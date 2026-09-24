@@ -33,7 +33,10 @@ pub fn adopt(
             "grip adopt cannot modify a workspace profile yet",
         )
         .with_help("A2 owns workspace file deployment; use grip check to validate gripsack.ts without host effects");
-        eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+        eprintln!(
+            "{}",
+            render::render_diagnostics_bounded(&[diagnostic], palette, &repo)
+        );
         return ExitCode::FAILURE;
     }
     if !repo.join("env.toml").is_file() {
@@ -207,14 +210,15 @@ pub fn adopt(
     if let Some(code) = trust_gate(&repo) {
         return code;
     }
-    let outcome = match eval_repo(&repo, Some(&host_name), palette) {
+    let mut sink = crate::render::DiagnosticSink::terminal(palette, &repo);
+    let outcome = match eval_repo(&repo, Some(&host_name), &mut sink) {
         Ok(o) => o,
         Err(code) => {
             let _ = revert("generated files don't eval — inspect modules/{name}.ts");
             return code;
         }
     };
-    let ir = match crate::commands::check_ir(&outcome.ir_json, palette) {
+    let ir = match crate::commands::check_ir(&outcome.ir_json, &mut sink) {
         Ok(ir) => ir,
         Err(code) => return code,
     };

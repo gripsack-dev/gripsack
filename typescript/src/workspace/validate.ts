@@ -1,6 +1,7 @@
 /** Runtime structural guards for v5 workspace authoring values. */
 
 import { rejectUnknownFields } from "../fields.ts";
+import { DiagnosticError, diagnosticCodes } from "../diagnostic.ts";
 import type { Fetch } from "../fetch.ts";
 import { callerSpan } from "../module.ts";
 import type { Span } from "../module.ts";
@@ -334,12 +335,17 @@ export function freezeDeep<T>(value: T): T {
   return value;
 }
 
-export function spanAt(span: Span): string {
-  return `${span.file}:${span.line}`;
-}
-
-export function duplicateError(name: string, first: Span, again: Span): Error {
-  return new Error(
-    `duplicate output '${name}' (first declared at ${spanAt(first)}, again at ${spanAt(again)})`,
-  );
+/** A catalog-name collision carries BOTH declaration spans as labels
+ *  (A1-06: terminal and JSON show both sources, like core E125). */
+export function duplicateError(name: string, first: Span, again: Span): DiagnosticError {
+  return new DiagnosticError({
+    code: diagnosticCodes.duplicateWorkspaceOutput,
+    severity: "error",
+    message:
+      `duplicate output '${name}' — output names are the single catalog namespace (0052 §2.1)`,
+    labels: [
+      { span: first, note: "first declared here" },
+      { span: again, note: "also declared here" },
+    ],
+  });
 }

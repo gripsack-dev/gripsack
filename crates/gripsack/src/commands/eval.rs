@@ -1,6 +1,6 @@
 use super::frontend::Frontend;
 use super::probe::InputsFile;
-use crate::render::{self, Palette};
+use crate::render::DiagnosticSink;
 use gripsack_ir::{Ir, Severity};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -69,11 +69,11 @@ pub struct EvalOutcome {
 /// reads limited to the repo, the inputs dir, and the materialized
 /// frontend. Effects the frontend wants arrive as symbolic probe
 /// requests; the core binds them and re-runs (two-stage eval, D6).
-#[tracing::instrument(name = "eval", skip(palette), fields(host))]
+#[tracing::instrument(name = "eval", skip(sink), fields(host))]
 pub fn eval_repo(
     repo: &Path,
     host: Option<&str>,
-    palette: Palette,
+    sink: &mut DiagnosticSink,
 ) -> Result<EvalOutcome, ExitCode> {
     let env_path = repo.join("env.toml");
     if !env_path.exists() && !repo.join("gripsack.ts").is_file() {
@@ -90,7 +90,7 @@ pub fn eval_repo(
         match gripsack_config::load_env(&env_path) {
             Ok(env) => env,
             Err(diagnostics) => {
-                eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+                sink.report(&diagnostics);
                 return Err(ExitCode::FAILURE);
             }
         }
@@ -102,7 +102,7 @@ pub fn eval_repo(
         .map(|home| gripsack_config::load_user(&home.join(".config/gripsack/config.toml")))
         .transpose()
         .map_err(|diagnostics| {
-            eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+            sink.report(&diagnostics);
             ExitCode::FAILURE
         })?;
     let config = gripsack_config::merge(user.as_ref(), &env);
@@ -177,14 +177,8 @@ pub fn eval_repo(
         frontend_dir: &frontend_dir,
         home: &home,
     };
-    let (envelope, bound) =
-        super::probe::eval_to_fixpoint(&frontend, &host, facts, &inputs, palette)?;
-    if !envelope.diagnostics.is_empty() {
-        eprintln!(
-            "{}",
-            render::render_diagnostics(&envelope.diagnostics, palette)
-        );
-    }
+    let (envelope, bound) = super::probe::eval_to_fixpoint(&frontend, &host, facts, &inputs, sink)?;
+    sink.report(&envelope.diagnostics);
     Ok(EvalOutcome {
         ir_json: envelope.ir.to_string(),
         env,
@@ -201,21 +195,20 @@ pub fn eval_repo(
 /// core on purpose — binding here, on the frontend's side of the
 /// boundary with core-supplied data, is what keeps the emitted IR
 /// fully concrete.
-/// Run registered linters against the IR's modules (0012 §move-1) and
-/// render what comes back; error severity fails the command.
 pub fn run_lints(
     ir: &Ir,
     outcome: &EvalOutcome,
     repo: &Path,
     host: Option<&str>,
-    palette: Palette,
+    sink: &mut DiagnosticSink,
 ) -> Result<(), ExitCode> {
     let diagnostics = gripsack_lint::run(ir, &outcome.env.linters, repo, host);
     if diagnostics.is_empty() {
         return Ok(());
     }
-    eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
-    if diagnostics.iter().any(|d| d.severity == Severity::Error) {
+    let failed = diagnostics.iter().any(|d| d.severity == Severity::Error);
+    sink.report(&diagnostics);
+    if failed {
         return Err(ExitCode::FAILURE);
     }
     Ok(())
@@ -229,21 +222,21 @@ pub fn validated_ir(
     outcome: &EvalOutcome,
     repo: &Path,
     host: Option<&str>,
-    palette: Palette,
+    sink: &mut DiagnosticSink,
 ) -> Result<Ir, ExitCode> {
-    let ir = check_ir(&outcome.ir_json, palette)?;
-    crate::commands::validate_sources(&ir, repo, palette)?;
-    run_lints(&ir, outcome, repo, host, palette)?;
+    let ir = check_ir(&outcome.ir_json, sink)?;
+    crate::commands::validate_sources(&ir, repo, sink)?;
+    run_lints(&ir, outcome, repo, host, sink)?;
     Ok(ir)
 }
 
 /// Parse + validate IR, rendering diagnostics on failure.
-pub fn check_ir(json: &str, palette: Palette) -> Result<Ir, ExitCode> {
+pub fn check_ir(json: &str, sink: &mut DiagnosticSink) -> Result<Ir, ExitCode> {
     gripsack_ir::check(json).map_err(|diagnostics| {
         for d in &diagnostics {
             tracing::error!(code = d.code.as_ref(), "{}", d.message);
         }
-        eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+        sink.report(&diagnostics);
         ExitCode::FAILURE
     })
 }
@@ -254,12 +247,12 @@ pub fn check_ir(json: &str, palette: Palette) -> Result<Ir, ExitCode> {
 pub fn reject_workspace_execution(
     ir: &Ir,
     operation: &str,
-    palette: Palette,
+    sink: &mut DiagnosticSink,
 ) -> Result<(), ExitCode> {
     let Some(diagnostic) = ir.workspace_execution_error(operation) else {
         return Ok(());
     };
-    eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+    sink.report(&[diagnostic]);
     Err(ExitCode::FAILURE)
 }
 
@@ -267,7 +260,7 @@ pub fn reject_workspace_execution(
 /// source is statically knowable and must fail at eval/check time,
 /// not mid-deploy (review finding E2). Modules with a payload (fetch
 /// or a fetch step) legitimately reference into it.
-pub fn validate_sources(ir: &Ir, repo: &Path, palette: Palette) -> Result<(), ExitCode> {
+pub fn validate_sources(ir: &Ir, repo: &Path, sink: &mut DiagnosticSink) -> Result<(), ExitCode> {
     let mut diagnostics = Vec::new();
     for (name, module) in &ir.modules {
         let has_payload = module.fetch.is_some()
@@ -295,7 +288,7 @@ pub fn validate_sources(ir: &Ir, repo: &Path, palette: Palette) -> Result<(), Ex
     if diagnostics.is_empty() {
         Ok(())
     } else {
-        eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+        sink.report(&diagnostics);
         Err(ExitCode::FAILURE)
     }
 }

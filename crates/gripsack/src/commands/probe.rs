@@ -6,7 +6,7 @@
 //! [`PROBE_ROUNDS`]; a set that never settles is an authoring error.
 
 use super::eval::EvalEnvelope;
-use crate::render::{self, Palette};
+use crate::render::DiagnosticSink;
 use gripsack_ir::diagnostic::codes;
 use gripsack_ir::{Diagnostic, Severity};
 use std::collections::BTreeMap;
@@ -102,7 +102,7 @@ pub(super) fn eval_to_fixpoint(
     host: &str,
     facts: &gripsack_exec::facts::HostFacts,
     inputs: &InputsFile,
-    palette: Palette,
+    sink: &mut DiagnosticSink,
 ) -> Result<(EvalEnvelope, BTreeMap<String, bool>), ExitCode> {
     let empty_settings = serde_json::Map::new();
     let no_tags: [String; 0] = [];
@@ -150,13 +150,10 @@ pub(super) fn eval_to_fixpoint(
                 .iter()
                 .any(|d| d.severity == Severity::Error);
         if failed {
-            if !parsed.diagnostics.is_empty() {
-                eprintln!(
-                    "{}",
-                    render::render_diagnostics(&parsed.diagnostics, palette)
-                );
-            }
-            if !out.status.success() {
+            sink.report(&parsed.diagnostics);
+            // A structured envelope IS the failure report; the stderr
+            // pass-through and tail line are for the traceback path.
+            if !out.status.success() && !out.stderr.is_empty() {
                 eprint!("{}", String::from_utf8_lossy(&out.stderr));
                 eprintln!("grip: frontend eval failed ({host})");
             }
@@ -193,7 +190,7 @@ pub(super) fn eval_to_fixpoint(
                  unconditionally, not behind another probe's result",
             );
             tracing::error!(code = codes::PROBE_UNSTABLE, "{names}");
-            eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+            sink.report(&[diagnostic]);
             return Err(ExitCode::FAILURE);
         }
         for req in &fresh {
@@ -206,7 +203,7 @@ pub(super) fn eval_to_fixpoint(
                     let diagnostic = Diagnostic::error(codes::PROBE_UNSUPPORTED, message)
                         .with_label(req.span.clone(), "probe requested here");
                     tracing::error!(code = codes::PROBE_UNSUPPORTED, "{}", req.key());
-                    eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+                    sink.report(&[diagnostic]);
                     return Err(ExitCode::FAILURE);
                 }
             }

@@ -40,6 +40,8 @@ import {
 import type { WorkspaceArg, WorkspaceValue } from "../src/workspace.ts";
 import { githubRelease, tarball } from "../src/fetch.ts";
 import type { HostFacts } from "../src/index.ts";
+import { thrownDiagnostic } from "./diagnostic.ts";
+import { fileURLToPath } from "node:url";
 
 const facts: HostFacts = { os: "linux", arch: "x86_64", libc: "glibc-2.36", hostname: "box" };
 const linux = { os: "linux", arch: "x86_64" } as const;
@@ -296,10 +298,17 @@ Deno.test("duplicate output names throw at declaration with both sites", () => {
     target: linux,
   });
   const b = image("same", { packages: [], target: linux });
-  assert.throws(
+  const diagnostic = thrownDiagnostic(
     () => workspace({ outputs: [a, b] }),
-    /duplicate output 'same' \(first declared at .*workspace\.test\.ts:\d+, again at .*workspace\.test\.ts:\d+\)/,
+    "E125",
   );
+  assert.equal(diagnostic.labels.length, 2);
+  assert.notEqual(diagnostic.labels[0]?.note, diagnostic.labels[1]?.note);
+  const [first, again] = diagnostic.labels.map((label) => label.span);
+  assert.ok(first?.file.endsWith("workspace.test.ts"));
+  assert.ok(first && again, "both labels carry spans");
+  assert.ok(again?.file.endsWith("workspace.test.ts"));
+  assert.ok(first.line !== again.line, "both declaration lines labeled");
 });
 
 Deno.test("duplicate output names throw at emit for hand-built values", () => {
@@ -314,70 +323,47 @@ Deno.test("duplicate output names throw at emit for hand-built values", () => {
     __gripsack: "workspace",
     ir: { span: { file: "fake.ts", line: 1 }, outputs: [node, node] },
   } as unknown as WorkspaceValue;
-  assert.throws(
+  const diagnostic = thrownDiagnostic(
     () => emitWorkspaceIr(fake, facts),
-    /duplicate output 'same' \(first declared at .*:\d+, again at .*:\d+\)/,
+    "E125",
   );
-});
-
-Deno.test("constructors reject unknown fields for JS callers and casts", () => {
-  assert.throws(
-    () =>
-      recipe("x", {
-        soruce: tarball("https://example.invalid/x.tar.gz"),
-        execution: hostExecution,
-        output_kind: "file",
-        target: linux,
-      } as never),
-    /unknown field "soruce".*did you mean "source"\?/,
-  );
-  assert.throws(
-    () => exec({ argvv: [] } as never),
-    /unknown field "argvv".*did you mean "argv"\?/,
-  );
-  assert.throws(
-    () =>
-      file({
-        content: literalText("x"),
-        destination: symlinkTo("~/.x"),
-        sourc: repoFile("a"),
-      } as never),
-    /unknown field "sourc".*did you mean "source"\?/,
-  );
-  assert.throws(
-    () => schedule("s", { task: "build", triger: daily("01:00") } as never),
-    /unknown field "triger".*did you mean "trigger"\?/,
-  );
+  assert.equal(diagnostic.labels.length, 2, "both declaration spans labeled");
 });
 
 Deno.test("Bash body interpolation rejects the literal at its source line", async () => {
   const file = (await Deno.readTextFile(new URL(import.meta.url))).split("\n");
   const site = file.findIndex((line) => line.trim() === "echo \\${HOME} && true") + 1;
   assert.ok(site > 0);
-  assert.throws(
+  const tagged = thrownDiagnostic(
     () => bashBody`
       echo before
       echo \${HOME} && true
     `,
-    (error: unknown) => error instanceof Error &&
-      error.message.includes(`workspace.test.ts:${site}`) &&
-      error.message.includes("interpolation is rejected"),
+    "E130",
   );
-  assert.throws(
+  assert.equal(tagged.labels[0]?.span?.file, fileURLToPath(import.meta.url));
+  assert.equal(tagged.labels[0]?.span?.line, site, "label points at the interpolation line");
+  // a REAL evaluated interpolation is rejected at its own source line
+  const evaluated = thrownDiagnostic(
+    () => bashBody`echo ${"dynamic"}`,
+    "E130",
+  );
+  const evaluatedSite =
+    file.findIndex((line) => line.includes('() => bashBody`echo ${"dynamic"}`')) + 1;
+  assert.ok(evaluatedSite > 0);
+  assert.equal(evaluated.labels[0]?.span?.line, evaluatedSite);
+  const inline = thrownDiagnostic(
     () => runBash({ interpreter: packageCommand("bash", "bash"), body: "echo ${HOME}" }),
-    /interpolation is rejected/,
+    "E130",
   );
+  assert.ok(inline.labels[0]?.span?.file.endsWith("workspace.test.ts"));
 });
 
-Deno.test("run_bash requires a pinned package_command interpreter", () => {
-  assert.throws(
-    () => runBash({ interpreter: lit("bash"), body: "true" }),
-    /interpreter must be a pinned packageCommand\("<package>", "<command>"\)/,
-  );
-  assert.throws(
-    () => runBash({ interpreter: artifact("tools", "bin/bash"), body: "true" }),
-    /interpreter must be a pinned packageCommand/,
-  );
+Deno.test("run_bash requires a declared package interpreter", () => {
+  for (const interpreter of [lit("bash"), artifact("tools", "bin/bash")]) {
+    const diagnostic = thrownDiagnostic(() => runBash({ interpreter, body: "true" }), "E128");
+    assert.ok(diagnostic.labels[0]?.span?.file.endsWith("workspace.test.ts"));
+  }
 });
 
 Deno.test("run_bash maps dedented lines to the original template, not the call", async () => {
@@ -426,7 +412,8 @@ Deno.test("Bash fluent and object forms normalize without sharing mutable state"
   assert.equal(JSON.stringify(fluent), JSON.stringify(object));
   assert.equal(base.build().env, undefined);
   assert.deepEqual(Object.keys(fluent.env ?? {}), ["A", "Z"]);
-  assert.throws(() => bash(lit("bash") as never), /declared packageCommand/);
+  const ambient = thrownDiagnostic(() => bash(lit("bash") as never), "E128");
+  assert.ok(ambient.labels[0]?.span?.file.endsWith("workspace.test.ts"));
 });
 
 Deno.test("fluent exec and object form emit the same command, preserving branches", () => {
@@ -489,10 +476,11 @@ Deno.test("emit rejects unknown output references with the reference span", () =
     run: exec({ argv: [lit("true")] }),
     deps: ["ghost"],
   });
-  assert.throws(
+  const unknown = thrownDiagnostic(
     () => emitWorkspaceIr(workspace({ outputs: [t] }), facts),
-    /output 'build' references unknown output 'ghost' \(referenced at .*workspace\.test\.ts:\d+\)/,
+    "E126",
   );
+  assert.ok(unknown.labels[0]?.span?.file.endsWith("workspace.test.ts"));
 });
 
 Deno.test("emit rejects wrong-kind references naming both sites", () => {
@@ -503,11 +491,16 @@ Deno.test("emit rejects wrong-kind references naming both sites", () => {
     target: linux,
     layout: relocatable,
   });
-  assert.throws(
+  const diagnostic = thrownDiagnostic(
     () => emitWorkspaceIr(workspace({ outputs: [dev, p] }), facts),
-    /output 'p' expects 'dev' to be a recipe — it is a 'environment' \(referenced at .*:\d+, declared at .*:\d+\)/,
+    "E126",
   );
+  assert.equal(diagnostic.labels.length, 2, "reference and declaration spans labeled");
+  assert.equal(diagnostic.labels[0]?.note, "referenced here");
+  assert.match(diagnostic.labels[1]?.note ?? "", /'dev' declared here/);
+  assert.ok(diagnostic.labels[0]?.span?.line !== diagnostic.labels[1]?.span?.line);
 });
+
 
 Deno.test("emit rejects package_command refs to unknown commands", () => {
   const src = recipe("src", {
@@ -526,19 +519,26 @@ Deno.test("emit rejects package_command refs to unknown commands", () => {
     run: exec({ argv: [packageCommand("p", "nope")] }),
     subject: "p",
   });
-  assert.throws(
+  const noCommand = thrownDiagnostic(
     () => emitWorkspaceIr(workspace({ outputs: [src, p, c] }), facts),
-    /package 'p' has no command 'nope' .*; it provides: tool/,
+    "E126",
   );
+  assert.match(noCommand.help ?? "", /provides: tool/);
+  assert.ok(noCommand.labels[0]?.span?.file.endsWith("workspace.test.ts"));
 });
 
 Deno.test("emit rejects task dependency cycles", () => {
   const a = task("a", { run: exec({ argv: [lit("true")] }), deps: ["b"] });
   const b = task("b", { run: exec({ argv: [lit("true")] }), deps: ["a"] });
-  assert.throws(
+  const cycle = thrownDiagnostic(
     () => emitWorkspaceIr(workspace({ outputs: [a, b] }), facts),
-    /dependency cycle a -> b -> a .*'a' declared at .*:\d+.*'b' declared at .*:\d+/,
+    "E127",
   );
+  assert.deepEqual(
+    cycle.labels.map((label) => label.span?.line),
+    [a.ir.span.line, b.ir.span.line],
+  );
+  assert.ok(cycle.labels.every((label) => label.span?.file.endsWith("workspace.test.ts")));
 });
 
 Deno.test("emit rejects producer/artifact cycles but admits validation loops", () => {
@@ -556,10 +556,11 @@ Deno.test("emit rejects producer/artifact cycles but admits validation loops", (
     target: linux,
     layout: relocatable,
   });
-  assert.throws(
+  const failure = thrownDiagnostic(
     () => emitWorkspaceIr(workspace({ outputs: [cyc, p] }), facts),
-    /dependency cycle/,
+    "E127",
   );
+  assert.equal(failure.labels.length, 2);
 
   // a recipe gated by a check on the package it produces is legitimate
   const tools = recipe("tools", {

@@ -14,7 +14,8 @@ import type {
   WorkspacePath,
   WorkspaceValue,
 } from "./ir.ts";
-import { asName, asRecord, asSelector, asSpan, duplicateError, spanAt } from "./validate.ts";
+import { asName, asRecord, asSelector, asSpan, duplicateError } from "./validate.ts";
+import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
 import { checkTargetsAndLayouts } from "./target.ts";
 
 /** Catalog roles never conflate publication checks or retention with
@@ -42,23 +43,31 @@ const ARTIFACT_KINDS: readonly WorkspaceOutputKind[] = ["recipe", "package"];
 
 /** Selector admission at emit: constructors guard their own values,
  *  but hand-built nodes reach the emitter unchecked — reject escapes
- *  here too, naming the source span (core E130). */
+ *  here too, labeling the source span (core E130). */
 function checkSelector(selector: string, span: Span, site: string): void {
   try {
     asSelector(selector, site);
-  } catch (e) {
-    throw new Error(`workspace: ${(e as Error).message} (referenced at ${spanAt(span)})`);
+  } catch (error) {
+    throw errorAt(
+      diagnosticCodes.invalidWorkspaceValue,
+      `workspace: ${(error as Error).message}`,
+      span,
+      "referenced here",
+    );
   }
 }
 
 /** Environment values are data — a package_command in a value
  *  position would invoke a program where only bytes are admitted
  *  (0052 §2.2, core E128). */
-function envValueError(from: string, key: string, span: Span): Error {
-  return new Error(
+function envValueError(from: string, key: string, span: Span): DiagnosticError {
+  return errorAt(
+    diagnosticCodes.badWorkspaceContext,
     `workspace: output '${from}' environment variable '${key}' cannot be a package_command ` +
       `reference; environment values are data (literal or artifact) — invoke package commands ` +
-      `from exec argv or a run_bash interpreter pin (referenced at ${spanAt(span)})`,
+      `from exec argv or a run_bash interpreter pin`,
+    span,
+    "referenced here",
   );
 }
 
@@ -82,10 +91,13 @@ function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges
     // a run_bash body runs under a pinned package interpreter only —
     // a literal or artifact interpreter is ambient host discovery
     if (cmd.interpreter.kind !== "package_command") {
-      throw new Error(
+      throw errorAt(
+        diagnosticCodes.badWorkspaceContext,
         `workspace: output '${from}' run_bash interpreter must be a package_command reference ` +
           `pinning the tool through a declared package; a literal or artifact interpreter is ` +
-          `ambient host discovery, which workspace IR never admits (referenced at ${spanAt(cmd.span)})`,
+          `ambient host discovery, which workspace IR never admits`,
+        cmd.span,
+        "referenced here",
       );
     }
     packageEdge(cmd.interpreter);
@@ -238,17 +250,25 @@ export function emitWorkspaceIr(
     for (const e of outputEdges(node)) {
       const target = catalog.get(e.to);
       if (!target) {
-        throw new Error(
-          `workspace: output '${e.from}' references unknown output '${e.to}' ` +
-            `(referenced at ${spanAt(e.span)})`,
+        throw errorAt(
+          diagnosticCodes.unknownWorkspaceRef,
+          `workspace: output '${e.from}' references unknown output '${e.to}'`,
+          e.span,
+          "referenced here",
         );
       }
       if (!e.expected.includes(target.kind)) {
-        throw new Error(
-          `workspace: output '${e.from}' expects '${e.to}' to be ${orList(e.expected)} — ` +
-            `it is a '${target.kind}' (referenced at ${spanAt(e.span)}, ` +
-            `declared at ${spanAt(target.span)})`,
-        );
+        throw new DiagnosticError({
+          code: diagnosticCodes.unknownWorkspaceRef,
+          severity: "error",
+          message:
+            `workspace: output '${e.from}' expects '${e.to}' to be ${orList(e.expected)} — ` +
+            `it is a '${target.kind}'`,
+          labels: [
+            { span: e.span, note: "referenced here" },
+            { span: target.span, note: `'${e.to}' declared here as a '${target.kind}'` },
+          ],
+        });
       }
       if (isDependency(e.role)) depEdges.push(e);
     }
@@ -261,13 +281,15 @@ export function emitWorkspaceIr(
   for (const { pkg: target, command, span } of commandKeys) {
     if (!(command in target.commands)) {
       const have = Object.keys(target.commands).join(", ");
-      throw new Error(
-        `workspace: package '${target.name}' has no command '${command}' ` +
-          `(referenced at ${spanAt(span)}${have ? `; it provides: ${have}` : ""})`,
-      );
+      throw new DiagnosticError({
+        code: diagnosticCodes.unknownWorkspaceRef,
+        severity: "error",
+        message: `workspace: package '${target.name}' has no command '${command}'`,
+        labels: [{ span, note: "referenced here" }],
+        ...(have ? { help: `package '${target.name}' provides: ${have}` } : {}),
+      });
     }
   }
-
   checkTargetsAndLayouts(catalog);
 
   // dependency cycles over production/build edges only — validation
@@ -289,14 +311,15 @@ export function emitWorkspaceIr(
       if (s === undefined) visit(e.to);
       else if (s === "visiting") {
         const cycle = [...stack.slice(stack.indexOf(e.to)), e.to];
-        throw new Error(
-          `workspace: dependency cycle ${cycle.join(" -> ")} (` +
-            cycle
-              .slice(0, -1)
-              .map((c) => `'${c}' declared at ${spanAt(catalog.get(c)!.span)}`)
-              .join(", ") +
-            `)`,
-        );
+        throw new DiagnosticError({
+          code: diagnosticCodes.workspaceCycle,
+          severity: "error",
+          message: `workspace: dependency cycle ${cycle.join(" -> ")}`,
+          labels: cycle.slice(0, -1).map((name) => ({
+            span: catalog.get(name)!.span,
+            note: `'${name}' declared here`,
+          })),
+        });
       }
     }
     stack.pop();

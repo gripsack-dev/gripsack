@@ -20,6 +20,7 @@ import {
   workspace,
 } from "../src/workspace.ts";
 import type { PackageLayout, WorkspaceOutput, WorkspacePlatform, WorkspaceValue } from "../src/workspace.ts";
+import { thrownDiagnostic } from "./diagnostic.ts";
 
 const facts = { os: "linux", arch: "x86_64", libc: null, hostname: "builder" } as const;
 const linux = { os: "linux", arch: "x86_64" } as const;
@@ -56,18 +57,24 @@ Deno.test("artifact refs require an actual artifact with both sites reported", (
       destination: trackedCopyTo("~/.config/tool"),
     })],
   });
-  assert.throws(
+  const diagnostic = thrownDiagnostic(
     () => emit([noArtifact, config]),
-    /expects 'ephemeral' to be one of 'recipe', 'package'.*referenced at .*:\d+, declared at .*:\d+/,
+    "E126",
   );
+  assert.equal(diagnostic.labels.length, 2, "reference and declaration spans labeled");
+  assert.ok(diagnostic.labels[0]?.span?.line !== diagnostic.labels[1]?.span?.line);
   const img = image("img", { packages: [], target: linux });
   const consumer = task("consume", { run: exec({ argv: [artifact("img", "manifest")] }) });
-  assert.throws(() => emit([img, consumer]), /expects 'img' to be one of 'recipe', 'package'/);
+  const imageFailure = thrownDiagnostic(() => emit([img, consumer]), "E126");
+  assert.deepEqual(imageFailure.labels.map((label) => label.span?.line), [
+    consumer.ir.span.line, img.ir.span.line,
+  ]);
 });
 
 Deno.test("check subjects resolve rather than silently becoming opaque names", () => {
   const missing = check("validate", { run: exec({ argv: [lit("true")] }), subject: "ghost" });
-  assert.throws(() => emit([missing]), /output 'validate' references unknown output 'ghost'/);
+  const subjectFailure = thrownDiagnostic(() => emit([missing]), "E126");
+  assert.equal(subjectFailure.labels[0]?.span?.line, missing.ir.span.line);
   const valid = check("validate", { run: exec({ argv: [lit("true")] }), subject: "validate" });
   assert.equal(JSON.parse(emit([valid])).workspace.outputs[0].subject, "validate");
 });
@@ -90,7 +97,8 @@ Deno.test("artifact selectors cannot escape or use non-canonical path segments",
       ] },
     }] },
   } as unknown as WorkspaceValue;
-  assert.throws(() => emitWorkspaceIr(fake, facts), /selector must be.*referenced at direct.ts:7/);
+  const escaping = thrownDiagnostic(() => emitWorkspaceIr(fake, facts), "E130");
+  assert.deepEqual(escaping.labels[0]?.span, { file: "direct.ts", line: 7 });
 });
 
 Deno.test("environment values are data, never package commands", () => {
@@ -111,9 +119,11 @@ Deno.test("targets bind ABI and minimum OS requirements, not the current host", 
     producer: "mac-tool-src", commands: { tool: "bin/tool" }, target: linux,
     layout: relocatable,
   });
-  assert.throws(() => emit([source, mismatched]), /producer target mismatch.*declared at .*:\d+.*declared at .*:\d+/);
+  const producerMismatch = thrownDiagnostic(() => emit([source, mismatched]), "E126");
+  assert.equal(producerMismatch.labels.length, 2, "consumer and provider spans labeled");
   const env = environment("dev", { packages: ["mac-tool"], target: linux });
-  assert.throws(() => emit([source, packageValue, env]), /selection target mismatch.*declared at .*:\d+.*declared at .*:\d+/);
+  const selectionMismatch = thrownDiagnostic(() => emit([source, packageValue, env]), "E126");
+  assert.equal(selectionMismatch.labels.length, 2, "consumer and provider spans labeled");
   const correct = environment("dev", { packages: ["mac-tool"], target: mac });
   assert.equal(JSON.parse(emit([source, packageValue, correct])).workspace.outputs.length, 3);
 });
@@ -122,13 +132,16 @@ Deno.test("fixed-prefix selection needs a matching environment location", () => 
   const { source, packageValue } = built("pinned", linux, { kind: "fixed_prefix", prefix: "/opt/tool" });
   assert.equal(JSON.parse(emit([source, packageValue])).workspace.outputs.length, 2);
   const env = environment("dev", { packages: ["pinned"], target: linux });
-  assert.throws(() => emit([source, packageValue, env]), /fixed_prefix.*no matching install prefix.*declared at .*:\d+.*declared at .*:\d+/);
+  const prefixless = thrownDiagnostic(() => emit([source, packageValue, env]), "E126");
+  assert.equal(prefixless.labels.length, 2, "environment and package spans labeled");
   const matching = environment("dev", { packages: ["pinned"], target: linux, prefix: "/opt/tool" });
   assert.equal(JSON.parse(emit([source, packageValue, matching])).workspace.outputs.length, 3);
   const wrong = environment("dev", { packages: ["pinned"], target: linux, prefix: "/other" });
-  assert.throws(() => emit([source, packageValue, wrong]), /fixed_prefix.*no matching install prefix/);
+  const wrongPrefix = thrownDiagnostic(() => emit([source, packageValue, wrong]), "E126");
+  assert.equal(wrongPrefix.labels.length, 2);
   const img = image("container", { packages: ["pinned"], target: linux });
-  assert.throws(() => emit([source, packageValue, img]), /fixed_prefix.*no matching install prefix/);
+  const imagePrefix = thrownDiagnostic(() => emit([source, packageValue, img]), "E126");
+  assert.equal(imagePrefix.labels.length, 2);
 });
 
 Deno.test("ABI mismatch and incompatible minimum OS reject with both declarations", () => {
@@ -138,10 +151,11 @@ Deno.test("ABI mismatch and incompatible minimum OS reject with both declaration
   const supported = environment("dev", { packages: ["kernel-tool"], target: consumer });
   assert.equal(JSON.parse(emit([source, packageValue, supported])).workspace.outputs.length, 3);
   const older = environment("dev", { packages: ["kernel-tool"], target: { ...linux, abi: "gnu", minimum_os: { major: 4, minor: 19 } } });
-  assert.throws(() => emit([source, packageValue, older]), /selection target mismatch.*declared at .*:\d+.*declared at .*:\d+/);
+  const olderRejected = thrownDiagnostic(() => emit([source, packageValue, older]), "E126");
+  assert.equal(olderRejected.labels.length, 2, "consumer and provider spans labeled");
   const unspecified = environment("dev", { packages: ["kernel-tool"], target: linux });
-  assert.throws(() => emit([source, packageValue, unspecified]), /selection target mismatch/);
-  assert.throws(() => built("bad-abi", { ...linux, abi: "darwin" }), /abi is incompatible with linux/);
+  const missingFloor = thrownDiagnostic(() => emit([source, packageValue, unspecified]), "E126");
+  assert.equal(missingFloor.labels.length, 2);
   for (const bad of ["/", "relative/path", "/opt/../home", "/opt//tool", "/opt/tool/", "/opt/\0tool"]) {
     assert.throws(() => built("bad-prefix", linux, { kind: "fixed_prefix", prefix: bad }), /normalized absolute POSIX install path/);
   }

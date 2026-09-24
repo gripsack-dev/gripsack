@@ -672,11 +672,54 @@ fresh model run. None is source-bound CI evidence or the missing
 normalization proof. This packet does not close A1-03 or authorize
 execution/release.
 
-## 13. Honesty register
+## 13. A1 graph-coverage, diagnostics and gate packet (not closure)
 
-- This document began as a design candidate; §§9–12 record read-only
-  admission, graph, typed-target and command-authoring packets, not a
-  completed A1 milestone or release.
+The production workspace policy adapter now compares per-output
+role cardinalities derived independently from decoded output fields
+against the projected edge roles before accepting a closure. A dropped
+build input, runtime reference, prerequisite, validation or retention
+edge fails E131 with the referencing output span; local ordering and
+producer/check presence still have their own source-aware checks.
+This count guard cannot prove a same-role name substitution and is
+**not** the missing schema→name-index refinement theorem.
+
+The frontend sends authoring failures as the core's existing structured
+`Diagnostic` wire. `grip check --json` and the terminal consume the
+same codes/messages/labels: typo, wrong output kind, duplicate name,
+target mismatch, ambient Bash and dedented-script failures are source
+labeled. Snippets are optional and limited to 1 MiB beneath the
+evaluated repo's pinned filesystem capability; out-of-repo spans and
+invalid coordinates retain their labels without reading file bytes.
+JSON errors exit nonzero; operational failures still print stderr and
+may have no structured diagnostic. Read-only checks do not provision
+BuildKit or a scheduler.
+
+The protected architecture checker now enumerates actual Cargo
+workspace members rather than only `crates/`: the `fuzz` member and
+future non-crates members cannot silently import OpenSSL. Its self-check
+includes a clean control and negative cases for renamed TLS deps,
+target-specific protected dependencies and missing protected crates.
+CI already runs the checker in the required `test` job; this does not
+attest to a live PR or branch-protection setting.
+
+Focused Linux checks passed Rust policy adapter **4/4**, renderer
+**5/5**, fresh Deno **62/62** (one wording-only test retired),
+`npm run build`, real CLI diagnostic/workspace cases **29/29**, and
+the calibrated architecture/delivery checker negatives. The final
+post-integration compose chain passed Rust fmt/clippy/tests, real CLI
+e2e **275/275**, and fresh Verus **61 verified / 0 errors** with
+**five** mutants. Its TS image reused the fresh 62-test layer and
+its TLC model image was **CACHED**, not a fresh model check.
+Source-bound CI/Mac evidence, exact per-capability E124 attribution,
+cross-language goldens for every output kind and a production
+schema/name-index proof remain open. A1-02, A1-06 and A1-07 stay
+**in_progress**; no release.
+
+## 14. Honesty register
+
+- This document began as a design candidate; §§9–13 record read-only
+  admission, graph, typed-target, command-authoring and diagnostic
+  packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
   this plan authorizes no publication.
 - A1-07's checker/ledger and protected dependency gate remain partial
