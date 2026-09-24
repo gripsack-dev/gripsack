@@ -133,4 +133,5 @@ fixture — locked pins bypass selection, transport unchanged),
 | H0-02 inventory | verified (`verification/delivery.json`, checker-validated) |
 | A0-01 implementation | verified (unit + container gates above) |
 | A1-07 checker | implemented (validate + closure + 8-case negative calibration, CI job wired) |
+| Milestone closures | **H0 closed, A0 closed** — `check_delivery.py --close-milestone {H0,A0}` pass with per-milestone global-gate attestations |
 | Next | B0-01 harness (Linux lane), then A1 compact API; Mac lanes blocked (no Mac), recorded |
