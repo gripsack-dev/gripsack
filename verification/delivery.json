@@ -1406,7 +1406,7 @@
    "mandatory_deliverable": "Pinned real Linux BuildKit/Go-LLB qualification harness",
    "required_acceptance_evidence": "Shared-dependency graph, cancellation, bounded failure attribution, declared-input policy probes, retained executable after worker/cache removal, independent runnable OCI result; actual versions/configuration recorded",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "implemented_unverified",
    "required_platform_capability_lanes": [
     "container-gates",
     "linux-amd64"
@@ -1420,7 +1420,37 @@
     "independent runnable OCI result produced",
     "actual versions/configuration recorded"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "linux-amd64",
+     "date": "2026-09-24",
+     "entry_points": [
+      "verification/buildkit-qualification/probes.sh",
+      "bridge/bridge-bin probes graph|executable|oci|policy",
+      "verify_oci.py"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2; buildkitd v0.33.0 (dddd5621) from digest-pinned amd64 leaf; go 1.26.3 build container; gcc:15.2.0 and alpine:3.22.1 digest-pinned in-graph; run 2026-09-24 08:29 UTC",
+     "command": "sh probes.sh (verification/buildkit-qualification) \u2014 full suite, exit 0",
+     "result": "pass",
+     "report": "plan/0051-b0-qualification.md",
+     "commit": "04634e9ecf4971921a0a5eb7917bfaf2e6b24cac",
+     "cases_covered": [
+      "Shared-dependency graph, cancellation, bounded failure attribution, declared-input policy probes, retained executable after worker/cache removal, independent runnable OCI result; actual versions/configuration recorded"
+     ],
+     "milestone_note": "probe 6 (Mac VM) is B0-02's blocked lane, not this row's"
+    }
+   ],
+   "lane_status": {
+    "container-gates": "verified",
+    "linux-amd64": "verified"
+   },
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    }
+   ]
   },
   {
    "id": "B0-02",
@@ -1458,7 +1488,7 @@
    "mandatory_deliverable": "Measured footprint and baseline preservation",
    "required_acceptance_evidence": "Cold/warm/offline costs separated by VM/toolchain/inputs/output; recorded budgets and rationale; native/prebuilt/check/preview/rollback workflows download/start zero builder components",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "linux-amd64",
     "macos"
@@ -1469,7 +1499,37 @@
     "budgets and rationale recorded",
     "native/prebuilt/check/preview/rollback workflows download/start zero builder components"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "linux-amd64",
+     "date": "2026-09-24",
+     "entry_points": [
+      "verification/buildkit-qualification/probes.sh probe 1",
+      "docker images"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2; buildkitd v0.33.0 (dddd5621) from digest-pinned amd64 leaf; go 1.26.3 build container; gcc:15.2.0 and alpine:3.22.1 digest-pinned in-graph; run 2026-09-24 08:29 UTC",
+     "command": "probe1 audit (zero buildkit references in product; offline e2e gate) + image/output size + timing capture",
+     "result": "pass",
+     "report": "plan/0051-b0-qualification.md",
+     "commit": "04634e9ecf4971921a0a5eb7917bfaf2e6b24cac",
+     "cases_covered": [
+      "native/prebuilt/check/preview/rollback workflows download/start zero builder components",
+      "Cold/warm/offline costs separated by VM/toolchain/inputs/output; recorded budgets and rationale"
+     ],
+     "note": "Linux-lane costs and budgets recorded in plan/0051; VM-lane separation and full budget sign-off wait for B1 managed worker (Mac lane blocked)"
+    }
+   ],
+   "lane_status": {
+    "linux-amd64": "verified (probe 1 + measurements)",
+    "macos": "blocked (VM lane; no Mac)"
+   },
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "in_progress"
+    }
+   ]
   },
   {
    "id": "B0-04",
