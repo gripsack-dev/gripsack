@@ -213,10 +213,53 @@
    "required_acceptance_evidence": "Trace from user-visible entry point through admitted domain values to effects/output; declarations, dead code, test-only implementations, and mocks cannot satisfy executable behavior",
    "named_cases_are_conjunctive": true,
    "status": "pending",
-   "required_platform_capability_lanes": null,
-   "lane_inventory_state": "imported_pending_live_registration",
-   "case_and_proof_inventory": null,
-   "evidence_records": []
+   "required_platform_capability_lanes": [
+    "container-gates",
+    "pure"
+   ],
+   "lane_inventory_state": "registered",
+   "case_and_proof_inventory": [
+    "Trace from user-visible entry point through admitted domain values to effects/output; declarations, dead code, test-only implementations, and mocks cannot satisfy executable behavior"
+   ],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "crates/gripsack-fetch/src/bottle.rs (production resolve_brew path)",
+      "scripts/check_delivery.py",
+      "plan/0049-handover-bundle-import.md"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; container gates 2026-09-24 (baseline 07:14-07:35 UTC at 176eaec pristine; A0 tree 07:36-07:56 UTC)",
+     "command": "docker compose run --build --rm test/ts-test/e2e/model/verify on the A0 tree; cargo test -p gripsack-fetch (61 tests); python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "A0",
+     "cases_covered": [
+      "Trace from user-visible entry point through admitted domain values to effects/output; declarations, dead code, test-only implementations, and mocks cannot satisfy executable behavior"
+     ],
+     "milestone_note": "A0: resolve_brew -> bottle::select is the live production path for brew-kind fetches; policy pure over injected facts; no test-only detour"
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "plan/0049-handover-bundle-import.md",
+      "verification/delivery.json"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; baseline gates 2026-09-24 07:14-07:35 UTC at 176eaec pristine worktree; handover checksums verified (CHECKSUMS.sha256)",
+     "command": "pristine-worktree docker compose gates x5; sha256sum -c CHECKSUMS.sha256; python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "H0",
+     "cases_covered": [
+      "Trace from user-visible entry point through admitted domain values to effects/output; declarations, dead code, test-only implementations, and mocks cannot satisfy executable behavior"
+     ],
+     "milestone_note": "H0: reconciliation traced the live CLI/gates/endpoints actually present at 176eaec; no declarations counted as behavior"
+    }
+   ]
   },
   {
    "id": "G-02",
@@ -227,10 +270,53 @@
    "required_acceptance_evidence": "Named positive and negative cases, expected execution/obligation counts, actual outcomes and reports; all required cases run and pass for a claimed lane",
    "named_cases_are_conjunctive": true,
    "status": "pending",
-   "required_platform_capability_lanes": null,
-   "lane_inventory_state": "imported_pending_live_registration",
-   "case_and_proof_inventory": null,
-   "evidence_records": []
+   "required_platform_capability_lanes": [
+    "container-gates",
+    "pure"
+   ],
+   "lane_inventory_state": "registered",
+   "case_and_proof_inventory": [
+    "Named positive and negative cases, expected execution/obligation counts, actual outcomes and reports; all required cases run and pass for a claimed lane"
+   ],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "crates/gripsack-fetch/src/bottle.rs (production resolve_brew path)",
+      "scripts/check_delivery.py",
+      "plan/0049-handover-bundle-import.md"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; container gates 2026-09-24 (baseline 07:14-07:35 UTC at 176eaec pristine; A0 tree 07:36-07:56 UTC)",
+     "command": "docker compose run --build --rm test/ts-test/e2e/model/verify on the A0 tree; cargo test -p gripsack-fetch (61 tests); python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "A0",
+     "cases_covered": [
+      "Named positive and negative cases, expected execution/obligation counts, actual outcomes and reports; all required cases run and pass for a claimed lane"
+     ],
+     "milestone_note": "A0: 13 named bottle-selection unit cases; 61/61 crate tests; e2e locked-bottle offline reconstruction passes on the A0 tree"
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "plan/0049-handover-bundle-import.md",
+      "verification/delivery.json"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; baseline gates 2026-09-24 07:14-07:35 UTC at 176eaec pristine worktree; handover checksums verified (CHECKSUMS.sha256)",
+     "command": "pristine-worktree docker compose gates x5; sha256sum -c CHECKSUMS.sha256; python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "H0",
+     "cases_covered": [
+      "Named positive and negative cases, expected execution/obligation counts, actual outcomes and reports; all required cases run and pass for a claimed lane"
+     ],
+     "milestone_note": "H0: baseline gates 5/5 PASS at pristine 176eaec (e2e 14m51s, model 53s, verify 5m49s); A0-tree gates 5/5 PASS; counts and walls recorded in plan/0049"
+    }
+   ]
   },
   {
    "id": "G-03",
@@ -241,10 +327,57 @@
    "required_acceptance_evidence": "Required TLC/TLAPS/Verus obligations, production correspondence, negative calibration, non-vacuity witnesses, and explicit trusted assumptions; no proof-only clone or admitted missing decision",
    "named_cases_are_conjunctive": true,
    "status": "pending",
-   "required_platform_capability_lanes": null,
-   "lane_inventory_state": "imported_pending_live_registration",
-   "case_and_proof_inventory": null,
-   "evidence_records": []
+   "required_platform_capability_lanes": [
+    "container-gates",
+    "pure"
+   ],
+   "lane_inventory_state": "registered",
+   "case_and_proof_inventory": [
+    "Required TLC/TLAPS/Verus obligations, production correspondence, negative calibration, non-vacuity witnesses, and explicit trusted assumptions; no proof-only clone or admitted missing decision"
+   ],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "crates/gripsack-fetch/src/bottle.rs (production resolve_brew path)",
+      "scripts/check_delivery.py",
+      "plan/0049-handover-bundle-import.md"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; container gates 2026-09-24 (baseline 07:14-07:35 UTC at 176eaec pristine; A0 tree 07:36-07:56 UTC)",
+     "command": "docker compose run --build --rm test/ts-test/e2e/model/verify on the A0 tree; cargo test -p gripsack-fetch (61 tests); python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "A0",
+     "cases_covered": [
+      "Required TLC/TLAPS/Verus obligations, production correspondence, negative calibration, non-vacuity witnesses, and explicit trusted assumptions; no proof-only clone or admitted missing decision"
+     ],
+     "milestone_note": "A0: no new proof family required for A0 (master family table starts at A1); existing Verus kernels re-verified green on the A0 tree",
+     "obligations": {
+      "checked": 50,
+      "note": "existing verify-gate obligation floor (plan/0047) green on the A0 tree"
+     }
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "plan/0049-handover-bundle-import.md",
+      "verification/delivery.json"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; baseline gates 2026-09-24 07:14-07:35 UTC at 176eaec pristine worktree; handover checksums verified (CHECKSUMS.sha256)",
+     "command": "pristine-worktree docker compose gates x5; sha256sum -c CHECKSUMS.sha256; python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "H0",
+     "cases_covered": [
+      "Required TLC/TLAPS/Verus obligations, production correspondence, negative calibration, non-vacuity witnesses, and explicit trusted assumptions; no proof-only clone or admitted missing decision"
+     ],
+     "milestone_note": "H0: no proof obligations due at H0; existing kernels' green verify gate recorded as the inherited baseline"
+    }
+   ]
   },
   {
    "id": "G-04",
@@ -255,10 +388,53 @@
    "required_acceptance_evidence": "A section 8.2/B section 6.1 and the relevant C section 7/D section 9/E section 8 review, documented module ownership and dependency direction, strong types, bounded effects/protocols, reviewed pins, and preserved Rust/rustls/musl constraints",
    "named_cases_are_conjunctive": true,
    "status": "pending",
-   "required_platform_capability_lanes": null,
-   "lane_inventory_state": "imported_pending_live_registration",
-   "case_and_proof_inventory": null,
-   "evidence_records": []
+   "required_platform_capability_lanes": [
+    "container-gates",
+    "pure"
+   ],
+   "lane_inventory_state": "registered",
+   "case_and_proof_inventory": [
+    "Architecture and code-quality review, documented module ownership and dependency direction, strong types, bounded effects/protocols, reviewed pins, preserved Rust/rustls/musl constraints"
+   ],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "crates/gripsack-fetch/src/bottle.rs (production resolve_brew path)",
+      "scripts/check_delivery.py",
+      "plan/0049-handover-bundle-import.md"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; container gates 2026-09-24 (baseline 07:14-07:35 UTC at 176eaec pristine; A0 tree 07:36-07:56 UTC)",
+     "command": "docker compose run --build --rm test/ts-test/e2e/model/verify on the A0 tree; cargo test -p gripsack-fetch (61 tests); python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "A0",
+     "cases_covered": [
+      "Architecture and code-quality review, documented module ownership and dependency direction, strong types, bounded effects/protocols, reviewed pins, preserved Rust/rustls/musl constraints"
+     ],
+     "milestone_note": "A0: cohesive pure module, typed domain values (HostPlatform/MacOsVersion/Os/Arch), fmt + clippy -D warnings clean, rustls/musl untouched"
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "plan/0049-handover-bundle-import.md",
+      "verification/delivery.json"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; baseline gates 2026-09-24 07:14-07:35 UTC at 176eaec pristine worktree; handover checksums verified (CHECKSUMS.sha256)",
+     "command": "pristine-worktree docker compose gates x5; sha256sum -c CHECKSUMS.sha256; python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "H0",
+     "cases_covered": [
+      "Architecture and code-quality review, documented module ownership and dependency direction, strong types, bounded effects/protocols, reviewed pins, preserved Rust/rustls/musl constraints"
+     ],
+     "milestone_note": "H0: contract plans read (0001/0002/0003/0013/0035/0036/0039/0042/0046/0047); rustls/musl constraints carried into ledger lanes"
+    }
+   ]
   },
   {
    "id": "G-05",
@@ -269,10 +445,53 @@
    "required_acceptance_evidence": "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, and no platform claim inferred from another platform's result",
    "named_cases_are_conjunctive": true,
    "status": "pending",
-   "required_platform_capability_lanes": null,
-   "lane_inventory_state": "imported_pending_live_registration",
-   "case_and_proof_inventory": null,
-   "evidence_records": []
+   "required_platform_capability_lanes": [
+    "container-gates",
+    "pure"
+   ],
+   "lane_inventory_state": "registered",
+   "case_and_proof_inventory": [
+    "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, no platform claim inferred from another platform's result"
+   ],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "crates/gripsack-fetch/src/bottle.rs (production resolve_brew path)",
+      "scripts/check_delivery.py",
+      "plan/0049-handover-bundle-import.md"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; container gates 2026-09-24 (baseline 07:14-07:35 UTC at 176eaec pristine; A0 tree 07:36-07:56 UTC)",
+     "command": "docker compose run --build --rm test/ts-test/e2e/model/verify on the A0 tree; cargo test -p gripsack-fetch (61 tests); python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "A0",
+     "cases_covered": [
+      "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, no platform claim inferred from another platform's result"
+     ],
+     "milestone_note": "A0: no new host/privileged/network capability; sw_vers is a bounded local probe; no builder bootstrap in any native flow"
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "plan/0049-handover-bundle-import.md",
+      "verification/delivery.json"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; baseline gates 2026-09-24 07:14-07:35 UTC at 176eaec pristine worktree; handover checksums verified (CHECKSUMS.sha256)",
+     "command": "pristine-worktree docker compose gates x5; sha256sum -c CHECKSUMS.sha256; python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "H0",
+     "cases_covered": [
+      "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, no platform claim inferred from another platform's result"
+     ],
+     "milestone_note": "H0: platform inventory honest \u2014 Mac/launchd/virtualization-capable Mac CI recorded blocked; no cross-platform inference"
+    }
+   ]
   },
   {
    "id": "G-06",
@@ -283,10 +502,53 @@
    "required_acceptance_evidence": "Existing ownership, recovery, generations and retained roots preserved; changed persistent formats have compatible readers or explicit tested migration; no destructive repair of retained objects",
    "named_cases_are_conjunctive": true,
    "status": "pending",
-   "required_platform_capability_lanes": null,
-   "lane_inventory_state": "imported_pending_live_registration",
-   "case_and_proof_inventory": null,
-   "evidence_records": []
+   "required_platform_capability_lanes": [
+    "container-gates",
+    "pure"
+   ],
+   "lane_inventory_state": "registered",
+   "case_and_proof_inventory": [
+    "Existing ownership, recovery, generations and retained roots preserved; changed persistent formats have compatible readers or explicit tested migration; no destructive repair of retained objects"
+   ],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "crates/gripsack-fetch/src/bottle.rs (production resolve_brew path)",
+      "scripts/check_delivery.py",
+      "plan/0049-handover-bundle-import.md"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; container gates 2026-09-24 (baseline 07:14-07:35 UTC at 176eaec pristine; A0 tree 07:36-07:56 UTC)",
+     "command": "docker compose run --build --rm test/ts-test/e2e/model/verify on the A0 tree; cargo test -p gripsack-fetch (61 tests); python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "A0",
+     "cases_covered": [
+      "Existing ownership, recovery, generations and retained roots preserved; changed persistent formats have compatible readers or explicit tested migration; no destructive repair of retained objects"
+     ],
+     "milestone_note": "A0: no persisted format change; lockfile pins bypass selection (e2e byte-identical reconstruction); generations/ownership untouched"
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "plan/0049-handover-bundle-import.md",
+      "verification/delivery.json"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; baseline gates 2026-09-24 07:14-07:35 UTC at 176eaec pristine worktree; handover checksums verified (CHECKSUMS.sha256)",
+     "command": "pristine-worktree docker compose gates x5; sha256sum -c CHECKSUMS.sha256; python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "H0",
+     "cases_covered": [
+      "Existing ownership, recovery, generations and retained roots preserved; changed persistent formats have compatible readers or explicit tested migration; no destructive repair of retained objects"
+     ],
+     "milestone_note": "H0: no state changes; local plan/0048 work preserved verbatim; no reset to baseline commit"
+    }
+   ]
   },
   {
    "id": "G-07",
@@ -297,10 +559,53 @@
    "required_acceptance_evidence": "Relevant CLI/API/docs/examples exercise the actual implementation; structured errors and provenance survive; documented support/limitations match the tested behavior",
    "named_cases_are_conjunctive": true,
    "status": "pending",
-   "required_platform_capability_lanes": null,
-   "lane_inventory_state": "imported_pending_live_registration",
-   "case_and_proof_inventory": null,
-   "evidence_records": []
+   "required_platform_capability_lanes": [
+    "container-gates",
+    "pure"
+   ],
+   "lane_inventory_state": "registered",
+   "case_and_proof_inventory": [
+    "Relevant CLI/API/docs/examples exercise the actual implementation; structured errors and provenance survive; documented support/limitations match the tested behavior"
+   ],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "crates/gripsack-fetch/src/bottle.rs (production resolve_brew path)",
+      "scripts/check_delivery.py",
+      "plan/0049-handover-bundle-import.md"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; container gates 2026-09-24 (baseline 07:14-07:35 UTC at 176eaec pristine; A0 tree 07:36-07:56 UTC)",
+     "command": "docker compose run --build --rm test/ts-test/e2e/model/verify on the A0 tree; cargo test -p gripsack-fetch (61 tests); python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "A0",
+     "cases_covered": [
+      "Relevant CLI/API/docs/examples exercise the actual implementation; structured errors and provenance survive; documented support/limitations match the tested behavior"
+     ],
+     "milestone_note": "A0: refusals name host facts and per-tag rejection reasons; plan/0049 documents behavior and limits"
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "plan/0049-handover-bundle-import.md",
+      "verification/delivery.json"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; baseline gates 2026-09-24 07:14-07:35 UTC at 176eaec pristine worktree; handover checksums verified (CHECKSUMS.sha256)",
+     "command": "pristine-worktree docker compose gates x5; sha256sum -c CHECKSUMS.sha256; python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "H0",
+     "cases_covered": [
+      "Relevant CLI/API/docs/examples exercise the actual implementation; structured errors and provenance survive; documented support/limitations match the tested behavior"
+     ],
+     "milestone_note": "H0: plans 0049/0050/0051 document the delivered records and limits"
+    }
+   ]
   },
   {
    "id": "G-08",
@@ -311,10 +616,53 @@
    "required_acceptance_evidence": "Delivery/status/guarantee records agree with run evidence and exact revision; no unresolved required row is reported complete; next blocked/ready action is recorded",
    "named_cases_are_conjunctive": true,
    "status": "pending",
-   "required_platform_capability_lanes": null,
-   "lane_inventory_state": "imported_pending_live_registration",
-   "case_and_proof_inventory": null,
-   "evidence_records": []
+   "required_platform_capability_lanes": [
+    "container-gates",
+    "pure"
+   ],
+   "lane_inventory_state": "registered",
+   "case_and_proof_inventory": [
+    "Delivery/status/guarantee records agree with run evidence and exact revision; no unresolved required row reported complete; next blocked/ready action recorded"
+   ],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "crates/gripsack-fetch/src/bottle.rs (production resolve_brew path)",
+      "scripts/check_delivery.py",
+      "plan/0049-handover-bundle-import.md"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; container gates 2026-09-24 (baseline 07:14-07:35 UTC at 176eaec pristine; A0 tree 07:36-07:56 UTC)",
+     "command": "docker compose run --build --rm test/ts-test/e2e/model/verify on the A0 tree; cargo test -p gripsack-fetch (61 tests); python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "A0",
+     "cases_covered": [
+      "Delivery/status/guarantee records agree with run evidence and exact revision; no unresolved required row reported complete; next blocked/ready action recorded"
+     ],
+     "milestone_note": "A0: ledger rows verified with gate-bound evidence at exact revision; checker validates; next actions recorded (B0-01, A1)"
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": [
+      "plan/0049-handover-bundle-import.md",
+      "verification/delivery.json"
+     ],
+     "environment": "WSL2 linux/amd64; docker 29.7.2 + compose v5.5.0; baseline gates 2026-09-24 07:14-07:35 UTC at 176eaec pristine worktree; handover checksums verified (CHECKSUMS.sha256)",
+     "command": "pristine-worktree docker compose gates x5; sha256sum -c CHECKSUMS.sha256; python3 scripts/check_delivery.py --validate",
+     "result": "pass",
+     "report": "plan/0049-handover-bundle-import.md",
+     "commit": "5312c897a2ffe700a560e71fedd68f587f975ead",
+     "milestone": "H0",
+     "cases_covered": [
+      "Delivery/status/guarantee records agree with run evidence and exact revision; no unresolved required row reported complete; next blocked/ready action recorded"
+     ],
+     "milestone_note": "H0: ledger + checker + plans agree at the recorded revision; blocked lanes and next actions recorded"
+    }
+   ]
   },
   {
    "id": "A0-01",

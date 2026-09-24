@@ -233,11 +233,26 @@ def close_claim(ledger: dict, milestone: str | None, scope: str | None, release:
         label = f"closure scope {scope}"
     else:
         raise SystemExit("closure claim needs --close-milestone or --close-scope")
+    claimed: set[str] = {milestone} if milestone else set(ledger["closure_scopes"][scope])
     seen: set[str] = set()
     for req in targets:
         if req["id"] in seen:
             continue
         seen.add(req["id"])
+        if req["owner_milestone"] == "global":
+            # Global gates are attested per milestone via evidence records
+            # carrying that milestone's label — a global boolean would let a
+            # future milestone close on a stale attestation.
+            attested = {ev.get("milestone") for ev in req.get("evidence_records", []) if ev.get("result") == "pass"}
+            missing = claimed - attested
+            if missing:
+                v.add(req["id"], f"{label} lacks a passing per-milestone attestation for {sorted(missing)}")
+            if req.get("lane_inventory_state") != "registered":
+                v.add(req["id"], f"{label} requires a registered global-gate inventory (state={req.get('lane_inventory_state')!r})")
+            for ev in req.get("evidence_records", []):
+                if release and ev.get("commit", "").split(" ")[0] != release:
+                    v.add(req["id"], f"evidence commit {ev.get('commit')!r} does not match claimed release {release}")
+            continue
         if req["status"] != "verified":
             v.add(req["id"], f"{label} requires this row verified; status={req['status']!r}")
             continue
