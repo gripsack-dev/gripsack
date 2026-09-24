@@ -41,7 +41,7 @@ archived.
 | Path | Contents |
 |---|---|
 | `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the landed/deferred/rejected ledger — update it in the same PR |
-| `schema/ir/v2.json` | THE current contract between frontend and core; v1 retained as history |
+| `schema/ir/v3.json` | THE current contract between frontend and core (the frontend emits `IR_VERSION = 3`); v1/v2 retained as history |
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
 | `crates/gripsack-store` | store paths, generations, GC |
 | `crates/gripsack-exec` | DAG scheduling |
