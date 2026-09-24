@@ -18,6 +18,9 @@ jobs:
           python3 scripts/check_delivery.py --validate
           python3 scripts/delivery_checker_calibration.py
 
+      - name: A1 dependency direction (calibrated)
+        run: python3 scripts/check_architecture.py --self-check
+
       - name: Rust gate (fmt, clippy, tests)
         run: docker compose run --build --rm test
 

@@ -320,11 +320,44 @@ TLA+/TLC extension (rendered-candidate validation, deployment observation, retai
 
 ### 5.2 Delivery checker calibration (A1-07 — **partial in this slice**)
 
-The delivery inventory/closure checker, its negative calibration and ledger wiring (`verification/delivery.json`, `scripts/check_delivery.py`) are owned by the integration slice (plan/0049/0051 lineage). This contract contributes only what A1-07 asks of the *model*: updated AGENTS/architecture references naming v4, the module-ownership table in §3, and mechanically enforceable dependency/schema checks (schema↔Rust↔TS conformance, no second frontend). No new framework.
+The integration slice (plan/0049 lineage) owns `verification/delivery.json`, `scripts/check_delivery.py`, runner-evidence admission in `scripts/delivery_evidence.py`, and their calibrated CI gate. Its `scripts/check_architecture.py` enforces current protected crate dependency direction; existing `gripsack-ir/tests/schema_acceptance.rs` checks v3 schema/parser parity in the Rust gate. **A1-07 remains partial:** the v4 schema/TS/Rust conformance, complete lane/case inventory and module/API cutover are not yet implemented. This design supplies the target module ownership (§3), not passing evidence for that cutover.
 
 ### 5.3 Export/migration inventory (A1-09, A1-10, A1-12)
 
-The cutover PR must record every current root export (`index.ts`, 27 exports at time of writing) with: destination (supported authoring / convenience sugar / advanced SDK / internal / retired / compat reader), retained behavior, rejected ambiguity and delivery owner — exactly the Epic A §3.2 table's mapping (`step`/`fetchStep`/`buildStep`/`installStep`/`configStep`/`Phase` retired; script constructors → shared `exec`/`runBash`; `module`+name lookup → ordinary TS values; `install`/`config` → one FileDecl model; `template` mode → content rendering; `owned` alias → `symlink` with old stored values readable; `merge` → `managed_block` wire name with `mergeBlock`/`managedBlock` authoring; `resource`/registry → pure lock refs; `emitIr`/`parseInputs`/`IR_VERSION`/`createProbeBuilder`/registry resets → internal/advanced SDK). Installed-package export tests must show driver/compiler/reset utilities hidden from ordinary authoring (A1-12). Removing a listed capability or keeping a competing live phase runtime is not a spelling decision and fails the inventory.
+The live `typescript/src/index.ts` exports **40 runtime values and 29 types**
+(not 27 exports). The table inventories every symbol and its destination;
+this is a migration contract, not an assertion that the new API exists.
+`advanced` is an explicit stability tier, never a second execution
+path. v3 serialized values keep their versioned reader.
+
+| Current runtime exports | Cutover destination and owner |
+|---|---|
+| `dep` | Typed artifact/runtime/ordering refs replace module-name dependencies; retire root constructor (A1-02, A5-05). |
+| `merge`, `symlink`, `template`, `trackedCopy` | Orthogonal content vs destination policy; `symlink`/tracked copy remain conveniences, `merge` becomes `managedBlock`, `template` renders content only; retain v3 stored tags' meanings (A1-11, A2-06, A5-06). |
+| `brew`, `fileFetch`, `git`, `githubRelease`, `pixi`, `pluginFetch`, `tarball` | Provider helpers over resolution/acquisition; `brew` closure belongs A4; coherent `conda.environment` and explicit `pixi.fromLock` belong A3; native releases/file/git/plugin/tarball remain A2 (A1-12). |
+| `hasTag`, `when` | Retain pure convenience over injected facts, never a global fact registry (A1-12). |
+| `defineEnv`, `emitIr`, `IR_VERSION`, `mergeTags` | Workspace entry replaces `defineEnv` in ordinary authoring; emitter/version/tag merger are internal or documented advanced; v3 reader retained (A1-01, A1-12, A5-05). |
+| `tree` | Retain bounded tree-expansion helper producing explicit owned per-file entries (A1-11, A2-06). |
+| `module` | Retire runtime `module()` identity/registry; ordinary TypeScript factories/namespaces group values, v3 reader preserves old inputs (A1-09, A5-05). |
+| `customHook`, `desktopEntry`, `fonts`, `service` | Preserve structured host intents and lifecycle timing; custom script uses shared command construction, not an ordinary task or build validator (A1-08, A5-05). |
+| `parseInputs`, `createProbeBuilder` | Internal driver entry points; injected probe context remains a supported authoring value, not a user-managed registry (A1-12). |
+| `CORE_RESOURCES`, `clearResources`, `resource` | Retire mutable global resource registry/reset; reserved core names stay internal; new `lock()` yields pure scoped mutation refs reachable from returned declarations (A1-12, E1-07). |
+| `buildStep`, `configStep`, `fetchStep`, `installStep`, `runStep`, `shellStep`, `step` | Retire public universal phase pipeline and duplicated script constructors; local ordered command/action lists in recipes/tasks, typed profile files and shared `exec`/`runBash`; v3 compat reader only (A1-03, A1-09, A5-05, B2-07). |
+| `verifyBinary`, `verifyDeployed`, `verifyFile`, `verifyShell` | Retain typed check-construction conveniences with explicit subject/stage; build validation, invocation postconditions and deployment pre-flip checks remain different lifecycles (A1-08, A1-10). |
+
+| Current type exports | Cutover destination |
+|---|---|
+| `Dependency`, `Edge` | Typed graph roles/references, advanced IR projection; no stringly module dependency as ordinary authoring (A1-02). |
+| `Dest`, `Ownership` | Typed file destination-policy authoring; old serialized `Ownership` variants still readable (A1-11). |
+| `HostFacts`, `Condition`, `FactView` | Retain typed injected facts + small pure conditions (A1-01). |
+| `Fetch` | Advanced provider description; ordinary users select sources/providers (A1-12, A3/A4). |
+| `Env`, `EnvContext`, `EnvFn` | Workspace context/environment value types; v3 `defineEnv` types move to compat/advanced (A1-01, A2-P). |
+| `IrEntry`, `IrModule`, `ModuleSpec`, `ModuleValue`, `Span` | Compiler DTOs internal; `Span` exposed only through the documented advanced diagnostics API; v3 module types remain in the compat reader (A1-06, A1-09, A1-12). |
+| `Intent`, `Trigger` | Retain typed structured activation intents/triggers; schedule calendar trigger is separate (A1-08, E2). |
+| `Inputs`, `ProbeBuilder`, `ProbeKind`, `ProbeRequest` | Inputs DTO/request machinery internal; the authoring context exposes a typed `probe` interface without wire fields (A1-12). |
+| `Resource` | Replace with pure `MutationLockRef`, explicit scope/key, no registry identity (A1-12). |
+| `Build`, `Phase`, `Step`, `StepAction`, `StepOpts` | Retire universal phase/step DTOs from ordinary authoring; v3 reader only (A1-09, A5-05). |
+| `Verify` | Typed check value with lifecycle-specific owner, advanced type where necessary (A1-08/A1-10). |
 
 ### 5.4 Graduated examples (A1-10 admission only)
 

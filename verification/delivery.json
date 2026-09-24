@@ -987,7 +987,7 @@
    "mandatory_deliverable": "Shared architecture rules and delivery-gate wiring",
    "required_acceptance_evidence": "Updated AGENTS/architecture/status references, documented module ownership, mechanically enforceable dependency/schema checks, required delivery inventory/closure checker and its negative calibration; no unbounded new framework",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates",
@@ -998,7 +998,15 @@
    "case_and_proof_inventory": [
     "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
    ],
-   "evidence_records": []
+   "evidence_records": [],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "in_progress"
+    }
+   ],
+   "implementation_notes": "Delivery checker and bounded runner-evidence admission plus calibrated dependency-direction guard wired into protected CI test; v4 schema/caller migrations, full case/platform inventory, and source-bound acceptance evidence remain open."
   },
   {
    "id": "A1-08",

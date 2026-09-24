@@ -152,6 +152,13 @@ unbound worktree observations in `/tmp/gripsack-integrated-gates/`,
 not a new verified delivery claim or a substitute for required native
 Mac/TLAPS evidence.
 
+After adding the A1-07 Cargo dependency guard, the same five compose
+gates passed again on 2026-09-24 (12:39–12:56 UTC): Rust fmt/clippy/tests
+and the real e2e flow ran; TypeScript, TLC and Verus image layers were
+CACHED. `check_architecture.py --self-check`, delivery inventory
+validation and all 15 negative calibration cases also passed. This is
+regression smoke, not a release closure claim.
+
 ## Record
 
 | Item | Status |
@@ -159,6 +166,6 @@ Mac/TLAPS evidence.
 | H0-01 reconciliation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): the work was done and gates were observed, but the claim cited this Markdown document, not a bound runner report; baseline `test`/`ts-test` logs show CACHED layers and no log carries a commit marker. Prior claim preserved in the ledger's `historical_claims` |
 | H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 of 178 rows still `imported_pending_live_registration` with null lane/case inventories and no explicit evidence_kinds; inventory cannot be called complete |
 | A0-01 implementation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): unit + container gates observed green (archived `verification/reports/2026-09-24-a0-*.log`: cargo test executed, gripsack-fetch 61 passed / 0 failed incl. 13 bottle cases; e2e 245 passed; verify 56 verified 0 errors + 4 mutants; ts-test/model CACHED) but the logs lack commit/dirty binding and the evidence was Markdown |
-| A1-07 checker | partially implemented: edition-5 178-ID inventory fingerprint, required-lane and per-milestone global-gate closure, checkout-revision binding (or documented identical tracked source-tree fingerprint for evidence-only commits), 15 calibrated negative shapes, wired into the protected `test` job. H0-02 still lacks 149 case/platform inventories and evidence kinds; A1-07's broader schema/dependency architecture gates remain open |
+| A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, 15 calibrated negatives and `check_architecture.py --self-check` (forbidden direct and aliased target-specific crate edges), both wired into protected CI `test`; v3 schema/parser parity is exercised by the existing Rust acceptance corpus. H0-02 still lacks 149 case/platform inventories and evidence kinds; v4 schema and caller cutover remain open |
 | Milestone closures | **retracted 2026-09-24** — H0 and A0 are NOT closed. The earlier `--close-milestone {H0,A0}` pass rested on Markdown-only evidence and handwritten counts (incl. a G-03 `obligations.checked: 50` that contradicts the runner logs' `56 verified, 0 errors`); the ledger's global-gate attestation records were moved to `historical_claims`. Closure now requires source-bound runner evidence per lane plus passing global gates G-01–G-08 under the hardened checker |
 | Next | rerun gates with explicit source-bound, count-bearing runner reports into `verification/reports/` (then re-close H0/A0 under the hardened checker); populate the 149 null-inventory rows as their milestones come up; A1 grammar work; B0-01 portable evidence; Mac lanes blocked (no Mac), recorded |
