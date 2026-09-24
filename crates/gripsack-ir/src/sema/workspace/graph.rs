@@ -16,6 +16,8 @@
 use crate::span::Span;
 use crate::workspace::{Workspace, WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspacePath};
 
+pub(super) use gripsack_policy::graph::roles::GraphRole as EdgeRole;
+
 mod outputs;
 use outputs::output_edges;
 
@@ -42,55 +44,20 @@ const SCHEDULE: &[&str] = &["schedule"];
 const CHECK: &[&str] = &["check"];
 const HOOK: &[&str] = &["hook"];
 
-/// The role an edge plays (0052 §2.2 role enum). The role decides
-/// whether the edge feeds the build closure and cycle detection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum EdgeRole {
-    /// package producer → recipe.
-    Production,
-    /// recipe step tool/artifact references — build-time only.
-    BuildInput,
-    /// Required at consumption: package runtime closure, environment
-    /// and image package selections, task environment and tool
-    /// references, check/hook tool references, profile artifact files.
-    Runtime,
-    /// task prerequisites — verified success within one invocation.
-    TaskPrereq,
-    /// Publication gates, invocation postconditions, check subjects —
-    /// required gates, never prunable dead work, never build closure.
-    Validation,
-    /// Profile/schedule consumer wiring — retained roots that may
-    /// legitimately close a loop, never build closure.
-    Retention,
-}
-
-impl EdgeRole {
-    /// Dependency edges feed cycle detection (E127); validation and
-    /// retention edges are checked for existence and kind but can
-    /// legitimately close a loop.
-    pub(super) fn is_dependency(self) -> bool {
-        matches!(
-            self,
-            Self::Production | Self::BuildInput | Self::Runtime | Self::TaskPrereq
-        )
-    }
-}
-
-/// How the two ends' platforms bind across an edge (0052 §2.2:
-/// incompatible targets/layouts are admission rejections). Matching is
-/// conservative v4 identity — exact os/arch/ABI/minimum-OS equality,
-/// never a host-compatibility assumption for cross-target builds.
+/// Target relationships along named-output edges (0052 §2.2).
+/// Providers must match OS/arch/ABI and not require a newer OS floor
+/// than their consumers. Checking-host facts never select a target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TargetBinding {
     /// No platform relationship.
     None,
-    /// package producer ↔ recipe: targets must agree exactly.
+    /// Package producer recipe requirements must fit package target.
     Producer,
-    /// environment/image package selection: targets must agree exactly
-    /// and a `fixed_prefix` package cannot be selected — the v4 wire
-    /// has no consumer prefix slot to place it under.
+    /// Package selections compare target floors; prefix-bound packages
+    /// need a matching environment prefix (images remain unavailable).
     Selection,
 }
+
 /// A diagnostic relation labels the field (and optional environment
 /// key) without allocating for every successful graph edge.
 #[derive(Clone, Copy)]
@@ -151,19 +118,32 @@ pub(super) enum ContextViolation<'a> {
         at: &'a Span,
     },
     /// A run_bash interpreter that is not a pinned `package_command` —
-    /// ambient host discovery, which v4 never admits.
+    /// ambient host discovery, forbidden by workspace admission.
     AmbientInterpreter { at: &'a Span },
+}
+
+/// Sequencing is local to a recipe; step indexes are not output names
+/// or independent cache identities. Intra-recipe edges never enter
+/// the catalog's build/runtime closure.
+pub(super) struct LocalOrder<'a> {
+    pub recipe: &'a str,
+    pub before: usize,
+    pub after: usize,
+    pub at: &'a Span,
+    pub role: EdgeRole,
 }
 
 /// The admitted typed projection of one workspace.
 pub(super) struct Projection<'a> {
     pub edges: Vec<Edge<'a>>,
+    pub ordering: Vec<LocalOrder<'a>>,
     pub violations: Vec<ContextViolation<'a>>,
 }
 
 pub(super) fn collect(workspace: &Workspace) -> Projection<'_> {
     let mut projection = Projection {
         edges: Vec::new(),
+        ordering: Vec::new(),
         violations: Vec::new(),
     };
     for output in &workspace.outputs {

@@ -7,7 +7,7 @@
       "os": "linux",
       "tags": []
     },
-    "ir_version": 4,
+    "ir_version": 5,
     "workspace": {
       "outputs": [
         {
@@ -31,7 +31,9 @@
             "tool": "bin/tool"
           },
           "kind": "package",
-          "layout": "relocatable",
+          "layout": {
+            "kind": "relocatable"
+          },
           "name": "native-tool",
           "producer": {
             "kind": "provider",

@@ -43,6 +43,9 @@ import type { HostFacts } from "../src/index.ts";
 
 const facts: HostFacts = { os: "linux", arch: "x86_64", libc: "glibc-2.36", hostname: "box" };
 const linux = { os: "linux", arch: "x86_64" } as const;
+const hostExecution = { kind: "host", access: "unconfined" } as const;
+const relocatable = { kind: "relocatable" } as const;
+const fixedTools = { kind: "fixed_prefix", prefix: "/opt/tools" } as const;
 
 const emit = (value: WorkspaceValue, tags: string[] = []) =>
   JSON.parse(emitWorkspaceIr(value, facts, tags));
@@ -51,7 +54,7 @@ const emit = (value: WorkspaceValue, tags: string[] = []) =>
 function kitchenSink(): WorkspaceValue {
   const bashSrc = recipe("bash-src", {
     source: tarball("https://example.invalid/bash.tar.gz"),
-    execution: "native",
+    execution: hostExecution,
     output_kind: "tree",
     target: linux,
   });
@@ -59,11 +62,11 @@ function kitchenSink(): WorkspaceValue {
     producer: "bash-src",
     commands: { bash: "bin/bash" },
     target: linux,
-    layout: "relocatable",
+    layout: relocatable,
   });
   const tools = recipe("tools", {
     source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
-    execution: "host",
+    execution: hostExecution,
     output_kind: "tree",
     target: linux,
     steps: [
@@ -82,7 +85,7 @@ function kitchenSink(): WorkspaceValue {
     commands: { tools: "bin/tools" },
     runtime: ["bash"],
     target: linux,
-    layout: "fixed_prefix",
+    layout: fixedTools,
   });
   const toolsOk = check("tools-ok", {
     run: exec({ argv: [packageCommand("tools-bin", "tools"), lit("--version")] }),
@@ -151,11 +154,11 @@ function kitchenSink(): WorkspaceValue {
   });
 }
 
-Deno.test("emitWorkspaceIr emits the v4 workspace envelope", () => {
+Deno.test("emitWorkspaceIr emits the v5 workspace envelope", () => {
   const ir = emit(kitchenSink(), ["work"]);
 
   assert.deepEqual(Object.keys(ir), ["ir_version", "host", "workspace"]);
-  assert.equal(ir.ir_version, 4);
+  assert.equal(ir.ir_version, 5);
   assert.equal(ir.modules, undefined, "workspace envelope never carries modules");
   assert.equal(ir.resources, undefined);
   assert.deepEqual(Object.keys(ir.host), ["os", "arch", "tags", "libc"]);
@@ -212,7 +215,7 @@ Deno.test("emitWorkspaceIr emits the v4 workspace envelope", () => {
   assert.deepEqual(Object.keys(byName.tools.source), ["fetch", "span"]);
   assert.equal(byName.tools.source.fetch.kind, "github_release");
   assert.ok(byName.tools.source.span.line >= 1);
-  assert.equal(byName.tools.execution, "host");
+  assert.deepEqual(byName.tools.execution, hostExecution);
   assert.deepEqual(byName.tools.checks, ["tools-ok"]);
 
   // run_bash: pinned package_command interpreter, literal body, no line_map
@@ -237,7 +240,7 @@ Deno.test("emitWorkspaceIr emits the v4 workspace envelope", () => {
   assert.deepEqual(byName["tools-bin"].producer, { kind: "recipe", recipe: "tools" });
   assert.deepEqual(byName["tools-bin"].commands, { tools: "bin/tools" });
   assert.deepEqual(byName["tools-bin"].runtime, ["bash"]);
-  assert.equal(byName["tools-bin"].layout, "fixed_prefix");
+  assert.deepEqual(byName["tools-bin"].layout, fixedTools);
 
   // task / schedule / hook
   assert.deepEqual(byName.build.deps, ["lint"]);
@@ -277,10 +280,10 @@ Deno.test("emitWorkspaceIr emits the v4 workspace envelope", () => {
   assert.equal(byName["tools-ok"].subject, "tools-bin");
 });
 
-Deno.test("emitIr legacy path emits the v4 modules envelope, never a workspace", () => {
+Deno.test("emitIr legacy path emits the v5 modules envelope, never a workspace", () => {
   const ir = JSON.parse(emitIr({ modules: [module("m", { lint: "toml" })] }, facts, []));
   assert.deepEqual(Object.keys(ir), ["ir_version", "host", "modules"]);
-  assert.equal(ir.ir_version, 4);
+  assert.equal(ir.ir_version, 5);
   assert.equal(ir.workspace, undefined);
   assert.equal(ir.modules.m.lint, "toml");
 });
@@ -288,7 +291,7 @@ Deno.test("emitIr legacy path emits the v4 modules envelope, never a workspace",
 Deno.test("duplicate output names throw at declaration with both sites", () => {
   const a = recipe("same", {
     source: tarball("https://example.invalid/a.tar.gz"),
-    execution: "native",
+    execution: hostExecution,
     output_kind: "file",
     target: linux,
   });
@@ -302,7 +305,7 @@ Deno.test("duplicate output names throw at declaration with both sites", () => {
 Deno.test("duplicate output names throw at emit for hand-built values", () => {
   const a = recipe("same", {
     source: tarball("https://example.invalid/a.tar.gz"),
-    execution: "native",
+    execution: hostExecution,
     output_kind: "file",
     target: linux,
   });
@@ -322,7 +325,7 @@ Deno.test("constructors reject unknown fields for JS callers and casts", () => {
     () =>
       recipe("x", {
         soruce: tarball("https://example.invalid/x.tar.gz"),
-        execution: "native",
+        execution: hostExecution,
         output_kind: "file",
         target: linux,
       } as never),
@@ -423,7 +426,7 @@ Deno.test("emit rejects wrong-kind references naming both sites", () => {
     producer: "dev",
     commands: { p: "bin/p" },
     target: linux,
-    layout: "relocatable",
+    layout: relocatable,
   });
   assert.throws(
     () => emitWorkspaceIr(workspace({ outputs: [dev, p] }), facts),
@@ -434,7 +437,7 @@ Deno.test("emit rejects wrong-kind references naming both sites", () => {
 Deno.test("emit rejects package_command refs to unknown commands", () => {
   const src = recipe("src", {
     source: tarball("https://example.invalid/x.tar.gz"),
-    execution: "native",
+    execution: hostExecution,
     output_kind: "tree",
     target: linux,
   });
@@ -442,7 +445,7 @@ Deno.test("emit rejects package_command refs to unknown commands", () => {
     producer: "src",
     commands: { tool: "bin/tool" },
     target: linux,
-    layout: "relocatable",
+    layout: relocatable,
   });
   const c = check("c", {
     run: exec({ argv: [packageCommand("p", "nope")] }),
@@ -467,7 +470,7 @@ Deno.test("emit rejects producer/artifact cycles but admits validation loops", (
   // recipe artifact-refs the package it produces: a real cycle
   const cyc = recipe("cyc", {
     source: tarball("https://example.invalid/x.tar.gz"),
-    execution: "native",
+    execution: hostExecution,
     output_kind: "tree",
     target: linux,
     steps: [exec({ argv: [artifact("p", "bin/p")] })],
@@ -476,7 +479,7 @@ Deno.test("emit rejects producer/artifact cycles but admits validation loops", (
     producer: "cyc",
     commands: { p: "bin/p" },
     target: linux,
-    layout: "relocatable",
+    layout: relocatable,
   });
   assert.throws(
     () => emitWorkspaceIr(workspace({ outputs: [cyc, p] }), facts),
@@ -486,7 +489,7 @@ Deno.test("emit rejects producer/artifact cycles but admits validation loops", (
   // a recipe gated by a check on the package it produces is legitimate
   const tools = recipe("tools", {
     source: tarball("https://example.invalid/t.tar.gz"),
-    execution: "native",
+    execution: hostExecution,
     output_kind: "tree",
     target: linux,
     checks: ["ok"],
@@ -495,7 +498,7 @@ Deno.test("emit rejects producer/artifact cycles but admits validation loops", (
     producer: "tools",
     commands: { t: "bin/t" },
     target: linux,
-    layout: "relocatable",
+    layout: relocatable,
   });
   const ok = check("ok", { run: exec({ argv: [lit("true")] }), subject: "bin" });
   const ir = emit(workspace({ outputs: [tools, bin, ok] }));
@@ -507,7 +510,7 @@ Deno.test("a provider-backed package needs no synthetic recipe", () => {
     producer: provider(githubRelease({ repo: "jqlang/jq", asset: "jq-{version}.tar.gz" })),
     commands: { jq: "bin/jq" },
     target: linux,
-    layout: "relocatable",
+    layout: relocatable,
   });
   const ir = emit(workspace({ outputs: [jq] }));
   const producer = ir.workspace.outputs[0].producer;
@@ -522,7 +525,7 @@ Deno.test("no import-order registry: repeated evals in one process emit identica
   function build(): WorkspaceValue {
     const tools = recipe("tools", {
       source: tarball("https://example.invalid/t.tar.gz"),
-      execution: "native",
+      execution: hostExecution,
       output_kind: "tree",
       target: linux,
     });
@@ -530,7 +533,7 @@ Deno.test("no import-order registry: repeated evals in one process emit identica
       producer: "tools",
       commands: { t: "bin/t" },
       target: linux,
-      layout: "relocatable",
+      layout: relocatable,
     });
     return workspace({ outputs: [tools, bin] });
   }
@@ -545,7 +548,7 @@ Deno.test("no import-order registry: repeated evals in one process emit identica
 Deno.test("constructed values are deeply frozen", () => {
   const out = recipe("tools", {
     source: tarball("https://example.invalid/t.tar.gz"),
-    execution: "native",
+    execution: hostExecution,
     output_kind: "tree",
     target: linux,
     steps: [exec({ argv: [lit("make")] })],
@@ -575,7 +578,7 @@ Deno.test("constructed values are deeply frozen", () => {
 Deno.test("stray objects and empty catalogs are rejected", () => {
   const tools = recipe("tools", {
     source: tarball("https://example.invalid/t.tar.gz"),
-    execution: "native",
+    execution: hostExecution,
     output_kind: "tree",
     target: linux,
   });
@@ -628,19 +631,19 @@ Deno.test("enum and calendar boundaries reject out-of-grammar values", () => {
     () =>
       recipe("x", {
         source: tarball("https://example.invalid/x.tar.gz"),
-        execution: "quantum" as never,
+        execution: { kind: "quantum" } as never,
         output_kind: "tree",
         target: linux,
       }),
-    /execution must be "native", "host" or "isolated_linux"/,
+    /execution\.kind must be "host" or "isolated_linux"/,
   );
   // isolated_linux is admitted explicitly — the core owns the
   // unavailable-capability rejection, the frontend never reinterprets
   const iso = recipe("iso", {
     source: tarball("https://example.invalid/x.tar.gz"),
-    execution: "isolated_linux",
+    execution: { kind: "isolated_linux", worker: "buildkit" },
     output_kind: "tree",
     target: linux,
   });
-  assert.equal(emit(workspace({ outputs: [iso] })).workspace.outputs[0].execution, "isolated_linux");
+  assert.deepEqual(emit(workspace({ outputs: [iso] })).workspace.outputs[0].execution, { kind: "isolated_linux", worker: "buildkit" });
 });

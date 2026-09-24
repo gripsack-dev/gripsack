@@ -67,12 +67,16 @@ pub mod codes {
     /// interpreter that is not a pinned package_command (0052 §2.2).
     pub const BAD_WORKSPACE_CONTEXT: &str = "E128";
     /// A workspace span with an empty file or a line/column below 1 —
-    /// v4 provenance is mandatory and well-formed.
+    /// workspace provenance is mandatory and well-formed.
     pub const BAD_WORKSPACE_SPAN: &str = "E129";
     /// A workspace value outside the admitted grammar: empty output
     /// catalog/name, malformed calendar time, file origin/content
     /// mismatch or unsafe artifact selector (0052 §2.2).
     pub const INVALID_WORKSPACE_VALUE: &str = "E130";
+    /// A required workspace producer or validation edge vanished from
+    /// the admitted graph projection. Fail closed, never publish from
+    /// an incomplete graph (0052 §5.1).
+    pub const REQUIRED_WORKSPACE_EDGE_MISSING: &str = "E131";
 }
 
 // ---------------------------------------------------------------- diagnostics

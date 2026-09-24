@@ -5,10 +5,10 @@
 #   1. positive — `cargo verus verify -p gripsack-policy --locked`
 #      must succeed with 0 errors and at least the expected obligation
 #      count (zero/subset verification is not success).
-#   2. calibration — a seeded semantic mutant (a crashed roll-forward
-#      misread as committed: the 0.22 bug class) must FAIL its
-#      postcondition. A verification failure for the intended contract
-#      is required; a crash, parse error or missing solver is not.
+#   2. calibration — named semantic mutants in recovery, merge,
+#      graph closure, required validation and scheduler policy must
+#      fail their intended postconditions. A crash, parse error,
+#      unrelated lemma or missing solver is not calibration evidence.
 #
 # Toolchain (all three pins move together; updates are deliberate):
 #   Verus release 0.2026.09.06.8dea4a2  (provides cargo-verus + verus)
@@ -20,10 +20,10 @@ set -eu
 
 CRATE=crates/gripsack-policy
 # classify + plan_copy + plan_link + the retention kernels (admission,
-# prune, delete, membership helpers), the merge splice kernel, the
-# graph closure kernels and the scheduler transition system, with
-# their contracts; if the kernel set grows, grow this floor.
-MIN_OBLIGATIONS=50
+# prune, delete, membership helpers), merge splice, graph closure and
+# v4 role/validation projection, plus the scheduler transition system.
+# Mutation anchors also protect the named kernel families.
+MIN_OBLIGATIONS=61
 
 # verification results are cached by cargo — the gate always runs a
 # CLEAN verification (a stale cache is not evidence)
@@ -83,11 +83,25 @@ run_mutant() {
         echo "FAIL: the $name mutant VERIFIED — the proof does not see the contract"
         exit 1
     fi
-    echo "$out2" | grep -m1 "not satisfied" >/dev/null || {
-        echo "$out2" | tail -20
-        echo "FAIL: the $name mutant failed without a named unsatisfied contract — unrecognised failure, not calibration evidence"
-        exit 1
-    }
+    if [ "$name" = graph-validation ]; then
+        # Verus names the exact production-role proof assertion. A
+        # missing tool, parse error or unrelated lemma cannot calibrate
+        # the dropped-validation-edge contract.
+        printf '%s\n' "$out2" | grep -F "src/$file:" >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'assert(decision.required_validation == (role == GraphRole::Validation));' >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'error: assertion failed' >/dev/null &&
+        printf '%s\n' "$out2" | grep -E 'verification results:: [1-9][0-9]* verified, [1-9][0-9]* errors' >/dev/null || {
+            printf '%s\n' "$out2" | tail -20
+            echo "FAIL: $name did not fail the role-validation contract"
+            exit 1
+        }
+    else
+        echo "$out2" | grep -m1 "not satisfied" >/dev/null || {
+            echo "$out2" | tail -20
+            echo "FAIL: the $name mutant failed without a named unsatisfied contract — unrecognised failure, not calibration evidence"
+            exit 1
+        }
+    fi
     echo "calibration: $name mutant rejected on its contract"
 }
 
@@ -108,6 +122,13 @@ run_mutant "merge-splice" merge.rs \
 run_mutant "graph-closure" graph.rs \
     '                    result.push(target);' \
     ''
+
+# dropping a required publication check from the role projection must
+# violate the verified validation postcondition, never verify as build
+# pruning or a harmless missing output.
+run_mutant "graph-validation" graph/roles.rs \
+    'RoleDecision { build: false, required_validation: true },' \
+    'RoleDecision { build: false, required_validation: false },'
 # scheduler: starting work after the failure latch — the "a failed
 # dependency authorized its consumer" class — must fail the named
 # postcondition (old(self).failed ==> result.is_none())

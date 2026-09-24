@@ -17,9 +17,11 @@ The IR is a three-party contract. Any change lands in **one PR** touching:
 
 - **Structural changes** are compatible within a version ONLY if the
   prior declared reader explicitly tolerates that extension point. The
-  shipped v3/v4 readers are strict (`deny_unknown_fields` plus tagged
-  admission), so adding even an optional structural field needs a new
-  version or a proven reader negotiation first (plan/0003 §8).
+  retained v3/v4 readers and current v5 reader are strict
+  (`deny_unknown_fields` plus tagged admission); even an optional
+  structural field needs a new version or proven reader negotiation
+  (plan/0003 §8). The v4→v5 target/execution/layout change kept its
+  own read-only v4 reader and schema.
 - **Breaking changes** (rename, removal, meaning change, or a field an
   older strict reader rejects) bump `ir_version` and add
   `schema/ir/v<N+1>.json`; keep old schemas and versioned readers. The
@@ -29,7 +31,7 @@ The IR is a three-party contract. Any change lands in **one PR** touching:
   with no independent declaration inherit their owner's span for
   diagnostics. The core preserves/surfaces provenance and never hashes
   it. Retained v3 optional spans are historical compatibility, not a
-  precedent for v4 nodes.
+  precedent for v4/v5 nodes.
 - Identity: producer recipe hashes include admitted semantic inputs,
   tools, platform and policy. Consumer selection and provenance do
   not enter producer identity. Changing a source/build field must

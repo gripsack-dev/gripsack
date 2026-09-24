@@ -1,10 +1,4 @@
-/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+/** v5 profile file origins, content transforms and destination policy. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type {

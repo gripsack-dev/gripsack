@@ -167,6 +167,7 @@ mod identity_tests {
             modules: Default::default(),
             resources: Default::default(),
             workspace: None,
+            workspace_v4: None,
         };
         ir.modules.insert("m".into(), a);
         let plans = crate::expand::expand_all(&ir.modules).unwrap();

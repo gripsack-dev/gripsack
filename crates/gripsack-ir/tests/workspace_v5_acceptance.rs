@@ -1,36 +1,23 @@
-//! v4 workspace schema ↔ parser acceptance parity — the v4 twin of
-//! `schema_acceptance.rs` (plan/0042 §E, plan/0052 §2). Every corpus
-//! document is admitted or rejected by BOTH `schema/ir/v4.json` and the
-//! real core admission (`parse` + the envelope/tagged-field passes).
-//! Semantics (reference kinds, cycles, contexts) live in sema and are
-//! covered by `sema/workspace.rs` unit tests — absent here by design.
+//! v5 workspace schema ↔ parser acceptance parity (plan/0042 §E,
+//! 0052 §2). The real Draft 2020-12 schema and typed core reader
+//! agree on this corpus; v3 and historical v4 retain their separate
+//! versioned readers and schemas.
 //!
-//! The schema is checked with the real `jsonschema` crate through the
-//! tracked symlink `crates/gripsack-ir/schema-v4.json →
-//! ../../schema/ir/v4.json` (same strategy as the v3 twin).
-//!
-//! Known, documented asymmetries (excluded from the parity corpus):
-//! - ir_version 3 documents: the v4 schema's `const: 4` rejects them;
-//!   the parser admits them through the retained v3 reader (version
-//!   dispatch, plan/0052 §1). Pinned in `version_dispatch_asymmetry`.
-//! - Authored-value constraints (minLength, span minimums, calendar
-//!   pattern, outputs minItems, sha256 hex) are stricter than pass 1:
-//!   `parse` admits them, the schema rejects them, and sema rejects the
-//!   structural ones (spans, empty catalog/names, calendar clocks) with
-//!   E129/E130. Pinned in `schema_authored_constraints_execute`.
-//! - Explicit `null` for Option fields (`task.environment`, …): serde
-//!   admits it (crate-wide convention, see the v3 file's explicit-null
-//!   sweep); the schema's strict `type` rejects it.
+//! Semantics (references, cycles, contexts, target floors) run in sema
+//! and have source-labeled unit/CLI tests. Structural schema rules
+//! such as minLength, spans and calendar patterns may reject values
+//! before the typed pass; `schema_authored_constraints_execute`
+//! records any parse-versus-sema asymmetry explicitly.
 
 use gripsack_ir::{check, parse};
 use jsonschema::validator_for;
 use serde_json::{Value, json};
 
-/// The canonical v4 schema via the tracked symlink.
-const SCHEMA_V4: &str = include_str!("../schema-v4.json");
+/// The canonical current schema via its tracked symlink.
+const SCHEMA_V5: &str = include_str!("../schema-v5.json");
 
 fn compiled() -> jsonschema::Validator {
-    validator_for(&serde_json::from_str(SCHEMA_V4).unwrap()).unwrap()
+    validator_for(&serde_json::from_str(SCHEMA_V5).unwrap()).unwrap()
 }
 
 /// None = the schema admits the document.
@@ -51,7 +38,7 @@ fn host() -> Value {
 }
 
 fn envelope(workspace: Value) -> Value {
-    json!({"ir_version": 4, "host": host(), "workspace": workspace})
+    json!({"ir_version": 5, "host": host(), "workspace": workspace})
 }
 
 fn workspace(outputs: Value) -> Value {
@@ -66,7 +53,7 @@ fn recipe(name: &str) -> Value {
                       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
             "span": span()
         },
-        "execution": "native", "output_kind": "tree",
+        "execution": {"kind": "host", "access": "unconfined"}, "output_kind": "tree",
         "target": {"os": "linux", "arch": "x86_64"}
     })
 }
@@ -76,7 +63,7 @@ fn package(name: &str, producer: &str) -> Value {
         "kind": "package", "name": name, "span": span(),
         "producer": {"kind": "recipe", "recipe": producer},
         "commands": {name: format!("bin/{name}")},
-        "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"
+        "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}
     })
 }
 
@@ -181,12 +168,35 @@ fn valid_corpus() -> Vec<(&'static str, Value)> {
                      "fetch": {"kind": "file", "path": "vendor/ripgrep.tar.gz"},
                      "span": span()}},
                  "commands": {"rg": "bin/rg"},
-                 "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"},
+                 "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
             ]))),
         ),
         (
-            "v4 legacy modules compatibility envelope",
-            json!({"ir_version": 4, "host": host(), "resources": [{"name": "company.lock"}],
+            "cross-target isolated recipe and fixed-prefix environment",
+            envelope(workspace(json!([
+                {"kind": "recipe", "name": "build", "span": span(),
+                 "source": {"fetch": {"kind": "file", "path": "vendor/tool.bin"},
+                            "span": span()},
+                 "execution": {"kind": "isolated_linux", "worker": "buildkit"},
+                 "output_kind": "tree",
+                 "target": {"os": "linux", "arch": "x86_64", "abi": "gnu",
+                            "minimum_os": {"major": 5, "minor": 15}}},
+                {"kind": "package", "name": "tool", "span": span(),
+                 "producer": {"kind": "recipe", "recipe": "build"},
+                 "commands": {"tool": "bin/tool"},
+                 "target": {"os": "linux", "arch": "x86_64", "abi": "gnu",
+                            "minimum_os": {"major": 5, "minor": 15}},
+                 "layout": {"kind": "fixed_prefix", "prefix": "/opt/tool"}},
+                {"kind": "environment", "name": "dev", "span": span(),
+                 "packages": ["tool"],
+                 "target": {"os": "linux", "arch": "x86_64", "abi": "gnu",
+                            "minimum_os": {"major": 6, "minor": 1}},
+                 "prefix": "/opt/tool"},
+            ]))),
+        ),
+        (
+            "v5 legacy modules compatibility envelope",
+            json!({"ir_version": 5, "host": host(), "resources": [{"name": "company.lock"}],
                    "modules": {"m": {"fetch": {"kind": "file", "path": "x.tgz"}}}}),
         ),
         (
@@ -211,7 +221,7 @@ fn valid_documents_are_admitted_by_both_sides() {
         }
         let ir = parse(&doc.to_string())
             .unwrap_or_else(|d| panic!("parser rejected valid document {name:?}: {d}"));
-        assert_eq!(ir.ir_version, 4);
+        assert_eq!(ir.ir_version, 5);
         // Full admission (parse + sema) accepts them too.
         check(&doc.to_string())
             .unwrap_or_else(|ds| panic!("sema rejected valid document {name:?}: {ds:?}"));
@@ -224,27 +234,27 @@ fn rejected_documents_fail_both_sides() {
     let cases: Vec<(&str, Value)> = vec![
         (
             "unknown top-level field",
-            json!({"ir_version": 4, "host": host(), "workspace": workspace(json!([])), "workspce": {}}),
+            json!({"ir_version": 5, "host": host(), "workspace": workspace(json!([])), "workspce": {}}),
         ),
         (
-            "v4 declares both workspace and modules",
-            json!({"ir_version": 4, "host": host(), "modules": {}, "workspace": workspace(json!([]))}),
+            "v5 declares both workspace and modules",
+            json!({"ir_version": 5, "host": host(), "modules": {}, "workspace": workspace(json!([]))}),
         ),
         (
-            "v4 declares neither workspace nor modules",
-            json!({"ir_version": 4, "host": host()}),
+            "v5 declares neither workspace nor modules",
+            json!({"ir_version": 5, "host": host()}),
         ),
         (
-            "v4 without core-injected host facts",
-            json!({"ir_version": 4, "workspace": workspace(json!([]))}),
+            "v5 without core-injected host facts",
+            json!({"ir_version": 5, "workspace": workspace(json!([]))}),
         ),
         (
             "ir_version out of range",
-            json!({"ir_version": 5, "host": host(), "workspace": workspace(json!([]))}),
+            json!({"ir_version": 6, "host": host(), "workspace": workspace(json!([]))}),
         ),
         (
             "hostname selector in host facts",
-            json!({"ir_version": 4, "host": {"os": "linux", "arch": "x86_64", "hostname": "laptop"},
+            json!({"ir_version": 5, "host": {"os": "linux", "arch": "x86_64", "hostname": "laptop"},
                    "workspace": workspace(json!([]))}),
         ),
         (
@@ -263,7 +273,7 @@ fn rejected_documents_fail_both_sides() {
                 recipe("build"),
                 {"kind": "package", "name": "hello", "span": span(), "producer": "build",
                  "commands": {"hello": "bin/hello"}, "target": {"os": "linux", "arch": "x86_64"},
-                 "layout": "relocatable", "stage": "deploy"},
+                 "layout": {"kind": "relocatable"}, "stage": "deploy"},
             ]))),
         ),
         (
@@ -279,7 +289,7 @@ fn rejected_documents_fail_both_sides() {
             envelope(workspace(json!([
                 {"kind": "package", "name": "hello", "span": {"file": "grip.ts", "line": "3"},
                  "producer": "build", "commands": {"hello": "bin/hello"},
-                 "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"},
+                 "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
             ]))),
         ),
         (
@@ -304,7 +314,7 @@ fn rejected_documents_fail_both_sides() {
                  "source": {"fetch": {"kind": "tarball", "url": "https://example.test/s.tgz",
                                       "baseUrl": "https://evil.test"},
                             "span": span()},
-                 "execution": "native", "output_kind": "tree",
+                 "execution": {"kind": "host", "access": "unconfined"}, "output_kind": "tree",
                  "target": {"os": "linux", "arch": "x86_64"}},
             ]))),
         ),
@@ -314,7 +324,7 @@ fn rejected_documents_fail_both_sides() {
                 {"kind": "package", "name": "hello", "span": span(),
                  "producer": {"kind": "magic", "recipe": "build"},
                  "commands": {"hello": "bin/hello"},
-                 "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"},
+                 "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
             ]))),
         ),
         (
@@ -324,7 +334,7 @@ fn rejected_documents_fail_both_sides() {
                 {"kind": "package", "name": "hello", "span": span(),
                  "producer": {"kind": "recipe", "recipe": "build", "branch": "main"},
                  "commands": {"hello": "bin/hello"},
-                 "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"},
+                 "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
             ]))),
         ),
         (
@@ -335,7 +345,7 @@ fn rejected_documents_fail_both_sides() {
                      "fetch": {"kind": "file", "path": "vendor/rg.tgz", "sha256": "deadbeef"},
                      "span": span()}},
                  "commands": {"rg": "bin/rg"},
-                 "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"},
+                 "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
             ]))),
         ),
         (
@@ -396,15 +406,15 @@ fn unknown_field_rejection_carries_declaring_span() {
     assert_eq!((span.file.as_str(), span.line), ("gripsack.ts", 9));
 }
 
-/// v3 documents ride the retained v3 reader; the v4 schema's `const: 4`
-/// rejects them. Version dispatch is deliberate, not a parity gap.
+/// v3/v4 documents ride retained readers, not the current v5 schema.
+/// Version dispatch is deliberate, not a schema/parser parity gap.
 #[test]
 fn version_dispatch_asymmetry() {
     let validator = compiled();
     let v3 = json!({"ir_version": 3, "modules": {}});
     assert!(
         schema_error(&validator, &v3).is_some(),
-        "v4 schema rejects ir_version 3"
+        "v5 schema rejects ir_version 3"
     );
     assert!(
         parse(&v3.to_string()).is_ok(),
@@ -414,6 +424,24 @@ fn version_dispatch_asymmetry() {
     let v3_workspace = json!({"ir_version": 3, "modules": {},
         "workspace": {"span": {"file": "g", "line": 1}, "outputs": []}});
     assert!(parse(&v3_workspace.to_string()).is_err());
+    let historical = json!({
+        "ir_version": 4, "host": host(), "workspace": {
+            "span": span(), "outputs": [
+                {"kind": "package", "name": "tool", "span": span(),
+                 "producer": {"kind": "provider", "provider": {
+                     "fetch": {"kind": "file", "path": "tool.bin"}, "span": span()}},
+                 "commands": {"tool": "bin/tool"},
+                 "target": {"os": "linux", "arch": "x86_64"},
+                 "layout": "relocatable"}
+            ]}
+    });
+    assert!(schema_error(&validator, &historical).is_some());
+    assert!(
+        parse(&historical.to_string())
+            .unwrap()
+            .workspace_v4
+            .is_some()
+    );
 }
 
 /// Authored-value constraints the schema pins tighter than pass 1:
@@ -472,13 +500,21 @@ fn schema_authored_constraints_execute() {
             Some(codes::INVALID_WORKSPACE_VALUE),
         ),
         (
+            "Linux target with Darwin ABI",
+            envelope(workspace(json!([
+                {"kind": "image", "name": "bad-target", "span": span(), "packages": [],
+                 "target": {"os": "linux", "arch": "x86_64", "abi": "darwin"}},
+            ]))),
+            Some(codes::INVALID_WORKSPACE_VALUE),
+        ),
+        (
             "non-hex sha256 (frontend authoring rule; sema admits)",
             envelope(workspace(json!([
                 {"kind": "recipe", "name": "build", "span": span(),
                  "source": {"fetch": {"kind": "tarball", "url": "https://example.test/s.tgz",
                                       "sha256": "not-hex"},
                             "span": span()},
-                 "execution": "native", "output_kind": "tree",
+                 "execution": {"kind": "host", "access": "unconfined"}, "output_kind": "tree",
                  "target": {"os": "linux", "arch": "x86_64"}},
             ]))),
             None,

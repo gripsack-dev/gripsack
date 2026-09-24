@@ -14,7 +14,7 @@ from conftest import grip
 
 def workspace_ir(*outputs):
     return {
-        "ir_version": 4,
+        "ir_version": 5,
         "host": {"os": "linux", "arch": "x86_64", "tags": []},
         "workspace": {
             "span": {"file": "gripsack.ts", "line": 1},
@@ -83,6 +83,25 @@ def test_workspace_plan_refuses_instead_of_planning_empty_legacy_profile(sandbox
     assert not (sandbox / ".config/demo/settings.conf").exists()
 
 
+def test_historical_v4_workspace_cannot_become_empty_module_apply(sandbox):
+    old = workspace_ir({
+        "kind": "package", "name": "native-tool",
+        "span": {"file": "old.ts", "line": 5},
+        "producer": {"kind": "provider", "provider": {
+            "fetch": {"kind": "file", "path": "tool.bin"},
+            "span": {"file": "old.ts", "line": 6},
+        }},
+        "commands": {"tool": "bin/tool"},
+        "target": {"os": "linux", "arch": "x86_64", "abi": "old-abi"},
+        "layout": "relocatable",
+    })
+    old["ir_version"] = 4
+    result = run_plan_ir(sandbox, old)
+    assert result.returncode != 0
+    assert "E124" in result.stderr, result.stderr
+    assert "gripsack.ts:1" in result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
 
 def test_provider_package_needs_no_synthetic_recipe_or_host_entry(sandbox):
     package = {
@@ -98,7 +117,7 @@ def test_provider_package_needs_no_synthetic_recipe_or_host_entry(sandbox):
         },
         "commands": {"tool": "bin/tool"},
         "target": {"os": "linux", "arch": "x86_64"},
-        "layout": "relocatable",
+        "layout": {"kind": "relocatable"},
     }
     result = run_plan_ir(sandbox, workspace_ir(package))
     assert result.returncode != 0
@@ -138,7 +157,7 @@ def recipe_and_package():
             "fetch": {"kind": "file", "path": "tool.bin"},
             "span": {"file": "gripsack.ts", "line": 2},
         },
-        "execution": "native",
+        "execution": {"kind": "host", "access": "unconfined"},
         "output_kind": "tree",
         "target": target,
     }
@@ -149,7 +168,7 @@ def recipe_and_package():
         "producer": {"kind": "recipe", "recipe": "build"},
         "commands": {"tool": "bin/tool"},
         "target": target,
-        "layout": "relocatable",
+        "layout": {"kind": "relocatable"},
     }
     return recipe, package
 
@@ -246,7 +265,7 @@ def test_decoded_package_target_mismatch_rejects_with_both_sites(sandbox):
 
 def test_decoded_fixed_prefix_package_cannot_enter_prefixless_environment(sandbox):
     recipe, package = recipe_and_package()
-    package["layout"] = "fixed_prefix"
+    package["layout"] = {"kind": "fixed_prefix", "prefix": "/opt/tool"}
     environment = {
         "kind": "environment",
         "name": "tools",
@@ -260,3 +279,79 @@ def test_decoded_fixed_prefix_package_cannot_enter_prefixless_environment(sandbo
     assert "gripsack.ts:3" in result.stderr
     assert "gripsack.ts:6" in result.stderr
     assert "E124" not in result.stderr
+
+
+def test_publication_check_cycle_is_admitted_without_pruning_or_execution(sandbox):
+    recipe, package = recipe_and_package()
+    recipe["checks"] = ["smoke"]
+    smoke = {
+        "kind": "check",
+        "name": "smoke",
+        "span": {"file": "gripsack.ts", "line": 8},
+        "subject": "tool",
+        "run": {
+            "kind": "exec",
+            "span": {"file": "gripsack.ts", "line": 8},
+            "argv": [{"kind": "literal", "value": "true"}],
+        },
+    }
+    result = run_plan_ir(sandbox, workspace_ir(recipe, package, smoke))
+    assert result.returncode != 0
+    assert "E124" in result.stderr, result.stderr
+    assert "E131" not in result.stderr
+    assert "E127" not in result.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+def test_tagged_execution_and_layout_fields_are_closed_with_output_spans(sandbox):
+    recipe, package = recipe_and_package()
+    for node, field, line in [(recipe, "execution", 2), (package, "layout", 3)]:
+        malformed = copy.deepcopy(node)
+        malformed[field]["ambient_effect"] = True
+        outputs = (malformed, package) if field == "execution" else (recipe, malformed)
+        result = run_plan_ir(sandbox, workspace_ir(*outputs))
+        assert result.returncode != 0
+        assert "ambient_effect" in result.stderr
+        assert f"gripsack.ts:{line}" in result.stderr
+        assert "E124" not in result.stderr
+
+
+def test_minimum_os_and_abi_compare_declared_targets_not_checking_host(sandbox):
+    recipe, package = recipe_and_package()
+    target = {
+        "os": "linux", "arch": "x86_64", "abi": "gnu",
+        "minimum_os": {"major": 5, "minor": 15},
+    }
+    recipe["target"] = copy.deepcopy(target)
+    package["target"] = copy.deepcopy(target)
+    environment = {
+        "kind": "environment", "name": "tools",
+        "span": {"file": "gripsack.ts", "line": 6},
+        "packages": ["tool"],
+        "target": {**target, "minimum_os": {"major": 6, "minor": 1}},
+    }
+    admitted = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
+    assert "E124" in admitted.stderr, admitted.stderr  # admitted, but never executed by A1
+    environment["target"]["minimum_os"] = {"major": 4, "minor": 19}
+    rejected = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
+    assert "E126" in rejected.stderr and "target mismatch" in rejected.stderr
+    assert "gripsack.ts:3" in rejected.stderr and "gripsack.ts:6" in rejected.stderr
+
+
+def test_fixed_prefix_selection_requires_exact_declared_environment_path(sandbox):
+    recipe, package = recipe_and_package()
+    package["layout"] = {"kind": "fixed_prefix", "prefix": "/opt/tool"}
+    environment = {
+        "kind": "environment", "name": "tools",
+        "span": {"file": "gripsack.ts", "line": 6},
+        "packages": ["tool"], "target": package["target"],
+        "prefix": "/opt/tool",
+    }
+    admitted = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
+    assert "E124" in admitted.stderr, admitted.stderr
+    environment["prefix"] = "/different"
+    rejected = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
+    assert "E126" in rejected.stderr and "fixed_prefix" in rejected.stderr
+    package["layout"]["prefix"] = "/opt/../escape"
+    unsafe = run_plan_ir(sandbox, workspace_ir(recipe, package))
+    assert "E130" in unsafe.stderr and "gripsack.ts:3" in unsafe.stderr

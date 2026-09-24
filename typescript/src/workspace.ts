@@ -1,12 +1,12 @@
 /** Workspace declarations (0052 A1): the supported surface for the
- *  v4 workspace frontend — pure value constructors for the nine typed
- *  output variants plus the shared command/file grammar, and the v4
- *  workspace emitter. No global registry, no import-order magic — the
+ *  v5 workspace frontend — pure value constructors for nine typed
+ *  output variants plus the shared command/file grammar and v5
+ *  emitter. No global registry or import-order magic — the
  *  root `gripsack.ts` entrypoint RETURNS a {@link WorkspaceValue}
  *  built by {@link workspace}, and the driver turns that value into
  *  IR (JSON) via {@link emitWorkspaceIr}.
  *
- *  Wire shape is exactly `schema/ir/v4.json`: every node carries a
+ *  Wire shape is exactly `schema/ir/v5.json`: every node carries a
  *  mandatory provenance span, all structs reject unknown fields at
  *  construction time (JS callers and casts get the same boundary as
  *  the type-checker), and returned values are deeply frozen — an
@@ -18,8 +18,9 @@
  *
  *  Implementation is split into cohesive modules under ./workspace/
  *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts, files.ts, outputs.ts,
- *  emit.ts. This file is the supported re-export surface. */
+ *  (shared runtime guards), target.ts (execution/target/layout
+ *  admission), commands.ts, files.ts, outputs.ts and emit.ts.
+ *  This file is the supported re-export surface. */
 
 export { artifact, exec, hostPath, lit, packageCommand, runBash } from "./workspace/commands.ts";
 export {
@@ -44,10 +45,12 @@ export type {
   HookSpec,
   ImageNode,
   ImageSpec,
+  PackageLayout,
   PackageNode,
   PackageSpec,
   ProfileNode,
   ProfileSpec,
+  RecipeExecution,
   RecipeNode,
   RecipeSpec,
   RunBashSpec,
@@ -55,6 +58,7 @@ export type {
   ScheduleSpec,
   TaskNode,
   TaskSpec,
+  WorkspaceAbi,
   WorkspaceArg,
   WorkspaceArtifactRef,
   WorkspaceCalendar,
@@ -68,6 +72,7 @@ export type {
   WorkspaceFn,
   WorkspaceHostPath,
   WorkspaceLiteral,
+  WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
   WorkspaceOutputNode,

@@ -1,10 +1,4 @@
-/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+/** v5 named-output constructors: pure, frozen values with source spans. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -47,19 +41,17 @@ import {
   asFile,
   asName,
   asNames,
-  asPlatform,
   asProducer,
   asRecord,
   duplicateError,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
+import { asExecution, asInstallPrefix, asLayout, asPlatform } from "./target.ts";
 
 
 /** A per-output build/target platform. */
 export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
-  asRecord(spec, "targetPlatform(...)");
-  rejectUnknownFields("targetPlatform(...)", spec, ["os", "arch", "abi", "minimum_os"]);
   return freezeDeep(asPlatform(spec, "targetPlatform(...)"));
 }
 
@@ -104,9 +96,6 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
   ]);
   const span = nodeSpan(spec.span, what);
   const fetch = asFetch(spec.source, `${what}: source`);
-  if (!["native", "host", "isolated_linux"].includes(spec.execution)) {
-    throw new Error(`${what}: execution must be "native", "host" or "isolated_linux"`);
-  }
   if (spec.output_kind !== "file" && spec.output_kind !== "tree") {
     throw new Error(`${what}: output_kind must be "file" or "tree"`);
   }
@@ -119,7 +108,7 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
     span,
     kind: "recipe",
     source: { fetch, span },
-    execution: spec.execution,
+    execution: asExecution(spec.execution, `${what}: execution`),
     output_kind: spec.output_kind,
     target: asPlatform(spec.target, `${what}: target`),
     ...(steps ? { steps } : {}),
@@ -146,9 +135,6 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     commands[k] = asName(v, `${what}: commands["${k}"]`);
   }
   const runtime = asNames(spec.runtime, `${what}: runtime`);
-  if (spec.layout !== "relocatable" && spec.layout !== "fixed_prefix") {
-    throw new Error(`${what}: layout must be "relocatable" or "fixed_prefix"`);
-  }
   const node: PackageNode = {
     name,
     span,
@@ -157,7 +143,7 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     commands,
     ...(runtime ? { runtime } : {}),
     target: asPlatform(spec.target, `${what}: target`),
-    layout: spec.layout,
+    layout: asLayout(spec.layout, `${what}: layout`),
   };
   return makeOutput(node);
 }
@@ -171,7 +157,7 @@ export function environment(
   const what = `environment("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["packages", "target", "env", "span"]);
+  rejectUnknownFields(what, spec, ["packages", "target", "prefix", "env", "span"]);
   const span = nodeSpan(spec.span, what);
   const packages = asNames(spec.packages, `${what}: packages`) ?? [];
   const env = asEnv(spec.env, `${what}: env`);
@@ -181,6 +167,7 @@ export function environment(
     kind: "environment",
     packages,
     target: asPlatform(spec.target, `${what}: target`),
+    ...(spec.prefix !== undefined ? { prefix: asInstallPrefix(spec.prefix, `${what}: prefix`) } : {}),
     ...(env ? { env } : {}),
   };
   return makeOutput(node);

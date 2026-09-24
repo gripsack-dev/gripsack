@@ -1,9 +1,7 @@
-//! Public admission surface for v4 workspaces — the behavior the CLI
-//! integrates against (plan/0052 §3.2): `Ir.workspace` exposes admitted
-//! named outputs without touching legacy module expansion, provider-
-//! backed packages admit as one output, and serialization preserves
-//! each version's envelope shape. Schema ↔ parser parity lives in
-//! `workspace_acceptance.rs`; these tests exercise the public API only.
+//! Public admission surface for current v5 workspaces: named outputs
+//! do not touch legacy module expansion; provider-backed packages
+//! need no synthetic recipe; serialization preserves versioned shapes.
+//! v3 and historical v4 round trips have separate compatibility tests.
 
 use gripsack_ir::{check, parse};
 use serde_json::{Value, json};
@@ -16,18 +14,18 @@ fn span() -> Value {
 /// selector), a recipe and its package.
 fn no_hostname_envelope() -> Value {
     json!({
-        "ir_version": 4,
+        "ir_version": 5,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {"span": span(), "outputs": [
             {"kind": "recipe", "name": "build", "span": span(),
              "source": {"fetch": {"kind": "tarball", "url": "https://example.test/src.tgz"},
                         "span": span()},
-             "execution": "native", "output_kind": "tree",
+             "execution": {"kind": "host", "access": "unconfined"}, "output_kind": "tree",
              "target": {"os": "linux", "arch": "x86_64"}},
             {"kind": "package", "name": "hello", "span": span(),
              "producer": {"kind": "recipe", "recipe": "build"},
              "commands": {"hello": "bin/hello"},
-             "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"},
+             "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
         ]}
     })
 }
@@ -51,7 +49,7 @@ fn admitted_workspace_exposes_named_outputs() {
 #[test]
 fn provider_backed_package_lists_as_single_output() {
     let doc = json!({
-        "ir_version": 4,
+        "ir_version": 5,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {"span": span(), "outputs": [
             {"kind": "package", "name": "ripgrep", "span": span(),
@@ -59,7 +57,7 @@ fn provider_backed_package_lists_as_single_output() {
                  "fetch": {"kind": "file", "path": "vendor/ripgrep.tar.gz"},
                  "span": span()}},
              "commands": {"rg": "bin/rg"},
-             "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"},
+             "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
         ]}
     });
     let ir = check(&doc.to_string()).unwrap();
@@ -69,10 +67,8 @@ fn provider_backed_package_lists_as_single_output() {
     assert_eq!(workspace.outputs[0].kind(), "package");
 }
 
-/// Version-aware serialization: a v3 empty module map round-trips WITH
-/// `modules` (strict v3 readers and the v3 schema reject its absence);
-/// a v4 workspace document serializes WITHOUT it (the v4 schema forbids
-/// the key — the XOR envelope is never weakened).
+/// A v3 empty module map round-trips WITH `modules`; a current v5
+/// workspace omits it (the XOR envelope forbids both keys together).
 #[test]
 fn serialization_preserves_each_version_envelope() {
     let v3 = parse(r#"{"ir_version": 3, "modules": {}}"#).unwrap();
@@ -83,15 +79,15 @@ fn serialization_preserves_each_version_envelope() {
     );
     assert!(v3_json.get("workspace").is_none());
 
-    let v4 = parse(&no_hostname_envelope().to_string()).unwrap();
-    let v4_json = serde_json::to_value(&v4).unwrap();
+    let v5 = parse(&no_hostname_envelope().to_string()).unwrap();
+    let v5_json = serde_json::to_value(&v5).unwrap();
     assert!(
-        v4_json.get("modules").is_none(),
-        "v4 workspace omits the modules key"
+        v5_json.get("modules").is_none(),
+        "v5 workspace omits modules"
     );
-    assert!(v4_json.get("workspace").is_some());
+    assert!(v5_json.get("workspace").is_some());
 
     // Both shapes re-enter their own admission unchanged.
     parse(&v3_json.to_string()).unwrap();
-    check(&v4_json.to_string()).unwrap();
+    check(&v5_json.to_string()).unwrap();
 }

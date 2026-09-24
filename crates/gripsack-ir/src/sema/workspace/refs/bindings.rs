@@ -1,6 +1,6 @@
-//! Resolved producer and consumer target/layout compatibility. The
-//! read-only v4 wire cannot install a fixed-prefix package into a
-//! prefix-less environment or image; no host fallback is admitted.
+//! Resolved provider/consumer target and prefix compatibility. No
+//! ambient-host assumption or silent fixed-prefix relocation is
+//! allowed by read-only workspace admission.
 
 use super::{Edge, TargetBinding};
 use crate::diagnostic::{Diagnostic, codes};
@@ -8,9 +8,8 @@ use crate::workspace::{
     PackageLayout, PlatformArch, PlatformOs, WorkspaceOutput, WorkspacePlatform,
 };
 
-/// Platform-bound edges: conservative v4 identity is exact
-/// os/arch/ABI/minimum-OS equality — never a host-compatibility
-/// assumption for cross-target builds (0052 §2.2, §4).
+/// OS/arch/ABI agree and a producer's minimum OS floor cannot exceed
+/// a consumer's floor. A missing consumer ABI is not a wildcard.
 pub(super) fn check_binding(
     edge: &Edge,
     target: &WorkspaceOutput,
@@ -25,14 +24,14 @@ pub(super) fn check_binding(
             else {
                 return;
             };
-            if package.target != recipe.target {
+            if !recipe.target.supports(&package.target) {
                 diagnostics.push(
                     Diagnostic::error(
                         codes::UNKNOWN_WORKSPACE_REF,
                         format!(
                             "{}: target mismatch — package `{}` targets {} but recipe `{}` \
-                             targets {}; a package and its producer recipe must agree exactly \
-                             (os/arch/ABI/minimum OS)",
+                             targets {}; the producer's OS/arch/ABI must match and its minimum \
+                             OS may not exceed the package target",
                             edge.relation,
                             package.name,
                             platform(&package.target),
@@ -60,14 +59,14 @@ pub(super) fn check_binding(
                 WorkspaceOutput::Image(image) => &image.target,
                 _ => return,
             };
-            if *consumer != package.target {
+            if !package.target.supports(consumer) {
                 diagnostics.push(
                     Diagnostic::error(
                         codes::UNKNOWN_WORKSPACE_REF,
                         format!(
                             "{}: target mismatch — `{}` targets {} but package `{}` targets \
-                             {}; a selection and its package must agree exactly \
-                             (os/arch/ABI/minimum OS)",
+                             {}; the package OS/arch/ABI must match and its minimum OS may not \
+                             exceed the selected consumer target",
                             edge.relation,
                             edge.from.name(),
                             platform(consumer),
@@ -82,24 +81,36 @@ pub(super) fn check_binding(
                     ),
                 );
             }
-            if package.layout == PackageLayout::FixedPrefix {
-                diagnostics.push(
-                    Diagnostic::error(
-                        codes::UNKNOWN_WORKSPACE_REF,
-                        format!(
-                            "{}: package `{}` has layout fixed_prefix, which requires a \
-                             consumer-declared installation prefix; the v4 wire has no consumer \
-                             prefix slot, so a fixed_prefix package cannot be selected by an \
-                             environment or image",
-                            edge.relation, package.name
+            if let PackageLayout::FixedPrefix { prefix } = &package.layout {
+                let matches_destination = match edge.from {
+                    WorkspaceOutput::Environment(environment) => {
+                        environment.prefix.as_ref() == Some(prefix)
+                    }
+                    WorkspaceOutput::Image(_) => false,
+                    _ => false,
+                };
+                if !matches_destination {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            codes::UNKNOWN_WORKSPACE_REF,
+                            format!(
+                                "{}: package `{}` has layout fixed_prefix at {:?}; the \
+                                 selecting {} `{}` must declare exactly that install prefix \
+                                 (image prefix materialization is unavailable until B4)",
+                                edge.relation,
+                                package.name,
+                                prefix.as_str(),
+                                edge.from.kind(),
+                                edge.from.name()
+                            ),
+                        )
+                        .with_label(Some(edge.at.clone()), "selection declared here")
+                        .with_label(
+                            Some(package.span.clone()),
+                            format!("`{}` declared here", package.name),
                         ),
-                    )
-                    .with_label(Some(edge.at.clone()), "selection declared here")
-                    .with_label(
-                        Some(package.span.clone()),
-                        format!("`{}` declared here", package.name),
-                    ),
-                );
+                    );
+                }
             }
         }
     }
@@ -117,11 +128,20 @@ fn platform(platform: &WorkspacePlatform) -> String {
         PlatformArch::Aarch64 => "aarch64",
     };
     let mut rendered = format!("{os}/{arch}");
-    if let Some(abi) = &platform.abi {
-        rendered.push_str(&format!("/{abi}"));
+    if let Some(abi) = platform.abi {
+        rendered.push_str(match abi {
+            crate::workspace::PlatformAbi::Gnu => "/gnu",
+            crate::workspace::PlatformAbi::Musl => "/musl",
+            crate::workspace::PlatformAbi::Darwin => "/darwin",
+        });
     }
-    if let Some(minimum_os) = &platform.minimum_os {
-        rendered.push_str(&format!(" (minimum OS {minimum_os})"));
+    if let Some(version) = platform.minimum_os {
+        rendered.push_str(&format!(
+            " (minimum OS {}.{}.{})",
+            version.major,
+            version.minor,
+            version.patch.unwrap_or(0)
+        ));
     }
     rendered
 }

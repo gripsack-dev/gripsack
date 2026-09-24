@@ -13,30 +13,67 @@ pub struct Ir {
     /// these or the core's built-ins, else E107.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resources: Vec<Resource>,
-    /// The v3 module map. Required on the wire for ir_version 3 and for
-    /// the v4 legacy-modules branch — the version-dispatched envelope
-    /// check in `tagged.rs` enforces that before serde; `default` exists
-    /// so a v4 workspace envelope (which forbids `modules`) can share
-    /// this root.
+    /// Required module map for v3 and the v4/v5 legacy-modules
+    /// branches. The versioned envelope check enforces its presence;
+    /// `default` lets workspace-only envelopes omit it.
     #[serde(default)]
     pub modules: BTreeMap<String, Module>,
-    /// The v4 workspace declaration (schema/ir/v4.json, plan/0052 §2.1).
-    /// Mutually exclusive with `modules` on the wire; rejected together
-    /// by the envelope check before deserialization.
+    /// Current v5 typed workspace. The v4 historical wire remains a
+    /// separate read-only value; no old execution/layout meaning is
+    /// reinterpreted by a v5 executor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<crate::workspace::Workspace>,
+    #[serde(skip)]
+    pub workspace_v4: Option<crate::legacy_v4::LegacyWorkspaceV4>,
 }
 
-/// Version-aware serialization (hand-written — a `skip_serializing_if`
-/// predicate sees only the field, never the sibling version/workspace
-/// state). `modules` is ALWAYS emitted for module-map documents so a
-/// valid v3 `{ir_version: 3, modules: {}}` round-trips byte-shaped and
-/// strict v3 readers stay satisfied; it is omitted ONLY for a v4
-/// workspace document, whose schema forbids the key (XOR envelope).
+impl Ir {
+    pub fn has_workspace(&self) -> bool {
+        self.workspace.is_some() || self.workspace_v4.is_some()
+    }
+
+    /// No workspace version has an executor yet. The same pre-effect
+    /// error is used by the CLI and direct library entrypoints.
+    pub fn workspace_execution_error(
+        &self,
+        operation: &str,
+    ) -> Option<crate::diagnostic::Diagnostic> {
+        let span = self
+            .workspace
+            .as_ref()
+            .map(|w| &w.span)
+            .or_else(|| self.workspace_v4.as_ref().map(|w| &w.span))?;
+        Some(
+            crate::diagnostic::Diagnostic::error(
+                crate::diagnostic::codes::WORKSPACE_EXEC_UNAVAILABLE,
+                format!("{operation} cannot execute workspace outputs yet"),
+            )
+            .with_label(Some(span.clone()), "workspace declared here")
+            .with_help("grip check validates and lists named outputs; realization and task execution belong to A2/A2-P/E/B"),
+        )
+    }
+}
+
+/// Version-aware serialization: an empty v3/v4/v5 module map still
+/// emits `modules`, while a v4 historical or v5 typed workspace
+/// emits `workspace` and never fabricates empty legacy modules.
 impl Serialize for Ir {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let omit_modules = self.workspace.is_some() && self.modules.is_empty();
+        use serde::ser::{Error as _, SerializeStruct};
+        if self.workspace.is_some() && self.workspace_v4.is_some() {
+            return Err(S::Error::custom("both v4 and v5 workspaces present"));
+        }
+        if self.workspace_v4.is_some() && self.ir_version != crate::parse::WORKSPACE_V4_VERSION {
+            return Err(S::Error::custom(
+                "historical workspace requires ir_version 4",
+            ));
+        }
+        if self.workspace.is_some() && self.ir_version != crate::parse::IR_VERSION {
+            return Err(S::Error::custom(
+                "typed workspace requires the current IR version",
+            ));
+        }
+        let omit_modules = self.has_workspace() && self.modules.is_empty();
         let mut len = 2; // ir_version, host
         if !self.resources.is_empty() {
             len += 1;
@@ -44,7 +81,7 @@ impl Serialize for Ir {
         if !omit_modules {
             len += 1;
         }
-        if self.workspace.is_some() {
+        if self.has_workspace() {
             len += 1;
         }
         let mut state = serializer.serialize_struct("Ir", len)?;
@@ -56,7 +93,9 @@ impl Serialize for Ir {
         if !omit_modules {
             state.serialize_field("modules", &self.modules)?;
         }
-        if let Some(workspace) = &self.workspace {
+        if let Some(workspace) = &self.workspace_v4 {
+            state.serialize_field("workspace", workspace)?;
+        } else if let Some(workspace) = &self.workspace {
             state.serialize_field("workspace", workspace)?;
         }
         state.end()

@@ -187,11 +187,9 @@ fn raw_node_span(node: &serde_json::Value) -> Option<crate::Span> {
         .and_then(|s| serde_json::from_value::<crate::Span>(s.clone()).ok())
 }
 
-/// Walk the IR JSON, validating every tagged node. Runs at parse time,
-/// before serde drops unknown fields — the pass order matters. Also owns
-/// the version-dispatched envelope shape (0052 §2.1): serde cannot
-/// express the v4 cross-key exclusivity, so it is admitted here on raw
-/// keys before deserialization.
+/// Walk the IR JSON before serde drops unknown tagged fields. The
+/// v3/v4/v5 envelope shape and each workspace wire variant are
+/// version-dispatched; v4 stays a strict historical reader.
 pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
         return; // pass 1 reports the syntax error itself
@@ -208,7 +206,7 @@ pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
                     crate::parse::LEGACY_IR_VERSION,
                     crate::parse::IR_VERSION
                 ),
-            ).with_help("update a pinned @gripsack/core to a release that emits ir_version 4, or remove the pin to use the embedded frontend"));
+            ).with_help(format!("update a pinned @gripsack/core to one emitting ir_version {}, or use the embedded frontend", crate::parse::IR_VERSION)));
             return;
         }
         if let Some(root) = value.as_object() {
@@ -216,15 +214,19 @@ pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
         }
     }
     check_modules_tagged(&value, out);
-    if version == Some(u64::from(crate::parse::IR_VERSION)) {
-        workspace::check(&value, out);
+    match version {
+        Some(v) if v == u64::from(crate::parse::WORKSPACE_V4_VERSION) => {
+            workspace::check(&value, workspace::WorkspaceWireVersion::LegacyV4, out);
+        }
+        Some(v) if v == u64::from(crate::parse::IR_VERSION) => {
+            workspace::check(&value, workspace::WorkspaceWireVersion::CurrentV5, out);
+        }
+        _ => {}
     }
 }
 
-/// The v3/v4 envelope split (plan/0052 §2.1, schema/ir/v4.json root
-/// `oneOf`): v3 is the strict module map — required `modules`, no
-/// `workspace`, optional `host`; v4 requires core-injected `host` facts
-/// and exactly one of `workspace` or legacy `modules`.
+/// v3 is a strict module map. Both v4 and v5 require host facts and
+/// exactly one of `workspace` or a legacy module map.
 fn envelope_check(
     root: &serde_json::Map<String, serde_json::Value>,
     version: u64,
@@ -236,9 +238,9 @@ fn envelope_check(
         if has_workspace {
             out.push(Diagnostic::error(
                 codes::MALFORMED,
-                "`workspace` requires ir_version 4; an ir_version 3 envelope declares a module map",
+                "`workspace` requires ir_version 4 or newer; an ir_version 3 envelope declares a module map",
             )
-            .with_help("emit ir_version 4 for workspace declarations, or remove the workspace key"));
+            .with_help("emit the current workspace IR version, or remove the workspace key"));
         }
         if !has_modules {
             out.push(Diagnostic::error(
@@ -246,29 +248,28 @@ fn envelope_check(
                 "missing field `modules`: an ir_version 3 envelope declares a module map",
             ));
         }
-    } else if version == u64::from(crate::parse::IR_VERSION) {
+    } else {
         if !root.contains_key("host") {
             out.push(Diagnostic::error(
                 codes::MALFORMED,
-                "ir_version 4 requires core-injected `host` facts (schema/ir/v4.json)",
+                format!("ir_version {version} requires core-injected `host` facts"),
             ));
         }
         match (has_workspace, has_modules) {
             (true, true) => out.push(Diagnostic::error(
                 codes::MALFORMED,
-                "ir_version 4 envelope declares both `workspace` and `modules`; exactly one is allowed",
+                format!("ir_version {version} envelope declares both `workspace` and `modules`; exactly one is allowed"),
             )),
             (false, false) => out.push(Diagnostic::error(
                 codes::MALFORMED,
-                "ir_version 4 envelope declares neither `workspace` nor `modules`; exactly one is required",
+                format!("ir_version {version} envelope declares neither `workspace` nor `modules`; exactly one is required"),
             )),
             _ => {}
         }
     }
 }
 
-/// The v3 module map — walked for ir_version 3 and for the v4
-/// legacy-modules compatibility branch alike.
+/// The v3 module map — walked in all accepted versions' modules branches.
 fn check_modules_tagged(value: &serde_json::Value, out: &mut Vec<Diagnostic>) {
     let Some(modules) = value.get("modules").and_then(|m| m.as_object()) else {
         return;

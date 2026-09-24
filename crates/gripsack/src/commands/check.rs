@@ -16,17 +16,28 @@ pub fn check(repo: &Path, host: Option<&str>, palette: Palette) -> ExitCode {
     };
     match validated_ir(&outcome, repo, host, palette) {
         Ok(ir) => {
-            if let Some(workspace) = &ir.workspace {
+            let output_count = ir
+                .workspace
+                .as_ref()
+                .map(|w| w.outputs.len())
+                .or_else(|| ir.workspace_v4.as_ref().map(|w| w.outputs.len()));
+            if let Some(count) = output_count {
                 let host = &ir.host;
                 println!(
                     "{} {} named outputs · host {}/{}",
                     palette.good("check: ok"),
-                    workspace.outputs.len(),
+                    count,
                     host.os,
                     host.arch
                 );
-                for output in &workspace.outputs {
-                    println!("  {} ({})", output.name(), output.kind());
+                if let Some(workspace) = &ir.workspace {
+                    for output in &workspace.outputs {
+                        println!("  {} ({})", output.name(), output.kind());
+                    }
+                } else if let Some(workspace) = &ir.workspace_v4 {
+                    for output in &workspace.outputs {
+                        println!("  {} ({})", output.name(), output.kind());
+                    }
                 }
                 return ExitCode::SUCCESS;
             }

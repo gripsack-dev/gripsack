@@ -1,20 +1,22 @@
 //! The named-output catalog (0052 §2.1): the workspace envelope entry,
-//! the nine output types, and their supporting value types (platform,
-//! producer, execution/layout/scope/trigger enums). `outputs` names are
-//! the single declaration namespace — a collision is an admission error
-//! naming both declaration spans (sema E125).
+//! the nine output types, plus producer, execution and lifecycle
+//! variants. Layout and target types live in cohesive sibling modules.
+//! `outputs` names form the single declaration namespace — a collision
+//! reports both declaration spans (sema E125).
 
 use super::command::{WorkspaceArg, WorkspaceCommand};
 use super::file::{WorkspaceCalendar, WorkspaceFile};
+use super::layout::{InstallPrefix, PackageLayout};
+use super::platform::WorkspacePlatform;
 use crate::model::FetchSpec;
 use crate::span::Span;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// A recipe's payload source: the shared v3 fetch grammar plus the
-/// mandatory provenance every v4 node carries (schema
-/// `$defs/workspaceFetch`). The legacy v4 modules branch keeps the bare
-/// v3 fetch shape — this wrapper is workspace-only.
+/// mandatory provenance carried by v4/v5 workspace sources (schema
+/// `$defs/workspaceFetch`). Historical module maps keep the bare v3
+/// fetch shape — this wrapper is workspace-only.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceFetch {
@@ -35,20 +37,20 @@ pub enum WorkspaceProducer {
     Provider { provider: WorkspaceFetch },
 }
 
-/// The workspace entry of a v4 envelope: one catalog of named outputs.
+/// Current v5 workspace entry: one catalog of named outputs.
 /// `outputs` names are the single declaration namespace — a collision is
 /// an admission error naming both declaration spans (sema E125).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Workspace {
-    /// Where the workspace itself was declared. Mandatory in v4.
+    /// Where the workspace itself was declared. Mandatory in v5.
     pub span: Span,
     /// The named-output catalog (schema: minItems 1, sema E130).
     pub outputs: Vec<WorkspaceOutput>,
 }
 
 /// One declared workspace output. The `kind` tag is closed by the
-/// tagged-field pass; the nine variants are the whole v4 grammar.
+/// tagged-field pass; the nine variants are the current v5 grammar.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceOutput {
@@ -129,12 +131,27 @@ pub struct RecipeOutput {
     pub checks: Vec<String>,
 }
 
+/// A recipe declares its execution boundary; neither variant executes
+/// in A1. Native downloads belong to provider-backed packages instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RecipeExecution {
+    Host { access: HostAccess },
+    IsolatedLinux { worker: LinuxWorker },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum RecipeExecution {
-    Native,
-    Host,
-    IsolatedLinux,
+pub enum HostAccess {
+    /// No filesystem, kernel or network isolation claim.
+    Unconfined,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinuxWorker {
+    /// Provisioned privately by the later B2 executor, not by preview.
+    Buildkit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,13 +180,6 @@ pub struct PackageOutput {
     pub layout: PackageLayout,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PackageLayout {
-    Relocatable,
-    FixedPrefix,
-}
-
 /// An ordered package selection for one target — process-scoped, never
 /// a personal-profile deployment (0052 §2.2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -179,6 +189,9 @@ pub struct EnvironmentOutput {
     /// Names of `package` outputs (sema E126).
     pub packages: Vec<String>,
     pub target: WorkspacePlatform,
+    /// Required destination for prefix-bound packages selected here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<InstallPrefix>,
     /// Environment contributions; values are data (literal or artifact
     /// reference), never command invocations (sema E128).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -218,8 +231,8 @@ pub struct ScheduleOutput {
     pub scope: ScheduleScope,
 }
 
-/// The only scope v4 admits; system/root scope is rejected grammar, not
-/// an inert future promise (0052 §2.2).
+/// The only scope these workspace readers admit; system/root scope
+/// is rejected by grammar, never admitted as an inert promise (§2.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScheduleScope {
@@ -283,31 +296,4 @@ pub enum HookTrigger {
     PostLink,
     PostActivate,
     OnRemove,
-}
-
-/// Per-output platform requirements — never inherited from the
-/// core-injected `host` facts (0052 §2.2).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WorkspacePlatform {
-    pub os: PlatformOs,
-    pub arch: PlatformArch,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub abi: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub minimum_os: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PlatformOs {
-    Linux,
-    Macos,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PlatformArch {
-    X86_64,
-    Aarch64,
 }

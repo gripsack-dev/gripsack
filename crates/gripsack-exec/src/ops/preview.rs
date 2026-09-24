@@ -18,6 +18,9 @@ pub fn preview_ops(
     adopting: &std::collections::BTreeSet<String>,
     lock: &crate::lockfile::Lockfile,
 ) -> Result<Vec<Op>, ExecError> {
+    if let Some(diagnostic) = ir.workspace_execution_error("plan") {
+        return Err(ExecError::Gate(diagnostic));
+    }
     let mut ops = Vec::new();
     // the destination-global lineage map (0030 §H4): the previous
     // generation's entry per physical destination

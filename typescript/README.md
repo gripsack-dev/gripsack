@@ -29,13 +29,13 @@ export default defineEnv((ctx) => ({
 registered by import side effect — the function *returns* the
 environment, so `Inputs → Environment` is testable and cacheable.
 
-## A workspace is a function (IR v4)
+## A workspace is a function (IR v5)
 
 A root `gripsack.ts` — preferred over `hosts/<name>.ts` when present —
 default-exports `defineWorkspace` and returns a `workspace({ outputs })`
 value. No hostname selection and no fake host file: the core injects
-the same facts/probes context, and the emitter produces the v4
-workspace envelope (`{ir_version: 4, host, workspace}`):
+the same facts/probes context, and the emitter produces the v5
+workspace envelope (`{ir_version: 5, host, workspace}`):
 
 ```ts
 // gripsack.ts
@@ -44,7 +44,7 @@ import { githubRelease } from "@gripsack/core";
 
 const tools = recipe("tools", {
   source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
-  execution: "native",
+  execution: { kind: "host", access: "unconfined" },
   output_kind: "tree",
   target: targetPlatform({ os: "linux", arch: "x86_64" }),
 });
@@ -57,7 +57,7 @@ export default defineWorkspace(() =>
         producer: "tools", // or provider(githubRelease({…})) — no synthetic recipe
         commands: { tools: "bin/tools" },
         target: targetPlatform({ os: "linux", arch: "x86_64" }),
-        layout: "relocatable",
+        layout: { kind: "relocatable" },
       }),
     ],
   }));
@@ -73,13 +73,24 @@ interpolation is rejected; dynamic values enter through typed
 `env`/`argv` refs) and require a declared `packageCommand` interpreter,
 never ambient Bash.
 
-This A1-01 slice is **read-only**. `grip check` evaluates and admits
+Recipe execution is explicit: `{ kind: "host", access: "unconfined" }`
+declares host filesystem/kernel/network access, or
+`{ kind: "isolated_linux", worker: "buildkit" }` requests the later B2
+worker; neither runs during `grip check`. Native downloads are
+provider-backed packages, not a `recipe` "native" execution mode.
+Targets may declare an ABI (`gnu`/`musl` on Linux, `darwin` on macOS)
+and `minimum_os: { major, minor, patch? }`. Fixed-prefix packages use
+`{ kind: "fixed_prefix", prefix: "/opt/tool" }`; selecting one into an
+environment requires that environment's matching `prefix`.
+
+This A1 authoring surface remains **read-only**. `grip check` evaluates and admits
 the workspace without a host file or `env.toml` and lists named outputs.
 `grip plan`, `apply` and `update` reject workspace execution with E124
 before host effects; A2/A2-P/E/B own realization and scheduling. An
 `isolated_linux` declaration does not bootstrap a builder in `check`.
-The legacy `hosts/<name>.ts` path remains a v4 modules-compatibility
-envelope until the A5 migration; it is not a workspace executor.
+The legacy `hosts/<name>.ts` path emits a v5 modules-compatibility
+envelope until the A5 migration; the core keeps v3 and historical v4
+readers. It is not a workspace executor.
 
 ## Probes are requests, not effects
 

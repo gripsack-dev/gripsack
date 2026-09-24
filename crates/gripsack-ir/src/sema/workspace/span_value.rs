@@ -1,4 +1,4 @@
-//! Provenance and combined-value admission: v4 spans are mandatory AND
+//! Provenance and combined-value admission: workspace spans are mandatory AND
 //! well-formed (E129), and values the grammar admits only in combination
 //! — a non-empty catalog, non-empty output names, HH:MM calendar clocks,
 //! a file origin for non-literal content — are rejected with E130.
@@ -6,8 +6,8 @@
 use crate::diagnostic::{Diagnostic, codes};
 use crate::span::Span;
 use crate::workspace::{
-    Workspace, WorkspaceCalendar, WorkspaceCommand, WorkspaceContent, WorkspaceOutput,
-    WorkspaceProducer,
+    PackageLayout, Workspace, WorkspaceCalendar, WorkspaceCommand, WorkspaceContent,
+    WorkspaceOutput, WorkspacePlatform, WorkspaceProducer,
 };
 
 pub(super) fn check(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
@@ -44,19 +44,19 @@ fn check_spans(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
         if span.file.is_empty() {
             diagnostics.push(Diagnostic::error(
                 codes::BAD_WORKSPACE_SPAN,
-                format!("workspace span {span} has an empty file; v4 provenance requires the declaring source file"),
+                format!("workspace span {span} has an empty file; provenance requires the declaring source file"),
             ));
         }
         if span.line == 0 {
             diagnostics.push(Diagnostic::error(
                 codes::BAD_WORKSPACE_SPAN,
-                format!("workspace span {span} has line 0; v4 provenance lines start at 1"),
+                format!("workspace span {span} has line 0; source lines start at 1"),
             ));
         }
         if span.col == Some(0) {
             diagnostics.push(Diagnostic::error(
                 codes::BAD_WORKSPACE_SPAN,
-                format!("workspace span {span} has column 0; v4 provenance columns start at 1"),
+                format!("workspace span {span} has column 0; source columns start at 1"),
             ));
         }
     }
@@ -85,6 +85,47 @@ fn check_values(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
                 )
                 .with_label(Some(output.span().clone()), "output declared here"),
             );
+        }
+        let target: Option<&WorkspacePlatform> = match output {
+            WorkspaceOutput::Recipe(recipe) => Some(&recipe.target),
+            WorkspaceOutput::Package(package) => Some(&package.target),
+            WorkspaceOutput::Environment(environment) => Some(&environment.target),
+            WorkspaceOutput::Image(image) => Some(&image.target),
+            _ => None,
+        };
+        if target.is_some_and(|target| !target.valid_abi()) {
+            diagnostics.push(
+                Diagnostic::error(
+                    codes::INVALID_WORKSPACE_VALUE,
+                    format!(
+                        "{} `{}` declares an ABI incompatible with its target OS; Linux admits gnu/musl and macOS admits darwin",
+                        output.kind(), output.name()
+                    ),
+                )
+                .with_label(Some(output.span().clone()), "target declared here"),
+            );
+        }
+        let prefix = match output {
+            WorkspaceOutput::Package(package) => match &package.layout {
+                PackageLayout::FixedPrefix { prefix } => Some(prefix),
+                PackageLayout::Relocatable => None,
+            },
+            WorkspaceOutput::Environment(environment) => environment.prefix.as_ref(),
+            _ => None,
+        };
+        if let Some(prefix) = prefix
+            && !prefix.is_safe()
+        {
+            diagnostics.push(
+                    Diagnostic::error(
+                        codes::INVALID_WORKSPACE_VALUE,
+                        format!(
+                            "{} `{}` has an unsafe install prefix {:?}; use a normalized absolute POSIX path below /",
+                            output.kind(), output.name(), prefix.as_str()
+                        ),
+                    )
+                    .with_label(Some(output.span().clone()), "prefix declared here"),
+                );
         }
         match output {
             WorkspaceOutput::Schedule(schedule) => {
@@ -213,5 +254,29 @@ mod tests {
                 "content": {"kind": "identity"},
                 "destination": {"kind": "symlink", "path": "~/.vimrc"}}]}"#;
         check(&doc(identity_sourced)).unwrap();
+    }
+    #[test]
+    fn incompatible_abi_and_unsafe_prefix_label_the_declaration() {
+        let recipe = RECIPE.replace(
+            r#""target": {"os": "linux", "arch": "x86_64"}"#,
+            r#""target": {"os": "linux", "arch": "x86_64", "abi": "darwin"}"#,
+        );
+        let invalid = crate::check(&doc(&recipe)).unwrap_err();
+        let abi = invalid
+            .iter()
+            .find(|d| d.code == codes::INVALID_WORKSPACE_VALUE)
+            .expect("incompatible ABI rejected");
+        assert_eq!(abi.labels[0].span.as_ref().unwrap().line, 2);
+
+        let package = PACKAGE.replace(
+            r#""layout": {"kind": "relocatable"}"#,
+            r#""layout": {"kind": "fixed_prefix", "prefix": "/opt/../escape"}"#,
+        );
+        let invalid = crate::check(&doc(&format!("{RECIPE},{package}"))).unwrap_err();
+        let prefix = invalid
+            .iter()
+            .find(|d| d.code == codes::INVALID_WORKSPACE_VALUE)
+            .expect("escaping install prefix rejected");
+        assert_eq!(prefix.labels[0].span.as_ref().unwrap().line, 3);
     }
 }

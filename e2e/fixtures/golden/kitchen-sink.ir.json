@@ -9,7 +9,7 @@
         "gui"
       ]
     },
-    "ir_version": 4,
+    "ir_version": 5,
     "modules": {
       "brewed": {
         "fetch": {

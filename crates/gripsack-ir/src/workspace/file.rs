@@ -61,9 +61,9 @@ pub struct WorkspaceFile {
     pub destination: WorkspaceDestination,
 }
 
-/// The only calendar grammar v4 admits: daily or weekly local time.
-/// Named timezones, intervals, cron and system scope are rejected
-/// grammar, not inert promises (0052 §2.2).
+/// The versioned workspace calendar admits daily or weekly local time.
+/// Named timezones, intervals, cron and system scope are rejected by
+/// grammar, not admitted as inert promises (0052 §2.2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceCalendar {

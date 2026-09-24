@@ -417,13 +417,11 @@ import type { IrModule, ModuleValue } from "./module.ts";
 import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
-/** The single current frontend version (0052 §1): the workspace
- *  emitter and this legacy modules path BOTH emit v4 — the legacy
- *  path is the bounded v4 modules-compatibility envelope (no
- *  `workspace` key), the workspace path emits the v4 workspace
- *  envelope (no `modules` key). The core admits the `3..=4` range
- *  through versioned readers. */
-export const IR_VERSION = 4;
+/** One current frontend version (0052 §1): workspace and legacy
+ *  module entrypoints both emit v5. Strict v3 module and v4 workspace
+ *  documents retain their versioned core readers; only v5 is written
+ *  by this frontend. */
+export const IR_VERSION = 5;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,
@@ -479,8 +477,8 @@ export function mergeTags(envTags: string[] | undefined, cliTags: string[]): str
   return [...(envTags ?? []), ...cliTags].filter((t, i, all) => all.indexOf(t) === i);
 }
 
-/** Serialize a returned environment as the v4 legacy-modules IR
- *  envelope (`{ir_version: 4, host, modules[, resources]}` — never a
+/** Serialize a returned environment as the v5 legacy-modules IR
+ *  envelope (`{ir_version: 5, host, modules[, resources]}` — never a
  *  `workspace` key; the schema admits exactly one of the two). This
  *  is the bounded compatibility path for `hosts/<name>.ts`
  *  entrypoints (0052 §2.1); new workspaces use `emitWorkspaceIr`.
@@ -600,12 +598,15 @@ export type {
   ExecSpec,
   HookSpec,
   ImageSpec,
+  PackageLayout,
   PackageSpec,
   ProfileSpec,
+  RecipeExecution,
   RecipeSpec,
   RunBashSpec,
   ScheduleSpec,
   TaskSpec,
+  WorkspaceAbi,
   WorkspaceArg,
   WorkspaceArtifactRef,
   WorkspaceCalendar,
@@ -619,6 +620,7 @@ export type {
   WorkspaceFn,
   WorkspaceHostPath,
   WorkspaceLiteral,
+  WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
   WorkspaceOutputNode,
@@ -1535,13 +1537,7 @@ export function verifyDeployed(path: string): Verify {
   return { kind: "file_deployed", path };
 }
 "#),
-    ("src/workspace/commands.ts", r#"/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+    ("src/workspace/commands.ts", r#"/** v5 immutable exec/runBash commands, typed arguments and dedent maps. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Span } from "../module.ts";
@@ -1685,13 +1681,7 @@ export function runBash(spec: RunBashSpec): WorkspaceCommand {
   return freezeDeep(node);
 }
 "#),
-    ("src/workspace/emit.ts", r#"/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  selector/target/cycle admission + the v4 envelope).
- *  ../workspace.ts is the supported re-export surface. */
+    ("src/workspace/emit.ts", r#"/** v5 workspace emission: named references, role admission and cycles. */
 
 import type { HostFacts } from "../facts.ts";
 import { IR_VERSION } from "../graph.ts";
@@ -1705,10 +1695,10 @@ import type {
   WorkspaceOutputNode,
   WorkspacePackageCommand,
   WorkspacePath,
-  WorkspacePlatform,
   WorkspaceValue,
 } from "./ir.ts";
 import { asName, asRecord, asSelector, asSpan, duplicateError, spanAt } from "./validate.ts";
+import { checkTargetsAndLayouts } from "./target.ts";
 
 /** Catalog roles never conflate publication checks or retention with
  * production closure. Ordered local commands are intra-output and
@@ -1778,7 +1768,7 @@ function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges
       throw new Error(
         `workspace: output '${from}' run_bash interpreter must be a package_command reference ` +
           `pinning the tool through a declared package; a literal or artifact interpreter is ` +
-          `ambient host discovery, which v4 never admits (referenced at ${spanAt(cmd.span)})`,
+          `ambient host discovery, which workspace IR never admits (referenced at ${spanAt(cmd.span)})`,
       );
     }
     packageEdge(cmd.interpreter);
@@ -1856,82 +1846,23 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
   return edges;
 }
 
-/** Per-output target identity: exact os/arch/abi/minimum_os equality
- *  between a provider and its consumer — the conservative v4 rule.
- *  The injected host facts are never consulted, so a workspace
- *  targeting another platform is admitted as declared. */
-function sameTarget(a: WorkspacePlatform, b: WorkspacePlatform): boolean {
-  return a.os === b.os && a.arch === b.arch &&
-    (a.abi ?? null) === (b.abi ?? null) &&
-    (a.minimum_os ?? null) === (b.minimum_os ?? null);
-}
-
-function requireSameTarget(
-  relation: string,
-  consumer: WorkspaceOutputNode & { target: WorkspacePlatform },
-  provider: WorkspaceOutputNode & { target: WorkspacePlatform },
-): void {
-  if (!sameTarget(consumer.target, provider.target)) {
-    throw new Error(
-      `workspace: ${relation} — target of '${provider.name}' ` +
-        `(${JSON.stringify(provider.target)}) does not equal target of '${consumer.name}' ` +
-        `(${JSON.stringify(consumer.target)}); exact os/arch/abi/minimum_os equality is the v4 ` +
-        `target identity ('${consumer.name}' declared at ${spanAt(consumer.span)}, ` +
-        `'${provider.name}' declared at ${spanAt(provider.span)})`,
-    );
-  }
-}
-
-/** Target and layout admission over resolved references (run after the
- *  reference pass, so every lookup is guaranteed present and typed):
- *  a package's target must equal its producer recipe's, an environment
- *  or image selection must equal the consumer's target, and a
- *  fixed_prefix package cannot enter a selection — the v4 wire has no
- *  consumer prefix slot to install it at. */
-function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>): void {
-  for (const node of catalog.values()) {
-    if (node.kind === "package" && node.producer.kind === "recipe") {
-      const recipe = catalog.get(node.producer.recipe)!;
-      if (recipe.kind === "recipe") {
-        requireSameTarget(`package '${node.name}' producer target mismatch`, node, recipe);
-      }
-    }
-    if (node.kind === "environment" || node.kind === "image") {
-      for (const name of node.packages) {
-        const selected = catalog.get(name)!;
-        if (selected.kind !== "package") continue; // the reference pass rejected this
-        requireSameTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
-        if (selected.layout === "fixed_prefix") {
-          throw new Error(
-            `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with layout ` +
-              `'fixed_prefix' but declares no install prefix — the v4 wire has no consumer prefix ` +
-              `slot, so fixed_prefix packages cannot be selected yet ` +
-              `('${node.name}' declared at ${spanAt(node.span)}, ` +
-              `'${selected.name}' declared at ${spanAt(selected.span)})`,
-          );
-        }
-      }
-    }
-  }
-}
-
 function orList(kinds: readonly string[]): string {
   return kinds.length === 1
     ? `a ${kinds[0]}`
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the v4 workspace IR envelope —
- *  `{ir_version: 4, host, workspace}`, never `modules` (the schema
+/** Serialize a workspace value as the v5 workspace IR envelope —
+ *  `{ir_version: 5, host, workspace}`, never `modules` (the schema
  *  admits exactly one of the two). Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
- *  paths, environment values are data only, per-output targets must
- *  match exactly between producer/consumer, fixed_prefix packages
- *  cannot enter a prefix-less selection, and dependency cycles throw —
- *  all naming the declaration spans. Host facts are core-injected for
- *  the envelope only, never consulted for target admission; the
- *  hostname never crosses into the IR. */
+ *  paths, environment values are data only, producer/consumer OS,
+ *  architecture and ABI agree with compatible minimum OS floors;
+ *  fixed_prefix environment selections require a matching declared
+ *  prefix, and dependency cycles throw with declaration spans.
+ *  Host facts are injected for the envelope only, never used to select
+ *  target outputs; the hostname never crosses into the IR. */
 export function emitWorkspaceIr(
   value: WorkspaceValue,
   facts: HostFacts,
@@ -2074,13 +2005,7 @@ export function emitWorkspaceIr(
   );
 }
 "#),
-    ("src/workspace/files.ts", r#"/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+    ("src/workspace/files.ts", r#"/** v5 profile file origins, content transforms and destination policy. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type {
@@ -2186,13 +2111,7 @@ export function file(spec: WorkspaceFileSpec): WorkspaceFile {
   return freezeDeep(node);
 }
 "#),
-    ("src/workspace/ir.ts", r#"/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+    ("src/workspace/ir.ts", r#"/** v5 workspace wire types (schema/ir/v5.json); v4 is read-only in core. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
@@ -2201,7 +2120,7 @@ import type { Span } from "../module.ts";
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v4.json $defs)
+// shared wire fragments (schema/ir/v5.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -2233,14 +2152,29 @@ export interface WorkspacePackageCommand {
 export type WorkspacePath = WorkspaceLiteral | WorkspaceArtifactRef | WorkspaceHostPath;
 export type WorkspaceArg = WorkspaceLiteral | WorkspaceArtifactRef | WorkspacePackageCommand;
 
-/** The platform a recipe builds for or a package/environment/image
- *  targets — per-output, never inherited from a global `host`. */
+/** Per-output requirements — never inherited from the evaluating host. */
+export interface WorkspaceOsVersion {
+  major: number;
+  minor: number;
+  patch?: number;
+}
+export type WorkspaceAbi = "gnu" | "musl" | "darwin";
 export interface WorkspacePlatform {
   os: "linux" | "macos";
   arch: "x86_64" | "aarch64";
-  abi?: string;
-  minimum_os?: string;
+  abi?: WorkspaceAbi;
+  minimum_os?: WorkspaceOsVersion;
 }
+
+/** A recipe may declare host access honestly or require B2's isolated
+ *  Linux worker; no implicit native or ambient-host fallback. */
+export type RecipeExecution =
+  | { kind: "host"; access: "unconfined" }
+  | { kind: "isolated_linux"; worker: "buildkit" };
+
+export type PackageLayout =
+  | { kind: "relocatable" }
+  | { kind: "fixed_prefix"; prefix: string };
 
 export interface WorkspaceExecCommand {
   kind: "exec";
@@ -2297,17 +2231,17 @@ export type WorkspaceCalendar =
   | { kind: "weekly"; weekday: WorkspaceWeekday; time: string };
 
 // ---------------------------------------------------------------------------
-// output nodes (wire shape: schema/ir/v4.json $defs/*Output)
+// output nodes (wire shape: schema/ir/v5.json $defs/*Output)
 // ---------------------------------------------------------------------------
 
 export interface RecipeNode {
   name: string;
   span: Span;
   kind: "recipe";
-  /** The recipe's fetch with its own mandatory provenance (the v4
-   *  workspaceFetch wrapper; legacy modules keep the bare shape). */
+  /** The recipe's fetch carries mandatory provenance in the v5
+   *  workspaceFetch wrapper; legacy modules keep the bare shape. */
   source: { fetch: Fetch; span: Span };
-  execution: "native" | "host" | "isolated_linux";
+  execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
   steps?: WorkspaceCommand[];
@@ -2329,7 +2263,7 @@ export interface PackageNode {
   commands: Record<string, string>;
   runtime?: string[];
   target: WorkspacePlatform;
-  layout: "relocatable" | "fixed_prefix";
+  layout: PackageLayout;
 }
 
 export interface EnvironmentNode {
@@ -2338,6 +2272,7 @@ export interface EnvironmentNode {
   kind: "environment";
   packages: string[];
   target: WorkspacePlatform;
+  prefix?: string;
   env?: Record<string, WorkspaceArg>;
 }
 
@@ -2431,7 +2366,7 @@ export interface WorkspaceValue {
 
 export interface RecipeSpec {
   source: Fetch;
-  execution: "native" | "host" | "isolated_linux";
+  execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
   steps?: WorkspaceCommand[];
@@ -2449,7 +2384,7 @@ export interface PackageSpec {
   /** Explicit runtime closure — names of other `package` outputs. */
   runtime?: string[];
   target: WorkspacePlatform;
-  layout: "relocatable" | "fixed_prefix";
+  layout: PackageLayout;
   span?: Span;
 }
 
@@ -2457,6 +2392,7 @@ export interface EnvironmentSpec {
   /** Member packages — names of `package` outputs, ordered. */
   packages: string[];
   target: WorkspacePlatform;
+  prefix?: string;
   env?: Record<string, WorkspaceArg>;
   span?: Span;
 }
@@ -2559,13 +2495,7 @@ export interface WorkspaceContext extends FactView {
 
 export type WorkspaceFn = (ctx: WorkspaceContext) => WorkspaceValue;
 "#),
-    ("src/workspace/outputs.ts", r#"/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+    ("src/workspace/outputs.ts", r#"/** v5 named-output constructors: pure, frozen values with source spans. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -2608,19 +2538,17 @@ import {
   asFile,
   asName,
   asNames,
-  asPlatform,
   asProducer,
   asRecord,
   duplicateError,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
+import { asExecution, asInstallPrefix, asLayout, asPlatform } from "./target.ts";
 
 
 /** A per-output build/target platform. */
 export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
-  asRecord(spec, "targetPlatform(...)");
-  rejectUnknownFields("targetPlatform(...)", spec, ["os", "arch", "abi", "minimum_os"]);
   return freezeDeep(asPlatform(spec, "targetPlatform(...)"));
 }
 
@@ -2665,9 +2593,6 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
   ]);
   const span = nodeSpan(spec.span, what);
   const fetch = asFetch(spec.source, `${what}: source`);
-  if (!["native", "host", "isolated_linux"].includes(spec.execution)) {
-    throw new Error(`${what}: execution must be "native", "host" or "isolated_linux"`);
-  }
   if (spec.output_kind !== "file" && spec.output_kind !== "tree") {
     throw new Error(`${what}: output_kind must be "file" or "tree"`);
   }
@@ -2680,7 +2605,7 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
     span,
     kind: "recipe",
     source: { fetch, span },
-    execution: spec.execution,
+    execution: asExecution(spec.execution, `${what}: execution`),
     output_kind: spec.output_kind,
     target: asPlatform(spec.target, `${what}: target`),
     ...(steps ? { steps } : {}),
@@ -2707,9 +2632,6 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     commands[k] = asName(v, `${what}: commands["${k}"]`);
   }
   const runtime = asNames(spec.runtime, `${what}: runtime`);
-  if (spec.layout !== "relocatable" && spec.layout !== "fixed_prefix") {
-    throw new Error(`${what}: layout must be "relocatable" or "fixed_prefix"`);
-  }
   const node: PackageNode = {
     name,
     span,
@@ -2718,7 +2640,7 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     commands,
     ...(runtime ? { runtime } : {}),
     target: asPlatform(spec.target, `${what}: target`),
-    layout: spec.layout,
+    layout: asLayout(spec.layout, `${what}: layout`),
   };
   return makeOutput(node);
 }
@@ -2732,7 +2654,7 @@ export function environment(
   const what = `environment("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["packages", "target", "env", "span"]);
+  rejectUnknownFields(what, spec, ["packages", "target", "prefix", "env", "span"]);
   const span = nodeSpan(spec.span, what);
   const packages = asNames(spec.packages, `${what}: packages`) ?? [];
   const env = asEnv(spec.env, `${what}: env`);
@@ -2742,6 +2664,7 @@ export function environment(
     kind: "environment",
     packages,
     target: asPlatform(spec.target, `${what}: target`),
+    ...(spec.prefix !== undefined ? { prefix: asInstallPrefix(spec.prefix, `${what}: prefix`) } : {}),
     ...(env ? { env } : {}),
   };
   return makeOutput(node);
@@ -2932,13 +2855,165 @@ export function defineWorkspace(fn: WorkspaceFn): WorkspaceFn {
   return fn;
 }
 "#),
-    ("src/workspace/validate.ts", r#"/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+    ("src/workspace/target.ts", r#"/** v5 per-output execution, platform and prefix admission (0052 A1-02).
+ *  Declared producer requirements are checked against consumers, not
+ *  against the machine evaluating the workspace. */
+
+import { rejectUnknownFields } from "../fields.ts";
+import type {
+  PackageLayout,
+  RecipeExecution,
+  WorkspaceOsVersion,
+  WorkspaceOutputNode,
+  WorkspacePlatform,
+} from "./ir.ts";
+import { asRecord, spanAt } from "./validate.ts";
+
+function asVersion(value: unknown, where: string): WorkspaceOsVersion {
+  const version = asRecord(value, where);
+  rejectUnknownFields(where, version, ["major", "minor", "patch"]);
+  for (const field of ["major", "minor", "patch"] as const) {
+    const part = version[field];
+    if (part === undefined && field === "patch") continue;
+    if (!Number.isInteger(part) || (part as number) < 0 || (part as number) > 65535) {
+      throw new Error(`${where}.${field} must be an integer in 0..65535`);
+    }
+  }
+  return value as WorkspaceOsVersion;
+}
+
+export function asPlatform(value: unknown, where: string): WorkspacePlatform {
+  const target = asRecord(value, where);
+  rejectUnknownFields(where, target, ["os", "arch", "abi", "minimum_os"]);
+  if (target.os !== "linux" && target.os !== "macos") {
+    throw new Error(`${where}.os must be "linux" or "macos"`);
+  }
+  if (target.arch !== "x86_64" && target.arch !== "aarch64") {
+    throw new Error(`${where}.arch must be "x86_64" or "aarch64"`);
+  }
+  if (target.abi !== undefined) {
+    const allowed = target.os === "linux" ? ["gnu", "musl"] : ["darwin"];
+    if (!allowed.includes(target.abi as string)) {
+      throw new Error(`${where}.abi is incompatible with ${target.os}; expected ${allowed.join(" or ")}`);
+    }
+  }
+  if (target.minimum_os !== undefined) asVersion(target.minimum_os, `${where}.minimum_os`);
+  return value as WorkspacePlatform;
+}
+
+export function asExecution(value: unknown, where: string): RecipeExecution {
+  const execution = asRecord(value, where);
+  if (execution.kind === "host") {
+    rejectUnknownFields(where, execution, ["kind", "access"]);
+    if (execution.access !== "unconfined") {
+      throw new Error(`${where}.access must explicitly be "unconfined" (host filesystem/kernel/network access)`);
+    }
+  } else if (execution.kind === "isolated_linux") {
+    rejectUnknownFields(where, execution, ["kind", "worker"]);
+    if (execution.worker !== "buildkit") throw new Error(`${where}.worker must be "buildkit"`);
+  } else {
+    throw new Error(`${where}.kind must be "host" or "isolated_linux"; native acquisition uses a provider-backed package`);
+  }
+  return value as RecipeExecution;
+}
+
+export function asInstallPrefix(value: unknown, where: string): string {
+  if (typeof value !== "string" || value.length <= 1 || !value.startsWith("/") ||
+    value.includes("\0") ||
+    value.slice(1).split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new Error(`${where} must be a normalized absolute POSIX install path below /`);
+  }
+  return value;
+}
+
+export function asLayout(value: unknown, where: string): PackageLayout {
+  const layout = asRecord(value, where);
+  if (layout.kind === "relocatable") {
+    rejectUnknownFields(where, layout, ["kind"]);
+  } else if (layout.kind === "fixed_prefix") {
+    rejectUnknownFields(where, layout, ["kind", "prefix"]);
+    asInstallPrefix(layout.prefix, `${where}.prefix`);
+  } else {
+    throw new Error(`${where}.kind must be "relocatable" or "fixed_prefix"`);
+  }
+  return value as PackageLayout;
+}
+
+function floorAtMost(provider: WorkspaceOsVersion | undefined, consumer: WorkspaceOsVersion | undefined): boolean {
+  if (!provider) return true;
+  if (!consumer) return false;
+  if (provider.major !== consumer.major) return provider.major < consumer.major;
+  if (provider.minor !== consumer.minor) return provider.minor < consumer.minor;
+  return (provider.patch ?? 0) <= (consumer.patch ?? 0);
+}
+
+function requireCompatibleTarget(
+  relation: string,
+  consumer: WorkspaceOutputNode & { target: WorkspacePlatform },
+  provider: WorkspaceOutputNode & { target: WorkspacePlatform },
+): void {
+  const supplied = provider.target;
+  const requested = consumer.target;
+  if (supplied.os !== requested.os || supplied.arch !== requested.arch ||
+    (supplied.abi ?? null) !== (requested.abi ?? null) ||
+    !floorAtMost(supplied.minimum_os, requested.minimum_os)) {
+    throw new Error(
+      `workspace: ${relation} — target of '${provider.name}' (${JSON.stringify(supplied)}) ` +
+        `cannot satisfy target of '${consumer.name}' (${JSON.stringify(requested)}): ` +
+        `OS/arch/ABI must match and provider minimum OS must not exceed the consumer ` +
+        `('${consumer.name}' declared at ${spanAt(consumer.span)}, ` +
+        `'${provider.name}' declared at ${spanAt(provider.span)})`,
+    );
+  }
+}
+
+/** Resolved catalog references have already passed kind/existence
+ * checks. Hand-built nodes still pass every runtime shape guard here. */
+export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>): void {
+  for (const node of catalog.values()) {
+    if ("target" in node) {
+      try { asPlatform(node.target, `${node.kind} '${node.name}' target`); }
+      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+    }
+    if (node.kind === "recipe") {
+      try { asExecution(node.execution, `recipe '${node.name}' execution`); }
+      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+    }
+    if (node.kind === "package") {
+      try { asLayout(node.layout, `package '${node.name}' layout`); }
+      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+      if (node.producer.kind === "recipe") {
+        const recipe = catalog.get(node.producer.recipe)!;
+        if (recipe.kind === "recipe") {
+          requireCompatibleTarget(`package '${node.name}' producer target mismatch`, node, recipe);
+        }
+      }
+    }
+    if (node.kind === "environment" && node.prefix !== undefined) {
+      try { asInstallPrefix(node.prefix, `environment '${node.name}' prefix`); }
+      catch (error) { throw new Error(`${(error as Error).message} (declared at ${spanAt(node.span)})`); }
+    }
+    if (node.kind === "environment" || node.kind === "image") {
+      for (const name of node.packages) {
+        const selected = catalog.get(name)!;
+        if (selected.kind !== "package") continue; // reference pass rejected this
+        requireCompatibleTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
+        if (selected.layout.kind === "fixed_prefix" &&
+          (node.kind === "image" || node.prefix !== selected.layout.prefix)) {
+          throw new Error(
+            `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with ` +
+              `layout fixed_prefix at '${selected.layout.prefix}' but declares no matching ` +
+              `install prefix (image prefix materialization is unavailable until B4) ` +
+              `('${node.name}' declared at ${spanAt(node.span)}, ` +
+              `'${selected.name}' declared at ${spanAt(selected.span)})`,
+          );
+        }
+      }
+    }
+  }
+}
+"#),
+    ("src/workspace/validate.ts", r#"/** Runtime structural guards for v5 workspace authoring values. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -2952,7 +3027,6 @@ import type {
   WorkspaceDestination,
   WorkspaceFile,
   WorkspacePath,
-  WorkspacePlatform,
   WorkspaceProducer,
   WorkspaceSource,
 } from "./ir.ts";
@@ -3070,7 +3144,7 @@ export function asSelector(v: unknown, where: string): string {
 
 /** Environment values are DATA — literal text or an artifact
  *  reference. A package_command here would invoke a program from a
- *  value position, which v4 never admits (0052 §2.2, core E128):
+ *  value position, which workspace IR never admits (0052 §2.2, core E128):
  *  invoke tools from exec argv or a run_bash interpreter pin. */
 export function asEnv(
   v: Record<string, WorkspaceArg> | undefined,
@@ -3099,19 +3173,6 @@ export function asNames(v: unknown, where: string): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-export function asPlatform(v: unknown, where: string): WorkspacePlatform {
-  const rec = asRecord(v, where);
-  rejectUnknownFields(where, rec, ["os", "arch", "abi", "minimum_os"]);
-  if (rec.os !== "linux" && rec.os !== "macos") {
-    throw new Error(`${where}.os must be "linux" or "macos"`);
-  }
-  if (rec.arch !== "x86_64" && rec.arch !== "aarch64") {
-    throw new Error(`${where}.arch must be "x86_64" or "aarch64"`);
-  }
-  if (rec.abi !== undefined) asName(rec.abi, `${where}.abi`);
-  if (rec.minimum_os !== undefined) asName(rec.minimum_os, `${where}.minimum_os`);
-  return v as WorkspacePlatform;
-}
 
 export function asCommand(v: unknown, where: string): WorkspaceCommand {
   const rec = asRecord(v, where);
@@ -3297,14 +3358,14 @@ export function duplicateError(name: string, first: Span, again: Span): Error {
 }
 "#),
     ("src/workspace.ts", r#"/** Workspace declarations (0052 A1): the supported surface for the
- *  v4 workspace frontend — pure value constructors for the nine typed
- *  output variants plus the shared command/file grammar, and the v4
- *  workspace emitter. No global registry, no import-order magic — the
+ *  v5 workspace frontend — pure value constructors for nine typed
+ *  output variants plus the shared command/file grammar and v5
+ *  emitter. No global registry or import-order magic — the
  *  root `gripsack.ts` entrypoint RETURNS a {@link WorkspaceValue}
  *  built by {@link workspace}, and the driver turns that value into
  *  IR (JSON) via {@link emitWorkspaceIr}.
  *
- *  Wire shape is exactly `schema/ir/v4.json`: every node carries a
+ *  Wire shape is exactly `schema/ir/v5.json`: every node carries a
  *  mandatory provenance span, all structs reject unknown fields at
  *  construction time (JS callers and casts get the same boundary as
  *  the type-checker), and returned values are deeply frozen — an
@@ -3316,8 +3377,9 @@ export function duplicateError(name: string, first: Span, again: Span): Error {
  *
  *  Implementation is split into cohesive modules under ./workspace/
  *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts, files.ts, outputs.ts,
- *  emit.ts. This file is the supported re-export surface. */
+ *  (shared runtime guards), target.ts (execution/target/layout
+ *  admission), commands.ts, files.ts, outputs.ts and emit.ts.
+ *  This file is the supported re-export surface. */
 
 export { artifact, exec, hostPath, lit, packageCommand, runBash } from "./workspace/commands.ts";
 export {
@@ -3342,10 +3404,12 @@ export type {
   HookSpec,
   ImageNode,
   ImageSpec,
+  PackageLayout,
   PackageNode,
   PackageSpec,
   ProfileNode,
   ProfileSpec,
+  RecipeExecution,
   RecipeNode,
   RecipeSpec,
   RunBashSpec,
@@ -3353,6 +3417,7 @@ export type {
   ScheduleSpec,
   TaskNode,
   TaskSpec,
+  WorkspaceAbi,
   WorkspaceArg,
   WorkspaceArtifactRef,
   WorkspaceCalendar,
@@ -3366,6 +3431,7 @@ export type {
   WorkspaceFn,
   WorkspaceHostPath,
   WorkspaceLiteral,
+  WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
   WorkspaceOutputNode,

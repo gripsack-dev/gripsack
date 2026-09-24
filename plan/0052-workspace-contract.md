@@ -1,6 +1,6 @@
-# 0052 — A1 workspace contract and read-only v4 admission
+# 0052 — A1 workspace contract: v4 history and v5 typed admission
 
-Status: **A1-01 implementation in progress; full A1 and release unverified** · Owner: implementation agent · Date: 2026-09-24
+Status: **A1-01 implemented_unverified; A1-02 in progress; full A1/release unverified** · Owner: implementation agent · Date: 2026-09-24
 Scope: Epic A / A1 (rows A1-01…A1-12; A1-07 partial in plan/0049)
 Sources: bundle edition 5 — `START_HERE.md`, master plan §§3–5, 7–8; Epic A §§3.1–3.5, §7 rows A1-01…A1-12, §§8.2–8.3; local plans 0003 §8, 0013, 0035, 0036, 0048 §§6/9/10; live checkout at the time of writing.
 Coordination: plan/0050 (E0 vocabulary/scenarios), plan/0051 (B0 LLB matrix), plan/0049 (H0 inventory/ledger). Plan 0048 §9 release classes still bind every public release; this plan makes no release claim.
@@ -32,24 +32,29 @@ it is **breaking even for a tolerant reader** and must bump the version.
    spell out which structural fields remain strict and how future additive
    changes are versioned. Until then, v3 is strict in practice; no agent may
    assume an old core ignores new workspace fields.
-2. A1 bumps `ir_version` to 4 and adds `schema/ir/v4.json`, retaining v1–v3
-   schemas as history. Renaming/reinterpreting the public Step/Phase and
-   Module shapes is a breaking change by the existing skill definition.
-3. The core accepts a declared `3..=4` range via separate typed readers
-   and one tested v3-to-current admission adapter; the frontend emits only 4.
-4. Unknown-field rejection remains explicit inside each version (deny-unknown
-   structs plus the tagged-field pass) with source-aware diagnostics.
+2. A1-01 introduced `ir_version: 4` and `schema/ir/v4.json`,
+   retaining v1–v3 as history. Its strict reader and read-only workspace
+   remain available for old pinned frontends and saved IR.
+3. A1-02 changed required execution/layout/target field shapes. The
+   strict v4 reader would reject these fields, so the writer bumps to
+   `ir_version: 5` and adds `schema/ir/v5.json`. The core accepts
+   `3..=5`: v3 modules, historical read-only v4 workspaces/modules
+   and current v5 workspaces/modules. The frontend emits only v5;
+   no v4 `native` recipe or prefixless fixed layout is silently
+   reinterpreted for execution.
+4. Unknown fields are rejected within each declared version (strict
+   plain structs plus a versioned tagged-field pass).
 
-### 1.1 Exact impact of the v4 cutover on existing artifacts
+### 1.1 Exact impact of the versioned workspace cutovers
 
 | Artifact | Impact | Required handling |
 |---|---|---|
-| `Ir` literals in Rust (`model::Ir` constructions and inline IR JSON in tests, e.g. `gripsack-exec/src/source/overlay/tests.rs`, `ops/model.rs`, sema fixtures) | v3-shaped literals stop compiling/parsing against the v4 model | Migrate every literal to v4 types in the cutover PR; literals that exercise the *v3 reader* move under the compat reader's own fixtures |
-| Golden corpus `e2e/fixtures/golden/kitchen-sink.ir.json` | The emitted envelope changes shape and version | Regenerate with `REGEN_GOLDEN=1 pytest e2e/test_golden.py`; the snapshot diff is PR evidence (skill checklist). Add v4 fixtures covering the four graduated examples (§5.4); the v3 fixture stays as the compat-reader fixture |
+| `Ir` literals in Rust (`model::Ir` constructions and inline IR JSON in tests) | A1-01 added v4; A1-02 retained a separately typed historical v4 reader alongside current v5 | Migrate every literal to an explicit version; v3/v4 fixtures exercise their own retained readers, and direct executor APIs refuse both workspace versions before effects |
+| Golden corpus `e2e/fixtures/golden/` | The emitted envelope changes to v5; old v4 bytes remain historical input | Regenerate under the current writer, review version/layout diff, and retain dedicated v4 schema/parser/round-trip fixtures; four graduated examples remain A1-10 |
 | Embedded frontend `crates/gripsack-exec/src/embedded_frontend.rs` | Vendored generated copy of the TS sources (0035 F6) embeds the old emitter | Regenerate via the existing generation script; the CI freshness check must cover it; crates.io packaged-install smoke remains the gate |
-| `grip check` vs `grip plan`/`grip apply` | All three parse/admit IR; only their post-admission behavior differs (§6) | v4 admission is shared; `check` keeps its zero-effect contract (0011 §9) and must never provision a builder; a distinct command/flag owns build-check execution (master plan §6) |
-| Persisted state (generations, `manifest.json`, journal priors, store receipts, ownership records, lint registrations) | IR is transient at the evaluator boundary, but plan-derived fields can be stored separately | Audit actual readers/writers and historical fixtures before asserting that the v4 wire change needs no persisted-state migration. Preserve existing ownership/hash meanings; if any persisted field changes, ship a compatible reader or explicit tested migration. No bulk rewrite of retained generations. |
-| Old pinned `@gripsack/core` frontends in user repos | Emit v3 | Read through the v3 compat reader; `grip doctor` keeps flagging pin/core mismatch; the E100 help text already points at the pin |
+| `grip check` vs `plan`/`apply`/`update` | All parse/admit versioned workspaces, but no A1 workspace executor exists | `check` lists named outputs without builder bootstrap; CLI and direct executor APIs reject historical v4/current v5 with E124 before home/store effects |
+| Persisted state (generations, `manifest.json`, journal priors, store receipts, ownership records, lint registrations) | IR is transient but plan-derived fields are durable independently | Audit retained readers/writers and historical fixtures before any no-migration claim; preserve ownership/hash wire meanings and test inspect/rollback/update/GC |
+| Old pinned `@gripsack/core` frontends | Emit v3 module maps or v4 workspaces | Read with the corresponding strict versioned reader; `grip doctor` continues reporting mismatched pins |
 | Future saved plans (Epic C) | A new persisted full-plan snapshot, unlike existing generation and lock records that already store IR-derived fields | Out of A1 scope; when C lands, saved plans bind `ir_version` at capture and replay through the matching versioned reader |
 
 **Confirmed durable coupling to v3 IR types:** `crates/gripsack-store/src/generations.rs`
@@ -63,20 +68,32 @@ versioned durable types/compat readers, or ship a tested explicit
 migration. Historical inspect, rollback, update and GC fixtures are
 mandatory before calling a wire cutover safe.
 
-## 2. v4 cutover design
+### 1.2 v4→v5 compatibility invariant
+
+The A1-02 v5 schema changed execution from
+`native|host|isolated_linux` strings to explicit host/isolated objects,
+typed target ABI/minimum-OS values, and package layout/prefix
+representations. v4's strict
+schema is preserved byte-for-byte. A dedicated v4 typed reader stores
+historical output values and round-trips them without promoting
+`native` to host execution or inventing an install prefix. Shared
+read-only graph admission uses a temporary validation projection that
+is discarded; v4 target strings retain exact-match admission. Both
+CLI and direct executor entrypoints reject either workspace version
+with E124 before mutation. This is a versioned reader, not a second
+live execution path.
+
+## 2. Current v5 contract and retained workspace readers
 
 ### 2.1 Envelope
 
-v3's envelope is `{ ir_version, host?, resources?, modules: {name: Module} }` — a host-selected module map. v4 has one workspace entry, while retaining core-injected host facts (not a `hosts/<name>.ts` selection):
+v3's envelope is `{ ir_version, host?, resources?, modules: {name: Module} }`; historical v4 added a read-only workspace. Current v5 retains one workspace entry with core-injected host facts (not a `hosts/<name>.ts` selector):
 
 ```jsonc
 {
-  "ir_version": 4,
+  "ir_version": 5,
   "workspace": {
     "span": {"file": "gripsack.ts", "line": 1},
-    "name": "…",                 // optional full-A1 target
-    "inputs": { /* captured source/import identities, A1-05 */ },
-    "mutation_locks": [ /* reachable pure lock refs, A1-12; NOT portable pins */ ],
     "outputs": [                // array preserves duplicate names + both spans for admission
       { "name": "tool", "kind": "package", "span": …, … },
       { "name": "personal", "kind": "profile", "span": …, … }
@@ -89,16 +106,16 @@ v3's envelope is `{ ir_version, host?, resources?, modules: {name: Module} }` �
 Rules:
 
 - `outputs` names are the single catalog namespace; a collision is an admission error naming **both** declaration spans (A1-06). Local step labels and module names are *not* catalog names and carry no cache/deployment identity (Epic A §3.2).
-- The A1-01 read-only admission slice initially accepts `span` and
-  `outputs` only; it **rejects** (does not ignore) `name`, `inputs` and
-  `mutation_locks` until A1-05/A1-12 implement their normalization
-  and identity rules in this v4 cutover. No v4 public release is
-  authorized with those mandatory A1 rows incomplete.
+- The initial A1-01 v4 slice accepted `span` and `outputs` only; the
+  current v5 writer still rejects (does not ignore) `name`, `inputs`
+  and `mutation_locks` until A1-05/A1-12 implement their normalization
+  and identity rules. No public release is authorized with those
+  mandatory rows incomplete.
 - A project needs no fake `hosts/<name>.ts` file or personal profile to
   declare a package. The core still injects host facts to admit native
   processes, environments and profiles; each recipe/output also carries
   its own execution platform and target instead of inheriting `host`.
-- Every v4 IR node carries **required** `span: {file, line, col?}` from the
+- Every v4/v5 semantic declaration carries a required `span: {file, line, col?}` from the
   originating declaration, including helpers and expanded tree entries.
   The frontend emits it, the core retains/surfaces it, and identity hashes
   exclude it (§4). Only versioned v3 legacy readers keep their old optional
@@ -109,6 +126,13 @@ Rules:
 Field names are final unless the cutover PR records a mapping (Epic A §3.2 allows respelling with a recorded mapping, not semantic drift). All structs are deny-unknown; all tagged unions go through the tagged-field pass with span-carrying rejection.
 
 **CommandSpec** — the shared command value (A1-03, A1-08). Two variants, one type:
+
+The following is the A1-03 **target**, not a claim that all fields exist
+in the read-only v5 wire. v5 currently represents the interpreter as
+`{kind:"package_command",package,command}` and does not serialize the
+strict Bash `options` or a resolved tool `sha256`; those fields require
+an explicit versioned schema/Rust/TypeScript cutover before execution.
+The package reference alone does not prove its bytes are already pinned.
 
 ```jsonc
 { "kind": "exec",
@@ -151,6 +175,25 @@ Boundaries (enforced at admission, with declaration spans):
 - `.outputFile()`-style sugar is recipe-construction sugar; it does not claim every Bash command produces a package.
 - `execution.kind` unsupported on the current build → explicit `E… unsupported executor` diagnostic at admission; **never** silent host fallback (A1-01/A1-08). `isolated_linux` is admitted but unexecutable until B2; `host` receipts must state host filesystem/kernel access honestly and never share cache entries with isolated execution.
 - Per-operation `platform`/ABI/minimum-OS/layout requirements ride on outputs and commands, not on one global `host` field (master plan §4): a Darwin laptop may request a Linux target without adopting it natively.
+- The A1-02 v5 grammar cutover makes execution explicit: a recipe
+  declares `{kind:"host",access:"unconfined"}` (host filesystem,
+  kernel and network access; no remote isolated cache claim) or
+  `{kind:"isolated_linux",worker:"buildkit"}` (unavailable until B2).
+  Native acquisition uses a provider-backed package, never a fake
+  recipe execution mode. Both are descriptions, not A1 executors.
+- A target's optional ABI is `gnu`/`musl` for Linux or `darwin` for
+  macOS; a missing ABI means *unspecified*, not compatible with a
+  declared ABI. `minimum_os` is a bounded `{major,minor,patch?}`
+  version value: the producer's floor must not exceed the consumer's
+  floor; a consumer with no floor cannot claim compatibility with a
+  producer that has one. OS and architecture must agree; host facts
+  never silently narrow cross-target authoring.
+- A package layout is `{kind:"relocatable"}` or
+  `{kind:"fixed_prefix",prefix:"/absolute/install/path"}`. An
+  environment may select a fixed-prefix package only with an exactly
+  matching declared installation `prefix`; image selection stays
+  rejected until B4 can declare/materialize a compatible location.
+  Relative, escaping and NUL-containing prefixes are admission errors.
 
 **Task / schedule** (A1-08):
 
@@ -252,10 +295,18 @@ Invalid references, cycles, wrong output kinds/selectors, incompatible targets/l
 
 ### 2.3 Backward readers and retained persisted state
 
-- **Retained persisted state requires an inventory before a no-migration claim.** IR is transient at the evaluation boundary, but manifests, receipts and journals store plan-derived facts independently. The cutover must examine every retained reader/writer and historical generation fixture; preserve all valid ownership/hash meanings. If v4 changes a persisted field, include the compatible reader or explicit tested migration in the same PR. Rollback of an old generation must not re-evaluate TS.
-- **Versioned reader:** `gripsack-ir` keeps a `v3` module (today's `model.rs`/`tagged.rs` shape, moved, not rewritten) behind the version dispatch. v3 documents parse into the v3 model and normalize into the canonical internal model through one explicit, tested adapter — the same adapter the A5 authoring migration uses, so there is exactly one legacy→canonical mapping. Compat fixtures: the retained v3 golden file plus hostile decoded-IR cases (unknown fields, forged phase/context, invalid edge roles) that must still fail with source spans.
-- **Ambiguity is never silently reclassified.** Legacy constructs without a unique destination (e.g. a script-valued hook that is both check and activation effect) produce a source-aware migration diagnostic and preserve retained state; bulk rewriting ambiguous scripts is forbidden (Epic A §§3.1, 3.5).
-- The E100 message now names the accepted range (`3..=4`) and keeps the pin-update help.
+- **Retained state:** IR is transient at evaluation, but manifests,
+  receipts and journals persist plan-derived values independently.
+  Inventory those readers/writers before a no-migration claim; do not
+  re-evaluate TS to roll back old generations.
+- **Versioned readers:** v3 module maps retain their historical types;
+  strict v4 workspaces retain a dedicated typed read-only reader and
+  their own schema. v4's `native` recipe and opaque target strings are
+  never promoted to v5 execution policy. Current v5 is the only
+  frontend writer. The E100 diagnostic names the `3..=5` range.
+- **Ambiguity:** legacy scripts with no unique lifecycle classification
+  require a source-aware migration diagnostic; A5 owns that cutover,
+  not an implicit workspace executor in A1.
 
 ## 3. Module ownership and dependency direction
 
@@ -263,8 +314,8 @@ Dependency direction is one-way toward the admitted model; nothing below the lin
 
 | Module | Owns (A1) | Must not import / own |
 |---|---|---|
-| `typescript/src/` (emitter) | Authoring API, value construction, span capture, dedent line maps, emit of exactly v4 | Execution, network, host observation beyond the inputs envelope (0013 D2 sandbox stands) |
-| `crates/gripsack-ir` | v4 types, parse passes, version dispatch + retained v3 reader, structural admission, canonicalization for identity hashing | Graph semantics beyond structural admission; effects |
+| `typescript/src/` (emitter) | Authoring API, value construction, span capture, dedent line maps, emit exactly v5 | Execution, network, host observation beyond the injected inputs envelope |
+| `crates/gripsack-ir` | v5 typed model and admission, v4 read-only typed reader and v3 module reader, strict version dispatch | Effects, store mutation, or reinterpretation of prior wire meanings |
 | `crates/gripsack-ir::sema` (+ new `workspace` sema module) | Catalog collision admission, edge-role/reference/target/cycle validation, executor-capability admission, context admission | Publication, ownership planning |
 | `crates/gripsack-policy` (Verus kernels) | Semantic normalization/admission kernels production actually invokes (§5.1) | Serialization, rendering, I/O |
 | `crates/gripsack-exec` | Realization coordination against admitted plans; existing supervision for host execution; ownership planner/journal unchanged in meaning | A second planner, a second transaction implementation, per-step scheduling around LLB |
@@ -275,19 +326,19 @@ New code lands as modules in existing crates first (master plan §7); the ~400-n
 
 ### 3.1 Callers to migrate at cutover (exhaustive at time of writing)
 
-TypeScript: `index.ts` (27 root exports — inventory per §5.3), `module.ts` (`module()`/`ModuleSpec` → ordinary composition + new output constructors), `steps.ts` (`step`/`fetchStep`/`buildStep`/`installStep`/`configStep`/`runStep`/`shellStep`/`Phase` → retired from authoring; compat adapter only), `graph.ts` (`defineEnv`/`emitIr`/`IR_VERSION` → workspace emit, version 4), `resources.ts` (`resource`/`CORE_RESOURCES`/`clearResources` → pure lock refs), `entries.ts` (`merge`/`symlink`/`template`/`trackedCopy` → FileDecl axes), `fetch.ts` (providers lower through resolution/acquisition separation; `pixi(pkg)` naming → `conda.environment` is A3-owned, `pixi.fromLock` explicit), `verify.ts` (check constructors over typed subjects), `intents.ts` (structured intents retained), `conditions.ts` (`when`/`hasTag` stay small pure conveniences), `inputs.ts`, `pin.ts`, `probe.ts`, `deps.ts`, `cli.ts`.
+TypeScript: `index.ts` (40 runtime + 29 type baseline exports; §5.3 inventory), `workspace/{ir,target,validate,commands,files,outputs,emit}.ts` (v5 authoring and emission), `module.ts` (old `module()` → ordinary composition), `steps.ts` (`step`/phase constructors → retired from ordinary authoring; versioned module compatibility only), `graph.ts` (`defineEnv`/`emitIr` emits v5 legacy modules), `resources.ts` (global registry → pure locks), `entries.ts` (file axes), `fetch.ts` (provider resolution/acquisition; `conda.environment` is A3), `verify.ts` (check constructors), `intents.ts`, `conditions.ts`, `inputs.ts`, `pin.ts`, `probe.ts`, `deps.ts` and `cli.ts`. Root authoring API retirement remains A1-09/A1-10/A1-12.
 
-Rust: `gripsack-ir` (`model.rs`, `parse.rs`, `tagged.rs`, `sema/*`, `prepared.rs`, `step.rs`, `placeholders.rs`, `dependencies.rs`), `gripsack-exec` (`resolve.rs`, `ops/model.rs`, `embedded_frontend.rs` regeneration + its generation script, source/overlay fixtures), `gripsack` commands (`eval.rs`, `check.rs`, `plan.rs`, `apply.rs`, `doctor.rs` pin messaging, `why_owns.rs` naming), `gripsack-lint` registrations (lint subject/stage mapping), `griplint` packs that reference retired authoring names.
+Rust: `gripsack-ir` (`model.rs`, `legacy_v4.rs`, `parse.rs`, versioned `tagged.rs`, `workspace/{catalog,platform,layout,command,file}.rs`, sema, and old module types), `gripsack-policy::graph` (production-used role/closure proofs), `gripsack-exec` (direct apply/update/preview/order E124 guards, `embedded_frontend.rs` regeneration, existing store/lifecycle), `gripsack` CLI (`eval`, `check`, `plan`, `apply`, `update`, `adopt`, `doctor` pin messaging), `gripsack-lint` registrations, `griplint` packs referencing retired authoring names.
 
-E2E/golden: `e2e/fixtures/golden/` (regenerated + new v4 fixtures), `e2e/test_golden.py`, e2e scenarios referencing `step`/`module` authoring, TS conformance tests, installed-package export tests (A1-12). Docs/examples: `AGENTS.md` (stale IR-v2 reference — frontend emits v3 today, v4 at cutover), user docs and the four graduated examples (§5.4). Out of scope here (integration owner): `verification/delivery.json`, `scripts/check_delivery.py`, `plan/STATUS.md`.
+E2E/golden: v5 regenerated golden corpus, strict historical v4 schema/parser/serialization fixture, v3 module fixtures, real binary flow tests and installed SDK smoke. Docs/examples: `AGENTS.md`, this plan and four graduated examples (§5.4). The integration owner updates `verification/delivery.json`, checker, `plan/STATUS.md` and CI rules in this same series; no Markdown-only verification claim closes a row.
 
 ### 3.2 Executable entry paths and unsupported-capability errors
 
-| Entry (live path) | v4 behavior |
+| Entry (live path) | v5 writer and versioned-reader behavior |
 |---|---|
-| Internal frontend evaluation (`commands/eval.rs`, used by `check`/`plan`/`apply`) | Sandboxed Deno eval (0013 D2 unchanged) emits v4; declaration evaluation runs no build or host effects and needs no fake `hosts/<name>.ts` for a project workspace |
-| `grip check` (`commands/check.rs`) | Sandboxed eval + v4 admission + sema, then list named workspace outputs; no profile mutation or builder startup (frontend runtime may be provisioned) |
-| `grip plan` / `grip apply` | A1-01 rejects workspace execution with E124 before effects; A2 will extend the common ownership planner to workspace profiles. Legacy v4 module flows retain their existing behavior during migration |
+| Internal frontend evaluation (`commands/eval.rs`, used by `check`/`plan`/`apply`) | Sandboxed Deno emits v5; declaration eval runs no build or host effects and needs no fake host file for a workspace |
+| `grip check` (`commands/check.rs`) | v4/v5 workspace sema and named-output listing; no personal-profile mutation or builder startup |
+| `grip plan` / `grip apply` / `grip update` | E124 rejects v4/v5 workspace execution before effects, in the CLI and direct executor APIs; legacy versioned module maps retain their executor |
 | Build checks | Distinct command or explicit execution flag (exact spelling an A1/A2-P CLI decision); `check` does not suddenly run workloads |
 | `grip run --env …` / `grip shell …` | A2-P-owned (provisional spellings); A1 defines only the admitted environment/task shapes |
 | Unavailable executor (`isolated_linux` before B2, schedule registration before E3, host runBash without declared toolchain pin) | Explicit E-code diagnostic at admission naming the capability, the declaring span and the owning milestone; **no silent fallback** |
@@ -327,14 +378,14 @@ TLA+/TLC extension (rendered-candidate validation, deployment observation, retai
 
 ### 5.2 Delivery checker calibration (A1-07 — **partial in this slice**)
 
-The integration slice (plan/0049 lineage) owns `verification/delivery.json`, `scripts/check_delivery.py`, runner-evidence admission in `scripts/delivery_evidence.py`, and their calibrated CI gate. Its `scripts/check_architecture.py` enforces current protected crate dependency direction. The Rust gate now exercises both the v3 schema/parser parity and v4 schema admission tests, while TypeScript and real CLI tests cover the first v4 workspace corpus. **A1-07 remains partial:** full cross-language golden coverage across output kinds, complete lane/case inventory and module/API cutover are not yet implemented. The §3 module map names the target ownership, not passing evidence for that cutover.
+The integration slice (plan/0049 lineage) owns `verification/delivery.json`, `scripts/check_delivery.py`, runner-evidence admission in `scripts/delivery_evidence.py`, and their calibrated CI gate. `scripts/check_architecture.py` enforces protected crate dependency direction. The Rust gate exercises strict v3 modules, historical v4 workspace and current v5 schema/parser/semantics corpora; TypeScript and real CLI tests cover v5 authoring and versioned rejection. **A1-07 remains partial:** full cross-language golden coverage for every output kind, source-bound lane/case evidence, and the compact module/API cutover remain open. The §3 module map names ownership, not passing evidence for that cutover.
 
 ### 5.3 Export/migration inventory (A1-09, A1-10, A1-12)
 
 At the v3 baseline, `typescript/src/index.ts` exported **40 runtime
 values and 29 types** (not 27 exports). The table inventories those
 baseline symbols and their cutover destinations. The current partial
-v4 slice adds workspace exports but has **not** retired legacy root
+v5 slice adds workspace exports but has **not** retired legacy root
 constructors; A1-09/A1-10/A1-12 migration remains open. `advanced`
 is an explicit stability tier, never a second execution path.
 V3 serialized values keep their versioned reader.
@@ -406,7 +457,7 @@ All rows: **design frozen here; implementation pending; no evidence claimed.** "
 | A1-04 separate identities | §4 | Script/toolchain/policy change invalidates; file/line/label-only change preserves recipe identity; consumer rewiring does not rebuild package | Identity kernel + provenance-exclusion property + mutants |
 | A1-05 per-platform locks | §2.2 locks, §4 | Locked resolution does not re-solve; changed transitive pin changes identity; VM/socket/lease excluded; snapshot vs writable-checkout distinction tested; TS determinism limits documented | Identity kernel; determinism documentation is a stated limit, not a guarantee |
 | A1-06 diagnostics | §2.3, §3.2 | Real CLI failures for typo/type/collision/target/missing capability; both collision sources shown; JSON agrees with terminal; `check` provisions no builder | Diagnostic registry conformance; span-carrying rejection |
-| A1-07 architecture rules + gates (**partial**) | §3, §5.2 | AGENTS/architecture updated to v4; dependency/schema checks mechanically enforced | Ledger/checker + negative calibration owned by integration slice (plan/0049/0051 lineage) — **out of this slice** |
+| A1-07 architecture rules + gates (**partial**) | §3, §5.2 | AGENTS/architecture updated to v5 with v4 historical reader; dependency/schema checks mechanically enforced | Ledger/checker + negative calibration owned by integration slice (plan/0049/0051 lineage) — **out of this slice** |
 | A1-08 shared commands, context grammar | §2.2 CommandSpec/Task/Schedule | Hostile decoded IR: forged context/edge rejected; typed command ref implies artifact; recipe/consumer/invocation identities separate; schedule inert; executor diagnostic explicit | Context-admission kernel + phase-grant mutant |
 | A1-09 ordinary modules, context steps | §2.1, §2.2, §5.3 | Equivalent factory/object forms; moving a declaration between factories preserves recipe identity; no import registration; documented legacy field/verify mapping | Normalization kernel (location invariance) |
 | A1-10 compact API + examples | §5.3, §5.4 | Exhaustive export inventory; four examples admitted and type-checked; ordered list vs `deps` distinction; shared command construction preserves check/hook/recipe/task lifecycles and source maps | Conformance suite; lifecycle separation cases |
@@ -417,8 +468,8 @@ All rows: **design frozen here; implementation pending; no evidence claimed.** "
 
 Per the IR skill, one PR series touching all three parties:
 
-- [ ] `schema/ir/v4.json` added per §2; `v1`–`v3` retained; `ir_version` bump recorded as breaking
-- [ ] `gripsack-ir`: v4 model + parse/tagged passes, version dispatch `3..=4`, retained v3 reader + single normalization adapter, sema admission, unit tests
+- [ ] `schema/ir/v5.json` added per §2, strict v4/v3 schemas/readers retained; v4→v5 breaking version bump recorded
+- [ ] `gripsack-ir`: current v5 model + version dispatch `3..=5`, historical v4 reader round trips its own wire, sema admission and source-aware tests
 - [ ] `gripsack-policy`: §5.1 kernels wired into production admission (no proof-only clone), guarantee-ledger IDs added with assumptions/bounds/calibration
 - [ ] `typescript/`: emitter per §2.2, export inventory per §5.3, examples per §5.4, TS tests
 - [ ] `gripsack-store` hashing inputs reviewed — identity changes intended and enumerated (§4)
@@ -495,15 +546,10 @@ production cycles. Only recipes and packages are addressable as file
 artifacts; selectors are `.` or normalized relative POSIX paths
 (no NUL, absolute path, empty/`.`/`..` segment).
 
-For package→recipe and package→environment/image selection, v4
-requires **exact os/arch/ABI/minimum-OS target equality**; this is a
-conservative declared identity, *not* a claim that arbitrary ABI or
-macOS versions are compatible. Core-injected host facts do not prohibit
-cross-target declarations. A `fixed_prefix` package may be declared,
-but cannot be selected into an environment/image: the current wire
-has no consumer installation prefix, so admission refuses rather than
-inventing one. This does not claim complete prefix/layout negotiation
-for all command or profile consumers (A1-02/A2-04 remain open).
+At this first static-graph packet boundary target requirements matched
+exactly, and fixed-prefix selection lacked a declared consumer
+destination. §11 records the subsequent typed v5 target/layout cutover;
+these earlier conservative limitations are not the current wire.
 
 Observed on the Linux worktree after this change: Rust
 `cargo test -p gripsack-ir --offline` **59 passed** across five suites;
@@ -515,20 +561,72 @@ passed Rust fmt/clippy/tests, Deno tests and full real e2e
 the preceding fresh verify image ran the existing policy kernels
 **56 verified / 0 errors** and rejected four named mutants. None of
 those existing proofs establishes the new v4 production graph.
-Source-bound runner/CI reports, a production adapter to the verified
-graph-closure kernel, its new Verus correspondence and a
-dropped-validation-edge mutant remain open. This packet authorizes
-neither workspace execution nor A1-02 closure.
+At this historical packet boundary, source-bound CI, production
+policy adaptation, correspondence and a dropped-validation-edge
+mutant were open. §11 records the subsequently connected adapter,
+role proof and mutant; full refinement and source-bound evidence
+remain open. Neither packet authorizes workspace execution or A1-02
+closure.
 
-## 11. Honesty register
+## 11. A1-02 typed targets and production graph policy (not A1-02 closure)
 
-- This document began as a design candidate; §§9–10 record read-only
-  admission and static-graph packets, not completion or release claims
-  for A1.
+The strict v4 reader forced a breaking bump to **v5**. Schema,
+Rust and TypeScript migrated together while retaining v3 and
+historical v4 readers. Recipe execution is now
+explicit `{kind:"host",access:"unconfined"}` or
+`{kind:"isolated_linux",worker:"buildkit"}`; native acquisition stays a
+provider-backed package, not an invented recipe executor. A target's
+ABI is `gnu`/`musl` on Linux or `darwin` on macOS, with a bounded
+`{major,minor,patch?}` minimum OS. OS/arch/ABI agree and the
+provider's minimum floor must not exceed the consumer's; missing ABI
+is not a wildcard. A fixed-prefix package declares its absolute,
+normalized install prefix; an environment must declare that exact
+prefix to select it. Fixed-prefix image selection remains rejected
+until B4 supplies a compatible image-location/materialization
+contract. Cross-target declarations are checked against their
+**declared** requirements, not the checking machine.
+Historical v4 package/recipe values round-trip under their own strict
+schema/reader (§1.2). Neither the CLI nor direct executor APIs can
+mistake v4/v5 workspaces for empty module applies: E124 is returned
+before opening the home, lockfile or store. The old v3 module reader
+and versioned v4 module envelope remain available.
+
+The typed graph projection now lowers adjacent recipe commands into
+local `ordering` edges; those are not catalog names, cache nodes or
+build inputs. The same production Rust sema pass indexes named
+production/build-input edges and calls the existing verified
+`build_closure`, while the new `gripsack-policy::graph::roles` kernel
+classifies every edge into build and required-validation decisions.
+An omitted producer, publication check or local sequencing edge
+fails admission with E131 and source labels. No proof-only
+implementation substitutes for that production adapter.
+
+Fresh post-edit Linux compose gates passed Rust fmt/clippy/tests,
+Deno **61/61**, real CLI e2e **262/262** (workspace cases
+**16/16**, goldens **2/2**) and Verus **61 verified / 0 errors**
+with **five** calibrated mutants. The model gate passed using a
+**CACHED** TLC image layer; this run does not establish a fresh model
+check. Rust `gripsack-ir` independently passed **67** tests across
+six suites and the direct executor E124 guard passed **1**. The golden
+diff changes only `ir_version: 4 → 5` in both fixtures and the
+project-workspace package's tagged layout. `npm run build` passed;
+an installed Node 24 consumer loaded the packed root SDK, emitted a
+v5 workspace and admitted ABI/fixed-prefix selection.
+The dropped-validation mutant failed its intended
+`required_validation` assertion at `graph/roles.rs`, not a missing
+tool or unrelated lemma. Worktree gates do not supply source-bound
+CI reports or prove the entire schema→name-index adapter refinement.
+No recipe, task, schedule, image or OS worker is executed by A1.
+
+## 12. Honesty register
+
+- This document began as a design candidate; §§9–11 record read-only
+  admission, static-graph and typed-target/policy packets, not a
+  completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
   this plan authorizes no publication.
 - A1-07's checker/ledger and protected dependency gate remain partial
   in plan/0049 and their own delivery rows.
 - Where older plan 0003/skill unknown-field tolerance conflicted with
   strict v3/v4 readers, this plan and their amended rules record the
-  live version boundary (§1).
+  versioned v5 writer boundary (§1).

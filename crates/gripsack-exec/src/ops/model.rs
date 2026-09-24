@@ -372,6 +372,7 @@ mod tests {
                 host: Default::default(),
                 resources: vec![],
                 workspace: None,
+                workspace_v4: None,
                 modules: [
                     (
                         "consumer".into(),

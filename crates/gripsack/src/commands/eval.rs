@@ -256,15 +256,9 @@ pub fn reject_workspace_execution(
     operation: &str,
     palette: Palette,
 ) -> Result<(), ExitCode> {
-    let Some(workspace) = &ir.workspace else {
+    let Some(diagnostic) = ir.workspace_execution_error(operation) else {
         return Ok(());
     };
-    let diagnostic = gripsack_ir::Diagnostic::error(
-        gripsack_ir::codes::WORKSPACE_EXEC_UNAVAILABLE,
-        format!("{operation} cannot execute workspace outputs yet"),
-    )
-    .with_label(Some(workspace.span.clone()), "workspace declared here")
-    .with_help("grip check validates and lists named outputs; realization and task execution belong to A2/A2-P/E/B");
     eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
     Err(ExitCode::FAILURE)
 }

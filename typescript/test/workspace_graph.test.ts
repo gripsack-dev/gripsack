@@ -19,16 +19,18 @@ import {
   trackedCopyTo,
   workspace,
 } from "../src/workspace.ts";
-import type { WorkspaceOutput, WorkspaceValue } from "../src/workspace.ts";
+import type { PackageLayout, WorkspaceOutput, WorkspacePlatform, WorkspaceValue } from "../src/workspace.ts";
 
 const facts = { os: "linux", arch: "x86_64", libc: null, hostname: "builder" } as const;
 const linux = { os: "linux", arch: "x86_64" } as const;
 const mac = { os: "macos", arch: "aarch64" } as const;
+const hostExecution = { kind: "host", access: "unconfined" } as const;
+const relocatable = { kind: "relocatable" } as const;
 
-function built(name = "tool", target: typeof linux | typeof mac = linux, layout = "relocatable") {
+function built(name = "tool", target: WorkspacePlatform = linux, layout: PackageLayout = relocatable) {
   const source = recipe(`${name}-src`, {
     source: tarball(`https://example.invalid/${name}.tar.gz`),
-    execution: "native",
+    execution: hostExecution,
     output_kind: "tree",
     target,
   });
@@ -36,7 +38,7 @@ function built(name = "tool", target: typeof linux | typeof mac = linux, layout 
     producer: `${name}-src`,
     commands: { tool: "bin/tool" },
     target,
-    layout: layout as "relocatable" | "fixed_prefix",
+    layout,
   });
   return { source, packageValue };
 }
@@ -102,12 +104,12 @@ Deno.test("environment values are data, never package commands", () => {
   );
 });
 
-Deno.test("targets bind producer and selection exactly, not to current host", () => {
+Deno.test("targets bind ABI and minimum OS requirements, not the current host", () => {
   const { source, packageValue } = built("mac-tool", mac);
   assert.equal(JSON.parse(emit([source, packageValue])).workspace.outputs.length, 2);
   const mismatched = pkg("wrong", {
     producer: "mac-tool-src", commands: { tool: "bin/tool" }, target: linux,
-    layout: "relocatable",
+    layout: relocatable,
   });
   assert.throws(() => emit([source, mismatched]), /producer target mismatch.*declared at .*:\d+.*declared at .*:\d+/);
   const env = environment("dev", { packages: ["mac-tool"], target: linux });
@@ -116,11 +118,47 @@ Deno.test("targets bind producer and selection exactly, not to current host", ()
   assert.equal(JSON.parse(emit([source, packageValue, correct])).workspace.outputs.length, 3);
 });
 
-Deno.test("fixed-prefix packages require a consumer prefix, absent from v4 selection wire", () => {
-  const { source, packageValue } = built("pinned", linux, "fixed_prefix");
+Deno.test("fixed-prefix selection needs a matching environment location", () => {
+  const { source, packageValue } = built("pinned", linux, { kind: "fixed_prefix", prefix: "/opt/tool" });
   assert.equal(JSON.parse(emit([source, packageValue])).workspace.outputs.length, 2);
   const env = environment("dev", { packages: ["pinned"], target: linux });
-  assert.throws(() => emit([source, packageValue, env]), /fixed_prefix.*no install prefix.*declared at .*:\d+.*declared at .*:\d+/);
+  assert.throws(() => emit([source, packageValue, env]), /fixed_prefix.*no matching install prefix.*declared at .*:\d+.*declared at .*:\d+/);
+  const matching = environment("dev", { packages: ["pinned"], target: linux, prefix: "/opt/tool" });
+  assert.equal(JSON.parse(emit([source, packageValue, matching])).workspace.outputs.length, 3);
+  const wrong = environment("dev", { packages: ["pinned"], target: linux, prefix: "/other" });
+  assert.throws(() => emit([source, packageValue, wrong]), /fixed_prefix.*no matching install prefix/);
   const img = image("container", { packages: ["pinned"], target: linux });
-  assert.throws(() => emit([source, packageValue, img]), /fixed_prefix.*no install prefix/);
+  assert.throws(() => emit([source, packageValue, img]), /fixed_prefix.*no matching install prefix/);
+});
+
+Deno.test("ABI mismatch and incompatible minimum OS reject with both declarations", () => {
+  const producer = { ...linux, abi: "gnu", minimum_os: { major: 5, minor: 15 } } as const;
+  const consumer = { ...linux, abi: "gnu", minimum_os: { major: 6, minor: 1 } } as const;
+  const { source, packageValue } = built("kernel-tool", producer);
+  const supported = environment("dev", { packages: ["kernel-tool"], target: consumer });
+  assert.equal(JSON.parse(emit([source, packageValue, supported])).workspace.outputs.length, 3);
+  const older = environment("dev", { packages: ["kernel-tool"], target: { ...linux, abi: "gnu", minimum_os: { major: 4, minor: 19 } } });
+  assert.throws(() => emit([source, packageValue, older]), /selection target mismatch.*declared at .*:\d+.*declared at .*:\d+/);
+  const unspecified = environment("dev", { packages: ["kernel-tool"], target: linux });
+  assert.throws(() => emit([source, packageValue, unspecified]), /selection target mismatch/);
+  assert.throws(() => built("bad-abi", { ...linux, abi: "darwin" }), /abi is incompatible with linux/);
+  for (const bad of ["/", "relative/path", "/opt/../home", "/opt//tool", "/opt/tool/", "/opt/\0tool"]) {
+    assert.throws(() => built("bad-prefix", linux, { kind: "fixed_prefix", prefix: bad }), /normalized absolute POSIX install path/);
+  }
+});
+
+Deno.test("recipe command lists retain local order without task-prerequisite edges", () => {
+  const first = exec({ argv: [lit("first")], span: { file: "recipe.ts", line: 4 } });
+  const second = exec({ argv: [lit("second")], span: { file: "recipe.ts", line: 5 } });
+  const source = tarball("https://example.invalid/order.tar.gz");
+  const declared = (steps: typeof first[]) => recipe("order", {
+    source, execution: hostExecution, output_kind: "tree", target: linux,
+    steps, span: { file: "recipe.ts", line: 2 },
+  });
+  const commands = (steps: typeof first[]) =>
+    JSON.parse(emit([declared(steps)])).workspace.outputs[0].steps.map(
+      (command: { argv: { value: string }[] }) => command.argv[0].value,
+    );
+  assert.deepEqual(commands([first, second]), ["first", "second"]);
+  assert.deepEqual(commands([second, first]), ["second", "first"]);
 });

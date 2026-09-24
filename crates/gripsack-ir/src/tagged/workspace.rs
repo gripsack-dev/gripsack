@@ -1,11 +1,11 @@
-//! The v4 workspace tagged-field walk (schema/ir/v4.json, plan/0052
-//! §2.1–2.2): every tagged node in the workspace catalog — outputs,
-//! commands and their arguments, the run_bash interpreter pin, cwd
-//! paths, file origin/content/destination policies, calendar triggers,
-//! the producer union, and the nested v3 fetch specs under
-//! `source.fetch` / `producer.provider.fetch` — is closed against a
-//! per-kind allowlist before serde can drop anything. Plain structs
-//! (workspace, platform, file, span) are closed by
+//! The versioned v4/v5 workspace tagged-field walk (plan/0052):
+//! every tagged node in the workspace catalog — outputs,
+//! recipe execution and package layout, commands/arguments, the
+//! run_bash interpreter pin, cwd paths, file origin/content/destination
+//! policies, calendar triggers, the producer union and nested v3 fetch
+//! specs under `source.fetch` / `producer.provider.fetch` — is closed
+//! against a per-kind allowlist before serde can drop anything. Plain
+//! structs (workspace, platform/OS version, file, span) use
 //! `deny_unknown_fields` instead.
 //!
 //! Rejections label the NEAREST declaring node's span, read from the
@@ -18,8 +18,14 @@
 use super::{allowed_fetch_fields, check_tagged_at, raw_node_span};
 use crate::diagnostic::Diagnostic;
 
+#[derive(Clone, Copy)]
+pub(super) enum WorkspaceWireVersion {
+    LegacyV4,
+    CurrentV5,
+}
+
 /// Workspace output kinds → allowed keys (the tag plus the variant's
-/// fields; schema/ir/v4.json `workspaceOutput` oneOf).
+/// fields; schema/ir/v5.json `workspaceOutput` oneOf).
 fn allowed_workspace_output_fields(kind: &str) -> Option<&'static [&'static str]> {
     Some(match kind {
         "recipe" => &[
@@ -36,7 +42,9 @@ fn allowed_workspace_output_fields(kind: &str) -> Option<&'static [&'static str]
         "package" => &[
             "kind", "name", "span", "producer", "commands", "runtime", "target", "layout",
         ],
-        "environment" => &["kind", "name", "span", "packages", "target", "env"],
+        "environment" => &[
+            "kind", "name", "span", "packages", "target", "prefix", "env",
+        ],
         "task" => &[
             "kind",
             "name",
@@ -59,6 +67,30 @@ fn allowed_workspace_output_fields(kind: &str) -> Option<&'static [&'static str]
             "hooks",
         ],
         "hook" => &["kind", "name", "span", "run", "trigger"],
+        _ => return None,
+    })
+}
+
+fn allowed_workspace_output_fields_v4(kind: &str) -> Option<&'static [&'static str]> {
+    if kind == "environment" {
+        Some(&["kind", "name", "span", "packages", "target", "env"])
+    } else {
+        allowed_workspace_output_fields(kind)
+    }
+}
+
+fn allowed_workspace_execution_fields(kind: &str) -> Option<&'static [&'static str]> {
+    Some(match kind {
+        "host" => &["kind", "access"],
+        "isolated_linux" => &["kind", "worker"],
+        _ => return None,
+    })
+}
+
+fn allowed_workspace_layout_fields(kind: &str) -> Option<&'static [&'static str]> {
+    Some(match kind {
+        "relocatable" => &["kind"],
+        "fixed_prefix" => &["kind", "prefix"],
         _ => return None,
     })
 }
@@ -170,8 +202,13 @@ fn check_workspace_command(
     }
 }
 
-/// Walk the v4 workspace catalog (`/workspace/outputs/*`).
-pub(super) fn check(value: &serde_json::Value, out: &mut Vec<Diagnostic>) {
+/// Walk a strict historical v4 or current v5 workspace catalog.
+pub(super) fn check(
+    value: &serde_json::Value,
+    version: WorkspaceWireVersion,
+    out: &mut Vec<Diagnostic>,
+) {
+    let legacy_v4 = matches!(version, WorkspaceWireVersion::LegacyV4);
     let Some(outputs) = value
         .get("workspace")
         .and_then(|w| w.get("outputs"))
@@ -192,15 +229,23 @@ pub(super) fn check(value: &serde_json::Value, out: &mut Vec<Diagnostic>) {
             .to_string();
         let path = format!("workspace output {name:?} ({kind})");
         let output_span = raw_node_span(output);
-        check_tagged_at(
-            output,
-            &path,
-            allowed_workspace_output_fields,
-            output_span.as_ref(),
-            out,
-        );
+        let allowed: fn(&str) -> Option<&'static [&'static str]> = if legacy_v4 {
+            allowed_workspace_output_fields_v4
+        } else {
+            allowed_workspace_output_fields
+        };
+        check_tagged_at(output, &path, allowed, output_span.as_ref(), out);
         match kind.as_str() {
             "recipe" => {
+                if !legacy_v4 && let Some(execution) = output.get("execution") {
+                    check_tagged_at(
+                        execution,
+                        &path,
+                        allowed_workspace_execution_fields,
+                        output_span.as_ref(),
+                        out,
+                    );
+                }
                 if let Some(source) = output.get("source") {
                     // The workspaceFetch wrapper's own span, else the recipe's.
                     let source_span = raw_node_span(source).or_else(|| output_span.clone());
@@ -221,6 +266,15 @@ pub(super) fn check(value: &serde_json::Value, out: &mut Vec<Diagnostic>) {
                 }
             }
             "package" => {
+                if !legacy_v4 && let Some(layout) = output.get("layout") {
+                    check_tagged_at(
+                        layout,
+                        &path,
+                        allowed_workspace_layout_fields,
+                        output_span.as_ref(),
+                        out,
+                    );
+                }
                 if let Some(producer) = output.get("producer") {
                     check_tagged_at(
                         producer,

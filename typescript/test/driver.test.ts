@@ -103,7 +103,7 @@ Deno.test("driver evaluates a host into an envelope under the sandbox flags", ()
       tags: ["gui", "work"],
       libc: "glibc-2.36",
     });
-    assert.equal(envelope.ir.ir_version, 4);
+    assert.equal(envelope.ir.ir_version, 5);
     assert.ok(envelope.ir.modules.helix);
     assert.ok(envelope.ir.modules.demo, "facts-conditional module present");
     assert.equal(envelope.ir.modules.cuda, undefined, "unbound probe gates cuda out");
@@ -286,7 +286,7 @@ const WORKSPACE = `import { defineWorkspace, workspace, recipe, pkg, targetPlatf
 
 const tools = recipe("tools", {
   source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
-  execution: "native",
+  execution: { kind: "host", access: "unconfined" },
   output_kind: "tree",
   target: targetPlatform({ os: "linux", arch: "x86_64" }),
 });
@@ -294,7 +294,7 @@ const bin = pkg("tools-bin", {
   producer: "tools",
   commands: { tools: "bin/tools" },
   target: targetPlatform({ os: "linux", arch: "x86_64" }),
-  layout: "relocatable",
+  layout: { kind: "relocatable" },
 });
 
 export default defineWorkspace((ctx) => workspace({
@@ -310,7 +310,7 @@ Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () 
     assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
     const envelope = JSON.parse(r.stdout);
     assert.deepEqual(Object.keys(envelope.ir), ["ir_version", "host", "workspace"]);
-    assert.equal(envelope.ir.ir_version, 4);
+    assert.equal(envelope.ir.ir_version, 5);
     assert.equal(envelope.ir.modules, undefined, "workspace envelope never carries modules");
     assert.equal(envelope.ir.host.os, "linux");
     assert.equal("hostname" in envelope.ir.host, false);

@@ -1,14 +1,16 @@
 //! Workspace catalog admission (plan/0052 §2.1–2.2): one typed
 //! projection collects named-output edges and command-context
 //! violations. Catalog, span and value checks run before resolved
-//! references, context checks and dependency-cycle admission. A v3 or
-//! v4 legacy-modules document carries no workspace; this pass is a
-//! no-op. Execution capability is separate (E124).
+//! references, context checks and dependency-cycle admission.
+//! Versioned module maps carry no workspace; a historical v4
+//! workspace is projected temporarily for read-only validation.
+//! Execution capability is a separate E124 gate.
 
 mod context;
 mod cycles;
 mod graph;
 mod names;
+mod policy;
 mod refs;
 mod span_value;
 
@@ -16,15 +18,26 @@ use crate::diagnostic::Diagnostic;
 use crate::model::Ir;
 
 pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
-    let Some(workspace) = &ir.workspace else {
-        return;
-    };
+    if let Some(workspace) = &ir.workspace {
+        check_workspace(workspace, diagnostics);
+    }
+    if let Some(legacy) = &ir.workspace_v4 {
+        let validation_only = legacy.validation_projection();
+        check_workspace(&validation_only, diagnostics);
+        legacy.check_bindings(diagnostics);
+    }
+}
+
+fn check_workspace(workspace: &crate::workspace::Workspace, diagnostics: &mut Vec<Diagnostic>) {
     let catalog = names::check(workspace, diagnostics);
     span_value::check(workspace, diagnostics);
     let projection = graph::collect(workspace);
     refs::check(&projection, &catalog, diagnostics);
     context::check(&projection, diagnostics);
     cycles::check(&projection, &catalog, diagnostics);
+    if diagnostics.is_empty() {
+        policy::check(workspace, &projection, &catalog, diagnostics);
+    }
 }
 
 /// Shared fixtures for the submodules' unit tests.
@@ -32,20 +45,20 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
 pub(crate) mod testutil {
     pub fn doc(outputs: &str) -> String {
         format!(
-            r#"{{"ir_version": 4, "host": {{"os": "linux", "arch": "x86_64"}}, "workspace": {{"span": {{"file": "grip.ts", "line": 1}}, "outputs": [{outputs}]}}}}"#
+            r#"{{"ir_version": 5, "host": {{"os": "linux", "arch": "x86_64"}}, "workspace": {{"span": {{"file": "grip.ts", "line": 1}}, "outputs": [{outputs}]}}}}"#
         )
     }
 
     pub const RECIPE: &str = r#"{
         "kind": "recipe", "name": "build", "span": {"file": "grip.ts", "line": 2},
         "source": {"fetch": {"kind": "tarball", "url": "https://example.test/src.tgz"}, "span": {"file": "grip.ts", "line": 2}},
-        "execution": "native", "output_kind": "tree",
+        "execution": {"kind": "host", "access": "unconfined"}, "output_kind": "tree",
         "target": {"os": "linux", "arch": "x86_64"}}"#;
 
     pub const PACKAGE: &str = r#"{
         "kind": "package", "name": "hello", "span": {"file": "grip.ts", "line": 3},
         "producer": {"kind": "recipe", "recipe": "build"}, "commands": {"hello": "bin/hello"},
-        "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"}"#;
+        "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}}"#;
 
     pub fn code_of(json: &str) -> Vec<String> {
         crate::check(json)
@@ -83,7 +96,7 @@ mod tests {
                 "fetch": {"kind": "github_release", "repo": "BurntSushi/ripgrep", "asset": "ripgrep.tar.gz"},
                 "span": {"file": "grip.ts", "line": 2}}},
             "commands": {"rg": "bin/rg"},
-            "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"}"#;
+            "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}}"#;
         let ir = check(&doc(package)).unwrap();
         assert_eq!(ir.workspace.as_ref().unwrap().outputs.len(), 1);
     }
@@ -98,7 +111,7 @@ mod tests {
                 "fetch": {"kind": "github_release", "repo": "BurntSushi/ripgrep", "asset": "x", "baseUrl": "https://evil.test"},
                 "span": {"file": "grip.ts", "line": 2}}},
             "commands": {"rg": "bin/rg"},
-            "target": {"os": "linux", "arch": "x86_64"}, "layout": "relocatable"}"#;
+            "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}}"#;
         assert_eq!(parse(&doc(package)).unwrap_err().code, codes::MALFORMED);
         // unknown producer kind
         let alien = PACKAGE.replace(
@@ -154,11 +167,13 @@ mod tests {
             r#"{"ir_version": 4, "host": {"os": "linux", "arch": "x86_64"}, "modules": {}}"#;
         let ir = parse(legacy).unwrap();
         assert!(ir.workspace.is_none());
-        // out-of-range versions are E100 and name the accepted range
-        let future = r#"{"ir_version": 5, "modules": {}}"#;
-        let diagnostic = parse(future).unwrap_err();
-        assert_eq!(diagnostic.code, codes::VERSION);
-        assert!(diagnostic.message.contains("3..=4"));
+        let v5_both = both.replace(r#""ir_version": 4"#, r#""ir_version": 5"#);
+        assert_eq!(parse(&v5_both).unwrap_err().code, codes::MALFORMED);
+        let v5_modules = legacy.replace(r#""ir_version": 4"#, r#""ir_version": 5"#);
+        assert!(parse(&v5_modules).is_ok());
+        // Out-of-range versions remain E100, not a silent fallback.
+        let future = r#"{"ir_version": 6, "modules": {}}"#;
+        assert_eq!(parse(future).unwrap_err().code, codes::VERSION);
     }
 
     #[test]
@@ -195,7 +210,7 @@ mod tests {
             "kind": "recipe", "name": "build", "span": {"file": "gripsack.ts", "line": 2},
             "source": {"fetch": {"kind": "tarball", "url": "https://example.test/s.tgz", "baseUrl": "https://evil.test"},
                        "span": {"file": "gripsack.ts", "line": 3}},
-            "execution": "native", "output_kind": "tree",
+            "execution": {"kind": "host", "access": "unconfined"}, "output_kind": "tree",
             "target": {"os": "linux", "arch": "x86_64"}}"#;
         let diagnostic = parse(&doc(recipe)).unwrap_err();
         let span = diagnostic.labels[0]
@@ -209,8 +224,8 @@ mod tests {
     fn unknown_workspace_fields_never_drop_silently() {
         // unknown field on an output (tagged union — pass 1.5 must catch it)
         let extra = PACKAGE.replace(
-            r#""layout": "relocatable""#,
-            r#""layout": "relocatable", "stage": "deploy""#,
+            r#""layout": {"kind": "relocatable"}"#,
+            r#""layout": {"kind": "relocatable"}, "stage": "deploy""#,
         );
         assert_eq!(
             parse(&doc(&format!("{RECIPE},{extra}"))).unwrap_err().code,

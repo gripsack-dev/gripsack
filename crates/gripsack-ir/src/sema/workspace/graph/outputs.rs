@@ -3,8 +3,9 @@
 //! resolved but never silently converted into build prerequisites.
 
 use super::{
-    ARTIFACT_KINDS, CHECK, ENVIRONMENT, Edge, EdgeRole, HOOK, PACKAGE, Projection, RECIPE,
-    Relation, SCHEDULE, SUBJECT_KINDS, TASK, TargetBinding, command_edges, env_value, names_edges,
+    ARTIFACT_KINDS, CHECK, ENVIRONMENT, Edge, EdgeRole, HOOK, LocalOrder, PACKAGE, Projection,
+    RECIPE, Relation, SCHEDULE, SUBJECT_KINDS, TASK, TargetBinding, command_edges, env_value,
+    names_edges,
 };
 use crate::workspace::{WorkspaceOutput, WorkspaceProducer, WorkspaceSource};
 
@@ -13,6 +14,15 @@ pub(super) fn output_edges<'a>(output: &'a WorkspaceOutput, projection: &mut Pro
         WorkspaceOutput::Recipe(recipe) => {
             for step in &recipe.steps {
                 command_edges(step, output, EdgeRole::BuildInput, projection);
+            }
+            for (before, pair) in recipe.steps.windows(2).enumerate() {
+                projection.ordering.push(LocalOrder {
+                    recipe: &recipe.name,
+                    before,
+                    after: before + 1,
+                    at: pair[1].span(),
+                    role: EdgeRole::Ordering,
+                });
             }
             names_edges(
                 output,

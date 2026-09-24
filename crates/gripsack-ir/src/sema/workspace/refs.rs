@@ -187,8 +187,8 @@ mod tests {
         );
         // recipe publication check naming a task
         let recipe = RECIPE.replace(
-            r#""execution": "native""#,
-            r#""checks": ["t"], "execution": "native""#,
+            r#""execution": {"kind": "host", "access": "unconfined"}"#,
+            r#""checks": ["t"], "execution": {"kind": "host", "access": "unconfined"}"#,
         );
         assert!(
             code_of(&doc(&format!("{recipe},{PACKAGE},{task_ok}")))
@@ -312,7 +312,10 @@ mod tests {
 
     #[test]
     fn fixed_prefix_packages_cannot_be_selected_without_prefix() {
-        let package = PACKAGE.replace(r#""layout": "relocatable""#, r#""layout": "fixed_prefix""#);
+        let package = PACKAGE.replace(
+            r#""layout": {"kind": "relocatable"}"#,
+            r#""layout": {"kind": "fixed_prefix", "prefix": "/opt/tool"}"#,
+        );
         let env = r#"{
             "kind": "environment", "name": "dev", "span": {"file": "grip.ts", "line": 6},
             "packages": ["hello"], "target": {"os": "linux", "arch": "x86_64"}}"#;
@@ -337,6 +340,20 @@ mod tests {
             r#""commands": {"hello": "bin/hello"}, "runtime": ["base"]"#,
         );
         assert!(crate::check(&doc(&format!("{RECIPE},{base},{with_runtime}"))).is_ok());
+        let bound = env.replace(
+            r#""packages": ["hello"]"#,
+            r#""packages": ["hello"], "prefix": "/opt/tool""#,
+        );
+        crate::check(&doc(&format!("{RECIPE},{package},{bound}")))
+            .expect("a declared matching destination admits");
+        let wrong = env.replace(
+            r#""packages": ["hello"]"#,
+            r#""packages": ["hello"], "prefix": "/different""#,
+        );
+        assert!(
+            code_of(&doc(&format!("{RECIPE},{package},{wrong}")))
+                .contains(&codes::UNKNOWN_WORKSPACE_REF.into())
+        );
     }
 
     #[test]

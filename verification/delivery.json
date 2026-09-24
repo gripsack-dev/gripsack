@@ -916,7 +916,7 @@
     "Production/build-input/runtime and task-prerequisite cycles reject with involved declaration spans; validation edges remain mandatory publication gates",
     "Producer/package/environment/image target and ABI mismatches reject with both declaration spans; fixed-prefix consumers declare compatible destinations",
     "Ordered local command sequencing is distinct from production, runtime, task prerequisite, validation and retention roles",
-    "Actual v4 graph adapters use the production policy kernel, including the build-only projection and required checks",
+    "Versioned workspace graph adapters use the production policy kernel, including the build-only projection and required checks",
     "Production-connected graph/closure proof and a dropped-validation-edge mutant run at A1 closure"
    ],
    "evidence_records": [],
@@ -929,7 +929,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Static v4 graph admission subset: typed roles, artifact selector/kind/reference/cycle checks, conservative target/layout selection rules. Linux worktree observations: Rust 59 IR tests, Deno 59 tests, real CLI focused 11/11, final compose chain passed with 257/257 full e2e (TLC/Verus final layers cached; fresh prior existing policy Verus 56/0 plus four mutants are not A1 proofs). Full A1-02 ABI/prefix/ordering policy, production-connected graph kernel/proof/mutant, source-bound CI and runner evidence remain open; no executor or release claim."
+   "implementation_notes": "Current v5 read-only graph uses production gripsack-policy build-closure plus a verified edge-role classifier (fresh 61 Verus obligations/0 errors; five calibrated mutants including dropped required validation). Strict historical v4 workspace/schema reader and v3 modules reader remain available. Schema/Rust/TS migrated together to explicit recipe execution, typed ABI/minimum-OS, fixed-prefix environment selection and local ordering edges; worktree observations: 67 Rust IR tests, 61 Deno tests, focused real CLI 16/16 and regenerated golden 2/2. Full post-edit Linux compose gates passed Rust test, TS 61/61, e2e 262/262 and verify 61/0 with five mutants; TLC model gate passed with CACHED layer, not a fresh model run. Source-bound CI evidence and a complete formal schema-to-name-index adapter correspondence remain open. No workspace executor, Mac claim or public release is authorized."
   },
   {
    "id": "A1-03",

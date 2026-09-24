@@ -41,7 +41,7 @@ archived.
 | Path | Contents |
 |---|---|
 | `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the landed/deferred/rejected ledger — update it in the same PR |
-| `schema/ir/v4.json` | Current emitted contract: v4 workspace catalog or v4 legacy modules; the core also reads strict v3 for existing pinned frontends. v1–v3 schemas remain history, never a license to reinterpret retained state |
+| `schema/ir/v5.json` | Current emitted typed workspace or legacy-modules contract. The core also reads strict v4 workspaces read-only and v3 module maps; earlier schemas remain versioned history, never permission to reinterpret retained state |
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
 | `crates/gripsack-store` | store paths, generations, GC |
 | `crates/gripsack-exec` | DAG scheduling |
@@ -78,7 +78,7 @@ archived.
   its emitting source location (`span: {file, line, col?}` on the
   current wire); nested field values inherit their declaring node's
   location. Legacy v3 optional spans remain readable, never a reason
-  to omit v4 provenance.
+  to omit v4/v5 provenance.
 - The core never evaluates code and never sees credentials. The
   frontend runs sandboxed (no env vars, no network, no subprocesses);
   host facts arrive via the inputs envelope, effects as probes. The

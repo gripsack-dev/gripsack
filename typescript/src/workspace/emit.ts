@@ -1,10 +1,4 @@
-/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  selector/target/cycle admission + the v4 envelope).
- *  ../workspace.ts is the supported re-export surface. */
+/** v5 workspace emission: named references, role admission and cycles. */
 
 import type { HostFacts } from "../facts.ts";
 import { IR_VERSION } from "../graph.ts";
@@ -18,10 +12,10 @@ import type {
   WorkspaceOutputNode,
   WorkspacePackageCommand,
   WorkspacePath,
-  WorkspacePlatform,
   WorkspaceValue,
 } from "./ir.ts";
 import { asName, asRecord, asSelector, asSpan, duplicateError, spanAt } from "./validate.ts";
+import { checkTargetsAndLayouts } from "./target.ts";
 
 /** Catalog roles never conflate publication checks or retention with
  * production closure. Ordered local commands are intra-output and
@@ -91,7 +85,7 @@ function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges
       throw new Error(
         `workspace: output '${from}' run_bash interpreter must be a package_command reference ` +
           `pinning the tool through a declared package; a literal or artifact interpreter is ` +
-          `ambient host discovery, which v4 never admits (referenced at ${spanAt(cmd.span)})`,
+          `ambient host discovery, which workspace IR never admits (referenced at ${spanAt(cmd.span)})`,
       );
     }
     packageEdge(cmd.interpreter);
@@ -169,82 +163,23 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
   return edges;
 }
 
-/** Per-output target identity: exact os/arch/abi/minimum_os equality
- *  between a provider and its consumer — the conservative v4 rule.
- *  The injected host facts are never consulted, so a workspace
- *  targeting another platform is admitted as declared. */
-function sameTarget(a: WorkspacePlatform, b: WorkspacePlatform): boolean {
-  return a.os === b.os && a.arch === b.arch &&
-    (a.abi ?? null) === (b.abi ?? null) &&
-    (a.minimum_os ?? null) === (b.minimum_os ?? null);
-}
-
-function requireSameTarget(
-  relation: string,
-  consumer: WorkspaceOutputNode & { target: WorkspacePlatform },
-  provider: WorkspaceOutputNode & { target: WorkspacePlatform },
-): void {
-  if (!sameTarget(consumer.target, provider.target)) {
-    throw new Error(
-      `workspace: ${relation} — target of '${provider.name}' ` +
-        `(${JSON.stringify(provider.target)}) does not equal target of '${consumer.name}' ` +
-        `(${JSON.stringify(consumer.target)}); exact os/arch/abi/minimum_os equality is the v4 ` +
-        `target identity ('${consumer.name}' declared at ${spanAt(consumer.span)}, ` +
-        `'${provider.name}' declared at ${spanAt(provider.span)})`,
-    );
-  }
-}
-
-/** Target and layout admission over resolved references (run after the
- *  reference pass, so every lookup is guaranteed present and typed):
- *  a package's target must equal its producer recipe's, an environment
- *  or image selection must equal the consumer's target, and a
- *  fixed_prefix package cannot enter a selection — the v4 wire has no
- *  consumer prefix slot to install it at. */
-function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>): void {
-  for (const node of catalog.values()) {
-    if (node.kind === "package" && node.producer.kind === "recipe") {
-      const recipe = catalog.get(node.producer.recipe)!;
-      if (recipe.kind === "recipe") {
-        requireSameTarget(`package '${node.name}' producer target mismatch`, node, recipe);
-      }
-    }
-    if (node.kind === "environment" || node.kind === "image") {
-      for (const name of node.packages) {
-        const selected = catalog.get(name)!;
-        if (selected.kind !== "package") continue; // the reference pass rejected this
-        requireSameTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
-        if (selected.layout === "fixed_prefix") {
-          throw new Error(
-            `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with layout ` +
-              `'fixed_prefix' but declares no install prefix — the v4 wire has no consumer prefix ` +
-              `slot, so fixed_prefix packages cannot be selected yet ` +
-              `('${node.name}' declared at ${spanAt(node.span)}, ` +
-              `'${selected.name}' declared at ${spanAt(selected.span)})`,
-          );
-        }
-      }
-    }
-  }
-}
-
 function orList(kinds: readonly string[]): string {
   return kinds.length === 1
     ? `a ${kinds[0]}`
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the v4 workspace IR envelope —
- *  `{ir_version: 4, host, workspace}`, never `modules` (the schema
+/** Serialize a workspace value as the v5 workspace IR envelope —
+ *  `{ir_version: 5, host, workspace}`, never `modules` (the schema
  *  admits exactly one of the two). Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
- *  paths, environment values are data only, per-output targets must
- *  match exactly between producer/consumer, fixed_prefix packages
- *  cannot enter a prefix-less selection, and dependency cycles throw —
- *  all naming the declaration spans. Host facts are core-injected for
- *  the envelope only, never consulted for target admission; the
- *  hostname never crosses into the IR. */
+ *  paths, environment values are data only, producer/consumer OS,
+ *  architecture and ABI agree with compatible minimum OS floors;
+ *  fixed_prefix environment selections require a matching declared
+ *  prefix, and dependency cycles throw with declaration spans.
+ *  Host facts are injected for the envelope only, never used to select
+ *  target outputs; the hostname never crosses into the IR. */
 export function emitWorkspaceIr(
   value: WorkspaceValue,
   facts: HostFacts,

@@ -1,10 +1,4 @@
-/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+/** v5 workspace wire types (schema/ir/v5.json); v4 is read-only in core. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
@@ -13,7 +7,7 @@ import type { Span } from "../module.ts";
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v4.json $defs)
+// shared wire fragments (schema/ir/v5.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -45,14 +39,29 @@ export interface WorkspacePackageCommand {
 export type WorkspacePath = WorkspaceLiteral | WorkspaceArtifactRef | WorkspaceHostPath;
 export type WorkspaceArg = WorkspaceLiteral | WorkspaceArtifactRef | WorkspacePackageCommand;
 
-/** The platform a recipe builds for or a package/environment/image
- *  targets — per-output, never inherited from a global `host`. */
+/** Per-output requirements — never inherited from the evaluating host. */
+export interface WorkspaceOsVersion {
+  major: number;
+  minor: number;
+  patch?: number;
+}
+export type WorkspaceAbi = "gnu" | "musl" | "darwin";
 export interface WorkspacePlatform {
   os: "linux" | "macos";
   arch: "x86_64" | "aarch64";
-  abi?: string;
-  minimum_os?: string;
+  abi?: WorkspaceAbi;
+  minimum_os?: WorkspaceOsVersion;
 }
+
+/** A recipe may declare host access honestly or require B2's isolated
+ *  Linux worker; no implicit native or ambient-host fallback. */
+export type RecipeExecution =
+  | { kind: "host"; access: "unconfined" }
+  | { kind: "isolated_linux"; worker: "buildkit" };
+
+export type PackageLayout =
+  | { kind: "relocatable" }
+  | { kind: "fixed_prefix"; prefix: string };
 
 export interface WorkspaceExecCommand {
   kind: "exec";
@@ -109,17 +118,17 @@ export type WorkspaceCalendar =
   | { kind: "weekly"; weekday: WorkspaceWeekday; time: string };
 
 // ---------------------------------------------------------------------------
-// output nodes (wire shape: schema/ir/v4.json $defs/*Output)
+// output nodes (wire shape: schema/ir/v5.json $defs/*Output)
 // ---------------------------------------------------------------------------
 
 export interface RecipeNode {
   name: string;
   span: Span;
   kind: "recipe";
-  /** The recipe's fetch with its own mandatory provenance (the v4
-   *  workspaceFetch wrapper; legacy modules keep the bare shape). */
+  /** The recipe's fetch carries mandatory provenance in the v5
+   *  workspaceFetch wrapper; legacy modules keep the bare shape. */
   source: { fetch: Fetch; span: Span };
-  execution: "native" | "host" | "isolated_linux";
+  execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
   steps?: WorkspaceCommand[];
@@ -141,7 +150,7 @@ export interface PackageNode {
   commands: Record<string, string>;
   runtime?: string[];
   target: WorkspacePlatform;
-  layout: "relocatable" | "fixed_prefix";
+  layout: PackageLayout;
 }
 
 export interface EnvironmentNode {
@@ -150,6 +159,7 @@ export interface EnvironmentNode {
   kind: "environment";
   packages: string[];
   target: WorkspacePlatform;
+  prefix?: string;
   env?: Record<string, WorkspaceArg>;
 }
 
@@ -243,7 +253,7 @@ export interface WorkspaceValue {
 
 export interface RecipeSpec {
   source: Fetch;
-  execution: "native" | "host" | "isolated_linux";
+  execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
   steps?: WorkspaceCommand[];
@@ -261,7 +271,7 @@ export interface PackageSpec {
   /** Explicit runtime closure — names of other `package` outputs. */
   runtime?: string[];
   target: WorkspacePlatform;
-  layout: "relocatable" | "fixed_prefix";
+  layout: PackageLayout;
   span?: Span;
 }
 
@@ -269,6 +279,7 @@ export interface EnvironmentSpec {
   /** Member packages — names of `package` outputs, ordered. */
   packages: string[];
   target: WorkspacePlatform;
+  prefix?: string;
   env?: Record<string, WorkspaceArg>;
   span?: Span;
 }

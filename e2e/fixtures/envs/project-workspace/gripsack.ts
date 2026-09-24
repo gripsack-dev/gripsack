@@ -15,7 +15,7 @@ export default defineWorkspace(() => workspace({
       producer: provider(fileFetch("tool.bin")),
       commands: { tool: "bin/tool" },
       target: targetPlatform({ os: "linux", arch: "x86_64" }),
-      layout: "relocatable",
+      layout: { kind: "relocatable" },
     }),
   ],
 }));

@@ -287,6 +287,7 @@ mod tests {
             .into_iter()
             .collect(),
             workspace: None,
+            workspace_v4: None,
         }
     }
 

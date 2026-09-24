@@ -122,10 +122,10 @@ mod tests {
         // package → recipe (production) and recipe → package
         // (build-input tool reference) close a cycle
         let recipe = RECIPE.replace(
-            r#""execution": "native""#,
+            r#""execution": {"kind": "host", "access": "unconfined"}"#,
             r#""steps": [{"kind": "exec", "span": {"file": "grip.ts", "line": 4},
                           "argv": [{"kind": "package_command", "package": "hello", "command": "hello"}]}],
-                "execution": "native""#,
+                "execution": {"kind": "host", "access": "unconfined"}"#,
         );
         let diagnostics = crate::check(&doc(&format!("{recipe},{PACKAGE}"))).unwrap_err();
         let cycle = diagnostics
@@ -146,8 +146,8 @@ mod tests {
         // recipe gated by a check whose subject is the package the
         // recipe produces — a legitimate loop, not a dependency cycle
         let recipe = RECIPE.replace(
-            r#""execution": "native""#,
-            r#""checks": ["smoke"], "execution": "native""#,
+            r#""execution": {"kind": "host", "access": "unconfined"}"#,
+            r#""checks": ["smoke"], "execution": {"kind": "host", "access": "unconfined"}"#,
         );
         let check = r#"{
             "kind": "check", "name": "smoke", "span": {"file": "grip.ts", "line": 5},

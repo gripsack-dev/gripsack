@@ -29,7 +29,7 @@ pub(super) fn check(projection: &Projection, diagnostics: &mut Vec<Diagnostic>) 
                     codes::BAD_WORKSPACE_CONTEXT,
                     "run_bash interpreter must be a package_command reference pinning the \
                      tool through a declared package; a literal or artifact interpreter is \
-                     ambient host discovery, which v4 never admits",
+                     ambient host discovery, which workspace IR never admits",
                 )
                 .with_label(Some((*at).clone()), "command declared here"),
             ),

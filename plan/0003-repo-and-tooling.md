@@ -116,13 +116,15 @@ until `apply` exists; the placeholder tape exercises `--version` and
 ## 8. Versioning and IR compatibility
 
 - Package versions are independent; the **IR version** is the real
-  contract. The core accepts an explicit version range (currently
-  strict v3 modules and v4 workspace/legacy-module envelopes); the
-  frontend emits exactly one version (currently v4). `grip doctor`
-  reports incompatible pins.
+  contract. The core accepts an explicit version range: v3 module
+  maps, strict historical v4 workspaces/module maps, and current v5
+  typed workspaces/module maps. The frontend emits only v5. v4
+  workspaces remain read-only; no legacy `native` execution or
+  prefixless layout acquires a v5 meaning. `grip doctor` reports
+  incompatible pins.
 - Pre-1.0: keep package versions loosely synced to spare confusion.
-- The actual v3/v4 readers reject unknown structural fields (serde
-  `deny_unknown_fields` plus the tagged-field pre-pass). The old
+- The actual v3/v4/v5 readers reject unknown structural fields (serde
+  `deny_unknown_fields` plus a versioned tagged-field pre-pass). The old
   unknown-field-tolerance sentence was not implemented and MUST NOT be
   used to justify an unversioned schema change. A new field is
   backwards-compatible only if the older declared reader explicitly

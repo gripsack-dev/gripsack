@@ -1,10 +1,4 @@
-/** Workspace declarations (0052 A1) — split into cohesive modules
- *  (plan/0052 §3 ~400-line review): ir.ts (wire types), validate.ts
- *  (shared runtime guards), commands.ts (exec/runBash + dedent),
- *  files.ts (origin/content/destination axes), outputs.ts (the nine
- *  output constructors + workspace entrypoint), emit.ts (reference/
- *  cycle admission + the v4 envelope). ../workspace.ts is the
- *  supported re-export surface. */
+/** Runtime structural guards for v5 workspace authoring values. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -18,7 +12,6 @@ import type {
   WorkspaceDestination,
   WorkspaceFile,
   WorkspacePath,
-  WorkspacePlatform,
   WorkspaceProducer,
   WorkspaceSource,
 } from "./ir.ts";
@@ -136,7 +129,7 @@ export function asSelector(v: unknown, where: string): string {
 
 /** Environment values are DATA — literal text or an artifact
  *  reference. A package_command here would invoke a program from a
- *  value position, which v4 never admits (0052 §2.2, core E128):
+ *  value position, which workspace IR never admits (0052 §2.2, core E128):
  *  invoke tools from exec argv or a run_bash interpreter pin. */
 export function asEnv(
   v: Record<string, WorkspaceArg> | undefined,
@@ -165,19 +158,6 @@ export function asNames(v: unknown, where: string): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-export function asPlatform(v: unknown, where: string): WorkspacePlatform {
-  const rec = asRecord(v, where);
-  rejectUnknownFields(where, rec, ["os", "arch", "abi", "minimum_os"]);
-  if (rec.os !== "linux" && rec.os !== "macos") {
-    throw new Error(`${where}.os must be "linux" or "macos"`);
-  }
-  if (rec.arch !== "x86_64" && rec.arch !== "aarch64") {
-    throw new Error(`${where}.arch must be "x86_64" or "aarch64"`);
-  }
-  if (rec.abi !== undefined) asName(rec.abi, `${where}.abi`);
-  if (rec.minimum_os !== undefined) asName(rec.minimum_os, `${where}.minimum_os`);
-  return v as WorkspacePlatform;
-}
 
 export function asCommand(v: unknown, where: string): WorkspaceCommand {
   const rec = asRecord(v, where);
