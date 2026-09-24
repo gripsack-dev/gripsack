@@ -82,6 +82,20 @@ archived.
   lockfile is the sole source of pinning.
 - Never auto-rollback on post-activation hook failure (0001 §3.8).
 
+## Plan 0048 implementation contract
+
+For work under `plan/0048-review-response-0.42.0.md`, read §6
+(release-blocking verification), §9 (mandatory scope and authorized
+deferrals) and §10 (code-quality acceptance) before changing code.
+Maintain its leaf-level execution/evidence record. An agent cannot
+downgrade NEXT work, substitute tests for a required proof, omit a
+caller/schema migration, or defer necessary module/type cleanup.
+Missing required evidence blocks release; only the owner's explicit
+decision changes that gate. Use meaningful domain/unit types and
+cohesive modules/crates, not terse APIs or naked policy numbers to
+minimize the diff. Existing workflow/protection notes below describe
+the baseline, not permission to bypass plan 0048's stronger gates.
+
 ## Workflow
 
 - `main` is protected: PRs only, `test` check required. The repo owner

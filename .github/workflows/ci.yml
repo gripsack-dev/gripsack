@@ -32,6 +32,22 @@ jobs:
       - name: Policy kernels (Verus)
         run: docker compose run --build --rm verify
 
+  # Delivery-ledger gate (handover A1-07): incomplete or inconsistent
+  # completion claims fail CI instead of passing by silence. Validation
+  # runs on every PR; the closure checker's negative calibration must
+  # also pass — a checker that only accepts good ledgers proves nothing.
+  # Making this job a REQUIRED check is a repo-settings owner action
+  # (branch protection); the workflow wiring itself is enforced here.
+  delivery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Delivery inventory validation + closure-checker calibration
+        run: |
+          python3 scripts/check_delivery.py --validate
+          python3 scripts/delivery_checker_calibration.py
+
   # macOS behavioral round (plan/0020's queued item): the release
   # matrix builds on macOS; this RUNS the full flow suite there —
   # APFS semantics, case-insensitivity, symlink topology, Gatekeeper

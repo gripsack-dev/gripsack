@@ -12,6 +12,10 @@ pub struct FetchContext {
     network: crate::http::Client,
     acquisitions: AcquisitionGate,
     provisioning: Option<std::sync::Arc<FetchContext>>,
+    /// Platform facts for bottle-tag selection (A0-01): detected once
+    /// here, injected into the pure policy — the policy itself never
+    /// reads the environment.
+    host_platform: crate::bottle::HostPlatform,
 }
 
 impl Default for FetchContext {
@@ -27,7 +31,13 @@ impl FetchContext {
             limits,
             network: crate::http::Client::from_env(),
             provisioning: None,
+            host_platform: crate::bottle::HostPlatform::detect(),
         }
+    }
+
+    /// The platform facts bottle selection runs on (A0-01).
+    pub fn host_platform(&self) -> &crate::bottle::HostPlatform {
+        &self.host_platform
     }
 
     /// Capture artifact policy after repo env injection, retaining the earlier

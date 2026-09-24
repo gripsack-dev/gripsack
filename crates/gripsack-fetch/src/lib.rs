@@ -13,6 +13,7 @@
 //!
 //! Command-owned acquisition combines bounded transports with reusable clients.
 
+mod bottle;
 mod context;
 pub mod fetch;
 pub mod host;
@@ -25,6 +26,7 @@ pub mod resolve;
 mod spool;
 pub mod throttle;
 
+pub use bottle::{HostPlatform, MacOsVersion};
 pub use context::FetchContext;
 pub use fetch::{FetchError, FetchOutcome, resolve_git_head};
 pub use host::{AssetTarget, DENO_RELEASE, PIXI_RELEASE, resolve as resolve_host_asset};
