@@ -44,11 +44,21 @@ normative and cannot be narrowed by the ledger.
 
 ### Unmodified baseline gates (176eaec, pristine worktree)
 
-Run in a detached `git worktree` at the baseline commit so concurrent
-implementation cannot contaminate the record (gates bake verification
-into image builds from the live build context).
+Run in a detached `git worktree` so concurrent implementation cannot
+contaminate the record (gates bake verification into image builds from
+the live build context).
+Run of 2026-09-24 (07:14–07:35 UTC); logs in `/tmp/gripsack-baseline/`:
 
-<!-- BASELINE_RESULTS -->
+| Gate | Result | Wall |
+|---|---|---|
+| test (fmt + clippy -D warnings + cargo test) | PASS | ~2s (content-keyed image cache; layers derive from the pre-edit context snapshot) |
+| ts-test (deno) | PASS | ~1s (cached) |
+| e2e (real binary + frontend, offline fixtures) | PASS | 14m51s |
+| model (TLC, positive + negative cfgs) | PASS | 53s |
+| verify (Verus proofs + mutant calibration) | PASS | 5m49s |
+
+No pre-existing failures at the baseline: any later gate failure is
+attributable to new work, not the inherited state.
 
 ## H0-02 — delivery and support inventory
 
@@ -82,7 +92,6 @@ with lane-scoped status, never inferred from Linux results.
 
 The lexical `bottle_key` (reverse BTreeMap iteration) selected Linux
 bottles on Intel Macs and inferred macOS chronology from tag spelling.
-Replaced by a pure policy module (`crates/gripsack-fetch/src/bottle.rs`)
 over injected facts:
 
 - `HostPlatform { os, arch, macos_version }` — detected once per
@@ -107,14 +116,21 @@ incompatible/Linux-only tags refused; older-macOS refusal names the
 required version; unknown tags reported; `all` last-resort policy;
 unsupported architecture fails clearly; componentwise version parsing.
 
-<!-- A0_GATES -->
+Container gates on the A0 tree (branch `handover/h0-bundle-import`,
+2026-09-24 07:36–07:56 UTC): **test** PASS 2m08s (real rebuild — the
+source change invalidated the cached layers, confirming the baseline
+passes above derived from pre-edit content), **ts-test** PASS 3s,
+**e2e** PASS 14m26s (incl. the locked-bottle offline reconstruction
+fixture — locked pins bypass selection, transport unchanged),
+**model** PASS 3s (spec unchanged), **verify** PASS 2m39s. Host:
+`cargo test -p gripsack-fetch` 61/61 (13 bottle-selection cases).
 
 ## Record
 
 | Item | Status |
 |---|---|
-| H0-01 reconciliation | done (this document) |
-| H0-02 inventory | done (`verification/delivery.json`) |
-| Baseline gates | see above |
-| A0-01 implementation | done, container gates pending |
-| Next | B0/E0 qualification records, then A1 (checker first) |
+| H0-01 reconciliation | verified (this document + baseline table) |
+| H0-02 inventory | verified (`verification/delivery.json`, checker-validated) |
+| A0-01 implementation | verified (unit + container gates above) |
+| A1-07 checker | implemented (validate + closure + 8-case negative calibration, CI job wired) |
+| Next | B0-01 harness (Linux lane), then A1 compact API; Mac lanes blocked (no Mac), recorded |
