@@ -51,15 +51,13 @@ impl MacOsVersion {
 
 impl std::fmt::Display for MacOsVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.0
-                .iter()
-                .map(u32::to_string)
-                .collect::<Vec<_>>()
-                .join(".")
-        )
+        for (index, part) in self.0.iter().enumerate() {
+            if index != 0 {
+                f.write_str(".")?;
+            }
+            write!(f, "{part}")?;
+        }
+        Ok(())
     }
 }
 
@@ -105,12 +103,7 @@ impl HostPlatform {
             other => Arch::Other(other.to_string()),
         };
         let macos_version = if os == Os::Macos {
-            std::process::Command::new("sw_vers")
-                .arg("-productVersion")
-                .output()
-                .ok()
-                .filter(|out| out.status.success())
-                .and_then(|out| MacOsVersion::parse(String::from_utf8_lossy(&out.stdout).trim()))
+            Self::detect_macos_version()
         } else {
             None
         };
@@ -119,6 +112,46 @@ impl HostPlatform {
             arch,
             macos_version,
         }
+    }
+
+    /// A native fact probe, not an evaluation effect. Use the same
+    /// supervised process boundary as fetchers: a hung or noisy system
+    /// tool must not hang resolution or smuggle unbounded output.
+    fn detect_macos_version() -> Option<MacOsVersion> {
+        use gripsack_process::{Control, Limits, StopReason};
+        use std::time::Duration;
+
+        let mut command = std::process::Command::new("/usr/bin/sw_vers");
+        command.arg("-productVersion");
+        let mut version = None;
+        let mut lines = 0;
+        let outcome = gripsack_process::run(
+            &mut command,
+            &[],
+            Limits {
+                timeout: Duration::from_secs(3),
+                input_bytes: 0,
+                line_bytes: 64,
+                stdout_bytes: 128,
+                stderr_bytes: 128,
+                retained_stderr_bytes: 0,
+            },
+            |line| {
+                lines += 1;
+                if lines == 1 {
+                    version = std::str::from_utf8(line)
+                        .ok()
+                        .and_then(|text| MacOsVersion::parse(text.trim_end_matches('\r')));
+                }
+                Control::Continue
+            },
+        )
+        .ok()?;
+        (lines == 1
+            && matches!(outcome.reason, StopReason::Exited)
+            && outcome.status.is_some_and(|status| status.success()))
+        .then_some(version)
+        .flatten()
     }
 
     fn describe(&self) -> String {
@@ -255,17 +288,18 @@ pub fn select<'a>(
                              validated"
                         .into(),
                 })?;
-            let mut best: Option<(&str, MacOsVersion)> = None;
+            let mut best: Option<(&str, &[u32])> = None;
             for tag in files.keys() {
                 if let Some(BottleTag::Macos { arch, min_version }) = parse_tag(tag) {
                     if arch != host.arch {
                         continue;
                     }
-                    let min = MacOsVersion(min_version.to_vec());
-                    if &min <= host_version
-                        && best.as_ref().is_none_or(|(_, best_min)| best_min < &min)
+                    if min_version <= host_version.0.as_slice()
+                        && best
+                            .as_ref()
+                            .is_none_or(|(_, best_min)| *best_min < min_version)
                     {
-                        best = Some((tag.as_str(), min));
+                        best = Some((tag.as_str(), min_version));
                     }
                 }
             }

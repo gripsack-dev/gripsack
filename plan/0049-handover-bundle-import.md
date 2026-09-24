@@ -1,6 +1,6 @@
 # 0049 — Handover bundle import (edition 5) and H0 reconciliation
 
-Status: H0 in progress · Owner: implementation agent · Date: 2026-09-24
+Status: H0 in progress (H0/A0 closure claims retracted 2026-09-24 — see Record) · Owner: implementation agent · Date: 2026-09-24
 
 The six-document implementation handover (bundle edition 5, 23 September
 2026, checksums verified) is the governing roadmap for this line of
@@ -47,7 +47,13 @@ normative and cannot be narrowed by the ledger.
 Run in a detached `git worktree` so concurrent implementation cannot
 contaminate the record (gates bake verification into image builds from
 the live build context).
-Run of 2026-09-24 (07:14–07:35 UTC); logs in `/tmp/gripsack-baseline/`:
+Run of 2026-09-24 (07:14–07:35 UTC); logs originally in `/tmp/gripsack-baseline/`,
+now archived byte-exact (SHA-256 manifest) in `verification/reports/` as
+`2026-09-24-baseline-*.log` (see `verification/reports/README.md`). Honest
+limitation recorded at archival: the `test` and `ts-test` logs show the test
+layers as BuildKit `#CACHED` (content-keyed reuse, no fresh execution in that
+capture), and none of the logs carries a commit marker, so the archived files
+are historical observations, not source-bound runner evidence.
 
 | Gate | Result | Wall |
 |---|---|---|
@@ -62,7 +68,7 @@ attributable to new work, not the inherited state.
 
 ## H0-02 — delivery and support inventory
 
-`verification/delivery.json` (format `gripsack-delivery-ledger` v1)
+`verification/delivery.json` (format `gripsack-delivery-ledger` v2)
 registers every ID with owner milestone, closure scope, source
 document, verbatim deliverable/evidence, and honest status. Near-term
 rows (H0, A0, B0, E0, A1 — 21 IDs) carry live platform/capability
@@ -71,7 +77,15 @@ lane registrations and conjunctive case inventories; all other rows are
 them until their milestone registers lanes. A1 (A1-07) implements
 `scripts/check_delivery.py`: inventory validation, scoped closure
 checking, and the required negative calibration; H0/A0 evidence must
-survive that checker or be repaired, not grandfathered.
+survive that checker or be repaired, not grandfathered. On 2026-09-24 the
+checker was hardened (runner evidence must be a repo-local report with
+SHA-256 and executed/passed/failed/skipped counts; closure binds its
+declared source SHA to the actual checkout). The earlier Markdown-only
+H0/A0 evidence was reopened because no gate log independently records
+the tested commit or dirty patch identity:
+H0-01/A0-01 are `implemented_unverified`, H0-02 is `in_progress` because 149
+of 178 rows still carry null lane/case inventories; all prior claims are
+preserved under `historical_claims` with reason `invalid_evidence`.
 
 ## E0-02 — OS scheduling qualification (systemd lane)
 
@@ -92,12 +106,15 @@ with lane-scoped status, never inferred from Linux results.
 
 The lexical `bottle_key` (reverse BTreeMap iteration) selected Linux
 bottles on Intel Macs and inferred macOS chronology from tag spelling.
-over injected facts:
+It was replaced by a pure policy over injected facts:
 
-- `HostPlatform { os, arch, macos_version }` — detected once per
+- `HostPlatform { os, arch, macos_version }` is captured once per
   `FetchContext`; the policy itself never reads the environment.
-  macOS version arrives via `sw_vers -productVersion`; a missing fact
-  refuses selection rather than guessing.
+  On macOS `/usr/bin/sw_vers -productVersion` runs through the existing
+  `gripsack-process` supervisor with a three-second deadline and
+  bounded output, not an unbounded `Command::output()`. Missing, noisy
+  or malformed facts refuse selection rather than guessing. This
+  macOS probe remains unqualified on this Linux workstation.
 - Tag grammar recognized structurally (`arm64_linux`, `x86_64_linux`,
   `arm64_<codename>`, `<codename>`, `all`); chronology lives only in
   the codename table (`high_sierra`…`tahoe`), never in tag ordering.
@@ -125,13 +142,23 @@ fixture — locked pins bypass selection, transport unchanged),
 **model** PASS 3s (spec unchanged), **verify** PASS 2m39s. Host:
 `cargo test -p gripsack-fetch` 61/61 (13 bottle-selection cases).
 
+Post-hardening integration smoke on 2026-09-24 (12:14–12:34 UTC):
+`docker compose run --build --rm` **test, ts-test, e2e, model, verify**
+all PASS after the bounded macOS probe and delivery-checker module split.
+The Rust test gate ran fmt/clippy/tests including 61 gripsack-fetch tests,
+e2e executed 245 cases, and Verus executed 56 obligations plus four
+mutants. TypeScript and TLC `RUN` layers were CACHED. These are
+unbound worktree observations in `/tmp/gripsack-integrated-gates/`,
+not a new verified delivery claim or a substitute for required native
+Mac/TLAPS evidence.
+
 ## Record
 
 | Item | Status |
 |---|---|
-| H0-01 reconciliation | verified (this document + baseline table) |
-| H0-02 inventory | verified (`verification/delivery.json`, checker-validated) |
-| A0-01 implementation | verified (unit + container gates above) |
-| A1-07 checker | implemented (validate + closure + 8-case negative calibration, CI job wired) |
-| Milestone closures | **H0 closed, A0 closed** — `check_delivery.py --close-milestone {H0,A0}` pass with per-milestone global-gate attestations |
-| Next | B0-01 harness (Linux lane), then A1 compact API; Mac lanes blocked (no Mac), recorded |
+| H0-01 reconciliation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): the work was done and gates were observed, but the claim cited this Markdown document, not a bound runner report; baseline `test`/`ts-test` logs show CACHED layers and no log carries a commit marker. Prior claim preserved in the ledger's `historical_claims` |
+| H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 of 178 rows still `imported_pending_live_registration` with null lane/case inventories and no explicit evidence_kinds; inventory cannot be called complete |
+| A0-01 implementation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): unit + container gates observed green (archived `verification/reports/2026-09-24-a0-*.log`: cargo test executed, gripsack-fetch 61 passed / 0 failed incl. 13 bottle cases; e2e 245 passed; verify 56 verified 0 errors + 4 mutants; ts-test/model CACHED) but the logs lack commit/dirty binding and the evidence was Markdown |
+| A1-07 checker | partially implemented: edition-5 178-ID inventory fingerprint, required-lane and per-milestone global-gate closure, checkout-revision binding (or documented identical tracked source-tree fingerprint for evidence-only commits), 15 calibrated negative shapes, wired into the protected `test` job. H0-02 still lacks 149 case/platform inventories and evidence kinds; A1-07's broader schema/dependency architecture gates remain open |
+| Milestone closures | **retracted 2026-09-24** — H0 and A0 are NOT closed. The earlier `--close-milestone {H0,A0}` pass rested on Markdown-only evidence and handwritten counts (incl. a G-03 `obligations.checked: 50` that contradicts the runner logs' `56 verified, 0 errors`); the ledger's global-gate attestation records were moved to `historical_claims`. Closure now requires source-bound runner evidence per lane plus passing global gates G-01–G-08 under the hardened checker |
+| Next | rerun gates with explicit source-bound, count-bearing runner reports into `verification/reports/` (then re-close H0/A0 under the hardened checker); populate the 149 null-inventory rows as their milestones come up; A1 grammar work; B0-01 portable evidence; Mac lanes blocked (no Mac), recorded |

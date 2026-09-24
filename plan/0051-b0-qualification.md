@@ -80,6 +80,17 @@ keep failure-fence/late-result acceptance tests (B5-01). No blanket
 
 ## B0-01 results — Linux/amd64 lane (2026-09-24, run of `probes.sh`)
 
+Evidence honesty note (2026-09-24): the probe outcomes below were observed
+green on this workstation, but they are recorded only in this Markdown
+document — the run artifacts under
+`verification/buildkit-qualification/results/` are gitignored and were not
+preserved as a repo-local, SHA-256-hashed, count-bearing report bound to an
+exact source commit/dirty identity. Under the hardened delivery checker the
+B0-01 row is therefore `implemented_unverified` (not verified) until the
+probe suite is rerun with portable, source-bound runner evidence in
+`verification/reports/`. The observations themselves stand and are preserved
+in the ledger's `historical_claims`.
+
 Environment: WSL2 Linux 6.18.33.2, docker 29.7.2, buildkitd v0.33.0
 (`dddd5621`) from `moby/buildkit:v0.33.0@sha256:a461e7f0…` (amd64 leaf;
 the manifest-list digest carries no amd64 manifest — recorded), Go
@@ -114,7 +125,7 @@ VM lane waits for B1's managed worker; B0-03 stays `in_progress`
 | Item | Status |
 |---|---|
 | B0-04 inventory | implemented_unverified (binds at B1/B2) |
-| B0-01 harness | **verified, Linux/amd64 lane** (evidence above; harness in `verification/buildkit-qualification/`) |
+| B0-01 harness | implemented_unverified — observed green on Linux/amd64 2026-09-24 (probes above), but evidence is this Markdown record only; verified requires a portable source-bound runner report (harness in `verification/buildkit-qualification/`) |
 | B0-02 Mac VM | blocked (no Mac) |
 | B0-03 footprint | in_progress: Linux measurements + zero-builder baseline recorded; VM lane and full budgets at B1 |
 | Next | B1 gated on A1 + qualified lane; Mac gate stays open |

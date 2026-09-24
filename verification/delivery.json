@@ -1,6 +1,6 @@
 {
  "format": "gripsack-delivery-ledger",
- "format_version": 1,
+ "format_version": 2,
  "imported_from": {
   "bundle_edition": 5,
   "bundle_date": "2026-09-23",
@@ -106,7 +106,7 @@
    "mandatory_deliverable": "Live-repository reconciliation and baseline",
    "required_acceptance_evidence": "Actual revision/worktree state, applicable instructions, already-landed mappings, original gate results, and available/missing tools/platforms",
    "named_cases_are_conjunctive": true,
-   "status": "verified",
+   "status": "implemented_unverified",
    "required_platform_capability_lanes": [
     "container-gates"
    ],
@@ -117,7 +117,27 @@
     "unmodified baseline gate results at 176eaec recorded before new-work attribution",
     "available/missing tools and platforms inventoried (docker+compose yes; Mac/launchd/virtualization-capable Mac CI missing; go/deno host binaries absent, container-provided)"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    },
+    {
+     "date": "2026-09-24",
+     "from": "implemented_unverified",
+     "to": "verified"
+    },
+    {
+     "date": "2026-09-24",
+     "from": "verified",
+     "to": "implemented_unverified",
+     "reason": "invalid_evidence",
+     "detail": "Verified claim rested on plan/0049 Markdown plus gate results with no repo-local runner report, SHA-256, counts or exact source commit/dirty identity; archived baseline logs show CACHED test/ts-test layers and no commit marker (verification/reports/README.md). Baseline reconciliation work itself was performed and its observations are preserved in historical_claims; reopening to implemented_unverified pending source-bound runner evidence."
+    }
+   ],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -135,19 +155,12 @@
       "read AGENTS.md, plan/STATUS.md, verification/guarantees.md, named contract plans",
       "unmodified baseline gate results at 176eaec recorded before new-work attribution",
       "available/missing tools and platforms inventoried (docker+compose yes; Mac/launchd/virtualization-capable Mac CI missing; go/deno host binaries absent, container-provided)"
-     ]
-    }
-   ],
-   "status_history": [
-    {
-     "date": "2026-09-24",
-     "from": "pending",
-     "to": "implemented_unverified"
-    },
-    {
-     "date": "2026-09-24",
-     "from": "implemented_unverified",
-     "to": "verified"
+     ],
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -159,7 +172,7 @@
    "mandatory_deliverable": "Complete delivery and support inventory",
    "required_acceptance_evidence": "Every global/A/B/C/D/E delivery ID registered with owner milestone, tranche, required platform/capability lanes, evidence kinds, and initial honest status; future rows may remain pending",
    "named_cases_are_conjunctive": true,
-   "status": "verified",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "pure"
    ],
@@ -170,7 +183,27 @@
     "future rows remain pending with lane_inventory_state marking live registration still required before any closure claim",
     "handover checksums verified before import"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    },
+    {
+     "date": "2026-09-24",
+     "from": "implemented_unverified",
+     "to": "verified"
+    },
+    {
+     "date": "2026-09-24",
+     "from": "verified",
+     "to": "in_progress",
+     "reason": "invalid_evidence",
+     "detail": "Verified claim was invalid on two grounds: (1) evidence was checker self-validation plus plan/0049 Markdown, not a bound runner/review report; (2) the inventory is incomplete \u2014 149 of 178 requirement rows still carry lane_inventory_state=imported_pending_live_registration with null platform/capability lanes, null conjunctive case/proof inventories and no explicit evidence_kinds, and null inventories may not be treated as complete before a closure claim. Reopening to in_progress; 149 rows remain to register (do not fabricate)."
+    }
+   ],
+   "historical_claims": [
     {
      "lane": "pure",
      "date": "2026-09-24",
@@ -188,19 +221,12 @@
       "near-term rows (H0/A0/B0/E0/A1) carry populated platform/capability lanes and conjunctive case inventories",
       "future rows remain pending with lane_inventory_state marking live registration still required before any closure claim",
       "handover checksums verified before import"
-     ]
-    }
-   ],
-   "status_history": [
-    {
-     "date": "2026-09-24",
-     "from": "pending",
-     "to": "implemented_unverified"
-    },
-    {
-     "date": "2026-09-24",
-     "from": "implemented_unverified",
-     "to": "verified"
+     ],
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -221,7 +247,8 @@
    "case_and_proof_inventory": [
     "Trace from user-visible entry point through admitted domain values to effects/output; declarations, dead code, test-only implementations, and mocks cannot satisfy executable behavior"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -239,7 +266,12 @@
      "cases_covered": [
       "Trace from user-visible entry point through admitted domain values to effects/output; declarations, dead code, test-only implementations, and mocks cannot satisfy executable behavior"
      ],
-     "milestone_note": "A0: resolve_brew -> bottle::select is the live production path for brew-kind fetches; policy pure over injected facts; no test-only detour"
+     "milestone_note": "A0: resolve_brew -> bottle::select is the live production path for brew-kind fetches; policy pure over injected facts; no test-only detour",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     },
     {
      "lane": "container-gates",
@@ -257,7 +289,12 @@
      "cases_covered": [
       "Trace from user-visible entry point through admitted domain values to effects/output; declarations, dead code, test-only implementations, and mocks cannot satisfy executable behavior"
      ],
-     "milestone_note": "H0: reconciliation traced the live CLI/gates/endpoints actually present at 176eaec; no declarations counted as behavior"
+     "milestone_note": "H0: reconciliation traced the live CLI/gates/endpoints actually present at 176eaec; no declarations counted as behavior",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -278,7 +315,8 @@
    "case_and_proof_inventory": [
     "Named positive and negative cases, expected execution/obligation counts, actual outcomes and reports; all required cases run and pass for a claimed lane"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -296,7 +334,12 @@
      "cases_covered": [
       "Named positive and negative cases, expected execution/obligation counts, actual outcomes and reports; all required cases run and pass for a claimed lane"
      ],
-     "milestone_note": "A0: 13 named bottle-selection unit cases; 61/61 crate tests; e2e locked-bottle offline reconstruction passes on the A0 tree"
+     "milestone_note": "A0: 13 named bottle-selection unit cases; 61/61 crate tests; e2e locked-bottle offline reconstruction passes on the A0 tree",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim. Global gate G-02 requires runner evidence under the hardened contract; docs/review evidence alone cannot satisfy it."
+     }
     },
     {
      "lane": "container-gates",
@@ -314,7 +357,12 @@
      "cases_covered": [
       "Named positive and negative cases, expected execution/obligation counts, actual outcomes and reports; all required cases run and pass for a claimed lane"
      ],
-     "milestone_note": "H0: baseline gates 5/5 PASS at pristine 176eaec (e2e 14m51s, model 53s, verify 5m49s); A0-tree gates 5/5 PASS; counts and walls recorded in plan/0049"
+     "milestone_note": "H0: baseline gates 5/5 PASS at pristine 176eaec (e2e 14m51s, model 53s, verify 5m49s); A0-tree gates 5/5 PASS; counts and walls recorded in plan/0049",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim. Global gate G-02 requires runner evidence under the hardened contract; docs/review evidence alone cannot satisfy it."
+     }
     }
    ]
   },
@@ -335,7 +383,8 @@
    "case_and_proof_inventory": [
     "Required TLC/TLAPS/Verus obligations, production correspondence, negative calibration, non-vacuity witnesses, and explicit trusted assumptions; no proof-only clone or admitted missing decision"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -357,6 +406,11 @@
      "obligations": {
       "checked": 50,
       "note": "existing verify-gate obligation floor (plan/0047) green on the A0 tree"
+     },
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim. Additionally the handwritten obligations.checked=50 contradicts both archived verify logs, which show '56 verified, 0 errors'; handwritten obligation counts are not admissible. Global gate G-03 requires runner evidence under the hardened contract; docs/review evidence alone cannot satisfy it."
      }
     },
     {
@@ -375,7 +429,12 @@
      "cases_covered": [
       "Required TLC/TLAPS/Verus obligations, production correspondence, negative calibration, non-vacuity witnesses, and explicit trusted assumptions; no proof-only clone or admitted missing decision"
      ],
-     "milestone_note": "H0: no proof obligations due at H0; existing kernels' green verify gate recorded as the inherited baseline"
+     "milestone_note": "H0: no proof obligations due at H0; existing kernels' green verify gate recorded as the inherited baseline",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim. Additionally the handwritten obligations.checked=50 contradicts both archived verify logs, which show '56 verified, 0 errors'; handwritten obligation counts are not admissible. Global gate G-03 requires runner evidence under the hardened contract; docs/review evidence alone cannot satisfy it."
+     }
     }
    ]
   },
@@ -396,7 +455,8 @@
    "case_and_proof_inventory": [
     "Architecture and code-quality review, documented module ownership and dependency direction, strong types, bounded effects/protocols, reviewed pins, preserved Rust/rustls/musl constraints"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -414,7 +474,12 @@
      "cases_covered": [
       "Architecture and code-quality review, documented module ownership and dependency direction, strong types, bounded effects/protocols, reviewed pins, preserved Rust/rustls/musl constraints"
      ],
-     "milestone_note": "A0: cohesive pure module, typed domain values (HostPlatform/MacOsVersion/Os/Arch), fmt + clippy -D warnings clean, rustls/musl untouched"
+     "milestone_note": "A0: cohesive pure module, typed domain values (HostPlatform/MacOsVersion/Os/Arch), fmt + clippy -D warnings clean, rustls/musl untouched",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     },
     {
      "lane": "container-gates",
@@ -432,7 +497,12 @@
      "cases_covered": [
       "Architecture and code-quality review, documented module ownership and dependency direction, strong types, bounded effects/protocols, reviewed pins, preserved Rust/rustls/musl constraints"
      ],
-     "milestone_note": "H0: contract plans read (0001/0002/0003/0013/0035/0036/0039/0042/0046/0047); rustls/musl constraints carried into ledger lanes"
+     "milestone_note": "H0: contract plans read (0001/0002/0003/0013/0035/0036/0039/0042/0046/0047); rustls/musl constraints carried into ledger lanes",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -453,7 +523,8 @@
    "case_and_proof_inventory": [
     "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, no platform claim inferred from another platform's result"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -471,7 +542,12 @@
      "cases_covered": [
       "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, no platform claim inferred from another platform's result"
      ],
-     "milestone_note": "A0: no new host/privileged/network capability; sw_vers is a bounded local probe; no builder bootstrap in any native flow"
+     "milestone_note": "A0: no new host/privileged/network capability; sw_vers is a bounded local probe; no builder bootstrap in any native flow",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     },
     {
      "lane": "container-gates",
@@ -489,7 +565,12 @@
      "cases_covered": [
       "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, no platform claim inferred from another platform's result"
      ],
-     "milestone_note": "H0: platform inventory honest \u2014 Mac/launchd/virtualization-capable Mac CI recorded blocked; no cross-platform inference"
+     "milestone_note": "H0: platform inventory honest \u2014 Mac/launchd/virtualization-capable Mac CI recorded blocked; no cross-platform inference",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -510,7 +591,8 @@
    "case_and_proof_inventory": [
     "Existing ownership, recovery, generations and retained roots preserved; changed persistent formats have compatible readers or explicit tested migration; no destructive repair of retained objects"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -528,7 +610,12 @@
      "cases_covered": [
       "Existing ownership, recovery, generations and retained roots preserved; changed persistent formats have compatible readers or explicit tested migration; no destructive repair of retained objects"
      ],
-     "milestone_note": "A0: no persisted format change; lockfile pins bypass selection (e2e byte-identical reconstruction); generations/ownership untouched"
+     "milestone_note": "A0: no persisted format change; lockfile pins bypass selection (e2e byte-identical reconstruction); generations/ownership untouched",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     },
     {
      "lane": "container-gates",
@@ -546,7 +633,12 @@
      "cases_covered": [
       "Existing ownership, recovery, generations and retained roots preserved; changed persistent formats have compatible readers or explicit tested migration; no destructive repair of retained objects"
      ],
-     "milestone_note": "H0: no state changes; local plan/0048 work preserved verbatim; no reset to baseline commit"
+     "milestone_note": "H0: no state changes; local plan/0048 work preserved verbatim; no reset to baseline commit",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -567,7 +659,8 @@
    "case_and_proof_inventory": [
     "Relevant CLI/API/docs/examples exercise the actual implementation; structured errors and provenance survive; documented support/limitations match the tested behavior"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -585,7 +678,12 @@
      "cases_covered": [
       "Relevant CLI/API/docs/examples exercise the actual implementation; structured errors and provenance survive; documented support/limitations match the tested behavior"
      ],
-     "milestone_note": "A0: refusals name host facts and per-tag rejection reasons; plan/0049 documents behavior and limits"
+     "milestone_note": "A0: refusals name host facts and per-tag rejection reasons; plan/0049 documents behavior and limits",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     },
     {
      "lane": "container-gates",
@@ -603,7 +701,12 @@
      "cases_covered": [
       "Relevant CLI/API/docs/examples exercise the actual implementation; structured errors and provenance survive; documented support/limitations match the tested behavior"
      ],
-     "milestone_note": "H0: plans 0049/0050/0051 document the delivered records and limits"
+     "milestone_note": "H0: plans 0049/0050/0051 document the delivered records and limits",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -624,7 +727,8 @@
    "case_and_proof_inventory": [
     "Delivery/status/guarantee records agree with run evidence and exact revision; no unresolved required row reported complete; next blocked/ready action recorded"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -642,7 +746,12 @@
      "cases_covered": [
       "Delivery/status/guarantee records agree with run evidence and exact revision; no unresolved required row reported complete; next blocked/ready action recorded"
      ],
-     "milestone_note": "A0: ledger rows verified with gate-bound evidence at exact revision; checker validates; next actions recorded (B0-01, A1)"
+     "milestone_note": "A0: ledger rows verified with gate-bound evidence at exact revision; checker validates; next actions recorded (B0-01, A1)",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     },
     {
      "lane": "container-gates",
@@ -660,7 +769,12 @@
      "cases_covered": [
       "Delivery/status/guarantee records agree with run evidence and exact revision; no unresolved required row reported complete; next blocked/ready action recorded"
      ],
-     "milestone_note": "H0: ledger + checker + plans agree at the recorded revision; blocked lanes and next actions recorded"
+     "milestone_note": "H0: ledger + checker + plans agree at the recorded revision; blocked lanes and next actions recorded",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Milestone attestation (H0/A0) for a global gate recorded only in plan/0049 Markdown. Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -672,7 +786,7 @@
    "mandatory_deliverable": "Pure OS/architecture/version-aware bottle selection",
    "required_acceptance_evidence": "Intel Mac/Linux lexical counterexample; Apple Silicon with only incompatible/Linux tags; older macOS, unknown/all tags and unsupported architectures; useful errors; unchanged URL/hash transport",
    "named_cases_are_conjunctive": true,
-   "status": "verified",
+   "status": "implemented_unverified",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates"
@@ -688,7 +802,27 @@
     "useful errors name the host facts and per-tag rejection reasons",
     "URL/hash transport unchanged (locked pins bypass selection; ResolvedRelease fields unchanged)"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    },
+    {
+     "date": "2026-09-24",
+     "from": "implemented_unverified",
+     "to": "verified"
+    },
+    {
+     "date": "2026-09-24",
+     "from": "verified",
+     "to": "implemented_unverified",
+     "reason": "invalid_evidence",
+     "detail": "Verified claim rested on plan/0049 Markdown and handwritten counts (61 tests / 13 bottle cases) with no repo-local runner report, SHA-256 or exact source commit/dirty identity. The archived A0-tree test log (verification/reports/2026-09-24-a0-test.log) does show cargo test executed with gripsack-fetch 61 passed / 0 failed, but the log carries no commit marker, so it cannot bind the result to a source revision. Implementation and observed behavior are preserved in historical_claims; reopening to implemented_unverified pending a source-bound rerun with count-bearing runner evidence."
+    }
+   ],
+   "historical_claims": [
     {
      "lane": "container-gates",
      "date": "2026-09-24",
@@ -710,19 +844,12 @@
       "unsupported architectures fail clearly (no arm64_linux guess for arbitrary arch)",
       "useful errors name the host facts and per-tag rejection reasons",
       "URL/hash transport unchanged (locked pins bypass selection; ResolvedRelease fields unchanged)"
-     ]
-    }
-   ],
-   "status_history": [
-    {
-     "date": "2026-09-24",
-     "from": "pending",
-     "to": "implemented_unverified"
-    },
-    {
-     "date": "2026-09-24",
-     "from": "implemented_unverified",
-     "to": "verified"
+     ],
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -1420,7 +1547,19 @@
     "independent runnable OCI result produced",
     "actual versions/configuration recorded"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "lane_status": {
+    "container-gates": "implemented_unverified",
+    "linux-amd64": "implemented_unverified"
+   },
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    }
+   ],
+   "historical_claims": [
     {
      "lane": "linux-amd64",
      "date": "2026-09-24",
@@ -1437,20 +1576,18 @@
      "cases_covered": [
       "Shared-dependency graph, cancellation, bounded failure attribution, declared-input policy probes, retained executable after worker/cache removal, independent runnable OCI result; actual versions/configuration recorded"
      ],
-     "milestone_note": "probe 6 (Mac VM) is B0-02's blocked lane, not this row's"
+     "milestone_note": "probe 6 (Mac VM) is B0-02's blocked lane, not this row's",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ],
-   "lane_status": {
-    "container-gates": "verified",
-    "linux-amd64": "verified"
-   },
-   "status_history": [
-    {
-     "date": "2026-09-24",
-     "from": "pending",
-     "to": "implemented_unverified"
-    }
-   ]
+   "lane_notes": {
+    "container-gates": "container gates observed green on the A0 tree 2026-09-24 (archived logs; some gates CACHED, no commit binding)",
+    "linux-amd64": "BuildKit/Go-LLB probe suite exit 0 observed 2026-09-24 08:29 UTC (buildkitd v0.33.0 digest-pinned); report was plan/0051 Markdown without SHA-256/counts/source identity \u2014 needs source-bound portable runner evidence"
+   }
   },
   {
    "id": "B0-02",
@@ -1499,7 +1636,19 @@
     "budgets and rationale recorded",
     "native/prebuilt/check/preview/rollback workflows download/start zero builder components"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "lane_status": {
+    "linux-amd64": "in_progress",
+    "macos": "blocked"
+   },
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "in_progress"
+    }
+   ],
+   "historical_claims": [
     {
      "lane": "linux-amd64",
      "date": "2026-09-24",
@@ -1516,20 +1665,18 @@
       "native/prebuilt/check/preview/rollback workflows download/start zero builder components",
       "Cold/warm/offline costs separated by VM/toolchain/inputs/output; recorded budgets and rationale"
      ],
-     "note": "Linux-lane costs and budgets recorded in plan/0051; VM-lane separation and full budget sign-off wait for B1 managed worker (Mac lane blocked)"
+     "note": "Linux-lane costs and budgets recorded in plan/0051; VM-lane separation and full budget sign-off wait for B1 managed worker (Mac lane blocked)",
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ],
-   "lane_status": {
-    "linux-amd64": "verified (probe 1 + measurements)",
-    "macos": "blocked (VM lane; no Mac)"
-   },
-   "status_history": [
-    {
-     "date": "2026-09-24",
-     "from": "pending",
-     "to": "in_progress"
-    }
-   ]
+   "lane_notes": {
+    "linux-amd64": "probe-1 audit and cost/timing measurements observed 2026-09-24; recorded only as plan/0051 Markdown (invalid evidence); VM-lane separation and budget sign-off wait for B1 managed worker",
+    "macos": "VM lane blocked: no Mac hardware/runner on this workstation"
+   }
   },
   {
    "id": "B0-04",
@@ -1551,7 +1698,15 @@
     "independent emitted-LLB inspection witness defined",
     "scheduler guarantee migration plan written"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    }
+   ],
+   "historical_claims": [
     {
      "lane": "pure",
      "date": "2026-09-24",
@@ -1569,14 +1724,12 @@
       "exact proof families and production mappings",
       "independent emitted-LLB inspection witness",
       "scheduler guarantee migration plan"
-     ]
-    }
-   ],
-   "status_history": [
-    {
-     "date": "2026-09-24",
-     "from": "pending",
-     "to": "implemented_unverified"
+     ],
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -2047,7 +2200,15 @@
     "result/exit vocabulary, budgets, boundaries fixed",
     "production proof targets named"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "implemented_unverified"
+    }
+   ],
+   "historical_claims": [
     {
      "lane": "pure",
      "date": "2026-09-24",
@@ -2063,14 +2224,12 @@
       "Current source/A1/A2-P mapping",
       "eight scenario families from section 10",
       "fixed result/exit vocabulary, budgets, boundaries and production proof targets"
-     ]
-    }
-   ],
-   "status_history": [
-    {
-     "date": "2026-09-24",
-     "from": "pending",
-     "to": "implemented_unverified"
+     ],
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ]
   },
@@ -2093,7 +2252,19 @@
     "fixture install/run/remove and timing-behavior inventory on systemd",
     "native macOS/launchd lane: BLOCKED here (no Mac); remains open, never inferred from Linux results"
    ],
-   "evidence_records": [
+   "evidence_records": [],
+   "lane_status": {
+    "systemd-linux": "implemented_unverified",
+    "launchd": "blocked"
+   },
+   "status_history": [
+    {
+     "date": "2026-09-24",
+     "from": "pending",
+     "to": "in_progress"
+    }
+   ],
+   "historical_claims": [
     {
      "lane": "systemd-linux",
      "date": "2026-09-24",
@@ -2111,12 +2282,17 @@
       "systemd/user-manager version, user scope and availability probes recorded",
       "fixture install/run/remove and timing-behavior inventory on systemd",
       "native macOS/launchd lane: BLOCKED here (no Mac); remains open, never inferred from Linux results"
-     ]
+     ],
+     "superseded": {
+      "date": "2026-09-24",
+      "reason": "invalid_evidence",
+      "detail": "Markdown-only evidence under the format_version 1 ledger: the record cited plan prose and/or handwritten counts rather than a repo-local verification/reports/ runner report with SHA-256, executed/passed/failed/skipped counts, observed marker, tool versions/inputs and exact source commit/dirty identity. Archived logs (verification/reports/README.md) confirm several gates ran on 2026-09-24 but carry no commit marker and some show CACHED test layers, so they cannot bind this claim to a source revision. Observation preserved as a historical claim."
+     }
     }
    ],
-   "lane_status": {
-    "systemd-linux": "verified",
-    "launchd": "blocked (no Mac hardware/runner on this workstation; never inferred from Linux results)"
+   "lane_notes": {
+    "systemd-linux": "systemd 255 user-manager fixture journey (install/OnCalendar trigger/stop/remove, zero residue) observed 2026-09-24; evidence was plan/0049 Markdown without a source-bound runner report",
+    "launchd": "blocked: no Mac hardware/runner on this workstation; never inferred from Linux results"
    }
   },
   {

@@ -1,0 +1,126 @@
+ Image gripsack-baseline-wt-model Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 549B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 9.77kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.8s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#5 DONE 0.7s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#7 DONE 0.0s
+
+#8 [model 1/6] FROM docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#8 resolve docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 0.0s done
+#8 DONE 0.0s
+
+#9 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#9 CACHED
+
+#10 [model 3/6] WORKDIR /work
+#10 CACHED
+
+#11 [internal] load build context
+#11 transferring context: 94.66kB 0.1s done
+#11 DONE 0.1s
+
+#12 [model 4/6] COPY specs ./specs
+#12 DONE 0.1s
+
+#13 [model 5/6] COPY scripts/check_models.sh ./scripts/check_models.sh
+#13 DONE 0.1s
+
+#14 [model 6/6] RUN sh scripts/check_models.sh /tla/tla2tools.jar
+#14 1.094 cfg/ownership.cfg: clean
+#14 1.812 cfg/apply-deploy.cfg: clean
+#14 2.629 cfg/repeated-apply-deploy.cfg: clean
+#14 3.345 cfg/apply-prune.cfg: clean
+#14 4.163 cfg/repeated-apply-prune.cfg: clean
+#14 4.911 cfg/rollback-deploy.cfg: clean
+#14 5.737 cfg/repeated-rollback-deploy.cfg: clean
+#14 6.459 cfg/rollback-prune.cfg: clean
+#14 7.292 cfg/repeated-rollback-prune.cfg: clean
+#14 7.995 cfg/activation.cfg: clean
+#14 8.782 cfg/repeated-activation.cfg: clean
+#14 9.504 cfg/repeated-activation-repeated-generation.cfg: clean
+#14 10.24 cfg/repeated-transaction-premature-cleanup.cfg: RestoreBeforeCleanup
+#14 10.92 cfg/repeated-activation-lost-pending.cfg: NoSilentSkip
+#14 12.49 ProcessSupervision.cfg: clean
+#14 13.66 ProcessSupervision.ignore-deadline.cfg: temporal:Terminates
+#14 14.95 ProcessSupervision.inherited-pipe.cfg: temporal:Terminates
+#14 15.76 ProcessSupervision.reap-first.cfg: PidAuthority
+#14 16.49 ProcessSupervision.cleanup-failure-witness.cfg: NeverCleanupFailure
+#14 17.22 ProcessSupervision.inherited-witness.cfg: NeverInherited
+#14 17.96 ProcessSupervision.linger-witness.cfg: NeverLinger
+#14 18.92 UpdatePublication.cfg: clean
+#14 19.78 UpdatePublication.stale-recheck.cfg: NoDowngrade
+#14 20.51 UpdatePublication.premature-rename.cfg: AtomicReady
+#14 21.25 UpdatePublication.rollback.cfg: NoDowngrade
+#14 21.98 UpdatePublication.post-failure-witness.cfg: NeverPostFailure
+#14 22.70 UpdatePublication.concurrent-witness.cfg: NeverIndependentLocks
+#14 23.48 UpdatePublication.recheck-witness.cfg: NeverRecheckSkip
+#14 24.21 cfg/filemode-copy-m0644.cfg: clean
+#14 24.94 cfg/filemode-copy-m0755.cfg: clean
+#14 25.66 cfg/filemode-copy-m0600.cfg: clean
+#14 26.38 cfg/filemode-template-m0644.cfg: clean
+#14 27.10 cfg/filemode-template-m0755.cfg: clean
+#14 27.83 cfg/filemode-template-m0600.cfg: clean
+#14 28.57 cfg/filemode-merge-m0644.cfg: clean
+#14 29.30 cfg/filemode-merge-m0755.cfg: clean
+#14 30.03 cfg/filemode-merge-m0600.cfg: clean
+#14 30.74 cfg/filemode-link-m0644.cfg: clean
+#14 31.48 cfg/filemode-link-m0755.cfg: clean
+#14 32.19 cfg/filemode-link-m0600.cfg: clean
+#14 32.91 cfg/filemode-mutant-template-fixed0644.cfg: ExecSurvivesDeploy
+#14 33.63 cfg/filemode-mutant-bytes-only.cfg: ChmodIsDrift
+#14 34.40 cfg/filemode-mutant-prune.cfg: PruneRespectsDrift
+#14 35.25 cfg/filemode-mutant-rollback.cfg: RollbackIsExact
+#14 36.13 cfg/update-survey.cfg: clean
+#14 36.97 cfg/update-survey-empty.cfg: clean
+#14 37.79 cfg/update-survey-stop-first.cfg: CompleteSurvey
+#14 38.62 cfg/update-survey-exit-conflation.cfg: HonestExit
+#14 39.47 cfg/update-survey-publication.cfg: NoPublication
+#14 40.36 cfg/http-retry.cfg: clean
+#14 41.16 cfg/http-retry-terminal-replay.cfg: NoTerminalReplay
+#14 41.99 cfg/http-retry-deadline-reset.cfg: FixedDeadline
+#14 42.84 cfg/http-retry-attempt-overflow.cfg: BoundedAttempts
+#14 43.83 cfg/credential-routing.cfg: clean
+#14 44.66 cfg/credential-routing-base-authority.cfg: TokensStayBound
+#14 45.54 cfg/credential-routing-redirect-forwarding.cfg: NoRedirectDisclosure
+#14 46.50 cfg/merge-boundary.cfg: clean
+#14 47.35 cfg/merge-boundary-unclosed-marker.cfg: ForeignTextPreserved
+#14 48.22 cfg/merge-boundary-first-mode.cfg: AllModeEvidenceRequired
+#14 49.09 cfg/merge-boundary-first-prune.cfg: PruneNeedsWholeEvidence
+#14 DONE 49.2s
+
+#15 exporting to image
+#15 exporting layers
+#15 exporting layers 0.2s done
+#15 exporting manifest sha256:90b58135dbf58905af3c29ce5e86d911c08c3d9dd6bbc2840a3fe4128d457211 0.0s done
+#15 exporting config sha256:bbee774a3753073fc37d868c45ae3cf988b0f3ecfe6fc074b300f4ffa8c4d7eb 0.0s done
+#15 exporting attestation manifest sha256:bd059b44555492d48bc89ed752f95104b9191129870c7b8a7ac40a9c3e212d8e 0.0s done
+#15 exporting manifest list sha256:65757d49910849d752904f8e5671322f3575219c3bcd83cec751784753a05293 0.0s done
+#15 naming to docker.io/library/gripsack-baseline-wt-model:latest done
+#15 unpacking to docker.io/library/gripsack-baseline-wt-model:latest 0.1s done
+#15 DONE 0.4s
+
+#16 resolving provenance for metadata file
+#16 DONE 0.0s
+ Image gripsack-baseline-wt-model Built 
+ Container gripsack-baseline-wt-model-run-a89e58114132 Creating 
+ Container gripsack-baseline-wt-model-run-a89e58114132 Created 
+gate passed: model checks via scripts/check_models.sh (TLC, positive + calibrated negative configs)
