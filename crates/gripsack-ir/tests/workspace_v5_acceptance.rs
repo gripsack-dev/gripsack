@@ -228,17 +228,75 @@ fn valid_documents_are_admitted_by_both_sides() {
     }
 }
 
+/// A future field must not silently grant authority to any output kind.
+/// Start from one graph accepted by both readers; each candidate changes
+/// exactly one otherwise-valid declaration and keeps its own source site.
+#[test]
+fn each_output_kind_rejects_undeclared_authority_with_its_own_span() {
+    const KINDS: [&str; 9] = [
+        "recipe",
+        "package",
+        "environment",
+        "task",
+        "schedule",
+        "check",
+        "image",
+        "profile",
+        "hook",
+    ];
+    let validator = compiled();
+    let admitted = maximal_workspace();
+    for kind in KINDS {
+        let index = admitted["workspace"]["outputs"]
+            .as_array()
+            .expect("maximal workspace outputs")
+            .iter()
+            .position(|output| output["kind"].as_str() == Some(kind))
+            .expect("every declared kind has an output");
+        let mut hostile = admitted.clone();
+        let file = format!("fixtures/{kind}.ts");
+        let output = hostile["workspace"]["outputs"][index]
+            .as_object_mut()
+            .expect("typed output");
+        output.insert(
+            "span".into(),
+            json!({"file": file.clone(), "line": index + 1}),
+        );
+        output.insert(
+            "unexpected_effect".into(),
+            json!({"kind": "host", "access": "unconfined"}),
+        );
+        assert!(
+            schema_error(&validator, &hostile).is_some(),
+            "{kind} schema admitted undeclared authority"
+        );
+        let error = parse(&hostile.to_string()).expect_err("strict parser must reject extra field");
+        assert_eq!(error.code, gripsack_ir::codes::MALFORMED, "{kind}");
+        let at = error.labels[0]
+            .span
+            .as_ref()
+            .expect("own declaration labeled");
+        assert_eq!(
+            (at.file.as_str(), at.line),
+            (
+                file.as_str(),
+                u32::try_from(index + 1).expect("fixture line fits")
+            ),
+        );
+    }
+}
+
 #[test]
 fn rejected_documents_fail_both_sides() {
     let validator = compiled();
     let cases: Vec<(&str, Value)> = vec![
         (
             "unknown top-level field",
-            json!({"ir_version": 5, "host": host(), "workspace": workspace(json!([])), "workspce": {}}),
+            json!({"ir_version": 5, "host": host(), "workspace": workspace(json!([recipe("build")])), "workspce": {}}),
         ),
         (
             "v5 declares both workspace and modules",
-            json!({"ir_version": 5, "host": host(), "modules": {}, "workspace": workspace(json!([]))}),
+            json!({"ir_version": 5, "host": host(), "modules": {}, "workspace": workspace(json!([recipe("build")]))}),
         ),
         (
             "v5 declares neither workspace nor modules",
@@ -246,16 +304,16 @@ fn rejected_documents_fail_both_sides() {
         ),
         (
             "v5 without core-injected host facts",
-            json!({"ir_version": 5, "workspace": workspace(json!([]))}),
+            json!({"ir_version": 5, "workspace": workspace(json!([recipe("build")]))}),
         ),
         (
             "ir_version out of range",
-            json!({"ir_version": 6, "host": host(), "workspace": workspace(json!([]))}),
+            json!({"ir_version": 6, "host": host(), "workspace": workspace(json!([recipe("build")]))}),
         ),
         (
             "hostname selector in host facts",
             json!({"ir_version": 5, "host": {"os": "linux", "arch": "x86_64", "hostname": "laptop"},
-                   "workspace": workspace(json!([]))}),
+                   "workspace": workspace(json!([recipe("build")]))}),
         ),
         (
             "outputs as an object, not an array",
@@ -268,27 +326,20 @@ fn rejected_documents_fail_both_sides() {
             )),
         ),
         (
-            "unknown field on an output",
-            envelope(workspace(json!([
-                recipe("build"),
-                {"kind": "package", "name": "hello", "span": span(), "producer": "build",
-                 "commands": {"hello": "bin/hello"}, "target": {"os": "linux", "arch": "x86_64"},
-                 "layout": {"kind": "relocatable"}, "stage": "deploy"},
-            ]))),
-        ),
-        (
             "missing required output field",
             envelope(workspace(json!([
                 recipe("build"),
-                {"kind": "package", "name": "hello", "span": span(), "producer": "build",
+                {"kind": "package", "name": "hello", "span": span(),
+                 "producer": {"kind": "recipe", "recipe": "build"},
                  "commands": {"hello": "bin/hello"}, "target": {"os": "linux", "arch": "x86_64"}},
             ]))),
         ),
         (
             "wrong scalar type in span",
             envelope(workspace(json!([
+                recipe("build"),
                 {"kind": "package", "name": "hello", "span": {"file": "grip.ts", "line": "3"},
-                 "producer": "build", "commands": {"hello": "bin/hello"},
+                 "producer": {"kind": "recipe", "recipe": "build"}, "commands": {"hello": "bin/hello"},
                  "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
             ]))),
         ),
@@ -312,6 +363,7 @@ fn rejected_documents_fail_both_sides() {
             envelope(workspace(json!([
                 {"kind": "recipe", "name": "build", "span": span(),
                  "source": {"fetch": {"kind": "tarball", "url": "https://example.test/s.tgz",
+                                      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                                       "baseUrl": "https://evil.test"},
                             "span": span()},
                  "execution": {"kind": "host", "access": "unconfined"}, "output_kind": "tree",
@@ -342,7 +394,7 @@ fn rejected_documents_fail_both_sides() {
             envelope(workspace(json!([
                 {"kind": "package", "name": "ripgrep", "span": span(),
                  "producer": {"kind": "provider", "provider": {
-                     "fetch": {"kind": "file", "path": "vendor/rg.tgz", "sha256": "deadbeef"},
+                     "fetch": {"kind": "file", "path": "vendor/rg.tgz", "network": true},
                      "span": span()}},
                  "commands": {"rg": "bin/rg"},
                  "target": {"os": "linux", "arch": "x86_64"}, "layout": {"kind": "relocatable"}},
@@ -360,7 +412,7 @@ fn rejected_documents_fail_both_sides() {
         ),
         (
             "future workspace field (name) stays rejected",
-            envelope(json!({"span": span(), "name": "w", "outputs": []})),
+            envelope(json!({"span": span(), "name": "w", "outputs": [recipe("build")]})),
         ),
         (
             "template content without variables",
@@ -380,30 +432,6 @@ fn rejected_documents_fail_both_sides() {
             panic!("parser admitted invalid document {name:?}: {doc}");
         }
     }
-}
-
-/// A1-06 mirror of the e2e case: a decoded profile output carrying an
-/// injected field is rejected by BOTH sides, and the parser's E000
-/// labels the profile's own declaration span — runtime rejection with
-/// source, never a bare `unknown field`.
-#[test]
-fn unknown_field_rejection_carries_declaring_span() {
-    let validator = compiled();
-    let doc = envelope(workspace(json!([
-        {"kind": "profile", "name": "p", "span": {"file": "gripsack.ts", "line": 9},
-         "unexpected_effect": true},
-    ])));
-    assert!(
-        schema_error(&validator, &doc).is_some(),
-        "schema rejects the injected field"
-    );
-    let diagnostic = parse(&doc.to_string()).unwrap_err();
-    assert_eq!(diagnostic.code, gripsack_ir::codes::MALFORMED);
-    let span = diagnostic.labels[0]
-        .span
-        .as_ref()
-        .expect("declaring span labeled");
-    assert_eq!((span.file.as_str(), span.line), ("gripsack.ts", 9));
 }
 
 /// v3/v4 documents ride retained readers, not the current v5 schema.

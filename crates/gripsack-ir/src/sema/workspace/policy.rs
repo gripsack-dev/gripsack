@@ -130,7 +130,7 @@ pub(super) fn check(
 ) {
     let indexed = index_view(projection, catalog);
     check_local_order(workspace, projection, diagnostics);
-    coverage::check(workspace, projection, &indexed.indices, diagnostics);
+    coverage::check(workspace, projection, catalog, diagnostics);
     for output in &workspace.outputs {
         if let WorkspaceOutput::Package(package) = output
             && let WorkspaceProducer::Recipe { recipe } = &package.producer
@@ -317,5 +317,80 @@ mod tests {
             .filter_map(|label| label.span.as_ref().map(|s| s.line))
             .collect();
         assert_eq!(lines, vec![4, 5]);
+    }
+
+    #[test]
+    fn swapped_same_role_targets_fail_closed_naming_both_sides() {
+        // A same-role substitution keeps every per-role count, so a
+        // cardinality-only guard admits it: swap the recipe's first
+        // build input and the package's runtime dependency for another
+        // admitted package of the same kind.
+        let recipe = RECIPE.replace(
+            r#""execution": {"kind": "host", "access": "unconfined"}"#,
+            r#""steps": [
+                    {"kind": "exec", "span": {"file": "grip.ts", "line": 4},
+                     "argv": [{"kind": "artifact", "output": "src", "selector": "."}]},
+                    {"kind": "exec", "span": {"file": "grip.ts", "line": 5},
+                     "argv": [{"kind": "artifact", "output": "alt", "selector": "."}]}],
+               "execution": {"kind": "host", "access": "unconfined"}"#,
+        );
+        let package = PACKAGE.replace(
+            r#""commands": {"hello": "bin/hello"}"#,
+            r#""commands": {"hello": "bin/hello"}, "runtime": ["rt"]"#,
+        );
+        let provider = |name: &str, line: u32| {
+            format!(
+                r#"{{
+            "kind": "package", "name": "{name}", "span": {{"file": "grip.ts", "line": {line}}},
+            "producer": {{"kind": "provider", "provider": {{
+                "fetch": {{"kind": "file", "path": "{name}.bin"}},
+                "span": {{"file": "grip.ts", "line": {line}}}}}}},
+            "commands": {{"tool": "bin/tool"}},
+            "target": {{"os": "linux", "arch": "x86_64"}},
+            "layout": {{"kind": "relocatable"}}}}"#
+            )
+        };
+        let (src, alt, rt) = (provider("src", 11), provider("alt", 12), provider("rt", 13));
+        let document = doc(&format!("{recipe},{package},{src},{alt},{rt}"));
+        // The unmodified graph admits through the full production
+        // pipeline — the mutations below are adapter defects, not
+        // authoring errors.
+        crate::check(&document).expect("distinct build inputs and runtime admit");
+        let ir = crate::parse(&document).unwrap();
+        let workspace = ir.workspace.as_ref().unwrap();
+        let mut diagnostics = Vec::new();
+        let catalog = super::super::names::check(workspace, &mut diagnostics);
+        let projection = super::super::graph::collect(workspace);
+        super::check(workspace, &projection, &catalog, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "unmodified projection admits");
+
+        for (role, declared, projected, source, declared_line, projected_line) in [
+            (EdgeRole::BuildInput, "src", "alt", 2, 11, 12),
+            (EdgeRole::Runtime, "rt", "alt", 3, 13, 12),
+        ] {
+            let mut projection = super::super::graph::collect(workspace);
+            let edge = projection
+                .edges
+                .iter_mut()
+                .find(|edge| edge.role == role && edge.to == declared)
+                .expect("the fixture carries the edge to swap");
+            edge.to = projected;
+            let mut diagnostics = Vec::new();
+            super::check(workspace, &projection, &catalog, &mut diagnostics);
+            let failure = diagnostics
+                .iter()
+                .find(|d| {
+                    d.code == codes::REQUIRED_WORKSPACE_EDGE_MISSING
+                        && d.message.contains(&format!("`{declared}`"))
+                        && d.message.contains(&format!("`{projected}`"))
+                })
+                .expect("same-role substitution blocks admission");
+            let lines: Vec<u32> = failure
+                .labels
+                .iter()
+                .filter_map(|label| label.span.as_ref().map(|span| span.line))
+                .collect();
+            assert_eq!(lines, vec![source, declared_line, projected_line]);
+        }
     }
 }

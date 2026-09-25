@@ -406,3 +406,54 @@ def test_schedule_and_task_prerequisite_capabilities_keep_their_owners(sandbox):
     assert "E124" in invoked.stderr and "task prerequisite" in invoked.stderr
     assert "E1" in invoked.stderr and "tasks.ts:8" in invoked.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+def test_user_exception_stays_a_traceback_on_both_surfaces(sandbox):
+    """A1-06 boundary: a user exception is a real defect, not an
+    authoring typo — both surfaces pass the traceback through and the
+    JSON document honestly carries no synthetic E130."""
+    repo = write_repo(
+        sandbox,
+        "user-throw",
+        'import { defineWorkspace } from "@gripsack/core";\n'
+        "export default defineWorkspace(() => {\n"
+        '  throw new Error("user boom");\n'
+        "});\n",
+    )
+    terminal = grip("check", cwd=repo)
+    machine = grip("check", "--json", cwd=repo)
+    assert terminal.returncode != 0
+    assert machine.returncode == terminal.returncode
+    assert "user boom" in terminal.stderr
+    assert "user boom" in machine.stderr
+    assert "frontend eval failed" in terminal.stderr
+    assert "frontend eval failed" in machine.stderr
+    assert "E130" not in terminal.stderr + terminal.stdout
+    doc = json.loads(machine.stdout)
+    assert doc["version"] == 1
+    assert doc["ok"] is False
+    assert doc["diagnostics"] == [], "a traceback must not mint synthetic diagnostics"
+
+
+def test_engine_error_stays_a_traceback_on_both_surfaces(sandbox):
+    """Engine errors (TypeError) are defects in the authoring program,
+    not invalid declarations — same traceback contract, never E130."""
+    repo = write_repo(
+        sandbox,
+        "type-error",
+        'import { defineWorkspace, workspace } from "@gripsack/core";\n'
+        "export default defineWorkspace(() => {\n"
+        '  const nothing = JSON.parse("null")\n'
+        "  return workspace({ outputs: [nothing.outputs] })\n"
+        "});\n",
+    )
+    terminal = grip("check", cwd=repo)
+    machine = grip("check", "--json", cwd=repo)
+    assert terminal.returncode != 0
+    assert machine.returncode == terminal.returncode
+    assert "TypeError" in terminal.stderr
+    assert "TypeError" in machine.stderr
+    assert "E130" not in terminal.stderr + terminal.stdout
+    doc = json.loads(machine.stdout)
+    assert doc["ok"] is False
+    assert doc["diagnostics"] == []

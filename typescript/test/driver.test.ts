@@ -355,3 +355,24 @@ Deno.test("a gripsack.ts without a defineWorkspace default export errors clearly
     assert.match(r.stderr, /must default-export defineWorkspace/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// A1-06 classification boundary: a syntax error in the workspace file
+// is an engine failure — the import rethrows to the traceback path
+// (0005 §4), never a synthetic E130 envelope.
+
+Deno.test("a syntax error in gripsack.ts stays a traceback", () => {
+  withRepo(
+    {
+      "gripsack.ts": 'import { defineWorkspace } from "@gripsack/core";\n' +
+        "export default defineWorkspace(() => {\n",
+    },
+    (repo) => {
+      const r = runDriver(repo, baseInputs);
+      assert.equal(r.status, 1);
+      assert.equal(r.stdout, "");
+      assert.match(r.stderr, /gripsack\.ts/);
+      assert.doesNotMatch(r.stderr, /E130/);
+    },
+  );
+});

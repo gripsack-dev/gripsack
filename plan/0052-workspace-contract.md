@@ -813,9 +813,52 @@ runner; they do not prove A1-07's conjunctive schema/architecture
 case, the schema/name-index bridge or complete formal family. The
 compact module/API cutover and native CI/Mac lanes remain open.
 
-## 17. Honesty register
+## 17. A1-02/A1-06/A1-07 graph identity and negative-admission packet (not closure)
 
-- This document began as a design candidate; §§9–16 record read-only
+The previous per-output role-cardinality guard could not tell a
+same-role target substitution from its intended edge: a build input
+to `src` replaced by `alt` still counted as one build input. The
+production admission adapter now compares each decoded output's
+streamed `(role, target name)` references against its own contiguous
+projected edges. It rejects missing, extra, reordered, reclassified
+and same-role substituted references with E131 before the verified
+closure is used; a substitution labels the referring output and
+both catalog targets. Successful coverage adds no heap allocation.
+A valid graph and both build-input and runtime target substitutions
+are exercised in the adapter regression. This is a **runtime guard**,
+not a proof of schema decoding, name-to-index correspondence, or
+selector/package-command payload identity. The production-used
+Verus role/closure kernels still have exactly their §11 claims.
+
+The v5 corpus starts from a valid all-nine-kind workspace, injects
+one undeclared effect field in each distinct output kind and checks
+both schema and core parser reject it with that declaration's span.
+Former negative corpus members with an empty, invalid workspace or
+malformed producer/fetch alongside their intended mutation were
+corrected so they no longer pass for an unrelated reason. The
+retained v3 reader and strict read-only v4 corpus are unchanged.
+
+The A1-06 audit found no reachable plain internal `Error` being
+misclassified as an E130 authoring typo: user exceptions and engine
+failures take the traceback path; real CLI tests now exercise both
+terminal and JSON surfaces, and a Deno driver case distinguishes
+an import syntax error from an authoring diagnostic. No production
+diagnostic behavior was altered. These regressions do not discharge
+the diagnostic-registry proof, all capability-owner cases or native
+CI/Mac evidence. §16's source-bound reports precede these source
+changes and must not be reused for a closure claim.
+
+The Linux worktree gates passed Rust fmt/clippy/tests after an initial
+rustfmt-only failure was corrected, fresh Deno **63/63**, focused real
+CLI golden/workspace/diagnostic cases **37/37**, complete real CLI e2e
+**281/281**, and fresh Verus **61 verified / 0 errors** with **five**
+mutants. The TLC model image was **CACHED**. These worktree gates are
+not source-stamped CI or a proof of the unverified adapter bridge;
+the §16 receipts bind the earlier `ff73b62` code, not this revision.
+
+## 18. Honesty register
+
+- This document began as a design candidate; §§9–17 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
