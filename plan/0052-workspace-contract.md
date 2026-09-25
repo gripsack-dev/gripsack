@@ -1179,9 +1179,40 @@ nor the new pure target theorem prove the remaining name/index,
 IR→policy mapping, normalization or diagnostic proof obligations;
 no protected CI, native Mac or release is claimed.
 
-## 24. Honesty register
+## 24. A1-02 catalog/index fail-closed admission (not refinement proof)
 
-- This document began as a design candidate; §§9–23 record read-only
+The production `policy::index_view` previously used `continue` for a
+missing target, incompatible target kind or absent name index. Its
+caller also skipped producer closure when the catalog lacked a
+producer. A direct adapter regression **failed before** the fix:
+removing a declared recipe from the catalog produced no diagnostic.
+`policy::check` now verifies that every decoded output maps to
+itself exactly once, with no extra catalog entries, before the
+verified role and closure kernels consume its name/index projection.
+Missing, substituted and extra catalog entries return E131 at the
+affected declaration; a substitution also labels the wrongly indexed
+output. `index_view` returns a diagnostic rather than discarding an
+unresolved or wrong-kind edge.
+The valid path makes no additional heap allocation. Focused Rust
+adapter cases passed **7/7** after the change.
+
+The production module now holds admission/closure policy only;
+its behavioral regressions live in `policy/tests.rs`, rather than
+leaving a large mixed production/test file. This runtime
+correspondence guard is **not** a theorem about serde decoding,
+catalog construction, injective name→index adaptation or provenance.
+A1-02 and the plan 0048 proof/CI/Mac gates remain open.
+
+The post-edit Linux compose chain passed fresh Rust fmt/clippy/
+tests, real CLI e2e **289/289**, and fresh Verus **68 verified /
+0 errors** with six policy mutants. TypeScript and TLC image
+layers were **CACHED**, not fresh Deno/model runs for this source.
+The source-bound `2699d79` receipts precede the adapter and test
+split; they remain historical until fresh reports bind this code.
+
+## 25. Honesty register
+
+- This document began as a design candidate; §§9–24 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
