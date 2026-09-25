@@ -46,19 +46,19 @@ Runner reports exist for source commits
 `53c6fac8bc4c4290d66a2f1f5644f4cc8d6063c6`,
 `d6d29d7082f69e14e03a262381a776545782961d`,
 `ff73b62618359d002040a2d648b87c1d2a6e78bd`,
-`123f3bbf9555621d03a0ce989fc02b6abb16b892` and
-`01c186fd821eee4a3c077c06ffb7aa53fe38bd7e`. The tracked
+`123f3bbf9555621d03a0ce989fc02b6abb16b892`,
+`01c186fd821eee4a3c077c06ffb7aa53fe38bd7e` and
+`530ae7db0e4ccc1df7e63e3ddf76597454110e95`. Tracked
 behavior-bearing `SOURCE_ROOTS` were clean before and after each
-run. The calibration script changed between the first two commits;
-the golden/fixture tests changed before the third, the graph/schema/
-diagnostic work before the fourth, and selector/exported-command
-correspondence before the fifth. Their source fingerprints are not
-interchangeable. The ledger cites the **fifth** run for selected
-historical A1 cases; three newer E124 owner fixtures change the
-tracked e2e source, so no listed report yet binds that source.
-Logs carry exact SHA, command, versions and inputs plus raw runner
-output and counted result markers. The fifth source fingerprint is
-`061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919`.
+run. Calibration changed before the second source; goldens/
+fixtures before the third; graph/schema/diagnostics before the
+fourth; selector and exported-command correspondence before the
+fifth; three E124 owner cases before the sixth. Source fingerprints
+are not interchangeable. The ledger cites the **sixth** run for
+selected cases; preceding runs remain history. Logs retain exact
+SHA, command, versions, inputs, raw runner output and counted
+markers. The current fingerprint is
+`98d65220fa0ca5ee61b2e733b0945b1e97eb3cd515b6478a429723388653ee92`.
 These are local container observations, **not** GitHub CI or native
 Mac attestations.
 
@@ -78,6 +78,11 @@ Mac attestations.
 | `2026-09-24-a1-workspace-01c186f-policy.log` | `6cf259601dfbe8509dd0009ab352ccb260f65a9535a9224558fe3218847553a3` | Earlier source-bound production adapter unit suite: 5 passed, including valid graph, role/target and selector/exported-command substitution cases; no adapter proof |
 | `2026-09-24-a1-workspace-01c186f-architecture.log` | `5eeef004595b6cd4917d9965117346496fc79de0d217b97f71d6d9e5fc9d65e0` | Earlier source-bound parsed-TOML architecture self-check: one suite covering named workspace members, missing protected crate and rustls boundary negatives |
 | `2026-09-24-a1-workspace-01c186f-verus.log` | `976bd28dccb60a1a6660d78ee79177bbd58bebf2a1de4f6b58d1b889baf9d64d` | Earlier source-bound fresh Verus: 61 verified/0 errors and named graph-validation mutant rejected; selector/name-index adapter unproved |
+| `2026-09-24-a1-workspace-530ae7d-corpus.log` | `6696ef2415c878bdffdb47d15aee8adc6abccdc6650dc8d92045b181e6f2d89c` | Current source-bound corpus: 40 real frontend/CLI cases including E124 owner paths, plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 51 passed, 0 failed/skipped |
+| `2026-09-24-a1-workspace-530ae7d-owners.log` | `47871eb88b1728c7897210104bde1b5ac71ad3f2f26514d07c0b715fa87d2384` | Current source-bound named real CLI owners: image B4, environment A2-P and check A2/E1, 3 passed / 0 failed or skipped (14 deselected, not executed) |
+| `2026-09-24-a1-workspace-530ae7d-policy.log` | `d3323a4084868b1cbf9ab1f9eae765c0520a1cf915f7993d2327ee107c7a3950` | Current source-bound direct production adapter suite: 5 passed including role/target and selector/exported-command substitutions; no adapter proof |
+| `2026-09-24-a1-workspace-530ae7d-architecture.log` | `d7be0876ccd716d37780547835d1282308192c8e3b4050efe52a501a9b3457c6` | Current source-bound parsed-TOML architecture self-check with named member, TLS and missing-crate negatives |
+| `2026-09-24-a1-workspace-530ae7d-verus.log` | `73564bec9e5a6bef478a5dec5e8accc8a53857c3d22f398b9c124a00279598da` | Current source-bound fresh Verus 61 verified/0 errors; named graph-validation mutant rejected, but no schema/name-index or E124 diagnostic proof |
 
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS

@@ -946,6 +946,20 @@ claimed for this test-only edit. The §18 source-stamped `01c186f`
 receipts predate the changed e2e test tree, so they are historical
 for any closure claim on this source revision.
 
+At committed source revision
+`530ae7db0e4ccc1df7e63e3ddf76597454110e95`, clean tracked
+source roots were checked before and after the direct runners. The
+SHA-256 checked composite report records **40/40** real frontend/
+CLI cases plus **3/3 v3, 3/3 v4 and 5/5 v5** schema/parser cases.
+A separate verbose real CLI report names all **3/3** B4/A2-P/A2-E1
+owner cases, and the adapter suite **5/5** remains green. One
+architecture self-check and a fresh direct Verus run **61 verified /
+0 errors** with the named graph-validation mutant are bound to the
+same source fingerprint
+`98d65220fa0ca5ee61b2e733b0945b1e97eb3cd515b6478a429723388653ee92`.
+These are local, selected cases; they do not prove the name/index
+bridge or supply protected CI, native Mac or release evidence.
+
 ## 20. Honesty register
 
 - This document began as a design candidate; §§9–19 record read-only
