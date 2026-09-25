@@ -51,19 +51,21 @@ Runner reports exist for source commits
 `530ae7db0e4ccc1df7e63e3ddf76597454110e95`,
 `8583a4652078a66e2a7d06676a12934ceb8f63d1`,
 `6c759a597806ace3f963346701881c7ef7d0d7f3`,
-`a754e048360a6146368fd58056f274a4e7f3c1a6` and
-`2699d79342da7c70136840828ae3455b0e3eb257`. Tracked
+`a754e048360a6146368fd58056f274a4e7f3c1a6`,
+`2699d79342da7c70136840828ae3455b0e3eb257` and
+`0d7801e0541b32917611dd7ec47455a3a6c59f32`. Tracked
 behavior-bearing `SOURCE_ROOTS` were clean before and after each
 direct runner; changes to calibration, fixtures, schema, graph
 adapters, examples and the generated diagnostic registry make
-their fingerprints non-interchangeable. The ledger cites only the
-**tenth** source for current selected A1 cases. Earlier reports
-remain historical. Reports retain commands, versions, inputs,
-source identities, raw output and counted markers.
-The current source fingerprint is
-`b33a5ab41e0e6143f08905130694fc67e356e30d6259c28f7d63fdc6147d32eb`;
-the preceding graph-adapter revision's fingerprint is
-`12b790f6e0bb2e7e0c3af2f678e41cd279c5f0237f2da5fa7413fd07e55e195b`.
+their fingerprints non-interchangeable. Only the focused A1-02
+adapter and kernel receipts bind the **eleventh** source; the other
+A1 row receipts still bind earlier code and cannot support a
+closure claim for the changed Rust adapter. Reports retain commands,
+versions, inputs, source identities, raw output and counted markers.
+The latest source fingerprint is
+`847090e2748c3eec42118c4311baa143541f51317d930b6b58887a6374b53732`;
+the preceding target-kernel revision's fingerprint is
+`b33a5ab41e0e6143f08905130694fc67e356e30d6259c28f7d63fdc6147d32eb`.
 These are local container observations, **not** GitHub CI or native
 Mac attestations.
 
@@ -108,13 +110,15 @@ Mac attestations.
 | `2026-09-25-a1-workspace-a754e04-diagnostics.log` | `af1a5dcccec3dc4b0b0e0c2a74d062fd3640733b2634e11ac0b0a8470d113f6a` | Earlier source: generated registry fresh, 3 named mutants, Deno 63/63 and 17 real CLI diagnostics: 84 checks, not a classification theorem |
 | `2026-09-25-a1-workspace-a754e04-architecture.log` | `50508d01596c39aa13a688849acec8456a113a9cbd1641e36d013de21adccda5` | Earlier source: one parsed-TOML architecture self-check with dependency, rustls, member-discovery and missing-crate negatives |
 | `2026-09-25-a1-workspace-a754e04-verus.log` | `cbfc348d164746077242f2dbf19f11974a44fd9ec8e3ba278bd3bdbd0a197837` | Earlier source: fresh production policy Verus 61 verified/0 errors and five mutants; no schema/name-index/adapter proof |
-| `2026-09-25-a1-workspace-2699d79-corpus.log` | `ac609ed7b6b2e110af90794452ad02f2ead9d48e48a04ba4e801f783a54a63ca` | Current source: 45 real frontend/CLI plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 56 passed, 0 failed/skipped |
-| `2026-09-25-a1-workspace-2699d79-target-graph.log` | `00331c54c45eb1a78e10984fd47f9096c3c9950d0140599860cec2a45b6044b3` | Current source: six production adapter cases plus two real CLI target cases covering floor/ABI/producer mismatches, 8 checks; no adapter theorem |
-| `2026-09-25-a1-workspace-2699d79-owners.log` | `e0a016ddd1d0dc1bfc9f2bcde3109979178a21e3c95de552d6d76d3d3b01c294` | Current source: three named real CLI E124 owner cases passed |
-| `2026-09-25-a1-workspace-2699d79-examples-composite.log` | `1e751600171de21d22245cd772a37966d813233289c6d6a8fcfdcb4f34dd8def` | Current source: four authored examples strictly typechecked and five real CLI/frontend admission/alternate-producer cases, 9 checks |
-| `2026-09-25-a1-workspace-2699d79-diagnostics.log` | `83b7c014355e0d94a0ca08877be7d378d172040bc41103652d322b8546c64837` | Current source: 36 generated Rust IDs and five frontend names fresh, 3 registry mutants, Deno 63/63 and 17 real CLI diagnostics: 84 checks |
-| `2026-09-25-a1-workspace-2699d79-architecture.log` | `4817562e11f5aa4da4432e9d8dd9440bee073cb87ebd773664cf08a591335d3f` | Current source: parsed-TOML architecture self-check with member, rustls, dependency and missing-crate negatives |
-| `2026-09-25-a1-workspace-2699d79-verus.log` | `5be077ac8497fe1e7ae5183647af2e92db381d0a861d304d680542c398680f67` | Current source: fresh production policy Verus 68 verified/0 errors with six mutants including named graph-validation and target-ABI failures; no schema/name-index/adapter or diagnostic proof |
+| `2026-09-25-a1-workspace-2699d79-corpus.log` | `ac609ed7b6b2e110af90794452ad02f2ead9d48e48a04ba4e801f783a54a63ca` | Earlier source: 45 real frontend/CLI plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 56 passed, 0 failed/skipped |
+| `2026-09-25-a1-workspace-2699d79-target-graph.log` | `00331c54c45eb1a78e10984fd47f9096c3c9950d0140599860cec2a45b6044b3` | Earlier source: six production adapter cases plus two real CLI target cases, 8 checks; no adapter theorem |
+| `2026-09-25-a1-workspace-2699d79-owners.log` | `e0a016ddd1d0dc1bfc9f2bcde3109979178a21e3c95de552d6d76d3d3b01c294` | Earlier source: three named real CLI E124 owner cases passed |
+| `2026-09-25-a1-workspace-2699d79-examples-composite.log` | `1e751600171de21d22245cd772a37966d813233289c6d6a8fcfdcb4f34dd8def` | Earlier source: four authored examples strictly typechecked and five real CLI/frontend admission/alternate-producer cases, 9 checks |
+| `2026-09-25-a1-workspace-2699d79-diagnostics.log` | `83b7c014355e0d94a0ca08877be7d378d172040bc41103652d322b8546c64837` | Earlier source: 36 generated Rust IDs and five frontend names fresh, 3 registry mutants, Deno 63/63 and 17 real CLI diagnostics: 84 checks |
+| `2026-09-25-a1-workspace-2699d79-architecture.log` | `4817562e11f5aa4da4432e9d8dd9440bee073cb87ebd773664cf08a591335d3f` | Earlier source: parsed-TOML architecture self-check with member, rustls, dependency and missing-crate negatives |
+| `2026-09-25-a1-workspace-2699d79-verus.log` | `5be077ac8497fe1e7ae5183647af2e92db381d0a861d304d680542c398680f67` | Earlier source: fresh production policy Verus 68 verified/0 errors with six mutants; no catalog/name-index/adapter proof |
+| `2026-09-25-a1-workspace-0d7801e-catalog-graph.log` | `82336d84353721a4a08f1bf56c8f613dc1010fa3d35834d9c285c2cff5b785d9` | Current source: seven production adapter cases including the failing-before catalog omission plus two real CLI target cases; 9 passed, 0 failed/skipped |
+| `2026-09-25-a1-workspace-0d7801e-verus.log` | `f91ce1e9e00517f557b1da0a056366c36280aae09f3f8be795f0862d2c0a6ef3` | Current source: fresh policy Verus 68 verified/0 errors with six mutants, graph-validation and target-ABI attributed; catalog mapping remains unproved |
 
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS

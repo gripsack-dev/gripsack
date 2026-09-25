@@ -1207,8 +1207,19 @@ The post-edit Linux compose chain passed fresh Rust fmt/clippy/
 tests, real CLI e2e **289/289**, and fresh Verus **68 verified /
 0 errors** with six policy mutants. TypeScript and TLC image
 layers were **CACHED**, not fresh Deno/model runs for this source.
-The source-bound `2699d79` receipts precede the adapter and test
-split; they remain historical until fresh reports bind this code.
+The `2699d79` receipts predate the adapter and test split and remain
+historical. At committed source revision
+`0d7801e0541b32917611dd7ec47455a3a6c59f32`, tracked
+`SOURCE_ROOTS` were clean before and after direct runner commands.
+The SHA-256 checked focused report records **7/7** production
+adapter regressions plus **2/2** real CLI target cases. A separate
+fresh Verus run reports **68 verified / 0 errors** and six policy
+mutants, including named graph-validation and target-ABI rejection.
+The source fingerprint is
+`847090e2748c3eec42118c4311baa143541f51317d930b6b58887a6374b53732`.
+These local reports bind only selected A1-02 cases; the required
+catalog/name-index refinement theorem, other A1 rows, protected CI
+and native Mac evidence remain open.
 
 ## 25. Honesty register
 
