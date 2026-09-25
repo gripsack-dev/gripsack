@@ -998,6 +998,22 @@ layers were **CACHED** too, not fresh proofs for this source.
 The `530ae7d` source-stamped local reports predate the new
 `examples/` source root and cannot bind an A1-10 or release claim.
 
+At committed code revision
+`8583a4652078a66e2a7d06676a12934ceb8f63d1`, clean tracked
+source roots were checked before and after the direct runners.
+The SHA-256 checked example report contains the strict compiler's
+four original source-file paths and **5/5** named real CLI/frontend
+cases, including the changed injected-arch producer. The
+cross-language corpus records **45/45** CLI/frontend and **11/11**
+v3/v4/v5 schema/parser cases; the adapter suite **5/5**, three
+named E124 owners and one architecture self-check passed. Fresh
+Verus **61 verified / 0 errors** rejected the graph-validation
+mutant on its contract, not an A1-10 normalization mutant. The
+`SOURCE_ROOTS` fingerprint is
+`ffaa9376e1a57434e06279d45f97a44f821177b7478d3f4e2ae896f2860cc825`.
+These are local selected cases only, not protected CI, native Mac
+or proof of a compact SDK/public release.
+
 ## 21. Honesty register
 
 - This document began as a design candidate; §§9–20 record read-only
