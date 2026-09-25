@@ -740,9 +740,32 @@ The TLC model gate reused a **CACHED** layer. Other capability-owner
 combinations, source-bound CI/Mac evidence and A1-06's diagnostic
 registry proof remain open. No workspace execution or release.
 
-## 15. Honesty register
+## 15. Source-stamped local runner evidence (not CI closure)
 
-- This document began as a design candidate; §§9–14 record read-only
+At code commit `d6d29d7082f69e14e03a262381a776545782961d`,
+clean tracked source roots were checked around fresh container runs.
+The repo-local SHA-256 checked logs in `verification/reports/` retain
+the runner output, command, versions, exact commit and dirty-root
+statement: real CLI workspace/diagnostic flows **30 passed /
+0 failed / 0 skipped**, and a fresh policy proof **61 verified /
+0 errors** with the graph-validation mutant rejected at its named
+property. `verification/delivery.json` binds those bytes to selected
+A1-01/A1-02/A1-03/A1-06 cases. Cases not exercised in the two
+runner commands remain outside those records; the proof does not
+establish schema/name-index refinement. These are **local**
+source-bound reports, not CI, native Mac or release evidence.
+
+The checked `SOURCE_ROOTS` fingerprint of the evidence-bearing code
+is `e057eb20f9ce59d3bbcc01960b20b1471a1846598f4d98bfd585215d8d5644f3`.
+The earlier local runner at `53c6fac` predates the delivery-calibration
+source change and is retained as history, not reused for this code.
+An evidence-only ledger/report commit may reuse the new logs only if
+the checker confirms byte-identical source roots. No row is marked
+verified by that narrower correspondence.
+
+## 16. Honesty register
+
+- This document began as a design candidate; §§9–15 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

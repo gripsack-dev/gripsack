@@ -880,7 +880,30 @@
     "Production-connected A1 semantic admission proof correspondence remains required at A1 closure"
    ],
    "evidence_kinds": ["runner", "formal", "review"],
-   "evidence_records": [],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": ["grip check", "grip plan --ir", "grip apply", "typescript/src/cli.ts"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; pytest 9.1.1; sandboxed HOME; offline test fixtures",
+     "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_workspace_contract.py test_workspace_diagnostics.py",
+     "result": "pass",
+     "report": "verification/reports/2026-09-24-a1-workspace-d6d29d7-e2e.log",
+     "report_sha256": "eb75090328cfc50dccbb6494c6bdd5717a40d3f5cd6d1a0ecf9658b86c20bb4f",
+     "commit": "d6d29d7082f69e14e03a262381a776545782961d",
+     "source_reuse_sha256": "e057eb20f9ce59d3bbcc01960b20b1471a1846598f4d98bfd585215d8d5644f3",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [
+      "Project gripsack.ts checks without hosts/<name>.ts or env.toml, including dotfiles-only profile and provider-backed package",
+      "Unavailable workspace plan/apply/update/adopt reject with E124 before activation, without builder bootstrap"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; pytest 9.1.1",
+     "inputs": "Committed v5 workspace frontend, historical v4 reader and offline project/profile fixture repos",
+     "report_marker": "30 passed in 3.86s",
+     "counts": {"executed": 30, "passed": 30, "failed": 0, "skipped": 0}
+    }
+   ],
    "lane_status": {
     "pure": "implemented_unverified",
     "container-gates": "implemented_unverified",
@@ -892,7 +915,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "implemented_unverified"}
    ],
-   "implementation_notes": "Read-only workspace v4 admission and CLI check landed; focused e2e 5/5 and golden 2/2 observed. Source-bound runner reports, full A1 proof family, native Mac and CI protection evidence remain open; no realization or schedule execution is claimed."
+   "implementation_notes": "Current v5 read-only catalog/check surface and strict historical v4 workspace reader are implemented; source-stamped local Linux e2e runner report at d6d29d7 records 30 passing CLI cases, with A1-01's project-entry and pre-effect E124 cases explicitly covered. The nine-kind schema/Rust/TS matrix, every invalid type case, historical v3 profile lifecycles, full semantic admission proof, native Mac and live CI lanes remain open; no realization or schedule execution is claimed."
   },
   {
    "id": "A1-02",
@@ -919,7 +942,71 @@
     "Versioned workspace graph adapters use the production policy kernel, including the build-only projection and required checks",
     "Production-connected graph/closure proof and a dropped-validation-edge mutant run at A1 closure"
    ],
-   "evidence_records": [],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": ["grip check", "grip plan --ir", "crates/gripsack-ir/src/sema/workspace/policy.rs"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; pytest 9.1.1; sandboxed HOME; offline test fixtures",
+     "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_workspace_contract.py test_workspace_diagnostics.py",
+     "result": "pass",
+     "report": "verification/reports/2026-09-24-a1-workspace-d6d29d7-e2e.log",
+     "report_sha256": "eb75090328cfc50dccbb6494c6bdd5717a40d3f5cd6d1a0ecf9658b86c20bb4f",
+     "commit": "d6d29d7082f69e14e03a262381a776545782961d",
+     "source_reuse_sha256": "e057eb20f9ce59d3bbcc01960b20b1471a1846598f4d98bfd585215d8d5644f3",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [
+      "Decoded recipe/package/check/task/output references reject missing and wrong kinds with declaration spans"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; pytest 9.1.1",
+     "inputs": "Committed v5 workspace Rust/TypeScript graph and offline workspace contract fixtures",
+     "report_marker": "30 passed in 3.86s",
+     "counts": {"executed": 30, "passed": 30, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "proofs",
+     "date": "2026-09-24",
+     "entry_points": ["gripsack-policy::graph::roles::project_graph_roles", "scripts/check_verus.sh"],
+     "environment": "Linux x86_64 verifier container; fresh CARGO_TARGET_DIR; Z3 supplied by pinned image",
+     "command": "docker compose run --build --rm verify sh scripts/check_verus.sh",
+     "result": "pass",
+     "report": "verification/reports/2026-09-24-a1-workspace-d6d29d7-verus.log",
+     "report_sha256": "bca914dc0cb3b6904416aab25da9c7e72275ad11d13845dab39f20353ca68741",
+     "commit": "d6d29d7082f69e14e03a262381a776545782961d",
+     "source_reuse_sha256": "e057eb20f9ce59d3bbcc01960b20b1471a1846598f4d98bfd585215d8d5644f3",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [],
+     "kind": "runner",
+     "tool_versions": "Verus 0.2026.09.06.8dea4a2; Z3 4.16.0; rustc 1.98.0",
+     "inputs": "Committed GraphRole and build_closure production kernels; 61 Verus obligations, not the unproved JSON/name-index bridge",
+     "report_marker": "positive: verification results:: 61 verified, 0 errors",
+     "counts": {"executed": 61, "passed": 61, "failed": 0, "skipped": 0},
+     "obligations": {"expected": 61, "checked": 61, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "proofs",
+     "date": "2026-09-24",
+     "entry_points": ["gripsack-policy/src/graph/roles.rs", "scripts/check_verus.sh"],
+     "environment": "Linux x86_64 verifier container; named graph-validation mutant",
+     "command": "docker compose run --build --rm verify sh scripts/check_verus.sh",
+     "result": "pass",
+     "report": "verification/reports/2026-09-24-a1-workspace-d6d29d7-verus.log",
+     "report_sha256": "bca914dc0cb3b6904416aab25da9c7e72275ad11d13845dab39f20353ca68741",
+     "commit": "d6d29d7082f69e14e03a262381a776545782961d",
+     "source_reuse_sha256": "e057eb20f9ce59d3bbcc01960b20b1471a1846598f4d98bfd585215d8d5644f3",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [],
+     "kind": "mutant-calibration",
+     "tool_versions": "Verus 0.2026.09.06.8dea4a2; Z3 4.16.0; rustc 1.98.0",
+     "inputs": "Required-validation assertion mutant in production graph role kernel; other four mutants are not claimed as adapter refinement",
+     "report_marker": "CALIBRATED_GRAPH_VALIDATION=1",
+     "counts": {"executed": 1, "passed": 1, "failed": 0, "skipped": 0},
+     "intended_property": "validation edges remain mandatory publication gates",
+     "observed_rejection": "calibration: graph-validation mutant rejected on its contract",
+     "tool_present": true
+    }
+   ],
    "lane_status": {
     "pure": "in_progress",
     "container-gates": "in_progress",
@@ -929,7 +1016,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Current v5 read-only graph uses production gripsack-policy build-closure and a verified edge-role classifier (fresh 61 Verus obligations/0 errors; five calibrated mutants including dropped required validation). Strict historical v4 workspace/schema and v3 module readers remain available. Schema/Rust/TS migrated together to explicit execution, typed ABI/minimum-OS, fixed-prefix environment selection and local ordering. The production adapter additionally compares decoded per-output role cardinalities with its graph projection, rejecting dropped build-input/runtime references with E131 and source spans (focused adapter tests 4/4); this is not a formal schema-to-name-index or same-role reference identity proof. Final Linux compose passed Rust fmt/clippy/tests, focused fresh Deno 62/62, e2e 275/275 and fresh Verus 61/0 with five mutants; the final TS and TLC model layers were CACHED. Source-bound CI and full adapter refinement remain open. No workspace executor, Mac claim or public release is authorized."
+   "implementation_notes": "Current v5 graph uses production gripsack-policy build-closure and a verified edge-role classifier. Schema/Rust/TS cut over typed execution, ABI/minimum-OS, prefix selection and local ordering while retaining strict v3/v4 readers. The production adapter compares decoded per-output role cardinalities with its projection (E131 for dropped build/runtime edges), not a full schema-to-name-index or same-role reference identity proof. Source-stamped local e2e and Verus reports at d6d29d7 observed 30 passing CLI cases, 61 verified/0 errors and one attributable graph-validation mutant; selected cases only, not a full proof family. Native Mac, missing conjunctive cases and live source-bound CI remain open. No workspace executor or public release is authorized."
   },
   {
    "id": "A1-03",
@@ -955,7 +1042,29 @@
     "Recipe host access policy stays explicit and hooks retain post_link/post_activate/on_remove lifecycle semantics",
     "Production-connected normalization proof for fluent/object equivalence and an attributable mutant run before A1 closure"
    ],
-   "evidence_records": [],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": ["typescript/src/workspace/commands.ts", "grip check", "grip plan --ir"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; pytest 9.1.1; sandboxed HOME; offline test fixtures",
+     "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_workspace_contract.py test_workspace_diagnostics.py",
+     "result": "pass",
+     "report": "verification/reports/2026-09-24-a1-workspace-d6d29d7-e2e.log",
+     "report_sha256": "eb75090328cfc50dccbb6494c6bdd5717a40d3f5cd6d1a0ecf9658b86c20bb4f",
+     "commit": "d6d29d7082f69e14e03a262381a776545782961d",
+     "source_reuse_sha256": "e057eb20f9ce59d3bbcc01960b20b1471a1846598f4d98bfd585215d8d5644f3",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [
+      "Literal Bash bodies reject interpolation at the declaring source line and map dedented generated lines to the original template, never a guessed command callsite"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; pytest 9.1.1",
+     "inputs": "Committed fluent Bash/exec authoring and decoded Bash admission fixtures in v5",
+     "report_marker": "30 passed in 3.86s",
+     "counts": {"executed": 30, "passed": 30, "failed": 0, "skipped": 0}
+    }
+   ],
    "lane_status": {
     "pure": "in_progress",
     "container-gates": "in_progress",
@@ -965,7 +1074,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Read-only v5 frontend now has immutable fluent exec/Bash builders using the same object normalization, canonical data-only env keys, typed argv, a literal Bash source-location helper and accurate multiline dedent maps. Rust sema rejects `${` in forged decoded Bash IR with E130, using the original script line when a source map is present; its focused regression failed before and passed after the fix. Deno 63 passed fresh in the focused container, npm build passed, real CLI focused workspace cases 18/18. Full post-correction Linux compose passed Rust fmt/clippy/tests, e2e 264/264 and fresh Verus 61/0 with five mutants; the final TypeScript and TLC model image layers were cached after earlier fresh TS/proof runs. The v5 wire still lacks resolved interpreter bytes and strict Bash options; JS evaluates template expressions before the tag can reject them. A versioned wire/executor policy cutover, static interpolation guard, production normalization proof/mutant and source-bound CI remain open. No A1-03 closure or release is claimed."
+   "implementation_notes": "The v5 frontend implements immutable fluent exec/Bash builders, canonical data-only env keys, typed argv, literal Bash source maps and E130 on forged decoded interpolation. The strict wire still lacks resolved interpreter bytes and Bash options; JS evaluates template expressions before a tag can reject them. A source-stamped local Linux runner at d6d29d7 observed 30 passing CLI workspace/diagnostic cases (literal Bash/source-map case explicitly covered), but formal immutable form equivalence, pinned options, static interpolation guard, production normalization proof/mutant, native Mac and live source-bound CI remain open. Earlier full Linux compose passed Rust fmt/clippy/tests, fresh Deno 62/62, e2e 276/276 and Verus 61/0 with five mutants; TLC was cached. No A1-03 closure or release."
   },
   {
    "id": "A1-04",
@@ -1034,7 +1143,31 @@
     "Snippet reads stay bounded to the evaluated repo capability; malformed coordinates and out-of-repo symlinks never leak file bytes",
     "Registry parity, positive/negative runner reports and source-bound CI/proof lanes remain required for closure"
    ],
-   "evidence_records": [],
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-24",
+     "entry_points": ["grip check --json", "grip plan --ir", "typescript/src/cli.ts", "crates/gripsack-ir/src/sema/workspace"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; pytest 9.1.1; sandboxed HOME; offline test fixtures",
+     "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_workspace_contract.py test_workspace_diagnostics.py",
+     "result": "pass",
+     "report": "verification/reports/2026-09-24-a1-workspace-d6d29d7-e2e.log",
+     "report_sha256": "eb75090328cfc50dccbb6494c6bdd5717a40d3f5cd6d1a0ecf9658b86c20bb4f",
+     "commit": "d6d29d7082f69e14e03a262381a776545782961d",
+     "source_reuse_sha256": "e057eb20f9ce59d3bbcc01960b20b1471a1846598f4d98bfd585215d8d5644f3",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [
+      "Missing/wrong-kind references and incompatible target/layout reports label both consumer and provider; duplicate catalog names label both declarations",
+      "Literal Bash interpolation and dedented script failures retain the original source line in both frontend and decoded IR paths",
+      "Terminal and check --json agree on diagnostic code/severity/message/labels/help; successful output catalogs and legacy modules preserve host facts"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; pytest 9.1.1",
+     "inputs": "Committed v5 Rust/TypeScript frontend, test_workspace_contract.py and test_workspace_diagnostics.py, sandboxed HOME",
+     "report_marker": "30 passed in 3.86s",
+     "counts": {"executed": 30, "passed": 30, "failed": 0, "skipped": 0}
+    }
+   ],
    "lane_status": {
     "pure": "in_progress",
     "container-gates": "in_progress",
@@ -1044,7 +1177,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "The real frontend emits core Diagnostic-shaped errors and grip check --json renders the same codes/labels as terminal output; wrong-kind, collision, target, typo, ambient Bash and dedented script cases passed focused real CLI 29/29. Bounded source snippets use a pinned repo directory capability (1 MiB max, no out-of-repo reads), with invalid-coordinate, outside-path and symlink regressions. The shared pre-effect E124 gate now labels the first unavailable output and its owning milestone: isolated recipes B2, inert schedules E2/E3, task prerequisites E1, and historical v4 migration A5; the isolated-worker CLI case failed before and passed after, and focused real CLI capability cases 3/3 passed. Rust IR 69, direct executor guard 1 and renderer 5 passed. Final Linux compose passed Rust fmt/clippy/tests, fresh Deno 62/62, e2e 276/276 and fresh Verus 61/0 with five mutants; model layer CACHED. Source-bound CI, remaining capability-owner cases and diagnostic-registry conformance remain open; no A1-06 closure or release."
+   "implementation_notes": "Frontend authoring errors carry core Diagnostic-shaped codes/labels; grip check --json renders the same facts as terminal diagnostics, while snippets stay under a pinned repo directory capability and a 1 MiB bound. Shared E124 labels the first unavailable output and owner milestone (observed B2, E2/E3, E1, historical v4 A5). A source-stamped local Linux runner at d6d29d7 observed 30 passing CLI cases, including wrong-kind/collision/target, Bash source-map and terminal/JSON parity. Full Linux compose passed Rust fmt/clippy/tests, fresh Deno 62/62, e2e 276/276 and Verus 61/0 with five mutants; TLC model cached. Other capability-owner cases, diagnostic-registry conformance, native Mac and live CI/proof lanes remain open; no A1-06 closure or release."
   },
   {
    "id": "A1-07",

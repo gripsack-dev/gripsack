@@ -39,3 +39,27 @@ archive preserves them exactly.
 Note: the earlier G-03 ledger record's handwritten `obligations.checked: 50` does not
 match either verify log; both show `56 verified, 0 errors`. The logs are the
 authoritative observation.
+
+## Source-stamped A1 worktree runs
+
+Runner reports exist for source commits
+`53c6fac8bc4c4290d66a2f1f5644f4cc8d6063c6` and
+`d6d29d7082f69e14e03a262381a776545782961d`. The tracked
+behavior-bearing `SOURCE_ROOTS` were clean at each run. The later
+commit changes the delivery calibration script, so the first
+fingerprint cannot bind evidence to the later code. The delivery
+ledger cites the **second** run. Logs carry the exact SHA, command,
+versions and inputs plus raw runner output and counted result markers.
+They are local container observations, **not** GitHub CI or Mac
+attestations.
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-24-a1-workspace-53c6fac-e2e.log` | `9206cfdfc213a83819da9743ba3cde023528ae2d28851642b24a20243b4d0f2e` | Real CLI frontend+IR contract/diagnostic suites: 30 passed, 0 failed/skipped; offline sandboxed HOME |
+| `2026-09-24-a1-workspace-53c6fac-verus.log` | `082fe2b3f2106ae07e0b1ca24ee410cc0de3b28f856dc4666fa55de9922296c4` | Fresh `cargo verus verify` on the production policy crate: 61 verified, 0 errors; named graph-validation mutant rejected its `required_validation` contract. Other mutants ran, but plan 0048 §6's general attribution hardening remains open |
+| `2026-09-24-a1-workspace-d6d29d7-e2e.log` | `eb75090328cfc50dccbb6494c6bdd5717a40d3f5cd6d1a0ecf9658b86c20bb4f` | Current source-bound CLI frontend+IR contract/diagnostic suites: 30 passed, 0 failed/skipped |
+| `2026-09-24-a1-workspace-d6d29d7-verus.log` | `bca914dc0cb3b6904416aab25da9c7e72275ad11d13845dab39f20353ca68741` | Current source-bound fresh Verus 61 verified/0 errors; one attributable graph-validation mutant, not a schema/name-index refinement proof |
+
+The records cover selected A1 cases only. They do **not** prove the
+schema/name-index refinement, complete A1 proof family, native macOS
+behavior, live CI protection or an A1 milestone closure.
