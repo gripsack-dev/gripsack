@@ -2838,9 +2838,10 @@ export interface RunBashSpec {
    *  dedented lines point back to the actual template location.
    *  A plain string is supported for single-line bodies only. */
   body: string | BashBody;
-  /** Pinned `packageCommand("<package>", "<command>")` — never an
-   *  ambient host shell. */
-  interpreter: WorkspaceArg;
+  /** A declared package command, never an ambient host shell. The
+   *  reference alone does not establish a resolved byte pin; A1-05
+   *  must bind it before execution. */
+  interpreter: WorkspacePackageCommand;
   env?: Record<string, WorkspaceArg>;
   cwd?: WorkspacePath;
   span?: Span;

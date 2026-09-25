@@ -479,6 +479,129 @@ def test_unavailable_capability_names_first_declared_output_and_owner(
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
+@pytest.mark.parametrize(
+    ("first", "owner", "capability"),
+    [
+        pytest.param(
+            {
+                "kind": "recipe", "name": "compile",
+                "span": {"file": "outputs.ts", "line": 7},
+                "source": {
+                    "fetch": {"kind": "file", "path": "source.tar.gz"},
+                    "span": {"file": "outputs.ts", "line": 8},
+                },
+                "execution": {"kind": "host", "access": "unconfined"},
+                "output_kind": "tree",
+                "target": {"os": "linux", "arch": "x86_64"},
+            },
+            "A2", "host recipe realization", id="host-recipe",
+        ),
+        pytest.param(
+            {
+                "kind": "package", "name": "tool",
+                "span": {"file": "outputs.ts", "line": 7},
+                "producer": {
+                    "kind": "provider",
+                    "provider": {
+                        "fetch": {"kind": "file", "path": "tool.tar.gz"},
+                        "span": {"file": "outputs.ts", "line": 8},
+                    },
+                },
+                "commands": {"tool": "bin/tool"},
+                "target": {"os": "linux", "arch": "x86_64"},
+                "layout": {"kind": "relocatable"},
+            },
+            "A2", "package realization", id="provider-package",
+        ),
+        pytest.param(
+            {
+                "kind": "task", "name": "invoke",
+                "span": {"file": "outputs.ts", "line": 7},
+                "run": {
+                    "kind": "exec", "span": {"file": "outputs.ts", "line": 8},
+                    "argv": [{"kind": "literal", "value": "true"}],
+                },
+            },
+            "A2-P", "task invocation", id="task-without-prerequisites",
+        ),
+        pytest.param(
+            {
+                "kind": "profile", "name": "dotfiles",
+                "span": {"file": "outputs.ts", "line": 7},
+            },
+            "A2", "profile deployment", id="profile-before-image",
+        ),
+        pytest.param(
+            {
+                "kind": "hook", "name": "after",
+                "span": {"file": "outputs.ts", "line": 7},
+                "trigger": "post_activate",
+                "run": {
+                    "kind": "exec", "span": {"file": "outputs.ts", "line": 8},
+                    "argv": [{"kind": "literal", "value": "true"}],
+                },
+            },
+            "A2", "hook execution", id="post-activate-hook",
+        ),
+    ],
+)
+def test_first_declared_unavailable_output_preserves_its_distinct_owner(
+    sandbox, first, owner, capability,
+):
+    repo = sandbox / "first-capability"
+    repo.mkdir()
+    later_image = {
+        "kind": "image", "name": "later", "span": {"file": "outputs.ts", "line": 12},
+        "packages": [], "target": {"os": "linux", "arch": "x86_64"},
+    }
+    path = repo / "workspace.ir.json"
+    path.write_text(json.dumps({
+        "ir_version": 5,
+        "host": {"os": "linux", "arch": "x86_64"},
+        "workspace": {
+            "span": {"file": "outputs.ts", "line": 1},
+            "outputs": [first, later_image],
+        },
+    }))
+    planned = grip("plan", "--ir", str(path), cwd=repo)
+    assert planned.returncode != 0
+    assert "error[E124]" in planned.stderr, planned.stderr
+    assert f"output `{first['name']}`" in planned.stderr
+    assert f"{capability} belongs to {owner}" in planned.stderr
+    assert "outputs.ts:7" in planned.stderr
+    assert "belongs to B4" not in planned.stderr, "later image must not win"
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+def test_invalid_decoded_command_coordinates_keep_labels_without_reading_source(sandbox):
+    repo = sandbox / "invalid-coordinate"
+    repo.mkdir()
+    (repo / "source.ts").write_text("private source line must not appear\n")
+    task = {
+        "kind": "task", "name": "bad", "span": {"file": "source.ts", "line": 7},
+        "run": {
+            "kind": "exec", "span": {"file": "source.ts", "line": 0, "col": 0},
+            "argv": [{"kind": "literal", "value": "true"}],
+        },
+    }
+    path = repo / "workspace.ir.json"
+    path.write_text(json.dumps({
+        "ir_version": 5,
+        "host": {"os": "linux", "arch": "x86_64"},
+        "workspace": {
+            "span": {"file": "source.ts", "line": 1},
+            "outputs": [task],
+        },
+    }))
+    planned = grip("plan", "--ir", str(path), cwd=repo)
+    assert planned.returncode != 0
+    assert planned.stderr.count("error[E129]") == 2, planned.stderr
+    assert planned.stderr.count("--> source.ts:0:0") == 2
+    assert "private source line must not appear" not in planned.stderr
+    assert "E124" not in planned.stderr, "invalid provenance precedes executor refusal"
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
 def test_user_exception_stays_a_traceback_on_both_surfaces(sandbox):
     """A1-06 boundary: a user exception is a real defect, not an
     authoring typo — both surfaces pass the traceback through and the

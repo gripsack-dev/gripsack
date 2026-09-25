@@ -1367,9 +1367,46 @@ is `1dce906f51e0f0397c3e91ace6a87470688057d3d5b5d76b7473b7fcfedc4b81`.
 No proof in that report derives source traversal or schema decoding
 completeness; protected CI and native Mac evidence remain open.
 
-## 28. Honesty register
+## 28. A1-06 malformed-coordinate diagnostics keep their labels (not closure)
 
-- This document began as a design candidate; §§9–27 record read-only
+E129 rejected an empty file, line 0 or column 0, but the diagnostic
+carried **no label**: the `check_spans` pass reported the malformed
+span's text without attaching the span itself. A failing-before
+regression fed a decoded task whose command span was
+`{line: 0, col: 0}` — both E129s were emitted, neither named
+`source.ts:0:0`. The pass now labels every rejection with the
+invalid span, and it walks borrowed declarations directly instead of
+materializing a temporary `Vec<&Span>` on every check.
+
+A new real CLI `plan --ir` case keeps the boundary honest: invalid
+coordinates render **two labeled E129s** and no E124 (invalid
+provenance precedes executor refusal), while the render layer still
+refuses to turn line/column 0 into a snippet read, so the file's
+bytes never appear. This is a labeling fix, not a diagnostic
+classification theorem; the semantic-classification proof, protected
+CI and native Mac lanes remain open.
+
+## 29. A1-03 typed interpreter authoring boundary (not closure)
+
+`RunBashSpec.interpreter` was typed as the full `WorkspaceArg` union,
+so a literal or artifact interpreter was a *type-correct* authoring
+program that only failed at runtime with E128. The spec now requires
+`WorkspacePackageCommand`: passing `lit("bash")` to `runBash` is a
+compile error (`@ts-expect-error` regression), while forged runtime
+objects still hit the same E128 path through `asArg`. The fluent
+`bash(...)` entry already took the narrow type; both forms now share
+it, and the object/fluent byte-equivalence regression is unchanged.
+
+The v5 wire shape does not change — `workspaceArg` still decodes any
+kind and Rust E128 remains the decoded-IR guard. The docs' caveat
+stands: a package-command **reference** is not a resolved byte pin;
+strict options and interpreter SHA binding wait on the A1-05 lock
+cutover. Resolved-bytes admission, the production normalization
+proof and its mutant remain open; A1-03 stays in progress.
+
+## 30. Honesty register
+
+- This document began as a design candidate; §§9–29 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

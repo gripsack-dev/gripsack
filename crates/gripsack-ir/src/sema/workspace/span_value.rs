@@ -18,46 +18,61 @@ pub(super) fn check(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
 /// E129 — a span with an empty file or a line/column below 1 is a
 /// frontend defect, surfaced like any other admission error.
 fn check_spans(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
-    let mut spans: Vec<&Span> = vec![&workspace.span];
+    // Walk borrowed declarations directly: a valid workspace needs no
+    // temporary span vector just to check its provenance.
+    let mut check = |span: &Span| {
+        if span.file.is_empty() {
+            diagnostics.push(
+                Diagnostic::error(
+                    codes::BAD_WORKSPACE_SPAN,
+                    format!("workspace span {span} has an empty file; provenance requires the declaring source file"),
+                )
+                .with_label(Some(span.clone()), "invalid source span declared here"),
+            );
+        }
+        if span.line == 0 {
+            diagnostics.push(
+                Diagnostic::error(
+                    codes::BAD_WORKSPACE_SPAN,
+                    format!("workspace span {span} has line 0; source lines start at 1"),
+                )
+                .with_label(Some(span.clone()), "invalid source span declared here"),
+            );
+        }
+        if span.col == Some(0) {
+            diagnostics.push(
+                Diagnostic::error(
+                    codes::BAD_WORKSPACE_SPAN,
+                    format!("workspace span {span} has column 0; source columns start at 1"),
+                )
+                .with_label(Some(span.clone()), "invalid source span declared here"),
+            );
+        }
+    };
+    check(&workspace.span);
     for output in &workspace.outputs {
-        spans.push(output.span());
+        check(output.span());
         match output {
             WorkspaceOutput::Recipe(recipe) => {
-                spans.push(&recipe.source.span);
-                spans.extend(recipe.steps.iter().map(WorkspaceCommand::span));
+                check(&recipe.source.span);
+                for step in &recipe.steps {
+                    check(step.span());
+                }
             }
             WorkspaceOutput::Package(package) => {
                 if let WorkspaceProducer::Provider { provider } = &package.producer {
-                    spans.push(&provider.span);
+                    check(&provider.span);
                 }
             }
-            WorkspaceOutput::Task(task) => spans.push(task.run.span()),
-            WorkspaceOutput::Check(check) => spans.push(check.run.span()),
-            WorkspaceOutput::Hook(hook) => spans.push(hook.run.span()),
+            WorkspaceOutput::Task(task) => check(task.run.span()),
+            WorkspaceOutput::Check(check_output) => check(check_output.run.span()),
+            WorkspaceOutput::Hook(hook) => check(hook.run.span()),
             WorkspaceOutput::Profile(profile) => {
-                spans.extend(profile.files.iter().map(|file| &file.span));
+                for file in &profile.files {
+                    check(&file.span);
+                }
             }
             _ => {}
-        }
-    }
-    for span in spans {
-        if span.file.is_empty() {
-            diagnostics.push(Diagnostic::error(
-                codes::BAD_WORKSPACE_SPAN,
-                format!("workspace span {span} has an empty file; provenance requires the declaring source file"),
-            ));
-        }
-        if span.line == 0 {
-            diagnostics.push(Diagnostic::error(
-                codes::BAD_WORKSPACE_SPAN,
-                format!("workspace span {span} has line 0; source lines start at 1"),
-            ));
-        }
-        if span.col == Some(0) {
-            diagnostics.push(Diagnostic::error(
-                codes::BAD_WORKSPACE_SPAN,
-                format!("workspace span {span} has column 0; source columns start at 1"),
-            ));
         }
     }
 }
@@ -276,6 +291,32 @@ mod tests {
             code_of(&doc(&format!("{task},{schedule}")))
                 .contains(&codes::INVALID_WORKSPACE_VALUE.into())
         );
+    }
+
+    #[test]
+    fn invalid_nested_command_coordinates_remain_source_labeled() {
+        let task = r#"{
+            "kind": "task", "name": "bad", "span": {"file": "grip.ts", "line": 5},
+            "run": {"kind": "exec", "span": {"file": "source.ts", "line": 0, "col": 0},
+                    "argv": [{"kind": "literal", "value": "true"}]}}"#;
+        let diagnostics = crate::check(&doc(&format!("{RECIPE},{PACKAGE},{task}"))).unwrap_err();
+        let malformed: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == codes::BAD_WORKSPACE_SPAN)
+            .collect();
+        assert_eq!(
+            malformed.len(),
+            2,
+            "both invalid coordinates must be reported"
+        );
+        for diagnostic in malformed {
+            assert_eq!(diagnostic.labels.len(), 1);
+            let span = diagnostic.labels[0].span.as_ref().unwrap();
+            assert_eq!(
+                (span.file.as_str(), span.line, span.col),
+                ("source.ts", 0, Some(0))
+            );
+        }
     }
 
     #[test]

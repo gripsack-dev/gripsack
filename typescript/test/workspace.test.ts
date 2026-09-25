@@ -360,8 +360,15 @@ Deno.test("Bash body interpolation rejects the literal at its source line", asyn
 });
 
 Deno.test("run_bash requires a declared package interpreter", () => {
+  if (false) {
+    // @ts-expect-error Ambient shell names are not valid authoring interpreters.
+    runBash({ interpreter: lit("bash"), body: "true" });
+  }
   for (const interpreter of [lit("bash"), artifact("tools", "bin/bash")]) {
-    const diagnostic = thrownDiagnostic(() => runBash({ interpreter, body: "true" }), "E128");
+    const diagnostic = thrownDiagnostic(
+      () => runBash({ interpreter: interpreter as never, body: "true" }),
+      "E128",
+    );
     assert.ok(diagnostic.labels[0]?.span?.file.endsWith("workspace.test.ts"));
   }
 });
