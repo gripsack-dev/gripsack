@@ -7,6 +7,7 @@ use crate::diagnostic::{Diagnostic, codes};
 use crate::workspace::{
     PackageLayout, PlatformArch, PlatformOs, WorkspaceOutput, WorkspacePlatform,
 };
+use gripsack_policy::target::supports_target;
 
 /// OS/arch/ABI agree and a producer's minimum OS floor cannot exceed
 /// a consumer's floor. A missing consumer ABI is not a wildcard.
@@ -24,7 +25,10 @@ pub(super) fn check_binding(
             else {
                 return;
             };
-            if !recipe.target.supports(&package.target) {
+            if !supports_target(
+                &recipe.target.policy_requirement(),
+                &package.target.policy_requirement(),
+            ) {
                 diagnostics.push(
                     Diagnostic::error(
                         codes::UNKNOWN_WORKSPACE_REF,
@@ -59,7 +63,10 @@ pub(super) fn check_binding(
                 WorkspaceOutput::Image(image) => &image.target,
                 _ => return,
             };
-            if !package.target.supports(consumer) {
+            if !supports_target(
+                &package.target.policy_requirement(),
+                &consumer.policy_requirement(),
+            ) {
                 diagnostics.push(
                     Diagnostic::error(
                         codes::UNKNOWN_WORKSPACE_REF,

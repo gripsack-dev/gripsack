@@ -1114,9 +1114,54 @@ rejected on its named contract. The SHA-256 checked receipts under
 These are selected local cases, not a schema/name-index theorem,
 semantic diagnostic proof, protected CI, native Mac or release claim.
 
-## 23. Honesty register
+## 23. A1-02 production target-compatibility kernel (partial proof)
 
-- This document began as a design candidate; §§9–22 record read-only
+`WorkspacePlatform::supports` and `OsVersion::at_most` are retired:
+they no longer maintain a second unproved target comparator in the IR
+crate. `WorkspacePlatform::policy_requirement` now projects the typed
+v5 OS, arch, optional ABI and normalized minimum-OS release into
+`gripsack-policy::target::TargetRequirement` without host observation
+or heap allocation. Producer and environment/image selection
+admission both call the same `supports_target` kernel. An omitted
+patch becomes zero, not a wildcard; a missing ABI matches only a
+missing ABI, and a provider requiring an OS release is rejected by
+a consumer with no declared floor.
+
+Verus proves exact ABI/OS/arch matching and the lexicographic
+producer-floor rule over *all typed target requirements*. The first
+proof attempt **failed**: derived Rust enum/option `PartialEq`
+was not an admitted structural equality theorem. Explicit
+exhaustive `matches!` patterns make the production decision and
+its ghost comparison identical; the pinned verifier then reported
+**68 verified / 0 errors** (previously 61). Replacing the
+matching GNU/GNU branch with a GNU/MUSL pattern is rejected at the
+exact `abi_matches` assertion, with the verifier present; the
+other five policy mutants remain green. A real `plan --ir` case
+admits a compatible newer consumer and rejects an older minimum OS,
+different ABI and an omitted consumer ABI with both declaration
+sites. The recipe/package mismatch case stays green.
+
+`WORKSPACE-TARGET-001` in `verification/guarantees.md` records the
+precise proof boundary. The v5 wire is unchanged; v3/v4 readers
+remain historical. This is a production-used typed kernel, **not**
+proof that serde decoded the right declaration, that the IR→policy
+enum projection was correct, that the `TargetBinding` classifier
+covered every reference or that catalog names were mapped to
+indices injectively. Fixed-prefix materialization and native Mac/CI
+lanes remain open. A1-02 remains in progress.
+
+The post-integration Linux compose chain passed fresh Rust fmt/
+clippy/tests, real CLI e2e **289/289** and fresh Verus **68
+verified / 0 errors** with **six** policy mutants, including the
+ABI-branch mutant. The TypeScript and TLC layers were **CACHED**;
+their gates passed without a fresh Deno/model run for this source.
+The prior `a754e04` source-stamped reports predate the target-kernel
+and ABI fixture changes; they do not bind this packet or an A1
+closure claim. Protected CI and native macOS evidence remain absent.
+
+## 24. Honesty register
+
+- This document began as a design candidate; §§9–23 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

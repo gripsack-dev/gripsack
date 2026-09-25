@@ -464,6 +464,15 @@ def test_minimum_os_and_abi_compare_declared_targets_not_checking_host(sandbox):
     assert "E126" in rejected.stderr and "target mismatch" in rejected.stderr
     assert "gripsack.ts:3" in rejected.stderr and "gripsack.ts:6" in rejected.stderr
 
+    environment["target"] = {**target, "abi": "musl"}
+    wrong_abi = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
+    assert "E126" in wrong_abi.stderr and "target mismatch" in wrong_abi.stderr
+    assert "gripsack.ts:3" in wrong_abi.stderr and "gripsack.ts:6" in wrong_abi.stderr
+    environment["target"].pop("abi")
+    missing_abi = run_plan_ir(sandbox, workspace_ir(recipe, package, environment))
+    assert "E126" in missing_abi.stderr and "target mismatch" in missing_abi.stderr
+    assert "gripsack.ts:3" in missing_abi.stderr and "gripsack.ts:6" in missing_abi.stderr
+
 
 def test_fixed_prefix_selection_requires_exact_declared_environment_path(sandbox):
     recipe, package = recipe_and_package()

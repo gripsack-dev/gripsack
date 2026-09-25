@@ -18,6 +18,7 @@ pub mod merge;
 pub mod ownership;
 pub mod retention;
 pub mod schedule;
+pub mod target;
 
 verus! {
 

@@ -1,6 +1,7 @@
 //! Per-output target/ABI/minimum-OS requirements (0052 A1-02). These
 //! describe declared compatibility, never ambient host selection.
 
+use gripsack_policy::target::{BinaryAbi, OsRelease, TargetArch, TargetOs, TargetRequirement};
 use serde::{Deserialize, Serialize};
 
 /// Per-output platform requirements — never inherited from the
@@ -17,18 +18,30 @@ pub struct WorkspacePlatform {
 }
 
 impl WorkspacePlatform {
-    /// A provider can satisfy a consumer only on the same OS,
-    /// architecture and declared ABI. Its minimum OS floor must not
-    /// exceed the consumer's. Missing ABI is not a wildcard.
-    pub fn supports(&self, consumer: &Self) -> bool {
-        self.os == consumer.os
-            && self.arch == consumer.arch
-            && self.abi == consumer.abi
-            && match (self.minimum_os, consumer.minimum_os) {
-                (None, _) => true,
-                (Some(_), None) => false,
-                (Some(producer), Some(requested)) => producer.at_most(requested),
-            }
+    /// Adapt strict v5 declarations to the production policy's typed
+    /// requirement. An omitted patch is a zero floor component, not
+    /// a wildcard; the conversion never reads the checking host.
+    pub(crate) fn policy_requirement(&self) -> TargetRequirement {
+        TargetRequirement {
+            os: match self.os {
+                PlatformOs::Linux => TargetOs::Linux,
+                PlatformOs::Macos => TargetOs::Macos,
+            },
+            arch: match self.arch {
+                PlatformArch::X86_64 => TargetArch::X86_64,
+                PlatformArch::Aarch64 => TargetArch::Aarch64,
+            },
+            abi: self.abi.map(|abi| match abi {
+                PlatformAbi::Gnu => BinaryAbi::Gnu,
+                PlatformAbi::Musl => BinaryAbi::Musl,
+                PlatformAbi::Darwin => BinaryAbi::Darwin,
+            }),
+            minimum_os: self.minimum_os.map(|version| OsRelease {
+                major: version.major,
+                minor: version.minor,
+                patch: version.patch.unwrap_or(0),
+            }),
+        }
     }
 
     pub fn valid_abi(&self) -> bool {
@@ -78,18 +91,10 @@ pub struct OsVersion {
     pub patch: Option<u16>,
 }
 
-impl OsVersion {
-    /// Compare minimum requirements, not serialized identity. An
-    /// omitted patch and explicit patch zero have the same floor.
-    pub fn at_most(self, other: Self) -> bool {
-        (self.major, self.minor, self.patch.unwrap_or(0))
-            <= (other.major, other.minor, other.patch.unwrap_or(0))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gripsack_policy::target::supports_target;
 
     #[test]
     fn target_floor_and_abi_admit_only_compatible_consumers() {
@@ -103,33 +108,39 @@ mod tests {
                 patch: None,
             }),
         };
+        let supports = |provider: &WorkspacePlatform, consumer: &WorkspacePlatform| {
+            supports_target(
+                &provider.policy_requirement(),
+                &consumer.policy_requirement(),
+            )
+        };
         let mut consumer = provider.clone();
         consumer.minimum_os = Some(OsVersion {
             major: 6,
             minor: 1,
             patch: None,
         });
-        assert!(provider.supports(&consumer));
+        assert!(supports(&provider, &consumer));
         consumer.minimum_os = Some(OsVersion {
             major: 4,
             minor: 19,
             patch: None,
         });
-        assert!(!provider.supports(&consumer));
+        assert!(!supports(&provider, &consumer));
         consumer.minimum_os = None;
-        assert!(!provider.supports(&consumer));
+        assert!(!supports(&provider, &consumer));
         consumer = provider.clone();
         consumer.abi = None;
-        assert!(!provider.supports(&consumer));
+        assert!(!supports(&provider, &consumer));
         consumer.abi = Some(PlatformAbi::Musl);
-        assert!(!provider.supports(&consumer));
+        assert!(!supports(&provider, &consumer));
         consumer = provider.clone();
         consumer.minimum_os = Some(OsVersion {
             major: 5,
             minor: 15,
             patch: Some(0),
         });
-        assert!(provider.supports(&consumer));
-        assert!(consumer.supports(&provider));
+        assert!(supports(&provider, &consumer));
+        assert!(supports(&consumer, &provider));
     }
 }

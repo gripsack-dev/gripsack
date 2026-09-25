@@ -6,9 +6,9 @@
 #      must succeed with 0 errors and at least the expected obligation
 #      count (zero/subset verification is not success).
 #   2. calibration — named semantic mutants in recovery, merge,
-#      graph closure, required validation and scheduler policy must
-#      fail their intended postconditions. A crash, parse error,
-#      unrelated lemma or missing solver is not calibration evidence.
+#      graph closure, required validation, target ABI admission and
+#      scheduler policy must fail their intended postconditions. A crash,
+#      parse error, unrelated lemma or missing solver is not calibration.
 #
 # Toolchain (all three pins move together; updates are deliberate):
 #   Verus release 0.2026.09.06.8dea4a2  (provides cargo-verus + verus)
@@ -19,11 +19,10 @@
 set -eu
 
 CRATE=crates/gripsack-policy
-# classify + plan_copy + plan_link + the retention kernels (admission,
-# prune, delete, membership helpers), merge splice, graph closure and
-# v4 role/validation projection, plus the scheduler transition system.
-# Mutation anchors also protect the named kernel families.
-MIN_OBLIGATIONS=61
+# classify + ownership + retention kernels, merge splice, graph
+# closure/roles, target compatibility and scheduler transitions.
+# Named mutants protect each production kernel family.
+MIN_OBLIGATIONS=68
 
 # verification results are cached by cargo — the gate always runs a
 # CLEAN verification (a stale cache is not evidence)
@@ -95,6 +94,15 @@ run_mutant() {
             echo "FAIL: $name did not fail the role-validation contract"
             exit 1
         }
+    elif [ "$name" = target-abi ]; then
+        printf '%s\n' "$out2" | grep -F "src/$file:" >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'assert(abi_matches == (provider.abi == consumer.abi));' >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'error: assertion failed' >/dev/null &&
+        printf '%s\n' "$out2" | grep -E 'verification results:: [1-9][0-9]* verified, [1-9][0-9]* errors' >/dev/null || {
+            printf '%s\n' "$out2" | tail -20
+            echo "FAIL: $name did not fail the exact ABI-comparison assertion"
+            exit 1
+        }
     else
         echo "$out2" | grep -m1 "not satisfied" >/dev/null || {
             echo "$out2" | tail -20
@@ -129,6 +137,12 @@ run_mutant "graph-closure" graph.rs \
 run_mutant "graph-validation" graph/roles.rs \
     'RoleDecision { build: false, required_validation: true },' \
     'RoleDecision { build: false, required_validation: false },'
+
+# A GNU provider/consumer pair must match. Substituting a MUSL consumer
+# for the pair breaks the exact ABI correspondence assertion.
+run_mutant "target-abi" target.rs \
+    'Some(BinaryAbi::Gnu), Some(BinaryAbi::Gnu)' \
+    'Some(BinaryAbi::Gnu), Some(BinaryAbi::Musl)'
 # scheduler: starting work after the failure latch — the "a failed
 # dependency authorized its consumer" class — must fail the named
 # postcondition (old(self).failed ==> result.is_none())
