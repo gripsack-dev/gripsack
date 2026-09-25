@@ -93,6 +93,12 @@ def render_typescript(rows: list[dict[str, str]]) -> str:
         if "frontend" in row:
             lines.append(f"  {row['frontend']}: \"{row['code']}\",")
     lines.append("} as const;")
+    lines.append("")
+    lines.append("export const frontendDiagnosticCodeRegistry = {")
+    for row in rows:
+        if "frontend" in row:
+            lines.append(f"  {row['code']}: true,")
+    lines.append("} as const satisfies Record<string, true>;")
     return "\n".join(lines) + "\n"
 
 

@@ -528,3 +528,30 @@ def test_engine_error_stays_a_traceback_on_both_surfaces(sandbox):
     doc = json.loads(machine.stdout)
     assert doc["ok"] is False
     assert doc["diagnostics"] == []
+
+
+def test_unallocated_frontend_diagnostic_cannot_masquerade_as_core_error(sandbox):
+    """A user-thrown error cannot invent a stable E-code on either CLI surface."""
+    repo = write_repo(
+        sandbox,
+        "forged-code",
+        'import { defineWorkspace, workspace } from "@gripsack/core";\n'
+        "export default defineWorkspace(() => {\n"
+        '  const failure = new Error("unallocated diagnostic");\n'
+        '  failure.name = "DiagnosticError";\n'
+        '  (failure as Error & { diagnostic: unknown }).diagnostic = {\n'
+        '    code: "E999", severity: "error", message: "forged E999", labels: []\n'
+        "  };\n"
+        "  throw failure;\n"
+        "});\n",
+    )
+    terminal = grip("check", cwd=repo)
+    machine = grip("check", "--json", cwd=repo)
+    assert terminal.returncode != 0
+    assert machine.returncode == terminal.returncode
+    assert "unallocated diagnostic" in terminal.stderr
+    assert "unallocated diagnostic" in machine.stderr
+    assert "frontend eval failed" in terminal.stderr
+    assert "frontend eval failed" in machine.stderr
+    assert "error[E999]:" not in terminal.stderr
+    assert json.loads(machine.stdout)["diagnostics"] == []

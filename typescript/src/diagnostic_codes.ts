@@ -7,3 +7,11 @@ export const diagnosticCodes = {
   badWorkspaceContext: "E128",
   invalidWorkspaceValue: "E130",
 } as const;
+
+export const frontendDiagnosticCodeRegistry = {
+  E125: true,
+  E126: true,
+  E127: true,
+  E128: true,
+  E130: true,
+} as const satisfies Record<string, true>;

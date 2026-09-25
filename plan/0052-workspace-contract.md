@@ -1284,9 +1284,41 @@ other A1 row receipts bind older source, and the complete
 schema/catalog/source-edge bridge, protected CI and native Mac
 evidence remain absent. No A1 milestone or release closure.
 
-## 26. Honesty register
+## 26. A1-06 allocated frontend diagnostic codes (not classification proof)
 
-- This document began as a design candidate; §§9–25 record read-only
+`asDiagnostic` previously accepted any string `code` on a
+`DiagnosticError`-shaped exception. A user-defined workspace threw
+`E999`, and the real CLI rendered `error[E999]` and returned it as a
+structured check diagnostic: an unallocated ID masqueraded as a
+stable core error. The new real CLI case **failed before** the
+cutover and **passed after**.
+
+The diagnostic generator now emits a static TypeScript
+`Record<string, true>` membership table from the same manifest as
+the five frontend code constants; the embedded frontend is
+regenerated and the Docker test gate byte-checks both outputs.
+`FrontendDiagnostic.code` and `errorAt` accept the generated
+`FrontendCode` union at compile time. At the runtime envelope
+boundary, `asDiagnostic` admits only allocated frontend codes.
+An unallocated code remains the user's original traceback:
+`check --json` has no forged diagnostic, and terminal output has no
+structured E999 header. A traceback may quote bytes from the
+author's thrown object; this is not a promise to redact user errors.
+No IR wire shape or allocated code ID changes.
+
+The post-cutover Linux chain passed fresh Rust fmt/clippy/tests,
+fresh Deno **63/63**, real CLI e2e **290/290** and fresh Verus
+**72 verified / 0 errors** with seven unrelated policy mutants.
+TLC reused a **CACHED** image. The new guard limits codes, not
+authorship of an already allocated code: a trusted workspace can
+still deliberately throw a structurally valid E125/E126/etc.
+Semantic error classification, remaining owner/coordinate cases,
+protected CI and native Mac evidence remain open. A1-06 stays in
+progress; no A1 or release closure follows.
+
+## 27. Honesty register
+
+- This document began as a design candidate; §§9–26 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

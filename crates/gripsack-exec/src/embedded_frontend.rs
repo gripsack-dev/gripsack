@@ -260,9 +260,19 @@ export function dep(module: string, opts: DepOptions = {}): Dependency {
  * frontend together, never allocated in this module. */
 
 import type { Span } from "./module.ts";
-import { diagnosticCodes } from "./diagnostic_codes.ts";
+import { diagnosticCodes, frontendDiagnosticCodeRegistry } from "./diagnostic_codes.ts";
 
 export { diagnosticCodes };
+
+/** Frontend diagnostics can emit only codes explicitly allocated to
+ * the frontend. Core-owned codes remain core-only even when an
+ * authoring module forges a DiagnosticError-shaped exception. */
+export type FrontendCode = keyof typeof frontendDiagnosticCodeRegistry;
+
+function isFrontendCode(value: unknown): value is FrontendCode {
+  return typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(frontendDiagnosticCodeRegistry, value);
+}
 
 /** Wire shape of one label (core `Label`): the span is null when no
  *  source node carries the context and the note alone explains it. */
@@ -275,7 +285,7 @@ export interface DiagnosticLabel {
  *  deserializes this verbatim into `gripsack_ir::Diagnostic`
  *  (`severity` is the lowercase serde spelling). */
 export interface FrontendDiagnostic {
-  code: string;
+  code: FrontendCode;
   severity: "error" | "warning";
   message: string;
   labels: DiagnosticLabel[];
@@ -297,7 +307,7 @@ export class DiagnosticError extends Error {
 
 /** One-label error diagnostic at a declaration span. */
 export function errorAt(
-  code: string,
+  code: FrontendCode,
   message: string,
   span: Span,
   note: string,
@@ -330,7 +340,7 @@ function isSpan(value: unknown): value is Span {
 function isFrontendDiagnostic(value: unknown): value is FrontendDiagnostic {
   if (typeof value !== "object" || value === null) return false;
   const rec = value as Record<string, unknown>;
-  return typeof rec.code === "string" &&
+  return isFrontendCode(rec.code) &&
     (rec.severity === "error" || rec.severity === "warning") &&
     typeof rec.message === "string" &&
     Array.isArray(rec.labels) &&
@@ -405,6 +415,14 @@ export const diagnosticCodes = {
   badWorkspaceContext: "E128",
   invalidWorkspaceValue: "E130",
 } as const;
+
+export const frontendDiagnosticCodeRegistry = {
+  E125: true,
+  E126: true,
+  E127: true,
+  E128: true,
+  E130: true,
+} as const satisfies Record<string, true>;
 "#),
     ("src/entries.ts", r#"/** Deployment destinations with ownership modes (0001 §3.7).
  * Source keys accept `{version}` (raw locked tag), `{version.bare}` (one
