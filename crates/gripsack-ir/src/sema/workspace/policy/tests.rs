@@ -334,6 +334,61 @@ fn projected_kind_or_binding_reclassification_fails_closed() {
 }
 
 #[test]
+fn projected_reference_site_substitution_fails_closed() {
+    let recipe = RECIPE.replace(
+        r#""execution": {"kind": "host", "access": "unconfined"}"#,
+        r#""steps": [{"kind": "exec", "span": {"file": "grip.ts", "line": 4},
+                 "argv": [{"kind": "artifact", "output": "src", "selector": "."}]}],
+               "execution": {"kind": "host", "access": "unconfined"}"#,
+    );
+    let provider = r#"{
+        "kind": "package", "name": "src", "span": {"file": "grip.ts", "line": 5},
+        "producer": {"kind": "provider", "provider": {
+            "fetch": {"kind": "file", "path": "src.bin"},
+            "span": {"file": "grip.ts", "line": 5}}},
+        "commands": {"tool": "bin/tool"},
+        "target": {"os": "linux", "arch": "x86_64"},
+        "layout": {"kind": "relocatable"}}"#;
+    let document = doc(&format!("{recipe},{PACKAGE},{provider}"));
+    crate::check(&document).expect("the original declaration and command spans admit");
+    let ir = crate::parse(&document).unwrap();
+    let workspace = ir.workspace.as_ref().unwrap();
+    let mut diagnostics = Vec::new();
+    let catalog = super::super::names::check(workspace, &mut diagnostics);
+    assert!(diagnostics.is_empty());
+
+    for (role, original_line) in [(EdgeRole::BuildInput, 4), (EdgeRole::Production, 3)] {
+        let mut projection = super::super::graph::collect(workspace);
+        let edge = projection
+            .edges
+            .iter_mut()
+            .find(|edge| edge.role == role)
+            .expect("the fixture declares both reference kinds");
+        // The forged span points at a real but wrong source location:
+        // name, kind, role, target and payload still match.
+        edge.at = workspace.outputs[0].span();
+        let mut failures = Vec::new();
+        super::check(workspace, &projection, &catalog, &mut failures);
+        let failure = failures
+            .iter()
+            .find(|diagnostic| {
+                diagnostic.code == codes::REQUIRED_WORKSPACE_EDGE_MISSING
+                    && diagnostic.message.contains("reference site")
+            })
+            .expect("an incorrectly attributed edge must not enter admitted closure");
+        assert_eq!(
+            failure
+                .labels
+                .iter()
+                .filter_map(|label| label.span.as_ref().map(|span| span.line))
+                .collect::<Vec<_>>(),
+            vec![original_line, 2],
+            "the actual and forged reference sites must be visible"
+        );
+    }
+}
+
+#[test]
 fn catalog_index_corruption_rejects_before_closure() {
     let document = doc(&format!("{RECIPE},{PACKAGE}"));
     crate::check(&document).expect("the unmodified workspace admits");

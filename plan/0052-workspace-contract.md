@@ -1329,9 +1329,34 @@ The ledger binds only selected A1-06 behavior; earlier graph and
 other-row reports do not bind this frontend change. Protected CI,
 native Mac and semantic classification proof remain open.
 
-## 27. Honesty register
+## 27. A1-02 reference-site source correlation (not refinement proof)
 
-- This document began as a design candidate; §§9–26 record read-only
+The source walk already compared an edge's role, target, selector,
+package command, admitted kind and target binding, but it ignored
+the projected reference-site span. A direct regression **failed
+before** the guard: replacing a recipe command's line 4 or a
+package producer's line 3 with the recipe declaration's line 2
+passed admission, despite an incorrect error provenance for the
+edge. `coverage::check` now compares the decoded source span and
+the projected span, returning E131 with both actual and falsely
+attributed locations; the regression passes for both distinct
+reference scopes.
+
+Source correspondence and local ordering now gate `index_view` and
+`build_closure`, rather than diagnosing lost edges after an invalid
+index/closure had already been computed. A dropped reference still
+labels its source site and resolved catalog target without using
+the closure to recover the latter. A successful check adds no heap
+allocation; corrupt edges no longer need an indexed graph.
+The fresh Docker Rust fmt/clippy/full-test gate, focused span
+regression and real CLI workspace contract suite **23/23** passed.
+The strict wire decoder, source walk exhaustiveness and whole
+schema→closure refinement theorem remain unproved; this packet
+does not close A1-02.
+
+## 28. Honesty register
+
+- This document began as a design candidate; §§9–27 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

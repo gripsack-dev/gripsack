@@ -36,6 +36,33 @@ pub(super) fn count_mismatch(
     .with_label(Some(output.span().clone()), "referencing output declared here")
 }
 
+/// A dropped reference names both its original source site and, when
+/// present, the catalog target; no closure computation is required to
+/// recover those declaration sites.
+pub(super) fn missing_reference(
+    output: &WorkspaceOutput,
+    catalog: &Catalog,
+    declared: DeclaredReference<'_>,
+    required: usize,
+    found: usize,
+) -> Diagnostic {
+    let mut diagnostic = Diagnostic::error(
+        codes::REQUIRED_WORKSPACE_EDGE_MISSING,
+        format!(
+            "workspace {} `{}` declares {required} {} reference(s), including `{}`, but the graph projects {found}; refusing incomplete admission",
+            output.kind(),
+            output.name(),
+            role_name(declared.role),
+            declared.target,
+        ),
+    )
+    .with_label(Some(declared.at.clone()), "reference declared here");
+    if let Some(target) = catalog.outputs.get(declared.target) {
+        diagnostic = diagnostic.with_label(Some(target.span().clone()), "target declared here");
+    }
+    diagnostic
+}
+
 /// Identity divergence at equal cardinality: the projection names a
 /// different target than the source declares at the same position, so
 /// the referencing output and both catalog targets are labeled when
@@ -176,4 +203,26 @@ pub(super) fn reclassified_target_rule(
         diagnostic = diagnostic.with_label(Some(target.span().clone()), "target declared here");
     }
     diagnostic
+}
+
+/// A projected edge may resolve to the right name and role yet carry
+/// the wrong reference-site span, hiding which source declaration
+/// authorized it. The source walk supplies the authoritative site.
+pub(super) fn substituted_reference_site(
+    output: &WorkspaceOutput,
+    declared: DeclaredReference<'_>,
+    projected_at: &crate::span::Span,
+) -> Diagnostic {
+    Diagnostic::error(
+        codes::REQUIRED_WORKSPACE_EDGE_MISSING,
+        format!(
+            "workspace {} `{}` projects {:?} reference `{}` with a substituted reference site; refusing incorrectly attributed admission",
+            output.kind(),
+            output.name(),
+            declared.role,
+            declared.target,
+        ),
+    )
+    .with_label(Some(declared.at.clone()), "reference declared here")
+    .with_label(Some(projected_at.clone()), "graph attributed it here")
 }

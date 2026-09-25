@@ -211,6 +211,13 @@ pub(super) fn check(
         diagnostics.push(diagnostic);
         return;
     }
+    // Refuse missing, reclassified or misattributed decoded references
+    // before any edge enters the indexed policy kernel or build closure.
+    check_local_order(workspace, projection, diagnostics);
+    coverage::check(workspace, projection, catalog, diagnostics);
+    if !diagnostics.is_empty() {
+        return;
+    }
     let indexed = match index_view(projection, catalog) {
         Ok(indexed) => indexed,
         Err(diagnostic) => {
@@ -218,8 +225,6 @@ pub(super) fn check(
             return;
         }
     };
-    check_local_order(workspace, projection, diagnostics);
-    coverage::check(workspace, projection, catalog, diagnostics);
     for output in &workspace.outputs {
         if let WorkspaceOutput::Package(package) = output
             && let WorkspaceProducer::Recipe { recipe } = &package.producer

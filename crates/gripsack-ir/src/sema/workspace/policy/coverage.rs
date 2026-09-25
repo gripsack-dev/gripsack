@@ -1,14 +1,14 @@
 //! Compare decoded workspace references with projected graph edges.
 //! This source-rooted admission check is independent of the graph
 //! collector: each output streams its declared references in emission
-//! order and compares role, target and selector/exported-command
-//! payloads with the contiguous run of projected edges. A lost,
-//! extra, reordered or substituted reference fails before the
-//! verified closure can be treated as complete.
+//! order and compares role, target, selector/exported-command payload,
+//! target classification and reference-site span with the contiguous
+//! run of projected edges. A lost, extra, reordered, substituted or
+//! misattributed reference fails before indexing or verified closure.
 //! Successful admission performs no heap allocation; diagnostics
 //! allocate only on rejection. The decode arrow (serde/tagged grammar),
-//! catalog name → kernel index bridge in `index_view`, and the edge's
-//! expected-kind/target-binding classifications remain unproved.
+//! catalog name → kernel index bridge in `index_view`, and proof of this
+//! source walk's exhaustiveness remain open.
 
 mod declaration;
 mod diagnostics;
@@ -19,8 +19,8 @@ use crate::diagnostic::{Diagnostic, codes};
 use crate::workspace::Workspace;
 use declaration::{DeclaredReference, for_each_declared};
 use diagnostics::{
-    count_mismatch, reclassified_edge, reclassified_target_rule, substituted_payload,
-    substituted_target,
+    count_mismatch, missing_reference, reclassified_edge, reclassified_target_rule,
+    substituted_payload, substituted_reference_site, substituted_target,
 };
 
 /// Per-role reference totals kept on the stack, so a successful
@@ -65,9 +65,8 @@ impl RoleCounts {
 /// The first sequence divergence found for one output, recorded while
 /// the declared walk finishes counting totals for the diagnostic.
 enum Divergence<'a> {
-    /// A declared reference has no projected edge left in this
-    /// output's run — the graph lost it.
-    Missing { role: EdgeRole },
+    /// A declared reference has no projected edge left in this output's run.
+    Missing { declared: DeclaredReference<'a> },
     /// Same role, different target at the same sequence position.
     Substituted {
         role: EdgeRole,
@@ -92,6 +91,12 @@ enum Divergence<'a> {
         declared: DeclaredReference<'a>,
         projected_expected: &'static [&'static str],
         projected_binding: TargetBinding,
+    },
+    /// The reference identity matches, but its projected error location
+    /// no longer belongs to the declaration that emitted it.
+    Provenance {
+        declared: DeclaredReference<'a>,
+        projected_at: &'a crate::span::Span,
     },
 }
 
@@ -120,7 +125,8 @@ pub(super) fn check(
                         && edge.selector == reference.selector
                         && edge.command == reference.package_command
                         && edge.expected == reference.expected
-                        && edge.binding == reference.binding =>
+                        && edge.binding == reference.binding
+                        && edge.at == reference.at =>
                 {
                     matched_counts.add(reference.role, 1);
                 }
@@ -128,12 +134,27 @@ pub(super) fn check(
                     if edge.role == reference.role
                         && edge.to == reference.target
                         && edge.selector == reference.selector
-                        && edge.command == reference.package_command =>
+                        && edge.command == reference.package_command
+                        && (edge.expected != reference.expected
+                            || edge.binding != reference.binding) =>
                 {
                     divergence = Some(Divergence::Classification {
                         declared: reference,
                         projected_expected: edge.expected,
                         projected_binding: edge.binding,
+                    });
+                }
+                Some(edge)
+                    if edge.role == reference.role
+                        && edge.to == reference.target
+                        && edge.selector == reference.selector
+                        && edge.command == reference.package_command
+                        && edge.expected == reference.expected
+                        && edge.binding == reference.binding =>
+                {
+                    divergence = Some(Divergence::Provenance {
+                        declared: reference,
+                        projected_at: edge.at,
                     });
                 }
                 Some(edge) if edge.role == reference.role && edge.to == reference.target => {
@@ -158,7 +179,7 @@ pub(super) fn check(
                 }
                 None => {
                     divergence = Some(Divergence::Missing {
-                        role: reference.role,
+                        declared: reference,
                     })
                 }
             }
@@ -173,11 +194,12 @@ pub(super) fn check(
             first_extra = first_extra.or(Some(edge.role));
         }
         let diagnostic = match divergence {
-            Some(Divergence::Missing { role }) => Some(count_mismatch(
+            Some(Divergence::Missing { declared }) => Some(missing_reference(
                 output,
-                role,
-                declared_counts.get(role),
-                matched_counts.get(role),
+                catalog,
+                declared,
+                declared_counts.get(declared.role),
+                matched_counts.get(declared.role),
             )),
             Some(Divergence::Substituted {
                 role,
@@ -201,6 +223,10 @@ pub(super) fn check(
                 projected_expected,
                 projected_binding,
             )),
+            Some(Divergence::Provenance {
+                declared,
+                projected_at,
+            }) => Some(substituted_reference_site(output, declared, projected_at)),
             Some(Divergence::Payload {
                 declared,
                 projected_selector,
