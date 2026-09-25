@@ -52,20 +52,21 @@ Runner reports exist for source commits
 `8583a4652078a66e2a7d06676a12934ceb8f63d1`,
 `6c759a597806ace3f963346701881c7ef7d0d7f3`,
 `a754e048360a6146368fd58056f274a4e7f3c1a6`,
-`2699d79342da7c70136840828ae3455b0e3eb257` and
-`0d7801e0541b32917611dd7ec47455a3a6c59f32`. Tracked
+`2699d79342da7c70136840828ae3455b0e3eb257`,
+`0d7801e0541b32917611dd7ec47455a3a6c59f32` and
+`2b7daf8a39dcdae18654b62e9630d21209cd0d0e`. Tracked
 behavior-bearing `SOURCE_ROOTS` were clean before and after each
 direct runner; changes to calibration, fixtures, schema, graph
 adapters, examples and the generated diagnostic registry make
-their fingerprints non-interchangeable. Only the focused A1-02
-adapter and kernel receipts bind the **eleventh** source; the other
-A1 row receipts still bind earlier code and cannot support a
-closure claim for the changed Rust adapter. Reports retain commands,
+their fingerprints non-interchangeable. Only focused A1-02
+name-binding and kernel receipts bind the **twelfth** source; other
+A1 row receipts still bind older code and cannot support a closure
+claim for the changed production adapter. Reports retain commands,
 versions, inputs, source identities, raw output and counted markers.
 The latest source fingerprint is
-`847090e2748c3eec42118c4311baa143541f51317d930b6b58887a6374b53732`;
-the preceding target-kernel revision's fingerprint is
-`b33a5ab41e0e6143f08905130694fc67e356e30d6259c28f7d63fdc6147d32eb`.
+`c703895798b06e045a2f44ad0fc83b833d159188980091f6cdae724a487d0f7a`;
+the preceding catalog-guard revision's fingerprint is
+`847090e2748c3eec42118c4311baa143541f51317d930b6b58887a6374b53732`.
 These are local container observations, **not** GitHub CI or native
 Mac attestations.
 
@@ -117,8 +118,10 @@ Mac attestations.
 | `2026-09-25-a1-workspace-2699d79-diagnostics.log` | `83b7c014355e0d94a0ca08877be7d378d172040bc41103652d322b8546c64837` | Earlier source: 36 generated Rust IDs and five frontend names fresh, 3 registry mutants, Deno 63/63 and 17 real CLI diagnostics: 84 checks |
 | `2026-09-25-a1-workspace-2699d79-architecture.log` | `4817562e11f5aa4da4432e9d8dd9440bee073cb87ebd773664cf08a591335d3f` | Earlier source: parsed-TOML architecture self-check with member, rustls, dependency and missing-crate negatives |
 | `2026-09-25-a1-workspace-2699d79-verus.log` | `5be077ac8497fe1e7ae5183647af2e92db381d0a861d304d680542c398680f67` | Earlier source: fresh production policy Verus 68 verified/0 errors with six mutants; no catalog/name-index/adapter proof |
-| `2026-09-25-a1-workspace-0d7801e-catalog-graph.log` | `82336d84353721a4a08f1bf56c8f613dc1010fa3d35834d9c285c2cff5b785d9` | Current source: seven production adapter cases including the failing-before catalog omission plus two real CLI target cases; 9 passed, 0 failed/skipped |
-| `2026-09-25-a1-workspace-0d7801e-verus.log` | `f91ce1e9e00517f557b1da0a056366c36280aae09f3f8be795f0862d2c0a6ef3` | Current source: fresh policy Verus 68 verified/0 errors with six mutants, graph-validation and target-ABI attributed; catalog mapping remains unproved |
+| `2026-09-25-a1-workspace-0d7801e-catalog-graph.log` | `82336d84353721a4a08f1bf56c8f613dc1010fa3d35834d9c285c2cff5b785d9` | Earlier source: seven adapter cases including the failing-before catalog omission plus two real CLI target cases; 9 passed |
+| `2026-09-25-a1-workspace-0d7801e-verus.log` | `f91ce1e9e00517f557b1da0a056366c36280aae09f3f8be795f0862d2c0a6ef3` | Earlier source: policy Verus 68 verified/0 errors with six mutants; catalog mapping unproved |
+| `2026-09-25-a1-workspace-2b7daf8-name-index.log` | `cd149daf651ef02e7b4c7b2631c1f4fbb23e93242560e4035c7011663cc0be00` | Current source: seven adapter regressions, one exact-name kernel runtime boundary and two real CLI target cases; 10 passed, 0 failed/skipped |
+| `2026-09-25-a1-workspace-2b7daf8-verus.log` | `bbaf83e3a071594b213225e1dc80d9e3ab1e4586497d40988d45a961f1dbf004` | Current source: Verus 72 verified/0 errors with seven policy mutants; named graph-validation, graph-name-index and target-ABI rejects; source-edge completeness and schema mapping unproved |
 
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS

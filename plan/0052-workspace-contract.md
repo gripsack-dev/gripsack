@@ -1233,14 +1233,18 @@ the closure. The private `BoundOutputIndex` constructor prevents
 external callers from manufacturing a successful binding; releasing
 its checked position adds no heap allocation or catalog scan.
 
+This is an admission-policy cutover only: no IR wire field/version,
+TypeScript emitter output or store hash input changes, and the
+historical v3/v4 readers retain their own meanings.
+
 Verus proves that binding succeeds **iff** the candidate is in range
 and names exactly the declared output, and that distinct names with
 valid bindings cannot share one index. The initial public field
 verified but was forgeable; Verus then rejected a private field
 used directly in public postconditions. A closed specification
 accessor retains the verified value without exposing construction.
-A direct runtime case rejects
-missing, out-of-range, wrong-name and aliased candidate indices.
+A direct runtime case rejects missing, out-of-range, wrong-name
+and aliased candidate indices.
 The production adapter's seven catalog/edge regressions remain
 green. A semantic mutant treating every in-range position as an
 exact name fails at the named equality assertion, with the verifier
@@ -1264,6 +1268,21 @@ real CLI e2e **289/289**, and fresh Verus **72 verified / 0 errors**
 with seven named mutants. TypeScript and TLC image layers were
 **CACHED**. The `0d7801e` source-bound reports predate this policy
 kernel and its caller; they are historical for the current code.
+
+At committed source revision
+`2b7daf8a39dcdae18654b62e9630d21209cd0d0e`, tracked
+`SOURCE_ROOTS` were clean before and after the direct runners.
+SHA-256 checked reports record **7/7** production graph adapter
+regressions, **1/1** exact-name index runtime boundary and **2/2**
+real target CLI cases. Fresh Verus verifies **72 obligations /
+0 errors** and rejects seven policy mutants, including the named
+graph-name-index, graph-validation and target-ABI assertions. The
+source fingerprint is
+`c703895798b06e045a2f44ad0fc83b833d159188980091f6cdae724a487d0f7a`.
+The reports are local evidence for selected A1-02 cases only;
+other A1 row receipts bind older source, and the complete
+schema/catalog/source-edge bridge, protected CI and native Mac
+evidence remain absent. No A1 milestone or release closure.
 
 ## 26. Honesty register
 
