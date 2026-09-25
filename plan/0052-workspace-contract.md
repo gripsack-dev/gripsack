@@ -1404,6 +1404,20 @@ strict options and interpreter SHA binding wait on the A1-05 lock
 cutover. Resolved-bytes admission, the production normalization
 proof and its mutant remain open; A1-03 stays in progress.
 
+At committed code revision
+`90e68acdb63d31e9c56d3161872ed94391aa43a2`, tracked
+behavior source roots were clean before and after the direct
+runners. The SHA-256 checked report binds **5/5** span-admission
+Rust cases (including the failing-before label regression), **6/6**
+real CLI owner/precedence and malformed-coordinate cases, and the
+TypeScript gate layer (63 tests, cache hit at byte-identical
+`SOURCE_ROOTS`; the fresh full chain at this source also passed Rust
+fmt/clippy/tests and real CLI e2e **296/296**): **74** checks. The
+source fingerprint is
+`bdbbd30d24506112ea1dbd1893a0192484e8b2794301b78c24cd2c935e396581`.
+These remain local observations; no classification/normalization
+theorem, protected CI or native Mac evidence follows.
+
 ## 30. Honesty register
 
 - This document began as a design candidate; §§9–29 record read-only

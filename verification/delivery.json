@@ -1165,6 +1165,25 @@
      "inputs": "Committed fluent Bash/exec, decoded Bash/source-map and v3/v4/v5 parser/golden admission corpora",
      "report_marker": "A1_SCHEMA_CORPUS=56",
      "counts": {"executed": 56, "passed": 56, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["typescript/src/workspace/commands.ts::runBash", "typescript/src/workspace/ir.ts::RunBashSpec", "typescript/test/workspace.test.ts"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; pinned Deno 2.9.6 image",
+     "command": "docker compose run --build --rm ts-test",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-a1-workspace-90e68ac-span-owners.log",
+     "report_sha256": "1d9da4a0bc6f79aebdb678c5472561f8a16ebe5c11bb3381bbdcc59cbb757c10",
+     "commit": "90e68acdb63d31e9c56d3161872ed94391aa43a2",
+     "source_reuse_sha256": "bdbbd30d24506112ea1dbd1893a0192484e8b2794301b78c24cd2c935e396581",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Deno 2.9.6; TypeScript 7.0.2",
+     "inputs": "RunBashSpec.interpreter narrowed to WorkspacePackageCommand with an @ts-expect-error compile rejection for lit(\"bash\") and retained runtime E128 for forged objects; fluent/object byte-equivalence regression unchanged. Deno gate layer was a cache hit — its 63 tests executed at byte-identical SOURCE_ROOTS in the same-source full chain recorded in the report header; the focused 11 fresh Rust/CLI checks of that report belong to A1-06, not this row",
+     "report_marker": "A1_SPAN_SITE=74",
+     "counts": {"executed": 74, "passed": 74, "failed": 0, "skipped": 0}
     }
    ],
    "lane_status": {
@@ -1176,7 +1195,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "The v5 frontend implements immutable fluent exec/Bash builders, data-only environment keys, typed argv, literal Bash source maps and E130 on forged decoded interpolation. The strict wire lacks resolved interpreter bytes and Bash options; JavaScript evaluates template expressions before a tag can reject them. At 2699d79 source-bound runners pass 45 real frontend/CLI and 11 schema/parser cases including literal Bash mapping and semantic-input drift; Deno runs 63 cases and direct Verus proves graph/target policy kernels, not normalization. Pinned interpreter/options, static interpolation guard, production normalization proof/mutant, protected CI and native Mac remain open; no A1-03 closure or release."
+   "implementation_notes": "The v5 frontend implements immutable fluent exec/Bash builders, data-only environment keys, typed argv, literal Bash source maps and E130 on forged decoded interpolation. RunBashSpec.interpreter is now the narrow WorkspacePackageCommand type: a literal or artifact interpreter is a compile error (@ts-expect-error regression) while forged runtime objects still fail E128 through asArg; the fluent bash(...) entry shares the type and object/fluent byte-equivalence is unchanged. The strict wire still lacks resolved interpreter bytes and Bash options, and JavaScript evaluates template expressions before a tag can reject them. At 90e68ac the Deno gate covers the typed boundary (63 tests, cache-hit layer at byte-identical SOURCE_ROOTS) inside a 74-check report; earlier 2699d79 runners pass 45 real frontend/CLI and 11 schema/parser cases, and Verus there proves graph/target kernels, not normalization. Resolved interpreter/options admission, the static interpolation guard, the production normalization proof and its mutant, protected CI and native Mac remain open; no A1-03 closure or release."
   },
   {
    "id": "A1-04",
@@ -1329,6 +1348,27 @@
      "intended_property": "Strict integer registry version and unique core/TypeScript diagnostic allocations",
      "observed_rejection": "Invalid boolean version, duplicate core code and duplicate frontend name each rejected on its named property",
      "tool_present": true
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["gripsack-ir::sema::workspace::span_value::check_spans", "gripsack-ir::workspace::execution_gate::execution_error", "grip plan --ir"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; Rust test container and real CLI pytest 9.1.1; sandboxed HOME",
+     "command": "docker compose run --build --rm test cargo test --locked -p gripsack-ir span_value::tests; docker compose run --build --rm e2e uv run --locked --no-sync pytest -vv test_workspace_diagnostics.py -k 'first_declared_unavailable_output or invalid_decoded_command_coordinates'",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-a1-workspace-90e68ac-span-owners.log",
+     "report_sha256": "1d9da4a0bc6f79aebdb678c5472561f8a16ebe5c11bb3381bbdcc59cbb757c10",
+     "commit": "90e68acdb63d31e9c56d3161872ed94391aa43a2",
+     "source_reuse_sha256": "bdbbd30d24506112ea1dbd1893a0192484e8b2794301b78c24cd2c935e396581",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [
+      "Snippet reads stay bounded to the evaluated repo capability; malformed coordinates and out-of-repo symlinks never leak file bytes"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Rust 1.98.0; Python 3.13.15; pytest 9.1.1",
+     "inputs": "Failing-before E129 label regression over a decoded {line:0,col:0} command span, five distinct first-declared E124 owner/precedence cases (host recipe A2, provider package A2, plain task A2-P, profile A2, post_activate hook A2, each shadowed by a later B4 image), and the malformed-coordinate CLI case asserting two labeled E129s, no snippet bytes and no E124",
+     "report_marker": "A1_SPAN_SITE=74",
+     "counts": {"executed": 74, "passed": 74, "failed": 0, "skipped": 0}
     }
    ],
    "lane_status": {
@@ -1340,7 +1380,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts; snippets are bounded to the evaluated repo capability and 1 MiB per file. E124 names the first unavailable output and owner for B2/E2/E3/E1/v4 A5/B4/A2-P/A2-E1. A single manifest generates 36 Rust IDs, five frontend code constants and a static frontend membership Record; the embedded SDK and both generated outputs have a freshness gate. A real user-thrown E999 initially surfaced as a forged structured diagnostic; after the runtime and TypeScript-code cutover it remains a traceback with no check --json diagnostic. At ec11c7c source-bound local direct runners observe one fresh manifest check, three attributable registry mutants, Deno 63/63 and 18 real CLI diagnostics (85 distinct checks); the three mutants are a subset, not additional runs. An already allocated ID can still be deliberately forged by trusted authoring code, and Verus 72/0 proves unrelated policy kernels, not semantic diagnostic classification. Remaining malformed-coordinate/owner matrix, semantic proof, protected CI and native Mac evidence keep A1-06 in_progress; no release."
+   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts; snippets are bounded to the evaluated repo capability and 1 MiB per file. E124 names the first declared unavailable output and owner for host recipe/provider package/profile/hook A2, isolated recipes B2, environments and plain tasks A2-P, task prerequisites E1, schedules E2/E3, checks A2/E1, images B4 and v4 A5 migration; first-declared precedence is exercised against a later B4 image. E129 now labels every empty-file/line-0/col-0 rejection with the invalid span itself — a failing-before decoded {line:0,col:0} command span emitted unlabeled E129s — and the span walk no longer allocates a temporary vector on valid workspaces; the renderer still never turns invalid coordinates into a snippet read. A single manifest generates 36 Rust IDs, five frontend code constants and a static frontend membership Record; a user-thrown unallocated E999 stays a traceback with no check --json diagnostic. At 90e68ac source-bound focused runners pass 5 Rust span-admission and 6 real CLI owner/coordinate cases (74-check report including the same-source Deno gate layer); ec11c7c's 85-check receipt binds the previous revision of this surface. Allocated-code authorship by trusted code, semantic classification, protected CI and native Mac keep A1-06 in_progress; no release."
   },
   {
    "id": "A1-07",
