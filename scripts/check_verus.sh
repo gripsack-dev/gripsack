@@ -20,9 +20,9 @@ set -eu
 
 CRATE=crates/gripsack-policy
 # classify + ownership + retention kernels, merge splice, graph
-# closure/roles, target compatibility and scheduler transitions.
-# Named mutants protect each production kernel family.
-MIN_OBLIGATIONS=68
+# closure/roles, exact catalog name-index binding, target compatibility
+# and scheduler transitions. Named mutants protect each kernel family.
+MIN_OBLIGATIONS=72
 
 # verification results are cached by cargo — the gate always runs a
 # CLEAN verification (a stale cache is not evidence)
@@ -94,6 +94,15 @@ run_mutant() {
             echo "FAIL: $name did not fail the role-validation contract"
             exit 1
         }
+    elif [ "$name" = graph-name-index ]; then
+        printf '%s\n' "$out2" | grep -F "src/$file:" >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'assert(same_name == (names@[position as int]@ == declared@));' >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'error: assertion failed' >/dev/null &&
+        printf '%s\n' "$out2" | grep -E 'verification results:: [1-9][0-9]* verified, [1-9][0-9]* errors' >/dev/null || {
+            printf '%s\n' "$out2" | tail -20
+            echo "FAIL: $name did not fail exact catalog name binding"
+            exit 1
+        }
     elif [ "$name" = target-abi ]; then
         printf '%s\n' "$out2" | grep -F "src/$file:" >/dev/null &&
         printf '%s\n' "$out2" | grep -F 'assert(abi_matches == (provider.abi == consumer.abi));' >/dev/null &&
@@ -137,6 +146,12 @@ run_mutant "graph-closure" graph.rs \
 run_mutant "graph-validation" graph/roles.rs \
     'RoleDecision { build: false, required_validation: true },' \
     'RoleDecision { build: false, required_validation: false },'
+
+# Treating any in-range index as the requested name would authorize
+# another output's build artifact; reject on the exact-name assertion.
+run_mutant "graph-name-index" graph/name_index.rs \
+    '    let same_name = names[position] == declared;' \
+    '    let same_name = true;'
 
 # A GNU provider/consumer pair must match. Substituting a MUSL consumer
 # for the pair breaks the exact ABI correspondence assertion.

@@ -12,6 +12,7 @@
 //! they join the closure but have no out-edges, the pre-0047
 //! semantics.
 
+pub mod name_index;
 pub mod roles;
 
 use vstd::prelude::*;

@@ -12,6 +12,7 @@ use super::names::Catalog;
 use crate::diagnostic::{Diagnostic, codes};
 use crate::workspace::{Workspace, WorkspaceOutput, WorkspaceProducer};
 use gripsack_policy::graph::build_closure;
+use gripsack_policy::graph::name_index::bind_output_index;
 use gripsack_policy::graph::roles::project_graph_roles;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -110,15 +111,22 @@ fn index_view<'a>(
                 "an incompatible target kind",
             ));
         }
-        let (Some(&from), Some(&to)) = (indices.get(edge.from.name()), indices.get(edge.to)) else {
+        let (Some(from), Some(to)) = (
+            bind_output_index(
+                &names,
+                edge.from.name(),
+                indices.get(edge.from.name()).copied(),
+            ),
+            bind_output_index(&names, edge.to, indices.get(edge.to).copied()),
+        ) else {
             return Err(unresolved_projection(
                 edge,
                 Some(target),
-                "a missing source or target index",
+                "a missing or mismatched source/target index",
             ));
         };
         if decision.build {
-            build[from].push(to);
+            build[from.position()].push(to.position());
         }
         if decision.required_validation {
             validation.insert((edge.from.name(), edge.to));
@@ -215,15 +223,37 @@ pub(super) fn check(
     for output in &workspace.outputs {
         if let WorkspaceOutput::Package(package) = output
             && let WorkspaceProducer::Recipe { recipe } = &package.producer
-            && let (Some(&root), Some(&producer), Some(target)) = (
-                indexed.indices.get(package.name.as_str()),
-                indexed.indices.get(recipe.as_str()),
-                catalog.outputs.get(recipe.as_str()),
-            )
         {
-            let closure = build_closure(indexed.names.len(), &indexed.build, root);
-            if !closure.contains(&producer) {
-                diagnostics.push(missing_edge(output, target, "production"));
+            let root = bind_output_index(
+                &indexed.names,
+                package.name.as_str(),
+                indexed.indices.get(package.name.as_str()).copied(),
+            );
+            let producer = bind_output_index(
+                &indexed.names,
+                recipe.as_str(),
+                indexed.indices.get(recipe.as_str()).copied(),
+            );
+            let target = catalog.outputs.get(recipe.as_str()).copied();
+            if let (Some(root), Some(producer), Some(target)) = (root, producer, target) {
+                let closure = build_closure(indexed.names.len(), &indexed.build, root.position());
+                if !closure.contains(&producer.position()) {
+                    diagnostics.push(missing_edge(output, target, "production"));
+                }
+            } else {
+                let mut diagnostic = Diagnostic::error(
+                    codes::REQUIRED_WORKSPACE_EDGE_MISSING,
+                    format!(
+                        "package `{}` has producer `{recipe}` without an exact catalog name/index binding",
+                        package.name
+                    ),
+                )
+                .with_label(Some(output.span().clone()), "producer referenced here");
+                if let Some(target) = target {
+                    diagnostic =
+                        diagnostic.with_label(Some(target.span().clone()), "target declared here");
+                }
+                diagnostics.push(diagnostic);
             }
         }
         let required: &[String] = match output {

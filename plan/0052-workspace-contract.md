@@ -1221,9 +1221,53 @@ These local reports bind only selected A1-02 cases; the required
 catalog/name-index refinement theorem, other A1 rows, protected CI
 and native Mac evidence remain open.
 
-## 25. Honesty register
+## 25. A1-02 exact-name index kernel (pointwise proof, not closure)
 
-- This document began as a design candidate; §§9–24 record read-only
+`policy::index_view` formerly accepted raw `usize` values from its
+unverified BTreeMap for both ends of each edge and for a package's
+root/producer closure check. It now passes each candidate, borrowed
+catalog name slice and declared name to production-used
+`gripsack-policy::graph::name_index::bind_output_index`. A missing,
+out-of-range or wrong-name candidate fails E131 before it can enter
+the closure. The private `BoundOutputIndex` constructor prevents
+external callers from manufacturing a successful binding; releasing
+its checked position adds no heap allocation or catalog scan.
+
+Verus proves that binding succeeds **iff** the candidate is in range
+and names exactly the declared output, and that distinct names with
+valid bindings cannot share one index. The initial public field
+verified but was forgeable; Verus then rejected a private field
+used directly in public postconditions. A closed specification
+accessor retains the verified value without exposing construction.
+A direct runtime case rejects
+missing, out-of-range, wrong-name and aliased candidate indices.
+The production adapter's seven catalog/edge regressions remain
+green. A semantic mutant treating every in-range position as an
+exact name fails at the named equality assertion, with the verifier
+present; the pinned positive run reports **72 verified / 0 errors**
+and all seven policy mutants reject.
+
+`WORKSPACE-INDEX-001` records the exact scope. The BTreeMap still
+supplies an unproved *candidate*; the verified kernel does not prove
+that serde kept every reference, that `names::check` produced a
+complete catalog, or that the source walk found every admitted
+edge. The runtime catalog/coverage checks (§§17–24) guard these
+boundaries but are not a substitute for the required full
+schema-to-closure refinement theorem. A1-02 and protected CI/Mac
+lanes remain open.
+
+The first container test gate rejected a Clippy-only
+`let Some(position) = candidate else { return None; }` spelling.
+Replacing it with `candidate?` retained the verified postcondition.
+The final Linux compose chain passed fresh Rust fmt/clippy/tests,
+real CLI e2e **289/289**, and fresh Verus **72 verified / 0 errors**
+with seven named mutants. TypeScript and TLC image layers were
+**CACHED**. The `0d7801e` source-bound reports predate this policy
+kernel and its caller; they are historical for the current code.
+
+## 26. Honesty register
+
+- This document began as a design candidate; §§9–25 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
