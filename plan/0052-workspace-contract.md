@@ -761,19 +761,21 @@ the runner output, command, versions, exact commit and dirty-root
 statement: real CLI workspace/diagnostic flows **30 passed /
 0 failed / 0 skipped**, and a fresh policy proof **61 verified /
 0 errors** with the graph-validation mutant rejected at its named
-property. `verification/delivery.json` binds those bytes to selected
-A1-01/A1-02/A1-03/A1-06 cases. Cases not exercised in the two
-runner commands remain outside those records; the proof does not
-establish schema/name-index refinement. These are **local**
-source-bound reports, not CI, native Mac or release evidence.
+property. The evidence-only ledger at `c0888d4` bound those bytes
+to selected A1-01/A1-02/A1-03/A1-06 cases; the current ledger points
+to the later §16 packet. Cases not exercised in those runner commands
+remain outside those historical records; the proof does not establish
+schema/name-index refinement. These are **local** reports, not CI,
+native Mac or release evidence.
 
 The checked `SOURCE_ROOTS` fingerprint of the evidence-bearing code
 is `e057eb20f9ce59d3bbcc01960b20b1471a1846598f4d98bfd585215d8d5644f3`.
 The earlier local runner at `53c6fac` predates the delivery-calibration
 source change and is retained as history, not reused for this code.
-An evidence-only ledger/report commit may reuse the new logs only if
-the checker confirms byte-identical source roots. No row is marked
-verified by that narrower correspondence.
+An evidence-only ledger/report commit reused the second run only
+after byte-identical source roots were checked. The changed e2e
+fixtures at `ff73b62` have a different fingerprint (§16); no row was
+marked verified by the earlier correspondence.
 
 ## 16. A1-07 all-kind golden and semantic-drift packet (not closure)
 
@@ -797,9 +799,19 @@ The focused golden plus real CLI path **5/5 passed**. The final
 Linux compose chain passed Rust fmt/clippy/tests, fresh Deno
 **62/62** and real CLI e2e **279/279**; TLC and Verus images were
 **CACHED**, not fresh model/proof runs for this source revision.
-The §15 runner reports bind the earlier code source, not this changed
-e2e corpus. New source-bound evidence, the compact module/API
-cutover and native CI/Mac lanes remain open.
+The §15 runner reports bind the earlier source, not this changed
+corpus. At committed code revision
+`ff73b62618359d002040a2d648b87c1d2a6e78bd`, clean tracked
+source roots were checked before and after fresh direct container
+runs: all golden/workspace/diagnostic cases **35 passed / 0 failed /
+0 skipped**, and Verus **61 verified / 0 errors** with five
+mutants rejected, including the graph-validation mutant at its
+named property. SHA-256 checked logs and the source fingerprint
+`99dd8c7cdc51b216da260ad1214f47eaf97ecc33e6ff39939118ab8603bb1ef8`
+bind selected A1-01/A1-02/A1-03/A1-06 cases and the A1-07 focused
+runner; they do not prove A1-07's conjunctive schema/architecture
+case, the schema/name-index bridge or complete formal family. The
+compact module/API cutover and native CI/Mac lanes remain open.
 
 ## 17. Honesty register
 
