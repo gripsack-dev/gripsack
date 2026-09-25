@@ -1080,6 +1080,12 @@ referenced output declaration sites. The successful path adds no
 heap allocation; the kind comparison is performed only after the
 role, target and payload match.
 
+The coverage module is split by responsibility: `declaration.rs`
+streams source-derived references and their binding/kind rules;
+`coverage.rs` compares them to projected edges without allocating
+on admission; `diagnostics.rs` builds E131 labels only on rejection.
+The split adds no alternative graph collector or policy kernel.
+
 This runtime check closes the two **projection-substitution** cases,
 not the formal bridge. It does not prove that decoding preserved all
 names, that the catalog name/index map is complete and injective, or
