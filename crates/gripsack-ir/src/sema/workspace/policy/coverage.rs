@@ -1,21 +1,19 @@
-//! Compare the decoded output grammar with the projected edge roles.
-//! This is an independent source-rooted admission check, not a second
-//! graph builder: `graph::collect` still owns names, kinds and spans.
-//! Each output's declared references are streamed in emission order
-//! and compared pairwise against that output's contiguous run of
-//! projected edges — a lost, spuriously added, reordered or same-role
-//! substituted reference (foo → bar at equal cardinality) fails before
-//! the verified closure can be treated as a complete production graph.
+//! Compare decoded workspace references with projected graph edges.
+//! This source-rooted admission check is independent of the graph
+//! collector: each output streams its declared references in emission
+//! order and compares role, target and selector/exported-command
+//! payloads with the contiguous run of projected edges. A lost,
+//! extra, reordered or substituted reference fails before the
+//! verified closure can be treated as complete.
 //! Successful admission performs no heap allocation; diagnostics
-//! allocate only on rejection. The guard binds role and target
-//! identity only: the decode arrow (serde/tagged grammar), the catalog
-//! name → kernel index bridge in `index_view`, and edge payloads
-//! (artifact selector, package_command name) remain unproved —
-//! selectors are still judged on the projection by `refs` (E130).
+//! allocate only on rejection. The decode arrow (serde/tagged grammar),
+//! catalog name → kernel index bridge in `index_view`, and the edge's
+//! expected-kind/target-binding classifications remain unproved.
 
 use super::super::graph::{EdgeRole, Projection};
 use super::super::names::Catalog;
 use crate::diagnostic::{Diagnostic, codes};
+use crate::span::Span;
 use crate::workspace::{
     Workspace, WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspacePath, WorkspaceProducer,
     WorkspaceSource,
@@ -61,47 +59,104 @@ impl RoleCounts {
     }
 }
 
-/// One catalog reference decoded from a command argument (exec argv
-/// slot or run_bash interpreter pin) — a literal references nothing.
-fn arg_target<'a>(arg: &'a WorkspaceArg, role: EdgeRole, emit: &mut impl FnMut(EdgeRole, &'a str)) {
+/// A reference read directly from one decoded source declaration.
+/// The command/file span belongs to the referring field; list-based
+/// references inherit their output's declaration span.
+#[derive(Clone, Copy)]
+struct DeclaredReference<'a> {
+    role: EdgeRole,
+    target: &'a str,
+    selector: Option<&'a str>,
+    package_command: Option<&'a str>,
+    at: &'a Span,
+}
+
+fn named_reference<'a>(role: EdgeRole, target: &'a str, at: &'a Span) -> DeclaredReference<'a> {
+    DeclaredReference {
+        role,
+        target,
+        selector: None,
+        package_command: None,
+        at,
+    }
+}
+
+fn artifact_reference<'a>(
+    role: EdgeRole,
+    target: &'a str,
+    selector: &'a str,
+    at: &'a Span,
+) -> DeclaredReference<'a> {
+    DeclaredReference {
+        selector: Some(selector),
+        ..named_reference(role, target, at)
+    }
+}
+
+fn command_reference<'a>(
+    role: EdgeRole,
+    package: &'a str,
+    command: &'a str,
+    at: &'a Span,
+) -> DeclaredReference<'a> {
+    DeclaredReference {
+        package_command: Some(command),
+        ..named_reference(role, package, at)
+    }
+}
+
+/// One catalog reference decoded from an exec argv slot or a run_bash
+/// interpreter pin. A literal carries no catalog reference.
+fn arg_reference<'a>(
+    arg: &'a WorkspaceArg,
+    role: EdgeRole,
+    at: &'a Span,
+    emit: &mut impl FnMut(DeclaredReference<'a>),
+) {
     match arg {
         WorkspaceArg::Literal { .. } => {}
-        WorkspaceArg::Artifact { output, .. } => emit(role, output),
-        WorkspaceArg::PackageCommand { package, .. } => emit(role, package),
+        WorkspaceArg::Artifact { output, selector } => {
+            emit(artifact_reference(role, output, selector, at));
+        }
+        WorkspaceArg::PackageCommand { package, command } => {
+            emit(command_reference(role, package, command, at));
+        }
     }
 }
 
 /// Artifact references in environment *value* position, in the
 /// BTreeMap's key order — the same order `graph::collect` emits them.
 /// A package_command value is a context violation (E128), not an edge.
-fn env_artifacts<'a>(
+fn env_references<'a>(
     env: &'a BTreeMap<String, WorkspaceArg>,
     role: EdgeRole,
-    emit: &mut impl FnMut(EdgeRole, &'a str),
+    at: &'a Span,
+    emit: &mut impl FnMut(DeclaredReference<'a>),
 ) {
     for arg in env.values() {
-        if let WorkspaceArg::Artifact { output, .. } = arg {
-            emit(role, output);
+        if let WorkspaceArg::Artifact { .. } = arg {
+            arg_reference(arg, role, at, emit);
         }
     }
 }
 
-/// The catalog references of one command body (argv slots,
-/// environment values, working directory, run_bash interpreter pin),
-/// in the same order `graph::command_edges` emits them.
+/// Catalog references of one command body (argv slots, environment
+/// values, working directory, run_bash interpreter pin), in the same
+/// order `graph::command_edges` emits them.
 fn command_refs<'a>(
     command: &'a WorkspaceCommand,
     role: EdgeRole,
-    emit: &mut impl FnMut(EdgeRole, &'a str),
+    emit: &mut impl FnMut(DeclaredReference<'a>),
 ) {
+    let at = command.span();
     match command {
         WorkspaceCommand::Exec { argv, env, cwd, .. } => {
             for arg in argv {
-                arg_target(arg, role, emit);
+                arg_reference(arg, role, at, emit);
             }
-            env_artifacts(env, role, emit);
-            if let Some(WorkspacePath::Artifact { output, .. }) = cwd {
-                emit(role, output);
+            env_references(env, role, at, emit);
+            if let Some(WorkspacePath::Artifact { output, selector }) = cwd {
+                emit(artifact_reference(role, output, selector, at));
             }
         }
         WorkspaceCommand::RunBash {
@@ -112,12 +167,12 @@ fn command_refs<'a>(
         } => {
             // A non-package_command interpreter is an ambient-
             // interpreter violation (E128), not an edge.
-            if let WorkspaceArg::PackageCommand { package, .. } = interpreter {
-                emit(role, package);
+            if let WorkspaceArg::PackageCommand { .. } = interpreter {
+                arg_reference(interpreter, role, at, emit);
             }
-            env_artifacts(env, role, emit);
-            if let Some(WorkspacePath::Artifact { output, .. }) = cwd {
-                emit(role, output);
+            env_references(env, role, at, emit);
+            if let Some(WorkspacePath::Artifact { output, selector }) = cwd {
+                emit(artifact_reference(role, output, selector, at));
             }
         }
     }
@@ -125,68 +180,77 @@ fn command_refs<'a>(
 
 /// Stream the references `output` declares, in the same emission
 /// order as `graph::output_edges`.
-fn for_each_declared<'a>(output: &'a WorkspaceOutput, emit: &mut impl FnMut(EdgeRole, &'a str)) {
+fn for_each_declared<'a>(
+    output: &'a WorkspaceOutput,
+    emit: &mut impl FnMut(DeclaredReference<'a>),
+) {
+    let at = output.span();
     match output {
         WorkspaceOutput::Recipe(recipe) => {
             for step in &recipe.steps {
                 command_refs(step, EdgeRole::BuildInput, emit);
             }
             for check in &recipe.checks {
-                emit(EdgeRole::Validation, check);
+                emit(named_reference(EdgeRole::Validation, check, at));
             }
         }
         WorkspaceOutput::Package(package) => {
             if let WorkspaceProducer::Recipe { recipe } = &package.producer {
-                emit(EdgeRole::Production, recipe);
+                emit(named_reference(EdgeRole::Production, recipe, at));
             }
             for runtime in &package.runtime {
-                emit(EdgeRole::Runtime, runtime);
+                emit(named_reference(EdgeRole::Runtime, runtime, at));
             }
         }
         WorkspaceOutput::Environment(environment) => {
             for package in &environment.packages {
-                emit(EdgeRole::Runtime, package);
+                emit(named_reference(EdgeRole::Runtime, package, at));
             }
-            env_artifacts(&environment.env, EdgeRole::Runtime, emit);
+            env_references(&environment.env, EdgeRole::Runtime, at, emit);
         }
         WorkspaceOutput::Task(task) => {
             command_refs(&task.run, EdgeRole::Runtime, emit);
             for dep in &task.deps {
-                emit(EdgeRole::TaskPrereq, dep);
+                emit(named_reference(EdgeRole::TaskPrereq, dep, at));
             }
             if let Some(environment) = &task.environment {
-                emit(EdgeRole::Runtime, environment);
+                emit(named_reference(EdgeRole::Runtime, environment, at));
             }
             for check in &task.checks {
-                emit(EdgeRole::Validation, check);
+                emit(named_reference(EdgeRole::Validation, check, at));
             }
         }
         WorkspaceOutput::Schedule(schedule) => {
-            emit(EdgeRole::Retention, &schedule.task);
+            emit(named_reference(EdgeRole::Retention, &schedule.task, at));
         }
         WorkspaceOutput::Check(check) => {
             command_refs(&check.run, EdgeRole::Runtime, emit);
-            emit(EdgeRole::Validation, &check.subject);
+            emit(named_reference(EdgeRole::Validation, &check.subject, at));
         }
         WorkspaceOutput::Image(image) => {
             for package in &image.packages {
-                emit(EdgeRole::Runtime, package);
+                emit(named_reference(EdgeRole::Runtime, package, at));
             }
         }
         WorkspaceOutput::Profile(profile) => {
             for file in &profile.files {
-                if let Some(WorkspaceSource::ArtifactFile { output, .. }) = &file.source {
-                    emit(EdgeRole::Runtime, output);
+                if let Some(WorkspaceSource::ArtifactFile { output, selector }) = &file.source {
+                    emit(artifact_reference(
+                        EdgeRole::Runtime,
+                        output,
+                        selector,
+                        &file.span,
+                    ));
                 }
             }
             if let Some(environment) = &profile.environment {
-                emit(EdgeRole::Retention, environment);
+                emit(named_reference(EdgeRole::Retention, environment, at));
             }
             for schedule in &profile.schedules {
-                emit(EdgeRole::Retention, schedule);
+                emit(named_reference(EdgeRole::Retention, schedule, at));
             }
             for hook in &profile.hooks {
-                emit(EdgeRole::Retention, hook);
+                emit(named_reference(EdgeRole::Retention, hook, at));
             }
         }
         WorkspaceOutput::Hook(hook) => {
@@ -279,6 +343,51 @@ fn reclassified_edge(
     diagnostic
 }
 
+/// A same-target edge that silently changes the selected artifact or
+/// executable is not the reference the workspace author declared.
+fn substituted_payload(
+    output: &WorkspaceOutput,
+    catalog: &Catalog,
+    declared: DeclaredReference<'_>,
+    projected_selector: Option<&str>,
+    projected_command: Option<&str>,
+) -> Diagnostic {
+    let (field, expected, projected) = if declared.selector != projected_selector {
+        (
+            "artifact selector",
+            declared.selector.unwrap_or("<none>"),
+            projected_selector.unwrap_or("<none>"),
+        )
+    } else {
+        (
+            "package command",
+            declared.package_command.unwrap_or("<none>"),
+            projected_command.unwrap_or("<none>"),
+        )
+    };
+    let mut diagnostic = Diagnostic::error(
+        codes::REQUIRED_WORKSPACE_EDGE_MISSING,
+        format!(
+            "workspace {} `{}` declares {field} `{expected}` on `{}`, but the graph projects `{projected}`; refusing a substituted admitted graph",
+            output.kind(), output.name(), declared.target,
+        ),
+    )
+    .with_label(Some(declared.at.clone()), "reference declared here");
+    if declared.at != output.span() {
+        diagnostic = diagnostic.with_label(
+            Some(output.span().clone()),
+            "referencing output declared here",
+        );
+    }
+    if let Some(target) = catalog.outputs.get(declared.target) {
+        diagnostic = diagnostic.with_label(
+            Some(target.span().clone()),
+            "referenced output declared here",
+        );
+    }
+    diagnostic
+}
+
 /// The first sequence divergence found for one output, recorded while
 /// the declared walk finishes counting totals for the diagnostic.
 enum Divergence<'a> {
@@ -296,6 +405,13 @@ enum Divergence<'a> {
         declared: (EdgeRole, &'a str),
         projected: (EdgeRole, &'a str),
     },
+    /// Same role and target, but a different artifact selector or
+    /// exported package command.
+    Payload {
+        declared: DeclaredReference<'a>,
+        projected_selector: Option<&'a str>,
+        projected_command: Option<&'a str>,
+    },
 }
 
 pub(super) fn check(
@@ -309,31 +425,47 @@ pub(super) fn check(
         let mut declared_counts = RoleCounts::default();
         let mut matched_counts = RoleCounts::default();
         let mut divergence: Option<Divergence> = None;
-        for_each_declared(output, &mut |role, target| {
-            declared_counts.add(role, 1);
+        for_each_declared(output, &mut |reference| {
+            declared_counts.add(reference.role, 1);
             if divergence.is_some() {
                 // Keep counting declared totals for the diagnostic,
                 // but consume nothing further.
                 return;
             }
             match edges.next_if(|edge| std::ptr::eq(edge.from, output)) {
-                Some(edge) if edge.role == role && edge.to == target => {
-                    matched_counts.add(role, 1);
+                Some(edge)
+                    if edge.role == reference.role
+                        && edge.to == reference.target
+                        && edge.selector == reference.selector
+                        && edge.command == reference.package_command =>
+                {
+                    matched_counts.add(reference.role, 1);
                 }
-                Some(edge) if edge.role == role => {
+                Some(edge) if edge.role == reference.role && edge.to == reference.target => {
+                    divergence = Some(Divergence::Payload {
+                        declared: reference,
+                        projected_selector: edge.selector,
+                        projected_command: edge.command,
+                    });
+                }
+                Some(edge) if edge.role == reference.role => {
                     divergence = Some(Divergence::Substituted {
-                        role,
-                        declared: target,
+                        role: reference.role,
+                        declared: reference.target,
                         projected: edge.to,
                     });
                 }
                 Some(edge) => {
                     divergence = Some(Divergence::Reclassified {
-                        declared: (role, target),
+                        declared: (reference.role, reference.target),
                         projected: (edge.role, edge.to),
                     });
                 }
-                None => divergence = Some(Divergence::Missing { role }),
+                None => {
+                    divergence = Some(Divergence::Missing {
+                        role: reference.role,
+                    })
+                }
             }
         });
         // Drop the rest of this output's projected run so the next
@@ -363,6 +495,17 @@ pub(super) fn check(
                 declared,
                 projected,
             }) => Some(reclassified_edge(output, catalog, declared, projected)),
+            Some(Divergence::Payload {
+                declared,
+                projected_selector,
+                projected_command,
+            }) => Some(substituted_payload(
+                output,
+                catalog,
+                declared,
+                projected_selector,
+                projected_command,
+            )),
             None => first_extra.map(|role| {
                 count_mismatch(
                     output,

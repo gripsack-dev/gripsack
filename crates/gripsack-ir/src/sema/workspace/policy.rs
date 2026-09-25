@@ -320,18 +320,19 @@ mod tests {
     }
 
     #[test]
-    fn swapped_same_role_targets_fail_closed_naming_both_sides() {
-        // A same-role substitution keeps every per-role count, so a
-        // cardinality-only guard admits it: swap the recipe's first
-        // build input and the package's runtime dependency for another
-        // admitted package of the same kind.
+    fn substituted_graph_references_fail_closed_at_declaration() {
+        // Count-only admission misses a same-role target substitution.
+        // Role/target-only admission still misses a valid but substituted
+        // artifact selector or command exported by the same package.
         let recipe = RECIPE.replace(
             r#""execution": {"kind": "host", "access": "unconfined"}"#,
             r#""steps": [
                     {"kind": "exec", "span": {"file": "grip.ts", "line": 4},
                      "argv": [{"kind": "artifact", "output": "src", "selector": "."}]},
                     {"kind": "exec", "span": {"file": "grip.ts", "line": 5},
-                     "argv": [{"kind": "artifact", "output": "alt", "selector": "."}]}],
+                     "argv": [{"kind": "artifact", "output": "alt", "selector": "."}]},
+                    {"kind": "exec", "span": {"file": "grip.ts", "line": 6},
+                     "argv": [{"kind": "package_command", "package": "src", "command": "tool"}]}],
                "execution": {"kind": "host", "access": "unconfined"}"#,
         );
         let package = PACKAGE.replace(
@@ -345,7 +346,7 @@ mod tests {
             "producer": {{"kind": "provider", "provider": {{
                 "fetch": {{"kind": "file", "path": "{name}.bin"}},
                 "span": {{"file": "grip.ts", "line": {line}}}}}}},
-            "commands": {{"tool": "bin/tool"}},
+            "commands": {{"tool": "bin/tool", "other": "bin/other"}},
             "target": {{"os": "linux", "arch": "x86_64"}},
             "layout": {{"kind": "relocatable"}}}}"#
             )
@@ -392,5 +393,61 @@ mod tests {
                 .collect();
             assert_eq!(lines, vec![source, declared_line, projected_line]);
         }
+
+        let mut projection = super::super::graph::collect(workspace);
+        projection
+            .edges
+            .iter_mut()
+            .find(|edge| {
+                edge.role == EdgeRole::BuildInput && edge.to == "src" && edge.selector == Some(".")
+            })
+            .expect("artifact selector edge")
+            .selector = Some("share/other");
+        let mut diagnostics = Vec::new();
+        super::check(workspace, &projection, &catalog, &mut diagnostics);
+        let selector = diagnostics
+            .iter()
+            .find(|d| {
+                d.code == codes::REQUIRED_WORKSPACE_EDGE_MISSING
+                    && d.message.contains("selector")
+                    && d.message.contains("share/other")
+            })
+            .expect("same-target artifact selector substitution blocks admission");
+        assert!(
+            selector
+                .labels
+                .iter()
+                .any(|label| label.span.as_ref().is_some_and(|span| span.line == 4)),
+            "original command declaration is labeled"
+        );
+
+        let mut projection = super::super::graph::collect(workspace);
+        projection
+            .edges
+            .iter_mut()
+            .find(|edge| {
+                edge.role == EdgeRole::BuildInput
+                    && edge.to == "src"
+                    && edge.command == Some("tool")
+            })
+            .expect("exported package command edge")
+            .command = Some("other");
+        let mut diagnostics = Vec::new();
+        super::check(workspace, &projection, &catalog, &mut diagnostics);
+        let command = diagnostics
+            .iter()
+            .find(|d| {
+                d.code == codes::REQUIRED_WORKSPACE_EDGE_MISSING
+                    && d.message.contains("package command")
+                    && d.message.contains("other")
+            })
+            .expect("same-package exported command substitution blocks admission");
+        assert!(
+            command
+                .labels
+                .iter()
+                .any(|label| label.span.as_ref().is_some_and(|span| span.line == 6)),
+            "original command declaration is labeled"
+        );
     }
 }

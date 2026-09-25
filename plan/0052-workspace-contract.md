@@ -873,9 +873,45 @@ selected `verification/delivery.json` records bind source fingerprint
 This is local evidence, not protected CI, native Mac or release
 evidence. The `ff73b62` receipts remain historical.
 
-## 18. Honesty register
+## 18. A1-02 graph payload correspondence packet (not closure)
 
-- This document began as a design candidate; §§9–17 record read-only
+The §17 guard established role/target correspondence, but a
+projected artifact selector could change from `.` to another
+normalized selector without changing its output, role or count.
+A package-command reference could likewise name another exported
+command on the same package. Before this change, the production
+adapter regression **failed** at `policy.rs:415` when it required
+E131 for the selector mutation; the same fixture has an exported
+command mutation. Both substituted values are individually valid
+for their respective target, so ordinary selector/name syntax
+validation cannot detect that the graph changed the declaration.
+
+The source-rooted streaming comparison now includes the artifact
+selector and exported package-command name alongside each
+`(role, target)` pair. It walks exec argv/Bash interpreters,
+command environment/working-directory artifacts, environment
+values and profile file sources with their owning command/file
+span. An altered payload fails E131 and labels that reference's
+source site before the role/closure policy is used. Successful
+admission adds no heap allocation. The focused host Rust regression
+passed after the change, including both payload mutations and the
+original role/target mutations. This is **runtime correspondence**,
+not a schema decoding, expected-kind/target-binding, name/index or
+provenance refinement theorem; A1-02 remains in progress.
+
+The final Linux worktree chain passed Rust fmt/clippy/tests after an
+initial rustfmt-only correction, focused real CLI workspace/golden/
+diagnostic flows **37/37**, full real CLI e2e **281/281**, and fresh
+Verus **61 verified / 0 errors** with five mutants. The TypeScript
+and TLC image layers were **CACHED**, not fresh Deno/model runs for
+this edit; the earlier fresh Deno **63/63** belongs to §17. The
+`123f3bb` source-bound receipts predate this Rust change. Neither
+the role proof nor these Linux gates close the unproved adapter
+bridge or native CI/Mac lanes.
+
+## 19. Honesty register
+
+- This document began as a design candidate; §§9–18 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
