@@ -909,6 +909,21 @@ this edit; the earlier fresh Deno **63/63** belongs to §17. The
 the role proof nor these Linux gates close the unproved adapter
 bridge or native CI/Mac lanes.
 
+At committed source revision
+`01c186fd821eee4a3c077c06ffb7aa53fe38bd7e`, clean tracked
+source roots were checked before and after each direct runner. The
+SHA-256 checked logs record **37/37** real frontend/CLI cases plus
+**3/3 v3, 3/3 historical v4 and 5/5 v5** schema/parser cases,
+**5/5** production adapter cases (the mutation regression includes
+both payload changes), one architecture self-check, and fresh
+Verus **61 verified / 0 errors** with the graph-validation mutant
+rejected on its named contract. The checked `SOURCE_ROOTS`
+fingerprint is
+`061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919`.
+The ledger cites selected cases only; these local reports do not
+prove the payload adapter, replace protected CI or exercise native
+Mac behavior. The `123f3bb` reports are historical.
+
 ## 19. Honesty register
 
 - This document began as a design candidate; §§9–18 record read-only

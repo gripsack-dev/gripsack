@@ -888,10 +888,10 @@
      "environment": "Linux amd64 Docker Compose v5.5.0; pytest 9.1.1; sandboxed HOME; offline test fixtures",
      "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_golden.py test_workspace_contract.py test_workspace_diagnostics.py; docker compose run --build --rm test cargo test --locked -p gripsack-ir --test schema_acceptance --test workspace_v4_compat --test workspace_v5_acceptance (independent runners at same SHA)",
      "result": "pass",
-     "report": "verification/reports/2026-09-24-a1-workspace-123f3bb-corpus.log",
-     "report_sha256": "d59ca5260bd3ea45c36da76a8aa0017ccdfa1190c70c16fb099b6923253ee7be",
-     "commit": "123f3bbf9555621d03a0ce989fc02b6abb16b892",
-     "source_reuse_sha256": "510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1",
+     "report": "verification/reports/2026-09-24-a1-workspace-01c186f-corpus.log",
+     "report_sha256": "1c1678be7f728be5017a9f8425c3027a10fe47308b87942e0cd6bebed354bb54",
+     "commit": "01c186fd821eee4a3c077c06ffb7aa53fe38bd7e",
+     "source_reuse_sha256": "061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [
       "Project gripsack.ts checks without hosts/<name>.ts or env.toml, including dotfiles-only profile and provider-backed package",
@@ -915,7 +915,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "implemented_unverified"}
    ],
-   "implementation_notes": "Current v5 read-only catalog/check surface and strict historical v4 workspace reader are implemented. A source-stamped local Linux composite runner at 123f3bb records 37 passing real frontend/CLI cases plus 11 passing v3/v4/v5 schema/parser cases, including A1-01's project entry and pre-effect E124 paths; ff73b62 reports remain history. One offline fixture emits all nine v5 kinds, but the exhaustive invalid-type matrix, historical v3 profile lifecycles, full semantic admission proof, native Mac and live CI lanes remain open; no realization or schedule execution is claimed."
+   "implementation_notes": "Current v5 read-only catalog/check surface and strict historical v4 workspace reader are implemented. A source-stamped local Linux composite runner at 01c186f records 37 passing real frontend/CLI cases plus 11 passing v3/v4/v5 schema/parser cases, including A1-01's project entry and pre-effect E124 paths; earlier ff73b62/123f3bb reports remain history. One offline fixture emits all nine v5 kinds, but the exhaustive invalid-type matrix, historical v3 profile lifecycles, full semantic admission proof, native Mac and live CI lanes remain open; no realization or schedule execution is claimed."
   },
   {
    "id": "A1-02",
@@ -950,10 +950,10 @@
      "environment": "Linux amd64 Docker Compose v5.5.0; pytest 9.1.1; sandboxed HOME; offline test fixtures",
      "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_golden.py test_workspace_contract.py test_workspace_diagnostics.py; docker compose run --build --rm test cargo test --locked -p gripsack-ir --test schema_acceptance --test workspace_v4_compat --test workspace_v5_acceptance (independent runners at same SHA)",
      "result": "pass",
-     "report": "verification/reports/2026-09-24-a1-workspace-123f3bb-corpus.log",
-     "report_sha256": "d59ca5260bd3ea45c36da76a8aa0017ccdfa1190c70c16fb099b6923253ee7be",
-     "commit": "123f3bbf9555621d03a0ce989fc02b6abb16b892",
-     "source_reuse_sha256": "510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1",
+     "report": "verification/reports/2026-09-24-a1-workspace-01c186f-corpus.log",
+     "report_sha256": "1c1678be7f728be5017a9f8425c3027a10fe47308b87942e0cd6bebed354bb54",
+     "commit": "01c186fd821eee4a3c077c06ffb7aa53fe38bd7e",
+     "source_reuse_sha256": "061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [
       "Decoded recipe/package/check/task/output references reject missing and wrong kinds with declaration spans"
@@ -971,15 +971,15 @@
      "environment": "Linux amd64 Docker Compose v5.5.0; direct cargo test in pinned Rust test container",
      "command": "docker compose run --build --rm test cargo test --locked -p gripsack-ir sema::workspace::policy::tests",
      "result": "pass",
-     "report": "verification/reports/2026-09-24-a1-workspace-123f3bb-policy.log",
-     "report_sha256": "004bbd63f2b1188cce77c4ca78a4ed4ceb49fe929c6c51665f157d420d405277",
-     "commit": "123f3bbf9555621d03a0ce989fc02b6abb16b892",
-     "source_reuse_sha256": "510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1",
+     "report": "verification/reports/2026-09-24-a1-workspace-01c186f-policy.log",
+     "report_sha256": "6cf259601dfbe8509dd0009ab352ccb260f65a9535a9224558fe3218847553a3",
+     "commit": "01c186fd821eee4a3c077c06ffb7aa53fe38bd7e",
+     "source_reuse_sha256": "061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [],
      "kind": "runner",
      "tool_versions": "Docker Compose v5.5.0; digest-pinned Rust test image",
-     "inputs": "Committed production v5 graph role projection and streaming role/target admission guard; same-role build/runtime target substitutions",
+     "inputs": "Committed production v5 graph role/target and artifact selector/exported-command correspondence; same-role build/runtime and same-target payload substitutions",
      "report_marker": "A1_POLICY_REFERENCES=5",
      "counts": {"executed": 5, "passed": 5, "failed": 0, "skipped": 0}
     },
@@ -990,10 +990,10 @@
      "environment": "Linux x86_64 verifier container; fresh CARGO_TARGET_DIR; Z3 supplied by pinned image",
      "command": "docker compose run --build --rm verify sh scripts/check_verus.sh",
      "result": "pass",
-     "report": "verification/reports/2026-09-24-a1-workspace-123f3bb-verus.log",
-     "report_sha256": "cad0d4ad86376d39622c048c7b340d18733872e787a4d26aa7eca1f36612afa2",
-     "commit": "123f3bbf9555621d03a0ce989fc02b6abb16b892",
-     "source_reuse_sha256": "510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1",
+     "report": "verification/reports/2026-09-24-a1-workspace-01c186f-verus.log",
+     "report_sha256": "976bd28dccb60a1a6660d78ee79177bbd58bebf2a1de4f6b58d1b889baf9d64d",
+     "commit": "01c186fd821eee4a3c077c06ffb7aa53fe38bd7e",
+     "source_reuse_sha256": "061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [],
      "kind": "runner",
@@ -1010,10 +1010,10 @@
      "environment": "Linux x86_64 verifier container; named graph-validation mutant",
      "command": "docker compose run --build --rm verify sh scripts/check_verus.sh",
      "result": "pass",
-     "report": "verification/reports/2026-09-24-a1-workspace-123f3bb-verus.log",
-     "report_sha256": "cad0d4ad86376d39622c048c7b340d18733872e787a4d26aa7eca1f36612afa2",
-     "commit": "123f3bbf9555621d03a0ce989fc02b6abb16b892",
-     "source_reuse_sha256": "510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1",
+     "report": "verification/reports/2026-09-24-a1-workspace-01c186f-verus.log",
+     "report_sha256": "976bd28dccb60a1a6660d78ee79177bbd58bebf2a1de4f6b58d1b889baf9d64d",
+     "commit": "01c186fd821eee4a3c077c06ffb7aa53fe38bd7e",
+     "source_reuse_sha256": "061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [],
      "kind": "mutant-calibration",
@@ -1035,7 +1035,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Current v5 graph uses production gripsack-policy build-closure and a verified edge-role classifier. Schema/Rust/TS cut over typed execution, ABI/minimum-OS, prefix selection and local ordering while retaining strict v3/v4 readers. The adapter streams decoded per-output role/target plus artifact selectors and exported package-command names against its projection without successful-path heap allocation; same-role target/payload swaps return E131 at the owning declaration. A same-target selector mutation failed the new regression before this fix, then the full regression including command mutation passed on the host. Full Linux worktree compose passed Rust fmt/clippy/tests, real CLI e2e 281/281 and fresh Verus 61/0 with five mutants; TypeScript and TLC image layers cached. This is a runtime guard, not a schema decoding, expected-kind/target-binding, name-index or provenance refinement proof. Source-stamped 123f3bb local reports bind the previous source, not this Rust edit; native Mac, remaining conjunctive cases, adapter proof and live CI remain open. No workspace executor or public release is authorized."
+   "implementation_notes": "Current v5 graph uses production gripsack-policy build-closure and a verified edge-role classifier. Schema/Rust/TS cut over typed execution, ABI/minimum-OS, prefix selection and local ordering while retaining strict v3/v4 readers. The adapter streams decoded per-output role/target plus artifact selectors and exported package-command names against its projection without successful-path heap allocation; same-role target/payload swaps return E131 at the owning declaration. A same-target selector mutation failed the regression before this fix; after it, five direct policy cases including both selector and command substitutions passed. At 01c186f, local SHA-256 checked runners bind a 48-case schema/frontend/CLI corpus, five production adapter cases, fresh Verus 61 verified/0 errors and the named graph-validation mutant. Full Linux worktree compose passed Rust fmt/clippy/tests and real CLI e2e 281/281; TS and TLC layers cached. This is a runtime guard, not a schema decoding, expected-kind/target-binding, name-index or provenance refinement proof. Native Mac, remaining conjunctive cases, adapter proof and live CI remain open. No workspace executor or public release is authorized."
   },
   {
    "id": "A1-03",
@@ -1069,10 +1069,10 @@
      "environment": "Linux amd64 Docker Compose v5.5.0; pytest 9.1.1; sandboxed HOME; offline test fixtures",
      "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_golden.py test_workspace_contract.py test_workspace_diagnostics.py; docker compose run --build --rm test cargo test --locked -p gripsack-ir --test schema_acceptance --test workspace_v4_compat --test workspace_v5_acceptance (independent runners at same SHA)",
      "result": "pass",
-     "report": "verification/reports/2026-09-24-a1-workspace-123f3bb-corpus.log",
-     "report_sha256": "d59ca5260bd3ea45c36da76a8aa0017ccdfa1190c70c16fb099b6923253ee7be",
-     "commit": "123f3bbf9555621d03a0ce989fc02b6abb16b892",
-     "source_reuse_sha256": "510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1",
+     "report": "verification/reports/2026-09-24-a1-workspace-01c186f-corpus.log",
+     "report_sha256": "1c1678be7f728be5017a9f8425c3027a10fe47308b87942e0cd6bebed354bb54",
+     "commit": "01c186fd821eee4a3c077c06ffb7aa53fe38bd7e",
+     "source_reuse_sha256": "061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [
       "Literal Bash bodies reject interpolation at the declaring source line and map dedented generated lines to the original template, never a guessed command callsite"
@@ -1093,7 +1093,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "The v5 frontend implements immutable fluent exec/Bash builders, canonical data-only env keys, typed argv, literal Bash source maps and E130 on forged decoded interpolation. The strict wire still lacks resolved interpreter bytes and Bash options; JS evaluates template expressions before a tag can reject them. A source-stamped local Linux composite runner at 123f3bb observed 37 passing golden/workspace/diagnostic cases plus 11 v3/v4/v5 schema/parser cases, including literal Bash mapping and semantic-input drift; ff73b62 reports remain history. Full Linux worktree compose passed Rust fmt/clippy/tests, Deno 63/63, real CLI e2e 281/281 and fresh Verus 61/0 with five mutants (TLC cached). Formal immutable form equivalence, pinned options, static interpolation guard, production normalization proof/mutant, native Mac and live CI remain open. No A1-03 closure or release."
+   "implementation_notes": "The v5 frontend implements immutable fluent exec/Bash builders, canonical data-only env keys, typed argv, literal Bash source maps and E130 on forged decoded interpolation. The strict wire still lacks resolved interpreter bytes and Bash options; JS evaluates template expressions before a tag can reject them. A source-stamped local Linux composite runner at 01c186f observed 37 passing golden/workspace/diagnostic cases plus 11 v3/v4/v5 schema/parser cases, including literal Bash mapping and semantic-input drift; previous ff73b62/123f3bb reports remain history. Full Linux worktree compose passed Rust fmt/clippy/tests, real CLI e2e 281/281 and fresh Verus 61/0 with five mutants; TS/TLC layers cached (fresh Deno 63/63 ran on preceding source). Formal immutable form equivalence, pinned options, static interpolation guard, production normalization proof/mutant, native Mac and live CI remain open. No A1-03 closure or release."
   },
   {
    "id": "A1-04",
@@ -1170,10 +1170,10 @@
      "environment": "Linux amd64 Docker Compose v5.5.0; pytest 9.1.1; sandboxed HOME; offline test fixtures",
      "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_golden.py test_workspace_contract.py test_workspace_diagnostics.py; docker compose run --build --rm test cargo test --locked -p gripsack-ir --test schema_acceptance --test workspace_v4_compat --test workspace_v5_acceptance (independent runners at same SHA)",
      "result": "pass",
-     "report": "verification/reports/2026-09-24-a1-workspace-123f3bb-corpus.log",
-     "report_sha256": "d59ca5260bd3ea45c36da76a8aa0017ccdfa1190c70c16fb099b6923253ee7be",
-     "commit": "123f3bbf9555621d03a0ce989fc02b6abb16b892",
-     "source_reuse_sha256": "510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1",
+     "report": "verification/reports/2026-09-24-a1-workspace-01c186f-corpus.log",
+     "report_sha256": "1c1678be7f728be5017a9f8425c3027a10fe47308b87942e0cd6bebed354bb54",
+     "commit": "01c186fd821eee4a3c077c06ffb7aa53fe38bd7e",
+     "source_reuse_sha256": "061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [
       "Missing/wrong-kind references and incompatible target/layout reports label both consumer and provider; duplicate catalog names label both declarations",
@@ -1196,7 +1196,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Frontend authoring errors carry core Diagnostic-shaped codes/labels; grip check --json renders the same facts as terminal diagnostics, while snippets stay under a pinned repo directory capability and a 1 MiB bound. Shared E124 labels the first unavailable output and owner milestone (observed B2, E2/E3, E1, historical v4 A5). The source audit found no known reachable plain internal Error misclassified as E130; real CLI cases distinguish user and engine tracebacks from authoring diagnostics on terminal/JSON surfaces and a Deno driver case checks syntax import failures. A source-stamped local 123f3bb composite report records 37 frontend/CLI and 11 v3/v4/v5 schema/parser cases, while full Linux worktree compose passed Rust fmt/clippy/tests, Deno 63/63 and real CLI e2e 281/281. Earlier ff73b62 reports remain history. Other capability-owner cases, diagnostic-registry conformance, native Mac and live CI/proof lanes remain open; no A1-06 closure or release."
+   "implementation_notes": "Frontend authoring errors carry core Diagnostic-shaped codes/labels; grip check --json renders the same facts as terminal diagnostics, while snippets stay under a pinned repo directory capability and a 1 MiB bound. Shared E124 labels the first unavailable output and owner milestone (observed B2, E2/E3, E1, historical v4 A5). The source audit found no known reachable plain internal Error misclassified as E130; real CLI cases distinguish user and engine tracebacks from authoring diagnostics on terminal/JSON surfaces and a Deno driver case checks syntax import failures. A source-stamped local 01c186f composite report records 37 frontend/CLI and 11 v3/v4/v5 schema/parser cases, while full Linux worktree compose passed Rust fmt/clippy/tests and real CLI e2e 281/281 (TS/TLC layers cached). Older ff73b62/123f3bb reports remain history. Other capability-owner cases, diagnostic-registry conformance, native Mac and live CI/proof lanes remain open; no A1-06 closure or release."
   },
   {
    "id": "A1-07",
@@ -1229,10 +1229,10 @@
      "environment": "Linux amd64 Docker Compose v5.5.0; pytest 9.1.1; sandboxed HOME; offline test fixtures",
      "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_golden.py test_workspace_contract.py test_workspace_diagnostics.py; docker compose run --build --rm test cargo test --locked -p gripsack-ir --test schema_acceptance --test workspace_v4_compat --test workspace_v5_acceptance (independent runners at same SHA)",
      "result": "pass",
-     "report": "verification/reports/2026-09-24-a1-workspace-123f3bb-corpus.log",
-     "report_sha256": "d59ca5260bd3ea45c36da76a8aa0017ccdfa1190c70c16fb099b6923253ee7be",
-     "commit": "123f3bbf9555621d03a0ce989fc02b6abb16b892",
-     "source_reuse_sha256": "510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1",
+     "report": "verification/reports/2026-09-24-a1-workspace-01c186f-corpus.log",
+     "report_sha256": "1c1678be7f728be5017a9f8425c3027a10fe47308b87942e0cd6bebed354bb54",
+     "commit": "01c186fd821eee4a3c077c06ffb7aa53fe38bd7e",
+     "source_reuse_sha256": "061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [
       "v3/v4/v5 schema/parser acceptance and TypeScript golden corpus exercise every admitted output kind with negative drift calibration"
@@ -1250,10 +1250,10 @@
      "environment": "Linux x86_64 Python 3.12.3; parsed Cargo workspace manifests and temporary scratch fixtures",
      "command": "python3 scripts/check_architecture.py --self-check",
      "result": "pass",
-     "report": "verification/reports/2026-09-24-a1-workspace-123f3bb-architecture.log",
-     "report_sha256": "97a1ffce88192b0af04a4eed1c4cbc2176cefa61700b486e471bbe3b9b9b6586",
-     "commit": "123f3bbf9555621d03a0ce989fc02b6abb16b892",
-     "source_reuse_sha256": "510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1",
+     "report": "verification/reports/2026-09-24-a1-workspace-01c186f-architecture.log",
+     "report_sha256": "5eeef004595b6cd4917d9965117346496fc79de0d217b97f71d6d9e5fc9d65e0",
+     "commit": "01c186fd821eee4a3c077c06ffb7aa53fe38bd7e",
+     "source_reuse_sha256": "061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [
       "Protected policy/IR/store dependency direction and rustls-only policy cover every Cargo workspace member, including fuzz and future non-crates members",
@@ -1279,7 +1279,7 @@
      "to": "in_progress"
     }
    ],
-   "implementation_notes": "The protected architecture checker derives members from root Cargo workspace membership (including fuzz) and rejects aliased OpenSSL, target-specific forbidden edges and missing protected crates through calibrated parsed-TOML scratch manifests. The required CI test job invokes this checker; the delivery inventory/closure checker is calibrated. One offline embedded-SDK fixture goldens all nine v5 kinds with a semantic Bash-env mutant and real admission-only CLI case; the v5 Rust corpus also rejects an undeclared effect field under each distinct output kind with its declaring span, after vacuous negative fixtures were corrected. At 123f3bb, SHA-256 checked local runners bind 37 real frontend/CLI plus 11 v3/v4/v5 schema/parser cases and one architecture self-check covering the registered pure architecture negatives. Full Linux worktree compose passed Rust fmt/clippy/tests, Deno 63/63 and real CLI e2e 281/281; TLC cached, Verus 61/0 with five mutants proves A1-02 role decisions only, not A1-07. The all-cases CI/architecture lanes, compact API cutover and native CI/Mac evidence remain open; no A1-07 closure or release."
+   "implementation_notes": "The protected architecture checker derives members from root Cargo workspace membership (including fuzz) and rejects aliased OpenSSL, target-specific dependencies and missing protected crates through calibrated parsed-TOML scratch manifests. The required CI test job invokes this checker; the delivery inventory/closure checker is calibrated. One offline embedded-SDK fixture goldens all nine v5 kinds with a semantic Bash-env mutant and real admission-only CLI case; the v5 Rust corpus rejects an undeclared effect field under each distinct output kind with its declaring span, after vacuous negative fixtures were corrected. At 01c186f, SHA-256 checked local runners bind 37 real frontend/CLI plus 11 v3/v4/v5 schema/parser cases and one architecture self-check covering registered pure architecture negatives. Full Linux worktree compose passed Rust fmt/clippy/tests, real CLI e2e 281/281 and fresh Verus 61/0 with five mutants for A1-02 role decisions only; TS/TLC layers cached. The all-cases CI/architecture lanes, compact API cutover and native CI/Mac evidence remain open; no A1-07 closure or release."
   },
   {
    "id": "A1-08",

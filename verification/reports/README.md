@@ -45,21 +45,21 @@ authoritative observation.
 Runner reports exist for source commits
 `53c6fac8bc4c4290d66a2f1f5644f4cc8d6063c6`,
 `d6d29d7082f69e14e03a262381a776545782961d`,
-`ff73b62618359d002040a2d648b87c1d2a6e78bd` and
-`123f3bbf9555621d03a0ce989fc02b6abb16b892`. The tracked
+`ff73b62618359d002040a2d648b87c1d2a6e78bd`,
+`123f3bbf9555621d03a0ce989fc02b6abb16b892` and
+`01c186fd821eee4a3c077c06ffb7aa53fe38bd7e`. The tracked
 behavior-bearing `SOURCE_ROOTS` were clean before and after each
-run. The delivery calibration script changed between the first
-two commits; the golden/fixture tests changed before the third,
-and the graph/schema/diagnostic code and tests before the fourth.
-Their source fingerprints are not interchangeable. The ledger
-cites the **fourth** run for selected historical A1 cases; a later
-Rust graph payload edit changes `SOURCE_ROOTS`, so no report in this
-table yet binds its implementation. Logs carry exact SHA, command,
-versions and inputs, plus raw runner output and counted result
-markers. The fourth source fingerprint is
-`510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1`.
-They are local container observations, **not** GitHub CI or Mac
-attestations.
+run. The calibration script changed between the first two commits;
+the golden/fixture tests changed before the third, the graph/schema/
+diagnostic work before the fourth, and selector/exported-command
+correspondence before the fifth. Their source fingerprints are not
+interchangeable. The ledger cites the **fifth** run for selected A1
+cases; preceding runs remain history. Logs carry exact SHA, command,
+versions and inputs plus raw runner output and counted result
+markers. The fifth source fingerprint is
+`061e25a86e26178bce09fdbd1ae9df575d006e18e47b5beea9564d4fc89f2919`.
+These are local container observations, **not** GitHub CI or native
+Mac attestations.
 
 | report | sha256 | observed execution |
 |---|---|---|
@@ -73,6 +73,10 @@ attestations.
 | `2026-09-24-a1-workspace-123f3bb-policy.log` | `004bbd63f2b1188cce77c4ca78a4ed4ceb49fe929c6c51665f157d420d405277` | Earlier source-bound direct policy adapter unit suite: 5 passed, including same-role build/runtime target substitutions; no name-index proof |
 | `2026-09-24-a1-workspace-123f3bb-architecture.log` | `97a1ffce88192b0af04a4eed1c4cbc2176cefa61700b486e471bbe3b9b9b6586` | Earlier source-bound parsed-TOML architecture self-check: one suite with named member discovery, missing-crate and rustls boundary negatives |
 | `2026-09-24-a1-workspace-123f3bb-verus.log` | `cad0d4ad86376d39622c048c7b340d18733872e787a4d26aa7eca1f36612afa2` | Earlier source-bound fresh Verus 61 verified/0 errors, named graph-validation mutant rejected; proof excludes schema/name-index and adapter payload |
+| `2026-09-24-a1-workspace-01c186f-corpus.log` | `1c1678be7f728be5017a9f8425c3027a10fe47308b87942e0cd6bebed354bb54` | Current source-bound cross-language corpus: 37 real frontend/CLI plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 48 passed, 0 failed/skipped |
+| `2026-09-24-a1-workspace-01c186f-policy.log` | `6cf259601dfbe8509dd0009ab352ccb260f65a9535a9224558fe3218847553a3` | Current source-bound production adapter unit suite: 5 passed, including valid graph, role/target and selector/exported-command substitution cases; no adapter proof |
+| `2026-09-24-a1-workspace-01c186f-architecture.log` | `5eeef004595b6cd4917d9965117346496fc79de0d217b97f71d6d9e5fc9d65e0` | Current source-bound parsed-TOML architecture self-check: one suite covering named workspace members, missing protected crate and rustls boundary negatives |
+| `2026-09-24-a1-workspace-01c186f-verus.log` | `976bd28dccb60a1a6660d78ee79177bbd58bebf2a1de4f6b58d1b889baf9d64d` | Current source-bound fresh Verus: 61 verified/0 errors and named graph-validation mutant rejected; selector/name-index adapter unproved |
 
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS
