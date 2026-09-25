@@ -23,9 +23,9 @@ use outputs::output_edges;
 
 /// Outputs whose artifacts an `artifact` reference may address
 /// (mirrors the TS emitter's `ARTIFACT_KINDS`).
-const ARTIFACT_KINDS: &[&str] = &["recipe", "package"];
+pub(super) const ARTIFACT_KINDS: &[&str] = &["recipe", "package"];
 /// A check subject may name any admitted output kind.
-const SUBJECT_KINDS: &[&str] = &[
+pub(super) const SUBJECT_KINDS: &[&str] = &[
     "recipe",
     "package",
     "environment",
@@ -36,13 +36,13 @@ const SUBJECT_KINDS: &[&str] = &[
     "profile",
     "hook",
 ];
-const RECIPE: &[&str] = &["recipe"];
-const PACKAGE: &[&str] = &["package"];
-const ENVIRONMENT: &[&str] = &["environment"];
-const TASK: &[&str] = &["task"];
-const SCHEDULE: &[&str] = &["schedule"];
-const CHECK: &[&str] = &["check"];
-const HOOK: &[&str] = &["hook"];
+pub(super) const RECIPE: &[&str] = &["recipe"];
+pub(super) const PACKAGE: &[&str] = &["package"];
+pub(super) const ENVIRONMENT: &[&str] = &["environment"];
+pub(super) const TASK: &[&str] = &["task"];
+pub(super) const SCHEDULE: &[&str] = &["schedule"];
+pub(super) const CHECK: &[&str] = &["check"];
+pub(super) const HOOK: &[&str] = &["hook"];
 
 /// Target relationships along named-output edges (0052 §2.2).
 /// Providers must match OS/arch/ABI and not require a newer OS floor

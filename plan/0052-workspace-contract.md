@@ -1065,9 +1065,32 @@ receipts are historical for this source. No schema/name-index,
 registry-classification or normalization/provenance theorem, native
 Mac execution, protected CI or A1/release closure is claimed.
 
-## 22. Honesty register
+## 22. A1-02 target-kind/binding correspondence guard (not proof)
 
-- This document began as a design candidate; §§9–21 record read-only
+`refs::check` validates each graph edge using that edge's own
+`expected` kind list and `TargetBinding`. A broadened list can still
+include the referenced recipe, and clearing `Producer` can skip the
+required platform relationship without changing its role, target
+name, selector or exported command. The broadened-kind regression
+**failed before** this guard: `policy::check` accepted the changed
+graph. After `coverage::check` independently walked the decoded
+declaration and compared kind rules and platform bindings, both
+mutations **passed** by failing E131 with the consumer and
+referenced output declaration sites. The successful path adds no
+heap allocation; the kind comparison is performed only after the
+role, target and payload match.
+
+This runtime check closes the two **projection-substitution** cases,
+not the formal bridge. It does not prove that decoding preserved all
+names, that the catalog name/index map is complete and injective, or
+that the independently decoded source rule itself matches the
+versioned schema. A1-02's production-connected refinement theorem,
+proof calibration, protected CI and remaining platform lanes stay
+open.
+
+## 23. Honesty register
+
+- This document began as a design candidate; §§9–22 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

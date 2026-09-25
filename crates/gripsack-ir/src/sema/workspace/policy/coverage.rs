@@ -10,7 +10,10 @@
 //! catalog name → kernel index bridge in `index_view`, and the edge's
 //! expected-kind/target-binding classifications remain unproved.
 
-use super::super::graph::{EdgeRole, Projection};
+use super::super::graph::{
+    ARTIFACT_KINDS, CHECK, ENVIRONMENT, EdgeRole, HOOK, PACKAGE, Projection, RECIPE, SCHEDULE,
+    SUBJECT_KINDS, TASK, TargetBinding,
+};
 use super::super::names::Catalog;
 use crate::diagnostic::{Diagnostic, codes};
 use crate::span::Span;
@@ -66,15 +69,25 @@ impl RoleCounts {
 struct DeclaredReference<'a> {
     role: EdgeRole,
     target: &'a str,
+    expected: &'static [&'static str],
+    binding: TargetBinding,
     selector: Option<&'a str>,
     package_command: Option<&'a str>,
     at: &'a Span,
 }
 
-fn named_reference<'a>(role: EdgeRole, target: &'a str, at: &'a Span) -> DeclaredReference<'a> {
+fn named_reference<'a>(
+    role: EdgeRole,
+    target: &'a str,
+    at: &'a Span,
+    expected: &'static [&'static str],
+    binding: TargetBinding,
+) -> DeclaredReference<'a> {
     DeclaredReference {
         role,
         target,
+        expected,
+        binding,
         selector: None,
         package_command: None,
         at,
@@ -89,7 +102,7 @@ fn artifact_reference<'a>(
 ) -> DeclaredReference<'a> {
     DeclaredReference {
         selector: Some(selector),
-        ..named_reference(role, target, at)
+        ..named_reference(role, target, at, ARTIFACT_KINDS, TargetBinding::None)
     }
 }
 
@@ -101,7 +114,7 @@ fn command_reference<'a>(
 ) -> DeclaredReference<'a> {
     DeclaredReference {
         package_command: Some(command),
-        ..named_reference(role, package, at)
+        ..named_reference(role, package, at, PACKAGE, TargetBinding::None)
     }
 }
 
@@ -191,45 +204,105 @@ fn for_each_declared<'a>(
                 command_refs(step, EdgeRole::BuildInput, emit);
             }
             for check in &recipe.checks {
-                emit(named_reference(EdgeRole::Validation, check, at));
+                emit(named_reference(
+                    EdgeRole::Validation,
+                    check,
+                    at,
+                    CHECK,
+                    TargetBinding::None,
+                ));
             }
         }
         WorkspaceOutput::Package(package) => {
             if let WorkspaceProducer::Recipe { recipe } = &package.producer {
-                emit(named_reference(EdgeRole::Production, recipe, at));
+                emit(named_reference(
+                    EdgeRole::Production,
+                    recipe,
+                    at,
+                    RECIPE,
+                    TargetBinding::Producer,
+                ));
             }
             for runtime in &package.runtime {
-                emit(named_reference(EdgeRole::Runtime, runtime, at));
+                emit(named_reference(
+                    EdgeRole::Runtime,
+                    runtime,
+                    at,
+                    PACKAGE,
+                    TargetBinding::None,
+                ));
             }
         }
         WorkspaceOutput::Environment(environment) => {
             for package in &environment.packages {
-                emit(named_reference(EdgeRole::Runtime, package, at));
+                emit(named_reference(
+                    EdgeRole::Runtime,
+                    package,
+                    at,
+                    PACKAGE,
+                    TargetBinding::Selection,
+                ));
             }
             env_references(&environment.env, EdgeRole::Runtime, at, emit);
         }
         WorkspaceOutput::Task(task) => {
             command_refs(&task.run, EdgeRole::Runtime, emit);
             for dep in &task.deps {
-                emit(named_reference(EdgeRole::TaskPrereq, dep, at));
+                emit(named_reference(
+                    EdgeRole::TaskPrereq,
+                    dep,
+                    at,
+                    TASK,
+                    TargetBinding::None,
+                ));
             }
             if let Some(environment) = &task.environment {
-                emit(named_reference(EdgeRole::Runtime, environment, at));
+                emit(named_reference(
+                    EdgeRole::Runtime,
+                    environment,
+                    at,
+                    ENVIRONMENT,
+                    TargetBinding::None,
+                ));
             }
             for check in &task.checks {
-                emit(named_reference(EdgeRole::Validation, check, at));
+                emit(named_reference(
+                    EdgeRole::Validation,
+                    check,
+                    at,
+                    CHECK,
+                    TargetBinding::None,
+                ));
             }
         }
         WorkspaceOutput::Schedule(schedule) => {
-            emit(named_reference(EdgeRole::Retention, &schedule.task, at));
+            emit(named_reference(
+                EdgeRole::Retention,
+                &schedule.task,
+                at,
+                TASK,
+                TargetBinding::None,
+            ));
         }
         WorkspaceOutput::Check(check) => {
             command_refs(&check.run, EdgeRole::Runtime, emit);
-            emit(named_reference(EdgeRole::Validation, &check.subject, at));
+            emit(named_reference(
+                EdgeRole::Validation,
+                &check.subject,
+                at,
+                SUBJECT_KINDS,
+                TargetBinding::None,
+            ));
         }
         WorkspaceOutput::Image(image) => {
             for package in &image.packages {
-                emit(named_reference(EdgeRole::Runtime, package, at));
+                emit(named_reference(
+                    EdgeRole::Runtime,
+                    package,
+                    at,
+                    PACKAGE,
+                    TargetBinding::Selection,
+                ));
             }
         }
         WorkspaceOutput::Profile(profile) => {
@@ -244,13 +317,31 @@ fn for_each_declared<'a>(
                 }
             }
             if let Some(environment) = &profile.environment {
-                emit(named_reference(EdgeRole::Retention, environment, at));
+                emit(named_reference(
+                    EdgeRole::Retention,
+                    environment,
+                    at,
+                    ENVIRONMENT,
+                    TargetBinding::None,
+                ));
             }
             for schedule in &profile.schedules {
-                emit(named_reference(EdgeRole::Retention, schedule, at));
+                emit(named_reference(
+                    EdgeRole::Retention,
+                    schedule,
+                    at,
+                    SCHEDULE,
+                    TargetBinding::None,
+                ));
             }
             for hook in &profile.hooks {
-                emit(named_reference(EdgeRole::Retention, hook, at));
+                emit(named_reference(
+                    EdgeRole::Retention,
+                    hook,
+                    at,
+                    HOOK,
+                    TargetBinding::None,
+                ));
             }
         }
         WorkspaceOutput::Hook(hook) => {
@@ -388,6 +479,48 @@ fn substituted_payload(
     diagnostic
 }
 
+/// The graph may keep a reference's role, target and payload while
+/// broadening its admissible output kinds or dropping its platform
+/// binding. Refuse that adapter reclassification before the policy
+/// kernel receives the incomplete relation.
+fn reclassified_target_rule(
+    output: &WorkspaceOutput,
+    catalog: &Catalog,
+    declared: DeclaredReference<'_>,
+    projected_expected: &[&str],
+    projected_binding: TargetBinding,
+) -> Diagnostic {
+    let change = if declared.expected != projected_expected {
+        format!(
+            "target kind rule {:?} as {:?}",
+            declared.expected, projected_expected
+        )
+    } else {
+        format!(
+            "target binding rule {:?} as {:?}",
+            declared.binding, projected_binding
+        )
+    };
+    let mut diagnostic = Diagnostic::error(
+        codes::REQUIRED_WORKSPACE_EDGE_MISSING,
+        format!(
+            "workspace {} `{}` projects {} reference `{}` with a reclassified {change}; refusing incomplete admission",
+            output.kind(), output.name(), role_name(declared.role), declared.target,
+        ),
+    )
+    .with_label(Some(declared.at.clone()), "reference declared here");
+    if declared.at != output.span() {
+        diagnostic = diagnostic.with_label(
+            Some(output.span().clone()),
+            "referencing output declared here",
+        );
+    }
+    if let Some(target) = catalog.outputs.get(declared.target) {
+        diagnostic = diagnostic.with_label(Some(target.span().clone()), "target declared here");
+    }
+    diagnostic
+}
+
 /// The first sequence divergence found for one output, recorded while
 /// the declared walk finishes counting totals for the diagnostic.
 enum Divergence<'a> {
@@ -411,6 +544,13 @@ enum Divergence<'a> {
         declared: DeclaredReference<'a>,
         projected_selector: Option<&'a str>,
         projected_command: Option<&'a str>,
+    },
+    /// Same declared reference, but the projection changes which
+    /// target kinds or platform binding its consumer must admit.
+    Classification {
+        declared: DeclaredReference<'a>,
+        projected_expected: &'static [&'static str],
+        projected_binding: TargetBinding,
     },
 }
 
@@ -437,9 +577,23 @@ pub(super) fn check(
                     if edge.role == reference.role
                         && edge.to == reference.target
                         && edge.selector == reference.selector
-                        && edge.command == reference.package_command =>
+                        && edge.command == reference.package_command
+                        && edge.expected == reference.expected
+                        && edge.binding == reference.binding =>
                 {
                     matched_counts.add(reference.role, 1);
+                }
+                Some(edge)
+                    if edge.role == reference.role
+                        && edge.to == reference.target
+                        && edge.selector == reference.selector
+                        && edge.command == reference.package_command =>
+                {
+                    divergence = Some(Divergence::Classification {
+                        declared: reference,
+                        projected_expected: edge.expected,
+                        projected_binding: edge.binding,
+                    });
                 }
                 Some(edge) if edge.role == reference.role && edge.to == reference.target => {
                     divergence = Some(Divergence::Payload {
@@ -495,6 +649,17 @@ pub(super) fn check(
                 declared,
                 projected,
             }) => Some(reclassified_edge(output, catalog, declared, projected)),
+            Some(Divergence::Classification {
+                declared,
+                projected_expected,
+                projected_binding,
+            }) => Some(reclassified_target_rule(
+                output,
+                catalog,
+                declared,
+                projected_expected,
+                projected_binding,
+            )),
             Some(Divergence::Payload {
                 declared,
                 projected_selector,

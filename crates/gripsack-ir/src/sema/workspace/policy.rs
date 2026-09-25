@@ -450,4 +450,49 @@ mod tests {
             "original command declaration is labeled"
         );
     }
+
+    #[test]
+    fn projected_kind_or_binding_reclassification_fails_closed() {
+        let document = doc(&format!("{RECIPE},{PACKAGE}"));
+        crate::check(&document).expect("unmodified production edge admits");
+        let ir = crate::parse(&document).unwrap();
+        let workspace = ir.workspace.as_ref().unwrap();
+        let mut diagnostics = Vec::new();
+        let catalog = super::super::names::check(workspace, &mut diagnostics);
+        assert!(diagnostics.is_empty());
+
+        for classification in ["target kind", "target binding"] {
+            let mut projection = super::super::graph::collect(workspace);
+            let edge = projection
+                .edges
+                .iter_mut()
+                .find(|edge| edge.role == EdgeRole::Production)
+                .expect("package has a recipe producer");
+            if classification == "target kind" {
+                // The target still matches the broadened kinds, so
+                // refs::check alone would accept the wrong adapter rule.
+                edge.expected = &["recipe", "package"];
+            } else {
+                edge.binding = super::super::graph::TargetBinding::None;
+            }
+            let mut failures = Vec::new();
+            super::check(workspace, &projection, &catalog, &mut failures);
+            let failure = failures
+                .iter()
+                .find(|d| {
+                    d.code == codes::REQUIRED_WORKSPACE_EDGE_MISSING
+                        && d.message.contains(classification)
+                })
+                .expect("projected reference classification must match the decoded source");
+            assert_eq!(
+                failure
+                    .labels
+                    .iter()
+                    .filter_map(|label| label.span.as_ref().map(|s| s.line))
+                    .collect::<Vec<_>>(),
+                vec![3, 2],
+                "both consumer and referenced recipe must be labeled"
+            );
+        }
+    }
 }
