@@ -1354,6 +1354,19 @@ The strict wire decoder, source walk exhaustiveness and whole
 schema→closure refinement theorem remain unproved; this packet
 does not close A1-02.
 
+At committed code revision
+`17ed1f0dae5c827d638537fd6efba3623da156f4`,
+tracked behavior source roots were clean before and after both
+direct runner groups. SHA-256 checked reports bind **8/8**
+production adapter and **23/23** real CLI workspace cases
+(**31** distinct checks) plus fresh production policy Verus
+**72 verified / 0 errors** and seven named mutant rejections.
+TypeScript and TLC compose images were **CACHED**, not new
+frontend/model runs for this adapter change. The source fingerprint
+is `1dce906f51e0f0397c3e91ace6a87470688057d3d5b5d76b7473b7fcfedc4b81`.
+No proof in that report derives source traversal or schema decoding
+completeness; protected CI and native Mac evidence remain open.
+
 ## 28. Honesty register
 
 - This document began as a design candidate; §§9–27 record read-only
