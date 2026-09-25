@@ -1042,6 +1042,29 @@ cutover. Code generation and calibrated freshness enforce allocated
 code parity, not protected CI/Mac or the complete A1-06 proof;
 A1-06 remains in progress.
 
+At committed code revision
+`6c759a597806ace3f963346701881c7ef7d0d7f3`, tracked
+`SOURCE_ROOTS` were clean before and after the direct runners. A
+repo-local SHA-256 checked diagnostic report records **36/36** unique
+core code allocations, **5/5** frontend names and generated-file
+freshness; its **3/3** named registry mutants reject the intended
+property. Fresh Deno tests passed **63/63**, and **17/17** named real
+CLI cases exercised terminal/JSON diagnostics, source sites,
+capability owners and traceback separation. These are **84** distinct
+checks (freshness 1 + mutants 3 + Deno 63 + CLI 17), not a proof of
+semantic diagnostic classification. Other source-matched reports
+record **45/45** real CLI/frontend and **11/11** v3/v4/v5
+schema/parser cases, **5/5** production adapter cases, **3/3**
+capability-owner cases, four strictly type-checked workspaces and
+**5/5** named example cases, one architecture self-check and fresh
+Verus **61 verified / 0 errors** with the graph-validation mutant
+rejected on its contract. The common source fingerprint is
+`e328e45eb072d0e94beedc1e8e12dd06a017a8726dc90da38885fea6cad19094`.
+The ledger binds only selected named cases; the preceding `8583a46`
+receipts are historical for this source. No schema/name-index,
+registry-classification or normalization/provenance theorem, native
+Mac execution, protected CI or A1/release closure is claimed.
+
 ## 22. Honesty register
 
 - This document began as a design candidate; §§9–21 record read-only
