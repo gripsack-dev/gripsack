@@ -41,8 +41,10 @@ uses, with a FIXED inputs file (deterministic facts), and the emitted
 envelope (ir + diagnostics + probe_requests) is diffed byte-exact
 against `fixtures/golden/<env>.ir.json`.
 
-- Spans are stripped (the only normalization): `span` keys move when a
-  fixture is edited without changing the IR's meaning.
+- Diagnostic source locations are stripped (the only normalization):
+  `span` and dedented Bash `line_map` change when a fixture moves
+  without changing the workspace's meaning. Dedicated CLI diagnostics
+  tests still check exact original-source line mapping.
 - Add a fixture env = drop the directory under `fixtures/envs/`, then
   regenerate: `REGEN_GOLDEN=1 pytest e2e/test_golden.py`. Review the
   snapshot diff like any generated artifact.

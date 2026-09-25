@@ -93,9 +93,9 @@ function kitchenSink(): WorkspaceValue {
     run: exec({ argv: [packageCommand("tools-bin", "tools"), lit("--version")] }),
     subject: "tools-bin",
   });
-  // Explicit environment/image package selections cannot place a
-  // fixed-prefix package. Other fixed-prefix references stay
-  // descriptive while executor/prefix policy remains A1-02/A2-04.
+  // This environment selects relocatable Bash. A fixed-prefix
+  // package needs a matching environment prefix; images cannot
+  // materialize one until B4 owns their location contract.
   const dev = environment("dev", {
     packages: ["bash"],
     target: linux,

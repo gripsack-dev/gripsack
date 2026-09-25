@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
+from pathlib import Path
 
 from conftest import grip
 
@@ -74,6 +76,24 @@ def test_project_workspace_check_is_read_only_and_consumers_fail(sandbox):
         assert "E124" in result.stderr, (command, result.stderr)
         assert not (sandbox / ".config/demo/settings.conf").exists()
         assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+def test_all_nine_output_kinds_admit_from_one_offline_workspace(sandbox):
+    fixture = Path(__file__).parent / "fixtures" / "envs" / "all-output-kinds"
+    repo = sandbox / "all-output-kinds"
+    shutil.copytree(fixture, repo)
+    checked = grip("check", "--json", cwd=repo)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    document = json.loads(checked.stdout)
+    assert document["ok"] is True
+    assert {output["kind"] for output in document["outputs"]} == {
+        "recipe", "package", "environment", "task", "schedule",
+        "check", "image", "profile", "hook",
+    }
+    planned = grip("plan", cwd=repo)
+    assert planned.returncode != 0
+    assert "E124" in planned.stderr and "shell" in planned.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):

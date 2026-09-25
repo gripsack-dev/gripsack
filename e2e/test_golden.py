@@ -8,11 +8,11 @@ diffed byte-exact against the snapshot under fixtures/golden/.
 Determinism: facts come from the inputs file (never this host), tags are
 fixed, and module order is the host entrypoint's import order (sorted).
 
-Span normalization: provenance spans (`span` keys) carry authoring
-file:line:col — they move when a fixture is edited without changing the
-IR's meaning, so every `span` key is stripped recursively and the rest
-is compared canonically (sorted keys, indent 2). Everything else —
-module fields, entry ordering, probe_requests — must match exactly.
+Provenance normalization: `span` and `line_map` carry source file
+locations. They move when a fixture is edited without changing the
+workspace's meaning, so only those diagnostic-location keys are
+stripped recursively before canonical comparison. Everything else —
+module fields, command text, edge order, probe_requests — must match.
 
 Regenerate after an INTENDED IR or fixture change:
 
@@ -52,21 +52,25 @@ INPUTS = {
 }
 
 
-def strip_spans(node):
-    """Remove every `span` key, recursively — the only normalization."""
+def strip_provenance(node):
+    """Exclude diagnostic-only source locations from semantic snapshots."""
     if isinstance(node, dict):
-        return {k: strip_spans(v) for k, v in node.items() if k != "span"}
+        return {
+            key: strip_provenance(value)
+            for key, value in node.items()
+            if key not in ("span", "line_map")
+        }
     if isinstance(node, list):
-        return [strip_spans(v) for v in node]
+        return [strip_provenance(value) for value in node]
     return node
 
 
 def canonical(envelope: dict) -> str:
     return json.dumps(
         {
-            "ir": strip_spans(envelope["ir"]),
-            "diagnostics": strip_spans(envelope.get("diagnostics", [])),
-            "probe_requests": strip_spans(envelope.get("probe_requests", [])),
+            "ir": strip_provenance(envelope["ir"]),
+            "diagnostics": strip_provenance(envelope.get("diagnostics", [])),
+            "probe_requests": strip_provenance(envelope.get("probe_requests", [])),
         },
         indent=2,
         sort_keys=True,
@@ -159,7 +163,39 @@ def test_golden_ir_snapshot(sandbox, env, request):
         golden.with_suffix(".ir.json.actual").write_text(actual)
     assert actual == expected, (
         f"{env}: emitted envelope drifted from the golden snapshot "
-        f"(span-normalized, canonical JSON).\nExpected: {golden}\n"
+        f"(diagnostic source locations removed, canonical JSON).\nExpected: {golden}\n"
         f"Actual written next to it as .actual — if the change is "
         f"intended, regenerate with REGEN_GOLDEN=1 pytest e2e/test_golden.py"
     )
+
+
+def test_workspace_golden_rejects_a_changed_typed_command_input(sandbox):
+    """An admitted semantic edit must drift the golden for its own
+    reason, not because a Bash source line or span moved."""
+    deno = find_deno()
+    if not deno:
+        pytest.skip("deno not installed (the e2e gate image ships it)")
+    frontend = materialize_frontend(sandbox)
+    repo = sandbox / "changed-command"
+    shutil.copytree(FIXTURES / "all-output-kinds", repo)
+    source = repo / "gripsack.ts"
+    original = source.read_text()
+    input_value = "from a typed environment value"
+    changed_value = "different declared build input"
+    assert original.count(input_value) == 1, "semantic mutant anchor lost"
+    source.write_text(original.replace(input_value, changed_value))
+
+    actual = json.loads(canonical(evaluate(deno, frontend, repo, sandbox)))
+    expected = json.loads((GOLDEN / "all-output-kinds.ir.json").read_text())
+
+    def command_env(document):
+        build = next(
+            output for output in document["ir"]["workspace"]["outputs"]
+            if output["name"] == "build"
+        )
+        return build["steps"][0]["env"]["INPUT"]
+
+    assert command_env(expected)["value"] == input_value
+    assert command_env(actual)["value"] == changed_value
+    command_env(actual)["value"] = input_value
+    assert actual == expected, "golden drift must be attributable to the changed command input"

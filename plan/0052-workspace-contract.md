@@ -378,7 +378,18 @@ TLA+/TLC extension (rendered-candidate validation, deployment observation, retai
 
 ### 5.2 Delivery checker calibration (A1-07 — **partial in this slice**)
 
-The integration slice (plan/0049 lineage) owns `verification/delivery.json`, `scripts/check_delivery.py`, runner-evidence admission in `scripts/delivery_evidence.py`, and their calibrated CI gate. `scripts/check_architecture.py` enforces protected crate dependency direction. The Rust gate exercises strict v3 modules, historical v4 workspace and current v5 schema/parser/semantics corpora; TypeScript and real CLI tests cover v5 authoring and versioned rejection. **A1-07 remains partial:** full cross-language golden coverage for every output kind, source-bound lane/case evidence, and the compact module/API cutover remain open. The §3 module map names ownership, not passing evidence for that cutover.
+The integration slice (plan/0049 lineage) owns
+`verification/delivery.json`, `scripts/check_delivery.py`, bounded
+runner-evidence admission and their calibrated CI gate.
+`scripts/check_architecture.py` covers protected dependencies for
+every Cargo workspace member. Rust tests retain strict v3 modules,
+historical read-only v4 workspaces and current v5 schema/parser/
+semantics corpora. The TypeScript golden corpus now emits all nine
+v5 output kinds from one offline workspace, and the real CLI admits
+that graph; a changed typed Bash env input calibrates semantic drift
+without pinning source-line offsets (§16). **A1-07 remains partial:**
+full source-bound lane/case CI/Mac evidence and the compact module/API
+cutover remain open. The §3 map names ownership, not evidence.
 
 ### 5.3 Export/migration inventory (A1-09, A1-10, A1-12)
 
@@ -710,10 +721,11 @@ post-integration compose chain passed Rust fmt/clippy/tests, real CLI
 e2e **275/275**, and fresh Verus **61 verified / 0 errors** with
 **five** mutants. Its TS image reused the fresh 62-test layer and
 its TLC model image was **CACHED**, not a fresh model check.
-Source-bound CI/Mac evidence, remaining capability-owner combinations,
-cross-language goldens for every output kind and a production
-schema/name-index proof remain open. A1-02, A1-06 and A1-07 stay
-**in_progress**; no release.
+
+At that packet boundary, source-bound CI/Mac evidence,
+capability-owner cases, all-kind golden coverage and the production
+schema/name-index proof were open. §16 records the later all-kind
+corpus; A1-02, A1-06 and A1-07 remain **in_progress**.
 
 ## 14. A1-06 capability-specific E124 packet (not closure)
 
@@ -763,9 +775,35 @@ An evidence-only ledger/report commit may reuse the new logs only if
 the checker confirms byte-identical source roots. No row is marked
 verified by that narrower correspondence.
 
-## 16. Honesty register
+## 16. A1-07 all-kind golden and semantic-drift packet (not closure)
 
-- This document began as a design candidate; §§9–15 record read-only
+An offline `gripsack.ts` fixture now emits all **nine** v5 output
+kinds through the embedded SDK. The real `grip check --json` admits
+the same graph while `plan` refuses E124 before effects. It includes
+host recipes, provider and fixed-prefix packages with a matching
+environment, typed argv/Bash, distinct task prerequisites versus
+local step order, inert schedules, checks, hooks, images and
+orthogonal profile file axes. Equal source basenames in two roots
+and template content under symlink/copy/managed-block policies are
+*declarations*, not claims that A2 materializes them.
+
+The golden corpus strips both `span` and dedented Bash `line_map`
+because they are diagnostic provenance, never recipe semantics.
+Dedicated CLI cases still check actual source-line mapping. A
+semantic mutant changing only a typed Bash env value is evaluated
+by the real Deno frontend; comparison with the golden detects that
+one changed value, not a shifted source line or unrelated failure.
+The focused golden plus real CLI path **5/5 passed**. The final
+Linux compose chain passed Rust fmt/clippy/tests, fresh Deno
+**62/62** and real CLI e2e **279/279**; TLC and Verus images were
+**CACHED**, not fresh model/proof runs for this source revision.
+The §15 runner reports bind the earlier code source, not this changed
+e2e corpus. New source-bound evidence, the compact module/API
+cutover and native CI/Mac lanes remain open.
+
+## 17. Honesty register
+
+- This document began as a design candidate; §§9–16 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;
