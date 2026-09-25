@@ -1,4 +1,4 @@
-# verification/reports — archived runner logs (2026-09-24)
+# verification/reports — archived runner logs (2026-09-24–25)
 
 Unmodified copies of the gate logs captured on 2026-09-24 in `/tmp/gripsack-baseline/`
 (pristine-worktree baseline runs) and `/tmp/gripsack-a0/` (A0-tree runs), archived
@@ -49,19 +49,20 @@ Runner reports exist for source commits
 `123f3bbf9555621d03a0ce989fc02b6abb16b892`,
 `01c186fd821eee4a3c077c06ffb7aa53fe38bd7e`,
 `530ae7db0e4ccc1df7e63e3ddf76597454110e95`,
-`8583a4652078a66e2a7d06676a12934ceb8f63d1` and
-`6c759a597806ace3f963346701881c7ef7d0d7f3`. Tracked
+`8583a4652078a66e2a7d06676a12934ceb8f63d1`,
+`6c759a597806ace3f963346701881c7ef7d0d7f3` and
+`a754e048360a6146368fd58056f274a4e7f3c1a6`. Tracked
 behavior-bearing `SOURCE_ROOTS` were clean before and after each
 direct runner; changes to calibration, fixtures, schema, graph
 adapters, examples and the generated diagnostic registry make
 their fingerprints non-interchangeable. The ledger cites only the
-**eighth** source for current selected A1 cases. Earlier reports
+**ninth** source for current selected A1 cases. Earlier reports
 remain historical. Reports retain commands, versions, inputs,
 source identities, raw output and counted markers.
 The current source fingerprint is
-`e328e45eb072d0e94beedc1e8e12dd06a017a8726dc90da38885fea6cad19094`;
-the preceding example revision's fingerprint is
-`ffaa9376e1a57434e06279d45f97a44f821177b7478d3f4e2ae896f2860cc825`.
+`12b790f6e0bb2e7e0c3af2f678e41cd279c5f0237f2da5fa7413fd07e55e195b`;
+the preceding diagnostic-registry revision's fingerprint is
+`e328e45eb072d0e94beedc1e8e12dd06a017a8726dc90da38885fea6cad19094`.
 These are local container observations, **not** GitHub CI or native
 Mac attestations.
 
@@ -92,13 +93,20 @@ Mac attestations.
 | `2026-09-24-a1-workspace-8583a46-policy.log` | `e1ac261e36b2073450e3d57cb57ebad4593a77c0ab2bdfdeb3e145f57fde93f8` | Earlier source-bound production adapter suite: 5 passed including role/target and selector/exported-command substitutions; no adapter proof |
 | `2026-09-24-a1-workspace-8583a46-architecture.log` | `fa7d5b9cb3ad1e18867f0b9eebe2dd68e0ba0c55e4f1d49e47df9eb60485611e` | Earlier source-bound parsed-TOML architecture self-check; examples participate in SOURCE_ROOTS |
 | `2026-09-24-a1-workspace-8583a46-verus.log` | `2b7afbef6374a8e53336db57c0f44302a4d5849394ea29869e83aabe6869dd3d` | Earlier source-bound fresh Verus 61 verified/0 errors and named graph-validation mutant; no A1-10 normalization or adapter bridge proof |
-| `2026-09-24-a1-workspace-6c759a5-corpus.log` | `43c2ce642c4f86733924fde0b256221966ff14ce42b698f22ea574d7e8f0af63` | Current source: 45 real frontend/CLI cases plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 56 passed, 0 failed/skipped |
-| `2026-09-24-a1-workspace-6c759a5-policy.log` | `e3da6f7e402906fc7eeac58640533095609228ba8827fdcf9a2edd4f0f7c3efb` | Current source: five production policy adapter cases passed, including graph-reference payload guards; no schema/name-index proof |
-| `2026-09-24-a1-workspace-6c759a5-owners.log` | `6294e1a3f0d722fffebda9d82604adf3b1fcbd1e92bf7edb88481b563e6e2a8b` | Current source: three named real CLI E124 image B4, environment A2-P and check A2/E1 owner cases passed |
-| `2026-09-24-a1-workspace-6c759a5-examples-composite.log` | `4ef77ee979bf1cfee56253910839e9db73ee40a360d0e7b60483d2bdb0eaad7e` | Current source: four original examples strictly typechecked under TypeScript 7 plus five named real frontend/CLI admission/alternate-producer cases, 9 checks |
-| `2026-09-24-a1-workspace-6c759a5-diagnostics.log` | `cac916755f42d998ef5a8d8aea5a9b48d62b7bba4db4367cfb334b1b9b28f8f9` | Current source: generated diagnostic registry fresh (36 core IDs, 5 frontend names), 3 named mutants rejected on their property, fresh Deno 63/63 and 17 named real CLI diagnostic cases; 84 checks, not a classification theorem |
-| `2026-09-24-a1-workspace-6c759a5-architecture.log` | `d8c1cfa2a2bc3a8a00d402ac66d6958d50a0fceddd04935c8db4777042163cc8` | Current source: one parsed-TOML architecture self-check with dependency, rustls, member-discovery and missing-crate negatives |
-| `2026-09-24-a1-workspace-6c759a5-verus.log` | `240cb27f7af898293836964bc3edd84eb4bfde99a21ae5c1d0c68662bd71ef54` | Current source: fresh production policy Verus 61 verified/0 errors and five mutants; graph-validation mutant rejected on its named contract, no adapter or diagnostic proof |
+| `2026-09-24-a1-workspace-6c759a5-corpus.log` | `43c2ce642c4f86733924fde0b256221966ff14ce42b698f22ea574d7e8f0af63` | Earlier source: 45 real frontend/CLI cases plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 56 passed, 0 failed/skipped |
+| `2026-09-24-a1-workspace-6c759a5-policy.log` | `e3da6f7e402906fc7eeac58640533095609228ba8827fdcf9a2edd4f0f7c3efb` | Earlier source: five production policy adapter cases passed; no schema/name-index proof |
+| `2026-09-24-a1-workspace-6c759a5-owners.log` | `6294e1a3f0d722fffebda9d82604adf3b1fcbd1e92bf7edb88481b563e6e2a8b` | Earlier source: three named real CLI E124 image B4, environment A2-P and check A2/E1 owner cases passed |
+| `2026-09-24-a1-workspace-6c759a5-examples-composite.log` | `4ef77ee979bf1cfee56253910839e9db73ee40a360d0e7b60483d2bdb0eaad7e` | Earlier source: four original examples strictly typechecked under TypeScript 7 plus five named real frontend/CLI admission/alternate-producer cases, 9 checks |
+| `2026-09-24-a1-workspace-6c759a5-diagnostics.log` | `cac916755f42d998ef5a8d8aea5a9b48d62b7bba4db4367cfb334b1b9b28f8f9` | Earlier source: generated diagnostic registry fresh (36 core IDs, 5 frontend names), 3 named mutants rejected, Deno 63/63 and 17 named real CLI diagnostic cases; 84 checks, not a classification theorem |
+| `2026-09-24-a1-workspace-6c759a5-architecture.log` | `d8c1cfa2a2bc3a8a00d402ac66d6958d50a0fceddd04935c8db4777042163cc8` | Earlier source: one parsed-TOML architecture self-check with dependency, rustls, member-discovery and missing-crate negatives |
+| `2026-09-24-a1-workspace-6c759a5-verus.log` | `240cb27f7af898293836964bc3edd84eb4bfde99a21ae5c1d0c68662bd71ef54` | Earlier source: fresh production policy Verus 61 verified/0 errors and five mutants; no adapter or diagnostic proof |
+| `2026-09-25-a1-workspace-a754e04-corpus.log` | `a06648e775b79054cc7076764396a6bfe460b2f78d1705a0321f62083c8a288f` | Current source: 45 real frontend/CLI plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 56 passed, 0 failed/skipped |
+| `2026-09-25-a1-workspace-a754e04-policy.log` | `63bc52748e96afedac27b7f54f49e7a5d89142f6b9415860b61896884e872c8e` | Current source: six production graph adapter cases including source-kind and target-binding substitution guards; both E131 regressions passed after broadened-kind failed before |
+| `2026-09-25-a1-workspace-a754e04-owners.log` | `4b7bfe3190a28bfcfd81044f663412a95093953eefa9ca358269d4fbc92593c1` | Current source: three named real CLI E124 owner cases passed, 14 nonrequired cases deselected |
+| `2026-09-25-a1-workspace-a754e04-examples-composite.log` | `d22fefe65424e6808cc46eb220cc4a14b460e3afd9e81b139bf441bde2f3ee8b` | Current source: four authored examples strictly typechecked and five named real CLI/frontend admission/alternate-producer cases, 9 checks |
+| `2026-09-25-a1-workspace-a754e04-diagnostics.log` | `af1a5dcccec3dc4b0b0e0c2a74d062fd3640733b2634e11ac0b0a8470d113f6a` | Current source: 36 generated Rust IDs and five frontend names fresh; 3 named registry mutants, Deno 63/63 and 17 real CLI diagnostics: 84 checks, not a classification proof |
+| `2026-09-25-a1-workspace-a754e04-architecture.log` | `50508d01596c39aa13a688849acec8456a113a9cbd1641e36d013de21adccda5` | Current source: one parsed-TOML architecture self-check with dependency, rustls, member-discovery and missing-crate negatives |
+| `2026-09-25-a1-workspace-a754e04-verus.log` | `cbfc348d164746077242f2dbf19f11974a44fd9ec8e3ba278bd3bdbd0a197837` | Current source: fresh production policy Verus 61 verified/0 errors and five named mutants; graph-validation mutant fails on its contract, no schema/name-index/adapter proof |
 
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS

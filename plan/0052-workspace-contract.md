@@ -1094,6 +1094,26 @@ versioned schema. A1-02's production-connected refinement theorem,
 proof calibration, protected CI and remaining platform lanes stay
 open.
 
+The post-split Linux compose chain passed fresh Rust fmt/clippy/
+tests, real CLI e2e **289/289** and fresh Verus **61 verified /
+0 errors** with five policy mutants. TypeScript and TLC image layers
+were **CACHED**; their gates completed but did not freshly rerun
+Deno/model checks in that chain. At committed source revision
+`a754e048360a6146368fd58056f274a4e7f3c1a6`, clean tracked
+`SOURCE_ROOTS` were checked around direct runs: **45/45** real
+frontend/CLI cases plus **11/11** v3/v4/v5 schema/parser cases;
+**6/6** production adapter cases including the new kind/binding
+faults; four original TypeScript examples typechecked and **5/5**
+real example cases; **3/3** named E124 owners; one architecture
+self-check; fresh Deno **63/63**, real diagnostic CLI **17/17**,
+registry freshness and **3/3** named mutants; and fresh Verus
+**61 verified / 0 errors** with the graph-validation mutant
+rejected on its named contract. The SHA-256 checked receipts under
+`verification/reports/` share source fingerprint
+`12b790f6e0bb2e7e0c3af2f678e41cd279c5f0237f2da5fa7413fd07e55e195b`.
+These are selected local cases, not a schema/name-index theorem,
+semantic diagnostic proof, protected CI, native Mac or release claim.
+
 ## 23. Honesty register
 
 - This document began as a design candidate; §§9–22 record read-only
