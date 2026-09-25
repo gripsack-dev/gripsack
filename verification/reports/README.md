@@ -44,17 +44,19 @@ authoritative observation.
 
 Runner reports exist for source commits
 `53c6fac8bc4c4290d66a2f1f5644f4cc8d6063c6`,
-`d6d29d7082f69e14e03a262381a776545782961d` and
-`ff73b62618359d002040a2d648b87c1d2a6e78bd`. The tracked
+`d6d29d7082f69e14e03a262381a776545782961d`,
+`ff73b62618359d002040a2d648b87c1d2a6e78bd` and
+`123f3bbf9555621d03a0ce989fc02b6abb16b892`. The tracked
 behavior-bearing `SOURCE_ROOTS` were clean before and after each
 run. The delivery calibration script changed between the first
-two commits; the offline golden/fixture tests changed before the
-third, so their source fingerprints are not interchangeable.
-The ledger cites the **third** run for selected historical A1 cases,
-not for the graph/schema/diagnostic source changes after `ff73b62`.
-Logs carry the exact SHA, command, versions and inputs plus raw runner
-output and counted result markers. The third source fingerprint is
-`99dd8c7cdc51b216da260ad1214f47eaf97ecc33e6ff39939118ab8603bb1ef8`.
+two commits; the golden/fixture tests changed before the third,
+and the graph/schema/diagnostic code and tests before the fourth.
+Their source fingerprints are not interchangeable. The ledger
+cites the **fourth** run for selected A1 cases; the first three
+are history. Logs carry exact SHA, command, versions and inputs
+plus raw runner output and counted result markers. The fourth
+source fingerprint is
+`510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1`.
 They are local container observations, **not** GitHub CI or Mac
 attestations.
 
@@ -66,6 +68,10 @@ attestations.
 | `2026-09-24-a1-workspace-d6d29d7-verus.log` | `bca914dc0cb3b6904416aab25da9c7e72275ad11d13845dab39f20353ca68741` | Earlier source-bound fresh Verus 61 verified/0 errors; one attributable graph-validation mutant, not a schema/name-index refinement proof |
 | `2026-09-24-a1-workspace-ff73b62-e2e.log` | `f6b3ce0ef0c4b5b418b85c4afd1d00295b67ff369ee6e064d5434b1d3880e206` | Earlier source-bound frontend golden/workspace/diagnostic suites: 35 passed, 0 failed/skipped, including a nine-kind corpus and semantic Bash-env drift mutant |
 | `2026-09-24-a1-workspace-ff73b62-verus.log` | `9698ae5182a57810ddedc122097c3facc0df74d065aa1dd9ce475c6cc023d23b` | Earlier source-bound fresh Verus: 61 verified/0 errors; named graph-validation mutant fails its contract, not full schema/name-index refinement |
+| `2026-09-24-a1-workspace-123f3bb-corpus.log` | `d59ca5260bd3ea45c36da76a8aa0017ccdfa1190c70c16fb099b6923253ee7be` | Current source-bound cross-language corpus: 37 real frontend/CLI plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 48 passed, 0 failed/skipped |
+| `2026-09-24-a1-workspace-123f3bb-policy.log` | `004bbd63f2b1188cce77c4ca78a4ed4ceb49fe929c6c51665f157d420d405277` | Current source-bound direct policy adapter unit suite: 5 passed, including same-role build/runtime target substitutions; no name-index proof |
+| `2026-09-24-a1-workspace-123f3bb-architecture.log` | `97a1ffce88192b0af04a4eed1c4cbc2176cefa61700b486e471bbe3b9b9b6586` | Current source-bound parsed-TOML architecture self-check: one suite with named member discovery, missing-crate and rustls boundary negatives |
+| `2026-09-24-a1-workspace-123f3bb-verus.log` | `cad0d4ad86376d39622c048c7b340d18733872e787a4d26aa7eca1f36612afa2` | Current source-bound fresh Verus 61 verified/0 errors, named graph-validation mutant rejected; proof excludes schema/name-index and adapter payload |
 
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS

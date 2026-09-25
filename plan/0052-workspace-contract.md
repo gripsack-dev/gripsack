@@ -856,6 +856,23 @@ mutants. The TLC model image was **CACHED**. These worktree gates are
 not source-stamped CI or a proof of the unverified adapter bridge;
 the §16 receipts bind the earlier `ff73b62` code, not this revision.
 
+At committed code revision
+`123f3bbf9555621d03a0ce989fc02b6abb16b892`, clean tracked
+source roots were checked before and after each fresh direct runner.
+The SHA-256 checked composite corpus records **37/37** real
+frontend/CLI cases and **3/3 v3 + 3/3 historical v4 + 5/5 v5**
+schema/parser cases; five production policy adapter cases pass,
+including two same-role substitution regressions. A separate
+architecture self-check rejects its named dependency/TLS/member
+mutants. The fresh Verus runner discharged **61/61** policy
+obligations with five mutants, including the attributable
+graph-validation rejection; it does **not** prove the new Rust
+name/index adapter. The reports in `verification/reports/` and
+selected `verification/delivery.json` records bind source fingerprint
+`510a95aa0941275a4e70e73f3d65a9b79b38ebd4a706e2b81eb3ccf5427c4aa1`.
+This is local evidence, not protected CI, native Mac or release
+evidence. The `ff73b62` receipts remain historical.
+
 ## 18. Honesty register
 
 - This document began as a design candidate; §§9–17 record read-only
