@@ -1257,17 +1257,17 @@
      "environment": "Linux amd64 Docker Compose v5.5.0; pinned Rust/TypeScript/e2e containers; sandboxed HOME",
      "command": "docker compose run --build --rm test python3 scripts/gen_diagnostic_registry.py --check; docker compose run --build --rm test python3 scripts/gen_diagnostic_registry.py --self-check; docker compose run --build --rm -w /app/typescript ts-test deno task test; docker compose run --build --rm e2e uv run --locked --no-sync pytest -vv test_workspace_diagnostics.py",
      "result": "pass",
-     "report": "verification/reports/2026-09-25-a1-workspace-2699d79-diagnostics.log",
-     "report_sha256": "83b7c014355e0d94a0ca08877be7d378d172040bc41103652d322b8546c64837",
-     "commit": "2699d79342da7c70136840828ae3455b0e3eb257",
-     "source_reuse_sha256": "b33a5ab41e0e6143f08905130694fc67e356e30d6259c28f7d63fdc6147d32eb",
+     "report": "verification/reports/2026-09-25-a1-workspace-ec11c7c-diagnostics.log",
+     "report_sha256": "9fa928542cfe1d57974824b3e7222180d410363c5c8fefffec5946299308d044",
+     "commit": "ec11c7ce7ffb1ee3ec78c3026c933bf305fabb15",
+     "source_reuse_sha256": "aaf991dd50aec3a6db9694d2d43248dbc6810f147a8e242fd76ba0ed40e0e1c6",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [],
      "kind": "runner",
      "tool_versions": "Docker Compose v5.5.0; Python 3.14.7 in test image; Deno 2.9.6; TypeScript 7.0.2; pytest 9.1.1",
-     "inputs": "Committed diagnostic registry and generated Rust/TS/embedded code; three named registry mutants; sandboxed frontend and real terminal/JSON CLI diagnostic fixtures",
-     "report_marker": "A1_DIAGNOSTIC_BINDING=84",
-     "counts": {"executed": 84, "passed": 84, "failed": 0, "skipped": 0}
+     "inputs": "Committed single allocation manifest, generated frontend membership Record/embedded SDK, three named registry mutants and 18 real CLI terminal/JSON cases including an unallocated E999 failure that stays a traceback",
+     "report_marker": "A1_DIAGNOSTIC_BINDING=85",
+     "counts": {"executed": 85, "passed": 85, "failed": 0, "skipped": 0}
     },
     {
      "lane": "container-gates",
@@ -1276,15 +1276,15 @@
      "environment": "Linux amd64 Docker Compose v5.5.0; pinned Rust test container",
      "command": "docker compose run --build --rm test python3 scripts/gen_diagnostic_registry.py --self-check",
      "result": "pass",
-     "report": "verification/reports/2026-09-25-a1-workspace-2699d79-diagnostics.log",
-     "report_sha256": "83b7c014355e0d94a0ca08877be7d378d172040bc41103652d322b8546c64837",
-     "commit": "2699d79342da7c70136840828ae3455b0e3eb257",
-     "source_reuse_sha256": "b33a5ab41e0e6143f08905130694fc67e356e30d6259c28f7d63fdc6147d32eb",
+     "report": "verification/reports/2026-09-25-a1-workspace-ec11c7c-diagnostics.log",
+     "report_sha256": "9fa928542cfe1d57974824b3e7222180d410363c5c8fefffec5946299308d044",
+     "commit": "ec11c7ce7ffb1ee3ec78c3026c933bf305fabb15",
+     "source_reuse_sha256": "aaf991dd50aec3a6db9694d2d43248dbc6810f147a8e242fd76ba0ed40e0e1c6",
      "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
      "cases_covered": [],
      "kind": "mutant-calibration",
      "tool_versions": "Docker Compose v5.5.0; Python 3.14.7 in test image",
-     "inputs": "Three named registry mutants: boolean version, duplicate core E-code and duplicate frontend export name; subset of the same 84-unit report, not additional executions",
+     "inputs": "Three named manifest mutants: boolean version, duplicate core E-code and duplicate frontend name; three-check subset of the same 85-unit report, not extra executions",
      "report_marker": "CALIBRATED_DIAGNOSTIC_REGISTRY=3",
      "counts": {"executed": 3, "passed": 3, "failed": 0, "skipped": 0},
      "intended_property": "Strict integer registry version and unique core/TypeScript diagnostic allocations",
@@ -1301,7 +1301,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts, with snippets limited to the evaluated repo and 1 MiB per file. E124 names the first unavailable output, owner and declaration for B2, E2/E3, E1, historical v4 A5, B4, A2-P and A2/E1. A single manifest generates 36 Rust and five frontend diagnostic allocations and the test gate checks freshness. At 2699d79 source-bound direct runs record fresh generated files, three attributable registry mutants, fresh Deno 63/63 and 17/17 named real CLI diagnostics: 84 distinct checks; the mutant-calibration record cites a three-check subset, not additional runs. Verus 68/0 proves unrelated graph/target policy kernels, not diagnostic classification. Remaining malformed-coordinate/owner matrix and semantic registry proof, protected CI and native Mac remain open; no A1-06 closure or release."
+   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts; snippets are bounded to the evaluated repo capability and 1 MiB per file. E124 names the first unavailable output and owner for B2/E2/E3/E1/v4 A5/B4/A2-P/A2-E1. A single manifest generates 36 Rust IDs, five frontend code constants and a static frontend membership Record; the embedded SDK and both generated outputs have a freshness gate. A real user-thrown E999 initially surfaced as a forged structured diagnostic; after the runtime and TypeScript-code cutover it remains a traceback with no check --json diagnostic. At ec11c7c source-bound local direct runners observe one fresh manifest check, three attributable registry mutants, Deno 63/63 and 18 real CLI diagnostics (85 distinct checks); the three mutants are a subset, not additional runs. An already allocated ID can still be deliberately forged by trusted authoring code, and Verus 72/0 proves unrelated policy kernels, not semantic diagnostic classification. Remaining malformed-coordinate/owner matrix, semantic proof, protected CI and native Mac evidence keep A1-06 in_progress; no release."
   },
   {
    "id": "A1-07",

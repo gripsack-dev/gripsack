@@ -1316,6 +1316,19 @@ Semantic error classification, remaining owner/coordinate cases,
 protected CI and native Mac evidence remain open. A1-06 stays in
 progress; no A1 or release closure follows.
 
+At committed source revision
+`ec11c7ce7ffb1ee3ec78c3026c933bf305fabb15`, tracked
+`SOURCE_ROOTS` were clean before and after direct runners.
+The SHA-256 checked diagnostic report records generated-file
+freshness (**36** core allocations and **5** frontend codes),
+**3/3** named registry mutants, fresh Deno **63/63** and real
+terminal/JSON diagnostic cases **18/18**: **85** distinct checks.
+The source fingerprint is
+`aaf991dd50aec3a6db9694d2d43248dbc6810f147a8e242fd76ba0ed40e0e1c6`.
+The ledger binds only selected A1-06 behavior; earlier graph and
+other-row reports do not bind this frontend change. Protected CI,
+native Mac and semantic classification proof remain open.
+
 ## 27. Honesty register
 
 - This document began as a design candidate; §§9–26 record read-only
