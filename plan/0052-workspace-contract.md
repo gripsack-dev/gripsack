@@ -1014,9 +1014,37 @@ mutant on its contract, not an A1-10 normalization mutant. The
 These are local selected cases only, not protected CI, native Mac
 or proof of a compact SDK/public release.
 
-## 21. Honesty register
+## 21. A1-06 single diagnostic allocation registry (not closure)
 
-- This document began as a design candidate; §§9–20 record read-only
+`schema/diagnostics.json` now allocates the existing **36** stable
+core error codes once; five carry frontend export names. A
+deterministic generator emits Rust `codes` and TypeScript
+`diagnosticCodes` from that table, and the embedded frontend carries
+the generated TypeScript file. The `test` Docker gate checks both
+generated files and the embedded frontend for byte freshness. No
+manifest read, new diagnostic ID, IR field or runtime grant is added
+to the evaluator. Existing terminal and `check --json` diagnostics
+continue to use their one core representation.
+
+The generator rejects duplicate code IDs, duplicate frontend export
+names and malformed version tags. A `registry_version: true` mutant
+**escaped before** the strict integer check and was rejected after;
+the final Docker gate rejects **3/3** named mutants at the intended
+property. The Linux chain passed fresh Rust fmt/clippy/tests,
+Deno **63/63** with strict compilation of all four workspaces,
+and real CLI e2e **289/289**. TLC reused a **CACHED** layer;
+Verus ran fresh at **61 verified / 0 errors** with its five policy
+mutants, not a proof of registry-to-diagnostic classification.
+The focused real workspace/diagnostic CLI cases also passed
+**40/40** before the boolean-version correction. The prior
+`8583a46` local source-bound reports precede this shared registry
+cutover. Code generation and calibrated freshness enforce allocated
+code parity, not protected CI/Mac or the complete A1-06 proof;
+A1-06 remains in progress.
+
+## 22. Honesty register
+
+- This document began as a design candidate; §§9–21 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

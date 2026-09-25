@@ -58,9 +58,11 @@ the fifth; E124 owner cases before the sixth; and four runnable
 examples, their strict TypeScript gate and the newly tracked
 `examples/` root before the seventh. Source fingerprints are not
 interchangeable. The ledger cites the **seventh** run for selected
-cases; preceding runs remain history. Logs retain SHA, commands,
-versions, inputs, raw runner output and counted markers. The current
-fingerprint is
+historical cases. The new allocated diagnostic manifest changes
+`schema/`, `typescript/`, `crates/`, `scripts/` and the Docker gate,
+so none of these logs binds the registry cutover yet. Logs retain
+SHA, commands, versions, inputs, raw output and counted markers.
+The seventh source fingerprint is
 `ffaa9376e1a57434e06279d45f97a44f821177b7478d3f4e2ae896f2860cc825`.
 These are local container observations, **not** GitHub CI or native
 Mac attestations.
@@ -86,12 +88,12 @@ Mac attestations.
 | `2026-09-24-a1-workspace-530ae7d-policy.log` | `d3323a4084868b1cbf9ab1f9eae765c0520a1cf915f7993d2327ee107c7a3950` | Earlier source-bound production adapter suite: 5 passed including role/target and selector/exported-command substitutions; no adapter proof |
 | `2026-09-24-a1-workspace-530ae7d-architecture.log` | `d7be0876ccd716d37780547835d1282308192c8e3b4050efe52a501a9b3457c6` | Earlier source-bound parsed-TOML architecture self-check with member, TLS and missing-crate negatives |
 | `2026-09-24-a1-workspace-530ae7d-verus.log` | `73564bec9e5a6bef478a5dec5e8accc8a53857c3d22f398b9c124a00279598da` | Earlier source-bound fresh Verus 61 verified/0 errors; named graph-validation mutant rejected, no schema/name-index proof |
-| `2026-09-24-a1-workspace-8583a46-corpus.log` | `18c62f721f48df389ed8ecf10f3f9f67b52bd4977af6d41f76f1012617ed18d4` | Current source-bound corpus: 45 real frontend/CLI cases plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 56 passed, 0 failed/skipped |
-| `2026-09-24-a1-workspace-8583a46-examples-composite.log` | `230dbf5000fcbac30860fadb158cc2810543d9f22bcff786e6864b2426d1ef3e` | Current source-bound four actual files compiled under TypeScript 7 and five named real admission/alternate-producer cases, 9 combined checks with no errors |
-| `2026-09-24-a1-workspace-8583a46-owners.log` | `2d4241801521a8cbe7e6fcb46802596940b7a56b286bf0b3d2074a1c1bb051fc` | Current source-bound named real CLI image B4, environment A2-P and check A2/E1 cases, 3 passed, 14 deselected |
-| `2026-09-24-a1-workspace-8583a46-policy.log` | `e1ac261e36b2073450e3d57cb57ebad4593a77c0ab2bdfdeb3e145f57fde93f8` | Current source-bound production adapter suite: 5 passed including role/target and selector/exported-command substitutions; no adapter proof |
-| `2026-09-24-a1-workspace-8583a46-architecture.log` | `fa7d5b9cb3ad1e18867f0b9eebe2dd68e0ba0c55e4f1d49e47df9eb60485611e` | Current source-bound parsed-TOML architecture self-check; examples participate in SOURCE_ROOTS |
-| `2026-09-24-a1-workspace-8583a46-verus.log` | `2b7afbef6374a8e53336db57c0f44302a4d5849394ea29869e83aabe6869dd3d` | Current source-bound fresh Verus 61 verified/0 errors and named graph-validation mutant; no A1-10 normalization or adapter bridge proof |
+| `2026-09-24-a1-workspace-8583a46-corpus.log` | `18c62f721f48df389ed8ecf10f3f9f67b52bd4977af6d41f76f1012617ed18d4` | Earlier source-bound corpus: 45 real frontend/CLI cases plus 3 v3, 3 historical v4 and 5 v5 schema/parser cases; 56 passed, 0 failed/skipped |
+| `2026-09-24-a1-workspace-8583a46-examples-composite.log` | `230dbf5000fcbac30860fadb158cc2810543d9f22bcff786e6864b2426d1ef3e` | Earlier source-bound four actual files compiled under TypeScript 7 and five named real admission/alternate-producer cases, 9 checks |
+| `2026-09-24-a1-workspace-8583a46-owners.log` | `2d4241801521a8cbe7e6fcb46802596940b7a56b286bf0b3d2074a1c1bb051fc` | Earlier source-bound named CLI image B4, environment A2-P and check A2/E1 cases, 3 passed, 14 deselected |
+| `2026-09-24-a1-workspace-8583a46-policy.log` | `e1ac261e36b2073450e3d57cb57ebad4593a77c0ab2bdfdeb3e145f57fde93f8` | Earlier source-bound production adapter suite: 5 passed including role/target and selector/exported-command substitutions; no adapter proof |
+| `2026-09-24-a1-workspace-8583a46-architecture.log` | `fa7d5b9cb3ad1e18867f0b9eebe2dd68e0ba0c55e4f1d49e47df9eb60485611e` | Earlier source-bound parsed-TOML architecture self-check; examples participate in SOURCE_ROOTS |
+| `2026-09-24-a1-workspace-8583a46-verus.log` | `2b7afbef6374a8e53336db57c0f44302a4d5849394ea29869e83aabe6869dd3d` | Earlier source-bound fresh Verus 61 verified/0 errors and named graph-validation mutant; no A1-10 normalization or adapter bridge proof |
 
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS

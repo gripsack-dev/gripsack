@@ -52,11 +52,13 @@ FROM builder AS test
 RUN cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
-# 0035 F6: the frontend is vendored INTO the crate — a crates.io
-# package must contain it, and a fresh regeneration must match the
-# checked-in file (staleness check). rust:alpine has no python3.
+# Fresh generated registry codes and embedded frontend are required in
+# the published crates. The registry's two named negative calibrations
+# reject duplicate allocations rather than a missing tool.
 RUN apk add --no-cache python3 \
     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \
+    && python3 scripts/gen_diagnostic_registry.py --check \
+    && python3 scripts/gen_diagnostic_registry.py --self-check \
     && python3 scripts/gen_frontend_embed.py --check
 
 # The debug binary for stages that need a runnable grip (e2e).

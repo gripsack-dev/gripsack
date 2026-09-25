@@ -4,10 +4,13 @@
  *  renders the same facts to the terminal and to `grip check --json`;
  *  tooling matches on `code`, never on message text.
  *
- *  Codes are allocated by the core registry only — the constants below
- *  mirror it, they do not extend it. */
+ * Codes are generated from schema/diagnostics.json for core and
+ * frontend together, never allocated in this module. */
 
 import type { Span } from "./module.ts";
+import { diagnosticCodes } from "./diagnostic_codes.ts";
+
+export { diagnosticCodes };
 
 /** Wire shape of one label (core `Label`): the span is null when no
  *  source node carries the context and the note alone explains it. */
@@ -26,17 +29,6 @@ export interface FrontendDiagnostic {
   labels: DiagnosticLabel[];
   help?: string;
 }
-
-/** Registry codes the workspace frontend raises, mirroring
- *  `crates/gripsack-ir/src/diagnostic.rs` `codes` — new codes are
- *  allocated THERE, never here. */
-export const diagnosticCodes = {
-  duplicateWorkspaceOutput: "E125",
-  unknownWorkspaceRef: "E126",
-  workspaceCycle: "E127",
-  badWorkspaceContext: "E128",
-  invalidWorkspaceValue: "E130",
-} as const;
 
 /** An authoring failure carrying its structured diagnostic. Thrown
  *  instead of a plain Error where the throw site knows the precise
