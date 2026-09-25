@@ -924,9 +924,31 @@ The ledger cites selected cases only; these local reports do not
 prove the payload adapter, replace protected CI or exercise native
 Mac behavior. The `123f3bb` reports are historical.
 
-## 19. Honesty register
+## 19. A1-06 remaining capability-owner diagnostics (not closure)
 
-- This document began as a design candidate; §§9–18 record read-only
+Three additional real CLI `plan --ir` cases admit v5 outputs, then
+reject execution at the **first declared** unavailable capability:
+an image names materialization owner B4, an environment names A2-P,
+and a check names A2/E1 even though its subject task is declared
+later. Each E124 points at the selected output's `outputs.ts:7`
+declaration; none publishes a generation. The focused offline
+cases **3/3 passed**. Earlier direct and frontend cases already
+cover isolated recipes B2, inert schedules E2/E3, task prerequisites
+E1 and historical v4 A5 migration (§14). These tests exercise the
+production diagnostic gate without adding an executor or claiming
+that every capability-owner combination, diagnostic-registry proof,
+native CI/Mac lane or source-bound full-suite report is complete.
+
+The final Linux compose chain passed the Rust, TypeScript, TLC and
+Verus gates using **CACHED** image layers; it ran the real CLI e2e
+suite fresh at **284/284**. No fresh proof/model/Deno execution is
+claimed for this test-only edit. The §18 source-stamped `01c186f`
+receipts predate the changed e2e test tree, so they are historical
+for any closure claim on this source revision.
+
+## 20. Honesty register
+
+- This document began as a design candidate; §§9–19 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

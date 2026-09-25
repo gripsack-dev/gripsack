@@ -11,6 +11,7 @@ store, no generation.
 from __future__ import annotations
 
 import json
+import pytest
 
 from conftest import grip, make_env_repo
 
@@ -405,6 +406,76 @@ def test_schedule_and_task_prerequisite_capabilities_keep_their_owners(sandbox):
     assert invoked.returncode != 0
     assert "E124" in invoked.stderr and "task prerequisite" in invoked.stderr
     assert "E1" in invoked.stderr and "tasks.ts:8" in invoked.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+@pytest.mark.parametrize(
+    ("first", "rest", "owner", "capability"),
+    [
+        pytest.param(
+            {
+                "kind": "image", "name": "container", "span": {"file": "outputs.ts", "line": 7},
+                "packages": [], "target": {"os": "linux", "arch": "x86_64"},
+            },
+            [],
+            "B4",
+            "image materialization",
+            id="image-worker",
+        ),
+        pytest.param(
+            {
+                "kind": "environment", "name": "dev", "span": {"file": "outputs.ts", "line": 7},
+                "packages": [], "target": {"os": "linux", "arch": "x86_64"},
+            },
+            [],
+            "A2-P",
+            "environment activation",
+            id="environment-invocation",
+        ),
+        pytest.param(
+            {
+                "kind": "check", "name": "verify", "span": {"file": "outputs.ts", "line": 7},
+                "run": {
+                    "kind": "exec", "span": {"file": "outputs.ts", "line": 8},
+                    "argv": [{"kind": "literal", "value": "true"}],
+                },
+                "subject": "run",
+            },
+            [
+                {
+                    "kind": "task", "name": "run", "span": {"file": "outputs.ts", "line": 12},
+                    "run": {
+                        "kind": "exec", "span": {"file": "outputs.ts", "line": 13},
+                        "argv": [{"kind": "literal", "value": "true"}],
+                    },
+                },
+            ],
+            "A2/E1",
+            "check execution",
+            id="check-owner-before-subject",
+        ),
+    ],
+)
+def test_unavailable_capability_names_first_declared_output_and_owner(
+    sandbox, first, rest, owner, capability,
+):
+    repo = sandbox / "capability-owner"
+    repo.mkdir()
+    path = repo / "workspace.ir.json"
+    path.write_text(json.dumps({
+        "ir_version": 5,
+        "host": {"os": "linux", "arch": "x86_64"},
+        "workspace": {
+            "span": {"file": "outputs.ts", "line": 1},
+            "outputs": [first, *rest],
+        },
+    }))
+    planned = grip("plan", "--ir", str(path), cwd=repo)
+    assert planned.returncode != 0
+    assert "E124" in planned.stderr, planned.stderr
+    assert first["name"] in planned.stderr
+    assert capability in planned.stderr and f"belongs to {owner}" in planned.stderr
+    assert "outputs.ts:7" in planned.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
