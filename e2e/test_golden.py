@@ -103,14 +103,16 @@ export default module("c", {
     return drivers[-1].parents[1]
 
 
-def evaluate(deno: str, frontend: Path, repo: Path, sandbox: Path) -> dict:
+def evaluate(
+    deno: str, frontend: Path, repo: Path, sandbox: Path, inputs_override: dict | None = None,
+) -> dict:
     """The plan/0013 D2 spawn contract, verbatim: no env, no network,
     no subprocesses — read-only within repo, inputs dir, and the
     provisioned frontend."""
     inputs_dir = sandbox / "inputs"
     inputs_dir.mkdir(exist_ok=True)
-    inputs = inputs_dir / "inputs.json"
-    inputs.write_text(json.dumps(INPUTS))
+    inputs_file = inputs_dir / "inputs.json"
+    inputs_file.write_text(json.dumps(INPUTS if inputs_override is None else inputs_override))
     env = {
         "HOME": str(sandbox),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -123,7 +125,7 @@ def evaluate(deno: str, frontend: Path, repo: Path, sandbox: Path) -> dict:
             str(frontend / "src" / "cli.ts"),
             str(repo),
             "--inputs",
-            str(inputs),
+            str(inputs_file),
         ],
         cwd=repo,
         env=env,
@@ -199,3 +201,36 @@ def test_workspace_golden_rejects_a_changed_typed_command_input(sandbox):
     assert command_env(actual)["value"] == changed_value
     command_env(actual)["value"] = input_value
     assert actual == expected, "golden drift must be attributable to the changed command input"
+
+
+def test_source_example_alternate_producer_uses_only_injected_platform(sandbox):
+    deno = find_deno()
+    if not deno:
+        pytest.skip("deno not installed (the e2e gate image ships it)")
+    frontend = materialize_frontend(sandbox)
+    source = Path(__file__).parent.parent / "examples/workspaces/03-source-built"
+    repo = sandbox / "source-example"
+    shutil.copytree(source, repo)
+
+    host = strip_provenance(evaluate(deno, frontend, repo, sandbox)["ir"])
+    alternate_inputs = {
+        **INPUTS,
+        "facts": {**INPUTS["facts"], "arch": "aarch64"},
+    }
+    alternate = strip_provenance(
+        evaluate(deno, frontend, repo, sandbox, alternate_inputs)["ir"]
+    )
+    host_package = next(
+        output for output in host["workspace"]["outputs"] if output["name"] == "greeter"
+    )
+    alternate_package = next(
+        output for output in alternate["workspace"]["outputs"] if output["name"] == "greeter"
+    )
+    assert host_package["producer"] == {"kind": "recipe", "recipe": "build-greeter"}
+    assert alternate_package["producer"]["kind"] == "provider"
+    assert alternate_package["producer"]["provider"]["fetch"]["path"] == (
+        "downloads/greeter.tar.gz"
+    )
+    alternate_package["producer"] = host_package["producer"]
+    alternate["host"]["arch"] = host["host"]["arch"]
+    assert alternate == host, "only the injected arch fact and selected producer may differ"

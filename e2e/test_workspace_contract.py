@@ -12,6 +12,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from conftest import grip
 
 
@@ -93,6 +95,44 @@ def test_all_nine_output_kinds_admit_from_one_offline_workspace(sandbox):
     planned = grip("plan", cwd=repo)
     assert planned.returncode != 0
     assert "E124" in planned.stderr and "shell" in planned.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+@pytest.mark.parametrize(
+    ("example", "outputs"),
+    [
+        pytest.param("01-dotfiles", [("dotfiles", "profile")], id="dotfiles-only"),
+        pytest.param(
+            "02-native-tool",
+            [("formatter", "package"), ("development", "environment"), ("personal", "profile")],
+            id="native-tool-and-profile",
+        ),
+        pytest.param(
+            "03-source-built",
+            [("build-greeter", "recipe"), ("greeter", "package"), ("dev", "environment"),
+             ("smoke", "task")],
+            id="source-recipe-and-command-consumer",
+        ),
+        pytest.param(
+            "04-scheduled-task",
+            [("formatter", "package"), ("dev", "environment"), ("format-now", "task"),
+             ("format-nightly", "task"), ("nightly", "schedule"), ("personal", "profile")],
+            id="manual-and-scheduled-task",
+        ),
+    ],
+)
+def test_graduated_examples_admit_without_an_executor(sandbox, example, outputs):
+    source = Path(__file__).parent.parent / "examples" / "workspaces" / example
+    repo = sandbox / example
+    shutil.copytree(source, repo)
+    checked = grip("check", "--json", cwd=repo)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    document = json.loads(checked.stdout)
+    assert document["ok"] is True
+    assert [(output["name"], output["kind"]) for output in document["outputs"]] == outputs
+    refused = grip("plan", cwd=repo)
+    assert refused.returncode != 0
+    assert "E124" in refused.stderr and outputs[0][0] in refused.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 

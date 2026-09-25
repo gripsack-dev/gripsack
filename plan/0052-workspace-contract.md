@@ -960,9 +960,47 @@ same source fingerprint
 These are local, selected cases; they do not prove the name/index
 bridge or supply protected CI, native Mac or release evidence.
 
-## 20. Honesty register
+## 20. A1-10 four graduated workspaces (not API cutover)
 
-- This document began as a design candidate; §§9–19 record read-only
+Four self-contained workspaces now live under
+`examples/workspaces/`: dotfiles-only profile with template and
+managed block; offline-staged provider package selected into a native
+environment/profile; a host source recipe whose package selects
+between the recipe and a provider based on injected platform facts,
+with a typed command consumer; and a manual task plus a scheduled
+task using that tool. The small offline archives contain executable
+payloads, not dummy command paths. The source-built example declares
+host access honestly; A1 does not execute its compiler or publish
+its artifact.
+
+The `ts-test` container compiles the four original example files
+under strict TypeScript 7 rules (no docs shadow copies); the e2e
+container runs the shipped `grip check --json` on each copied fixture
+under a sandboxed HOME, asserts the declared output catalog, then
+observes E124 on `plan` with no generation. A separate real Deno
+frontend evaluation changes only the injected arch fact and observes
+the package's producer switch, not an import side effect. The
+focused real frontend/CLI cases **5/5 passed**. This is admission
+and static typechecking, not native package realization, a scheduled
+registration, recipe identity or the A1-09/A1-12 public API cutover;
+A1-10 remains in progress.
+
+The example trees are now part of the delivery checker's tracked
+`SOURCE_ROOTS` fingerprint. Changing an example invalidates a
+source-bound receipt; adding example code without this source root
+would have allowed stale evidence to bind a different program.
+
+The Linux worktree chain passed fresh Rust fmt/clippy/tests and real
+CLI e2e **289/289**. The preceding dedicated TypeScript build ran
+**63/63** Deno tests and strictly compiled all four examples; the
+final compose chain reused that **CACHED** TS layer. TLC and Verus
+layers were **CACHED** too, not fresh proofs for this source.
+The `530ae7d` source-stamped local reports predate the new
+`examples/` source root and cannot bind an A1-10 or release claim.
+
+## 21. Honesty register
+
+- This document began as a design candidate; §§9–20 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

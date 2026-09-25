@@ -111,17 +111,19 @@ COPY fuzz ./fuzz
 COPY scripts/check_verus.sh ./scripts/check_verus.sh
 RUN sh scripts/check_verus.sh
 
-# TypeScript frontend tests (plan/0005 §1, plan/0013 D1): `deno test`
-# on the source tree — no transpile chain, no node_modules. The image
-# tag is the same version DENO_RELEASE pins in
-# crates/gripsack-fetch/src/host.rs; bump them together.
+# TypeScript frontend tests and strict type checking of the four
+# admission-only workspace examples (plan/0052 §5.4). The image tag
+# matches the DENO_RELEASE provisioned by gripsack-fetch/src/host.rs.
 FROM denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d AS ts-test
 WORKDIR /app
 COPY typescript ./typescript
+COPY examples ./examples
 # deno install materializes node_modules (@types/node) for the
 # type-checker; build-time network is fine — the runtime eval path
 # stays --cached-only --no-remote.
-RUN cd typescript && deno install && deno task test
+RUN cd typescript && deno install && deno task test \
+    && deno run --cached-only --no-remote --allow-all node_modules/typescript/bin/tsc \
+       --project tsconfig.examples.json --noEmit
 
 # E2E flow tests: the real (musl-static, runs-everywhere) binary
 # against fixture env repos in a sandboxed HOME (offline). Base is
@@ -156,6 +158,7 @@ COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
 COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
 RUN cd e2e && uv sync --locked
 COPY e2e ./e2e
+COPY examples ./examples
 ENV GRIPSACK_E2E_IN_DOCKER=1
 ENV GRIPSACK_BIN=/usr/local/bin/grip
 WORKDIR /app/e2e

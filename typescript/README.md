@@ -122,6 +122,16 @@ need B2, schedule registration E2/E3, task prerequisites E1, and
 historical v4 declarations remain read-only pending A5 migration.
 `grip check` never bootstraps BuildKit or a scheduler.
 
+Four [graduated workspaces](../examples/workspaces/) use the real SDK
+without a hostname shim or a synthetic package: [dotfiles only](../examples/workspaces/01-dotfiles/gripsack.ts),
+[an offline-staged native tool and profile](../examples/workspaces/02-native-tool/gripsack.ts),
+[a source recipe with alternate producer and typed command consumer](../examples/workspaces/03-source-built/gripsack.ts),
+and [manual plus scheduled tasks](../examples/workspaces/04-scheduled-task/gripsack.ts).
+The `ts-test` gate strictly type-checks their source, and `e2e` admits
+each through the shipped `grip check`. Archives under these examples
+are tiny executable offline fixtures, not claims that A1 realizes a
+package or registers a schedule; `plan` refuses E124 before effects.
+
 The legacy `hosts/<name>.ts` path emits a v5 modules-compatibility
 envelope until the A5 migration; the core keeps v3 and historical v4
 readers. It is not a workspace executor.

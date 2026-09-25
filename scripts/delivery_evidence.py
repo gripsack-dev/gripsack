@@ -34,7 +34,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SOURCE_ROOTS = (
     "Cargo.toml", "Cargo.lock", "Dockerfile", "docker-compose.yml",
     "crates", "typescript", "schema", "scripts", "specs", "e2e",
-    "fuzz", ".github/workflows", "verification/buildkit-qualification",
+    "examples", "fuzz", ".github/workflows", "verification/buildkit-qualification",
 )
 
 MAX_REPORT_BYTES = 16 * 1024 * 1024

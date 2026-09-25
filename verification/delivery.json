@@ -1351,18 +1351,34 @@
    "mandatory_deliverable": "Compact authoring API and shared commands/check constructors",
    "required_acceptance_evidence": "Exhaustive export/migration inventory; four admitted graduated examples; ordered local lists versus task prerequisites; typed artifact inference; context/phase forgery rejection; shared command construction preserves check/hook/recipe/task lifecycles and source maps",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates",
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "Root SDK exports and every legacy caller are migrated to the compact authoring API; versioned v3/v4 persisted readers remain strict and no duplicate execution path remains",
+    "Four graduated real TypeScript workspace examples are strictly type-checked and admitted by the shipped CLI without hostname shims or executor effects",
+    "Recipe-local command order remains distinct from named task prerequisites and checked schedule bindings",
+    "Typed artifact and package-command consumers preserve inferred input roles, pin boundaries and argument identity",
+    "Forged contexts/phases reject with source-aware diagnostics rather than granting effects",
+    "One shared command construction preserves build-check, task-postcondition, hook and recipe lifecycles plus literal Bash source maps",
+    "Source-bound normalization/provenance proof, mutation calibration, protected CI and required platform lanes cover the compact authoring surface"
    ],
-   "evidence_records": []
+   "evidence_records": [],
+   "lane_status": {
+    "pure": "in_progress",
+    "container-gates": "in_progress",
+    "ci": "in_progress",
+    "proofs": "in_progress"
+   },
+   "status_history": [
+    {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
+   ],
+   "implementation_notes": "Four self-contained workspaces under examples/workspaces are strictly type-checked by the Deno/TypeScript gate and admitted with the real grip check under sandboxed HOME; source-built alternate producer selection is exercised by changing only injected arch facts. Focused admission and alternate-producer cases passed 5/5. The source root is tracked by delivery evidence fingerprinting. Compact root exports, complete caller migration, typed artifact inference, all lifecycle/context cases and a production normalization proof are still open; no A1-10 closure, workspace execution or release."
   },
   {
    "id": "A1-11",
