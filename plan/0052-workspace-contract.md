@@ -1155,9 +1155,29 @@ clippy/tests, real CLI e2e **289/289** and fresh Verus **68
 verified / 0 errors** with **six** policy mutants, including the
 ABI-branch mutant. The TypeScript and TLC layers were **CACHED**;
 their gates passed without a fresh Deno/model run for this source.
-The prior `a754e04` source-stamped reports predate the target-kernel
-and ABI fixture changes; they do not bind this packet or an A1
-closure claim. Protected CI and native macOS evidence remain absent.
+The prior `a754e04` source-stamped reports are historical for the
+target-kernel and ABI fixture change. Protected CI and native macOS
+evidence remain absent.
+
+At committed code revision
+`2699d79342da7c70136840828ae3455b0e3eb257`, clean tracked
+`SOURCE_ROOTS` were checked around direct runner executions.
+SHA-256 checked reports in `verification/reports/` bind **45/45**
+real frontend/CLI cases and **11/11** v3/v4/v5 schema/parser cases;
+**6/6** graph adapter cases plus **2/2** real target CLI cases
+(including newer/older OS floors, different and missing ABIs);
+four original strictly typechecked examples and **5/5** named
+frontend/CLI example cases; **3/3** E124 capability owners; one
+architecture self-check; generator freshness, **3/3** named registry
+mutants, fresh Deno **63/63** and real diagnostic CLI **17/17**;
+and fresh Verus **68 verified / 0 errors** with six policy mutants,
+including attributable graph-validation and target-ABI failures.
+The common source fingerprint is
+`b33a5ab41e0e6143f08905130694fc67e356e30d6259c28f7d63fdc6147d32eb`.
+The ledger credits only selected cases. Neither these local reports
+nor the new pure target theorem prove the remaining name/index,
+IR→policy mapping, normalization or diagnostic proof obligations;
+no protected CI, native Mac or release is claimed.
 
 ## 24. Honesty register
 

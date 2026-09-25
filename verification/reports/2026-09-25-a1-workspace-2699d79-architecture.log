@@ -1,0 +1,14 @@
+RUNNER_SOURCE_COMMIT=2699d79342da7c70136840828ae3455b0e3eb257
+RUNNER_SOURCE_ROOTS_DIRTY=clean (git status --porcelain -- SOURCE_ROOTS before and after direct runner: empty)
+RUNNER_COMMAND=python3 scripts/check_architecture.py --self-check
+RUNNER_TOOL_VERSIONS=Python 3.12.3; stdlib tomllib
+RUNNER_INPUTS=committed Cargo workspace members plus parsed-TOML dependency, rustls and missing-crate scratch mutants
+
+2699d79342da7c70136840828ae3455b0e3eb257
+Python 3.12.3
+ok: boundary, rustls-only, member-discovery and missing-crate negatives all rejected
+ok: policy, IR and store dependency boundaries are closed
+ARCHITECTURE_SELF_CHECK=1 (named negatives rejected)
+
+
+Wall time: 0.31 seconds
