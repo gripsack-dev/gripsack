@@ -1,14 +1,15 @@
 //! Managed worker lease transitions (Epic B §4/§10.3, plan/0051 B1).
-//! Pure kernel only: the invariant the backend must never break is
-//! **an instance cannot stop, upgrade or be deleted while a live lease
-//! requires it**, and cleanup decisions are made from this table, never
-//! ad hoc at an effect site. The TLC model (`specs/WorkerLease.tla`)
-//! checks the same transitions under two-client interleavings and
-//! crashes; this kernel is what production calls. Effectful
-//! provisioning (containers, VMs, sockets) lands with B1-01 and calls
-//! these decisions.
+//!
+//! The invariant is **an instance cannot stop, upgrade or be deleted
+//! while a live lease requires it**. Cleanup decisions come from this
+//! table rather than from an effect site. The TLC model
+//! (`specs/WorkerLease.tla`) checks two-client/crash interleavings.
+//! `linux` exercises one owned container/lease lifecycle; the actual
+//! `grip` build backend, private socket and Mac VM remain B1 work.
 
 use std::collections::BTreeMap;
+
+pub mod linux;
 
 /// Worker instance lifecycle. `Failed` is reachable from any live
 /// state (the daemon can die); there is deliberately no automatic

@@ -594,6 +594,7 @@ name = "gripsack-buildkit"
 version = "0.42.0"
 dependencies = [
  "base64",
+ "gripsack-process",
  "serde",
  "serde_json",
  "sha2",
