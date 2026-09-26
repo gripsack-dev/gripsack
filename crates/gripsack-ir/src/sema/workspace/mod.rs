@@ -8,6 +8,7 @@
 
 mod context;
 mod cycles;
+mod destinations;
 mod graph;
 mod names;
 mod policy;
@@ -31,6 +32,7 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
 fn check_workspace(workspace: &crate::workspace::Workspace, diagnostics: &mut Vec<Diagnostic>) {
     let catalog = names::check(workspace, diagnostics);
     span_value::check(workspace, diagnostics);
+    destinations::check(workspace, diagnostics);
     let projection = graph::collect(workspace);
     refs::check(&projection, &catalog, diagnostics);
     context::check(&projection, diagnostics);

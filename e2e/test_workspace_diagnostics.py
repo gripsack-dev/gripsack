@@ -631,6 +631,38 @@ def test_escaping_profile_file_destination_is_a_structured_error(sandbox):
     assert not (sandbox / "etc").exists()
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
+def test_duplicate_profile_destination_names_both_owners_before_any_executor(sandbox):
+    """A1-11: one path has one owner — the module grammar's E111 race
+    rule extended to workspace profile files, labeling both files."""
+    repo = sandbox / "duplicate-destination"
+    repo.mkdir()
+
+    def owned(line, path):
+        return {
+            "span": {"file": "grip.ts", "line": line},
+            "source": {"kind": "repo_file", "path": "cfg/tool.conf"},
+            "content": {"kind": "identity"},
+            "destination": {"kind": "tracked_copy", "path": path},
+        }
+
+    profile = {
+        "kind": "profile", "name": "dotfiles", "span": {"file": "grip.ts", "line": 2},
+        "files": [owned(3, "~/.config/tool.conf"), owned(7, "~/.CONFIG/TOOL.CONF")],
+    }
+    path = repo / "workspace.ir.json"
+    path.write_text(json.dumps({
+        "ir_version": 5,
+        "host": {"os": "linux", "arch": "x86_64"},
+        "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
+    }))
+    result = grip("plan", "--ir", str(path), cwd=repo)
+    assert result.returncode != 0
+    assert "error[E111]" in result.stderr, result.stderr
+    assert "grip.ts:3" in result.stderr and "grip.ts:7" in result.stderr
+    assert "E124" not in result.stderr, "ownership conflicts precede executor refusal"
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
 def test_user_exception_stays_a_traceback_on_both_surfaces(sandbox):
     """A1-06 boundary: a user exception is a real defect, not an
     authoring typo — both surfaces pass the traceback through and the
