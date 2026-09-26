@@ -1,0 +1,13 @@
+RUNNER_SOURCE_DIRTY=worktree with only untracked tools/ (committed as the next commit; gate inputs outside tools/ unchanged)
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0 host; pinned golang:1.26.3@sha256:e3665e241a474aba30bbfaf177cfa88e1913e970c83bd86889cacfb67d6e7e51 (GOTOOLCHAIN=local); Go module gripsack.dev/buildkit-bridge (stdlib only; go.sum pins arrive with the first upstream BuildKit dependency)
+RUNNER_INPUTS=B1-03 second half: the production Go bridge begins at tools/buildkit-bridge with package protocol mirroring gripsack-buildkit::protocol exactly — LE u64 length frames (header checked against the 256 KiB cap before any body read, in both DecodeFrame and streaming ReadFrame), strict externally-tagged decoding (DisallowUnknownFields on every level; exactly-one-variant envelope; Event carries exactly one of Log/Progress), base64 log chunks capped at 64 KiB after decode, typed 64-hex Digest and bounded ASCII SessionID validation, CheckNegotiation enforcing the one exact protocol pair, and the EventGate port (epoch fencing, exactly-one terminal, duplicate-terminal/post-cancellation rejection, 4096-chunk log budget). The fuzz corpus at fuzz/corpus/buildkit_protocol doubles as the TWO-SIDED conformance corpus: the Go test decodes the same seven seeds the Rust fuzz gate replays — the four valid seeds must decode on both sides and the three hostile seeds (oversized header, truncated frame, unknown field) must reject on both sides.
+
+RUNNER_COMMAND=sh tools/buildkit-bridge/build.sh
+  gofmt -l clean; go vet ./... clean
+  ok  gripsack.dev/buildkit-bridge/protocol
+  bridge protocol gate passed
+Coverage: every FromBridge variant round-trips byte-stably; ToBridge round-trips + session/digest shape validation; hostile header/truncation/trailing/unknown-field rejection; exact-pair negotiation incl. wrong version and non-negotiate refusal; gate fences stale/future epochs, duplicate terminals, post-cancellation events and the exact log-budget boundary; shared corpus agreement with the Rust side.
+RUNNER_EXIT=0
+
+SCOPE=No tracked Rust/TypeScript/fuzz/spec input changed (only untracked tools/ added; tools/ is outside every container gate's COPY set), so the six gates from the d656075 receipt remain the governing evidence for those roots; this receipt covers the new Go surface only. Defects caught and fixed before landing: a composite-literal brace miscount on the Exported seed line, a Negotiate name collision with the message type (renamed CheckNegotiation), non-standard UnmarshalJSON signatures, and a missing toolDigest declaration. Still no transport/worker/LLB lowering; no B row verified; grip unchanged.
+B1_BRIDGE_GO=1
