@@ -1568,6 +1568,37 @@ lint/check subject+stage mapping, and the named ownership proof
 targets. No workspace execution exists; `plan`/`apply` still refuse
 E124.
 
+### 30.3 Managed blocks are per-marker owners (partial A1-11)
+
+The deferred "multiple managed blocks over one host path" block is
+lifted with the grammar the wire already carried: `managed_block`
+destinations fold by **case-folded path** first — any whole-file
+symlink/tracked-copy over that path still rejects every co-declaration
+— and all-block groups then subgroup by **case-folded marker**.
+Distinct markers coexist as distinct per-block owners inside the
+shared host file (Epic A §3.3); the same marker twice, case-variant
+included, rejects E111 labeling every declaration with a
+"managed block … at destination …" message. No wire, schema or
+TypeScript change; the module grammar's destination fold is
+unchanged.
+
+Failing-before: any two blocks over one path were E111. At exact
+source `b0861ebe492cfe63ae8d4b48804ecbd1e97eeb6f` the focused Rust
+groups cover duplicate case-fold, cross-profile, mixed whole-file+block
+and distinct/duplicate markers, and the real compiled CLI proves
+decoded distinct markers pass ownership into E124 while a duplicate
+case-variant marker rejects at both spans before any executor. Five
+full gates ran on the identical pre-commit tree (fresh Rust
+fmt/clippy/tests, Deno 67/67 + tsc, e2e **322/322** with the new
+case, TLC, Verus **72/0**+7 mutants). Receipt:
+`verification/reports/2026-09-26-a1-block-markers-b0861eb.log`,
+SHA-256 `5ccba66a9b7eedb4bee6b8b3119f69d9de1fcca5be046b39a9805d46055f53a1`.
+
+Admission grammar only: the managed-block **merge** against the
+observed destination, foreign-byte preservation and journal policy
+remain A2; a deployment-side runtime with distinct markers has never
+executed.
+
 ## 31. Honesty register
 
 - This document began as a design candidate; §§9–30 record read-only
