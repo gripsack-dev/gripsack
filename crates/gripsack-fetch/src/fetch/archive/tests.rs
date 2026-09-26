@@ -166,6 +166,234 @@ fn aggregate_tar_path_metadata_is_bounded_before_extraction() {
 
 #[cfg(unix)]
 #[test]
+fn tar_composed_links_cannot_escape_the_payload_root_in_either_order() {
+    for reverse in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("sentinel"), b"outside").unwrap();
+        let out = root.path().join("out");
+        let mut builder = ::tar::Builder::new(Vec::new());
+        let mut dir = ::tar::Header::new_gnu();
+        dir.set_entry_type(::tar::EntryType::Directory);
+        dir.set_size(0);
+        dir.set_mode(0o755);
+        dir.set_cksum();
+        builder.append_data(&mut dir, "d", &[][..]).unwrap();
+        let mut links = [("d/up", ".."), ("leak", "d/up/../sentinel")];
+        if reverse {
+            links.reverse();
+        }
+        for (name, target) in links {
+            let mut header = ::tar::Header::new_gnu();
+            header.set_entry_type(::tar::EntryType::Symlink);
+            header.set_size(0);
+            header.set_mode(0o777);
+            header.set_link_name(target).unwrap();
+            header.set_cksum();
+            builder.append_data(&mut header, name, &[][..]).unwrap();
+        }
+        let archive = builder.into_inner().unwrap();
+        let result = extract_bytes(&archive, &out, "links.tar", FetchLimits::default());
+        assert!(
+            matches!(result, Err(FetchError::UnsafeArchive { .. })),
+            "{result:?}"
+        );
+        assert!(
+            !out.exists(),
+            "graph admission must precede any payload writes"
+        );
+        assert_eq!(
+            std::fs::read(root.path().join("sentinel")).unwrap(),
+            b"outside"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn zip_composed_links_cannot_escape_the_payload_root_in_either_order() {
+    for reverse in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("sentinel"), b"outside").unwrap();
+        let out = root.path().join("out");
+        let mut writer = ::zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = ::zip::write::SimpleFileOptions::default()
+            .compression_method(::zip::CompressionMethod::Stored);
+        writer.add_directory("d/", options).unwrap();
+        let mut links = [("d/up", ".."), ("leak", "d/up/../sentinel")];
+        if reverse {
+            links.reverse();
+        }
+        for (name, target) in links {
+            writer.add_symlink(name, target, options).unwrap();
+        }
+        let archive = writer.finish().unwrap().into_inner();
+        let result = extract_bytes(&archive, &out, "links.zip", FetchLimits::default());
+        assert!(
+            matches!(result, Err(FetchError::UnsafeArchive { .. })),
+            "{result:?}"
+        );
+        assert!(
+            !out.exists(),
+            "graph admission must precede any payload writes"
+        );
+        assert_eq!(
+            std::fs::read(root.path().join("sentinel")).unwrap(),
+            b"outside"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn forward_and_composed_internal_links_remain_usable_in_tar_and_zip() {
+    let mut tar = ::tar::Builder::new(Vec::new());
+    let mut dir = ::tar::Header::new_gnu();
+    dir.set_entry_type(::tar::EntryType::Directory);
+    dir.set_size(0);
+    dir.set_mode(0o755);
+    dir.set_cksum();
+    tar.append_data(&mut dir, "d", &[][..]).unwrap();
+    for (name, target) in [("inside", "d/up/item"), ("d/up", "..")] {
+        let mut header = ::tar::Header::new_gnu();
+        header.set_entry_type(::tar::EntryType::Symlink);
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_link_name(target).unwrap();
+        header.set_cksum();
+        tar.append_data(&mut header, name, &[][..]).unwrap();
+    }
+    let mut header = ::tar::Header::new_gnu();
+    header.set_size(7);
+    header.set_mode(0o644);
+    header.set_cksum();
+    tar.append_data(&mut header, "item", &b"payload"[..])
+        .unwrap();
+    let tar_bytes = tar.into_inner().unwrap();
+
+    let mut zip = ::zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = ::zip::write::SimpleFileOptions::default()
+        .compression_method(::zip::CompressionMethod::Stored);
+    zip.add_directory("d/", options).unwrap();
+    zip.add_symlink("inside", "d/up/item", options).unwrap();
+    zip.add_symlink("d/up", "..", options).unwrap();
+    zip.start_file("item", options).unwrap();
+    zip.write_all(b"payload").unwrap();
+    let zip_bytes = zip.finish().unwrap().into_inner();
+
+    for (name, bytes) in [("safe.tar", tar_bytes), ("safe.zip", zip_bytes)] {
+        let root = tempfile::tempdir().unwrap();
+        let out = root.path().join("out");
+        extract_bytes(&bytes, &out, name, FetchLimits::default()).unwrap();
+        assert_eq!(std::fs::read(out.join("inside")).unwrap(), b"payload");
+        assert_eq!(std::fs::read(out.join("d/up/item")).unwrap(), b"payload");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn tar_hardlink_before_its_file_uses_the_pinned_payload_root() {
+    let mut tar = ::tar::Builder::new(Vec::new());
+    let mut header = ::tar::Header::new_gnu();
+    header.set_entry_type(::tar::EntryType::Link);
+    header.set_link_name("target").unwrap();
+    header.set_size(0);
+    header.set_mode(0o644);
+    header.set_cksum();
+    tar.append_data(&mut header, "early", &[][..]).unwrap();
+    let mut header = ::tar::Header::new_gnu();
+    header.set_size(7);
+    header.set_mode(0o644);
+    header.set_cksum();
+    tar.append_data(&mut header, "target", &b"payload"[..])
+        .unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let out = root.path().join("out");
+    extract_bytes(
+        &tar.into_inner().unwrap(),
+        &out,
+        "hard.tar",
+        FetchLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(out.join("early")).unwrap(), b"payload");
+    use std::os::unix::fs::MetadataExt;
+    assert_eq!(
+        std::fs::metadata(out.join("early")).unwrap().ino(),
+        std::fs::metadata(out.join("target")).unwrap().ino()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn filesystem_tree_validation_and_copy_share_link_graph() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    std::fs::create_dir_all(source.join("d")).unwrap();
+    std::os::unix::fs::symlink("..", source.join("d/up")).unwrap();
+    std::fs::write(root.path().join("sentinel"), b"outside").unwrap();
+    std::os::unix::fs::symlink("d/up/../sentinel", source.join("leak")).unwrap();
+    assert!(matches!(
+        tree::validate_tree(&source, FetchLimits::default()),
+        Err(FetchError::UnsafeArchive { .. })
+    ));
+    let copied = root.path().join("copy");
+    assert!(matches!(
+        tree::copy_tree_filtered(&source, &copied, &[], FetchLimits::default()),
+        Err(FetchError::UnsafeArchive { .. })
+    ));
+    assert!(
+        !copied.exists(),
+        "reject unsafe source before creating a copy"
+    );
+    std::fs::remove_file(source.join("leak")).unwrap();
+    std::fs::write(source.join("item"), b"inside").unwrap();
+    std::os::unix::fs::symlink("d/up/item", source.join("safe")).unwrap();
+    tree::validate_tree(&source, FetchLimits::default()).unwrap();
+    tree::copy_tree_filtered(&source, &copied, &[], FetchLimits::default()).unwrap();
+    assert_eq!(std::fs::read(copied.join("safe")).unwrap(), b"inside");
+    assert!(!copied.join("leak").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn link_cycles_and_dangling_targets_reject_before_archive_materialization() {
+    let mut zip = ::zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = ::zip::write::SimpleFileOptions::default()
+        .compression_method(::zip::CompressionMethod::Stored);
+    zip.add_symlink("a", "b", options).unwrap();
+    zip.add_symlink("b", "a", options).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let out = root.path().join("cycle");
+    let zip_bytes = zip.finish().unwrap().into_inner();
+    assert!(matches!(
+        extract_bytes(&zip_bytes, &out, "cycle.zip", FetchLimits::default()),
+        Err(FetchError::UnsafeArchive { .. })
+    ));
+    assert!(!out.exists());
+
+    let mut tar = ::tar::Builder::new(Vec::new());
+    let mut header = ::tar::Header::new_gnu();
+    header.set_entry_type(::tar::EntryType::Symlink);
+    header.set_size(0);
+    header.set_mode(0o777);
+    header.set_link_name("absent").unwrap();
+    header.set_cksum();
+    tar.append_data(&mut header, "dangling", &[][..]).unwrap();
+    let out = root.path().join("dangling");
+    assert!(matches!(
+        extract_bytes(
+            &tar.into_inner().unwrap(),
+            &out,
+            "dangling.tar",
+            FetchLimits::default()
+        ),
+        Err(FetchError::UnsafeArchive { .. })
+    ));
+    assert!(!out.exists());
+}
+
+#[cfg(unix)]
+#[test]
 fn a_symlink_destination_cannot_redirect_acquisition() {
     let root = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
