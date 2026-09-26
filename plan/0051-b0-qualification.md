@@ -239,20 +239,65 @@ fmt/clippy/tests, Deno 67/67, e2e 322/322, TLC, Verus 72/0+7
 mutants, fuzz replay). Receipt
 `verification/reports/2026-09-26-b1-protocol-d656075.log`, SHA-256
 `893b9b1a254e882ce0cbe98b545300c49c216d03fcc181ea8dd1445c61b0a3fa`.
-Scope honesty: B1-03 partial — no Go bridge speaks this contract yet,
-no transport/I/O, no worker provisioning, no LLB lowering;
-`grip` behavior unchanged and no B row verified. A process defect was
+Scope honesty **at `d656075`**: B1-03 was partial — no Go
+transport, worker provisioning or LLB lowering had landed then.
+Later B1 protocol/transport packets are recorded below; `grip`
+still has no BuildKit backend and no B row is verified. A process defect was
 caught and fixed pre-commit: the first fuzz-gate run silently skipped
 the new target because `fuzz/run.py` keeps its own TARGETS tuple.
+
+## B1 Linux worker prototype (2026-09-26)
+
+At exact implementation source `80b50a34f4fc10627d2ecb81495db5da215142cb`,
+`gripsack-buildkit::worker::linux` exercises a **standalone Linux**
+provision/lease/stop/cache lifecycle against the pinned BuildKit
+v0.33.0 container. The former registry manifest-list digest stopped
+resolving; `pins.env` and the provider now pin the available
+`6c2fa84a…` list with the same qualified linux/amd64 leaf. The
+provider requires a local `/var/run/docker.sock`, a preinstalled pinned
+image (`--pull=never`), an admitted worker ID and an idle lease.
+It captures Docker's immutable container ID and checks container and
+volume owner labels before deletion. An ordinary stop retains the
+cache; explicit owner teardown removes it. No user-owned volume is
+adopted, no remote Docker context is followed, and effect output is
+bounded by `gripsack-process`.
+
+Committed-source Linux smoke: **2/2 real Docker cases** (pinned
+worker provision/lease/drained stop/cache retention and explicit
+teardown; foreign pre-existing volume refusal), plus **7/7**
+failure/ownership/identity unit cases. The pinned Go B0 probe was
+rebuilt from this source and the real Linux qualification reran
+**6/6** with independently checked OCI bytes and Docker execution.
+The five non-fuzz compose gates passed on the same tracked source
+bytes: Rust fmt/clippy/tests fresh, TypeScript gate **cached**
+(unchanged TS source), real CLI e2e **322/322**, TLC including two
+worker-lease mutants, and Verus **72/0** plus seven **existing**
+policy mutants. Receipt
+`verification/reports/2026-09-26-b1-linux-80b50a3.log`
+(SHA-256 `0769f8a44950e4c6dc22b8bd74aba5f6135ca1cfe5d45e402b96b14631968e0a`,
+tracked-source fingerprint `22d6e1467b8a25f65846d63360b8405b63e8638147938f86802ae4a9e97ebfc1`).
+Fuzz was **not run**, per owner request. No new protected Docker28
+CI result binds the rotated manifest; the earlier B0 negative/CI
+evidence remains historical at `ce3c7e0`.
+
+**Open**: `grip` has no caller of this provider; B1-01 still needs
+private sockets, Mac VM bootstrap with byte-pinned helpers, a
+real daemon/platform/capability handshake, immutable declared-input
+transfer and store export. B1-02 still needs two real clients, crash
+reconciliation and idle upgrade. Go Submit remains fail-closed,
+B1-04 needs worker effect proofs, and B2 lowering has no shipped
+path. This Linux prototype does not authorize a release, a website
+claim or new config guidance.
 
 ## Record
 
 | Item | Status |
 |---|---|
 | B0-04 inventory | implemented_unverified (binds at B1/B2) |
-| B0-01 harness | **verified** in `linux-amd64` and `container-gates` at source `ce3c7e0`: **6/6** real Linux and required Docker28 CI job, with three real-worker negatives and four loaded-image mutants; qualification only, no production backend |
+| B0-01 harness | **verified historically** in `linux-amd64` and `container-gates` at `ce3c7e0`: 6/6 real Linux and required Docker28 CI with three real-worker negatives and four loaded-image mutants. The rotated identical-leaf manifest reran 6/6 on Linux at `80b50a3`, but protected Docker28/negative evidence has not been rebound to this source; qualification only, no production backend |
 | B0-02 Mac VM | blocked (no Mac) |
 | B0-03 footprint | in_progress: Linux measurements + zero-builder baseline recorded; VM lane and full budgets at B1 |
-| B1-02/04 kernels | in_progress: the pure worker lease transition kernel + CleanupSet landed at `80b7738` (gripsack-buildkit::worker; live lease blocks stop; crash keeps leases, recovery blocked until drain; owned-only cleanup) WITH its TLC model (specs/WorkerLease.tla) wired into the model gate — positive two-client crash model clean, two calibrated mutants (early-stop, crash-wipes) violate exactly their named invariants; the mutant caught a vacuous EXCEPT draft (receipt `2026-09-26-b1-worker-leases-80b7738.log`, six gates + race-enabled bridge gate). CI follow-up at `db51101`: the B0 baseline probe name-matched the owned adapter crate as a builder dependency; it now allows the owned `gripsack-buildkit` by name while REJECTING any upstream builder dependency inside it (mutant-verified) — a stronger zero-upstream invariant. No provisioning effects, production caller, TLAPS or Verus yet |
-| B1-03 protocol | in_progress: wire contract + fence kernel (`d656075`), Go mirror with two-sided conformance corpus (`1d43f0d`), and the stdio transport loop + core session driver (`50b829c`: bridge serve loop fail-closed on Submit, Rust `transport::BridgeProcess` driving sessions to exactly one terminal, cross-process Rust↔Go e2e in the ignored test — receipts `2026-09-26-b1-protocol-d656075.log`, `-bridge-go-d0d0a4a.log`, `-transport-50b829c.log`); no BuildKit client/worker/lowering yet — Submit terminally fails closed |
-| Next | B1 continues: Go bridge speaking the protocol, worker lease kernels, then B2 lowering; Mac gate stays open |
+| B1-01 Linux worker | **in_progress** at `80b50a3`: isolated Docker provider with 2/2 real Linux cases and 7/7 unit cases in the source-bound receipt above; no `grip` caller, private socket, full daemon handshake, Mac VM or B2 path |
+| B1-02/04 kernels | **in_progress**: the pure lease kernel + CleanupSet landed at `80b7738` with a two-client TLC model and two attributed early-stop/crash-wipes mutants (receipt `2026-09-26-b1-worker-leases-80b7738.log`). Follow-up `db51101` corrected B0 baseline dependency admission without allowing upstream builder packages. The Linux prototype at `80b50a3` calls the lease kernel for single-client stop and retained-cache teardown; no real two-client recovery/upgrade, `grip` caller, TLAPS or worker Verus proof yet |
+| B1-03 protocol | **in_progress**: wire contract + fence kernel (`d656075`), Go mirror (`1d43f0d`), stdio transport + Rust driver (`50b829c`), with receipts `2026-09-26-b1-protocol-d656075.log`, `-bridge-go-d0d0a4a.log`, `-transport-50b829c.log`; no BuildKit Go client/LLB submission or `grip` worker caller, and Submit still fails closed |
+| Next | Connect a private, capability-checked owned worker to the Go BuildKit client and `grip`, then B2 lowering/store export; Mac VM and release proofs remain open |

@@ -1,0 +1,46 @@
+RUNNER_SOURCE_COMMIT=80b50a34f4fc10627d2ecb81495db5da215142cb
+RUNNER_SOURCE_FINGERPRINT=22d6e1467b8a25f65846d63360b8405b63e8638147938f86802ae4a9e97ebfc1
+RUNNER_SOURCE_DIRTY=source roots clean at committed-source real Docker smoke and rebuilt B0 Go probe/qualification; five compose gates used identical tracked source bytes before the source-only commit; this receipt and later plan/ledger changes are evidence-only
+RUNNER_DATE_UTC=2026-09-26T21:16:54Z
+RUNNER_TOOL_VERSIONS=host Rust 1.97.1, Linux x86_64 WSL2, Docker 29.7.2, Docker Compose v5.5.0; container Rust 1.98.0, Deno 2.9.6, pinned Go 1.26.3, TLC 2.19/tla2tools 1.7.4, pinned Verus 0.2026.09.06.8dea4a2
+RUNNER_INPUTS=Linux worker prototype crates/gripsack-buildkit/src/worker/linux.rs; pinned moby/buildkit:v0.33.0@sha256:6c2fa84a6b61ccd72899dde4239f8d5717f05f9a8ca6f3cad185fb1a95a94de3; local Unix Docker daemon; Rust lease kernel; B0 pinned Go probe plus graph/OCI verifier. The immutable digest is a new manifest list whose linux/amd64 leaf matches the previously qualified image. No macOS VM.
+
+RUNNER_COMMAND=cargo test --offline -p gripsack-buildkit worker::linux::tests:: -- --include-ignored --nocapture
+running 9 tests
+test worker::linux::tests::failed_launch_with_no_container_id_never_deletes_by_name ... ok
+test worker::linux::tests::failed_removal_does_not_claim_stopped_and_can_retry ... ok
+test worker::linux::tests::foreign_cache_volume_blocks_provision_without_launch_or_deletion ... ok
+test worker::linux::tests::failed_version_probe_cannot_authorize_a_lease ... ok
+test worker::linux::tests::foreign_container_identity_blocks_deletion_and_stop ... ok
+test worker::linux::tests::live_lease_blocks_worker_deletion_until_drained ... ok
+test worker::linux::tests::worker_identity_rejects_unsafe_or_unbounded_docker_names ... ok
+test worker::linux::tests::the_real_docker_worker_refuses_a_foreign_cache_volume ... ok
+test worker::linux::tests::the_real_docker_worker_provisions_leases_and_stops ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 1.86s
+RUNNER_EXIT=0
+LINUX_WORKER_SMOKE=2 (the two ignored real-Docker tests explicitly included; other seven are policy/foreign-resource unit cases)
+
+RUNNER_COMMAND=sh verification/buildkit-qualification/bridge/build.sh
+  built verification/buildkit-qualification/bridge/bridge-bin using the pinned golang image; gofmt/go mod tidy left the committed source tree unchanged
+RUNNER_EXIT=0
+RUNNER_COMMAND=sh verification/buildkit-qualification/probes.sh
+  native Rust package graph: no builder dependencies
+  buildkitd github.com/moby/buildkit v0.33.0 dddd5621af04ea57823085c93a063383f71d3173
+  probe graph: PASS (shared vertex cache, sibling reuse, cancellation, attributed failure)
+  probe policy: PASS (declared input and no credential-shaped ambient env)
+  probe executable: PASS; retained static executable ran after worker+cache removal
+  NO_NETWORK_CONFIRMED
+  probe oci: PASS twice from fresh workers; independent blob/DiffID/config/file verification reproduced; separate Docker engine loaded and ran the checked content
+  gripsack b0 oci fixture
+  B0_LINUX_QUALIFICATION=6
+RUNNER_EXIT=0
+
+NON_FUZZ_CONTAINER_GATES (same tracked source bytes; --build after source changes):
+  docker compose run --build --rm test: fresh Rust fmt, clippy -D warnings, cargo test and generated-artifact checks PASS; ordinary cargo test ignores the two real Docker cases above
+  docker compose run --build --rm ts-test: PASS using a CACHED TypeScript test RUN layer; no changed TS files and no claim of freshly re-executed TS tests
+  docker compose run --build --rm e2e: real musl grip/packaged frontend, 322 passed, 0 failed in 1008.80s
+  docker compose run --build --rm model: fresh TLC, including cfg/worker-lease.cfg clean and two attributed worker-lease mutants rejected
+  docker compose run --build --rm verify: fresh Verus 72 verified, 0 errors; seven existing policy mutants rejected. This does NOT prove the new Docker effect adapter or satisfy B1-04.
+FUZZ=NOT RUN on owner request. The existing PR ci.yml fuzz job triggers on pull_request; remote protected CI is not claimed for this source.
+
+OPEN_ACCEPTANCE=B1-01 has no grip caller, bootstrap manifest, Mac VM, private socket, declared-input transfer, daemon capability handshake or exported store receipt. B1-02 has no real two-client sharing, crash/reconciliation or idle version replacement. B1-03 Submit remains fail-closed; B2 LLB lowering and B1-04 worker proofs remain open. The isolated Linux version probe is not a daemon-health/capability check. The previous ce3c7e0 B0 negative mutants and Docker28 protected test are historical and do not bind this rotated manifest/source; new Linux 6/6 alone does not restore full current-source B0 release evidence. No release/site/config adoption claim follows.

@@ -3646,7 +3646,7 @@
    "mandatory_deliverable": "Automatic pinned Gripsack-owned provisioning",
    "required_acceptance_evidence": "The actual `grip` build path bootstraps on a clean supported Mac without manual Lima/YAML/socket/start steps; complete verified bootstrap manifest, private configuration, capability handshake and declared input access",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "container-gates",
     "linux-amd64",
@@ -3663,7 +3663,45 @@
    "evidence_kinds": [
     "runner"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "linux-amd64",
+     "date": "2026-09-26",
+     "entry_points": [
+      "crates/gripsack-buildkit/src/worker/linux.rs::LinuxWorker::provision",
+      "crates/gripsack-buildkit/src/worker/linux.rs::LinuxWorker::stop"
+     ],
+     "environment": "WSL2 Linux x86_64; local Docker 29.7.2 via Unix socket; pinned BuildKit v0.33.0",
+     "command": "cargo test --offline -p gripsack-buildkit worker::linux::tests:: -- --include-ignored --nocapture; sh verification/buildkit-qualification/bridge/build.sh; sh verification/buildkit-qualification/probes.sh",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-b1-linux-80b50a3.log",
+     "report_sha256": "0769f8a44950e4c6dc22b8bd74aba5f6135ca1cfe5d45e402b96b14631968e0a",
+     "commit": "80b50a34f4fc10627d2ecb81495db5da215142cb",
+     "source_reuse_sha256": "22d6e1467b8a25f65846d63360b8405b63e8638147938f86802ae4a9e97ebfc1",
+     "source_reuse_reason": "This evidence-only ledger/report/plan commit retains the exact tracked SOURCE_ROOTS from the committed Linux worker implementation. No real grip backend or Mac case is inferred; subsequent source changes require fresh binding.",
+     "cases_covered": [
+      "Linux-only isolated pinned Docker worker launch and executable-version probe; not the required grip bootstrap, private socket, capability handshake or Mac VM case",
+      "Linux-only foreign-cache rejection; not a complete verified bootstrap manifest or input-transfer case"
+     ],
+     "kind": "runner",
+     "tool_versions": "host Rust 1.97.1; Docker 29.7.2; Docker Compose v5.5.0; pinned container Rust 1.98.0, Go 1.26.3",
+     "inputs": "Committed linux.rs provider, pinned moby/buildkit:v0.33.0 manifest 6c2fa84a6b61ccd72899dde4239f8d5717f05f9a8ca6f3cad185fb1a95a94de3 and local Unix Docker daemon; two real Docker tests plus seven unit fixtures. No Mac VM or grip caller.",
+     "report_marker": "LINUX_WORKER_SMOKE=2",
+     "counts": {
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+     }
+    }
+   ],
+   "status_history": [
+    {
+     "date": "2026-09-26",
+     "from": "pending",
+     "to": "in_progress"
+    }
+   ]
   },
   {
    "id": "B1-02",
@@ -3673,7 +3711,7 @@
    "mandatory_deliverable": "Safe worker reuse, leases, shutdown, recovery and upgrades",
    "required_acceptance_evidence": "Two real clients; crash at provision/start/export; idle-only replacement; stale identity/fence handling; last-lease stop with disk reuse; owned cleanup leaves user-supplied workers and retained host artifacts intact",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "container-gates",
     "linux-amd64",
@@ -3690,7 +3728,45 @@
    "evidence_kinds": [
     "runner"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "linux-amd64",
+     "date": "2026-09-26",
+     "entry_points": [
+      "crates/gripsack-buildkit/src/worker/linux.rs::LinuxWorker::stop",
+      "crates/gripsack-buildkit/src/worker/linux.rs::LinuxWorker::teardown_with_cache"
+     ],
+     "environment": "WSL2 Linux x86_64; local Docker 29.7.2 via Unix socket; pinned BuildKit v0.33.0",
+     "command": "cargo test --offline -p gripsack-buildkit worker::linux::tests:: -- --include-ignored --nocapture",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-b1-linux-80b50a3.log",
+     "report_sha256": "0769f8a44950e4c6dc22b8bd74aba5f6135ca1cfe5d45e402b96b14631968e0a",
+     "commit": "80b50a34f4fc10627d2ecb81495db5da215142cb",
+     "source_reuse_sha256": "22d6e1467b8a25f65846d63360b8405b63e8638147938f86802ae4a9e97ebfc1",
+     "source_reuse_reason": "This evidence-only ledger/report/plan commit retains the exact tracked SOURCE_ROOTS from the committed Linux worker implementation. The receipt covers only its two real local Docker cases; subsequent source changes require fresh binding.",
+     "cases_covered": [
+      "Linux-only single-client idle stop retains owned cache and explicit teardown removes it; real two-client sharing and Mac VM reuse remain untested",
+      "Linux-only foreign volume protection and immutable container-ID deletion; crash/export reconciliation and idle upgrades remain untested"
+     ],
+     "kind": "runner",
+     "tool_versions": "host Rust 1.97.1; Docker 29.7.2; pinned container Rust 1.98.0",
+     "inputs": "Committed linux.rs provider and WorkerLeases kernel, pinned BuildKit v0.33.0 worker image, owned Docker volume/ID labels, local Unix Docker daemon; two real Docker tests plus seven unit fixtures. Not production-wired.",
+     "report_marker": "LINUX_WORKER_SMOKE=2",
+     "counts": {
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+     }
+    }
+   ],
+   "status_history": [
+    {
+     "date": "2026-09-26",
+     "from": "pending",
+     "to": "in_progress"
+    }
+   ]
   },
   {
    "id": "B1-03",
