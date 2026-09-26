@@ -1,6 +1,7 @@
 use crate::commands::{eval_repo, trust_gate};
 use crate::render::Palette;
 use gripsack_exec::{Ctx, Outcome};
+use gripsack_ir::HostName;
 use gripsack_store as store;
 use owo_colors::OwoColorize;
 use std::path::Path;
@@ -20,11 +21,11 @@ pub struct ApplyOptions {
 impl ApplyOptions {
     fn scoped(
         entries: std::collections::BTreeSet<String>,
-        host: Option<&str>,
+        host: HostName,
         jobs: Option<usize>,
     ) -> Self {
         ApplyOptions {
-            host: host.map(str::to_string),
+            host: Some(host.into_string()),
             modules: vec![],
             take_over: false,
             take_over_entries: Some(entries),
@@ -43,7 +44,7 @@ pub fn apply(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
 pub fn apply_scoped(
     repo: &Path,
     entries: std::collections::BTreeSet<String>,
-    host: Option<&str>,
+    host: HostName,
     jobs: Option<usize>,
     palette: Palette,
 ) -> ExitCode {
@@ -62,13 +63,13 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
     if let Some(code) = trust_gate(repo) {
         return code;
     }
-    let host = opts.host.as_deref();
+    let host = opts.host;
     let mut sink = crate::render::DiagnosticSink::terminal(palette, repo);
     let outcome = match eval_repo(repo, host, &mut sink) {
         Ok(o) => o,
         Err(code) => return code,
     };
-    let ir = match crate::commands::validated_ir(&outcome, repo, host, &mut sink) {
+    let ir = match crate::commands::validated_ir(&outcome, repo, &mut sink) {
         Ok(ir) => ir,
         Err(code) => return code,
     };

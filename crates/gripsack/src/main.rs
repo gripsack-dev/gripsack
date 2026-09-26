@@ -219,7 +219,7 @@ fn main() -> ExitCode {
                 } else {
                     render::DiagnosticSink::terminal(palette, &repo)
                 };
-                commands::check(&repo, host.as_deref(), sink)
+                commands::check(&repo, host, sink)
             }
             Err(code) => code,
         },
@@ -237,7 +237,7 @@ fn main() -> ExitCode {
             modules,
             check,
         } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::update(&repo, host.as_deref(), modules, palette, check),
+            Ok(repo) => commands::update(&repo, host, modules, palette, check),
             Err(code) => {
                 if check {
                     ExitCode::from(2)
@@ -270,13 +270,13 @@ fn main() -> ExitCode {
                 return code;
             }
             let mut sink = render::DiagnosticSink::terminal(palette, &repo);
-            let outcome = match commands::eval_repo(&repo, host.as_deref(), &mut sink) {
+            let outcome = match commands::eval_repo(&repo, host, &mut sink) {
                 Ok(o) => o,
                 Err(code) => return code,
             };
             // the same validation pipeline check/apply run (0033 R5):
             // a plan that succeeds where apply would fail is a lie
-            let ir = match commands::validated_ir(&outcome, &repo, host.as_deref(), &mut sink) {
+            let ir = match commands::validated_ir(&outcome, &repo, &mut sink) {
                 Ok(ir) => ir,
                 Err(code) => return code,
             };

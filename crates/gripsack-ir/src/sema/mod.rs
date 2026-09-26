@@ -8,7 +8,7 @@
 
 mod deps;
 mod destinations;
-mod names;
+pub(crate) mod names;
 mod paths;
 mod placeholders;
 mod resources;

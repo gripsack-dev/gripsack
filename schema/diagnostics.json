@@ -33,6 +33,7 @@
     {"rust": "BAD_WORKSPACE_SPAN", "code": "E129", "description": "Invalid mandatory workspace source span"},
     {"rust": "INVALID_WORKSPACE_VALUE", "code": "E130", "frontend": "invalidWorkspaceValue", "description": "Workspace value outside the admitted grammar"},
     {"rust": "REQUIRED_WORKSPACE_EDGE_MISSING", "code": "E131", "description": "Required workspace graph edge missing or substituted"},
+    {"rust": "INVALID_HOST_NAME", "code": "E132", "description": "Unsafe host entrypoint or lockfile identifier"},
     {"rust": "EXEC_FETCH", "code": "E201", "description": "Fetch or source resolution failed"},
     {"rust": "EXEC_STEP", "code": "E301", "description": "Execution step failed"},
     {"rust": "EXEC_VERIFY", "code": "E302", "description": "Module verification failed"},

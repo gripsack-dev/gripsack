@@ -3,7 +3,7 @@
 //! user's frontend code — a missing file degrades to the header alone,
 //! never an error.
 
-use gripsack_ir::{Diagnostic, Ir, Severity, Span};
+use gripsack_ir::{Diagnostic, HostName, Ir, Severity, Span};
 use owo_colors::OwoColorize;
 use std::io::{IsTerminal, Read};
 use std::path::{Component, Path, PathBuf};
@@ -472,7 +472,7 @@ impl CheckReport {
 pub fn diff_section(
     ir: &Ir,
     repo: &Path,
-    host: &str,
+    host: &HostName,
     adopting: &std::collections::BTreeSet<String>,
     palette: Palette,
 ) -> Result<String, gripsack_exec::ExecError> {

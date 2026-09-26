@@ -10,7 +10,7 @@ use std::process::ExitCode;
 /// `--json` emits one versioned document on stdout carrying the same
 /// facts the terminal renders (0052 A1-06); operational failures
 /// (trust gate, missing deno) keep their stderr text in both modes.
-pub fn check(repo: &Path, host: Option<&str>, mut sink: DiagnosticSink) -> ExitCode {
+pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> ExitCode {
     if let Some(code) = trust_gate(repo) {
         return sink.finish_failure(code);
     }
@@ -18,7 +18,7 @@ pub fn check(repo: &Path, host: Option<&str>, mut sink: DiagnosticSink) -> ExitC
         Ok(o) => o,
         Err(code) => return sink.finish_failure(code),
     };
-    let ir = match validated_ir(&outcome, repo, host, &mut sink) {
+    let ir = match validated_ir(&outcome, repo, &mut sink) {
         Ok(ir) => ir,
         Err(code) => return sink.finish_failure(code),
     };

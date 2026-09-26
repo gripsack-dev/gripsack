@@ -2000,3 +2000,25 @@ source-layout validation and survey behavior remain verified by their
 actual runtime/model checks now; this is not a claimed formal proof of
 the source observer. Arbitrary-effect preflight needs a separate accepted
 runtime contract; never ship an inert flag or pretend isolation.
+
+## 14. Live execution/evidence record — M0 §1.3 host identity
+
+This section starts the §9 leaf-level record; it does **not** mark
+other §1–§8/R1–R8 or M-V1–M-V7 leaves complete. The original
+edition-5 handover remains checksum-covered outside this repository,
+and `verification/delivery.json` still registers all 178 IDs. NEXT
+leaves lacking evidence remain release blockers, not deferred work.
+
+| Leaf | Class / target | Prerequisite, owner and implementation | State / evidence | Unmet acceptance |
+|---|---|---|---|---|
+| M0-1.3a | NEXT / M0 | None; `gripsack-ir` owns the private `HostName` constructor and E132 allocation, reusing the E116 safe-segment rule. `grip init` and eval share ASCII-safe default sanitization; no IR wire/version or hash change. | Implementing; source-bound Docker Rust and generated-code freshness receipt pending. | Native macOS and protected CI evidence unrun. |
+| M0-1.3b | NEXT / M0 | M0-1.3a; CLI `eval_repo` admits the selected `--host` > `env.toml` default > sanitized machine name before throttle state, plugin/deno provisioning, build-env injection and frontend/lockfile I/O. `EvalOutcome`, executor `Ctx`, lockfile path/read/write, preview, and linter pin lookup carry `HostName`; the linter uses the evaluated selection, not the raw optional flag. One producer owns the invariant, no unchecked overload. | Implementing; original traversal and absolute-host e2e witnesses failed-before, then focused real CLI and direct policy cases passed-after. | Final source-bound full gates and retained-state/CI report pending. |
+| M0-1.3c | NEXT / M0 | M0-1.3a; `adopt` validates `--host` before inspection, payload generation and host-file modification, then passes the admitted value through eval and scoped apply. | Implementing; failing-before fixture wrote repo files then reported a missing `hosts/../modules/evil.ts`; focused real CLI case passed-after without repo writes. | Protected CI/native Mac evidence unrun; §1.4's separate adopt trust-gate reordering remains open. |
+| M0-1.3d | NEXT / M0 | M0-1.3a–c; sandboxed, offline real CLI tests for `../modules/role`, an absolute `--host` naming a protected lock outside the repo, `adopt --host ../…`, a valid `role.dev` and default-host version-aware lint. Distinct E132 has terminal and `check --json` coverage. | Implementing; three original witnesses failed-before on the real binary; four host cases and one default-host lint case passed after. | Attach exact source SHA, tool versions, byte-hashed logs, case counts and final Docker gates. |
+
+Code-quality ownership: the domain type lives in `gripsack-ir`, the
+selected-host precedence in one CLI eval boundary, lockfile path
+construction in `gripsack-exec`, and lint uses that admitted identity
+without a second validator. This fixes one NEXT leaf only; protected
+branch aggregation, the remaining §9 leaf expansion and all other
+required plan 0048 packets are open. No release is authorized.

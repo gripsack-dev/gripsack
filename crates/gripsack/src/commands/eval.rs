@@ -1,7 +1,7 @@
 use super::frontend::Frontend;
 use super::probe::InputsFile;
 use crate::render::DiagnosticSink;
-use gripsack_ir::{Ir, Severity};
+use gripsack_ir::{HostName, Ir, Severity};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::ExitCode;
@@ -60,7 +60,7 @@ pub struct EvalOutcome {
     /// Commands used to re-derive it with drifting rules (`update`
     /// read $HOSTNAME, a bash-ism POSIX sh does not export) and pick
     /// a different lockfile than the eval that preceded them.
-    pub host: String,
+    pub host: HostName,
 }
 
 /// Evaluate an env repo's frontend into IR JSON (0005 §4). The core
@@ -72,7 +72,7 @@ pub struct EvalOutcome {
 #[tracing::instrument(name = "eval", skip(sink), fields(host))]
 pub fn eval_repo(
     repo: &Path,
-    host: Option<&str>,
+    host: Option<String>,
     sink: &mut DiagnosticSink,
 ) -> Result<EvalOutcome, ExitCode> {
     let env_path = repo.join("env.toml");
@@ -106,6 +106,18 @@ pub fn eval_repo(
             ExitCode::FAILURE
         })?;
     let config = gripsack_config::merge(user.as_ref(), &env);
+    // The selected name reaches both hosts/<name>.ts and locks/<name>.lock.
+    // Admit it before throttle state, plugin/Deno provisioning, the
+    // build-env mutation or any host-derived read/write.
+    let host = HostName::parse(
+        host.or_else(|| env.env.default_host.clone())
+            .unwrap_or_else(crate::commands::default_host),
+    )
+    .map_err(|diagnostic| {
+        sink.report(&[diagnostic]);
+        ExitCode::FAILURE
+    })?;
+    tracing::Span::current().record("host", host.as_str());
     let limits = acquisition_limits(&config.settings);
     let provisioning = std::sync::Arc::new(gripsack_fetch::FetchContext::new(limits));
     // Rate budgets (0002 §throttle): [throttle] in env.toml overrides
@@ -116,11 +128,6 @@ pub fn eval_repo(
         Some(gripsack_store::gripsack_home().join("throttle.json")),
     );
     provision_plugins(&config.fetchers, &env.linters, &provisioning)?;
-    let host = host
-        .map(str::to_string)
-        .or_else(|| env.env.default_host.clone())
-        .unwrap_or_else(crate::commands::default_host);
-    tracing::Span::current().record("host", &host);
 
     let home = gripsack_store::gripsack_home();
     let deno = match gripsack_exec::ensure_deno(&home, &provisioning) {
@@ -177,7 +184,8 @@ pub fn eval_repo(
         frontend_dir: &frontend_dir,
         home: &home,
     };
-    let (envelope, bound) = super::probe::eval_to_fixpoint(&frontend, &host, facts, &inputs, sink)?;
+    let (envelope, bound) =
+        super::probe::eval_to_fixpoint(&frontend, host.as_str(), facts, &inputs, sink)?;
     sink.report(&envelope.diagnostics);
     Ok(EvalOutcome {
         ir_json: envelope.ir.to_string(),
@@ -199,10 +207,9 @@ pub fn run_lints(
     ir: &Ir,
     outcome: &EvalOutcome,
     repo: &Path,
-    host: Option<&str>,
     sink: &mut DiagnosticSink,
 ) -> Result<(), ExitCode> {
-    let diagnostics = gripsack_lint::run(ir, &outcome.env.linters, repo, host);
+    let diagnostics = gripsack_lint::run(ir, &outcome.env.linters, repo, &outcome.host);
     if diagnostics.is_empty() {
         return Ok(());
     }
@@ -221,12 +228,11 @@ pub fn run_lints(
 pub fn validated_ir(
     outcome: &EvalOutcome,
     repo: &Path,
-    host: Option<&str>,
     sink: &mut DiagnosticSink,
 ) -> Result<Ir, ExitCode> {
     let ir = check_ir(&outcome.ir_json, sink)?;
     crate::commands::validate_sources(&ir, repo, sink)?;
-    run_lints(&ir, outcome, repo, host, sink)?;
+    run_lints(&ir, outcome, repo, sink)?;
     Ok(ir)
 }
 

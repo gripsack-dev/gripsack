@@ -114,6 +114,14 @@ export default defineEnv((ctx) => ({
 }));
 ```
 
+`--host` and `[env] default_host` select one entrypoint and one
+`locks/<host>.lock` file. They must be single ASCII names (letters,
+digits, `_`, `-`, and `.` after the first character; no `..` or path
+separators). E132 rejects unsafe names **before** tool provisioning or
+host-derived file access. `grip init` sanitizes the detected machine
+hostname to this spelling; role-named hosts such as `work.dev` remain
+valid.
+
 Evaluation runs in Deno, spawned deny-by-default: no env vars, no
 network, no subprocesses, read-only within the repo. Facts (os, arch,
 libc, hostname) are detected by the core and injected — the same repo

@@ -4,6 +4,7 @@ self-update — split from test_flow.py; fixture repos come from conftest."""
 
 
 
+import json
 import os
 import shutil
 import subprocess
@@ -238,6 +239,57 @@ def test_default_host_resolves_role_named_entrypoint(sandbox):
     out = grip("check", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert "container" in out.stdout
+
+
+def test_default_host_path_traversal_rejects_before_eval_or_lock_write(sandbox):
+    """0048 §1.3: a repo-selected host must never turn into a lock
+    path outside locks/ or an entrypoint outside hosts/."""
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    (repo / "modules" / "role.ts").write_text(
+        'import { defineEnv } from "@gripsack/core";\n'
+        'import hello from "./hello.ts";\n'
+        "export default defineEnv(() => ({ modules: [hello] }));\n"
+    )
+    (repo / "env.toml").write_text(
+        '[env]\nname = "fixture"\ndefault_host = "../modules/role"\n'
+    )
+    out = grip("update", cwd=repo)
+    assert out.returncode != 0
+    assert "E132" in out.stderr, out.stderr
+    assert not (repo / "modules" / "role.lock").exists()
+    assert not (sandbox / ".local/share/gripsack/frontend").exists()
+    checked = grip("check", "--json", cwd=repo)
+    assert checked.returncode != 0
+    diagnostics = json.loads(checked.stdout)["diagnostics"]
+    assert [diagnostic["code"] for diagnostic in diagnostics] == ["E132"]
+
+
+def test_absolute_host_cannot_replace_lock_outside_repo(sandbox):
+    """0048 §1.3: an absolute CLI host is not an arbitrary .lock writer."""
+    repo = make_env_repo(sandbox / "myenv", {})
+    absolute_host = str(sandbox / "victim")
+    nested_host = repo / "hosts" / f"{absolute_host.lstrip('/')}.ts"
+    nested_host.parent.mkdir(parents=True)
+    nested_host.write_text(
+        'import { defineEnv } from "@gripsack/core";\n'
+        "export default defineEnv(() => ({ modules: [] }));\n"
+    )
+    victim = sandbox / "victim.lock"
+    victim.write_text("do not clobber\n")
+    out = grip("update", "--host", absolute_host, cwd=repo)
+    assert out.returncode != 0
+    assert "E132" in out.stderr, out.stderr
+    assert victim.read_text() == "do not clobber\n"
+    assert not (sandbox / ".local/share/gripsack/frontend").exists()
+
+
+def test_explicit_role_host_with_safe_dots_is_unchanged(sandbox):
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE, host="role.dev")
+    (repo / "configs" / "demo").mkdir(parents=True)
+    (repo / "configs" / "demo" / "a").write_text("a\n")
+    out = grip("check", "--host", "role.dev", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "1 modules" in out.stdout
 
 
 def test_plan_diffs_against_the_current_generation(sandbox):

@@ -9,7 +9,7 @@ use std::process::ExitCode;
 /// Survey failures are data; setup failures abort with the distinct error exit.
 pub fn update(
     repo: &Path,
-    host: Option<&str>,
+    host: Option<String>,
     modules: Vec<String>,
     palette: Palette,
     check: bool,

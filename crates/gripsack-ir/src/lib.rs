@@ -25,6 +25,7 @@
 
 pub mod dependencies;
 pub mod diagnostic;
+pub mod host_name;
 pub mod legacy_v4;
 pub mod model;
 pub mod parse;
@@ -37,6 +38,7 @@ mod tagged;
 pub mod workspace;
 
 pub use diagnostic::{Diagnostic, Label, Severity, codes};
+pub use host_name::HostName;
 pub use model::*;
 pub use parse::{ACCEPTED_IR_VERSIONS, IR_VERSION, LEGACY_IR_VERSION, WORKSPACE_V4_VERSION, parse};
 /// Backwards-compatible alias: pass 2 is `sema::run`.

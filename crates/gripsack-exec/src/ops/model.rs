@@ -13,7 +13,7 @@ mod tests {
     use crate::ops::{
         Authority, DestView, ModeInput, OpKind, execute_op, plan_entry_op, preview_ops,
     };
-    use gripsack_ir::{Entry, Ownership};
+    use gripsack_ir::{Entry, HostName, Ownership};
     use gripsack_store as store;
     use std::path::{Path, PathBuf};
 
@@ -439,7 +439,7 @@ mod tests {
             home: home.to_path_buf(),
             repo: home.to_path_buf(),
             only: vec![],
-            host: "test".into(),
+            host: HostName::parse("test").unwrap(),
             on_progress: None,
             take_over: false,
             take_over_entries: Default::default(),

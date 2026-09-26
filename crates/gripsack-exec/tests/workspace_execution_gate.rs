@@ -2,7 +2,7 @@
 //! module apply, even through direct executor APIs (not only the CLI).
 
 use gripsack_exec::{Ctx, ExecError, PlanError, UpdateMode, apply, build_order, update};
-use gripsack_ir::{check, codes};
+use gripsack_ir::{HostName, check, codes};
 use serde_json::json;
 
 fn workspace_ir(version: u32) -> String {
@@ -59,7 +59,7 @@ fn every_direct_executor_entry_rejects_before_home_mutation() {
             home: home.clone(),
             repo: sandbox.path().to_path_buf(),
             only: vec![],
-            host: "model".into(),
+            host: HostName::parse("model").unwrap(),
             on_progress: None,
             take_over: false,
             take_over_entries: None,

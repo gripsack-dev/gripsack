@@ -7,7 +7,7 @@
 //! Entry shape: `fetch` is the intent, `resolved` is the pin — a URL,
 //! a version, and a content hash, uniform across fetcher kinds.
 
-use gripsack_ir::FetchSpec;
+use gripsack_ir::{FetchSpec, HostName};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io;
@@ -54,7 +54,7 @@ pub struct Lockfile {
     pub modules: BTreeMap<String, LockEntry>,
 }
 
-pub fn path(repo: &Path, host: &str) -> PathBuf {
+pub fn path(repo: &Path, host: &HostName) -> PathBuf {
     repo.join("locks").join(format!("{host}.lock"))
 }
 
@@ -101,7 +101,7 @@ fn validate_pins(lock: &Lockfile) -> Result<(), String> {
     Ok(())
 }
 
-pub fn read(repo: &Path, host: &str) -> LockRead {
+pub fn read(repo: &Path, host: &HostName) -> LockRead {
     let raw = match std::fs::read(path(repo, host)) {
         Ok(raw) => raw,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return LockRead::Missing,
@@ -116,7 +116,7 @@ pub fn read(repo: &Path, host: &str) -> LockRead {
     }
 }
 
-pub fn write(repo: &Path, host: &str, lockfile: &Lockfile) -> io::Result<()> {
+pub fn write(repo: &Path, host: &HostName, lockfile: &Lockfile) -> io::Result<()> {
     let json = serde_json::to_string_pretty(lockfile)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     gripsack_fs::atomic_write_at(&path(repo, host), json.as_bytes())
@@ -128,6 +128,9 @@ mod tests {
 
     #[test]
     fn roundtrip() {
+        let laptop = HostName::parse("laptop").unwrap();
+        let other = HostName::parse("otherhost").unwrap();
+        let badhost = HostName::parse("badhost").unwrap();
         let dir = tempfile::tempdir().unwrap();
         let mut lock = Lockfile::default();
         lock.modules.insert(
@@ -148,15 +151,15 @@ mod tests {
                 }),
             },
         );
-        write(dir.path(), "laptop", &lock).unwrap();
-        let LockRead::Parsed(read_back) = read(dir.path(), "laptop") else {
+        write(dir.path(), &laptop, &lock).unwrap();
+        let LockRead::Parsed(read_back) = read(dir.path(), &laptop) else {
             panic!("expected a parsed lockfile");
         };
         assert_eq!(lock, read_back);
-        assert!(matches!(read(dir.path(), "otherhost"), LockRead::Missing));
+        assert!(matches!(read(dir.path(), &other), LockRead::Missing));
         // a corrupt lock is not a missing one — update would erase pins
         std::fs::write(dir.path().join("locks/laptop.lock"), b"{ truncated").unwrap();
-        assert!(matches!(read(dir.path(), "laptop"), LockRead::Corrupt(_)));
+        assert!(matches!(read(dir.path(), &laptop), LockRead::Corrupt(_)));
         // non-hex pins are corrupt too, not silent wrong paths
         let mut bad = lock.clone();
         bad.modules
@@ -166,7 +169,7 @@ mod tests {
             .as_mut()
             .unwrap()
             .tree256 = Some("ab".into());
-        write(dir.path(), "badhost", &bad).unwrap();
-        assert!(matches!(read(dir.path(), "badhost"), LockRead::Corrupt(_)));
+        write(dir.path(), &badhost, &bad).unwrap();
+        assert!(matches!(read(dir.path(), &badhost), LockRead::Corrupt(_)));
     }
 }

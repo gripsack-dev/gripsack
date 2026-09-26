@@ -65,6 +65,8 @@ pub const BAD_WORKSPACE_SPAN: &str = "E129";
 pub const INVALID_WORKSPACE_VALUE: &str = "E130";
 /// Required workspace graph edge missing or substituted.
 pub const REQUIRED_WORKSPACE_EDGE_MISSING: &str = "E131";
+/// Unsafe host entrypoint or lockfile identifier.
+pub const INVALID_HOST_NAME: &str = "E132";
 /// Fetch or source resolution failed.
 pub const EXEC_FETCH: &str = "E201";
 /// Execution step failed.
