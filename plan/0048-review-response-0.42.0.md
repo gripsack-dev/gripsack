@@ -2182,3 +2182,24 @@ Rust fmt/clippy/tests, TypeScript, real e2e, TLC and Verus), native
 macOS 14.8.9 arm64 full e2e **319/319**, audit, fuzz and docs. Manual
 dispatch does not enforce branch protection, qualify Mac-VM/launchd
 or discharge R5/M-V7 process proof.
+
+### M0 §2.1 — archive link-graph containment (P0 demonstrated → fixed)
+
+Responsibility/dependency map: `gripsack-fetch::fetch::archive::links`
+owns the single bounded link-graph admission (order-independent, with
+implicit-parent directories and per-entry metadata caps); `archive::paths`
+owns root-pinned `cap-std` capabilities (`O_NOFOLLOW` final open, relative
+descendants only); `tar.rs`/`zip.rs` build the graph from admitted entries
+before any write and materialize files → hard links → symlinks;
+`tree.rs` reuses the same graph for `validate_tree` and
+`copy_tree_filtered`. `gripsack-fs` and `gripsack-store` are untouched.
+
+| Leaf | Class / target | Prerequisite, owner and implementation | State / evidence | Unmet acceptance |
+|---|---|---|---|---|
+| M0-2.1a | NEXT / M0 §2.1 | None. One `links::Graph` validates every admitted symlink (relative targets resolved through other links, ≤64 hops, cycle/escape/dangling/non-directory rejection) and every hard link (regular-file targets only), independent of member order; directory names include implicit parents so forward targets behave identically. | **Implemented-unverified at `db1e91b`**: the demonstrated fixtures (dir `d`; `d/up → ..`; `leak → d/up/../sentinel`) fail `UnsafeArchive` in **both orders** for TAR and ZIP; cycles (`a→b→a`) and dangling targets reject before the destination root is created; valid forward/internal composition (`inside → d/up/item`, `d/up → ..`, `item`) still extracts and reads correctly. Failing-before: the same two tests returned `Ok(())` on the pre-patch tree. | No formal containment theorem for the resolver; protected CI at this head pending. |
+| M0-2.1b | NEXT / M0 §2.1 | M0-2.1a. Materialization opens the payload root through the trusted parent with `O_DIRECTORY|O_NOFOLLOW`, creates every name relative to that capability (`create_new` files, `symlink_contents`, `hard_link`), never traverses an archive symlink as a parent, and creates symlinks last; `validate_tree`/`copy_tree_filtered` open existing roots the same way and reject unsafe source graphs before creating a destination. | **Implemented-unverified at `db1e91b`**: pre-graph-validation failures leave no destination directory; hard links may precede their file; `copy_tree_filtered` refuses an escaping source before creating the copy and preserves a valid composed link. All six gates passed on the exact patched tree (Rust fmt/clippy/tests 68 in fetch, TS 65/65, real CLI e2e 320/320, TLC, Verus 72/0+7 mutants) and the fuzz replay ran the whole archive corpus including both new `composed-link-escape.{tar,zip}` seeds with the strengthened resolved-destination oracle. | TOCTOU-free root pinning is enforced by construction (cap-std) but not machine-checked; no protected-CI run at this head yet; deploy-side follow semantics (§2.1 scope note) unchanged. |
+
+Scope honesty (unchanged from §2.1): the original probe demonstrated a
+payload-tree containment failure, not an arbitrary-write primitive; this
+fix closes acquisition-side containment. Deployment consumers still read
+through links by design where ownership modes permit.

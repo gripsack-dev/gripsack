@@ -137,7 +137,9 @@ Mac attestations.
 | `2026-09-26-a1-workspace-17513d2-destination.log` | `c89573d55367642b7baf5fd85d32f67384a37ef2c479a7b989f80f85a0a65f11` | Earlier source: failing-before E102 destination-escape admission (6 Rust) plus ten real CLI destination/owner/coordinate cases and the same-source Deno gate layer (64 tests + tsc examples); 81 checks, tree origin and proof targets open |
 | `2026-09-26-a1-workspace-d8711b2-dest-collision.log` | `4c7eaa90a6ff2b8300b9883c28a561b754c7b3b9e2cd630ac385fe2051a55240` | Earlier source: failing-before case-folded duplicate-destination ownership (E111) across profiles and policies labeling every declaration, plus the equal-basename coexistence positive; 3 Rust + 2 real CLI checks, per-block marker grammar open |
 | `2026-09-26-a1-workspace-b421944-json-purity.log` | `cea083cb82f29507cdae19b4b1d13956a0df7ced17c0953bcd5d3b97274bd61a` | Earlier source: failing-before core-side E111 tracing line polluted check --json stdout (Extra data); console logs now go to stderr and the parity helper asserts help text on both surfaces; 9 real CLI checks, fresh full chain e2e 299/299 |
-| `2026-09-26-a1-workspace-58388c9-a1-08-register.log` | `1293117cc533a9949f8df4aeeb3a1c6848dd6fba66a3110be908df187ccaa272` | Current source (identical SOURCE_ROOTS to b421944): A1-08 live registration — shared command grammar over nine kinds, forged-field rejection, ambient E128, inert-schedule/task-prereq owners, first-declared precedence; 14/14 real CLI cases, identity/kernel obligations open |
+| `2026-09-26-a1-workspace-58388c9-a1-08-register.log` | `1293117cc533a9949f8df4aeeb3a1c6848dd6fba66a3110be908df187ccaa272` | Earlier source (identical SOURCE_ROOTS to b421944): A1-08 live registration — shared command grammar over nine kinds, forged-field rejection, ambient E128, inert-schedule/task-prereq owners, first-declared precedence; 14/14 real CLI cases, identity/kernel obligations open |
+| `2026-09-26-a1-repo-file-d946d30.log` | `4c3a63222a46671e9e2a17bd39311d603aff08d85b3886b9454383de6cdc75d3` | Committed source `d946d30`, fingerprint `a1a6118ad7c98555ce998234aa5932ba63aa0dad3dd23d88f96500a260cce31e`: failing-before real `grip plan --ir` admitted `../outside` until E124; Rust/TS + real compiled CLI now reject parent/absolute repo-file paths E130 at the file declaration while Rust/TS independently admit declared-output artifact-file normalized selectors. **Five** focused post-commit groups passed, plus source-equivalent full five gates (fresh Rust/TS/e2e **320/320** and Verus 72/0 with seven mutants; TLC spec layer cached). This is lexical admission, not captured-root symlink containment, tree expansion, rendering, file deployment, formal source proof or A1 closure |
+
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS
 behavior, live CI protection or an A1 milestone closure.
@@ -175,6 +177,16 @@ The original 178 IDs now have registered lane/case/evidence-kind
 inventories, but source-bound H0 inventory review, stronger proof/kind
 checks, other NEXT leaves, required formal campaigns, native Mac/VM
 and actual release gates remain open.
+
+## M0 §2.1 archive link-graph containment — local, not release closure
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-26-m0-archive-links-db1e91b.log` | `d270c6818d86fa21939b727feb1dd2b0a0171e5235c92f09eea00df07e87a6b1` | Exact committed source `db1e91b`: the demonstrated composed-link fixtures (`d/up → ..`, `leak → d/up/../sentinel`) fail `UnsafeArchive` in **both member orders** for TAR and ZIP with no destination created, after failing-before as `Ok(())` on the pre-patch tree; cycles/dangling links reject; valid forward/internal composition, hard-link-before-file and shared `validate_tree`/`copy_tree_filtered` behavior pass. Focused container run 68/68; full six gates (Rust/TS/e2e **320/320**/TLC/Verus **72/0**+7 mutants/fuzz replay incl. both new corpus seeds) ran on the identical pre-commit bytes. Acquisition-side containment only; cap-std root pinning enforced by construction, not machine-checked |
+
+Acquisition-side containment per plan/0048 §2.1: no deploy-side
+ownership change, no protected-CI attestation at this head, no archive
+containment theorem, and no A2/edition-5 row is verified by this receipt.
 
 ## H0 edition-5 inventory — source-bound structure, not semantic closure
 
