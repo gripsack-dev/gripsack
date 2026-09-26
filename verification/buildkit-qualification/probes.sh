@@ -12,7 +12,6 @@
 #
 # Usage: sh probes.sh            (from verification/buildkit-qualification)
 set -eu
-trap "docker rm -f -v b0-buildkit >/dev/null 2>&1 || true" EXIT
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 BRIDGE=$HERE/bridge/bridge-bin
@@ -20,6 +19,15 @@ RESULTS=$HERE/results
 PORT=127.0.0.1:12341
 WORKER=b0-buildkit
 CACHE=b0-buildkit-cache
+OWNED_TAG=
+cleanup() {
+  docker rm -f -v "$WORKER" >/dev/null 2>&1 || true
+  docker volume rm "$CACHE" >/dev/null 2>&1 || true
+  if [ -n "$OWNED_TAG" ]; then
+    docker rmi "$OWNED_TAG" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
 
 REPO=$(cd "$HERE/../.." && pwd)
 . "$HERE/pins.env"
@@ -160,51 +168,45 @@ echo "oci-clean-build-b-seconds: $B_SECONDS" >> "$ENV_OUT"
 run_bridge "$RESULTS/probe4-verify.json" python3 "$HERE/verify_oci.py" \
   "$RESULTS/oci-1.tar" "$RESULTS/oci-2.tar" "$RESULTS/docker-compat.tar"
 
-VERIFIED_ID=$(python3 - "$RESULTS/probe4-verify.json" <<'PY'
+IMAGE_TAG=$(python3 - "$RESULTS/probe4-verify.json" <<'PY'
 import json
 import sys
 with open(sys.argv[1]) as report:
     verified = json.load(report)
 if verified["first"]["config-digest"] != verified["docker-archive"]["config-digest"]:
     sys.exit("OCI config identity changed in portable Docker archive")
-print(verified["first"]["config-digest"])
+print(verified["docker-archive"]["tag"])
 PY
 )
-EXPECTED_DIFF_IDS=$(python3 - "$RESULTS/probe4-verify.json" <<'PY'
-import json
-import sys
-with open(sys.argv[1]) as report:
-    print(json.dumps(json.load(report)["first"]["diff-ids"], separators=(",", ":")))
-PY
-)
-IMAGE_PREEXISTED=0
-if docker image inspect "$VERIFIED_ID" >/dev/null 2>&1; then
-  IMAGE_PREEXISTED=1
+# A deterministic config-derived tag isolates this fixture. Never
+# overwrite/remove an image which already belonged to this Docker host.
+if docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "FAIL: Docker already has the B0 fixture tag $IMAGE_TAG" >&2
+  exit 1
 fi
+OWNED_TAG=$IMAGE_TAG
 
-# The Docker engine is still a different runtime, not a BuildKit
-# worker. Assert its loaded image identity AND layer DiffIDs match the
-# independently verified OCI bytes before running the expected file.
+# Docker may re-encode config metadata, so its image ID need not be
+# the OCI config blob SHA. Inspect actual loaded layers/platform/runtime
+# fields independently and compare with the already verified OCI report.
 if docker load -i "$RESULTS/docker-compat.tar" > "$RESULTS/probe4-load.txt" 2>&1; then
-  LOADED_ID=$(docker image inspect "$VERIFIED_ID" --format '{{.Id}}')
-  LOADED_DIFF_IDS=$(docker image inspect "$VERIFIED_ID" --format '{{json .RootFS.Layers}}')
-  if [ "$LOADED_ID" != "$VERIFIED_ID" ] || [ "$LOADED_DIFF_IDS" != "$EXPECTED_DIFF_IDS" ]; then
-    echo "FAIL: Docker loaded image config or layer DiffIDs differ from verified OCI bytes" | tee "$RESULTS/probe4-runtime.txt"
+  if ! docker image inspect "$IMAGE_TAG" > "$RESULTS/probe4-image-inspect.json" 2>&1; then
+    cat "$RESULTS/probe4-load.txt" >&2
+    cat "$RESULTS/probe4-image-inspect.json" >&2
+    echo "FAIL: Docker load did not publish the verified image tag" | tee "$RESULTS/probe4-runtime.txt"
     exit 1
   fi
-  if docker run --rm "$VERIFIED_ID" cat /hello.txt > "$RESULTS/probe4-run.txt" 2>&1 \
+  run_bridge "$RESULTS/probe4-runtime-check.log" python3 "$HERE/check_loaded.py" \
+    "$RESULTS/probe4-verify.json" "$RESULTS/probe4-image-inspect.json"
+  if docker run --rm "$IMAGE_TAG" cat /hello.txt > "$RESULTS/probe4-run.txt" 2>&1 \
       && [ "$(cat "$RESULTS/probe4-run.txt")" = "gripsack b0 oci fixture" ]; then
     cat "$RESULTS/probe4-run.txt"
-    if [ "$IMAGE_PREEXISTED" -eq 0 ]; then
-      docker rmi "$VERIFIED_ID" >/dev/null
-    fi
-    echo "separate-runtime: Docker engine loaded verified OCI config/layers via portable archive and ran image" | tee "$RESULTS/probe4-runtime.txt"
+    docker rmi "$OWNED_TAG" >/dev/null
+    OWNED_TAG=
+    echo "separate-runtime: Docker loaded checked OCI layers/config via portable archive and ran image" | tee "$RESULTS/probe4-runtime.txt"
   else
     if [ -f "$RESULTS/probe4-run.txt" ]; then
       cat "$RESULTS/probe4-run.txt" >&2
-    fi
-    if [ "$IMAGE_PREEXISTED" -eq 0 ]; then
-      docker rmi "$VERIFIED_ID" >/dev/null 2>&1 || true
     fi
     echo "FAIL: Docker image load succeeded but independent run/content failed" | tee "$RESULTS/probe4-runtime.txt"
     exit 1

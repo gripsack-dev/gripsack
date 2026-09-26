@@ -19,9 +19,14 @@ restructuring, per `plan/0051`. It is NOT the production
   container AND cache volume), retained-output execution, two-fresh-
   worker reproduction, separate-runtime execution, environment
   recording.
-- `verify_oci.py` — independent OCI-layout verifier (no buildkit
+- `verify_oci.py` — independent OCI-layout verifier (no BuildKit
   code): blob digest checks, DiffID walk, media-type allowlist,
-  layer extraction, clean-build comparison.
+  layer extraction, clean-build comparison; only after validation
+  it packages the same checked bytes for Docker's legacy loader.
+- `check_loaded.py` — compares the *actual* Docker-inspected image
+  tag, platform, exact layer DiffIDs and supported runtime config
+  against the verified OCI report; importer config-ID rewrites are
+  recorded, not assumed byte-identical.
 - `results/` (gitignored) — machine-readable probe reports,
   environment/versions, logs, exported artifacts.
 
@@ -44,10 +49,14 @@ restructuring, per `plan/0051`. It is NOT the production
    independently verified (blob digests, DiffIDs, media types,
    normalized config, extracted file digests). Only after both
    exports reproduce, the independent verifier wraps those *same
-   checked config/layer bytes* in a legacy Docker-save tar. The Docker
-   engine then loads it; the driver compares its actual image ID and
-   layer DiffIDs to the original OCI evidence and runs the content.
-   Docker 28's legacy image store cannot load pure OCI-layout tars.
+   checked config/layer bytes* in a Docker-save tar with its own
+   collision-checked temporary tag. The Docker engine loads it;
+   an independent check compares loaded platform, runtime Env/cwd,
+   exact layer DiffIDs and tag to the verified OCI evidence, then
+   runs the expected file. Docker may re-encode config metadata and
+   assign a different image ID; we do not claim raw config-ID parity.
+   Hosted CI's Docker 28.0.4 rejected the original pure OCI tar
+   (`blobs/json` not found), before this checked-byte adapter.
    No second BuildKit solve or unverified image substitutes here.
 5. **policy** — include-pattern local-source transport carries only
    declared files (canaries absent), the op environment holds no

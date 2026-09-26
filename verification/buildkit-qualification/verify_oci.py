@@ -58,6 +58,7 @@ def read_layout(tar_path: Path) -> tuple[dict, bytes, list[bytes]]:
 
     arch = config.get("architecture"), config.get("os")
     report["platform"] = f"{arch[1]}/{arch[0]}"
+    report["runtime-config"] = config.get("config", {})
     diff_ids = config["rootfs"]["diff_ids"]
     report["diff-ids"] = diff_ids
 
@@ -127,12 +128,13 @@ def write_docker_archive(
     """
     config_hash = config_digest.partition(":")[2]
     config_name = f"{config_hash}.json"
+    tag = f"gripsack-b0-qual:{config_hash}"
     layer_names = [
         f"{index:02d}-{diff_id.partition(':')[2]}/layer.tar"
         for index, diff_id in enumerate(diff_ids)
     ]
     manifest = json.dumps(
-        [{"Config": config_name, "RepoTags": None, "Layers": layer_names}],
+        [{"Config": config_name, "RepoTags": [tag], "Layers": layer_names}],
         sort_keys=True, separators=(",", ":"),
     ).encode()
 
@@ -162,6 +164,7 @@ def write_docker_archive(
         "path": str(destination),
         "sha256": digest.hexdigest(),
         "config-digest": config_digest,
+        "tag": tag,
         "layer-diff-ids": diff_ids,
     }
 
