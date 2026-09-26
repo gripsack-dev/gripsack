@@ -27,9 +27,11 @@ restructuring, per `plan/0051`. It is NOT the production
 
 ## Probes (Epic B §B0, Linux lane)
 
-1. **baseline preservation** — the product carries zero buildkit/moby
-   references; the offline e2e journey (container gate) already proves
-   native workflows fetch no builder bytes.
+1. **baseline preservation** — the parsed native Rust lock has no
+   BuildKit/Docker client dependencies; ordinary comments and rejected
+   input fixtures do not count as product dependencies. The separate
+   offline e2e gate exercises native workflows; an available host
+   `grip` binary is also checked for container-runtime library linkage.
 2. **graph** — two outputs sharing one dependency: reuse (CACHED
    vertices on re-solve), sibling reuse, mid-solve cancellation with a
    healthy worker afterwards, deliberate failure attributed to its
@@ -58,6 +60,13 @@ sh probes.sh        # from verification/buildkit-qualification
 
 Requires: docker, python3. The bridge binary is rebuilt via
 `bridge/build.sh` if the Go sources change.
+
+The driver fails closed if the baseline check, independent OCI
+verification, Docker-engine image load or runtime execution fails.
+Plain `sh` has no `pipefail`: probe status is checked **before** a
+passing report is printed, never inferred from `tee`'s exit code.
+`probe4-verify.json` is valid JSON; the independent runtime outcome
+is recorded separately in `probe4-runtime.txt`.
 
 ## Honesty notes
 

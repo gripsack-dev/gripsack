@@ -82,25 +82,37 @@ worker_destroy() {
 }
 
 # --- probe 1: baseline preservation --------------------------------
-# The product must not gain builder dependencies from this experiment:
-# no buildkit/docker/go reference may exist in the workspace lockfile,
-# the CLI binary, or the offline e2e journey (which the container gates
-# already ran against file:// fixtures only).
-{
+# A word in a comment or an unsupported-input test is not a dependency.
+# Check the resolved Rust package graph instead; the full offline
+# product flow is exercised by the separate e2e container gate.
+baseline() {
   echo "--- probe1: baseline preservation"
-  if (cd "$REPO" && grep -ri "buildkit\|moby" Cargo.lock crates/ --include='*.rs' --include='*.toml' -l | grep -v buildkit-qualification); then
-    echo "FAIL: builder references leaked into product sources" >&2; exit 1
-  fi
-  echo "product sources: zero buildkit/moby references"
+  python3 - "$REPO/Cargo.lock" <<'PY' || return 1
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as lockfile:
+    packages = tomllib.load(lockfile)["package"]
+builder = sorted(
+    pkg["name"] for pkg in packages
+    if any(name in pkg["name"].lower()
+           for name in ("buildkit", "moby", "docker", "containerd", "bollard"))
+)
+if builder:
+    sys.exit(f"FAIL: native Rust lock gained builder dependencies: {builder}")
+print("native Rust package graph: no builder dependencies")
+PY
   if [ -x "$REPO/target/debug/grip" ]; then
     if ldd "$REPO/target/debug/grip" 2>/dev/null | grep -qi "docker\|containerd"; then
-      echo "FAIL: grip links container runtime libs" >&2; exit 1
+      echo "FAIL: grip links container runtime libraries" >&2
+      return 1
     fi
-    echo "grip binary: no container-runtime linkage"
+    echo "grip binary: no container-runtime library linkage"
   else
-    echo "note: target/debug/grip not built; source-level audit covers this stage"
+    echo "note: target/debug/grip not built; binary linkage not assessed here"
   fi
-} 2>&1 | tee "$RESULTS/probe1-baseline.txt"
+}
+run_bridge "$RESULTS/probe1-baseline.txt" baseline
 
 # --- probes 2, 3, 5 against worker #1 ------------------------------
 worker_start
@@ -135,24 +147,26 @@ echo "worker1-total-seconds: $WORKER1_SECONDS" >> "$ENV_OUT"
 echo "oci-clean-build-a-seconds: $A_SECONDS" >> "$ENV_OUT"
 echo "oci-clean-build-b-seconds: $B_SECONDS" >> "$ENV_OUT"
 
-# independent verification + reproduction comparison
-python3 "$HERE/verify_oci.py" "$RESULTS/oci-1.tar" "$RESULTS/oci-2.tar" | tee "$RESULTS/probe4-verify.json"
+# Independent verifier failure must stop the harness before runtime
+# promotion. A tee pipeline under plain sh would report tee's success.
+run_bridge "$RESULTS/probe4-verify.json" python3 "$HERE/verify_oci.py" \
+  "$RESULTS/oci-1.tar" "$RESULTS/oci-2.tar"
 
-# separate-runtime execution: the docker engine (independent of the
-# torn-down buildkitd workers) must load and run the exported image.
+# Separate-runtime execution: neither of the torn-down BuildKit workers
+# can substitute for a successful Docker-engine load and run.
 if docker load -i "$RESULTS/oci-1.tar" > "$RESULTS/probe4-load.txt" 2>&1; then
-  # load reports an image ID (untagged); docker run wants the bare hex
   IMAGE_ID=$(sed -n 's/^Loaded image ID: sha256:\([0-9a-f]*\)$/\1/p' "$RESULTS/probe4-load.txt")
   if [ -n "$IMAGE_ID" ] && docker run --rm "$IMAGE_ID" cat /hello.txt > "$RESULTS/probe4-run.txt" 2>&1; then
     cat "$RESULTS/probe4-run.txt"
     docker rmi "$IMAGE_ID" >/dev/null
-    echo "separate-runtime: docker engine (independent of both workers) loaded and ran the image" | tee -a "$RESULTS/probe4-verify.json"
+    echo "separate-runtime: docker engine (independent of both workers) loaded and ran the image" | tee "$RESULTS/probe4-runtime.txt"
   else
-    echo "separate-runtime: load OK but run failed (recorded; see probe4-load.txt)" | tee -a "$RESULTS/probe4-verify.json"
+    echo "FAIL: separate-runtime image load succeeded but run failed (see probe4-load.txt)" | tee "$RESULTS/probe4-runtime.txt"
     exit 1
   fi
 else
-  echo "separate-runtime: docker load rejected the OCI layout tar (recorded; see probe4-load.txt)" | tee -a "$RESULTS/probe4-verify.json"
+  echo "FAIL: separate-runtime docker load rejected the OCI layout (see probe4-load.txt)" | tee "$RESULTS/probe4-runtime.txt"
+  exit 1
 fi
 
 echo "=== B0-01 Linux lane probes complete; results in $RESULTS"
