@@ -41,9 +41,14 @@ restructuring, per `plan/0051`. It is NOT the production
    then run on the host after the worker container and cache volume
    are destroyed.
 4. **oci** — minimal OCI layout exported from two FRESH workers;
-   independently verified (digests, DiffIDs, media types, normalized
-   config, extracted file digests) and executed via the docker engine
-   (a runtime independent of both torn-down workers).
+   independently verified (blob digests, DiffIDs, media types,
+   normalized config, extracted file digests). Only after both
+   exports reproduce, the independent verifier wraps those *same
+   checked config/layer bytes* in a legacy Docker-save tar. The Docker
+   engine then loads it; the driver compares its actual image ID and
+   layer DiffIDs to the original OCI evidence and runs the content.
+   Docker 28's legacy image store cannot load pure OCI-layout tars.
+   No second BuildKit solve or unverified image substitutes here.
 5. **policy** — include-pattern local-source transport carries only
    declared files (canaries absent), the op environment holds no
    credential-shaped host variables, container root shows no host
@@ -66,8 +71,8 @@ observation, independent OCI verification, Docker-engine image load
 or runtime execution fails. Plain `sh` has no `pipefail`: probe
 status is checked **before** a passing report is printed, never
 inferred from `tee`'s exit code.
-`probe4-verify.json` is valid JSON; the independent runtime outcome
-is recorded separately in `probe4-runtime.txt`.
+`probe4-verify.json` records the OCI and portable-archive digests;
+`probe4-runtime.txt` records the independent engine result.
 The baseline prints the actual Docker engine version/platform. A
 failed image load or runtime invocation prints that operation's
 captured error before refusing qualification; a hidden

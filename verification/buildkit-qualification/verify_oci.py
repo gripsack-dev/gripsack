@@ -25,7 +25,7 @@ ALLOWED_LAYER_MEDIA = {
 }
 
 
-def read_layout(tar_path: Path) -> dict:
+def read_layout(tar_path: Path) -> tuple[dict, bytes, list[bytes]]:
     members = {}
     with tarfile.open(tar_path) as tf:
         for member in tf.getmembers():
@@ -53,7 +53,8 @@ def read_layout(tar_path: Path) -> dict:
     if config_descriptor["mediaType"] != "application/vnd.oci.image.config.v1+json":
         sys.exit(f"{tar_path}: unexpected config media type {config_descriptor['mediaType']}")
     report["config-digest"] = config_descriptor["digest"]
-    config = json.loads(blob(members, config_descriptor["digest"]))
+    config_bytes = blob(members, config_descriptor["digest"])
+    config = json.loads(config_bytes)
 
     arch = config.get("architecture"), config.get("os")
     report["platform"] = f"{arch[1]}/{arch[0]}"
@@ -90,7 +91,7 @@ def read_layout(tar_path: Path) -> dict:
                     files[member.name] = hashlib.sha256(content).hexdigest()
     report["files"] = files
     report["config-normalized"] = normalize(config)
-    return report
+    return report, config_bytes, uncompressed
 
 
 def blob(members: dict[str, bytes], digest: str) -> bytes:
@@ -115,13 +116,63 @@ def normalize(config: dict) -> dict:
     return out
 
 
+def write_docker_archive(
+    destination: Path, config: bytes, layers: list[bytes],
+    config_digest: str, diff_ids: list[str],
+) -> dict:
+    """Repackage only independently verified OCI bytes for legacy Docker stores.
+
+    The engine loads the exact checked config and uncompressed layer
+    bytes. There is no second BuildKit solve or unverified exporter.
+    """
+    config_hash = config_digest.partition(":")[2]
+    config_name = f"{config_hash}.json"
+    layer_names = [
+        f"{index:02d}-{diff_id.partition(':')[2]}/layer.tar"
+        for index, diff_id in enumerate(diff_ids)
+    ]
+    manifest = json.dumps(
+        [{"Config": config_name, "RepoTags": None, "Layers": layer_names}],
+        sort_keys=True, separators=(",", ":"),
+    ).encode()
+
+    with tarfile.open(destination, "w") as archive:
+        def add(name: str, data: bytes) -> None:
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            member.mtime = 0
+            member.mode = 0o644
+            archive.addfile(member, io.BytesIO(data))
+
+        add(config_name, config)
+        for name, raw in zip(layer_names, layers):
+            directory = tarfile.TarInfo(name.rsplit("/", 1)[0] + "/")
+            directory.type = tarfile.DIRTYPE
+            directory.mtime = 0
+            directory.mode = 0o755
+            archive.addfile(directory)
+            add(name, raw)
+        add("manifest.json", manifest)
+
+    digest = hashlib.sha256()
+    with destination.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return {
+        "path": str(destination),
+        "sha256": digest.hexdigest(),
+        "config-digest": config_digest,
+        "layer-diff-ids": diff_ids,
+    }
+
+
 def main() -> int:
-    if len(sys.argv) < 2:
-        sys.exit("usage: verify_oci.py LAYOUT.tar [LAYOUT2.tar]")
-    first = read_layout(Path(sys.argv[1]))
+    if len(sys.argv) not in (2, 3, 4):
+        sys.exit("usage: verify_oci.py LAYOUT.tar [LAYOUT2.tar [DOCKER_ARCHIVE.tar]]")
+    first, config_bytes, raw_layers = read_layout(Path(sys.argv[1]))
     result = {"verdicts": [f"{first['tar']}: all blob digests, DiffIDs, media types and platform verified"]}
-    if len(sys.argv) == 3:
-        second = read_layout(Path(sys.argv[2]))
+    if len(sys.argv) >= 3:
+        second, _, _ = read_layout(Path(sys.argv[2]))
         reproduced = (
             first["diff-ids"] == second["diff-ids"]
             and first["config-normalized"] == second["config-normalized"]
@@ -137,6 +188,14 @@ def main() -> int:
         if not reproduced:
             sys.exit("clean-build reproduction FAILED")
         result["verdicts"].append("two fresh-worker exports reproduce (DiffIDs, normalized config, file digests)")
+    if len(sys.argv) == 4:
+        result["docker-archive"] = write_docker_archive(
+            Path(sys.argv[3]), config_bytes, raw_layers,
+            first["config-digest"], first["diff-ids"],
+        )
+        result["verdicts"].append(
+            "legacy Docker archive contains the exact independently verified OCI config and layer bytes"
+        )
     summary = {
         "verifier": "independent python OCI parser (no buildkit code)",
         "first": {k: v for k, v in first.items() if k != "config-normalized"},

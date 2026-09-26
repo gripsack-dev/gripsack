@@ -153,29 +153,65 @@ echo "worker1-total-seconds: $WORKER1_SECONDS" >> "$ENV_OUT"
 echo "oci-clean-build-a-seconds: $A_SECONDS" >> "$ENV_OUT"
 echo "oci-clean-build-b-seconds: $B_SECONDS" >> "$ENV_OUT"
 
-# Independent verifier failure must stop the harness before runtime
-# promotion. A tee pipeline under plain sh would report tee's success.
+# Independent verification and clean-worker reproduction MUST complete
+# before a portable Docker archive is made from the checked OCI config
+# and exact uncompressed layer bytes. Older Docker image stores cannot
+# load a pure OCI-layout tar (CI's Docker 28 rejected blobs/json).
 run_bridge "$RESULTS/probe4-verify.json" python3 "$HERE/verify_oci.py" \
-  "$RESULTS/oci-1.tar" "$RESULTS/oci-2.tar"
+  "$RESULTS/oci-1.tar" "$RESULTS/oci-2.tar" "$RESULTS/docker-compat.tar"
 
-# Separate-runtime execution: neither of the torn-down BuildKit workers
-# can substitute for a successful Docker-engine load and run.
-if docker load -i "$RESULTS/oci-1.tar" > "$RESULTS/probe4-load.txt" 2>&1; then
-  IMAGE_ID=$(sed -n 's/^Loaded image ID: sha256:\([0-9a-f]*\)$/\1/p' "$RESULTS/probe4-load.txt")
-  if [ -n "$IMAGE_ID" ] && docker run --rm "$IMAGE_ID" cat /hello.txt > "$RESULTS/probe4-run.txt" 2>&1; then
+VERIFIED_ID=$(python3 - "$RESULTS/probe4-verify.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1]) as report:
+    verified = json.load(report)
+if verified["first"]["config-digest"] != verified["docker-archive"]["config-digest"]:
+    sys.exit("OCI config identity changed in portable Docker archive")
+print(verified["first"]["config-digest"])
+PY
+)
+EXPECTED_DIFF_IDS=$(python3 - "$RESULTS/probe4-verify.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1]) as report:
+    print(json.dumps(json.load(report)["first"]["diff-ids"], separators=(",", ":")))
+PY
+)
+IMAGE_PREEXISTED=0
+if docker image inspect "$VERIFIED_ID" >/dev/null 2>&1; then
+  IMAGE_PREEXISTED=1
+fi
+
+# The Docker engine is still a different runtime, not a BuildKit
+# worker. Assert its loaded image identity AND layer DiffIDs match the
+# independently verified OCI bytes before running the expected file.
+if docker load -i "$RESULTS/docker-compat.tar" > "$RESULTS/probe4-load.txt" 2>&1; then
+  LOADED_ID=$(docker image inspect "$VERIFIED_ID" --format '{{.Id}}')
+  LOADED_DIFF_IDS=$(docker image inspect "$VERIFIED_ID" --format '{{json .RootFS.Layers}}')
+  if [ "$LOADED_ID" != "$VERIFIED_ID" ] || [ "$LOADED_DIFF_IDS" != "$EXPECTED_DIFF_IDS" ]; then
+    echo "FAIL: Docker loaded image config or layer DiffIDs differ from verified OCI bytes" | tee "$RESULTS/probe4-runtime.txt"
+    exit 1
+  fi
+  if docker run --rm "$VERIFIED_ID" cat /hello.txt > "$RESULTS/probe4-run.txt" 2>&1 \
+      && [ "$(cat "$RESULTS/probe4-run.txt")" = "gripsack b0 oci fixture" ]; then
     cat "$RESULTS/probe4-run.txt"
-    docker rmi "$IMAGE_ID" >/dev/null
-    echo "separate-runtime: docker engine (independent of both workers) loaded and ran the image" | tee "$RESULTS/probe4-runtime.txt"
+    if [ "$IMAGE_PREEXISTED" -eq 0 ]; then
+      docker rmi "$VERIFIED_ID" >/dev/null
+    fi
+    echo "separate-runtime: Docker engine loaded verified OCI config/layers via portable archive and ran image" | tee "$RESULTS/probe4-runtime.txt"
   else
     if [ -f "$RESULTS/probe4-run.txt" ]; then
       cat "$RESULTS/probe4-run.txt" >&2
     fi
-    echo "FAIL: separate-runtime image load succeeded but run failed (see probe4-load.txt)" | tee "$RESULTS/probe4-runtime.txt"
+    if [ "$IMAGE_PREEXISTED" -eq 0 ]; then
+      docker rmi "$VERIFIED_ID" >/dev/null 2>&1 || true
+    fi
+    echo "FAIL: Docker image load succeeded but independent run/content failed" | tee "$RESULTS/probe4-runtime.txt"
     exit 1
   fi
 else
   cat "$RESULTS/probe4-load.txt" >&2
-  echo "FAIL: separate-runtime docker load rejected the OCI layout (see probe4-load.txt)" | tee "$RESULTS/probe4-runtime.txt"
+  echo "FAIL: Docker load rejected the verified OCI-backed portable archive" | tee "$RESULTS/probe4-runtime.txt"
   exit 1
 fi
 
