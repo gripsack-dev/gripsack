@@ -70,6 +70,17 @@ the fetcher registry stay the north star.
 
 | 0047 | Verified merge splice, graph closures and scheduler transitions | core/SDK 0.42.0 | merge splice kernel over real bytes (spec-mirror contract, identity + gaps lemmas); build-closure/build-only graph kernels with soundness+completeness over cycles; PureScheduler transition system proved (exact readiness, at-most-once start, failure latch) and WIRED into production run_all — scheduling decisions are the proved kernel; four-mutant calibration (classifier, splice-tail, closure-membership, scheduler-latch); obligation floor 50; runtime smoke tests pin the erased-ghost runtime contract; solver lessons recorded (implies-vs-==>, ghost snapshots, cast-collapse lemma, loop-carried facts) | merge parser range invariants (Layer 2 — time-boxed, bound recorded in MERGE-SPLICE-001); TLAPS inductive proof over the existing Transaction.tla is the next proof step; Lean/Aeneas stays a separate-repo exercise | verified wrappers over the threaded bridge (the bridge stays tested, never claimed verified) |
 
+## Security maintenance (non-release changes)
+
+- 2026-09-26: The protected `audit` check exposed
+  [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285.html)
+  in locked `rustls 0.23.43`. `gripsack-fetch` now requires patched
+  `rustls >=0.23.45`, and `Cargo.lock` selects exactly `0.23.45`.
+  Existing rustls-only TLS features and HTTP callers are unchanged.
+  This dependency repair is not evidence for a frontend sandbox fix,
+  formal verification, native platform qualification or a public
+  release; the required CI and runtime gates still apply.
+
 ## Settled rejections (all eras)
 
 - **TOML/data-format frontend** — five times. TypeScript is the
