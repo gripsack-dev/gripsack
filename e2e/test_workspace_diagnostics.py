@@ -47,7 +47,8 @@ def assert_same_facts(terminal, doc):
                 line = f"{label['span']['file']}:{label['span']['line']}"
                 assert line in terminal.stderr, f"{line} missing from terminal"
                 assert label["note"] in terminal.stderr
-
+        if d.get("help") is not None:
+            assert d["help"] in terminal.stderr, "help text drifted between surfaces"
 
 def test_typo_field_reports_declaration_site_on_both_surfaces(sandbox):
     repo = write_repo(
@@ -661,6 +662,33 @@ def test_duplicate_profile_destination_names_both_owners_before_any_executor(san
     assert "grip.ts:3" in result.stderr and "grip.ts:7" in result.stderr
     assert "E124" not in result.stderr, "ownership conflicts precede executor refusal"
     assert not (sandbox / ".local/share/gripsack/current").exists()
+
+def test_help_text_agrees_between_terminal_and_json_surfaces(sandbox):
+    """A1-06 named case: a diagnostic carrying `help` (E111) shows the
+    same help text on both surfaces — the fact cannot drift."""
+    repo = write_repo(
+        sandbox,
+        "help-parity",
+        'import { defineWorkspace, workspace, profile, file, repoFile, identity, '
+        'trackedCopyTo } from "@gripsack/core";\n'
+        "export default defineWorkspace(() => workspace({ outputs: [\n"
+        '  profile("dotfiles", { files: [\n'
+        '    file({ source: repoFile("cfg/a.conf"), content: identity(),\n'
+        '           destination: trackedCopyTo("~/.config/a.conf") }),\n'
+        '    file({ source: repoFile("cfg/b.conf"), content: identity(),\n'
+        '           destination: trackedCopyTo("~/.CONFIG/A.CONF") }),\n'
+        "  ] }),\n"
+        "] }));\n",
+    )
+    terminal, doc = check_both(repo)
+    assert terminal.returncode == 1
+    assert "error[E111]" in terminal.stderr
+    assert_same_facts(terminal, doc)
+    helps = [d["help"] for d in doc["diagnostics"] if d["code"] == "E111"]
+    assert helps and helps[0], "the JSON surface must carry the E111 help text"
+    assert helps[0] in terminal.stderr
+    assert not (sandbox / ".config").exists()
+
 
 
 def test_user_exception_stays_a_traceback_on_both_surfaces(sandbox):

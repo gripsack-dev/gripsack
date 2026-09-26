@@ -56,13 +56,16 @@ pub fn init(home: &Path) -> io::Result<RunLog> {
 
     // Console is warn-by-default (GRIPSACK_LOG raises it); the JSONL
     // always gets info and up — the log is the full record, the console
-    // is for humans.
+    // is for humans. The console writes to STDERR: stdout is data
+    // (`grip check --json` emits exactly one document there), and a
+    // core-side tracing::error! during eval must never prepend bytes
+    // to it.
     let console_filter = tracing_subscriber::EnvFilter::try_from_env("GRIPSACK_LOG")
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
     let console = tracing_subscriber::fmt::layer()
         .compact()
-        .with_ansi(io::stdout().is_terminal())
-        .with_writer(io::stdout)
+        .with_ansi(io::stderr().is_terminal())
+        .with_writer(io::stderr)
         .with_filter(console_filter);
     let json = tracing_subscriber::fmt::layer()
         .json()
