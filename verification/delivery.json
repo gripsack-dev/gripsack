@@ -1369,6 +1369,27 @@
      "inputs": "Failing-before E129 label regression over a decoded {line:0,col:0} command span, five distinct first-declared E124 owner/precedence cases (host recipe A2, provider package A2, plain task A2-P, profile A2, post_activate hook A2, each shadowed by a later B4 image), and the malformed-coordinate CLI case asserting two labeled E129s, no snippet bytes and no E124",
      "report_marker": "A1_SPAN_SITE=74",
      "counts": {"executed": 74, "passed": 74, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["gripsack-trace::init console layer", "grip check --json", "gripsack-ir::sema::workspace::destinations::check"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; real CLI pytest 9.1.1 under sandboxed HOME",
+     "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -vv test_workspace_diagnostics.py -k 'help_text or duplicate_profile or escaping_profile or typo_field or collision or both_surfaces'",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-a1-workspace-b421944-json-purity.log",
+     "report_sha256": "cea083cb82f29507cdae19b4b1d13956a0df7ced17c0953bcd5d3b97274bd61a",
+     "commit": "b4219449fe240b96205a6795de9e28defcaa1983",
+     "source_reuse_sha256": "a5352ceff505d1a8bf432d7e482248762d9982de4b19b4f4b8d116f2ceaa8162",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [
+      "Terminal and check --json agree on diagnostic code/severity/message/labels/help; successful output catalogs and legacy modules preserve host facts"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Python 3.13.15; pytest 9.1.1",
+     "inputs": "Failing-before: a core-side E111 tracing::error! during eval wrote a compact console log line to STDOUT ahead of the check --json document, so json.loads failed with Extra data — frontend-envelope diagnostics (E130) never hit that log call, which is why earlier surface tests passed. The console layer now writes to stderr; the shared parity helper additionally asserts help text on both surfaces, exercised by an authored E111 case. Nine real CLI cases; fresh full chain at this tree passed Rust fmt/clippy/tests and real CLI e2e 299/299 including the trace-context suite",
+     "report_marker": "A1_JSON_PURITY=9",
+     "counts": {"executed": 9, "passed": 9, "failed": 0, "skipped": 0}
     }
    ],
    "lane_status": {
@@ -1380,7 +1401,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts; snippets are bounded to the evaluated repo capability and 1 MiB per file. E124 names the first declared unavailable output and owner for host recipe/provider package/profile/hook A2, isolated recipes B2, environments and plain tasks A2-P, task prerequisites E1, schedules E2/E3, checks A2/E1, images B4 and v4 A5 migration; first-declared precedence is exercised against a later B4 image. E129 now labels every empty-file/line-0/col-0 rejection with the invalid span itself — a failing-before decoded {line:0,col:0} command span emitted unlabeled E129s — and the span walk no longer allocates a temporary vector on valid workspaces; the renderer still never turns invalid coordinates into a snippet read. A single manifest generates 36 Rust IDs, five frontend code constants and a static frontend membership Record; a user-thrown unallocated E999 stays a traceback with no check --json diagnostic. At 90e68ac source-bound focused runners pass 5 Rust span-admission and 6 real CLI owner/coordinate cases (74-check report including the same-source Deno gate layer); ec11c7c's 85-check receipt binds the previous revision of this surface. Allocated-code authorship by trusted code, semantic classification, protected CI and native Mac keep A1-06 in_progress; no release."
+   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts; snippets are bounded to the evaluated repo capability and 1 MiB per file. E124 names the first declared unavailable output and owner for host recipe/provider package/profile/hook A2, isolated recipes B2, environments and plain tasks A2-P, task prerequisites E1, schedules E2/E3, checks A2/E1, images B4 and v4 A5 migration, with first-declared precedence exercised against a later B4 image. E129 labels every empty-file/line-0/col-0 rejection with the invalid span itself. A single manifest generates 36 Rust IDs, five frontend code constants and a static frontend membership Record; a user-thrown unallocated E999 stays a traceback with no check --json diagnostic. The console tracing layer now writes to stderr — a failing-before core-side E111 tracing::error! polluted check --json stdout (json.loads Extra data) because frontend-envelope diagnostics never hit that log call — and the shared parity helper now also asserts help text on both surfaces via an authored E111 case. Source-bound receipts: b421944 binds JSON purity + help parity (9 checks; fresh full chain e2e 299/299 at that tree), 90e68ac binds span labels/owner matrix (74 checks), ec11c7c binds the allocation surface (85 checks); earlier receipts are historical for these surfaces. Allocated-code authorship by trusted code, semantic classification, protected CI and native Mac keep A1-06 in_progress; no release."
   },
   {
    "id": "A1-07",

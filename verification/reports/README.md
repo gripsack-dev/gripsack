@@ -58,20 +58,21 @@ Runner reports exist for source commits
 `ec11c7ce7ffb1ee3ec78c3026c933bf305fabb15`,
 `17ed1f0dae5c827d638537fd6efba3623da156f4`,
 `90e68acdb63d31e9c56d3161872ed94391aa43a2`,
-`17513d2d66c1f99bf40e85d5c9d9e62447c0f88d` and
-`d8711b2208b99e73fc9f3ce811405a836f6da977`. Tracked
+`17513d2d66c1f99bf40e85d5c9d9e62447c0f88d`,
+`d8711b2208b99e73fc9f3ce811405a836f6da977` and
+`b4219449fe240b96205a6795de9e28defcaa1983`. Tracked
 behavior-bearing `SOURCE_ROOTS` were clean before and after each
 direct runner; changes to calibration, fixtures, schema, graph
 adapters, examples and the generated diagnostic registry make
-their fingerprints non-interchangeable. Only the focused A1-11
-destination-ownership report binds the **seventeenth** source; other
-A1 row receipts bind earlier code and cannot support closure for
-the changed surfaces. Reports retain commands, versions, inputs,
-source identities, raw output and counted markers. The latest
-source fingerprint is
-`de296f15fcff42625c58b29d0ee7bd0b2eb09511f9e4aaa1510dd67f5791eca5`;
-the preceding destination-escape revision's fingerprint is
-`22ba9b886b3321011a8ba124d821c6823789c0a411ede3019dac8af7d0258983`.
+their fingerprints non-interchangeable. Only the focused A1-06
+JSON-purity report binds the **eighteenth** source; other A1 row
+receipts bind earlier code and cannot support closure for the
+changed surfaces. Reports retain commands, versions, inputs, source
+identities, raw output and counted markers. The latest source
+fingerprint is
+`a5352ceff505d1a8bf432d7e482248762d9982de4b19b4f4b8d116f2ceaa8162`;
+the preceding destination-ownership revision's fingerprint is
+`de296f15fcff42625c58b29d0ee7bd0b2eb09511f9e4aaa1510dd67f5791eca5`.
 These are local container observations, **not** GitHub CI or native
 Mac attestations.
 
@@ -132,7 +133,8 @@ Mac attestations.
 | `2026-09-25-a1-workspace-17ed1f0-verus.log` | `dc8d3f35e43ed1956b31f8f80e6a0f09175979c5514d9d2a4f2e5f20f8fc65a2` | Earlier source: fresh policy Verus 72 verified/0 errors with seven attributable mutants; TypeScript and TLC compose images cached, no full source-walk/schema refinement theorem |
 | `2026-09-26-a1-workspace-90e68ac-span-owners.log` | `1d9da4a0bc6f79aebdb678c5472561f8a16ebe5c11bb3381bbdcc59cbb757c10` | Earlier source: failing-before labeled E129 span admission (5 Rust), five first-declared E124 owner/precedence cases plus the no-snippet malformed-coordinate case (6 real CLI), and the same-source Deno gate layer incl. the compile-time interpreter pin; 74 checks, no classification/normalization theorem |
 | `2026-09-26-a1-workspace-17513d2-destination.log` | `c89573d55367642b7baf5fd85d32f67384a37ef2c479a7b989f80f85a0a65f11` | Earlier source: failing-before E102 destination-escape admission (6 Rust) plus ten real CLI destination/owner/coordinate cases and the same-source Deno gate layer (64 tests + tsc examples); 81 checks, tree origin and proof targets open |
-| `2026-09-26-a1-workspace-d8711b2-dest-collision.log` | `4c7eaa90a6ff2b8300b9883c28a561b754c7b3b9e2cd630ac385fe2051a55240` | Current source: failing-before case-folded duplicate-destination ownership (E111) across profiles and policies labeling every declaration, plus the equal-basename coexistence positive; 3 Rust + 2 real CLI checks, per-block marker grammar open |
+| `2026-09-26-a1-workspace-d8711b2-dest-collision.log` | `4c7eaa90a6ff2b8300b9883c28a561b754c7b3b9e2cd630ac385fe2051a55240` | Earlier source: failing-before case-folded duplicate-destination ownership (E111) across profiles and policies labeling every declaration, plus the equal-basename coexistence positive; 3 Rust + 2 real CLI checks, per-block marker grammar open |
+| `2026-09-26-a1-workspace-b421944-json-purity.log` | `cea083cb82f29507cdae19b4b1d13956a0df7ced17c0953bcd5d3b97274bd61a` | Current source: failing-before core-side E111 tracing line polluted check --json stdout (Extra data); console logs now go to stderr and the parity helper asserts help text on both surfaces; 9 real CLI checks, fresh full chain e2e 299/299 |
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS
 behavior, live CI protection or an A1 milestone closure.

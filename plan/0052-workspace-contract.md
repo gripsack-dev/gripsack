@@ -1468,6 +1468,24 @@ after a fresh full chain (Rust fmt/clippy/tests, real CLI e2e
 **297/297**): **5** checks, source fingerprint
 `de296f15fcff42625c58b29d0ee7bd0b2eb09511f9e4aaa1510dd67f5791eca5`.
 
+The final packet of this session closed a machine-surface defect the
+help-parity case exposed: the console tracing layer wrote its compact
+log lines to **stdout**, so a core-side `tracing::error!` (every
+core-only code — E102/E111/E131/…) prepended a log line to the
+`check --json` document and `json.loads` failed with `Extra data`.
+Frontend-envelope diagnostics (E130) never hit that call, which is
+why the existing surface tests stayed green. The console layer now
+writes to **stderr** — stdout is data, the run log remains the full
+JSONL record — and the shared parity helper additionally asserts
+`help` text on both surfaces, exercised by an authored E111 case.
+At committed code revision `b4219449fe240b96205a6795de9e28defcaa1983`
+(clean tracked source roots around the runner), the SHA-256 checked
+report binds **9/9** real CLI JSON-surface cases after a fresh full
+chain (Rust fmt/clippy/tests, real CLI e2e **299/299** including the
+trace-context suite); source fingerprint
+`a5352ceff505d1a8bf432d7e482248762d9982de4b19b4f4b8d116f2ceaa8162`.
+Classification theorems, protected CI and native Mac remain open.
+
 ## 31. Honesty register
 
 - This document began as a design candidate; §§9–30 record read-only
