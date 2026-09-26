@@ -68,6 +68,10 @@ status is checked **before** a passing report is printed, never
 inferred from `tee`'s exit code.
 `probe4-verify.json` is valid JSON; the independent runtime outcome
 is recorded separately in `probe4-runtime.txt`.
+The baseline prints the actual Docker engine version/platform. A
+failed image load or runtime invocation prints that operation's
+captured error before refusing qualification; a hidden
+`results/` file must not be the only CI diagnostic.
 Only a completed six-case run prints `B0_LINUX_QUALIFICATION=6`;
 the required CI `test` job records that marker after the real daemon
 and independent runtime finish.

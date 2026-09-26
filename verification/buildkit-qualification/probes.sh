@@ -107,6 +107,7 @@ if builder:
     sys.exit(f"FAIL: native Rust lock gained builder dependencies: {builder}")
 print("native Rust package graph: no builder dependencies")
 PY
+  docker info --format '{{.ServerVersion}} {{.OSType}}/{{.Architecture}}' || return 1
   if [ -x "$REPO/target/debug/grip" ]; then
     if ldd "$REPO/target/debug/grip" 2>/dev/null | grep -qi "docker\|containerd"; then
       echo "FAIL: grip links container runtime libraries" >&2
@@ -166,10 +167,14 @@ if docker load -i "$RESULTS/oci-1.tar" > "$RESULTS/probe4-load.txt" 2>&1; then
     docker rmi "$IMAGE_ID" >/dev/null
     echo "separate-runtime: docker engine (independent of both workers) loaded and ran the image" | tee "$RESULTS/probe4-runtime.txt"
   else
+    if [ -f "$RESULTS/probe4-run.txt" ]; then
+      cat "$RESULTS/probe4-run.txt" >&2
+    fi
     echo "FAIL: separate-runtime image load succeeded but run failed (see probe4-load.txt)" | tee "$RESULTS/probe4-runtime.txt"
     exit 1
   fi
 else
+  cat "$RESULTS/probe4-load.txt" >&2
   echo "FAIL: separate-runtime docker load rejected the OCI layout (see probe4-load.txt)" | tee "$RESULTS/probe4-runtime.txt"
   exit 1
 fi
