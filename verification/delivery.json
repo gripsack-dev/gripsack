@@ -224,12 +224,12 @@
      "date": "2026-09-26",
      "entry_points": ["scripts/check_delivery.py::validate", "scripts/check_delivery.py::close_claim", "scripts/delivery_evidence.py::coverage_violations", "scripts/delivery_checker_calibration.py::main"],
      "environment": "WSL2 Linux/amd64; Python 3.12.3; actual 178-row edition-5 ledger and a disposable synthetic H0/A0 git checkout with repo-local runner bytes",
-     "command": "python3 scripts/check_delivery.py --validate; python3 scripts/delivery_checker_calibration.py; python3 scripts/check_architecture.py --self-check; python3 scripts/check_delivery.py --close-milestone H0 --release 8c27693b093ed23d528d434f7a83577811d6714a (expected rejection)",
+     "command": "python3 scripts/check_delivery.py --validate; python3 scripts/delivery_checker_calibration.py; python3 scripts/check_architecture.py --self-check; python3 scripts/check_delivery.py --close-milestone H0 --release 0be1eaa2d76b91152228fb124025e97389c028e6 (expected rejection)",
      "result": "pass",
-     "report": "verification/reports/2026-09-26-h0-milestone-catalog-8c27693.log",
-     "report_sha256": "a66ef369c232a10711781e9291c80d5d3c16898f0490d3c527549c8c23b4606a",
-     "commit": "8c27693b093ed23d528d434f7a83577811d6714a",
-     "source_reuse_sha256": "9112551b88848a1a9c5c1a4c52a633d666e262f61ed7df8da2c85379efe0ff21",
+     "report": "verification/reports/2026-09-26-h0-catalog-0be1eaa.log",
+     "report_sha256": "e04f648f6ba04cf2ad6afce5a0704bb068000b2fdd3ed262f02f83149cacc5b1",
+     "commit": "0be1eaa2d76b91152228fb124025e97389c028e6",
+     "source_reuse_sha256": "32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b",
      "source_reuse_reason": "Evidence-only ledger/plan/report changes follow this committed checker SOURCE_ROOTS. Source/proof-catalog changes require a new input-bound report; synthetic calibration cannot establish 178 paraphrased case semantics.",
      "cases_covered": [],
      "kind": "runner",
@@ -1025,7 +1025,7 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "Schema/Rust/TypeScript v4 catalog conformance across all nine typed output kinds",
+    "Current v5 schema/Rust/TypeScript writer and reader conform across all nine typed output kinds; historical strict v4 workspace parsing remains read-only rather than interpreting v5 fields as v4",
     "Decoded unknown-field, kind, type and duplicate-output rejection with source spans",
     "Project gripsack.ts checks without hosts/<name>.ts or env.toml, including dotfiles-only profile and provider-backed package",
     "Legacy v3 reader and existing profile inspect/apply/rollback remain compatible",
@@ -2524,10 +2524,104 @@
     "actual versions/configuration recorded"
    ],
    "evidence_kinds": ["runner"],
-   "evidence_records": [],
+   "evidence_records": [
+    {
+     "lane": "linux-amd64",
+     "date": "2026-09-26",
+     "entry_points": ["verification/buildkit-qualification/probes.sh", "verification/buildkit-qualification/bridge/{probe_graph,probe_policy,probe_executable,probe_oci}.go", "verification/buildkit-qualification/verify_oci.py", "docker engine load/run"],
+     "environment": "Isolated detached checkout on WSL2 linux/amd64; Docker 29.7.2; disposable privileged BuildKit v0.33.0 workers; Go 1.26.3 builder and gcc/alpine inputs digest-pinned",
+     "command": "sh bridge/build.sh; sh probes.sh (isolated checkout at 0be1eaa2d76b91152228fb124025e97389c028e6); real BuildKit solves, worker/cache destruction and separate Docker-engine OCI load/run, then B0_LINUX_QUALIFICATION=6",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-b0-linux-0be1eaa.log",
+     "report_sha256": "95bf677bbc5a55c57b3a7736d75d46bf3ecec9bbdbf67daecf72af3feb75c983",
+     "commit": "0be1eaa2d76b91152228fb124025e97389c028e6",
+     "source_reuse_sha256": "32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b",
+     "source_reuse_reason": "Later ledger/report/plan edits only; behavior-bearing SOURCE_ROOTS match the committed B0 bridge, driver, pins and independent verifier captured in the report.",
+     "cases_covered": [
+      "pinned real Linux BuildKit + Go LLB harness exercised end-to-end",
+      "shared-dependency graph, cancellation and bounded failure attribution observed",
+      "declared-input policy probes pass",
+      "retained executable usable after worker/cache removal",
+      "independent runnable OCI result produced",
+      "actual versions/configuration recorded"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker 29.7.2; pinned BuildKit v0.33.0 dddd5621; pinned Go 1.26.3; Python 3.12.3; gcc:15.2.0/alpine:3.22.1 by SHA-256 image digest",
+     "inputs": "Pinned BuildKit/Go/gcc/alpine image digests and Go module hashes recorded; three clean workers and caches; exported executable and two OCI tarballs verified with SHA-256; independent OCI parser and Docker engine. Native host grip linkage not assessed in isolated checkout.",
+     "assumptions": ["This is a rootful privileged disposable qualification worker, not the B1 production worker policy.", "Only linux/amd64 is qualified; Mac VM, optional-builder startup behavior outside this harness, container gate integration and future formal families remain separate."],
+     "report_marker": "B0_LINUX_QUALIFICATION=6",
+     "counts": {"executed": 6, "passed": 6, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "linux-amd64",
+     "date": "2026-09-26",
+     "entry_points": ["verification/buildkit-qualification/probes.sh::baseline", "Cargo.lock"],
+     "environment": "Isolated WSL2 linux/amd64 checkout, real Python tomllib, intentional one-package dirty Cargo.lock mutant; no worker started",
+     "command": "sh probes.sh with a one-entry buildkit-calibration Cargo.lock patch; expected exit 1 before BuildKit worker startup",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-b0-lock-mutant-0be1eaa.log",
+     "report_sha256": "414165f69675f427e2eeada45e32b08defa15411a69e9f4f05c245dd9edd217d",
+     "commit": "0be1eaa2d76b91152228fb124025e97389c028e6",
+     "source_reuse_sha256": "32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b",
+     "source_reuse_reason": "The report binds the deliberately dirty lock patch separately; source code is committed B0 driver and was restored after calibration.",
+     "cases_covered": [],
+     "kind": "mutant-calibration",
+     "tool_versions": "Python 3.12.3 tomllib; Docker 29.7.2 (worker intentionally not started)",
+     "inputs": "Controlled valid Cargo.lock package buildkit-calibration; dirty diff SHA-256 87f49c82ba6197ec783c5e6dae58645ca6d505cf04c5765f3da89272702c3f57; matching commit base",
+     "intended_property": "Native Rust product dependency graph cannot acquire optional BuildKit or Docker client packages",
+     "observed_rejection": "native Rust lock gained builder dependencies: buildkit-calibration",
+     "tool_present": true,
+     "report_marker": "B0_LOCK_MUTANT=1",
+     "counts": {"executed": 1, "passed": 1, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "linux-amd64",
+     "date": "2026-09-26",
+     "entry_points": ["verification/buildkit-qualification/probes.sh::run_bridge", "verification/buildkit-qualification/verify_oci.py"],
+     "environment": "Real pinned BuildKit on WSL2 linux/amd64, two fresh OCI workers; one actual exported blob byte corrupted before independent Python verification",
+     "command": "env PATH=<temporary byte-corruption injector, delegates to real python3>:PATH sh probes.sh; expected exit 1 at independent digest check",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-b0-verifier-mutant-0be1eaa.log",
+     "report_sha256": "910b1b1c83e9cad672adea60aae8b1f62ac64d1804cc5f76dc4cad6cd1015279",
+     "commit": "0be1eaa2d76b91152228fb124025e97389c028e6",
+     "source_reuse_sha256": "32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b",
+     "source_reuse_reason": "The intentional export-byte mutation is bound in the negative report; committed driver/verifier code remains unchanged.",
+     "cases_covered": [],
+     "kind": "mutant-calibration",
+     "tool_versions": "Python 3.12.3; Docker 29.7.2; pinned BuildKit v0.33.0 and Go 1.26.3",
+     "inputs": "Two real exported OCI tarballs, one digest-invalid blob in first tar, actual independent verifier present and executed",
+     "intended_property": "Independent OCI blob-digest failure stops acceptance before any Docker-engine promotion",
+     "observed_rejection": "blob digest mismatch at blobs/sha256/",
+     "tool_present": true,
+     "report_marker": "B0_VERIFIER_MUTANT=1",
+     "counts": {"executed": 1, "passed": 1, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "linux-amd64",
+     "date": "2026-09-26",
+     "entry_points": ["verification/buildkit-qualification/probes.sh::docker load", "verification/buildkit-qualification/verify_oci.py"],
+     "environment": "Real pinned BuildKit and independent OCI verifier on WSL2 linux/amd64; one deliberately rejected Docker-engine load after valid export",
+     "command": "env PATH=<temporary docker-load rejection injector, delegates every other call to real docker>:PATH sh probes.sh; expected exit 1 after valid OCI check",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-b0-load-mutant-0be1eaa.log",
+     "report_sha256": "a21d692b295240cc197f61625b0acd3451cc84e69591a0f159001259d0dcb21c",
+     "commit": "0be1eaa2d76b91152228fb124025e97389c028e6",
+     "source_reuse_sha256": "32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b",
+     "source_reuse_reason": "The intentional Docker load fault is bound in the negative report; source code and pinned worker inputs match the successful run.",
+     "cases_covered": [],
+     "kind": "mutant-calibration",
+     "tool_versions": "Python 3.12.3; Docker 29.7.2; pinned BuildKit v0.33.0 and Go 1.26.3",
+     "inputs": "Two valid fresh-worker OCI exports and passing independent verifier; Docker load intentionally returned 47 while other commands used the real CLI/daemon",
+     "intended_property": "An exported OCI image must load and run in an independent runtime before qualification succeeds",
+     "observed_rejection": "FAIL: separate-runtime docker load rejected the OCI layout",
+     "tool_present": true,
+     "report_marker": "B0_LOAD_MUTANT=1",
+     "counts": {"executed": 1, "passed": 1, "failed": 0, "skipped": 0}
+    }
+   ],
    "lane_status": {
     "container-gates": "implemented_unverified",
-    "linux-amd64": "implemented_unverified"
+    "linux-amd64": "verified"
    },
    "status_history": [
     {
@@ -2562,8 +2656,8 @@
     }
    ],
    "lane_notes": {
-    "container-gates": "container gates observed green on the A0 tree 2026-09-24 (archived logs; some gates CACHED, no commit binding)",
-    "linux-amd64": "BuildKit/Go-LLB probe suite exit 0 observed 2026-09-24 08:29 UTC (buildkitd v0.33.0 digest-pinned); report was plan/0051 Markdown without SHA-256/counts/source identity \u2014 needs source-bound portable runner evidence"
+    "container-gates": "The five local Docker Compose services pass at matching product inputs, and the real B0 six-case harness is wired into the required CI test job at source 0be1eaa, but no completed exact-head job/report has yet qualified this lane; B0-01 remains implemented_unverified.",
+    "linux-amd64": "Verified source-bound Linux qualification at 0be1eaa: six named real-daemon cases with runner-produced post-runtime marker and three attributable negative calibrations, fingerprint 32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b. Historical 2026-09-24 prose and earlier 8352793/ace9496 receipts are not current-source closure; B0-02 Mac-VM stays blocked."
    }
   },
   {
@@ -3430,12 +3524,47 @@
    "case_and_proof_inventory": [
     "systemd/user-manager version, user scope and availability probes recorded",
     "fixture install/run/remove and timing-behavior inventory on systemd",
-    "native macOS/launchd lane: BLOCKED here (no Mac); remains open, never inferred from Linux results"
+    "native macOS/launchd version, available user-agent domain and user scope probes recorded",
+    "native launchd user-agent fixture install/run/remove and timing-behavior inventory recorded"
    ],
+   "case_and_proof_inventory_by_lane": {
+    "systemd-linux": [
+     "systemd/user-manager version, user scope and availability probes recorded",
+     "fixture install/run/remove and timing-behavior inventory on systemd"
+    ],
+    "launchd": [
+     "native macOS/launchd version, available user-agent domain and user scope probes recorded",
+     "native launchd user-agent fixture install/run/remove and timing-behavior inventory recorded"
+    ]
+   },
    "evidence_kinds": ["runner"],
-   "evidence_records": [],
+   "evidence_records": [
+    {
+     "lane": "systemd-linux",
+     "date": "2026-09-26",
+     "entry_points": ["systemd-run --user --collect --on-calendar", "systemctl --user show/stop/list-timers", "systemd-analyze calendar daily", "loginctl show-user"],
+     "environment": "WSL2 linux/amd64; systemd 255 (255.4-1ubuntu8.17) user manager running, UID 1000, Linger=no; one uniquely named transient timer/service under the current user only",
+     "command": "python3 disposable qualify.py embedded byte-for-byte in report; bound 85-second OnCalendar user service trigger, inspect version/scope/effective policy and verify timer/service zero residue",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-e0-systemd-0be1eaa.log",
+     "report_sha256": "932a36f8a76dee63bda0adbe85b9f8825ec41c3754d9c712aa3a61fa6a84b323",
+     "commit": "0be1eaa2d76b91152228fb124025e97389c028e6",
+     "source_reuse_sha256": "32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b",
+     "source_reuse_reason": "Evidence-only ledger/report/plan changes reuse the exact committed source; the disposable fixture script and all OS command outputs are embedded in this SHA-256-checked report.",
+     "cases_covered": [
+      "systemd/user-manager version, user scope and availability probes recorded",
+      "fixture install/run/remove and timing-behavior inventory on systemd"
+     ],
+     "kind": "runner",
+     "tool_versions": "systemd 255 (255.4-1ubuntu8.17); Python 3.12.3; WSL2 linux/amd64",
+     "inputs": "Transient user unit gripsack-e0-qual-dd66c179d777; OnCalendar 2026-09-26 11:47:23 BST, observed fire 2026-09-26T10:47:24.006695Z (+1.007 s); AccuracySec=1s, Persistent=no, Type=oneshot, Restart=no; original user timers untouched",
+     "assumptions": ["This qualifies only native systemd user-manager availability/timer behavior, not a shipped Gripsack E3 scheduler or a wake-from-sleep guarantee.", "A native Mac launchd user-agent fixture remains required; no Mac result was inferred from Linux."],
+     "report_marker": "E0_SYSTEMD_QUALIFICATION=3",
+     "counts": {"executed": 3, "passed": 3, "failed": 0, "skipped": 0}
+    }
+   ],
    "lane_status": {
-    "systemd-linux": "implemented_unverified",
+    "systemd-linux": "verified",
     "launchd": "blocked"
    },
    "status_history": [
@@ -3472,7 +3601,7 @@
     }
    ],
    "lane_notes": {
-    "systemd-linux": "systemd 255 user-manager fixture journey (install/OnCalendar trigger/stop/remove, zero residue) observed 2026-09-24; evidence was plan/0049 Markdown without a source-bound runner report",
+    "systemd-linux": "Verified source-bound systemd 255 user-manager lane at 0be1eaa: actual one-shot OnCalendar transient timer/service fired as UID 1000 within 1.007 s, then both units were not-found with no timer listing residue. Original 2026-09-24 Markdown claim stays historical; launchd remains blocked and the blocked Mac case is not counted as passing Linux evidence.",
     "launchd": "blocked: no Mac hardware/runner on this workstation; never inferred from Linux results"
    }
   },

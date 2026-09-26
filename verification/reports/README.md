@@ -186,6 +186,8 @@ and actual release gates remain open.
 | `2026-09-26-h0-catalog-70c5502.log` | `dfcff39d73c0ee3987eccaceb558845c9f6f6d110c282aa88f872be832162926` | Committed source `70c5502`, fingerprint `5ad7400b5b9ca9e56dba286b34d2bb30c8c523c4360e9407a4f5bac4adab1f67`: **24/24** negative checker calibrations and synthetic H0/A0 plus review-only positives pass; real H0 fails on absent proof catalogs/pending rows. `ETXTBSY` fixture staged/renamed before spawn. Exact-source manual CI [`36231520581`](https://github.com/gripsack-dev/gripsack/actions/runs/36231520581) passed required Linux `test` (checker24 + Rust/TS/e2e/TLC/Verus), native arm64 Mac `e2e-macos`, audit, fuzz and docs |
 | `2026-09-26-h0-macos-ci-70c5502.log` | `3ed19280d3c7f10282712eb6c64f24194c33a6f859a428d110528d42dcc63dfd` | [Native Mac job 108375457068](https://github.com/gripsack-dev/gripsack/actions/runs/36231520581/job/108375457068) checked out exact `70c5502`, compiled real grip on macOS 14.8.9 arm64 and ran full flow **319/319**, zero skipped; this covers self-update **production flows** and scoped credentials, not the Rust-only corrected unit fixture, nested Mac-VM, launchd scheduling or H0 semantic review |
 | `2026-09-26-h0-milestone-catalog-8c27693.log` | `a66ef369c232a10711781e9291c80d5d3c16898f0490d3c527549c8c23b4606a` | Exact committed source `8c27693`, fingerprint `9112551b88848a1a9c5c1a4c52a633d666e262f61ed7df8da2c85379efe0ff21`, clean tracked roots: **27/27** adversarial checker negatives reject cross-milestone G-03 proof substitution, missing future inventory and counts borrowed from SHA digits; synthetic H0/A0 and review-only positives pass; real H0 cannot close for absent G-03/H0 catalog, pending H0-02 and unevidenced global lanes. Prior CI at `70c5502` is historical, not current-source verification |
+| `2026-09-26-h0-catalog-ace9496.log` | `bd7acf71ff1fe9a32840793c233fc0e1393209bd8c4379be41c303fc3a4e18f1` | Exact source `ace9496`, fingerprint `de121645a884feb89ca1fa7a1356babd7ee2ca07bde4ee729ffd6b4c9b12f9fa`, clean tracked roots: **27/27** synthetic checker negatives and H0/A0/review-only positives, while actual H0 closure rejects missing G-03/H0 proof catalog and pending H0-02. New B0 required-CI wiring changed behavior roots, so the older `8c27693` report is historical; no actual formal campaign or 178-row semantic review is claimed |
+| `2026-09-26-h0-catalog-0be1eaa.log` | `e04f648f6ba04cf2ad6afce5a0704bb068000b2fdd3ed262f02f83149cacc5b1` | Source `0be1eaa`, fingerprint `32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b`, clean roots: **27/27** source-bound checker negatives; synthetic H0/A0/review-only positives pass, real H0 cannot close. B0 post-runtime six-case marker changed behavior roots after `ace9496`, so earlier receipts cannot silently substitute for this source |
 
 These reports cover inventory/checker mechanics and the named
 runtime cases on their platforms, not semantic review of all 178
@@ -194,6 +196,32 @@ actual named proof catalogs/count floors; global, native manager,
 Mac-VM and registry lanes need separate qualified reports. Neither
 a synthetic fixture nor manual CI dispatch enforces branch protection
 or closes H0/A0.
+
+## B0 BuildKit Linux qualification — real daemon, no Mac-VM inference
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-26-b0-linux-8352793.log` | `e29e39ed1475a32a626c27f210a573b8a1ccb9a0c39ee4eca499e03e1880ca6d` | Source `8352793`, fingerprint `14f0153f38343774be869c1a73268ba5ea2dbca01b4d64eab9e1b7a98c4721e4`, clean isolated checkout: **6/6** pinned real Linux Go/BuildKit cases with three fresh workers, shared graph/cancel/attributable failure, input/credential policy, retained native executable, independent OCI blob/DiffID/content check and engine load/run. Build/pins/export hashes and actual versions in report; host `grip` binary linkage not assessed |
+| `2026-09-26-b0-lock-mutant-8352793.log` | `2363317b518e1330f1d2000a62bf4a3ef79cd290396a45981931e7eb55e5dbad` | Source `8352793` plus report-bound dirty lock patch: actual builder-named Rust dependency rejects before worker startup instead of being swallowed by `tee` |
+| `2026-09-26-b0-verifier-mutant-8352793.log` | `21e97cf497a9cd3c69339e34f893073ddca119af14fbc6cc553a7df9e871c88b` | Source `8352793`, real two-worker export with one blob byte corrupted before real independent Python verifier: named digest mismatch and harness exit 1 before Docker load |
+| `2026-09-26-b0-load-mutant-8352793.log` | `69c7466ebee5aaa7c7cbf19cfb45d071b432934d87dc3ce454a81d20c715a96c` | Source `8352793`, valid fresh-worker OCI reports followed by deliberate Docker CLI load refusal; harness exits 1, worker/cache absent after failure |
+| `2026-09-26-b0-linux-0be1eaa.log` | `95bf677bbc5a55c57b3a7736d75d46bf3ecec9bbdbf67daecf72af3feb75c983` | Final source `0be1eaa`, fingerprint `32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b`: complete **6/6** actual Linux BuildKit driver stdout with marker emitted *after* Docker-engine load/run; all three worker/version witnesses, input/graph/retained executable and independent OCI checks, plus source/pin/binary/tar SHA-256. Required CI test step wired, but a workflow file alone does not prove it passed |
+| `2026-09-26-b0-lock-mutant-0be1eaa.log` | `414165f69675f427e2eeada45e32b08defa15411a69e9f4f05c245dd9edd217d` | Final source plus exact synthetic dirty-lock patch: builder dependency refused with no worker startup or six-case success marker |
+| `2026-09-26-b0-verifier-mutant-0be1eaa.log` | `910b1b1c83e9cad672adea60aae8b1f62ac64d1804cc5f76dc4cad6cd1015279` | Final source: one actual exported OCI blob byte flipped, real independent verifier rejects named SHA-256 mismatch; no Docker load or six-case marker |
+| `2026-09-26-b0-load-mutant-0be1eaa.log` | `a21d692b295240cc197f61625b0acd3451cc84e69591a0f159001259d0dcb21c` | Final source: independent OCI verifier passes, Docker engine load deliberately rejects, driver exits nonzero with no six-case marker; worker/cache absent afterward |
+
+The prior `6542fc9` driver printed a false dependency `FAIL` on
+workspace documentation/tests yet exited zero; its verifier pipeline
+and load-failure branch could also conceal failure. These receipts
+qualify **only** B0-01's Linux lane. Required container-gate coverage,
+B0-02's Mac VM, B0-03's full footprint and B1 production provisioning
+remain open.
+
+## E0 native user-manager qualification — systemd only
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-26-e0-systemd-0be1eaa.log` | `932a36f8a76dee63bda0adbe85b9f8825ec41c3754d9c712aa3a61fa6a84b323` | Exact source `0be1eaa`, fingerprint `32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b`: real systemd 255 user manager, UID 1000, Linger=no, `daily` local-calendar normalization; uniquely named transient one-shot timer/service fires at the scheduled second (+1.007 s), exits successfully and leaves no loaded/listed unit. Disposable script bytes, all OS command outputs and cleanup are embedded; **3/3** Linux manager/timing/fixture checks. This does not qualify native launchd, a Gripsack E3 scheduler or sleep/reboot/DST |
 
 ## M0 §1.1 comma-grant rejection — committed local behavior, no release
 

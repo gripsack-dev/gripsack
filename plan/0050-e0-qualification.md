@@ -60,12 +60,21 @@ Success is `succeeded` only with declared postconditions passed.
 
 ## E0-02 — OS scheduling qualification
 
-systemd lane **verified** on this workstation (systemd 255,
-`255.4-1ubuntu8.17`, user manager running, Linger=no): fixture
-journey install → `OnCalendar` trigger at second accuracy → removal
-with zero residue; `systemd-analyze calendar` normalization recorded
-(`daily` → `*-*-* 00:00:00` host-local). Full evidence:
-`verification/delivery.json` E0-02 and plan/0049 §E0-02.
+The **systemd-linux lane alone is verified** at source `0be1eaa`.
+`verification/reports/2026-09-26-e0-systemd-0be1eaa.log`
+(SHA-256 `932a36f8a76dee63bda0adbe85b9f8825ec41c3754d9c712aa3a61fa6a84b323`)
+embeds the disposable fixture source and actual systemd 255
+user-manager outputs: UID 1000, Linger=no; `daily` normalized to
+local `*-*-* 00:00:00`; a unique transient user `.timer` with
+`AccuracySec=1s`/`Persistent=no` bound a finite `.service` with
+`Restart=no`, fired **1.007 seconds** after the requested local
+calendar second and exited successfully. `--collect` left both
+units `not-found` and no timer-listing residue; no persistent
+user unit, other schedule or clock was changed. Three named Linux
+checks pass. The previous 2026-09-24 Markdown-only observation
+remains historical and cannot qualify this newer result. This is
+an OS-manager capability fixture, **not** the future E3 Gripsack
+registration/runtime or a sleep/reboot/DST claim.
 
 launchd/macOS lane: **blocked** — no Mac hardware or runner on this
 workstation. The lane stays open; Linux results never qualify it.
@@ -75,6 +84,6 @@ workstation. The lane stays open; Linux results never qualify it.
 | Item | Status |
 |---|---|
 | E0-01 inventory (this document) | implemented_unverified (record complete; awaits owner review + A1 contract landing for the mapping to bind) |
-| E0-02 systemd lane | verified (evidence in ledger) |
+| E0-02 systemd lane | verified at `0be1eaa`: real transient user-manager calendar trigger, bounded observation and zero residue in SHA-256 runner report |
 | E0-02 launchd lane | blocked (no Mac) |
-| Next | E1 waits on A1/A2/A2-P; independent B0 Linux lane next (B0-01 harness, B0-04 inventory) |
+| Next | Obtain actual native Mac launchd user-agent evidence for E0-02; E0/E1 stay open until A1/A2/A2-P and other requirements. B0 Linux harness is separately source-bound but B0 required CI/Mac-VM lanes remain open |

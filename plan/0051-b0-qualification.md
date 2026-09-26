@@ -80,16 +80,16 @@ keep failure-fence/late-result acceptance tests (B5-01). No blanket
 
 ## B0-01 results — Linux/amd64 lane (2026-09-24, run of `probes.sh`)
 
-Evidence honesty note (2026-09-24): the probe outcomes below were observed
-green on this workstation, but they are recorded only in this Markdown
-document — the run artifacts under
-`verification/buildkit-qualification/results/` are gitignored and were not
-preserved as a repo-local, SHA-256-hashed, count-bearing report bound to an
-exact source commit/dirty identity. Under the hardened delivery checker the
-B0-01 row is therefore `implemented_unverified` (not verified) until the
-probe suite is rerun with portable, source-bound runner evidence in
-`verification/reports/`. The observations themselves stand and are preserved
-in the ledger's `historical_claims`.
+The 2026-09-24 observations below are historical, **not** passing
+source-bound evidence: their artifacts were gitignored and their
+Markdown-only summary lacked a report SHA-256, execution counts and an
+exact tested source. A fresh run at source `6542fc9` additionally
+exposed a false green: the baseline source-text search printed
+`FAIL: builder references leaked into product sources` for legitimate
+workspace tests/comments, but its plain-`sh` pipeline returned
+`tee`'s zero and ran all later probes. The independent OCI verifier
+was also piped through `tee`, and the Docker load-failure branch had
+no nonzero exit. That run cannot qualify B0-01.
 
 Environment: WSL2 Linux 6.18.33.2, docker 29.7.2, buildkitd v0.33.0
 (`dddd5621`) from `moby/buildkit:v0.33.0@sha256:a461e7f0…` (amd64 leaf;
@@ -111,6 +111,13 @@ here).
 | 5 policy | PASS: include-pattern transport delivered only `allowed.txt` (secret + nested canaries absent); op environment holds no credential-shaped host variables; container root shows no host paths |
 | 6 Mac VM | **blocked** — no Mac hardware; B0-02 lane stays open |
 
+The old probe-1 “zero source references” line is a lexical snapshot,
+not a current native dependency or no-bootstrap guarantee. The
+corrected driver parses actual `Cargo.lock` packages; its isolated
+checkout had no `target/debug/grip`, so binary linkage was **not**
+assessed there. The independent offline real-CLI e2e gate remains
+required for product behavior.
+
 B0-03 measurements (Linux lane): buildkit worker image 267–363 MB,
 in-graph gcc pull ~1.25 GB once per cold cache, alpine 13 MB, OCI
 fixture output 3.7 MB, worker lifetime for probes 2+3+5: 35 s.
@@ -120,12 +127,52 @@ of it (probe 1). Full cold/warm/offline separation including the Mac
 VM lane waits for B1's managed worker; B0-03 stays `in_progress`
 (Linux measurements recorded, VM lane blocked).
 
+## B0-01 current Linux qualification (2026-09-26)
+
+The committed `0be1eaa` driver reports native Rust dependencies
+from the parsed lock instead of rejecting harmless comments/tests.
+It checks baseline, worker-health/version and OCI verifier exits
+before accepting an output, requires independent Docker-engine
+load/run, and prints `B0_LINUX_QUALIFICATION=6` **only after**
+every named case succeeds. Its source-bound real-worker report
+`verification/reports/2026-09-26-b0-linux-0be1eaa.log`
+(SHA-256 `95bf677bbc5a55c57b3a7736d75d46bf3ecec9bbdbf67daecf72af3feb75c983`,
+fingerprint `32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b`)
+records **6/6** Linux cases, pinned tool/image/Go-module identities,
+three disposable workers with actual health/version witnesses, a
+retained static executable run after worker/cache removal, two
+independently decoded and reproduced OCI exports, and Docker-engine
+load/run after both workers were destroyed.
+
+Three attributable negatives at the **same source** reject a native
+builder dependency before worker startup (dirty lock patch digest
+recorded), an actually corrupted exported OCI blob through the real
+independent verifier, and an intentionally failed Docker-engine
+load *after* valid independent OCI checks. None prints the
+six-case success marker. SHA-256 reports:
+`2026-09-26-b0-lock-mutant-0be1eaa.log`
+(`414165f69675f427e2eeada45e32b08defa15411a69e9f4f05c245dd9edd217d`),
+`2026-09-26-b0-verifier-mutant-0be1eaa.log`
+(`910b1b1c83e9cad672adea60aae8b1f62ac64d1804cc5f76dc4cad6cd1015279`),
+and `2026-09-26-b0-load-mutant-0be1eaa.log`
+(`a21d692b295240cc197f61625b0acd3451cc84e69591a0f159001259d0dcb21c`).
+Earlier `8352793`/`ace9496` receipts are historical after the
+required-CI workflow and runner marker changed behavior roots.
+
+The B0-01 `linux-amd64` lane is verified. Its `container-gates`
+lane is wired into the **required** CI `test` job, but is not verified
+until an exact-source successful job/report actually runs this harness
+alongside all five Compose gates. The row remains
+`implemented_unverified`. B0-02's Apple Silicon virtualization/VM
+lane remains blocked; the privileged Linux qualification worker
+is not B1's managed Mac worker.
+
 ## Record
 
 | Item | Status |
 |---|---|
 | B0-04 inventory | implemented_unverified (binds at B1/B2) |
-| B0-01 harness | implemented_unverified — observed green on Linux/amd64 2026-09-24 (probes above), but evidence is this Markdown record only; verified requires a portable source-bound runner report (harness in `verification/buildkit-qualification/`) |
+| B0-01 harness | implemented_unverified — `linux-amd64` lane source-bound **6/6** and three intended negatives at `0be1eaa`; the required CI test job now runs B0, but the `container-gates` lane and row await observed exact-source completion |
 | B0-02 Mac VM | blocked (no Mac) |
 | B0-03 footprint | in_progress: Linux measurements + zero-builder baseline recorded; VM lane and full budgets at B1 |
 | Next | B1 gated on A1 + qualified lane; Mac gate stays open |

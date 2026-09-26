@@ -1,0 +1,15 @@
+RUNNER_SOURCE_COMMIT=0be1eaa2d76b91152228fb124025e97389c028e6
+RUNNER_SOURCE_FINGERPRINT=32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b
+RUNNER_SOURCE_ROOTS_DIRTY=clean before/after; only ignored isolated result files differ
+RUNNER_COMMAND=env PATH=<temporary verify-fault/python3 wrapper>:PATH sh probes.sh
+RUNNER_EXIT=1 expected; success marker B0_LINUX_QUALIFICATION=6 absent on this failure
+RUNNER_TOOL_VERSIONS=Python 3.12.3, Docker 29.7.2, pinned real BuildKit v0.33.0 and Go 1.26.3
+RUNNER_INPUTS=two real fresh-worker OCI exports; one content-addressed blob byte in OCI-1 flipped before actual independent Python verify_oci.py; corrupted tar SHA-256 10dedad0a7ed6f5ccdf21987b24bc112c17755ac03a77aff057c2c9924c14217; temporary injector SHA-256 cf7074fe9df35d3b16d16e29faaf74f422c2063780c0bf4f395cc04efe590ba8
+INTENDED_PROPERTY=every exported OCI blob must match its declared SHA-256 before qualification can reach the Docker runtime
+OBSERVED_REJECTION=blob digest mismatch at blobs/sha256/; actual independent verifier returned 1 and driver stopped before load
+
+===== real independent verifier failure captured by B0 driver =====
+blob digest mismatch at blobs/sha256/3a120566c53e759c98062b1b9d76ab17608a1326a2c088c48c176b1f1e53b351: sha256:a708a59bba124dd3147b70c983b3516530ee88758dd0bf5e9252f476c213758d != sha256:3a120566c53e759c98062b1b9d76ab17608a1326a2c088c48c176b1f1e53b351
+
+B0_VERIFIER_MUTANT=1
+RUNNER_COUNTS=1 calibrated expected-failure execution, 1 passing named blob-digest property rejection, zero skipped/missing tools.
