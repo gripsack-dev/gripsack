@@ -123,26 +123,24 @@ proof: all 39 real formal rows still lack reviewed names/floors;
 H0-02 and milestone closure remain open.
 
 The current committed-source checker receipt
-`verification/reports/2026-09-26-h0-catalog-70c5502.log`
-(SHA-256 `dfcff39d73c0ee3987eccaceb558845c9f6f6d110c282aa88f872be832162926`)
-binds source `70c5502a21aa67e66166e8a1b24c0c8783007b03`,
-fingerprint `5ad7400b5b9ca9e56dba286b34d2bb30c8c523c4360e9407a4f5bac4adab1f67`
-and clean tracked roots before/after the direct runner: **24/24**
-negative cases rejected; synthetic H0/A0 and review-only positives
-accepted. The `56b1581` 23-case and `52943b2` 24-case receipts remain
-historical only. Required test in manually dispatched CI `36230541824`
-failed on `52943b2` because a self-update test attempted to execute a
-freshly rewritten shell fixture (`ETXTBSY`). At `70c5502` the fixture
-publishes a fully closed staged inode by rename. Local Rust
-fmt/clippy/tests, focused version probe, real e2e **319/319**, fresh
-TLC and Verus **72/0** with seven named mutants pass; TypeScript RUN
-stage was cached locally. Exact-source manual CI
+`verification/reports/2026-09-26-h0-milestone-catalog-8c27693.log`
+(SHA-256 `a66ef369c232a10711781e9291c80d5d3c16898f0490d3c527549c8c23b4606a`)
+binds source `8c27693b093ed23d528d434f7a83577811d6714a`,
+fingerprint `9112551b88848a1a9c5c1a4c52a633d666e262f61ed7df8da2c85379efe0ff21`
+and clean tracked roots before/after direct execution: **27/27**
+negative calibrations rejected, synthetic H0/A0 and review-only
+positives accepted, live H0 closure rejected because G-03/H0 lacks a
+real proof catalog and H0-02 remains in progress. The `56b1581`,
+`52943b2` and `70c5502` receipts remain historical. Required CI
+`36230541824` failed on source `52943b2` with `ETXTBSY` in a self-update
+test fixture; `70c5502` staged and renamed that fixture before spawn.
+Its exact-source manual CI
 [`36231520581`](https://github.com/gripsack-dev/gripsack/actions/runs/36231520581)
-at `70c5502` passes required Linux test, native arm64 Mac full e2e
-**319/319**, audit, fuzz and docs; Mac job bytes are archived under
-`verification/reports/2026-09-26-h0-macos-ci-70c5502.log`. That run
-does not enforce PR branch protection. Actual H0 closure still rejects
-the absent G-03 proof catalog and pending H0/global rows.
+then passed Linux test, native arm64 Mac e2e **319/319**, audit,
+fuzz and docs, with native job bytes archived as
+`verification/reports/2026-09-26-h0-macos-ci-70c5502.log`. That older
+run does not qualify this newer source, enforce PR protection, or
+supply Mac-VM, TLAPS or the missing formal catalogs.
 
 ## A3-01 — external TypeScript example CI reveals an unpinned Pixi result
 
