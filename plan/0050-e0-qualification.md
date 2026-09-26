@@ -60,21 +60,24 @@ Success is `succeeded` only with declared postconditions passed.
 
 ## E0-02 — OS scheduling qualification
 
-The **systemd-linux lane alone is verified** at source `0be1eaa`.
-`verification/reports/2026-09-26-e0-systemd-0be1eaa.log`
-(SHA-256 `932a36f8a76dee63bda0adbe85b9f8825ec41c3754d9c712aa3a61fa6a84b323`)
-embeds the disposable fixture source and actual systemd 255
+The **systemd-linux lane alone is verified** at source `6909bbc`.
+`verification/reports/2026-09-26-e0-systemd-6909bbc.log`
+(SHA-256 `8c387e273f85e8628e483cbda16e523a9a45e6741716637eb3a9f23cfc30eb14`)
+embeds the same disposable fixture source and actual systemd 255
 user-manager outputs: UID 1000, Linger=no; `daily` normalized to
 local `*-*-* 00:00:00`; a unique transient user `.timer` with
 `AccuracySec=1s`/`Persistent=no` bound a finite `.service` with
-`Restart=no`, fired **1.007 seconds** after the requested local
+`Restart=no`, fired **0.983 seconds** after the requested local
 calendar second and exited successfully. `--collect` left both
 units `not-found` and no timer-listing residue; no persistent
 user unit, other schedule or clock was changed. Three named Linux
-checks pass. The previous 2026-09-24 Markdown-only observation
-remains historical and cannot qualify this newer result. This is
-an OS-manager capability fixture, **not** the future E3 Gripsack
-registration/runtime or a sleep/reboot/DST claim.
+checks pass. The earlier `0be1eaa` and 2026-09-24 Markdown
+observations remain historical after the checker-source change.
+E0-02's case inventory names positive launchd version/domain and
+real install/run/remove outcomes in a separate exhaustive lane map;
+a “Mac BLOCKED” string is not a passing case. This qualifies only
+OS-manager capability, **not** the future E3 Gripsack
+registration/runtime or sleep/reboot/DST.
 
 launchd/macOS lane: **blocked** — no Mac hardware or runner on this
 workstation. The lane stays open; Linux results never qualify it.
@@ -84,6 +87,6 @@ workstation. The lane stays open; Linux results never qualify it.
 | Item | Status |
 |---|---|
 | E0-01 inventory (this document) | implemented_unverified (record complete; awaits owner review + A1 contract landing for the mapping to bind) |
-| E0-02 systemd lane | verified at `0be1eaa`: real transient user-manager calendar trigger, bounded observation and zero residue in SHA-256 runner report |
+| E0-02 systemd lane | verified at `6909bbc`: real transient user-manager calendar trigger, bounded observation and zero residue in SHA-256 runner report |
 | E0-02 launchd lane | blocked (no Mac) |
 | Next | Obtain actual native Mac launchd user-agent evidence for E0-02; E0/E1 stay open until A1/A2/A2-P and other requirements. B0 Linux harness is separately source-bound but B0 required CI/Mac-VM lanes remain open |

@@ -188,11 +188,12 @@ and actual release gates remain open.
 | `2026-09-26-h0-milestone-catalog-8c27693.log` | `a66ef369c232a10711781e9291c80d5d3c16898f0490d3c527549c8c23b4606a` | Exact committed source `8c27693`, fingerprint `9112551b88848a1a9c5c1a4c52a633d666e262f61ed7df8da2c85379efe0ff21`, clean tracked roots: **27/27** adversarial checker negatives reject cross-milestone G-03 proof substitution, missing future inventory and counts borrowed from SHA digits; synthetic H0/A0 and review-only positives pass; real H0 cannot close for absent G-03/H0 catalog, pending H0-02 and unevidenced global lanes. Prior CI at `70c5502` is historical, not current-source verification |
 | `2026-09-26-h0-catalog-ace9496.log` | `bd7acf71ff1fe9a32840793c233fc0e1393209bd8c4379be41c303fc3a4e18f1` | Exact source `ace9496`, fingerprint `de121645a884feb89ca1fa7a1356babd7ee2ca07bde4ee729ffd6b4c9b12f9fa`, clean tracked roots: **27/27** synthetic checker negatives and H0/A0/review-only positives, while actual H0 closure rejects missing G-03/H0 proof catalog and pending H0-02. New B0 required-CI wiring changed behavior roots, so the older `8c27693` report is historical; no actual formal campaign or 178-row semantic review is claimed |
 | `2026-09-26-h0-catalog-0be1eaa.log` | `e04f648f6ba04cf2ad6afce5a0704bb068000b2fdd3ed262f02f83149cacc5b1` | Source `0be1eaa`, fingerprint `32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b`, clean roots: **27/27** source-bound checker negatives; synthetic H0/A0/review-only positives pass, real H0 cannot close. B0 post-runtime six-case marker changed behavior roots after `ace9496`, so earlier receipts cannot silently substitute for this source |
+| `2026-09-26-h0-catalog-6909bbc.log` | `a175cbf869b711e39439f1d33ee34a4bfabd7ae12d44cea0af551c4262ebb99f` | Source `6909bbc`, fingerprint `b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0`, clean roots: **30/30** negative checker calibrations and synthetic H0/A0/E0 platform-lane/review-only positives. E0's Linux report cannot stand in for native launchd, omitted Mac cases are rejected; real H0 still fails for missing proof catalogs and H0-02 |
 
 These reports cover inventory/checker mechanics and the named
 runtime cases on their platforms, not semantic review of all 178
 delivery rows. H0-02 remains `in_progress`: 39 formal rows need
-actual named proof catalogs/count floors; global, native manager,
+actual named proof catalogs/count floors; global, native launchd,
 Mac-VM and registry lanes need separate qualified reports. Neither
 a synthetic fixture nor manual CI dispatch enforces branch protection
 or closes H0/A0.
@@ -209,6 +210,10 @@ or closes H0/A0.
 | `2026-09-26-b0-lock-mutant-0be1eaa.log` | `414165f69675f427e2eeada45e32b08defa15411a69e9f4f05c245dd9edd217d` | Final source plus exact synthetic dirty-lock patch: builder dependency refused with no worker startup or six-case success marker |
 | `2026-09-26-b0-verifier-mutant-0be1eaa.log` | `910b1b1c83e9cad672adea60aae8b1f62ac64d1804cc5f76dc4cad6cd1015279` | Final source: one actual exported OCI blob byte flipped, real independent verifier rejects named SHA-256 mismatch; no Docker load or six-case marker |
 | `2026-09-26-b0-load-mutant-0be1eaa.log` | `a21d692b295240cc197f61625b0acd3451cc84e69591a0f159001259d0dcb21c` | Final source: independent OCI verifier passes, Docker engine load deliberately rejects, driver exits nonzero with no six-case marker; worker/cache absent afterward |
+| `2026-09-26-b0-linux-6909bbc.log` | `d391667269ca65ffac61b45af133f04fa2fc8c040638f941dc9237e191ac2ea4` | Source `6909bbc`, fingerprint `b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0`: **6/6** pinned real Go/BuildKit cases, three worker health/version observations, surviving executable and independently verified/loadable OCI output; post-runtime runner marker included in actual stdout. Required CI job must separately complete at this head for the container lane |
+| `2026-09-26-b0-lock-mutant-6909bbc.log` | `7f61e6076fca675e59e31248789eaa64a1a4dd58f347bcdcc87cc12460057d70` | Same source plus report-bound dirty lock patch: builder dependency rejected before worker, no success marker |
+| `2026-09-26-b0-verifier-mutant-6909bbc.log` | `e2292232f0b991b40d6381c9e4e9a89ef5a1d9af829670995559d31e27cb011d` | Same source: one real OCI blob changed, independent Python verifier names SHA mismatch and aborts before Docker load |
+| `2026-09-26-b0-load-mutant-6909bbc.log` | `61a8e8a357af6654fd9882305165e2ef321552f5e1edf71148bc5d5a468eeb39` | Same source: valid independent OCI report then actual loader refusal, driver nonzero and no final six-case marker |
 
 The prior `6542fc9` driver printed a false dependency `FAIL` on
 workspace documentation/tests yet exited zero; its verifier pipeline
@@ -222,6 +227,7 @@ remain open.
 | report | sha256 | observed execution |
 |---|---|---|
 | `2026-09-26-e0-systemd-0be1eaa.log` | `932a36f8a76dee63bda0adbe85b9f8825ec41c3754d9c712aa3a61fa6a84b323` | Exact source `0be1eaa`, fingerprint `32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b`: real systemd 255 user manager, UID 1000, Linger=no, `daily` local-calendar normalization; uniquely named transient one-shot timer/service fires at the scheduled second (+1.007 s), exits successfully and leaves no loaded/listed unit. Disposable script bytes, all OS command outputs and cleanup are embedded; **3/3** Linux manager/timing/fixture checks. This does not qualify native launchd, a Gripsack E3 scheduler or sleep/reboot/DST |
+| `2026-09-26-e0-systemd-6909bbc.log` | `8c387e273f85e8628e483cbda16e523a9a45e6741716637eb3a9f23cfc30eb14` | Current source `6909bbc`, fingerprint `b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0`: **3/3** real user-manager version/domain, calendar trigger (+0.983 s), zero-residue timer/service cases; new exhaustive E0 per-lane inventory retains positive native launchd cases blocked on this host. Earlier `0be1eaa` manager report is historical |
 
 ## M0 §1.1 comma-grant rejection — committed local behavior, no release
 

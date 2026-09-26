@@ -129,35 +129,35 @@ VM lane waits for B1's managed worker; B0-03 stays `in_progress`
 
 ## B0-01 current Linux qualification (2026-09-26)
 
-The committed `0be1eaa` driver reports native Rust dependencies
-from the parsed lock instead of rejecting harmless comments/tests.
-It checks baseline, worker-health/version and OCI verifier exits
-before accepting an output, requires independent Docker-engine
-load/run, and prints `B0_LINUX_QUALIFICATION=6` **only after**
-every named case succeeds. Its source-bound real-worker report
-`verification/reports/2026-09-26-b0-linux-0be1eaa.log`
-(SHA-256 `95bf677bbc5a55c57b3a7736d75d46bf3ecec9bbdbf67daecf72af3feb75c983`,
-fingerprint `32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b`)
-records **6/6** Linux cases, pinned tool/image/Go-module identities,
-three disposable workers with actual health/version witnesses, a
-retained static executable run after worker/cache removal, two
-independently decoded and reproduced OCI exports, and Docker-engine
-load/run after both workers were destroyed.
+The committed `6909bbc` source retains the fail-closed B0 driver:
+it parses actual native Rust lock packages rather than rejecting
+harmless comments/tests, checks worker-health/version and
+independent OCI verifier exits, requires Docker-engine load/run,
+then prints `B0_LINUX_QUALIFICATION=6` only after success. Its
+real-worker report
+`verification/reports/2026-09-26-b0-linux-6909bbc.log`
+(SHA-256 `d391667269ca65ffac61b45af133f04fa2fc8c040638f941dc9237e191ac2ea4`,
+fingerprint `b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0`)
+records **6/6** Linux cases: pinned tool/image/Go-module
+identities, three disposable real workers with health/version
+witnesses, static executable after worker/cache removal, two
+independently decoded/reproduced OCI exports, and a separate
+Docker-engine load/run after both workers were destroyed.
 
-Three attributable negatives at the **same source** reject a native
-builder dependency before worker startup (dirty lock patch digest
-recorded), an actually corrupted exported OCI blob through the real
-independent verifier, and an intentionally failed Docker-engine
-load *after* valid independent OCI checks. None prints the
+Three same-source negatives reject a native builder dependency
+before worker startup (dirty lock patch digest recorded), an
+actually corrupted exported OCI blob through the independent
+Python verifier and a deliberately failed Docker-engine load
+*after* valid independent OCI verification. None prints the
 six-case success marker. SHA-256 reports:
-`2026-09-26-b0-lock-mutant-0be1eaa.log`
-(`414165f69675f427e2eeada45e32b08defa15411a69e9f4f05c245dd9edd217d`),
-`2026-09-26-b0-verifier-mutant-0be1eaa.log`
-(`910b1b1c83e9cad672adea60aae8b1f62ac64d1804cc5f76dc4cad6cd1015279`),
-and `2026-09-26-b0-load-mutant-0be1eaa.log`
-(`a21d692b295240cc197f61625b0acd3451cc84e69591a0f159001259d0dcb21c`).
-Earlier `8352793`/`ace9496` receipts are historical after the
-required-CI workflow and runner marker changed behavior roots.
+`2026-09-26-b0-lock-mutant-6909bbc.log`
+(`7f61e6076fca675e59e31248789eaa64a1a4dd58f347bcdcc87cc12460057d70`),
+`2026-09-26-b0-verifier-mutant-6909bbc.log`
+(`e2292232f0b991b40d6381c9e4e9a89ef5a1d9af829670995559d31e27cb011d`),
+and `2026-09-26-b0-load-mutant-6909bbc.log`
+(`61a8e8a357af6654fd9882305165e2ef321552f5e1edf71148bc5d5a468eeb39`).
+Earlier `8352793`/`0be1eaa` receipts are historical after
+the delivery checker added exhaustive case-lane admission.
 
 The B0-01 `linux-amd64` lane is verified. Its `container-gates`
 lane is wired into the **required** CI `test` job, but is not verified
@@ -172,7 +172,7 @@ is not B1's managed Mac worker.
 | Item | Status |
 |---|---|
 | B0-04 inventory | implemented_unverified (binds at B1/B2) |
-| B0-01 harness | implemented_unverified — `linux-amd64` lane source-bound **6/6** and three intended negatives at `0be1eaa`; the required CI test job now runs B0, but the `container-gates` lane and row await observed exact-source completion |
+| B0-01 harness | implemented_unverified — `linux-amd64` lane source-bound **6/6** and three intended negatives at `6909bbc`; required CI test runs B0 but `container-gates` lane and row await observed exact-source completion |
 | B0-02 Mac VM | blocked (no Mac) |
 | B0-03 footprint | in_progress: Linux measurements + zero-builder baseline recorded; VM lane and full budgets at B1 |
 | Next | B1 gated on A1 + qualified lane; Mac gate stays open |

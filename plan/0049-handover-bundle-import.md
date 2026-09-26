@@ -116,34 +116,42 @@ The canonical digest includes row ID, names, minimum and (for G-03)
 milestone; it must match formal evidence and occur in its runner
 bytes. Numeric passed/proof counts require labeled markers, not a
 matching digit buried in a SHA-256 digest. Synthetic H0/A0 with
-distinct proof names per milestone and review-only positives pass;
-**27** negatives reject invalid/mismatched kinds, names, floors,
-catalogs, counts and source. This is checker hardening, **not** a
-proof: all 39 real formal rows still lack reviewed names/floors;
-H0-02 and milestone closure remain open.
+distinct proof names per milestone, a review-only row and distinct
+systemd/launchd lane cases pass; **30** negatives reject invalid
+kinds, names, floors, cross-milestone/lane claims, omitted Mac
+cases, counts and stale source. The optional per-lane case map must
+name **all declared lanes**, contain unique cases and account for
+the entire flat case inventory; absent a split, every case remains
+required in every lane. This is checker hardening, **not** a proof:
+all 39 real formal rows still lack reviewed names/floors; H0-02
+and milestone closure remain open.
 
-A targeted comparison against immutable Epic A §§3.2–3.3 and the
-A1-01/A1-08/A1-11 rows found three inventory gaps. A1-01 named
-only historical v4 catalog conformance even though the active
-typed writer/reader is v5; its case now requires v5 and retains
+A targeted comparison against immutable Epic A §§3.2–3.3, Epic E's
+E0-02 and the A1-01/A1-08/A1-11 rows found four inventory gaps.
+A1-01 named only historical v4 catalog conformance despite an
+active typed v5 writer/reader; its case now requires v5 and retains
 strict read-only v4. A1-08/A1-11 described **unimplemented** work
-instead of naming required positive cases; they now name identity
-and context admission, bounded tree/child ownership, rendered-result
-retention, old source/check stages, managed-block foreign bytes
-and production proof targets. No result or row status changed.
-This does **not** constitute independent semantic review of all
-178 paraphrased rows.
+instead of positive cases; they now name identity/context admission,
+tree/child ownership, rendered retention, old source/check stages,
+managed-block foreign bytes and production proof targets. E0-02's
+literal “Mac BLOCKED” case was not a positive acceptance case:
+the live inventory now names required real launchd success separately
+from systemd and records an exhaustive per-lane split. The Mac lane
+remains blocked, with no fake runner case credited. This does
+**not** constitute independent semantic review of all 178 rows.
 
 The current committed-source checker receipt
-`verification/reports/2026-09-26-h0-catalog-0be1eaa.log`
-(SHA-256 `e04f648f6ba04cf2ad6afce5a0704bb068000b2fdd3ed262f02f83149cacc5b1`)
-binds source `0be1eaa2d76b91152228fb124025e97389c028e6`,
-fingerprint `32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b`
-and clean tracked roots before/after direct execution: **27/27**
-negative calibrations rejected, synthetic H0/A0 and review-only
-positives accepted; actual H0 closure rejects missing G-03/H0 proof
-catalog and pending H0-02. Earlier `56b1581`, `52943b2`,
-`70c5502`, `8c27693` and `ace9496` reports are historical.
+`verification/reports/2026-09-26-h0-catalog-6909bbc.log`
+(SHA-256 `a175cbf869b711e39439f1d33ee34a4bfabd7ae12d44cea0af551c4262ebb99f`)
+binds source `6909bbc55226f917238e31c189f7be29e42c41c9`,
+fingerprint `b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0`
+and clean tracked roots before/after direct execution: **30/30**
+negative calibrations rejected, synthetic H0/A0/E0-lane and
+review-only positives accepted; actual H0 closure still rejects
+the missing G-03/H0 catalog and pending H0-02. Earlier `56b1581`,
+`52943b2`, `70c5502`, `8c27693`, `ace9496` and `0be1eaa`
+checker receipts are historical.
+
 Required CI
 `36230541824` failed on source `52943b2` with `ETXTBSY` in a self-update
 test fixture; `70c5502` staged and renamed that fixture before spawn.
@@ -189,19 +197,20 @@ example nor qualifies A3-01/A3-02 or a public release.
 
 The 2026-09-24 persistent-unit fixture was observed, but its
 Markdown-only record could not verify the lane. A new exact-source
-real user-manager fixture at `0be1eaa` is archived as
-`verification/reports/2026-09-26-e0-systemd-0be1eaa.log`
-(SHA-256 `932a36f8a76dee63bda0adbe85b9f8825ec41c3754d9c712aa3a61fa6a84b323`):
+real user-manager fixture at `6909bbc` is archived as
+`verification/reports/2026-09-26-e0-systemd-6909bbc.log`
+(SHA-256 `8c387e273f85e8628e483cbda16e523a9a45e6741716637eb3a9f23cfc30eb14`):
 systemd 255, UID 1000, manager running, Linger=no; `daily`
 normalizes to `*-*-* 00:00:00` local BST. A uniquely named
 transient `.timer` bound a finite user `.service` with
 `Persistent=no`, `AccuracySec=1s`, `Restart=no`; it fired
-1.007 seconds after the requested local second, then both units
+0.983 seconds after the requested local second, then both units
 were `not-found`, absent from timers, and no persistent files
-or user schedules were modified. The `systemd-linux` lane is
-verified, **not** E0-02 as a row: launchd/macOS is **blocked**
-without native Mac hardware. E3 Gripsack job registration and
-sleep/reboot/DST behavior remain separately required.
+or user schedules were modified. The earlier `0be1eaa` receipt
+is historical. The `systemd-linux` lane is verified, **not**
+E0-02 as a row: launchd/macOS has separate **positive** cases
+and remains **blocked** without native Mac hardware. E3 Gripsack
+job registration and sleep/reboot/DST remain separately required.
 
 
 ## A0-01 — pure OS/architecture/version-aware bottle selection
