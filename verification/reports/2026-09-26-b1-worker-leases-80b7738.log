@@ -1,0 +1,25 @@
+RUNNER_SOURCE_COMMIT=80b7738b4369886cc19b6ae5cebfeace6c88a065
+RUNNER_SOURCE_DIRTY=clean at commit (all six container gates ran on the identical pre-commit bytes)
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Rust 1.98.0; TLC 2.19 via pinned tla2tools 1.7.4; Deno 2.9.6; golang:1.26.3 pinned (race gate)
+RUNNER_INPUTS=B1-02/B1-04 first kernels: (1) gripsack-buildkit::worker — the pure managed-worker lease transition table (provisioning→ready→[leases]→idle-only stopping→stopped; failed from any live state; explicit recover blocked while stale leases exist) plus CleanupSet (only explicitly owned resources delete; retained names never sweep). THE invariant: a worker with a live lease cannot stop — the stop-side dual of "never release a lease an owned writer still uses". (2) specs/WorkerLease.tla — the same transitions under two-client interleavings with environment crashes, wired into the model gate with a positive config and TWO calibrated mutants (early-stop ignoring leases; crash silently erasing leases). (3) The bridge gate now runs go test -race (B1-03 race evidence).
+
+RUNNER_COMMAND=docker compose run --build --rm model
+  cfg/worker-lease.cfg: clean
+  cfg/worker-lease-early-stop.cfg: NoStopWithLiveLease   (violates exactly the named invariant)
+  cfg/worker-lease-crash-wipes.cfg: NoSilentLeaseVanish  (violates exactly the named invariant)
+  gate passed: model checks via scripts/check_models.sh (TLC, positive + calibrated negative configs)
+Model honesty: the first draft of Acquire used [leases EXCEPT ![nextId] = c]; TLC's EXCEPT-on-missing-key silently no-ops (warning only), making the POSITIVE run vacuously green with zero leases ever created — the early-stop mutant caught it (no violation ⇒ FAIL), and Acquire now constructs the function explicitly. Recorded as the calibration doing its job.
+RUNNER_EXIT=0
+
+RUNNER_COMMAND=docker compose run --rm test cargo test --locked -p gripsack-buildkit
+13 passed (7 protocol + 6 worker): two clients lease one worker then idle-stop; live lease blocks stop; crash keeps leases and blocks recovery until explicit drain; illegal transitions reject; unknown leases reject and ids never repeat; cleanup deletes only owned, never retained.
+RUNNER_EXIT=0
+
+RUNNER_COMMAND=sh tools/buildkit-bridge/build.sh (race)
+  ok gripsack.dev/buildkit-bridge (race), ok .../protocol (race); bridge-bin rebuilt
+RUNNER_EXIT=0
+
+SAME-BYTES FULL GATES (pre-commit, identical tracked tree):
+  test gate passed (fresh; embedded frontend fresh) · ts-test 67/67 + tsc · e2e 322/322 real musl grip · model gate above · verify 72/0 + 7 mutants · fuzz full corpus replay
+HONESTY=Pure kernels + model only: no worker is provisioned or stopped by grip, no process/VM/container effects exist yet (B1-01 Linux provisioning is next), the lease table has no production caller besides tests, and TLAPS inductive safety / Verus transitions (B1-04) are not done. No B row verified; grip unchanged.
+B1_WORKER_LEASES=3 (model gate with two mutants, focused Rust suite, race-enabled bridge gate; plus six full gates on identical bytes)
