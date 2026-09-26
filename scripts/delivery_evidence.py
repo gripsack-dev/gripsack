@@ -7,6 +7,7 @@ caller in check_delivery.py owns milestone/closure aggregation.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import subprocess
 import sys
@@ -149,6 +150,11 @@ def evidence_violations(req: dict, ev: dict, idx: int, v: Violations, root: Path
                         for proof_id in proof_ids:
                             if proof_id.encode() not in data:
                                 v.add(rid, f"{where}: proof {proof_id!r} absent from the actual report")
+                    catalog = proof_catalog_digest(req)
+                    claimed = obligations.get("catalog_sha256")
+                    if (catalog is None or claimed != catalog
+                            or not isinstance(claimed, str) or claimed.encode() not in data):
+                        v.add(rid, f"{where}: formal proof catalog digest mismatch or absent from report")
 
 
 def proof_row(req: dict) -> bool:
@@ -160,6 +166,16 @@ def named_proofs(value: object) -> bool:
     return (isinstance(value, list) and bool(value)
             and all(isinstance(name, str) and name.strip() for name in value)
             and len(set(value)) == len(value))
+
+def proof_catalog_digest(req: dict) -> str | None:
+    names = req.get("proof_obligation_inventory")
+    floor = req.get("proof_expected_minimum")
+    if (not named_proofs(names) or not isinstance(floor, int)
+            or isinstance(floor, bool) or floor <= 0):
+        return None
+    catalog = {"id": req["id"], "names": names, "minimum": floor}
+    encoded = json.dumps(catalog, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def valid_obligations(value: object) -> bool:
@@ -208,7 +224,14 @@ def coverage_violations(req: dict, records: list[dict], v: Violations, lanes: se
         if inventory - covered:
             v.add(rid, f"{lane}: conjunctive cases without passing evidence: {sorted(inventory - covered)}")
         if proof_row(req):
-            formal = [ev for ev in passing if ev.get("kind") == "formal"]
+            catalog = proof_catalog_digest(req)
+            formal = [
+                ev for ev in passing
+                if ev.get("kind") == "formal"
+                and catalog is not None
+                and isinstance(ev.get("obligations"), dict)
+                and ev["obligations"].get("catalog_sha256") == catalog
+            ]
             floor = req.get("proof_expected_minimum")
             if not any(valid_obligations(ev.get("obligations"))
                        and isinstance(floor, int) and not isinstance(floor, bool)

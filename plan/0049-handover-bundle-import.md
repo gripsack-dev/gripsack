@@ -107,15 +107,18 @@ the remaining 17 could inherit a runner's self-reported count. It also
 required a runner for five review-only rows. The current checker
 instead validates registered kinds on every row, requires each kind
 on every claimed lane, accepts a genuine review-only row without
-inventing a runner, and requires formal runner bytes to contain the
-named proof IDs and positive checked/expected count. A declared
-`proof_obligation_inventory` plus positive `proof_expected_minimum`
-is mandatory for verified formal rows and for claiming H0-02 complete.
-The synthetic H0/A0 source-bound fixture still closes; 23 negative
-calibrations and one review-only positive exercise the admission. This
-is a checker hardening packet, **not** a proof: all 39 real formal rows
-still need semantically reviewed named obligations/count floors before
-any H0-02 or milestone closure claim.
+inventing a runner. Formal evidence must include named proof IDs and
+positive checked/expected counts in report bytes. A declared
+`proof_obligation_inventory` and positive `proof_expected_minimum`
+are mandatory for verified formal rows and H0-02 closure; the checker
+also hashes the row ID, names and minimum into a catalog digest that
+must match the formal receipt **and** occur in actual runner bytes.
+Changing a proof ID or floor after execution cannot reuse
+the old report without failing admission. A synthetic H0/A0 fixture
+still closes; **24** negative calibrations and a review-only positive
+exercise the check. This is a checker hardening packet, **not** a proof:
+all 39 real formal rows still need semantically reviewed names/floors
+before H0-02 or milestone closure.
 
 Committed-source checker receipt
 `verification/reports/2026-09-26-h0-kinds-56b1581.log`

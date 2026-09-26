@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from delivery_evidence import proof_catalog_digest
 
 REPO = Path(__file__).resolve().parent.parent
 CHECKER = REPO / "scripts/check_delivery.py"
@@ -56,12 +57,13 @@ def record(req: dict, lane: str, milestone: str | None = None, kind: str = "runn
         data["milestone"] = milestone
     if kind == "formal":
         data["obligations"] = {"expected": 1, "checked": 1, "failed": 0,
-                               "skipped": 0, "proof_ids": ["ProofFixture"]}
+                               "skipped": 0, "proof_ids": ["ProofFixture"],
+                               "catalog_sha256": proof_catalog_digest(req)}
     return data
 
 
 def fixture(tmp: Path) -> tuple[dict, Path]:
-    global REVISION
+    global REVISION, MARKER
     subprocess.run(["git", "init", "-q", str(tmp)], check=True)
     (tmp / "scripts").mkdir()
     (tmp / "scripts/calibration.py").write_text("print('synthetic source')\n")
@@ -76,7 +78,6 @@ def fixture(tmp: Path) -> tuple[dict, Path]:
         text=True, capture_output=True, check=True,
     ).stdout.strip()
     (tmp / "verification/reports").mkdir(parents=True)
-    (tmp / REPORT).write_text(MARKER + "\n")
     ledger = json.loads(LEDGER.read_text())
     # This scratch ledger includes real in-progress rows with source-bound
     # evidence. Preserve their report bytes exactly: calibration must
@@ -103,6 +104,9 @@ def fixture(tmp: Path) -> tuple[dict, Path]:
     proof["evidence_kinds"] = ["runner", "formal", "review"]
     proof["proof_obligation_inventory"] = ["ProofFixture"]
     proof["proof_expected_minimum"] = 1
+    catalog = proof_catalog_digest(proof)
+    MARKER = f"fixture runner: 1 passed, 0 failed, 0 skipped; proof: ProofFixture; catalog: {catalog}"
+    (tmp / REPORT).write_text(MARKER + "\n")
     for identity in ("H0-01", "H0-02", "A0-01"):
         req = row(ledger, identity)
         previous = req["status"]
@@ -250,6 +254,14 @@ def main() -> int:
         check(path, unreported_proof, "absent from the actual report", "--validate")
         print("  invented proof ID absent from real report bytes rejected")
 
+        stale_catalog = copy.deepcopy(original)
+        formal = next(ev for ev in row(stale_catalog, "G-03")["evidence_records"]
+                      if ev["milestone"] == "H0" and ev["kind"] == "formal")
+        formal["obligations"]["catalog_sha256"] = "0" * 64
+        check(path, stale_catalog, "formal proof catalog digest mismatch",
+              "--close-milestone", "H0", "--release", REVISION)
+        print("  formal evidence from a different declared proof catalog rejected")
+
         raised_floor = copy.deepcopy(original)
         row(raised_floor, "G-03")["proof_expected_minimum"] = 2
         check(path, raised_floor, "zero executed proof obligations",
@@ -361,7 +373,7 @@ def main() -> int:
         ).strip()
         check(path, reused, "source trees differ", "--close-milestone", "A0", "--release", changed_revision)
         print("  changed-source reuse rejected despite an unchanged evidence receipt")
-    print("delivery checker calibration: 23 negative cases rejected, valid fixtures accepted")
+    print("delivery checker calibration: 24 negative cases rejected, valid fixtures accepted")
     return 0
 
 if __name__ == "__main__":
