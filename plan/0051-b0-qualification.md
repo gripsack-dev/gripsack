@@ -74,7 +74,7 @@ keep failure-fence/late-result acceptance tests (B5-01). No blanket
 
 | Lane | Status |
 |---|---|
-| Linux/amd64 (docker 29.7.2 + compose v5.5.0; buildkitd via pinned image) | ready — B0-01 harness is the next concrete action |
+| Linux/amd64 (local Docker 29.7.2 + Compose v5.5.0; required CI Docker 28.0.4; pinned buildkitd) | B0-01 **verified** in both declared lanes at source `ce3c7e0`; disposable harness only, not a production backend |
 | macOS / Lima VM (B0-02) | **blocked** — no Mac hardware/runner; lane stays open, never inferred from Linux |
 | B0-03 zero-builder baseline | native workflow probes runnable on Linux lane (grip check/plan/preview/fetch download zero builder bytes) |
 
@@ -164,19 +164,28 @@ and `2026-09-26-b0-load-mutant-ce3c7e0.log`
 (`43c325646a67ea9877cc7339475c9a36fcae1965cadd3b7e3605268c0ccbeeba`).
 Four further substitutions in an *actual* loaded Docker image
 inspection (tag, platform, Env, layer DiffID) each fail their
-named production-used checker condition; report
+named qualification-checker condition; report
 `2026-09-26-b0-loaded-mutants-ce3c7e0.log`
 (`5cb91dbb82e4ae43705899d8acc0de2167333129ec1fa953c7ee3aee44ff76f6`).
 Earlier `8352793`/`0be1eaa`/`6909bbc` local receipts are
 historical under changed source roots.
 
-The B0-01 `linux-amd64` lane is verified. Its `container-gates`
-lane runs the real harness inside the **required** PR `test` job;
-the B0 step passed on Docker 28 at exact source `ce3c7e0`.
-The full job, including real e2e/TLC/Verus, has not yet finished:
-the lane and row remain `implemented_unverified` until a passing
-exact-source job/report is observed. B0-02 Apple Silicon Mac-VM
-remains blocked; B1 managed worker/protocol/lowering are not landed.
+The B0-01 `linux-amd64` **and** `container-gates` lanes are now
+verified at identical behavior source `ce3c7e0`. The actual full
+required [PR `test` job](https://github.com/gripsack-dev/gripsack/actions/runs/36239162419/job/108396317823)
+completed successfully: delivery checker **30/30** negatives,
+architecture, Rust fmt/clippy/tests, TypeScript, B0 **6/6** pinned
+real Go/BuildKit cases on Docker 28.0.4 with independent OCI checks,
+Docker load/inspect/run, real CLI e2e **319/319**, TLC and Verus
+**72 verified/0 errors** with seven mutants. Complete job output is
+archived as `verification/reports/2026-09-26-b0-required-ci-ce3c7e0.log`
+(SHA-256 `50b48797ce77092a311188b687d18943515a37945b6fe08fdbf6fb00b64815e3`).
+This qualifies B0-01 only. The current draft PR head includes
+later evidence-only ledger/plan edits, not a new implementation;
+the protected-head CI status must still be judged at its actual head.
+B0-02 Apple Silicon Mac-VM remains blocked; B0-03 budgets and
+B0-04 production witness remain open, and B1 managed worker/
+protocol plus B2 LLB lowering are **not** landed in `grip`.
 
 ### Required CI loader refusals and checked-byte correction (2026-09-26)
 
@@ -199,15 +208,16 @@ SHA-256 `dedceed7658c7cd0bb727e04423f50daadad16db6dae5ef274c88b8c18c114c9`).
 Source `ce3c7e0` converts only *independently verified OCI bytes*
 to a legacy Docker-save archive and compares the actual loaded
 image's effective platform/config/DiffIDs before execution.
-No failed job is counted as success; the required full CI gate
-remains open until its exact-source run completes.
+The later exact-source `ce3c7e0` required `test` job succeeded with
+the checked-byte correction; the older failures stay archived as
+regressions, never counted as successful cases.
 
 ## Record
 
 | Item | Status |
 |---|---|
 | B0-04 inventory | implemented_unverified (binds at B1/B2) |
-| B0-01 harness | implemented_unverified — `linux-amd64` lane source-bound **6/6**, three real-worker negatives and four loaded-image semantic mutants at `ce3c7e0`; required Docker28 B0 step passed, but full `container-gates` job still awaits completion |
+| B0-01 harness | **verified** in `linux-amd64` and `container-gates` at source `ce3c7e0`: **6/6** real Linux and required Docker28 CI job, with three real-worker negatives and four loaded-image mutants; qualification only, no production backend |
 | B0-02 Mac VM | blocked (no Mac) |
 | B0-03 footprint | in_progress: Linux measurements + zero-builder baseline recorded; VM lane and full budgets at B1 |
 | Next | B1 gated on A1 + qualified lane; Mac gate stays open |

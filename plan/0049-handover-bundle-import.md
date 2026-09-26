@@ -126,31 +126,40 @@ required in every lane. This is checker hardening, **not** a proof:
 all 39 real formal rows still lack reviewed names/floors; H0-02
 and milestone closure remain open.
 
-A targeted comparison against immutable Epic A §§3.2–3.3, Epic E's
-E0-02 and the A1-01/A1-08/A1-11 rows found four inventory gaps.
-A1-01 named only historical v4 catalog conformance despite an
-active typed v5 writer/reader; its case now requires v5 and retains
-strict read-only v4. A1-08/A1-11 described **unimplemented** work
-instead of positive cases; they now name identity/context admission,
-tree/child ownership, rendered retention, old source/check stages,
-managed-block foreign bytes and production proof targets. E0-02's
-literal “Mac BLOCKED” case was not a positive acceptance case:
-the live inventory now names required real launchd success separately
-from systemd and records an exhaustive per-lane split. The Mac lane
-remains blocked, with no fake runner case credited. This does
-**not** constitute independent semantic review of all 178 rows.
+A targeted comparison against immutable Epic A §§3.2–3.3
+and Epic E §§5–6 repaired **eight** live case inventories:
+A1-01 names active typed v5 admission and strict read-only v4,
+while A1-08/A1-11 replace “unimplemented” placeholders with
+positive identity/context, file tree/rendered/ownership,
+historical source/check-stage and production proof targets.
+E0-02's “Mac BLOCKED” string was not a positive case;
+native launchd version/domain and timed installation/removal
+remain separately required from observed systemd success.
+E2-01/02/03/04 now distinguish portable parser/preview cases,
+qualified systemd user-manager results and **native launchd**
+calendar/byte/runner outcomes through exhaustive per-lane maps.
+The E2-03 container lane never pretends to run a launchd
+agent on Linux. Native launchd is still blocked, E2 rows
+remain pending, and none of these mappings establishes
+independent semantic review of all **178** handover rows.
 
-The current committed-source checker receipt
-`verification/reports/2026-09-26-h0-catalog-ce3c7e0.log`
-(SHA-256 `94d6167d388ae361e63efd078bb3f907186d194c61be0b90e8c3b75d3e5e1679`)
-binds source `ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c`,
-fingerprint `872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc`
-and clean tracked roots before/after direct execution: **30/30**
-negative calibrations rejected, synthetic H0/A0/E0-lane and
-review-only positives accepted. Actual H0 closure still rejects
-missing G-03/H0 proof catalog and pending H0-02. Earlier
-`56b1581`, `52943b2`, `70c5502`, `8c27693`, `ace9496`,
-`0be1eaa`, `6909bbc` and `fc67212` checker receipts are historical.
+The active direct checker receipt
+`verification/reports/2026-09-26-h0-catalog-ce3c7e0-e2-b0-ledger.log`
+(SHA-256 `45a23cadf945946a74cb4ee1ad4eaa009c983b6e7e6f4b08afcfc656f5369fe4`)
+ran at evidence-only checkout `143f6d533fab790fe0ad2ca731a015d45807bdc9`
+against ledger input SHA-256
+`a8e9169d83cf03ee001c622b4d6ddcf048b34d52201c94e6a2543fd8c17a9534`;
+its tracked behavior source exactly matches committed
+`ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c`
+(fingerprint `872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc`,
+clean tracked roots). The actual updated ledger includes exhaustive
+E2 per-lane positive inventories and B0-01's full required-CI
+two-lane promotion. Direct execution accepted synthetic H0/A0/
+E0-lane and review-only positives and rejected **30/30** negative
+calibrations. Actual H0 closure still rejects the missing G-03/H0
+proof catalog and pending H0-02; the receipt is **not** a semantic
+review of all 178 rows. The earlier ce3 direct report remains
+archived as an earlier ledger snapshot.
 
 Required CI
 `36230541824` failed on source `52943b2` with `ETXTBSY` in a self-update
@@ -162,6 +171,25 @@ fuzz and docs, with native job bytes archived as
 `verification/reports/2026-09-26-h0-macos-ci-70c5502.log`. That older
 run does not qualify this newer source, enforce PR protection, or
 supply Mac-VM, TLAPS or the missing formal catalogs.
+
+At exact behavior source `ce3c7e0`, draft PR #164's native
+macOS 14 arm64 [e2e job](https://github.com/gripsack-dev/gripsack/actions/runs/36239162419/job/108396317702)
+compiled the real CLI and passed **319/319** full flow tests with
+zero skipped (report
+`verification/reports/2026-09-26-h0-macos-ci-ce3c7e0.log`,
+SHA-256 `1aa3946d34e1564825a9387a891ec70fdc88c3229b11dd9805027a11e401fe92`).
+The required Linux [`test` job](https://github.com/gripsack-dev/gripsack/actions/runs/36239162419/job/108396317823)
+also completed successfully at `ce3c7e0`: its full archived output
+`verification/reports/2026-09-26-b0-required-ci-ce3c7e0.log`
+(SHA-256 `50b48797ce77092a311188b687d18943515a37945b6fe08fdbf6fb00b64815e3`)
+records 30 checker negatives, Rust, TypeScript, B0 **6/6** on Docker28,
+real Linux CLI e2e **319/319**, TLC, and Verus **72/0** plus seven
+mutants. This verifies **B0-01's two declared qualification lanes**,
+not a production BuildKit backend or full B0. Native hosted Mac
+application tests do **not** prove nested Mac virtualization, Lima/
+BuildKit, launchd user-agent registration or a source-bound 178-case
+review. The draft PR's current protected head is evidence-only and
+must be judged by its own actual CI; H0 and release remain open.
 
 ## A3-01 — external TypeScript example CI reveals an unpinned Pixi result
 
@@ -280,4 +308,4 @@ regression smoke, not a release closure claim.
 | A0-01 implementation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): unit + container gates observed green (archived `verification/reports/2026-09-24-a0-*.log`: cargo test executed, gripsack-fetch 61 passed / 0 failed incl. 13 bottle cases; e2e 245 passed; verify 56 verified 0 errors + 4 mutants; ts-test/model CACHED) but the logs lack commit/dirty binding and the evidence was Markdown |
 | A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, **30** calibrated negatives and H0/A0/E0-lane/review-only positives (current source-bound `ce3c7e0` report above), plus `check_architecture.py --self-check` in required CI `test`. Every declared kind is conjunctive per claimed lane; optional platform case maps must cover all lanes and exactly the registered case union, so Linux systemd cannot stand in for native launchd. Formal proof IDs, labeled checked count and canonical row ID/names/minimum/**milestone** digest must occur in repo-local runner bytes. All 39 real proof catalogs and independent 178-row semantic review remain open; H0/CI/native/VM lanes, schema and callers are not closed |
 | Milestone closures | **retracted 2026-09-24** — H0 and A0 are NOT closed. The earlier `--close-milestone {H0,A0}` pass rested on Markdown-only evidence and handwritten counts (incl. a G-03 `obligations.checked: 50` contradicting the runner logs' `56 verified, 0 errors`); those claims were moved to `historical_claims`. Closure requires source-bound reports for **each declared kind and lane**, named proof catalogs/floors where formal evidence is mandatory, and passing global gates G-01–G-08. Existing checker calibration is synthetic, not a completion report |
-| Next | name and review proof obligations plus count minima for all 39 real formal rows; obtain a source-bound semantic H0 inventory review and H0/A0/global reports before attempting closure; continue A1 grammar, B0-01's exact-source full required CI/container-gate result and plan/0048 NEXT. B0-01 Linux real-daemon qualification is source-bound at `ce3c7e0`, **not** a `grip` BuildKit backend or B0 closure; native Mac/VM, registry and prover cases require independent real evidence |
+| Next | name and review proof obligations plus count minima for all 39 real formal rows; obtain a source-bound semantic H0 inventory review and H0/A0/global reports before attempting closure; continue A1 grammar, B0-02 Apple Silicon Mac-VM and plan/0048 NEXT. B0-01's **two** pinned Go/BuildKit qualification lanes are verified at `ce3c7e0`, **not** a `grip` BuildKit backend or B0 closure; native launchd, registry, recipients and prover cases require independent real evidence |

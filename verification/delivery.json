@@ -224,17 +224,17 @@
      "date": "2026-09-26",
      "entry_points": ["scripts/check_delivery.py::validate", "scripts/check_delivery.py::close_claim", "scripts/delivery_evidence.py::coverage_violations", "scripts/delivery_checker_calibration.py::main"],
      "environment": "WSL2 Linux/amd64; Python 3.12.3; actual 178-row edition-5 ledger and a disposable synthetic H0/A0 git checkout with repo-local runner bytes",
-     "command": "python3 scripts/check_delivery.py --validate; python3 scripts/delivery_checker_calibration.py; python3 scripts/check_architecture.py --self-check; python3 scripts/check_delivery.py --close-milestone H0 --release ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c (expected rejection)",
+     "command": "python3 scripts/check_delivery.py --validate; python3 scripts/delivery_checker_calibration.py; python3 scripts/check_architecture.py --self-check; python3 scripts/check_delivery.py --close-milestone H0 --release 143f6d533fab790fe0ad2ca731a015d45807bdc9 (expected rejection)",
      "result": "pass",
-     "report": "verification/reports/2026-09-26-h0-catalog-ce3c7e0.log",
-     "report_sha256": "94d6167d388ae361e63efd078bb3f907186d194c61be0b90e8c3b75d3e5e1679",
-     "commit": "ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c",
+     "report": "verification/reports/2026-09-26-h0-catalog-ce3c7e0-e2-b0-ledger.log",
+     "report_sha256": "45a23cadf945946a74cb4ee1ad4eaa009c983b6e7e6f4b08afcfc656f5369fe4",
+     "commit": "143f6d533fab790fe0ad2ca731a015d45807bdc9",
      "source_reuse_sha256": "872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc",
-     "source_reuse_reason": "Evidence-only ledger/plan/report changes follow this committed checker SOURCE_ROOTS. Source/proof-catalog changes require a new input-bound report; synthetic calibration cannot establish 178 paraphrased case semantics.",
+     "source_reuse_reason": "Actual direct runner checkout 143f6d5 has identical tracked SOURCE_ROOTS to code ce3c7e0. The ledger input SHA a8e9169d83cf03ee001c622b4d6ddcf048b34d52201c94e6a2543fd8c17a9534 precedes insertion of this updated receipt and covers the exhaustive E2 per-lane inventory and B0-01 two-lane CI promotion; synthetic calibration cannot establish 178 paraphrased case semantics.",
      "cases_covered": [],
      "kind": "runner",
      "tool_versions": "Python 3.12.3; git; Docker Compose v5.5.0 (container gates separately observed)",
-     "inputs": "Live edition-5 178-ID ledger; synthetic fully evidenced H0/A0 with distinct per-milestone G-03 proof names/catalog digests, an E0 systemd/launchd per-lane success pair and one review-only verified row; 30 adversarial negatives exercise missing/wrong kind, omitted/substituted Mac case or lane, cross-milestone/future proof catalogs, proof IDs/floors/counts/digest, labeled counts versus hash digits, actual report bytes, skipped platform, stale source and downgrade. Live H0 fails because H0-02 remains in_progress and all 39 formal catalogs/global evidence are absent. Not an independent 178-case semantic review or an actual proof.",
+     "inputs": "Live edition-5 178-ID ledger before receipt SHA a8e9169d83cf03ee001c622b4d6ddcf048b34d52201c94e6a2543fd8c17a9534, with E2-01/02/03/04 exhaustive per-lane positive case maps, B0-01 verified local Linux and required full CI but B0 milestone open; synthetic fully evidenced H0/A0 with distinct per-milestone G-03 proof names/catalog digests, E0 systemd/launchd per-lane successes and one review-only verified row; 30 adversarial negatives exercise missing/wrong kind, omitted/substituted Mac lane, cross-milestone/future proof catalogs, proof IDs/floors/counts/digest, labeled counts versus hash digits, actual report bytes, skipped platform, stale source and downgrade. Real H0 fails because H0-02 remains in_progress and all 39 formal catalogs/global evidence are absent. No independent 178-case semantic review or real proof.",
      "guarantee_ids": [],
      "assumptions": ["Disposable synthetic proof report names ProofFixture and one counted check solely to calibrate admission; it is not an actual TLC/TLAPS/Verus theorem.", "Original 39 formal rows and required Mac/VM/registry lanes remain unverified."],
      "report_marker": "H0_KIND_CALIBRATION=30",
@@ -2509,7 +2509,7 @@
    "mandatory_deliverable": "Pinned real Linux BuildKit/Go-LLB qualification harness",
    "required_acceptance_evidence": "Shared-dependency graph, cancellation, bounded failure attribution, declared-input policy probes, retained executable after worker/cache removal, independent runnable OCI result; actual versions/configuration recorded",
    "named_cases_are_conjunctive": true,
-   "status": "implemented_unverified",
+   "status": "verified",
    "required_platform_capability_lanes": [
     "container-gates",
     "linux-amd64"
@@ -2639,10 +2639,37 @@
      "tool_present": true,
      "report_marker": "B0_LOADED_MUTANTS=4",
      "counts": {"executed": 4, "passed": 4, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": [".github/workflows/ci.yml::test::B0 Linux BuildKit qualification", "verification/buildkit-qualification/probes.sh", "verification/buildkit-qualification/bridge/{probe_graph,probe_policy,probe_executable,probe_oci}.go", "verification/buildkit-qualification/verify_oci.py", "verification/buildkit-qualification/check_loaded.py"],
+     "environment": "Required GitHub PR test job on ubuntu-latest linux/amd64 at exact source ce3c7e0; Docker Engine 28.0.4 legacy archive loader; digest-pinned Go 1.26.3 and BuildKit v0.33.0; required Rust/TS/e2e/TLC/Verus gates in the same passing job",
+     "command": "GitHub Actions ci.yml test: delivery calibration; architecture self-check; docker compose run --build --rm test, ts-test; sh verification/buildkit-qualification/bridge/build.sh; sh verification/buildkit-qualification/probes.sh; docker compose run --build --rm e2e, model, verify",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-b0-required-ci-ce3c7e0.log",
+     "report_sha256": "50b48797ce77092a311188b687d18943515a37945b6fe08fdbf6fb00b64815e3",
+     "commit": "ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c",
+     "source_reuse_sha256": "872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc",
+     "source_reuse_reason": "Only evidence/ledger/plan case-map edits after the actual required CI source have the identical tracked behavior SOURCE_ROOTS and the same B0 pinned worker/image/Go-module inputs. B0 job log includes the real success marker after Docker28 load/run; no other epic or release claim inherits this pass.",
+     "cases_covered": [
+      "pinned real Linux BuildKit + Go LLB harness exercised end-to-end",
+      "shared-dependency graph, cancellation and bounded failure attribution observed",
+      "declared-input policy probes pass",
+      "retained executable usable after worker/cache removal",
+      "independent runnable OCI result produced",
+      "actual versions/configuration recorded"
+     ],
+     "kind": "runner",
+     "tool_versions": "GitHub ubuntu-latest; Docker Engine 28.0.4; pinned BuildKit v0.33.0 and Go 1.26.3; Rust 1.98.0; Deno 2.9.6; TLC 1.7.4; Verus 0.2026.09.06.8dea4a2",
+     "inputs": "Exact PR source ce3c7e0, same pinned BuildKit/Go/gcc/alpine digests and Go modules as local six-case run; Docker28 loads the independently verified OCI bytes after compatible Docker-save repack, compares tag/platform/runtime config/layer DiffIDs and executes the expected content. Full job also completed 30 checker negatives, real e2e 319/319, TLC and Verus 72/0 with seven named mutants.",
+     "assumptions": ["This CI job uses a privileged disposable qualification worker, not a production Gripsack managed worker.", "Native hosted macOS e2e is a separate passing job; no Mac VM/launchd success, B1/B2/B5 integration or public release is inferred."],
+     "report_marker": "B0_LINUX_QUALIFICATION=6",
+     "counts": {"executed": 6, "passed": 6, "failed": 0, "skipped": 0}
     }
    ],
    "lane_status": {
-    "container-gates": "implemented_unverified",
+    "container-gates": "verified",
     "linux-amd64": "verified"
    },
    "status_history": [
@@ -2650,6 +2677,12 @@
      "date": "2026-09-24",
      "from": "pending",
      "to": "implemented_unverified"
+    },
+    {
+     "date": "2026-09-26",
+     "from": "implemented_unverified",
+     "to": "verified",
+     "detail": "Both declared B0-01 lanes now have real pinned BuildKit runner reports; required CI ce3c7e0 test job passed delivery calibration, Rust, TS, B0 six cases on Docker 28, e2e 319/319, TLC and Verus. B0-02 Mac VM and all production B1/B2 remain open."
     }
    ],
    "historical_claims": [
@@ -2678,7 +2711,7 @@
     }
    ],
    "lane_notes": {
-    "container-gates": "Five local Compose services pass at matching product inputs. Exact source ce3c7e0's required CI B0 step passed on Docker 28 via checked-byte archive; the full required test job/evidence has not yet completed, so this lane and B0-01 row remain implemented_unverified.",
+    "container-gates": "Verified only B0-01's container-gates lane: required PR test job 108396317823 at ce3c7e0 passed real six-case Go/BuildKit B0 step on Docker28, real CLI e2e 319/319, TLC and Verus 72/0 with seven mutants. Its SHA-256 full job log binds the exact worker and checked OCI/Docker semantics; main PR remains draft, Mac-VM/B1/B2/global proof/release lanes remain open.",
     "linux-amd64": "Source-bound real Linux qualification ce3c7e0: six named real-daemon cases, three fail-closed native/OCI/Docker negatives and four loaded-image substitution mutants, fingerprint 872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc. OCI config bytes are checked; Docker may re-encode image ID, while exact layer DiffIDs and supported effective runtime fields are independently checked. B0-02 Mac-VM stays blocked."
    }
   },
@@ -3778,10 +3811,34 @@
    "required_platform_capability_lanes": ["container-gates", "pure", "systemd-linux", "launchd"],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "daily and weekly local-time schedules normalize weekday/time and bind user scope to the actual qualified systemd and launchd capability",
-    "Linux missed-native means explicit Persistence false while Mac keeps documented native calendar behavior; effective user-session and overlap policy are shown",
+    "daily and weekly local-time schedules normalize weekday/time with an explicit user-scope capability before selecting either native manager",
+    "qualified systemd user manager admits daily/weekly calendar triggers with Persistence false, no implicit linger and no root fallback",
+    "qualified launchd user-agent admits daily/weekly calendar dictionaries with documented native missed/session behavior and no LaunchDaemon fallback",
+    "effective manager availability, local timezone and manual/timer overlap policy are shown in read-only plans on each selected platform",
     "invalid time/date/weekday, arbitrary cron, interval, named timezone, portable catch-up, system/root service and unsupported manager scope/version reject before generation"
    ],
+   "case_and_proof_inventory_by_lane": {
+    "container-gates": [
+     "daily and weekly local-time schedules normalize weekday/time with an explicit user-scope capability before selecting either native manager",
+     "effective manager availability, local timezone and manual/timer overlap policy are shown in read-only plans on each selected platform",
+     "invalid time/date/weekday, arbitrary cron, interval, named timezone, portable catch-up, system/root service and unsupported manager scope/version reject before generation"
+    ],
+    "pure": [
+     "daily and weekly local-time schedules normalize weekday/time with an explicit user-scope capability before selecting either native manager",
+     "effective manager availability, local timezone and manual/timer overlap policy are shown in read-only plans on each selected platform",
+     "invalid time/date/weekday, arbitrary cron, interval, named timezone, portable catch-up, system/root service and unsupported manager scope/version reject before generation"
+    ],
+    "systemd-linux": [
+     "qualified systemd user manager admits daily/weekly calendar triggers with Persistence false, no implicit linger and no root fallback",
+     "effective manager availability, local timezone and manual/timer overlap policy are shown in read-only plans on each selected platform",
+     "invalid time/date/weekday, arbitrary cron, interval, named timezone, portable catch-up, system/root service and unsupported manager scope/version reject before generation"
+    ],
+    "launchd": [
+     "qualified launchd user-agent admits daily/weekly calendar dictionaries with documented native missed/session behavior and no LaunchDaemon fallback",
+     "effective manager availability, local timezone and manual/timer overlap policy are shown in read-only plans on each selected platform",
+     "invalid time/date/weekday, arbitrary cron, interval, named timezone, portable catch-up, system/root service and unsupported manager scope/version reject before generation"
+    ]
+   },
    "evidence_kinds": ["runner"],
    "evidence_records": []
   },
@@ -3797,11 +3854,42 @@
    "required_platform_capability_lanes": ["container-gates", "pure", "systemd-linux", "launchd"],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "independent systemd unit/timer and LaunchAgent plist decoders compare actual generated bytes with the admitted executable, structured args, trigger, user domain and no-restart policy",
-    "systemd specifier expansion, XML escapes, spaces, quotes, Unicode, control characters and malicious paths reject or preserve exact intended argv with no shell interpolation",
-    "checked unit/plist bytes remain identical through staging and protected installation, including replacement-between-check-and-register rejection",
-    "changed executable, argv, trigger, restart and job identity mutants fail the named independent byte comparison, not serializer snapshots"
+    "independent systemd unit/timer decoder compares generated bytes with admitted executable, structured args, local trigger, user-manager domain and no-restart policy",
+    "independent LaunchAgent plist decoder compares generated bytes with admitted executable, structured args, calendar trigger, user-agent domain and no-KeepAlive policy",
+    "systemd specifier expansion, whitespace, Unicode, control characters and malicious paths reject or preserve the exact intended argv without shell interpolation",
+    "launchd XML escaping, whitespace, Unicode, control characters and malicious paths reject or preserve the exact intended argv without shell interpolation",
+    "checked unit/plist bytes remain identical through protected staging and installation, including replacement-between-check-and-register rejection",
+    "changed executable, argv, trigger, restart policy and job identity mutants fail the named independent byte comparison, not serializer snapshots"
    ],
+   "case_and_proof_inventory_by_lane": {
+    "container-gates": [
+     "independent systemd unit/timer decoder compares generated bytes with admitted executable, structured args, local trigger, user-manager domain and no-restart policy",
+     "independent LaunchAgent plist decoder compares generated bytes with admitted executable, structured args, calendar trigger, user-agent domain and no-KeepAlive policy",
+     "systemd specifier expansion, whitespace, Unicode, control characters and malicious paths reject or preserve the exact intended argv without shell interpolation",
+     "launchd XML escaping, whitespace, Unicode, control characters and malicious paths reject or preserve the exact intended argv without shell interpolation",
+     "checked unit/plist bytes remain identical through protected staging and installation, including replacement-between-check-and-register rejection",
+     "changed executable, argv, trigger, restart policy and job identity mutants fail the named independent byte comparison, not serializer snapshots"
+    ],
+    "pure": [
+     "independent systemd unit/timer decoder compares generated bytes with admitted executable, structured args, local trigger, user-manager domain and no-restart policy",
+     "independent LaunchAgent plist decoder compares generated bytes with admitted executable, structured args, calendar trigger, user-agent domain and no-KeepAlive policy",
+     "systemd specifier expansion, whitespace, Unicode, control characters and malicious paths reject or preserve the exact intended argv without shell interpolation",
+     "launchd XML escaping, whitespace, Unicode, control characters and malicious paths reject or preserve the exact intended argv without shell interpolation",
+     "changed executable, argv, trigger, restart policy and job identity mutants fail the named independent byte comparison, not serializer snapshots"
+    ],
+    "systemd-linux": [
+     "independent systemd unit/timer decoder compares generated bytes with admitted executable, structured args, local trigger, user-manager domain and no-restart policy",
+     "systemd specifier expansion, whitespace, Unicode, control characters and malicious paths reject or preserve the exact intended argv without shell interpolation",
+     "checked unit/plist bytes remain identical through protected staging and installation, including replacement-between-check-and-register rejection",
+     "changed executable, argv, trigger, restart policy and job identity mutants fail the named independent byte comparison, not serializer snapshots"
+    ],
+    "launchd": [
+     "independent LaunchAgent plist decoder compares generated bytes with admitted executable, structured args, calendar trigger, user-agent domain and no-KeepAlive policy",
+     "launchd XML escaping, whitespace, Unicode, control characters and malicious paths reject or preserve the exact intended argv without shell interpolation",
+     "checked unit/plist bytes remain identical through protected staging and installation, including replacement-between-check-and-register rejection",
+     "changed executable, argv, trigger, restart policy and job identity mutants fail the named independent byte comparison, not serializer snapshots"
+    ]
+   },
    "evidence_kinds": ["runner"],
    "evidence_records": []
   },
@@ -3819,8 +3907,23 @@
    "case_and_proof_inventory": [
     "qualified real systemd user manager validates installed timer/service and invokes exactly one admitted finite Gripsack runner graph per selected trigger",
     "qualified real launchd user-agent validates installed plist and invokes the same admitted runner with the intended argv/user scope",
-    "task prerequisites stay inside the Gripsack graph, not per-task OS dependency units, and neither native config injects a shell, KeepAlive or a hidden restart"
+    "task prerequisites stay inside the Gripsack graph, not per-task OS dependency units, and neither native config injects a shell, KeepAlive or a hidden restart",
+    "container-gate parser/dispatch fixtures bind admitted unit/plist bytes to the one runner argv graph without claiming either native OS manager executed inside a Linux container"
    ],
+   "case_and_proof_inventory_by_lane": {
+    "container-gates": [
+     "container-gate parser/dispatch fixtures bind admitted unit/plist bytes to the one runner argv graph without claiming either native OS manager executed inside a Linux container",
+     "task prerequisites stay inside the Gripsack graph, not per-task OS dependency units, and neither native config injects a shell, KeepAlive or a hidden restart"
+    ],
+    "systemd-linux": [
+     "qualified real systemd user manager validates installed timer/service and invokes exactly one admitted finite Gripsack runner graph per selected trigger",
+     "task prerequisites stay inside the Gripsack graph, not per-task OS dependency units, and neither native config injects a shell, KeepAlive or a hidden restart"
+    ],
+    "launchd": [
+     "qualified real launchd user-agent validates installed plist and invokes the same admitted runner with the intended argv/user scope",
+     "task prerequisites stay inside the Gripsack graph, not per-task OS dependency units, and neither native config injects a shell, KeepAlive or a hidden restart"
+    ]
+   },
    "evidence_kinds": ["runner"],
    "evidence_records": []
   },
@@ -3837,9 +3940,34 @@
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
     "separate missing qualified manager, installed binary, reachable user domain, unsupported version and invalid user-scope diagnoses are source-aware and actionable",
-    "read-only plan reports Linux Persistence false versus Mac native session/calendar behavior and explicitly unavailable sleep/wake or catch-up guarantees",
+    "read-only Linux plan shows user-manager availability, Persistence false and explicit limits on sleep/wake or portable catch-up",
+    "read-only macOS plan shows native launchd user-agent session/calendar behavior and explicit limits on sleep/wake or portable catch-up",
     "inspection/preview does not bootstrap any scheduler, register a unit/plist, fetch artifacts, start BuildKit or run a Task merely to produce a report"
    ],
+   "case_and_proof_inventory_by_lane": {
+    "container-gates": [
+     "separate missing qualified manager, installed binary, reachable user domain, unsupported version and invalid user-scope diagnoses are source-aware and actionable",
+     "read-only Linux plan shows user-manager availability, Persistence false and explicit limits on sleep/wake or portable catch-up",
+     "read-only macOS plan shows native launchd user-agent session/calendar behavior and explicit limits on sleep/wake or portable catch-up",
+     "inspection/preview does not bootstrap any scheduler, register a unit/plist, fetch artifacts, start BuildKit or run a Task merely to produce a report"
+    ],
+    "pure": [
+     "separate missing qualified manager, installed binary, reachable user domain, unsupported version and invalid user-scope diagnoses are source-aware and actionable",
+     "read-only Linux plan shows user-manager availability, Persistence false and explicit limits on sleep/wake or portable catch-up",
+     "read-only macOS plan shows native launchd user-agent session/calendar behavior and explicit limits on sleep/wake or portable catch-up",
+     "inspection/preview does not bootstrap any scheduler, register a unit/plist, fetch artifacts, start BuildKit or run a Task merely to produce a report"
+    ],
+    "systemd-linux": [
+     "separate missing qualified manager, installed binary, reachable user domain, unsupported version and invalid user-scope diagnoses are source-aware and actionable",
+     "read-only Linux plan shows user-manager availability, Persistence false and explicit limits on sleep/wake or portable catch-up",
+     "inspection/preview does not bootstrap any scheduler, register a unit/plist, fetch artifacts, start BuildKit or run a Task merely to produce a report"
+    ],
+    "launchd": [
+     "separate missing qualified manager, installed binary, reachable user domain, unsupported version and invalid user-scope diagnoses are source-aware and actionable",
+     "read-only macOS plan shows native launchd user-agent session/calendar behavior and explicit limits on sleep/wake or portable catch-up",
+     "inspection/preview does not bootstrap any scheduler, register a unit/plist, fetch artifacts, start BuildKit or run a Task merely to produce a report"
+    ]
+   },
    "evidence_kinds": ["runner"],
    "evidence_records": []
   },
