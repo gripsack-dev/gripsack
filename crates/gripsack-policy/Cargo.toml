@@ -24,4 +24,4 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # The Verus standard library, published from the same commit as the
 # pinned verifier (toolchain table in scripts/check_verus.sh). Exact
 # pin: a verification toolchain never floats.
-vstd = "=0.0.0-2026-09-06-0133"
+vstd = "=0.0.0-2026-09-20-0158"
