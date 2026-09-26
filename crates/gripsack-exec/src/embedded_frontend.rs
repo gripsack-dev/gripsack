@@ -801,6 +801,7 @@ export type {
   RunBashSpec,
   ScheduleSpec,
   TaskSpec,
+  TreeFilesOptions,
   WorkspaceAbi,
   WorkspaceArg,
   WorkspaceArtifactRef,
