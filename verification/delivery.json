@@ -1867,6 +1867,47 @@
      "inputs": "Failing-before duplicate profile-file destinations (case-folded, within one profile, across profiles and across symlink/managed_block policies) previously admitted; now E111 labels every file declaration before any E124. Three Rust cases including the equal-basename coexistence positive and one real CLI duplicate case plus the prior E102 escape case; fresh full chain at this tree passed Rust fmt/clippy/tests and real CLI e2e 297/297",
      "report_marker": "A1_FILE_OWNERS=5",
      "counts": {"executed": 5, "passed": 5, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["gripsack-ir::sema::workspace::span_value::check_values", "gripsack-ir::sema::workspace::refs::check_selector", "typescript/src/workspace/files.ts::repoFile", "typescript/src/workspace/validate.ts::asSource", "typescript/src/workspace/files.ts::artifactFile", "grip plan --ir"],
+     "environment": "Exact committed source d946d30 in Docker Compose v5.5.0 on WSL2 Linux amd64: Rust 1.98.0, pinned Deno 2.9.6/TypeScript 7.0.2, Python 3.13.15/pytest 9.1.1 and the real statically compiled grip",
+     "command": "docker compose run --build --rm test cargo test --locked -p gripsack-ir decoded_repo_file_origin_rejects_paths_outside_the_captured_repository; docker compose run --build --rm test cargo test --locked -p gripsack-ir artifact_selectors_must_be_normalized_relative_paths; docker compose run --build --rm ts-test sh -c 'cd typescript && deno test --allow-read --allow-write --allow-run --allow-env test/workspace.test.ts'; docker compose run --build --rm ts-test sh -c 'cd typescript && deno test --allow-read --allow-write --allow-run --allow-env test/workspace_graph.test.ts'; docker compose run --build --rm e2e sh -c 'uv run --locked --no-sync pytest -q test_workspace_diagnostics.py -k escaped_repository_file_origin_rejects_before_executor'",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-a1-repo-file-d946d30.log",
+     "report_sha256": "4c3a63222a46671e9e2a17bd39311d603aff08d85b3886b9454383de6cdc75d3",
+     "commit": "d946d30140b97be3348367ad4120b99a74ed393c",
+     "source_reuse_sha256": "a1a6118ad7c98555ce998234aa5932ba63aa0dad3dd23d88f96500a260cce31e",
+     "source_reuse_reason": "Only reuse this directly tested source for evidence-only ledger/report/plan commits with identical tracked SOURCE_ROOTS; changes to fetch, schema, CLI or other behavior roots require new source-bound evidence before a future milestone claim.",
+     "cases_covered": [
+      "Artifact-file origins address declared outputs through normalized selectors; repo_file origins stay repo-relative"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Rust 1.98.0; Deno 2.9.6; TypeScript 7.0.2; Python 3.13.15; pytest 9.1.1",
+     "inputs": "Failing-before real grip plan --ir admitted repo_file ../outside until unrelated E124. Exact-source fixture now rejects ../private and /etc/passwd with E130 at the file's own source span before E124 and without a selected generation; Rust/TS independently reject parent, absolute, empty/dot, slash ambiguity, backslash and NUL while admitting normalized relative files. Separate real Rust and TS graph tests exercise artifact_file declared-output references and normalized selectors. All five Compose gates ran at identical behavior bytes: Rust fmt/clippy/tests, TS 65/65, real CLI e2e 320/320, TLC gate (cache hit) and fresh Verus 72/0 with seven mutants; the direct runner report itself contains five post-commit focused real execution groups.",
+     "assumptions": ["Only lexical repo-relative admission is established; realization must additionally pin a captured repository root and reject symlink escape, tree expansion and rendered-content binding are still unimplemented.", "Current workspace plan/apply still rejects E124 before effects, and this record is not a formal proof or A1 closure."],
+     "report_marker": "A1_FILE_SOURCE_CASES=5",
+     "counts": {"executed": 5, "passed": 5, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["typescript/src/workspace/tree.ts::treeFiles", "typescript/src/pin.ts", "grip check"],
+     "environment": "Exact committed source d9ce200 in Docker Compose v5.5.0 on WSL2 Linux amd64: Deno 2.9.6/TypeScript 7.0.2 and the real statically compiled grip under sandboxed HOME",
+     "command": "docker compose run --rm ts-test sh -c 'cd typescript && deno test --allow-read --allow-write --allow-run --allow-env test/workspace.test.ts'; docker compose run --rm e2e sh -c 'uv run --locked --no-sync pytest -q test_workspace_diagnostics.py -k treefiles'",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-a1-treefiles-d9ce200.log",
+     "report_sha256": "59fe59887a8a908c3ff5ecf82822a25c5fc8afb5af1023af1ab088959dbf586b",
+     "commit": "d9ce200f86bce30717c819d2853897aa6adfebde",
+     "source_reuse_reason": "Run at the exact commit itself; no cross-source reuse claimed. Later behavior changes require fresh evidence.",
+     "cases_covered": [],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Deno 2.9.6; TypeScript 7.0.2; Rust 1.98.0; Python 3.13.15; pytest 9.1.1",
+     "inputs": "A1-11 tree-origin representation resolved for the repository side (plan/0052 section 30.2): eval-time treeFiles(src, to, {include, exclude, mode, maxEntries}) expands a captured repo directory into ordinary v5 per-file declarations with no IR/wire/version change. Exact-source focused runs cover sorted stable enumeration, repo-root src '.', per-entry caller spans, symlink/tracked_copy policy, segment-boundary include/exclude (excluding z keeps zebra), eager destination validation for empty trees, the 10000-entry cap, escaping/absolute/missing src rejection and file/directory symlink rejection without following; the real compiled grip admits an authored tree via check with no home mutation and fails a repo-symlink tree. Five full gates ran on identical pre-commit bytes: fresh Rust fmt/clippy/tests (embedded frontend fresh), Deno 67/67 + tsc examples, e2e 321/321 including the new case, TLC, Verus 72/0 + 7 mutants. Failing-before: authored import failed until pin.ts re-exported the helper; src-relative pattern semantics and the missing-source authoring error were fixed pre-landing.",
+     "assumptions": ["Artifact-side trees (outputs not yet realized) are not enumerable at eval and stay A2-owned with core-side inventory expansion; this record does not cover them.", "No planner ownership/drift/prune behavior is exercised: workspace plan/apply still refuse E124; rendered-result binding, lint/check stage mapping and ownership proofs remain open.", "Not a protected-CI or native-Mac result."],
+     "report_marker": "A1_TREE_EXPANSION=2",
+     "counts": {"executed": 2, "passed": 2, "failed": 0, "skipped": 0}
     }
    ],
    "status_history": [

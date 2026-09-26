@@ -1486,6 +1486,88 @@ trace-context suite); source fingerprint
 `a5352ceff505d1a8bf432d7e482248762d9982de4b19b4f4b8d116f2ceaa8162`.
 Classification theorems, protected CI and native Mac remain open.
 
+### 30.1 Repository-file origin admission (partial A1-11)
+
+The `repo_file.path` origin previously accepted any nonempty string.
+An actual v5 `grip plan --ir` with `../outside` reached E124 (workspace
+execution unavailable), not a source-path rejection. The v5 schema now
+states the original repository-relative POSIX file contract: nonempty,
+no absolute path, NUL, backslash, empty, `.` or `..` components.
+TypeScript rejects both `repoFile("../outside")` and a hand-built
+file source with that path. Decoded JSON is checked independently
+by the Rust core with structured E130 at the **file declaration**
+before E124; `.config/tool`, `cfg/vimrc` and `pkg/a..b` remain
+admitted. Artifact-file selectors still require a declared output
+and normalized selector; the retained strict v4 reader is unchanged.
+
+Exact source `d946d30140b97be3348367ad4120b99a74ed393c`
+(tracked behavior fingerprint
+`a1a6118ad7c98555ce998234aa5932ba63aa0dad3dd23d88f96500a260cce31e`)
+ran **five** post-commit focused Rust, Deno and real compiled
+`grip plan --ir` groups, including two hostile decoded repository
+paths and independent artifact selector/ref checks. Actual output:
+`verification/reports/2026-09-26-a1-repo-file-d946d30.log`,
+SHA-256 `4c3a63222a46671e9e2a17bd39311d603aff08d85b3886b9454383de6cdc75d3`.
+At identical behavior bytes all five Docker gates completed:
+fresh Rust fmt/clippy/tests, fresh Deno **65/65**, real CLI
+e2e **320/320**, cached TLC spec layer, and fresh Verus
+**72 verified/0 errors** with seven mutants. These Verus proofs
+do **not** cover repository origins or owner refinement.
+
+The new rule is **lexical admission**, not filesystem containment:
+realization still must pin a captured repository root and resolve
+symlinks there (A2 owns realization; this plan only admits). Bounded
+tree inventories are now partially landed (§30.2); rendering/result
+retention, real file deployment and ownership/proof correspondence
+remain unimplemented. A1-11 stays `in_progress`; no public release or
+current-source native Mac gate is inferred.
+
+### 30.2 Captured repo-tree expansion at eval time (partial A1-11)
+
+The tree-origin representation question is resolved for the repository
+side: expansion happens at **eval time**. The sandboxed frontend holds
+repo read grants (it evaluates repo TypeScript), and the legacy module
+`tree()` helper already established eval-time walking — so a workspace
+`treeFiles(src, to, { include, exclude, mode, maxEntries })` walks the
+captured directory and returns **ordinary v5 file declarations**
+(`repo_file` origin + identity content + symlink/tracked_copy
+destination). No IR/wire change and no `ir_version` bump: strict v5
+readers see only per-file entries they already admit. Artifact-side
+trees (an output not yet realized) cannot be enumerated at eval and
+stay A2-owned with core-side inventory expansion.
+
+Semantics: stable sorted enumeration at each depth; `"."` addresses the
+repo root; include/exclude are segment-prefix lists relative to `src`
+(excluding `z` keeps `zebra`); every entry's span is the caller's
+`treeFiles` site; the destination shape is validated eagerly even for
+an empty tree; `maxEntries` bounds expansion (default and maximum
+10 000); file and directory **symlinks are rejected, never followed**,
+so a repo link cannot pull outside content into the captured inventory;
+`src` must be an existing normalized relative directory. Two defects
+were caught and fixed before landing: patterns must be `src`-relative,
+and a missing source directory must produce the authoring error, not a
+raw ENOENT. The deliberate-pin surface (`pin.ts`) re-exports the new
+helper — authored imports failed until it was added.
+
+Exact source `d9ce200f86bce30717c819d2853897aa6adfebde`
+(clean at commit): the focused Deno groups cover enumeration,
+policies, spans, boundary patterns, caps and both symlink rejections;
+the real-CLI case admits an authored tree through `grip check` with no
+home mutation and fails a repo-symlink tree. All five gates ran on the
+identical pre-commit tree: fresh Rust fmt/clippy/tests (embedded
+frontend fresh at 31 files), Deno **67/67** + tsc examples, real CLI
+e2e **321/321** (new authored case included), TLC gate, Verus
+**72/0** with seven mutants. Receipt:
+`verification/reports/2026-09-26-a1-treefiles-d9ce200.log`, SHA-256
+`59fe59887a8a908c3ff5ecf82822a25c5fc8afb5af1023af1ab088959dbf586b`.
+
+Still open in A1-11: template content over tree entries with
+admission-time rendered-result binding, artifact-side tree inventories
+(A2), live file deployment/drift/prune through the existing planner,
+lint/check subject+stage mapping, and the named ownership proof
+targets. No workspace execution exists; `plan`/`apply` still refuse
+E124.
+
 ## 31. Honesty register
 
 - This document began as a design candidate; §§9–30 record read-only

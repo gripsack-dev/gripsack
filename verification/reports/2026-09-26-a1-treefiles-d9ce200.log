@@ -1,0 +1,24 @@
+RUNNER_SOURCE_COMMIT=d9ce200f86bce30717c819d2853897aa6adfebde
+RUNNER_SOURCE_DIRTY=clean at commit (all five gates ran on identical pre-commit bytes)
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Deno 2.9.6; TypeScript 7.0.2; Rust 1.98.0; Python 3.13.15; pytest 9.1.1; TLC 1.7.4; Verus 0.2026.09.06.8dea4a2
+RUNNER_INPUTS=A1-11 tree-origin acceptance: bounded captured-inventory expansion through include/exclude to explicit per-file entries with stable enumeration, file-kind rules, per-entry provenance, symlink/path containment — authored surface only; artifact-side trees and file deployment stay A2-owned. FAILING-BEFORE observed during development: authored `import { treeFiles }` failed with "module does not provide an export named 'treeFiles'" until the deliberate-pin re-export list (pin.ts) was updated; two unit defects were also fixed before commit (segment-relative include/exclude patterns; missing-source lstat leaking ENOENT instead of the authoring error).
+
+RUNNER_COMMAND=docker compose run --rm ts-test sh -c 'cd typescript && deno test --allow-read --allow-write --allow-run --allow-env test/workspace.test.ts'
+treeFiles expands a captured repo directory to explicit per-file entries ... ok
+treeFiles never follows symlinks or special entries out of the captured tree ... ok
+ok | 26 passed (file suite); full gate layer 67/67 with tsc examples typecheck
+Coverage at exact source: sorted stable enumeration; "." repo root; symlink|tracked_copy policy per entry; per-entry span attribution to the caller's treeFiles site; segment-boundary include/exclude (excluding "z" keeps "zebra"); eager destination-shape validation even for empty trees; entry cap (maxEntries, default/maximum 10 000); escaping/absolute src rejection; existing-directory requirement; file AND directory symlinks rejected without following.
+RUNNER_EXIT=0
+
+RUNNER_COMMAND=docker compose run --rm e2e sh -c 'uv run --locked --no-sync pytest -q test_workspace_diagnostics.py -k treefiles'
+1 passed, 28 deselected — real compiled grip in sandboxed HOME: authored repo with configs/{a,b}.conf + excluded subtree admits through `grip check` (no executor, no ~/.config mutation); a repo symlink inside the captured tree fails eval with "not a regular file or directory" instead of following it.
+RUNNER_EXIT=0
+
+SAME-BYTES FULL GATES (pre-commit, identical tracked tree):
+  test    gate passed: fmt + clippy -D warnings + cargo test; embedded_frontend.rs fresh (31 files)
+  ts-test gate passed: deno 67/67 + tsc examples (fresh)
+  e2e     321 passed in 986s, real musl grip, sandboxed HOME (fresh; includes the new authored treeFiles case)
+  model   gate passed: TLC positive + calibrated negatives (spec layer cached)
+  verify  72 verified, 0 errors; 7 named mutants rejected (fresh)
+DESIGN_DECISION=A1-11 tree representation resolved for the repo side: expansion happens at EVAL time (the frontend holds repo read grants; legacy module tree() established the pattern), emitting ordinary v5 repo_file file declarations — no IR/wire change, no ir_version bump. Artifact-side trees (an output not yet realized) cannot be enumerated at eval and stay A2-owned with core-side inventory expansion; rendered-result retention, live deployment and ownership proofs remain open.
+A1_TREE_EXPANSION=2 (two focused real groups at exact source; plus five full gates on identical bytes). Not a milestone closure: no file deployment, no template-over-tree binding, no native Mac/protected-CI claim at this head.
