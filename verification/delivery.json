@@ -1675,8 +1675,8 @@
     "Decoded forged context/unknown-field rejection labels the declaring span; ambient host interpreters reject with E128 rather than granting effects",
     "Inert schedule declarations reject execution with E124 naming E2/E3; task prerequisites name E1; first-declared unavailable output keeps its distinct owner",
     "Typed command references imply their artifacts: artifact/package_command references resolve against the catalog (E126) and recipe-tool cycles reject before execution",
-    "Recipe/consumer/invocation identity separation and the context-admission kernel with a phase-grant mutant remain unimplemented A1-closure obligations",
-    "Hostile decoded-IR edge/context corpus beyond the field-granularity cases and protected CI/native Mac lanes remain open"
+    "Recipe producer, package consumer and task invocation retain distinct identities and declared reference roles; a consumer/invocation-only change cannot silently invalidate or authorize a recipe producer",
+    "Context-admission on decoded IR rejects forbidden phase grants and edge roles for recipe, task, hook, check and schedule owners with declaration spans, a full hostile context/edge corpus and an attributable production-kernel phase-grant mutant"
    ],
    "evidence_kinds": ["runner", "formal"],
    "evidence_records": [
@@ -1817,8 +1817,12 @@
     "Profile file destination paths must be absolute or ~/-prefixed with normalized segments; relative, bare ~, dot-dot, empty/trailing-segment and NUL paths reject at admission with the file's declaration span",
     "Artifact-file origins address declared outputs through normalized selectors; repo_file origins stay repo-relative",
     "Equal relative filenames with different origins coexist as distinct owned files",
-    "The v5 tree origin (bounded include/exclude expansion with per-entry provenance, stable enumeration, containment and collision diagnostics) is not yet implemented",
-    "Rendered template result binding at admission and the production normalization/ownership proof targets remain named, unimplemented obligations"
+    "Bounded tree origins expand captured inventories through include/exclude to explicit per-file entries with stable enumeration, file-kind rules, mandatory per-entry provenance, symlink/path containment and canonical/case destination collision checks; they never own unrelated children",
+    "Added and removed tree children preserve existing planner ownership, drift, prune and rollback protections rather than replacing a whole destination directory",
+    "Template content deterministically binds declared variables and source to an admitted rendered-result digest retained with the selected generation; the same rendered result works with symlink, tracked_copy and managed_block and rollback never rerenders from current inputs",
+    "Legacy install and config source roots retain actual produced-payload versus repository-input semantics; lint/check subjects explicitly name source, rendered candidate or deployed destination and the original stage, and failed pre-deploy validation cannot flip a generation",
+    "Managed-block content merges against the observed destination through existing ownership and journal policy without caching foreign host bytes as a reusable transform; historical serialized owned values remain readable with their original meaning",
+    "Production-used source/content normalization and file-ownership policy decisions have named proof targets, correspondence checks, negative calibration and explicit trusted boundaries"
    ],
    "evidence_kinds": ["runner", "formal"],
    "evidence_records": [

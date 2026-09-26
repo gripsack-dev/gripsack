@@ -122,6 +122,16 @@ catalogs, counts and source. This is checker hardening, **not** a
 proof: all 39 real formal rows still lack reviewed names/floors;
 H0-02 and milestone closure remain open.
 
+A targeted comparison against immutable Epic A §§3.2–3.3 and the
+A1-08/A1-11 rows found two live case inventories describing
+**unimplemented** work instead of naming its required positive cases.
+A1-08 now names identity separation and hostile phase/edge admission;
+A1-11 now names bounded captured tree expansion, changed-child
+ownership, rendered-result retention, historical source/check stages,
+managed-block foreign bytes and production proof targets. No result
+or row status changed. This repairs two identified inventory gaps,
+**not** the independent semantic review of all 178 paraphrased rows.
+
 The current committed-source checker receipt
 `verification/reports/2026-09-26-h0-milestone-catalog-8c27693.log`
 (SHA-256 `a66ef369c232a10711781e9291c80d5d3c16898f0490d3c527549c8c23b4606a`)
