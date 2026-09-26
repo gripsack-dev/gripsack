@@ -632,6 +632,34 @@ def test_escaping_profile_file_destination_is_a_structured_error(sandbox):
     assert not (sandbox / "etc").exists()
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
+def test_escaped_repository_file_origin_rejects_before_executor(sandbox):
+    """Decoded v5 repo_file cannot address an ambient or parent file."""
+    repo = sandbox / "escaped-repository-origin"
+    repo.mkdir()
+    input_file = repo / "workspace.ir.json"
+    for outside in ("../private", "/etc/passwd"):
+        profile = {
+            "kind": "profile", "name": "dotfiles", "span": {"file": "grip.ts", "line": 2},
+            "files": [{
+                "span": {"file": "grip.ts", "line": 3},
+                "source": {"kind": "repo_file", "path": outside},
+                "content": {"kind": "identity"},
+                "destination": {"kind": "tracked_copy", "path": "~/.config/dotfile"},
+            }],
+        }
+        input_file.write_text(json.dumps({
+            "ir_version": 5,
+            "host": {"os": "linux", "arch": "x86_64"},
+            "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
+        }))
+        result = grip("plan", "--ir", str(input_file), cwd=repo)
+        assert result.returncode != 0
+        assert "error[E130]" in result.stderr, result.stderr
+        assert "grip.ts:3" in result.stderr
+        assert "repository-relative" in result.stderr
+        assert "E124" not in result.stderr, "invalid origin precedes executor refusal"
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
 def test_duplicate_profile_destination_names_both_owners_before_any_executor(sandbox):
     """A1-11: one path has one owner — the module grammar's E111 race
     rule extended to workspace profile files, labeling both files."""

@@ -478,6 +478,23 @@ Deno.test("file origin is optional only for literal content", () => {
   assert.equal(templated.source?.kind, "repo_file");
 });
 
+Deno.test("repository file origins reject path escapes before file admission", () => {
+  for (const path of [
+    "../outside", "/etc/passwd", "cfg/./settings", "cfg//settings",
+    "cfg/", ".", "cfg\\..\\private", "cfg/\0private",
+  ]) {
+    assert.throws(() => repoFile(path), /normalized relative POSIX file path/);
+    assert.throws(
+      () => file({
+        source: { kind: "repo_file", path },
+        content: identity(),
+        destination: trackedCopyTo("~/.config/tool"),
+      }),
+      /normalized relative POSIX file path/,
+    );
+  }
+});
+
 Deno.test("file destinations reject escapes at authoring, not just in decoded IR", () => {
   for (const destination of [
     trackedCopyTo("../escape"),

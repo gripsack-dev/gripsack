@@ -128,6 +128,21 @@ export function asSelector(v: unknown, where: string): string {
   return s;
 }
 
+/** A captured repository file is a single normalized relative POSIX path.
+ *  `.` denotes a directory, never an individual file; backslashes are
+ *  ambiguous across hosts and must not turn into platform separators. */
+export function asRepoFilePath(v: unknown, where: string): string {
+  const path = asName(v, where);
+  if (path.startsWith("/") || path.includes("\\") || path.includes("\0") ||
+    path.split("/").some((part) => part === "" || part === "." || part === "..")) {
+    throw new Error(
+      `${where}: repository file path must be a normalized relative POSIX file path ` +
+        `(no leading "/", backslash, NUL, empty, "." or ".." segments) — got ${JSON.stringify(path)}`,
+    );
+  }
+  return path;
+}
+
 /** Environment values are DATA — literal text or an artifact
  *  reference. A package_command here would invoke a program from a
  *  value position, which workspace IR never admits (0052 §2.2, core E128):
@@ -197,7 +212,7 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
   const rec = asRecord(v, where);
   if (rec.kind === "repo_file") {
     rejectUnknownFields(where, rec, ["kind", "path"]);
-    asName(rec.path, `${where}.path`);
+    asRepoFilePath(rec.path, `${where}.path`);
     return v as WorkspaceSource;
   }
   if (rec.kind === "artifact_file") {

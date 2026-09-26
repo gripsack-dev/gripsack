@@ -7,7 +7,7 @@ use crate::diagnostic::{Diagnostic, codes};
 use crate::span::Span;
 use crate::workspace::{
     PackageLayout, Workspace, WorkspaceCalendar, WorkspaceCommand, WorkspaceContent,
-    WorkspaceDestination, WorkspaceOutput, WorkspacePlatform, WorkspaceProducer,
+    WorkspaceDestination, WorkspaceOutput, WorkspacePlatform, WorkspaceProducer, WorkspaceSource,
 };
 
 pub(super) fn check(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
@@ -189,6 +189,20 @@ fn check_values(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
                             .with_label(Some(file.span.clone()), "file declared here"),
                         );
                     }
+                    if let Some(WorkspaceSource::RepoFile { path }) = &file.source
+                        && !admissible_repo_file(path)
+                    {
+                        diagnostics.push(
+                            Diagnostic::error(
+                                codes::INVALID_WORKSPACE_VALUE,
+                                format!(
+                                    "profile `{}` file source {:?} must be a normalized repository-relative POSIX file path — no root, backslash, NUL, empty, \".\" or \"..\" segments",
+                                    profile.name, path
+                                ),
+                            )
+                            .with_label(Some(file.span.clone()), "repository file source declared here"),
+                        );
+                    }
                     if !admissible_destination(match &file.destination {
                         WorkspaceDestination::Symlink { path }
                         | WorkspaceDestination::TrackedCopy { path }
@@ -216,6 +230,19 @@ fn check_values(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
             _ => {}
         }
     }
+}
+
+/// A repo-file origin always names a captured file, never an ambient
+/// absolute path or a directory selector. This is lexical admission;
+/// realization must additionally resolve through a root-pinned snapshot.
+fn admissible_repo_file(path: &str) -> bool {
+    !path.is_empty()
+        && !path.starts_with('/')
+        && !path.contains('\\')
+        && !path.contains('\0')
+        && path
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
 /// A destination policy path must be absolute or `~/`-prefixed with
@@ -390,6 +417,46 @@ mod tests {
                 .unwrap_or_else(|| panic!("{escaping:?} must fail destination admission"));
             assert_eq!(rejection.labels.len(), 1);
             assert_eq!(rejection.labels[0].span.as_ref().unwrap().line, 3);
+        }
+    }
+
+    #[test]
+    fn decoded_repo_file_origin_rejects_paths_outside_the_captured_repository() {
+        let profile = |path: &str| {
+            let path = serde_json::to_string(path).unwrap();
+            format!(
+                r#"{{
+                    "kind": "profile", "name": "p", "span": {{"file": "grip.ts", "line": 2}},
+                    "files": [{{
+                        "span": {{"file": "grip.ts", "line": 3}},
+                        "source": {{"kind": "repo_file", "path": {path}}},
+                        "content": {{"kind": "identity"}},
+                        "destination": {{"kind": "tracked_copy", "path": "~/.config/tool"}}}}]}}"#
+            )
+        };
+        for path in [".config/tool", "cfg/vimrc", "pkg/a..b"] {
+            check(&doc(&profile(path))).unwrap_or_else(|diags| panic!("{path:?}: {diags:?}"));
+        }
+        for path in [
+            "../outside",
+            "/etc/passwd",
+            "cfg/./settings",
+            "cfg//settings",
+            "cfg/",
+            ".",
+            "cfg\\..\\private",
+            "cfg/\0private",
+        ] {
+            let diagnostics = check(&doc(&profile(path))).unwrap_err();
+            let source = diagnostics
+                .iter()
+                .find(|diagnostic| diagnostic.code == codes::INVALID_WORKSPACE_VALUE)
+                .unwrap_or_else(|| panic!("{path:?} escaped repository admission"));
+            assert!(
+                source.message.contains("repository-relative"),
+                "{path:?}: {source:?}"
+            );
+            assert_eq!(source.labels[0].span.as_ref().unwrap().line, 3);
         }
     }
 

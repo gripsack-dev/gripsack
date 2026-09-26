@@ -14,6 +14,7 @@ import {
   asName,
   asRecord,
   asSelector,
+  asRepoFilePath,
   asSource,
   freezeDeep,
   nodeSpan,
@@ -24,7 +25,7 @@ import {
 
 /** A typed repository file origin. */
 export function repoFile(path: string): WorkspaceSource {
-  return freezeDeep({ kind: "repo_file", path: asName(path, "repoFile(path)") });
+  return freezeDeep({ kind: "repo_file", path: asRepoFilePath(path, "repoFile(path)") });
 }
 
 /** A file inside another output's artifact. */

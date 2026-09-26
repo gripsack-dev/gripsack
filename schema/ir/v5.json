@@ -1544,7 +1544,9 @@
             },
             "path": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "description": "Normalized repository-relative POSIX file path; dot and dot-dot segments, NUL, backslash and empty components are forbidden.",
+              "pattern": "^(?!(?:\\.|\\.\\.)(?:/|$)|.*/(?:\\.|\\.\\.)(?:/|$))(?!.*[\\\\\\u0000])[^/]+(?:/[^/]+)*$"
             }
           }
         },
