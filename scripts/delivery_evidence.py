@@ -134,14 +134,14 @@ def evidence_violations(req: dict, ev: dict, idx: int, v: Violations, root: Path
             v.add(rid, f"{where}: zero executions, mismatched counts or skipped/failed required cases")
         if isinstance(counts, dict) and isinstance(marker, str) and ev.get("result") == "pass":
             passed = counts.get("passed")
-            if isinstance(passed, int) and not re.search(rf"(?<!\d){passed}(?!\d)", marker):
+            if isinstance(passed, int) and not reported_pass_count(marker, passed):
                 v.add(rid, f"{where}: report_marker does not contain its claimed passed count")
             if kind == "formal":
                 obligations = ev.get("obligations")
                 if not valid_obligations(obligations):
                     v.add(rid, f"{where}: zero executed proof obligations or expected/checked mismatch")
                 else:
-                    if not re.search(rf"(?<!\d){obligations['checked']}(?!\d)", marker):
+                    if not reported_proof_count(marker, obligations["checked"]):
                         v.add(rid, f"{where}: report_marker does not contain its claimed proof obligation count")
                     proof_ids = obligations.get("proof_ids")
                     if not named_proofs(proof_ids):
@@ -150,11 +150,28 @@ def evidence_violations(req: dict, ev: dict, idx: int, v: Violations, root: Path
                         for proof_id in proof_ids:
                             if proof_id.encode() not in data:
                                 v.add(rid, f"{where}: proof {proof_id!r} absent from the actual report")
-                    catalog = proof_catalog_digest(req)
+                    catalog = proof_catalog_digest(req, ev.get("milestone"))
                     claimed = obligations.get("catalog_sha256")
                     if (catalog is None or claimed != catalog
                             or not isinstance(claimed, str) or claimed.encode() not in data):
                         v.add(rid, f"{where}: formal proof catalog digest mismatch or absent from report")
+
+
+def reported_pass_count(marker: str, count: int) -> bool:
+    # A SHA-256 digest can contain any decimal digit. Accept only an
+    # explicit runner count, never an accidental digit inside a hash.
+    return bool(re.search(
+        rf"(?<![A-Za-z0-9]){count}\s+(?:passed|verified)\b|={count}(?![A-Za-z0-9])",
+        marker,
+    ))
+
+
+def reported_proof_count(marker: str, count: int) -> bool:
+    return bool(re.search(
+        rf"(?:proof_checked|obligations\.checked)={count}(?![A-Za-z0-9])"
+        rf"|(?<![A-Za-z0-9]){count}\s+verified\b",
+        marker,
+    ))
 
 
 def proof_row(req: dict) -> bool:
@@ -167,13 +184,26 @@ def named_proofs(value: object) -> bool:
             and all(isinstance(name, str) and name.strip() for name in value)
             and len(set(value)) == len(value))
 
-def proof_catalog_digest(req: dict) -> str | None:
-    names = req.get("proof_obligation_inventory")
-    floor = req.get("proof_expected_minimum")
+def proof_catalog_values(req: dict, milestone: str | None) -> tuple[object, object]:
+    if req["owner_milestone"] == "global":
+        by_milestone = req.get("proof_obligations_by_milestone")
+        if not isinstance(by_milestone, dict) or not isinstance(milestone, str):
+            return None, None
+        selected = by_milestone.get(milestone)
+        if not isinstance(selected, dict):
+            return None, None
+        return selected.get("names"), selected.get("minimum")
+    return req.get("proof_obligation_inventory"), req.get("proof_expected_minimum")
+
+
+def proof_catalog_digest(req: dict, milestone: str | None = None) -> str | None:
+    names, floor = proof_catalog_values(req, milestone)
     if (not named_proofs(names) or not isinstance(floor, int)
             or isinstance(floor, bool) or floor <= 0):
         return None
     catalog = {"id": req["id"], "names": names, "minimum": floor}
+    if req["owner_milestone"] == "global":
+        catalog["milestone"] = milestone
     encoded = json.dumps(catalog, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -187,18 +217,19 @@ def valid_obligations(value: object) -> bool:
             and value["failed"] == value["skipped"] == 0)
 
 
-def proof_catalog_violations(req: dict, v: Violations) -> None:
+def proof_catalog_violations(req: dict, v: Violations, milestone: str | None = None) -> None:
     if not proof_row(req):
         return
-    names = req.get("proof_obligation_inventory")
-    floor = req.get("proof_expected_minimum")
+    names, floor = proof_catalog_values(req, milestone)
+    where = f"{req['id']}/{milestone}" if req["owner_milestone"] == "global" else req["id"]
     if not named_proofs(names):
-        v.add(req["id"], "missing named proof obligation inventory")
+        v.add(where, "missing named proof obligation inventory")
     if not isinstance(floor, int) or isinstance(floor, bool) or floor <= 0:
-        v.add(req["id"], "missing positive expected proof obligation minimum")
+        v.add(where, "missing positive expected proof obligation minimum")
 
 
-def coverage_violations(req: dict, records: list[dict], v: Violations, lanes: set[str]) -> None:
+def coverage_violations(req: dict, records: list[dict], v: Violations,
+                        lanes: set[str], milestone: str | None = None) -> None:
     rid = req["id"]
     inventory = set(req.get("case_and_proof_inventory") or [])
     declared = req.get("evidence_kinds")
@@ -206,7 +237,7 @@ def coverage_violations(req: dict, records: list[dict], v: Violations, lanes: se
         kinds = set(declared)
     else:
         kinds = set()
-    proof_catalog_violations(req, v)
+    proof_catalog_violations(req, v, milestone)
     for lane in lanes:
         passing = [
             ev for ev in records
@@ -224,7 +255,7 @@ def coverage_violations(req: dict, records: list[dict], v: Violations, lanes: se
         if inventory - covered:
             v.add(rid, f"{lane}: conjunctive cases without passing evidence: {sorted(inventory - covered)}")
         if proof_row(req):
-            catalog = proof_catalog_digest(req)
+            catalog = proof_catalog_digest(req, milestone)
             formal = [
                 ev for ev in passing
                 if ev.get("kind") == "formal"
@@ -232,13 +263,14 @@ def coverage_violations(req: dict, records: list[dict], v: Violations, lanes: se
                 and isinstance(ev.get("obligations"), dict)
                 and ev["obligations"].get("catalog_sha256") == catalog
             ]
-            floor = req.get("proof_expected_minimum")
+            names, floor = proof_catalog_values(req, milestone)
             if not any(valid_obligations(ev.get("obligations"))
                        and isinstance(floor, int) and not isinstance(floor, bool)
                        and ev["obligations"]["checked"] >= floor
                        for ev in formal):
                 v.add(rid, f"{lane}: zero executed proof obligations or expected/checked mismatch")
-            names = req.get("proof_obligation_inventory")
+            # A formal report only covers the obligation IDs for this
+            # particular milestone; another milestone's proof is not authority.
             if named_proofs(names):
                 seen = set()
                 for ev in formal:

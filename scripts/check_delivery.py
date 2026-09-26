@@ -135,7 +135,12 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
         if req["status"] == "verified":
             if not records:
                 v.add(rid, "verified without evidence records: a handwritten pass flag is not evidence")
-            coverage_violations(req, records, v, declared)
+            if req["owner_milestone"] == "global":
+                for mid in sorted(milestone_ids):
+                    selected = [ev for ev in records if ev.get("milestone") == mid]
+                    coverage_violations(req, selected, v, declared, mid)
+            else:
+                coverage_violations(req, records, v, declared)
         history_violations(req, v)
     if by_id.get("H0-02", {}).get("status") == "verified":
         unresolved = [
@@ -149,7 +154,11 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
             v.add("H0-02", f"complete support/case/proof/evidence-kind inventory missing for {len(unresolved)} rows: {unresolved[:12]}")
         for req in reqs:
             if proof_row(req):
-                proof_catalog_violations(req, v)
+                if req["owner_milestone"] == "global":
+                    for mid in sorted(milestone_ids):
+                        proof_catalog_violations(req, v, mid)
+                else:
+                    proof_catalog_violations(req, v)
     return v
 
 
@@ -218,6 +227,7 @@ def close_claim(ledger: dict, milestone: str | None, scope: str | None, release:
                 coverage_violations(
                     req, records, v,
                     set(req.get("required_platform_capability_lanes") or []),
+                    mid,
                 )
                 for ev in records:
                     if ev.get("result") != "pass":

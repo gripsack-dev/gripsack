@@ -56,9 +56,11 @@ def record(req: dict, lane: str, milestone: str | None = None, kind: str = "runn
     if milestone:
         data["milestone"] = milestone
     if kind == "formal":
+        names = (req["proof_obligations_by_milestone"][milestone]["names"]
+                 if req["owner_milestone"] == "global" else req["proof_obligation_inventory"])
         data["obligations"] = {"expected": 1, "checked": 1, "failed": 0,
-                               "skipped": 0, "proof_ids": ["ProofFixture"],
-                               "catalog_sha256": proof_catalog_digest(req)}
+                               "skipped": 0, "proof_ids": names,
+                               "catalog_sha256": proof_catalog_digest(req, milestone)}
     return data
 
 
@@ -98,14 +100,25 @@ def fixture(tmp: Path) -> tuple[dict, Path]:
             req["required_platform_capability_lanes"] = ["pure"]
             req["case_and_proof_inventory"] = [req["required_acceptance_evidence"]]
         req["evidence_kinds"] = ["runner"]
-    # The synthetic H0/A0 closure exercises one complete global proof
-    # catalog. Real future rows retain all 39 independently named scopes.
+    # A synthetic complete inventory names proof catalogs for every
+    # milestone. H0 and A0 intentionally have different obligations,
+    # so neither can borrow the other's valid formal runner.
     proof = row(ledger, "G-03")
     proof["evidence_kinds"] = ["runner", "formal", "review"]
-    proof["proof_obligation_inventory"] = ["ProofFixture"]
-    proof["proof_expected_minimum"] = 1
-    catalog = proof_catalog_digest(proof)
-    MARKER = f"fixture runner: 1 passed, 0 failed, 0 skipped; proof: ProofFixture; catalog: {catalog}"
+    proof["proof_obligations_by_milestone"] = {
+        item["id"]: {
+            "names": [f"ProofFixture{item['id']}"],
+            "minimum": 1,
+        }
+        for item in ledger["milestones"]
+    }
+    MARKER = (
+        "fixture runner: 1 passed, 0 failed, 0 skipped; proof_checked=1; "
+        + "; ".join(
+            f"proof: {entry['names'][0]}; catalog: {proof_catalog_digest(proof, mid)}"
+            for mid, entry in proof["proof_obligations_by_milestone"].items()
+        )
+    )
     (tmp / REPORT).write_text(MARKER + "\n")
     for identity in ("H0-01", "H0-02", "A0-01"):
         req = row(ledger, identity)
@@ -226,13 +239,13 @@ def main() -> int:
         print("  runner carrying self-reported obligations cannot impersonate formal evidence")
 
         unregistered_proof = copy.deepcopy(original)
-        row(unregistered_proof, "G-03").pop("proof_obligation_inventory")
+        row(unregistered_proof, "G-03").pop("proof_obligations_by_milestone")
         check(path, unregistered_proof, "missing named proof obligation inventory",
               "--validate")
         print("  H0-02 cannot close before proof inventories are named")
 
         wrong_proof = copy.deepcopy(original)
-        row(wrong_proof, "G-03")["proof_obligation_inventory"] = ["GhostProof"]
+        row(wrong_proof, "G-03")["proof_obligations_by_milestone"]["H0"]["names"] = ["GhostProof"]
         check(path, wrong_proof, "named proof obligations without formal evidence",
               "--close-milestone", "H0", "--release", REVISION)
         print("  wrong formal proof name cannot cover a frozen obligation")
@@ -262,8 +275,25 @@ def main() -> int:
               "--close-milestone", "H0", "--release", REVISION)
         print("  formal evidence from a different declared proof catalog rejected")
 
+        other_milestone = copy.deepcopy(original)
+        g03 = row(other_milestone, "G-03")
+        h0 = next(ev for ev in g03["evidence_records"]
+                  if ev["milestone"] == "H0" and ev["kind"] == "formal")
+        a0 = next(ev for ev in g03["evidence_records"]
+                  if ev["milestone"] == "A0" and ev["kind"] == "formal")
+        h0["obligations"] = copy.deepcopy(a0["obligations"])
+        check(path, other_milestone, "formal proof catalog digest mismatch",
+              "--close-milestone", "H0", "--release", REVISION)
+        print("  A0 formal proof cannot replace H0's milestone-bound catalog")
+
+        missing_future_catalog = copy.deepcopy(original)
+        row(missing_future_catalog, "G-03")["proof_obligations_by_milestone"].pop("E3")
+        check(path, missing_future_catalog, "G-03/E3: missing named proof obligation inventory",
+              "--validate")
+        print("  H0 inventory closure needs even future milestone proof catalogs")
+
         raised_floor = copy.deepcopy(original)
-        row(raised_floor, "G-03")["proof_expected_minimum"] = 2
+        row(raised_floor, "G-03")["proof_obligations_by_milestone"]["H0"]["minimum"] = 2
         check(path, raised_floor, "zero executed proof obligations",
               "--close-milestone", "H0", "--release", REVISION)
         print("  observed proof count below frozen expected minimum rejected")
@@ -321,6 +351,14 @@ def main() -> int:
         check(path, inflated, "report_marker does not contain its claimed passed count", "--validate")
         print("  inflated counts absent from the runner report rejected")
 
+        forged_proof_count = copy.deepcopy(original)
+        formal = next(ev for ev in row(forged_proof_count, "G-03")["evidence_records"]
+                      if ev["milestone"] == "H0" and ev["kind"] == "formal")
+        formal["obligations"]["expected"] = formal["obligations"]["checked"] = 7
+        check(path, forged_proof_count, "report_marker does not contain its claimed proof obligation count",
+              "--close-milestone", "H0", "--release", REVISION)
+        print("  proof count cannot be borrowed from digest digits or a runner pass count")
+
         claimed = copy.deepcopy(original)
         next(m for m in claimed["milestones"] if m["id"] == "B0")["status"] = "verified"
         check(path, claimed, "--release <exact 40-hex", "--validate")
@@ -373,7 +411,7 @@ def main() -> int:
         ).strip()
         check(path, reused, "source trees differ", "--close-milestone", "A0", "--release", changed_revision)
         print("  changed-source reuse rejected despite an unchanged evidence receipt")
-    print("delivery checker calibration: 24 negative cases rejected, valid fixtures accepted")
+    print("delivery checker calibration: 27 negative cases rejected, valid fixtures accepted")
     return 0
 
 if __name__ == "__main__":

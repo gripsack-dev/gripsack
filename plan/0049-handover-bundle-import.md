@@ -104,21 +104,23 @@ The earlier checker accepted `runner`, `review` and
 `mutant-calibration` evidence but not `formal`. Its hardcoded
 `PROOF_ROWS` named **22** of the **39** rows requiring formal evidence;
 the remaining 17 could inherit a runner's self-reported count. It also
-required a runner for five review-only rows. The current checker
-instead validates registered kinds on every row, requires each kind
-on every claimed lane, accepts a genuine review-only row without
-inventing a runner. Formal evidence must include named proof IDs and
-positive checked/expected counts in report bytes. A declared
-`proof_obligation_inventory` and positive `proof_expected_minimum`
-are mandatory for verified formal rows and H0-02 closure; the checker
-also hashes the row ID, names and minimum into a catalog digest that
-must match the formal receipt **and** occur in actual runner bytes.
-Changing a proof ID or floor after execution cannot reuse
-the old report without failing admission. A synthetic H0/A0 fixture
-still closes; **24** negative calibrations and a review-only positive
-exercise the check. This is a checker hardening packet, **not** a proof:
-all 39 real formal rows still need semantically reviewed names/floors
-before H0-02 or milestone closure.
+required a runner for five review-only rows. The checker now requires
+every declared evidence kind per claimed lane and admits a review-only
+row without inventing a runner. A non-global formal row declares
+`proof_obligation_inventory` and a positive
+`proof_expected_minimum`; global G-03 declares a distinct named
+catalog/minimum for **each owning milestone**. H0-02's inventory
+closure requires even future milestone catalogs, but closure of an
+early A0 proof can never borrow or require a later A1/A2 theorem.
+The canonical digest includes row ID, names, minimum and (for G-03)
+milestone; it must match formal evidence and occur in its runner
+bytes. Numeric passed/proof counts require labeled markers, not a
+matching digit buried in a SHA-256 digest. Synthetic H0/A0 with
+distinct proof names per milestone and review-only positives pass;
+**27** negatives reject invalid/mismatched kinds, names, floors,
+catalogs, counts and source. This is checker hardening, **not** a
+proof: all 39 real formal rows still lack reviewed names/floors;
+H0-02 and milestone closure remain open.
 
 The current committed-source checker receipt
 `verification/reports/2026-09-26-h0-catalog-70c5502.log`
