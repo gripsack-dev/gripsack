@@ -207,10 +207,16 @@ NEXT/proof work are still open.
 | report | sha256 | observed execution |
 |---|---|---|
 | `2026-09-26-m0-env-1c693ef.log` | `ac2b231938c22fba1ca1abd192b5453edf4045b13e0d655681f74c9140ebf3d1` | Two direct Rust config/HTTP admission tests and ten sandboxed real CLI build-shell, structured PATH, plugin, Deno-isolation, proxy/CA, local TLS, wrong-/same-host redirect, E400 terminal/JSON and HTTP-cleartext cases passed **12/12**, zero skipped. Direct TLC ran four credential-routing cfgs: clean base plus three named base-authority/redirect/repo-audience counterexamples, **4/4**. The real pre-fix PATH detector shim ran, and the old GH_HOST rebind let a dummy token reach an HTTP fixture; neither occurs on this source |
+| `2026-09-26-m0-env-local-five-gates.log` | `fd4edb5f0f720971e5e77b2fa0b01842ef189b9d24e438287715fc70538c745d` | Local final-source Docker observations: fresh Rust fmt/clippy/tests, full **319/319** real e2e, uncached direct Deno **64/64** plus examples typecheck, direct full TLC in the committed-source report, fresh Verus **72/0** with seven named mutants. Tracked SOURCE_ROOTS match `1c693ef`; the four compose outputs lack runner-time commit markers, so full-gate exact-head attribution is **[INFERENCE]**, not protected CI or a native Mac proof |
 
-The separate local Rust gate passed fmt/clippy/tests on the same
-source; a preceding 316/316 e2e snapshot and the 72/0 Verus run
-were before final test/HTTP route edits and are **not** final-source
-proofs. Fresh final-source full e2e, native Mac and protected CI
-remain outstanding. This receipt is a selected plan/0048 control,
-not H0/G-05 verification, M-V7 proof or a release.
+The same implementation source passed the local Docker Rust
+fmt/clippy/tests gate and the full **319/319** real CLI/Deno e2e suite;
+an uncached direct TypeScript/frontend run checked **64/64** Deno tests
+plus strict example typecheck; final-source Verus checked **72**
+obligations with zero errors and seven named mutants rejected. The
+earlier 316-case/72-obligation snapshots are historical, not counted
+as final-source evidence. The native Mac job in manually dispatched
+CI workflow `36227812302` is pending; dispatch alone does not enforce
+branch protection or qualify Mac-VM capability.
+This receipt is a selected plan/0048 control, not H0/G-05
+verification, M-V7 proof or a release.
