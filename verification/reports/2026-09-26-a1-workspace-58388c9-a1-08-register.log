@@ -1,0 +1,133 @@
+RUNNER_SOURCE_COMMIT=58388c9539018f8dfa793f9e59895d4e96f9660f
+RUNNER_SOURCE_ROOTS_DIRTY=clean (git status --porcelain -- tracked SOURCE_ROOTS before and after the command: empty)
+RUNNER_COMMANDS=docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_workspace_diagnostics.py test_workspace_contract.py -k 'schedule_and_task_prerequisite or ambient_bash or first_declared_unavailable or unavailable_capability_names or decoded_workspace_rejects_unknown_field or all_nine_output_kinds or fluent_commands or recipe_tool_cycle'
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Python 3.13.15; pytest 9.1.1
+RUNNER_INPUTS=Live registration of A1-08 from existing shipped surfaces at an evidence-only commit whose SOURCE_ROOTS fingerprint matches b421944: shared exec/run_bash command grammar across all nine output kinds, fluent commands crossing the sandbox without execution, decoded forged-field rejection with provenance, ambient-interpreter E128, inert schedule registration E124/E2-E3, task-prerequisite E1, recipe-tool cycle rejection and first-declared owner precedence (14 real CLI cases). An identical-selection run immediately before this one also passed 14/14; only its printed summary marker miscounted, so the selection was rerun verbatim. Fresh full chain at this SOURCE_ROOTS: Rust fmt/clippy/tests and real CLI e2e 299/299.
+
+58388c9539018f8dfa793f9e59895d4e96f9660f
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.0s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 DONE 0.0s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#11 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 81.21kB 0.1s done
+#8 DONE 0.1s
+
+#12 [builder  7/10] COPY fuzz ./fuzz
+#12 CACHED
+
+#13 [builder  9/10] COPY typescript ./typescript
+#13 CACHED
+
+#14 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#14 CACHED
+
+#15 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#15 CACHED
+
+#16 [e2e 11/12] COPY examples ./examples
+#16 CACHED
+
+#17 [builder  8/10] COPY schema ./schema
+#17 CACHED
+
+#18 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#18 CACHED
+
+#19 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#19 CACHED
+
+#20 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#20 CACHED
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 CACHED
+
+#22 [e2e 10/12] COPY e2e ./e2e
+#22 CACHED
+
+#23 [builder  4/10] WORKDIR /app
+#23 CACHED
+
+#24 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#24 CACHED
+
+#25 [e2e  2/12] WORKDIR /app
+#25 CACHED
+
+#26 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#26 CACHED
+
+#27 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#27 CACHED
+
+#28 [builder  6/10] COPY crates ./crates
+#28 CACHED
+
+#29 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#29 CACHED
+
+#30 [builder 10/10] COPY scripts ./scripts
+#30 CACHED
+
+#31 [e2e  9/12] RUN cd e2e && uv sync --locked
+#31 CACHED
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 CACHED
+
+#33 exporting to image
+#33 exporting layers done
+#33 exporting manifest sha256:ba21a35909084a92f1d2e8d6f723b473463194a8db826dc085b3a0441f67e40d done
+#33 exporting config sha256:dfc787823c1632435c82ccfbb56878ca036079d4a407cd4d9b38180867222f3f done
+#33 exporting attestation manifest sha256:e95d5bf85aabef7254437aec36ab71ac86334f11b5446d97f9457e923529bebb
+#33 exporting attestation manifest sha256:e95d5bf85aabef7254437aec36ab71ac86334f11b5446d97f9457e923529bebb 0.0s done
+#33 exporting manifest list sha256:59c34e58dd2f99944b9e31a12b39ba4bfe176c976978cd9b909b6d8c1fd1d659 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.0s done
+#33 DONE 0.1s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-88a9e7a2a721 Creating 
+ Container gripsack-e2e-run-88a9e7a2a721 Created 
+..............                                                           [100%]
+14 passed, 36 deselected in 1.12s
+A1_08_REGISTER=14 (shared command grammar across nine kinds, forged-field/context rejection, ambient interpreter E128, inert schedule E2/E3 and task-prerequisite E1 owners, first-declared precedence)

@@ -1494,18 +1494,52 @@
    "mandatory_deliverable": "Shared commands and context-admitted task/recipe/schedule grammar",
    "required_acceptance_evidence": "Schema/Rust/TS executable/host-path distinctions; decoded invalid context/edge rejection; typed command refs imply artifacts; recipe/consumer/invocation identities separate; inert schedule declaration and unavailable executor diagnostics",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates",
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "Schema/Rust/TS executable/host-path distinctions: one exec/run_bash grammar serves all nine output kinds; host paths appear only in command cwd, argv holds typed args",
+    "Decoded forged context/unknown-field rejection labels the declaring span; ambient host interpreters reject with E128 rather than granting effects",
+    "Inert schedule declarations reject execution with E124 naming E2/E3; task prerequisites name E1; first-declared unavailable output keeps its distinct owner",
+    "Typed command references imply their artifacts: artifact/package_command references resolve against the catalog (E126) and recipe-tool cycles reject before execution",
+    "Recipe/consumer/invocation identity separation and the context-admission kernel with a phase-grant mutant remain unimplemented A1-closure obligations",
+    "Hostile decoded-IR edge/context corpus beyond the field-granularity cases and protected CI/native Mac lanes remain open"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["gripsack-ir::workspace::command", "gripsack-ir::sema::workspace::context", "gripsack-ir::workspace::execution_gate", "grip check", "grip plan"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; real CLI pytest 9.1.1 under sandboxed HOME and offline fixtures",
+     "command": "docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_workspace_diagnostics.py test_workspace_contract.py -k 'schedule_and_task_prerequisite or ambient_bash or first_declared_unavailable or unavailable_capability_names or decoded_workspace_rejects_unknown_field or all_nine_output_kinds or fluent_commands or recipe_tool_cycle'",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-a1-workspace-58388c9-a1-08-register.log",
+     "report_sha256": "1293117cc533a9949f8df4aeeb3a1c6848dd6fba66a3110be908df187ccaa272",
+     "commit": "58388c9539018f8dfa793f9e59895d4e96f9660f",
+     "source_reuse_sha256": "a5352ceff505d1a8bf432d7e482248762d9982de4b19b4f4b8d116f2ceaa8162",
+     "source_reuse_reason": "Evidence-only commit whose tracked SOURCE_ROOTS are byte-identical to b421944, where the fresh full chain (Rust fmt/clippy/tests, real CLI e2e 299/299) ran",
+     "cases_covered": [
+      "Schema/Rust/TS executable/host-path distinctions: one exec/run_bash grammar serves all nine output kinds; host paths appear only in command cwd, argv holds typed args",
+      "Decoded forged context/unknown-field rejection labels the declaring span; ambient host interpreters reject with E128 rather than granting effects",
+      "Inert schedule declarations reject execution with E124 naming E2/E3; task prerequisites name E1; first-declared unavailable output keeps its distinct owner",
+      "Typed command references imply their artifacts: artifact/package_command references resolve against the catalog (E126) and recipe-tool cycles reject before execution"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Python 3.13.15; pytest 9.1.1",
+     "inputs": "Live registration over existing shipped surfaces: 14 real CLI cases — nine-kind admission with shared fluent exec/run_bash commands crossing the sandbox without execution, decoded unknown-field rejection with provenance, ambient-interpreter E128, inert schedule E124/E2-E3, task prerequisites E1, recipe-tool cycle rejection, and eight first-declared owner/precedence params. No new product code; an identical selection passed 14/14 immediately before this verbatim rerun",
+     "report_marker": "A1_08_REGISTER=14",
+     "counts": {"executed": 14, "passed": 14, "failed": 0, "skipped": 0}
+    }
+   ],
+   "status_history": [
+    {"date": "2026-09-26", "from": "pending", "to": "in_progress"}
+   ],
+   "implementation_notes": "Registered live from existing surfaces: one typed exec/run_bash grammar serves recipes, tasks, checks and hooks across all nine kinds; host paths exist only as command cwd while argv holds typed args; decoded forged fields reject with the declaring span and ambient host interpreters never grant effects (E128); schedules stay inert declarations whose registration refuses with E124/E2-E3, task prerequisites name E1, and the first declared unavailable output keeps its distinct owner; artifact/package_command references resolve against the catalog and recipe-tool cycles reject before execution. At 58388c9 (SOURCE_ROOTS identical to b421944) a focused runner passes 14/14 real CLI cases; the fresh full chain at that source passed Rust fmt/clippy/tests and real CLI e2e 299/299. Identity separation (recipe vs consumer vs invocation), the context-admission kernel with its phase-grant mutant, a hostile decoded-edge corpus beyond field granularity, protected CI and native Mac remain open; no closure or release."
   },
   {
    "id": "A1-09",

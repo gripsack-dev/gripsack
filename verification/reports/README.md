@@ -59,8 +59,10 @@ Runner reports exist for source commits
 `17ed1f0dae5c827d638537fd6efba3623da156f4`,
 `90e68acdb63d31e9c56d3161872ed94391aa43a2`,
 `17513d2d66c1f99bf40e85d5c9d9e62447c0f88d`,
-`d8711b2208b99e73fc9f3ce811405a836f6da977` and
-`b4219449fe240b96205a6795de9e28defcaa1983`. Tracked
+`d8711b2208b99e73fc9f3ce811405a836f6da977`,
+`b4219449fe240b96205a6795de9e28defcaa1983` and
+`58388c9539018f8dfa793f9e59895d4e96f9660f` (the last an evidence-only
+commit whose `SOURCE_ROOTS` are byte-identical to `b421944`'s). Tracked
 behavior-bearing `SOURCE_ROOTS` were clean before and after each
 direct runner; changes to calibration, fixtures, schema, graph
 adapters, examples and the generated diagnostic registry make
@@ -134,7 +136,8 @@ Mac attestations.
 | `2026-09-26-a1-workspace-90e68ac-span-owners.log` | `1d9da4a0bc6f79aebdb678c5472561f8a16ebe5c11bb3381bbdcc59cbb757c10` | Earlier source: failing-before labeled E129 span admission (5 Rust), five first-declared E124 owner/precedence cases plus the no-snippet malformed-coordinate case (6 real CLI), and the same-source Deno gate layer incl. the compile-time interpreter pin; 74 checks, no classification/normalization theorem |
 | `2026-09-26-a1-workspace-17513d2-destination.log` | `c89573d55367642b7baf5fd85d32f67384a37ef2c479a7b989f80f85a0a65f11` | Earlier source: failing-before E102 destination-escape admission (6 Rust) plus ten real CLI destination/owner/coordinate cases and the same-source Deno gate layer (64 tests + tsc examples); 81 checks, tree origin and proof targets open |
 | `2026-09-26-a1-workspace-d8711b2-dest-collision.log` | `4c7eaa90a6ff2b8300b9883c28a561b754c7b3b9e2cd630ac385fe2051a55240` | Earlier source: failing-before case-folded duplicate-destination ownership (E111) across profiles and policies labeling every declaration, plus the equal-basename coexistence positive; 3 Rust + 2 real CLI checks, per-block marker grammar open |
-| `2026-09-26-a1-workspace-b421944-json-purity.log` | `cea083cb82f29507cdae19b4b1d13956a0df7ced17c0953bcd5d3b97274bd61a` | Current source: failing-before core-side E111 tracing line polluted check --json stdout (Extra data); console logs now go to stderr and the parity helper asserts help text on both surfaces; 9 real CLI checks, fresh full chain e2e 299/299 |
+| `2026-09-26-a1-workspace-b421944-json-purity.log` | `cea083cb82f29507cdae19b4b1d13956a0df7ced17c0953bcd5d3b97274bd61a` | Earlier source: failing-before core-side E111 tracing line polluted check --json stdout (Extra data); console logs now go to stderr and the parity helper asserts help text on both surfaces; 9 real CLI checks, fresh full chain e2e 299/299 |
+| `2026-09-26-a1-workspace-58388c9-a1-08-register.log` | `1293117cc533a9949f8df4aeeb3a1c6848dd6fba66a3110be908df187ccaa272` | Current source (identical SOURCE_ROOTS to b421944): A1-08 live registration — shared command grammar over nine kinds, forged-field rejection, ambient E128, inert-schedule/task-prereq owners, first-declared precedence; 14/14 real CLI cases, identity/kernel obligations open |
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS
 behavior, live CI protection or an A1 milestone closure.
