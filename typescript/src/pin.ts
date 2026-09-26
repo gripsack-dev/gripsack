@@ -11,8 +11,8 @@
  * resource declarations, and probes always share one registry no
  * matter which copy won.
  *
- * The re-export list mirrors index.ts exactly — kept honest by the
- * pin parity test. */
+ * The explicit re-export list is part of the pinned authoring surface;
+ * update it when index.ts gains a supported runtime or type export. */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -126,8 +126,46 @@ export const verifyBinary = api.verifyBinary;
 export const verifyDeployed = api.verifyDeployed;
 export const verifyFile = api.verifyFile;
 export const verifyShell = api.verifyShell;
+export const artifact = api.artifact;
+export const artifactFile = api.artifactFile;
+export const bash = api.bash;
+export const bashBody = api.bashBody;
+export const check = api.check;
+export const daily = api.daily;
+export const defineWorkspace = api.defineWorkspace;
+export const emitWorkspaceIr = api.emitWorkspaceIr;
+export const environment = api.environment;
+export const exec = api.exec;
+export const file = api.file;
+export const hook = api.hook;
+export const hostPath = api.hostPath;
+export const identity = api.identity;
+export const image = api.image;
+export const lit = api.lit;
+export const literalText = api.literalText;
+export const managedBlock = api.managedBlock;
+export const packageCommand = api.packageCommand;
+export const pkg = api.pkg;
+export const profile = api.profile;
+export const provider = api.provider;
+export const recipe = api.recipe;
+export const repoFile = api.repoFile;
+export const runBash = api.runBash;
+export const schedule = api.schedule;
+export const symlinkTo = api.symlinkTo;
+export const targetPlatform = api.targetPlatform;
+export const task = api.task;
+export const templateText = api.templateText;
+export const trackedCopyTo = api.trackedCopyTo;
+export const treeFiles = api.treeFiles;
+export const weekly = api.weekly;
+export const workspace = api.workspace;
 
 export type {
+  BashBody,
+  BashBuilder,
+  BashCommandBuilder,
+  CheckSpec,
   Condition,
   Dependency,
   Dest,
@@ -135,25 +173,66 @@ export type {
   Env,
   EnvContext,
   EnvFn,
+  EnvironmentSpec,
+  ExecBuilder,
+  ExecSpec,
   FactView,
   Fetch,
+  HookSpec,
   HostFacts,
-  Intent,
+  ImageSpec,
   Inputs,
+  Intent,
   IrEntry,
   IrModule,
   ModuleSpec,
   ModuleValue,
   Ownership,
+  PackageLayout,
+  PackageSpec,
   Phase,
   ProbeBuilder,
   ProbeKind,
   ProbeRequest,
+  ProfileSpec,
+  RecipeExecution,
+  RecipeSpec,
   Resource,
+  RunBashSpec,
+  ScheduleSpec,
   Span,
   Step,
   StepAction,
   StepOpts,
+  TaskSpec,
+  TreeFilesOptions,
   Trigger,
   Verify,
+  WorkspaceAbi,
+  WorkspaceArg,
+  WorkspaceArtifactRef,
+  WorkspaceCalendar,
+  WorkspaceCommand,
+  WorkspaceContent,
+  WorkspaceContext,
+  WorkspaceDestination,
+  WorkspaceExecCommand,
+  WorkspaceFile,
+  WorkspaceFileSpec,
+  WorkspaceFn,
+  WorkspaceHostPath,
+  WorkspaceLiteral,
+  WorkspaceOsVersion,
+  WorkspaceOutput,
+  WorkspaceOutputKind,
+  WorkspaceOutputNode,
+  WorkspacePackageCommand,
+  WorkspacePath,
+  WorkspacePlatform,
+  WorkspaceProducer,
+  WorkspaceRunBashCommand,
+  WorkspaceSource,
+  WorkspaceSpec,
+  WorkspaceValue,
+  WorkspaceWeekday,
 } from "./index.ts";

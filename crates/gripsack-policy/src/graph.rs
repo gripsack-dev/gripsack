@@ -12,6 +12,9 @@
 //! they join the closure but have no out-edges, the pre-0047
 //! semantics.
 
+pub mod name_index;
+pub mod roles;
+
 use vstd::prelude::*;
 // plain-cargo shim builds see no use of the seq/map lemmas; the
 // `broadcast use` below (erased outside verification) needs them

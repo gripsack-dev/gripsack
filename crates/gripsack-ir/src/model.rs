@@ -3,7 +3,7 @@ use crate::step::Step;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ir {
     pub ir_version: u32,
@@ -13,7 +13,81 @@ pub struct Ir {
     /// these or the core's built-ins, else E107.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resources: Vec<Resource>,
+    /// Required module map for v3 and the v4/v5 legacy-modules
+    /// branches. The versioned envelope check enforces its presence;
+    /// `default` lets workspace-only envelopes omit it.
+    #[serde(default)]
     pub modules: BTreeMap<String, Module>,
+    /// Current v5 typed workspace. The v4 historical wire remains a
+    /// separate read-only value; no old execution/layout meaning is
+    /// reinterpreted by a v5 executor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<crate::workspace::Workspace>,
+    #[serde(skip)]
+    pub workspace_v4: Option<crate::legacy_v4::LegacyWorkspaceV4>,
+}
+
+impl Ir {
+    pub fn has_workspace(&self) -> bool {
+        self.workspace.is_some() || self.workspace_v4.is_some()
+    }
+
+    /// No workspace version has an executor yet. One output-specific
+    /// E124 decision serves the CLI and direct executor entrypoints.
+    pub fn workspace_execution_error(
+        &self,
+        operation: &str,
+    ) -> Option<crate::diagnostic::Diagnostic> {
+        crate::workspace::execution_gate::execution_error(self, operation)
+    }
+}
+
+/// Version-aware serialization: an empty v3/v4/v5 module map still
+/// emits `modules`, while a v4 historical or v5 typed workspace
+/// emits `workspace` and never fabricates empty legacy modules.
+impl Serialize for Ir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::{Error as _, SerializeStruct};
+        if self.workspace.is_some() && self.workspace_v4.is_some() {
+            return Err(S::Error::custom("both v4 and v5 workspaces present"));
+        }
+        if self.workspace_v4.is_some() && self.ir_version != crate::parse::WORKSPACE_V4_VERSION {
+            return Err(S::Error::custom(
+                "historical workspace requires ir_version 4",
+            ));
+        }
+        if self.workspace.is_some() && self.ir_version != crate::parse::IR_VERSION {
+            return Err(S::Error::custom(
+                "typed workspace requires the current IR version",
+            ));
+        }
+        let omit_modules = self.has_workspace() && self.modules.is_empty();
+        let mut len = 2; // ir_version, host
+        if !self.resources.is_empty() {
+            len += 1;
+        }
+        if !omit_modules {
+            len += 1;
+        }
+        if self.has_workspace() {
+            len += 1;
+        }
+        let mut state = serializer.serialize_struct("Ir", len)?;
+        state.serialize_field("ir_version", &self.ir_version)?;
+        state.serialize_field("host", &self.host)?;
+        if !self.resources.is_empty() {
+            state.serialize_field("resources", &self.resources)?;
+        }
+        if !omit_modules {
+            state.serialize_field("modules", &self.modules)?;
+        }
+        if let Some(workspace) = &self.workspace_v4 {
+            state.serialize_field("workspace", workspace)?;
+        } else if let Some(workspace) = &self.workspace {
+            state.serialize_field("workspace", workspace)?;
+        }
+        state.end()
+    }
 }
 
 /// A named, declared resource — a marker closing the namespace so typos

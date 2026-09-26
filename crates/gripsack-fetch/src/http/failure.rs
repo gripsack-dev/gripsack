@@ -12,6 +12,7 @@ pub enum HttpFailureKind {
     Tls,
     Dns,
     InvalidRequest,
+    InsecureCredential,
     InvalidResponse,
     InvalidMetadata,
     LoginPage,
@@ -46,6 +47,7 @@ impl std::fmt::Display for HttpFailureKind {
                 Self::Tls => "TLS validation failed; check trusted CA configuration",
                 Self::Dns => "DNS lookup failed",
                 Self::InvalidRequest => "invalid URL, proxy or request configuration",
+                Self::InsecureCredential => "refusing bearer credentials over non-HTTPS URL",
                 Self::InvalidResponse => "invalid HTTP response or redirect",
                 Self::InvalidMetadata => "invalid JSON metadata",
                 Self::LoginPage => {

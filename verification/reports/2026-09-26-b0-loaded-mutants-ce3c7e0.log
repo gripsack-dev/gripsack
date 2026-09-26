@@ -1,0 +1,27 @@
+RUNNER_SOURCE_COMMIT=ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c
+RUNNER_SOURCE_FINGERPRINT=872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc
+RUNNER_SOURCE_ROOTS_DIRTY=clean before/after; only ignored disposable Docker-inspect copies mutated
+RUNNER_COMMAND=python3 verification/buildkit-qualification/check_loaded.py results/probe4-verify.json results/mutant-<field>.json (four independent invocations)
+RUNNER_EXIT=each intentionally rejected by its named platform/config/tag/layer decision
+RUNNER_INPUTS=real sourcece3 independently verified OCI report and actual Docker29 image-inspect JSON captured after successful conversion/load; each mutant changes exactly one field, not a missing verifier
+INTENDED_PROPERTY=Docker-loaded platform, checked runtime environment, exact layer DiffIDs and tag must match independently verified OCI evidence
+
+MUTANT=layer-diff-id
+MUTANT_INPUT_SHA256=22e86d38d4f52df444139ad01a42f1a78d7e9bd1748c6701af224a7e58988388
+MUTANT_EXIT=1
+OBSERVED_REJECTION=Docker loaded layer bytes different from verified OCI DiffIDs
+MUTANT=environment
+MUTANT_INPUT_SHA256=4558cd2f00587c6ff3b8c39aa983070f8df4dc37e9e357e4b57feb213f32067b
+MUTANT_EXIT=1
+OBSERVED_REJECTION=Docker loaded different Env from verified OCI config
+MUTANT=repo-tag
+MUTANT_INPUT_SHA256=bf5033c0864f1d33cfeb4bc8df61c5012a77036669be98f0f09889fe9f1429bd
+MUTANT_EXIT=1
+OBSERVED_REJECTION=Docker loaded a different image tag
+MUTANT=platform
+MUTANT_INPUT_SHA256=15ce40c5baf990bc2d8d5e14e779d06a2555f1ac408d4aab34d2f624a508a33a
+MUTANT_EXIT=1
+OBSERVED_REJECTION=Docker loaded an image for a different platform
+
+B0_LOADED_MUTANTS=4
+RUNNER_COUNTS=4 distinct semantic mutations rejected on their named properties, zero skipped/missing tools.

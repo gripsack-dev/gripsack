@@ -102,7 +102,15 @@ check HttpRetry.tla cfg/http-retry-attempt-overflow.cfg BoundedAttempts
 check CredentialRouting.tla cfg/credential-routing.cfg
 check CredentialRouting.tla cfg/credential-routing-base-authority.cfg TokensStayBound
 check CredentialRouting.tla cfg/credential-routing-redirect-forwarding.cfg NoRedirectDisclosure
+check CredentialRouting.tla cfg/credential-routing-repo-audience.cfg TokensStayBound
 check MergeBoundary.tla cfg/merge-boundary.cfg
 check MergeBoundary.tla cfg/merge-boundary-unclosed-marker.cfg ForeignTextPreserved
 check MergeBoundary.tla cfg/merge-boundary-first-mode.cfg AllModeEvidenceRequired
 check MergeBoundary.tla cfg/merge-boundary-first-prune.cfg PruneNeedsWholeEvidence
+
+# B1 worker lease safety (plan/0051): the positive two-client crash
+# model plus two calibrated mutants — an early stop that ignores live
+# leases and a crash that silently erases them.
+check WorkerLease.tla cfg/worker-lease.cfg
+check WorkerLease.tla cfg/worker-lease-early-stop.cfg NoStopWithLiveLease
+check WorkerLease.tla cfg/worker-lease-crash-wipes.cfg NoSilentLeaseVanish

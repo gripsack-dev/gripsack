@@ -5,13 +5,15 @@
  * Imports the repo's host entrypoint, calls its `defineEnv` function
  * with the core-injected context, and prints the eval envelope on
  * stdout: {"ir": …, "diagnostics": [], "probe_requests": […]}.
- * Error diagnostics exit 1 (tracebacks are the frontend's domain; the
- * core passes stderr through untouched, 0005 §4).
+ * Error diagnostics exit 1: source-aware authoring failures cross as
+ * structured envelope diagnostics (A1-06, diagnostic.ts); real defects
+ * stay tracebacks — the core passes stderr through untouched (0005 §4).
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { asDiagnostic, authoringDiagnostic } from "./diagnostic.ts";
 import { core, coreUrl } from "./pin.ts";
 import type { Env } from "./graph.ts";
 
@@ -41,6 +43,62 @@ async function main(): Promise<void> {
   if (inputsPath === undefined) die("--inputs <path> is required (the core always passes it)");
 
   const inputs = core.parseInputs(readFileSync(inputsPath, "utf8"), inputsPath);
+
+  // workspace entry (0052 A1): a root gripsack.ts wins when present —
+  // a project needs no fake hosts/<name>.ts to declare outputs; the
+  // core-injected facts (not a hostname selection) feed the eval.
+  // Otherwise the existing hosts/<host>.ts path runs unchanged.
+  const workspaceFile = join(repo, "gripsack.ts");
+  if (existsSync(workspaceFile)) {
+    if (typeof core.emitWorkspaceIr !== "function") {
+      die(
+        `the pinned @gripsack/core at ${coreUrl} predates the workspace frontend ` +
+          `(0052 A1) — update or remove the repo's node_modules/@gripsack/core pin`,
+      );
+    }
+    // Source-aware authoring failures cross as envelope diagnostics the
+    // core renders like its own (terminal and --json carry the same
+    // facts). Outputs are constructed at module top level, so the
+    // import itself is inside the boundary; engine errors (syntax,
+    // unresolved imports) rethrow to the traceback path (0005 §4).
+    const { probe, requests } = core.createProbeBuilder(inputs.probes);
+    try {
+      const workspaceMod = (await import(pathToFileURL(workspaceFile).href)) as {
+        default?: unknown;
+      };
+      const workspaceFn = workspaceMod.default;
+      if (typeof workspaceFn !== "function") {
+        die(
+          "gripsack.ts must default-export defineWorkspace((ctx) => workspace({ outputs: [...] })) " +
+            "(0052 A1)",
+        );
+      }
+      const value = (workspaceFn as (ctx: unknown) => unknown)({
+        facts: inputs.facts,
+        tags: inputs.tags,
+        probe,
+        settings: inputs.settings,
+      });
+      if (value instanceof Promise) {
+        die("gripsack.ts must synchronously return a workspace({...}) value (got a promise)");
+      }
+      const payload = {
+        ir: JSON.parse(core.emitWorkspaceIr(value as never, inputs.facts, inputs.tags)),
+        diagnostics: [],
+        probe_requests: requests,
+      };
+      process.stdout.write(JSON.stringify(payload) + "\n");
+    } catch (error) {
+      const diagnostic = asDiagnostic(error) ?? authoringDiagnostic(error);
+      if (diagnostic === undefined) throw error;
+      process.stdout.write(
+        JSON.stringify({ ir: null, diagnostics: [diagnostic], probe_requests: requests }) + "\n",
+      );
+      process.exit(1);
+    }
+    return;
+  }
+
   // host entrypoint: selected by the core (hostname / [env]
   // default_host / --host), named in the inputs envelope
   const hostFile = join(repo, "hosts", `${inputs.host}.ts`);

@@ -12,6 +12,9 @@ pub enum UpdateMode {
 }
 
 pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>, ExecError> {
+    if let Some(diagnostic) = ir.workspace_execution_error("update") {
+        return Err(ExecError::Gate(diagnostic));
+    }
     let _session = crate::util::LifecycleSession::acquire(&ctx.home)?;
     let (order, missing) = crate::apply::scoped_order(ir, &ctx.only)?;
     let mut reports = Vec::new();

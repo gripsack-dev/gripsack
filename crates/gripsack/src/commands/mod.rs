@@ -25,7 +25,10 @@ pub use adopt::adopt;
 pub use apply::{ApplyOptions, apply, apply_scoped};
 pub use check::check;
 pub use doctor::doctor;
-pub use eval::{check_ir, eval_repo, render_host_inputs, validate_sources, validated_ir};
+pub use eval::{
+    check_ir, eval_repo, reject_workspace_execution, render_host_inputs, validate_sources,
+    validated_ir,
+};
 pub use gc::gc;
 pub use generations::generations;
 pub use init::init;
@@ -69,8 +72,8 @@ pub fn hostname() -> String {
         .unwrap_or_else(|| "default".into())
 }
 
-/// A valid host FILE name: alnum, dash, underscore — everything else
-/// (macOS hostnames carry dots) becomes a dash. The single
+/// A valid host FILE name: ASCII alnum, dash, underscore — everything
+/// else (macOS hostnames carry dots) becomes a dash. The single
 /// sanitization for BOTH the file `grip init` writes and the default
 /// host every command resolves: init wrote `foo-bar.ts` while eval
 /// looked up raw `foo.bar` — `init && check` failed on every Mac
@@ -79,7 +82,7 @@ pub fn sanitize_hostname(raw: &str) -> String {
     let clean: String = raw
         .chars()
         .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
                 c
             } else {
                 '-'

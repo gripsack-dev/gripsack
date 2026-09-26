@@ -114,12 +114,42 @@ export default defineEnv((ctx) => ({
 }));
 ```
 
-Evaluation runs in Deno, spawned deny-by-default: no env vars, no
-network, no subprocesses, read-only within the repo. Facts (os, arch,
-libc, hostname) are detected by the core and injected — the same repo
-on the same host always yields the same graph. The core never embeds a
-runtime ([plan/0005](plan/0005-frontends-and-configuration.md),
+`--host` and `[env] default_host` select one entrypoint and one
+`locks/<host>.lock` file. They must be single ASCII names (letters,
+digits, `_`, `-`, and `.` after the first character; no `..` or path
+separators). E132 rejects unsafe names **before** tool provisioning or
+host-derived file access. `grip init` sanitizes the detected machine
+hostname to this spelling; role-named hosts such as `work.dev` remain
+valid.
+
+Evaluation runs in Deno, spawned deny-by-default: no env vars,
+network, or subprocesses. Reads are limited to the repo, injected
+inputs, embedded frontend, and an explicitly detected
+`@gripsack/core` pin whose canonical target proves its package name
+(the pin may live outside the repo). E133 rejects a comma in **any**
+granted path before Deno starts: Deno treats commas in `--allow-read`
+as new path grants. Move a comma-named repo, Gripsack home, or pinned
+package to an unambiguous path rather than widening permission.
+Facts (os, arch, libc, hostname) are core-injected; the core never
+embeds a runtime ([plan/0005](plan/0005-frontends-and-configuration.md),
 [0013](plan/0013-constrained-evaluation.md)).
+
+`env.toml` `[eval].env` is a build/fetch-child environment, not grip's
+process environment: build steps, fetcher plugins and artifact
+proxy/CA configuration receive it, while host facts, tool provisioning
+and the Deno evaluator do not. Operator-only `GRIPSACK_*`,
+`GH_HOST`/`GITHUB_HOST` and GitHub token names are rejected with E400
+if declared there. Supply credentials and their host binding in the
+invoking environment; the HTTP client refuses to send a bound Bearer
+token to a non-HTTPS URL, including loopback. A repo may still declare
+`SSL_CERT_FILE` for an artifact server's CA.
+
+Frontend evaluation is supervised: one ten-minute budget covers all
+probe rounds; stdout and stderr are each limited to 16 MiB, and error
+output retains at most the final 64 KiB. Exceeding a limit fails the
+operation rather than parsing a partial envelope. `grip adopt` checks
+repo trust before inspecting the target or generating repo files;
+`--yes` skips confirmation, not trust.
 
 [npm]: https://www.npmjs.com/package/@gripsack/core
 

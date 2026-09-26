@@ -6,7 +6,7 @@ mod protocol;
 #[cfg(test)]
 mod tests;
 
-use crate::{FetchError, FetchLimits};
+use crate::{FetchContext, FetchError, FetchLimits};
 use gripsack_process::{Control, Limits, StopReason};
 use gripsack_store::hash::PayloadHash;
 use protocol::PluginMessage;
@@ -24,19 +24,20 @@ pub(crate) struct PluginFetch {
 }
 
 pub(crate) fn fetch(
+    context: &FetchContext,
     name: &str,
     args: &serde_json::Value,
     dest: &Path,
     locked: Option<&serde_json::Value>,
     limits: FetchLimits,
 ) -> Result<PluginFetch, FetchError> {
-    let exe = crate::find_fetcher(name).ok_or_else(|| {
+    let exe = context.find_fetcher(name).ok_or_else(|| {
         failure(
             name,
             format!("gripfetch-{name} not found on PATH (or declare it in env.toml)"),
         )
     })?;
-    if let Some(caps) = capabilities::get(name, &exe) {
+    if let Some(caps) = capabilities::get(context, name, &exe) {
         for (domain, budget) in &caps.throttle {
             crate::throttle::acquire_declared(domain, budget);
         }
@@ -47,14 +48,9 @@ pub(crate) fn fetch(
         dest_dir: dest.to_string_lossy(),
         locked,
     };
-    fetch_exchange(
-        &mut Command::new(exe),
-        name,
-        &request,
-        dest,
-        PLUGIN_TIMEOUT,
-        limits,
-    )
+    let mut command = Command::new(exe);
+    context.apply_build_env(&mut command);
+    fetch_exchange(&mut command, name, &request, dest, PLUGIN_TIMEOUT, limits)
 }
 
 fn failure(name: &str, reason: String) -> FetchError {

@@ -7,7 +7,7 @@ use crate::ops::{
     DestView, ModeInput, Op, OpKind, WritePermissions, execute_op, plan_entry_op, plan_remove_op,
     plan_restore_op,
 };
-use gripsack_ir::{Entry, Ownership};
+use gripsack_ir::{Entry, HostName, Ownership};
 use gripsack_store as store;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -19,7 +19,7 @@ fn context(home: &Path) -> Ctx {
         home: home.into(),
         repo: home.into(),
         only: vec![],
-        host: "model".into(),
+        host: HostName::parse("model").unwrap(),
         on_progress: None,
         take_over: false,
         take_over_entries: None,

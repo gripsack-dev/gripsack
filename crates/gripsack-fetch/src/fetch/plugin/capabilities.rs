@@ -17,12 +17,14 @@ pub(super) struct Capabilities {
 
 type Cache = BTreeMap<String, Option<Capabilities>>;
 
-pub(super) fn get(name: &str, exe: &Path) -> Option<Capabilities> {
+pub(super) fn get(context: &crate::FetchContext, name: &str, exe: &Path) -> Option<Capabilities> {
     static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
     if let Some(entry) = CACHE.lock().expect("caps cache").get(name) {
         return entry.clone();
     }
-    let caps = exchange(&mut Command::new(exe), Duration::from_secs(30));
+    let mut command = Command::new(exe);
+    context.apply_build_env(&mut command);
+    let caps = exchange(&mut command, Duration::from_secs(30));
     CACHE
         .lock()
         .expect("caps cache")

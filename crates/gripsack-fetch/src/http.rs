@@ -23,6 +23,14 @@ pub(crate) struct Client {
     cooldowns: Mutex<std::collections::BTreeMap<String, request::Cooldown>>,
 }
 
+/// Secret-bearing routes are neither Debug nor serialized.
+#[derive(Clone, Copy)]
+enum CredentialRoute<'a> {
+    Unbound,
+    Https(&'a str),
+    Insecure,
+}
+
 /// Deliberately not Debug: authentication material never enters tracing.
 struct Policy {
     no_proxy: String,
@@ -32,7 +40,7 @@ struct Policy {
 }
 
 impl Policy {
-    fn from_env() -> Self {
+    fn from_env(build_env: &crate::build_env::BuildProcessEnv) -> Self {
         let token = |primary, fallback| {
             std::env::var(primary)
                 .or_else(|_| std::env::var(fallback))
@@ -41,8 +49,9 @@ impl Policy {
                 .map(|t| format!("Bearer {t}"))
         };
         Self {
-            no_proxy: std::env::var("NO_PROXY")
-                .or_else(|_| std::env::var("no_proxy"))
+            no_proxy: build_env
+                .var("NO_PROXY")
+                .or_else(|| build_env.var("no_proxy"))
                 .unwrap_or_default(),
             github: token("GITHUB_TOKEN", "GH_TOKEN"),
             enterprise_host: std::env::var("GH_HOST")
@@ -53,8 +62,29 @@ impl Policy {
         }
     }
 
-    fn header(&self, url: &str) -> Option<&str> {
-        let (host, _) = host_port(url)?;
+    fn header(&self, value: &str) -> Option<&str> {
+        match self.route(value) {
+            CredentialRoute::Https(header) => Some(header),
+            CredentialRoute::Unbound | CredentialRoute::Insecure => None,
+        }
+    }
+
+    fn route(&self, value: &str) -> CredentialRoute<'_> {
+        let Ok(url) = url::Url::parse(value) else {
+            return CredentialRoute::Unbound;
+        };
+        let Some(header) = url.host_str().and_then(|host| self.bound_to(host)) else {
+            return CredentialRoute::Unbound;
+        };
+        if url.scheme() == "https" {
+            CredentialRoute::Https(header)
+        } else {
+            CredentialRoute::Insecure
+        }
+    }
+
+    fn bound_to(&self, host: &str) -> Option<&str> {
+        let host = host.trim_matches(['[', ']']).to_ascii_lowercase();
         if host == "github.com" || host == "api.github.com" {
             self.github.as_deref()
         } else if self.enterprise_host.as_deref() == Some(host.as_str()) {
@@ -100,7 +130,7 @@ impl Policy {
 }
 
 impl Client {
-    pub(crate) fn from_env() -> Self {
+    pub(crate) fn from_env(build_env: &crate::build_env::BuildProcessEnv) -> Self {
         let proxy = [
             "ALL_PROXY",
             "all_proxy",
@@ -111,15 +141,15 @@ impl Client {
         ]
         .into_iter()
         .find_map(|name| {
-            std::env::var(name)
-                .ok()
+            build_env
+                .var(name)
                 .and_then(|url| ureq::Proxy::new(url).ok())
         });
         Self {
             agents: OnceLock::new(),
-            certificates: roots::Locations::capture(),
+            certificates: roots::Locations::capture(build_env),
             proxy,
-            policy: Policy::from_env(),
+            policy: Policy::from_env(build_env),
             cooldowns: Mutex::new(Default::default()),
         }
     }
@@ -133,7 +163,7 @@ impl Client {
                     .timeout_connect(Duration::from_secs(30))
                     .timeout(Duration::from_secs(600))
                     .try_proxy_from_env(false)
-                    .redirect_auth_headers(ureq::RedirectAuthHeaders::SameHost)
+                    .redirect_auth_headers(ureq::RedirectAuthHeaders::Never)
             };
             let direct = builder().build();
             let proxied = match &self.proxy {
@@ -228,6 +258,42 @@ mod tests {
         let mut unbound = policy;
         unbound.enterprise_host = None;
         assert!(unbound.header("https://ghe.internal/archive").is_none());
+    }
+
+    #[test]
+    fn bound_credentials_require_tls_and_registry_artifact_refuses_cleartext() {
+        let policy = policy();
+        for (url, expected) in [
+            ("http://api.github.com/repos/a", "Bearer public"),
+            ("http://ghe.internal/api/v3", "Bearer enterprise"),
+        ] {
+            assert!(policy.header(url).is_none());
+            assert!(
+                matches!(policy.route(url), CredentialRoute::Insecure),
+                "{expected} would leak to {url}"
+            );
+        }
+        assert!(matches!(
+            policy.route("http://unbound.invalid/"),
+            CredentialRoute::Unbound
+        ));
+
+        let client = Client::from_env(&Default::default());
+        let error = client
+            .text(
+                "http://127.0.0.1:9/registry",
+                RequestKind::RegistryArtifact {
+                    authorization: "Bearer dummy-registry-token",
+                },
+            )
+            .unwrap_err();
+        match error {
+            crate::FetchError::Http(failure) => {
+                assert_eq!(failure.kind(), HttpFailureKind::InsecureCredential);
+                assert_eq!(failure.attempts(), 0);
+            }
+            other => panic!("expected an HTTP refusal, got {other}"),
+        }
     }
 
     #[test]

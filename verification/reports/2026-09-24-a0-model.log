@@ -1,0 +1,68 @@
+ Image gripsack-model Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 535B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 9.77kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.7s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#5 DONE 0.6s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 DONE 0.0s
+
+#9 [model 1/6] FROM docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#9 resolve docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 0.0s done
+#9 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 94.66kB 0.0s done
+#8 DONE 0.0s
+
+#10 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#10 CACHED
+
+#11 [model 3/6] WORKDIR /work
+#11 CACHED
+
+#12 [model 4/6] COPY specs ./specs
+#12 CACHED
+
+#13 [model 5/6] COPY scripts/check_models.sh ./scripts/check_models.sh
+#13 CACHED
+
+#14 [model 6/6] RUN sh scripts/check_models.sh /tla/tla2tools.jar
+#14 CACHED
+
+#15 exporting to image
+#15 exporting layers done
+#15 exporting manifest sha256:2b4180e4243bc3bda5bc6ad9926b4510523b4e4ec679d0bffc89d427ad1b7b7c 0.0s done
+#15 exporting config sha256:4e23e36598c6c7f802e55f0bf681e204b688ec7e88cdcc9ca72639ea70aa6073 0.0s done
+#15 exporting attestation manifest sha256:abc086ff776ad5c910eedcbf4144be00e8ff4b8cd3713f686482c5c36aff6363 0.0s done
+#15 exporting manifest list sha256:7c22fc2d42fa1b8de2fdbcf40bb2400f74efe7dfc1238512c383f5e80321b469 0.0s done
+#15 naming to docker.io/library/gripsack-model:latest done
+#15 unpacking to docker.io/library/gripsack-model:latest 0.0s done
+#15 DONE 0.2s
+
+#16 resolving provenance for metadata file
+#16 DONE 0.0s
+ Image gripsack-model Built 
+ Container gripsack-model-run-7908b4d3add6 Creating 
+ Container gripsack-model-run-7908b4d3add6 Created 
+gate passed: model checks via scripts/check_models.sh (TLC, positive + calibrated negative configs)

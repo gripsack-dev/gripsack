@@ -9,7 +9,7 @@ use std::process::ExitCode;
 /// Survey failures are data; setup failures abort with the distinct error exit.
 pub fn update(
     repo: &Path,
-    host: Option<&str>,
+    host: Option<String>,
     modules: Vec<String>,
     palette: Palette,
     check: bool,
@@ -22,14 +22,18 @@ pub fn update(
     if trust_gate(repo).is_some() {
         return failed;
     }
-    let outcome = match eval_repo(repo, host, palette) {
+    let mut sink = crate::render::DiagnosticSink::terminal(palette, repo);
+    let outcome = match eval_repo(repo, host, &mut sink) {
         Ok(outcome) => outcome,
         Err(_) => return failed,
     };
-    let ir = match check_ir(&outcome.ir_json, palette) {
+    let ir = match check_ir(&outcome.ir_json, &mut sink) {
         Ok(ir) => ir,
         Err(_) => return failed,
     };
+    if crate::commands::reject_workspace_execution(&ir, "grip update", &mut sink).is_err() {
+        return failed;
+    }
     let ctx = Ctx {
         home: store::gripsack_home(),
         home_dir: Default::default(),

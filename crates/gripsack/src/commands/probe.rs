@@ -6,13 +6,16 @@
 //! [`PROBE_ROUNDS`]; a set that never settles is an authoring error.
 
 use super::eval::EvalEnvelope;
-use crate::render::{self, Palette};
+use super::frontend::FrontendRunError;
+use crate::render::DiagnosticSink;
 use gripsack_ir::diagnostic::codes;
 use gripsack_ir::{Diagnostic, Severity};
+use gripsack_process::{Limits, StopReason};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Instant;
 
 /// Two-stage eval's round cap (0013 D6): eval → bind → re-eval, at
 /// most this many frontend runs before the set is declared unstable.
@@ -102,12 +105,15 @@ pub(super) fn eval_to_fixpoint(
     host: &str,
     facts: &gripsack_exec::facts::HostFacts,
     inputs: &InputsFile,
-    palette: Palette,
+    sink: &mut DiagnosticSink,
 ) -> Result<(EvalEnvelope, BTreeMap<String, bool>), ExitCode> {
     let empty_settings = serde_json::Map::new();
     let no_tags: [String; 0] = [];
     let mut bound: BTreeMap<String, bool> = BTreeMap::new();
     let mut envelope: Option<EvalEnvelope> = None;
+    // One operation budget covers every probe round, including input
+    // materialization, not a fresh process deadline per re-evaluation.
+    let deadline = Instant::now() + Limits::default().timeout;
 
     for round in 1..=PROBE_ROUNDS {
         inputs.write(&InputsEnvelope {
@@ -119,11 +125,28 @@ pub(super) fn eval_to_fixpoint(
             settings: &empty_settings,
         })?;
         tracing::info!(round, probes_bound = bound.len(), "frontend eval");
-        let out = frontend.command(&inputs.path).output().map_err(|e| {
-            eprintln!("grip: cannot spawn deno: {e} (see `grip doctor`)");
-            ExitCode::FAILURE
-        })?;
-        let stdout = String::from_utf8(out.stdout).map_err(|_| {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let execution = match frontend.run_bounded(&inputs.path, remaining) {
+            Ok(execution) => execution,
+            Err(FrontendRunError::Grant(diagnostic)) => {
+                sink.report(&[diagnostic]);
+                return Err(ExitCode::FAILURE);
+            }
+            Err(FrontendRunError::Process(error)) => {
+                eprintln!("grip: cannot run deno: {error} (see `grip doctor`)");
+                return Err(ExitCode::FAILURE);
+            }
+        };
+        let out = execution.outcome;
+        if !matches!(&out.reason, StopReason::Exited) {
+            eprintln!("grip: frontend eval stopped ({:?})", out.reason);
+            return Err(ExitCode::FAILURE);
+        }
+        let Some(status) = out.status else {
+            eprintln!("grip: frontend finished without a reaped process");
+            return Err(ExitCode::FAILURE);
+        };
+        let stdout = String::from_utf8(execution.stdout).map_err(|_| {
             eprintln!("grip: frontend emitted non-utf8 output — this is a frontend bug");
             ExitCode::FAILURE
         })?;
@@ -132,31 +155,31 @@ pub(super) fn eval_to_fixpoint(
             Err(_) => {
                 // frontend errors are the frontend's domain (0005 §4) —
                 // pass the stderr through untouched.
-                if !out.status.success() {
+                if !status.success() {
                     eprint!("{}", String::from_utf8_lossy(&out.stderr));
                     eprintln!("grip: frontend eval failed ({host})");
                 } else {
                     eprintln!(
                         "grip: frontend emitted a malformed envelope — this is a frontend bug"
                     );
-                    eprintln!("hint: stdout was {} bytes, not JSON", stdout.len());
+                    eprintln!(
+                        "hint: reconstructed stdout was {} bytes, not JSON",
+                        stdout.len()
+                    );
                 }
                 return Err(ExitCode::FAILURE);
             }
         };
-        let failed = !out.status.success()
+        let failed = !status.success()
             || parsed
                 .diagnostics
                 .iter()
                 .any(|d| d.severity == Severity::Error);
         if failed {
-            if !parsed.diagnostics.is_empty() {
-                eprintln!(
-                    "{}",
-                    render::render_diagnostics(&parsed.diagnostics, palette)
-                );
-            }
-            if !out.status.success() {
+            sink.report(&parsed.diagnostics);
+            // A structured envelope IS the failure report; the stderr
+            // pass-through and tail line are for the traceback path.
+            if !status.success() && !out.stderr.is_empty() {
                 eprint!("{}", String::from_utf8_lossy(&out.stderr));
                 eprintln!("grip: frontend eval failed ({host})");
             }
@@ -193,7 +216,7 @@ pub(super) fn eval_to_fixpoint(
                  unconditionally, not behind another probe's result",
             );
             tracing::error!(code = codes::PROBE_UNSTABLE, "{names}");
-            eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+            sink.report(&[diagnostic]);
             return Err(ExitCode::FAILURE);
         }
         for req in &fresh {
@@ -206,7 +229,7 @@ pub(super) fn eval_to_fixpoint(
                     let diagnostic = Diagnostic::error(codes::PROBE_UNSUPPORTED, message)
                         .with_label(req.span.clone(), "probe requested here");
                     tracing::error!(code = codes::PROBE_UNSUPPORTED, "{}", req.key());
-                    eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+                    sink.report(&[diagnostic]);
                     return Err(ExitCode::FAILURE);
                 }
             }

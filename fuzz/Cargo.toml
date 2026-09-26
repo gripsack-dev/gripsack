@@ -16,8 +16,10 @@ gripsack-store.workspace = true
 gripsack-fs.workspace = true
 gripsack-exec.workspace = true
 gripsack-fetch.workspace = true
+gripsack-buildkit.workspace = true
 gripsack-ir.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 tempfile = "3"
 libfuzzer-sys = { version = "0.4", optional = true }
 
@@ -48,4 +50,9 @@ required-features = ["fuzzing"]
 [[bin]]
 name = "archive"
 path = "fuzz_targets/archive.rs"
+required-features = ["fuzzing"]
+
+[[bin]]
+name = "buildkit_protocol"
+path = "fuzz_targets/buildkit_protocol.rs"
 required-features = ["fuzzing"]

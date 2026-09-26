@@ -9,7 +9,11 @@ import type { IrModule, ModuleValue } from "./module.ts";
 import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
-export const IR_VERSION = 3;
+/** One current frontend version (0052 §1): workspace and legacy
+ *  module entrypoints both emit v5. Strict v3 module and v4 workspace
+ *  documents retain their versioned core readers; only v5 is written
+ *  by this frontend. */
+export const IR_VERSION = 5;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,
@@ -65,11 +69,16 @@ export function mergeTags(envTags: string[] | undefined, cliTags: string[]): str
   return [...(envTags ?? []), ...cliTags].filter((t, i, all) => all.indexOf(t) === i);
 }
 
-/** Serialize a returned environment as IR JSON. Duplicate module
- *  names throw with both declaration sites; stray objects throw with
- *  what they are. Key order is part of the contract (golden corpus):
- *  `ir_version, host, modules[, resources]`, host keys
- *  `os, arch, tags[, libc]` — hostname never crosses into the IR. */
+/** Serialize a returned environment as the v5 legacy-modules IR
+ *  envelope (`{ir_version: 5, host, modules[, resources]}` — never a
+ *  `workspace` key; the schema admits exactly one of the two). This
+ *  is the bounded compatibility path for `hosts/<name>.ts`
+ *  entrypoints (0052 §2.1); new workspaces use `emitWorkspaceIr`.
+ *  Duplicate module names throw with both declaration sites; stray
+ *  objects throw with what they are. Key order is part of the
+ *  contract (golden corpus): `ir_version, host, modules
+ *  [, resources]`, host keys `os, arch, tags[, libc]` — hostname
+ *  never crosses into the IR. */
 export function emitIr(env: Env, facts: HostFacts, tags: string[]): string {
   const resources = declaredResources();
   const modules: Record<string, IrModule> = {};

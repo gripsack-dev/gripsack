@@ -1,0 +1,2173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gripsack.dev/schema/ir/v5.json",
+  "title": "gripsack IR v5 typed workspace admission",
+  "description": "Versioned v5 typed workspace declarations or explicit legacy-module envelope. Unknown fields and unsupported types are structural errors; execution is separately capability-admitted.",
+  "type": "object",
+  "required": [
+    "ir_version",
+    "host"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ir_version": {
+      "const": 5
+    },
+    "host": {
+      "$ref": "#/$defs/hostFacts"
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resource"
+      },
+      "description": "Declared resources (0007 \u00a74); step resources must resolve to these or core built-ins"
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/module"
+      }
+    },
+    "workspace": {
+      "$ref": "#/$defs/workspace"
+    }
+  },
+  "$defs": {
+    "hostFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "os": {
+          "type": "string"
+        },
+        "arch": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "libc": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "e.g. glibc-2.36, musl, darwin; null or absent when undetectable"
+        }
+      }
+    },
+    "span": {
+      "type": "object",
+      "required": [
+        "file",
+        "line"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "col": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "description": "Source location of this node in frontend code (plan/0004 \u00a72). Optional; built-in frontends MUST emit it at module level. line/col are Rust u32."
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fetch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/fetch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "build": {
+          "$ref": "#/$defs/build"
+        },
+        "install": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
+        },
+        "config": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
+        },
+        "depends": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency"
+          }
+        },
+        "activate": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/intent"
+          }
+        },
+        "steps": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/step"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Explicit pipeline control (0007): present means the declarative fields above must all be empty (sema E103)"
+        },
+        "verify": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/verify"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Registered linter for this module's config payloads (0011); the core drives it (0012)"
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/envVar"
+          },
+          "description": "Environment contributions exported to the shell profile at activation (plan/0001 \u00a73.10)"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "none",
+            "custom_shell"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "custom_shell"
+            },
+            "script": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "script"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "from",
+        "to"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Payload-relative source. {version} uses the raw locked version; {version.bare} strips exactly one leading lowercase v; platform placeholders are expanded by the core.",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^(/|~/)",
+          "description": "absolute or ~/-prefixed destination"
+        },
+        "mode": {
+          "enum": [
+            "owned",
+            "tracked_copy",
+            "merge",
+            "template"
+          ],
+          "default": "owned"
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "template variables (mode template only)"
+        },
+        "marker": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "comment prefix for the managed block (mode merge only); default: inferred from the dest extension"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "required": [
+        "module"
+      ],
+      "properties": {
+        "module": {
+          "type": "string",
+          "minLength": 1
+        },
+        "for": {
+          "enum": [
+            "runtime",
+            "build"
+          ],
+          "default": "runtime",
+          "description": "Build dependencies provide store artifacts to build steps; runtime dependencies also deploy. Runtime incoming edges win over build-only use (0039)."
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "intent": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "trigger": {
+          "enum": [
+            "post_link",
+            "post_activate",
+            "on_remove"
+          ],
+          "default": "post_activate"
+        },
+        "kind": {
+          "enum": [
+            "service",
+            "fonts",
+            "desktop_entry",
+            "custom_shell"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "user": {
+          "type": "boolean"
+        },
+        "script": {
+          "type": "string"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "service"
+            },
+            "name": {
+              "type": "string"
+            },
+            "user": {
+              "type": "boolean"
+            },
+            "trigger": {
+              "$ref": "#/$defs/trigger"
+            },
+            "span": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/span"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "fonts"
+            },
+            "trigger": {
+              "$ref": "#/$defs/trigger"
+            },
+            "span": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/span"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "desktop_entry"
+            },
+            "trigger": {
+              "$ref": "#/$defs/trigger"
+            },
+            "span": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/span"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "custom_shell"
+            },
+            "script": {
+              "type": "string"
+            },
+            "trigger": {
+              "$ref": "#/$defs/trigger"
+            },
+            "span": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/span"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "script"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "trigger": {
+      "enum": [
+        "post_link",
+        "post_activate",
+        "on_remove"
+      ],
+      "default": "post_activate"
+    },
+    "resource": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "id",
+        "action"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/stepAction"
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "sibling step ids or cross-module 'module:step' refs"
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/phase"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verify": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/verify"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "stepAction": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "fetch",
+            "build",
+            "install",
+            "config_deploy",
+            "intent",
+            "verify",
+            "run",
+            "custom_shell"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "fetch"
+            },
+            "fetch": {
+              "$ref": "#/$defs/fetch"
+            }
+          },
+          "required": [
+            "kind",
+            "fetch"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "build"
+            },
+            "spec": {
+              "$ref": "#/$defs/build"
+            }
+          },
+          "required": [
+            "kind",
+            "spec"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "install"
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/entry"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "entries"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "config_deploy"
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/entry"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "entries"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "intent"
+            },
+            "action": {
+              "$ref": "#/$defs/action"
+            },
+            "trigger": {
+              "$ref": "#/$defs/trigger"
+            }
+          },
+          "required": [
+            "kind",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "verify"
+            },
+            "verify": {
+              "$ref": "#/$defs/verify"
+            }
+          },
+          "required": [
+            "kind",
+            "verify"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "run"
+            },
+            "argv": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "cwd": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "argv"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "custom_shell"
+            },
+            "script": {
+              "type": "string"
+            },
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "script"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "service",
+            "fonts",
+            "desktop_entry",
+            "custom_shell"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "service"
+            },
+            "name": {
+              "type": "string"
+            },
+            "user": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "fonts"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "desktop_entry"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "custom_shell"
+            },
+            "script": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "script"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "phase": {
+      "enum": [
+        "fetch",
+        "build",
+        "install",
+        "config",
+        "verify",
+        "activate",
+        "custom"
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "fetch": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "github_release",
+            "tarball",
+            "git",
+            "file",
+            "plugin",
+            "brew",
+            "pixi"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "github_release"
+            },
+            "repo": {
+              "type": "string",
+              "pattern": "^[^/]+/[^/]+$"
+            },
+            "asset": {
+              "type": "string",
+              "description": "Asset pattern. {version.bare} has one exact stripped spelling; legacy {version} tries the raw tag first, then its one-v-stripped spelling. Platform placeholders are supported."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/sha256"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "base_url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uri"
+            }
+          },
+          "required": [
+            "kind",
+            "repo",
+            "asset"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "tarball"
+            },
+            "url": {
+              "type": "string"
+            },
+            "sha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/sha256"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "api_url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "registry API asset endpoint (authenticated download path); produced by resolution, never written by frontends"
+            }
+          },
+          "required": [
+            "kind",
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "git"
+            },
+            "url": {
+              "type": "string"
+            },
+            "rev": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind",
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "file"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "plugin"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "args": {
+              "anyOf": [
+                {
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "plugin-defined; the parser admits any JSON value here, the authored contract is an object (or absent/null)"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "brew"
+            },
+            "formula": {
+              "type": "string"
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/sha256"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "formula"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "pixi"
+            },
+            "package": {
+              "type": "string"
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/sha256"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "package"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "verify": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "binary_runs",
+            "file_exists",
+            "shell",
+            "file_deployed"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "script": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "binary_runs"
+            },
+            "path": {
+              "type": "string",
+              "description": "Payload-relative path; supports {version}, {version.bare}, and platform placeholders."
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "file_exists"
+            },
+            "path": {
+              "type": "string",
+              "description": "Payload-relative path; supports {version}, {version.bare}, and platform placeholders."
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "shell"
+            },
+            "script": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "script"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "file_deployed"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "Smoke contract (0007): binary_runs {path,args} | file_exists {path} | shell {script} | file_deployed {path}. Runs pre-flip."
+    },
+    "envVar": {
+      "type": "object",
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "variable name; PATH-style list vars use prepend/append"
+        },
+        "op": {
+          "enum": [
+            "set",
+            "prepend",
+            "append"
+          ],
+          "default": "set"
+        },
+        "value": {
+          "type": "string",
+          "description": "`{store}` resolves to the module's store path"
+        }
+      },
+      "additionalProperties": false
+    },
+    "workspaceSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "line"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "col": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "span",
+        "outputs"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workspaceOutput"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "workspaceOutput": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/recipeOutput"
+        },
+        {
+          "$ref": "#/$defs/packageOutput"
+        },
+        {
+          "$ref": "#/$defs/environmentOutput"
+        },
+        {
+          "$ref": "#/$defs/taskOutput"
+        },
+        {
+          "$ref": "#/$defs/scheduleOutput"
+        },
+        {
+          "$ref": "#/$defs/checkOutput"
+        },
+        {
+          "$ref": "#/$defs/imageOutput"
+        },
+        {
+          "$ref": "#/$defs/profileOutput"
+        },
+        {
+          "$ref": "#/$defs/hookOutput"
+        }
+      ]
+    },
+    "workspacePlatform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "os",
+        "arch"
+      ],
+      "properties": {
+        "os": {
+          "enum": [
+            "linux",
+            "macos"
+          ]
+        },
+        "arch": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "abi": {
+          "enum": ["gnu", "musl", "darwin"]
+        },
+        "minimum_os": {
+          "$ref": "#/$defs/workspaceOsVersion"
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"os": {"const": "linux"}}},
+          "then": {"properties": {"abi": {"enum": ["gnu", "musl"]}}}
+        },
+        {
+          "if": {"properties": {"os": {"const": "macos"}}},
+          "then": {"properties": {"abi": {"const": "darwin"}}}
+        }
+      ]
+    },
+    "workspaceOsVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["major", "minor"],
+      "properties": {
+        "major": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "minor": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "patch": {"type": "integer", "minimum": 0, "maximum": 65535}
+      }
+    },
+    "recipeExecution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "access"],
+          "properties": {
+            "kind": {"const": "host"},
+            "access": {"const": "unconfined"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "worker"],
+          "properties": {
+            "kind": {"const": "isolated_linux"},
+            "worker": {"const": "buildkit"}
+          }
+        }
+      ]
+    },
+    "packageLayout": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {"kind": {"const": "relocatable"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "prefix"],
+          "properties": {
+            "kind": {"const": "fixed_prefix"},
+            "prefix": {"type": "string", "minLength": 2, "pattern": "^/"}
+          }
+        }
+      ]
+    },
+    "workspacePath": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "output",
+            "selector"
+          ],
+          "properties": {
+            "kind": {
+              "const": "artifact"
+            },
+            "output": {
+              "type": "string",
+              "minLength": 1
+            },
+            "selector": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "path"
+          ],
+          "properties": {
+            "kind": {
+              "const": "host"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "workspaceArg": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "output",
+            "selector"
+          ],
+          "properties": {
+            "kind": {
+              "const": "artifact"
+            },
+            "output": {
+              "type": "string",
+              "minLength": 1
+            },
+            "selector": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "package",
+            "command"
+          ],
+          "properties": {
+            "kind": {
+              "const": "package_command"
+            },
+            "package": {
+              "type": "string",
+              "minLength": 1
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "workspaceCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "span",
+            "argv"
+          ],
+          "properties": {
+            "kind": {
+              "const": "exec"
+            },
+            "span": {
+              "$ref": "#/$defs/workspaceSpan"
+            },
+            "argv": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/workspaceArg"
+              }
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/workspaceArg"
+              }
+            },
+            "cwd": {
+              "$ref": "#/$defs/workspacePath"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "span",
+            "interpreter",
+            "body"
+          ],
+          "properties": {
+            "kind": {
+              "const": "run_bash"
+            },
+            "span": {
+              "$ref": "#/$defs/workspaceSpan"
+            },
+            "interpreter": {
+              "$ref": "#/$defs/workspaceArg"
+            },
+            "body": {
+              "type": "string"
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/workspaceArg"
+              }
+            },
+            "cwd": {
+              "$ref": "#/$defs/workspacePath"
+            },
+            "line_map": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "workspaceFetch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fetch",
+        "span"
+      ],
+      "properties": {
+        "fetch": {
+          "$ref": "#/$defs/fetch"
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        }
+      }
+    },
+    "workspaceSource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "path"
+          ],
+          "properties": {
+            "kind": {
+              "const": "repo_file"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Normalized repository-relative POSIX file path; dot and dot-dot segments, NUL, backslash and empty components are forbidden.",
+              "pattern": "^(?!(?:\\.|\\.\\.)(?:/|$)|.*/(?:\\.|\\.\\.)(?:/|$))(?!.*[\\\\\\u0000])[^/]+(?:/[^/]+)*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "output",
+            "selector"
+          ],
+          "properties": {
+            "kind": {
+              "const": "artifact_file"
+            },
+            "output": {
+              "type": "string",
+              "minLength": 1
+            },
+            "selector": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "workspaceContent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "identity"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "text"
+          ],
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "template",
+            "variables"
+          ],
+          "properties": {
+            "kind": {
+              "const": "template"
+            },
+            "variables": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "template": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "workspaceDestination": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "path"
+          ],
+          "properties": {
+            "kind": {
+              "const": "symlink"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "path"
+          ],
+          "properties": {
+            "kind": {
+              "const": "tracked_copy"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "path",
+            "marker"
+          ],
+          "properties": {
+            "kind": {
+              "const": "managed_block"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "marker": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "workspaceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "span",
+        "content",
+        "destination"
+      ],
+      "properties": {
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "source": {
+          "$ref": "#/$defs/workspaceSource"
+        },
+        "content": {
+          "$ref": "#/$defs/workspaceContent"
+        },
+        "destination": {
+          "$ref": "#/$defs/workspaceDestination"
+        }
+      }
+    },
+    "workspaceCalendar": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "time"
+          ],
+          "properties": {
+            "kind": {
+              "const": "daily"
+            },
+            "time": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "weekday",
+            "time"
+          ],
+          "properties": {
+            "kind": {
+              "const": "weekly"
+            },
+            "weekday": {
+              "enum": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ]
+            },
+            "time": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+            }
+          }
+        }
+      ]
+    },
+    "recipeOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "span",
+        "kind",
+        "source",
+        "execution",
+        "output_kind",
+        "target"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "kind": {
+          "const": "recipe"
+        },
+        "source": {
+          "$ref": "#/$defs/workspaceFetch"
+        },
+        "execution": {
+          "$ref": "#/$defs/recipeExecution"
+        },
+        "output_kind": {
+          "enum": [
+            "file",
+            "tree"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/workspacePlatform"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workspaceCommand"
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "workspaceProducer": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "recipe"],
+          "properties": {
+            "kind": { "const": "recipe" },
+            "recipe": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "provider"],
+          "properties": {
+            "kind": { "const": "provider" },
+            "provider": { "$ref": "#/$defs/workspaceFetch" }
+          }
+        }
+      ]
+    },
+    "packageOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "span",
+        "kind",
+        "producer",
+        "commands",
+        "target",
+        "layout"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "kind": {
+          "const": "package"
+        },
+        "producer": {
+          "$ref": "#/$defs/workspaceProducer"
+        },
+        "commands": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "runtime": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "target": {
+          "$ref": "#/$defs/workspacePlatform"
+        },
+        "layout": {
+          "$ref": "#/$defs/packageLayout"
+        }
+      }
+    },
+    "environmentOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "span",
+        "kind",
+        "packages",
+        "target"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "kind": {
+          "const": "environment"
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "target": {
+          "$ref": "#/$defs/workspacePlatform"
+        },
+        "prefix": {
+          "type": "string",
+          "minLength": 2,
+          "pattern": "^/"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/workspaceArg"
+          }
+        }
+      }
+    },
+    "taskOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "span",
+        "kind",
+        "run"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "kind": {
+          "const": "task"
+        },
+        "run": {
+          "$ref": "#/$defs/workspaceCommand"
+        },
+        "deps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "scheduleOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "span",
+        "kind",
+        "task",
+        "trigger",
+        "scope"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "kind": {
+          "const": "schedule"
+        },
+        "task": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trigger": {
+          "$ref": "#/$defs/workspaceCalendar"
+        },
+        "scope": {
+          "const": "user"
+        }
+      }
+    },
+    "checkOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "span",
+        "kind",
+        "run",
+        "subject"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "kind": {
+          "const": "check"
+        },
+        "run": {
+          "$ref": "#/$defs/workspaceCommand"
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "imageOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "span",
+        "kind",
+        "packages",
+        "target"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "kind": {
+          "const": "image"
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "target": {
+          "$ref": "#/$defs/workspacePlatform"
+        }
+      }
+    },
+    "profileOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "span",
+        "kind"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "kind": {
+          "const": "profile"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workspaceFile"
+          }
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schedules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "hooks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "hookOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "span",
+        "kind",
+        "run",
+        "trigger"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "span": {
+          "$ref": "#/$defs/workspaceSpan"
+        },
+        "kind": {
+          "const": "hook"
+        },
+        "run": {
+          "$ref": "#/$defs/workspaceCommand"
+        },
+        "trigger": {
+          "enum": [
+            "post_link",
+            "post_activate",
+            "on_remove"
+          ]
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "workspace"
+      ],
+      "not": {
+        "required": [
+          "modules"
+        ]
+      }
+    },
+    {
+      "required": [
+        "modules"
+      ],
+      "not": {
+        "required": [
+          "workspace"
+        ]
+      }
+    }
+  ]
+}

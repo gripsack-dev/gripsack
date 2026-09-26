@@ -1,0 +1,21 @@
+RUNNER_SOURCE_COMMIT=d6560758cd4decbb3272926fba3cc5c8bd60b817
+RUNNER_SOURCE_DIRTY=clean at commit (all six gates ran on the identical pre-commit bytes)
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Rust 1.98.0; Deno 2.9.6; TypeScript 7.0.2; Python 3.13.15; pytest 9.1.1; TLC 1.7.4; Verus 0.2026.09.06.8dea4a2
+RUNNER_INPUTS=B1-03 first production slice: the bounded Rust-Go bridge wire contract per Epic B section 4/10.3 and plan/0051 B1 fences. New crate gripsack-buildkit (deps: base64/serde/serde_json/thiserror/sha2 only; no IR/store/exec/fetch dependency — Epic B section 5 module boundary). protocol.rs defines the framed transport (LE u64 length + JSON body; MAX_FRAME_BYTES 256 KiB validated against the header BEFORE any body allocation), strict tagged messages with deny_unknown_fields (ToBridge: Negotiate/Submit binding exact definition+exporter digests and length/Cancel idempotent; FromBridge: NegotiateOk/Accepted/Event/Exported digest-receipts/Done/Failed/Cancelled), base64 log chunks capped at 64 KiB after decode, typed 64-hex Digest and bounded ASCII SessionId, one-exact-pair PROTOCOL_VERSION negotiation, and the pure EventGate fence state machine (stale/future epoch rejection, exactly-one-terminal, duplicate-terminal rejection, cancellation fences acceptance immediately, 4096-chunk log budget).
+
+RUNNER_COMMAND=docker compose run --rm test cargo test --locked -p gripsack-buildkit
+7 passed: every-message byte-exact round trips (both families); hostile oversized headers reject before any body read (proven with 4 KiB trailing bytes); truncated frames, trailing garbage and unknown fields reject; decoded log chunks enforce the cap; negotiation refuses any version but the exact pair; digests/sessions reject malformed shapes; the gate fences stale/future epochs, duplicate terminals, post-cancellation events and the log budget boundary.
+RUNNER_EXIT=0
+
+RUNNER_COMMAND=docker compose run --build --rm fuzz (bwrap-sandboxed real production decoder; target registered in fuzz/run.py TARGETS and the corpus ships 7 seeds)
+replay buildkit_protocol: negotiate.txt accepted.txt log-event.txt done.txt oversized-header.bin truncated.txt unknown-field.txt — the fuzz law: any decode either rejects or re-encodes/re-decodes to the identical message, and decoded events drive the fence gate without panic or terminal flip. Failing-before-process (caught during landing, fixed pre-commit): the first fuzz-gate run silently skipped this target because fuzz/run.py keeps its own TARGETS tuple; registering it made the coverage real.
+RUNNER_EXIT=0
+
+SAME-BYTES FULL GATES (pre-commit, identical tracked tree):
+  test    gate passed: fmt + clippy -D warnings + cargo test (new crate in workspace; embedded frontend fresh)
+  ts-test gate passed: deno 67/67 + tsc examples
+  e2e     322 passed in 1061s, real musl grip (surface unchanged by this crate)
+  model   gate passed: TLC positive + calibrated negatives
+  verify  72 verified, 0 errors; 7 named mutants rejected
+HONESTY=B1-03 partial: this is the wire contract and its pure fence kernel only. No Go bridge speaks it yet, no transport/I/O exists, no worker provisioning, no LLB lowering or submission; grip behavior is unchanged and no B row is verified by this receipt. EventGate is a tested pure kernel, not the TLC/TLAPS/Verus lease safety of B1-04. rustls-only untouched (no network stack introduced).
+B1_PROTOCOL=2 (focused unit group + fuzz replay group; plus six full gates on identical bytes)

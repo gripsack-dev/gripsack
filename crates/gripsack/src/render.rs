@@ -3,10 +3,10 @@
 //! user's frontend code — a missing file degrades to the header alone,
 //! never an error.
 
-use gripsack_ir::{Diagnostic, Ir, Severity, Span};
+use gripsack_ir::{Diagnostic, HostName, Ir, Severity, Span};
 use owo_colors::OwoColorize;
-use std::io::IsTerminal;
-use std::path::Path;
+use std::io::{IsTerminal, Read};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Palette {
@@ -61,9 +61,55 @@ impl Palette {
     }
 }
 
-/// Render one diagnostic, with a source snippet for every span whose
-/// file can be read.
-pub fn render_diagnostic(d: &Diagnostic, palette: Palette) -> String {
+/// Optional source snippets never cross the evaluated repo capability.
+/// File contents are diagnostic decoration, bounded independently of
+/// the IR and omitted when a path is outside this pinned directory.
+struct SourceRoot {
+    path: PathBuf,
+    dir: gripsack_fs::Dir,
+}
+
+impl SourceRoot {
+    fn open(path: &Path) -> Option<Self> {
+        let path = path.canonicalize().ok()?;
+        let dir = gripsack_fs::open(&path).ok()?;
+        Some(Self { path, dir })
+    }
+
+    fn read(&self, source: &str) -> Option<String> {
+        let path = Path::new(source);
+        let relative = if path.is_absolute() {
+            path.strip_prefix(&self.path).ok()?
+        } else {
+            path
+        };
+        if !relative
+            .components()
+            .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
+        {
+            return None;
+        }
+        let file = self.dir.open(relative).ok()?;
+        let metadata = file.metadata().ok()?;
+        if !metadata.is_file() || metadata.len() > MAX_SOURCE_SNIPPET_BYTES {
+            return None;
+        }
+        let mut contents = Vec::with_capacity(metadata.len() as usize);
+        file.take(MAX_SOURCE_SNIPPET_BYTES + 1)
+            .read_to_end(&mut contents)
+            .ok()?;
+        if contents.len() as u64 > MAX_SOURCE_SNIPPET_BYTES {
+            return None;
+        }
+        String::from_utf8(contents).ok()
+    }
+}
+
+/// Optional snippets are bounded to 1 MiB per source file. Larger
+/// files retain the diagnostic code and label without a source read.
+const MAX_SOURCE_SNIPPET_BYTES: u64 = 1_048_576;
+
+fn render_diagnostic_impl(d: &Diagnostic, palette: Palette, root: Option<&SourceRoot>) -> String {
     let mut out = String::new();
     let header = format!("{}[{}]: {}", d.severity, d.code, d.message);
     out.push_str(&match (d.severity, palette.enabled) {
@@ -80,7 +126,7 @@ pub fn render_diagnostic(d: &Diagnostic, palette: Palette) -> String {
                 } else {
                     arrow
                 });
-                out.push_str(&snippet(span, &label.note, palette));
+                out.push_str(&snippet(span, &label.note, palette, root));
             }
             None if !label.note.is_empty() => {
                 out.push_str(&format!("\n  = {}", label.note));
@@ -99,16 +145,25 @@ pub fn render_diagnostic(d: &Diagnostic, palette: Palette) -> String {
     out
 }
 
-/// The rustc-style snippet: gutter, source line, caret at the column.
-fn snippet(span: &Span, note: &str, palette: Palette) -> String {
-    let Ok(contents) = std::fs::read_to_string(&span.file) else {
+/// The rustc-style snippet: gutter, source line, bounded caret.
+/// Invalid coordinates and source files outside the repo fail closed
+/// to the label alone. The directory capability resolves symlinks
+/// without an out-of-root check/use race.
+fn snippet(span: &Span, note: &str, palette: Palette, root: Option<&SourceRoot>) -> String {
+    if span.line == 0 || span.col == Some(0) {
+        return String::new();
+    }
+    let Some(contents) = root.and_then(|root| root.read(&span.file)) else {
         return String::new();
     };
     let Some(source_line) = contents.lines().nth((span.line - 1) as usize) else {
         return String::new();
     };
-    let gutter = format!("{:>3} |", span.line);
     let caret_pad = span.col.unwrap_or(1).saturating_sub(1) as usize;
+    if caret_pad > source_line.len() {
+        return String::new();
+    }
+    let gutter = format!("{:>3} |", span.line);
     let caret = format!("{}^", " ".repeat(caret_pad));
     let mut out = format!("\n   |\n {gutter} {source_line}\n   | {caret}");
     if !note.is_empty() {
@@ -238,13 +293,176 @@ pub fn render_module(ir: &Ir, name: &str, waves: &[Vec<String>], palette: Palett
     out
 }
 
-/// Render all diagnostics, warnings first-class but non-fatal.
+/// Render diagnostic facts without opening source paths. Use the
+/// bounded variant when a trusted repo root is available.
 pub fn render_diagnostics(diagnostics: &[Diagnostic], palette: Palette) -> String {
-    diagnostics
-        .iter()
-        .map(|d| render_diagnostic(d, palette))
-        .collect::<Vec<_>>()
-        .join("\n")
+    render_diagnostics_impl(diagnostics, palette, None)
+}
+
+/// Render source snippets only through a capability rooted at `root`.
+pub fn render_diagnostics_bounded(
+    diagnostics: &[Diagnostic],
+    palette: Palette,
+    root: &Path,
+) -> String {
+    let source = SourceRoot::open(root);
+    render_diagnostics_impl(diagnostics, palette, source.as_ref())
+}
+
+fn render_diagnostics_impl(
+    diagnostics: &[Diagnostic],
+    palette: Palette,
+    source: Option<&SourceRoot>,
+) -> String {
+    let mut out = String::new();
+    for diagnostic in diagnostics {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&render_diagnostic_impl(diagnostic, palette, source));
+    }
+    out
+}
+
+/// Where source-aware diagnostics go (0052 A1-06): every Diagnostic
+/// the eval/check pipeline raises flows through this sink, so the
+/// terminal rendering (color + source snippets) and `grip check
+/// --json`'s document carry the SAME values — the facts cannot drift
+/// between surfaces.
+pub struct DiagnosticSink {
+    palette: Palette,
+    /// Pinned evaluated repo; absent for JSON (no source reads).
+    source: Option<SourceRoot>,
+    /// Some(collected) under --json; None prints as raised.
+    json: Option<Vec<Diagnostic>>,
+}
+
+impl DiagnosticSink {
+    /// Human surface: diagnostics render to stderr as they are raised.
+    pub fn terminal(palette: Palette, repo: &Path) -> Self {
+        DiagnosticSink {
+            palette,
+            json: None,
+            source: SourceRoot::open(repo),
+        }
+    }
+
+    /// Machine surface: diagnostics collect into the check document;
+    /// source snippets are never read for JSON output.
+    pub fn json() -> Self {
+        DiagnosticSink {
+            palette: Palette::default(),
+            json: Some(Vec::new()),
+            source: None,
+        }
+    }
+
+    /// Styling for non-diagnostic lines; disabled under --json (the
+    /// document is never colored).
+    pub fn palette(&self) -> Palette {
+        self.palette
+    }
+
+    pub fn is_json(&self) -> bool {
+        self.json.is_some()
+    }
+
+    /// Record diagnostics: rendered now on the terminal surface,
+    /// collected for the JSON document on the machine surface.
+    pub fn report(&mut self, diagnostics: &[Diagnostic]) {
+        match &mut self.json {
+            Some(collected) => collected.extend(diagnostics.iter().cloned()),
+            None if !diagnostics.is_empty() => {
+                eprintln!(
+                    "{}",
+                    render_diagnostics_impl(diagnostics, self.palette, self.source.as_ref())
+                );
+            }
+            None => {}
+        }
+    }
+
+    /// The collected diagnostics (json mode); empty on the terminal
+    /// surface, where they printed as raised.
+    pub fn into_collected(self) -> Vec<Diagnostic> {
+        self.json.unwrap_or_default()
+    }
+
+    /// Close a failing run: the JSON surface emits its document on
+    /// stdout; the terminal surface already printed. Operational
+    /// failures with no diagnostics (trust gate, missing deno) keep
+    /// their stderr text; the empty document is the honest JSON fact.
+    pub fn finish_failure(self, code: std::process::ExitCode) -> std::process::ExitCode {
+        if let Some(diagnostics) = self.json {
+            println!("{}", CheckReport::failure(diagnostics).to_json());
+        }
+        code
+    }
+}
+
+/// `grip check --json`'s document format version.
+pub const CHECK_JSON_VERSION: u32 = 1;
+
+/// `grip check --json`'s document (0052 A1-06): failures carry the
+/// diagnostics; success carries the same facts the terminal listing
+/// prints (host, named outputs or legacy modules, layout notes).
+#[derive(Debug, serde::Serialize)]
+pub struct CheckReport {
+    pub version: u32,
+    pub ok: bool,
+    /// Every diagnostic raised — errors on failure, non-fatal warnings
+    /// on success. The same values the terminal renders.
+    pub diagnostics: Vec<Diagnostic>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<CheckHostReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outputs: Option<Vec<CheckOutputReport>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modules: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layouts: Option<std::collections::BTreeMap<String, String>>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct CheckHostReport {
+    pub os: String,
+    pub arch: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct CheckOutputReport {
+    pub name: String,
+    pub kind: String,
+    pub span: Span,
+}
+
+impl CheckReport {
+    fn base(ok: bool, diagnostics: Vec<Diagnostic>) -> Self {
+        CheckReport {
+            version: CHECK_JSON_VERSION,
+            ok,
+            diagnostics,
+            host: None,
+            outputs: None,
+            modules: None,
+            layouts: None,
+        }
+    }
+
+    pub fn failure(diagnostics: Vec<Diagnostic>) -> Self {
+        CheckReport::base(false, diagnostics)
+    }
+
+    /// Success carries any non-fatal warnings plus the listing facts.
+    pub fn success(diagnostics: Vec<Diagnostic>) -> Self {
+        CheckReport::base(true, diagnostics)
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("the check report is plain owned data")
+    }
 }
 
 /// `grip plan`'s change section: what apply would do, computed against
@@ -254,7 +472,7 @@ pub fn render_diagnostics(diagnostics: &[Diagnostic], palette: Palette) -> Strin
 pub fn diff_section(
     ir: &Ir,
     repo: &Path,
-    host: &str,
+    host: &HostName,
     adopting: &std::collections::BTreeSet<String>,
     palette: Palette,
 ) -> Result<String, gripsack_exec::ExecError> {
@@ -377,7 +595,7 @@ mod tests {
     fn renders_header_and_help_without_color() {
         let d = Diagnostic::error(codes::UNKNOWN_DEPENDENCY, "module \"a\" is unknown")
             .with_help("declare it in modules/");
-        let out = render_diagnostic(&d, Palette::plain());
+        let out = render_diagnostics(&[d], Palette::plain());
         assert!(out.contains("error[E101]"));
         assert!(out.contains("help: declare it"));
         assert!(!out.contains('\u{1b}'));
@@ -396,7 +614,7 @@ mod tests {
             }),
             "here",
         );
-        let out = render_diagnostic(&d, Palette::plain());
+        let out = render_diagnostics_bounded(&[d], Palette::plain(), dir.path());
         assert!(out.contains("line two"));
         assert!(out.contains("  ^ here"));
     }
@@ -411,8 +629,63 @@ mod tests {
             }),
             "here",
         );
-        let out = render_diagnostic(&d, Palette::plain());
+        let out = render_diagnostics(&[d], Palette::plain());
         assert!(out.contains("--> /nonexistent/mod.py:1"));
         assert!(!out.contains('|'));
+    }
+
+    #[test]
+    fn invalid_diagnostic_coordinates_never_read_a_source_snippet() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("secret.ts");
+        std::fs::write(&file, "secret material\n").unwrap();
+        for (line, col) in [(0, None), (1, Some(u32::MAX))] {
+            let diagnostic = Diagnostic::error(codes::BAD_DESTINATION, "invalid source location")
+                .with_label(
+                    Some(Span {
+                        file: file.to_string_lossy().into_owned(),
+                        line,
+                        col,
+                    }),
+                    "source reference",
+                );
+            let rendered = render_diagnostics_bounded(&[diagnostic], Palette::plain(), dir.path());
+            assert!(rendered.starts_with("error["));
+            assert!(!rendered.contains("secret material"));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn source_snippets_cannot_escape_the_repo_capability() {
+        let repo = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        let private_file = external.path().join("private.txt");
+        std::fs::write(&private_file, "outside secret\n").unwrap();
+        let diagnostic = |file: &Path| {
+            Diagnostic::error(codes::BAD_DESTINATION, "bad source").with_label(
+                Some(Span {
+                    file: file.to_string_lossy().into_owned(),
+                    line: 1,
+                    col: None,
+                }),
+                "source reference",
+            )
+        };
+        let direct =
+            render_diagnostics_bounded(&[diagnostic(&private_file)], Palette::plain(), repo.path());
+        assert!(!direct.contains("outside secret"));
+
+        let link = repo.path().join("outside.txt");
+        std::os::unix::fs::symlink(&private_file, &link).unwrap();
+        let linked =
+            render_diagnostics_bounded(&[diagnostic(&link)], Palette::plain(), repo.path());
+        assert!(!linked.contains("outside secret"));
+
+        let local = repo.path().join("inside.txt");
+        std::fs::write(&local, "inside source\n").unwrap();
+        let admitted =
+            render_diagnostics_bounded(&[diagnostic(&local)], Palette::plain(), repo.path());
+        assert!(admitted.contains("inside source"));
     }
 }

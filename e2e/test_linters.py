@@ -4,6 +4,8 @@ fixture repos come from conftest."""
 
 
 
+import json
+
 from conftest import (
     _seed_plugin_store,
     grip,
@@ -261,3 +263,40 @@ export default module("helix", {
     (confdir / "config.toml").write_text('[editor]\nscrolloff = 5\n')
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
+
+
+def test_default_host_selects_the_same_lockfile_for_versioned_lints(sandbox):
+    """The frontend and the version-aware in-process linter must use
+    the same admitted default_host, even without an explicit --host."""
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """
+import { module, trackedCopy } from "@gripsack/core";
+
+export default module("helix", {
+  config: { "configs/helix/config.toml": trackedCopy("~/.config/helix/config.toml") },
+  lint: "helix",
+});
+""",
+        host="role.dev",
+    )
+    confdir = repo / "configs" / "helix"
+    confdir.mkdir(parents=True)
+    (confdir / "config.toml").write_text('[editor]\nscrolloff = 5\n')
+    (repo / "env.toml").write_text(
+        '[env]\nname = "fixture"\ndefault_host = "role.dev"\n'
+    )
+    locks = repo / "locks"
+    locks.mkdir()
+    (locks / "role.dev.lock").write_text(json.dumps({
+        "modules": {
+            "helix": {
+                "fetch": {"kind": "tarball", "url": "https://example.invalid/h.tar.xz"},
+                "resolved": {"version": "24.3"},
+            },
+        },
+    }))
+    out = grip("check", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "W10" in out.stderr and "24.3" in out.stderr
+    assert not (sandbox / ".local/share/gripsack/generations").exists()

@@ -1,0 +1,329 @@
+RUNNER_SOURCE_COMMIT=6909bbc55226f917238e31c189f7be29e42c41c9
+RUNNER_SOURCE_FINGERPRINT=b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0
+RUNNER_SOURCE_ROOTS_DIRTY=clean before/after real user-manager journey
+RUNNER_COMMAND=python3 /tmp/gripsack-e0-lane-vcowwz1j/qualify.py; systemd-run --user --collect --on-calendar, systemctl --user show/stop/list-timers
+RUNNER_EXIT=0 after real calendar trigger, user-scope service execution and zero transient unit residue
+RUNNER_TOOL_VERSIONS=Python 3.12.3; systemd 255 (255.4-1ubuntu8.17); WSL2 Linux amd64
+RUNNER_INPUTS=unique transient timer gripsack-e0-qual-adef93987dd1, persistent=no accuracy=1s restart=no; no real schedules/clock modified; exact disposable script SHA-256 f91d9f3048a1653dd6ee95e5d2df47663612196a01c76d0f73b27880ff5f4562
+RUNNER_TIMING=requested 2026-09-26 11:56:37 local vs fired 2026-09-26T10:56:37.982633+00:00 UTC, observed delta 0.983s; sleep/reboot/DST not tested
+
+===== exact disposable fixture source =====
+#!/usr/bin/env python3
+"""Qualify one disposable user-calendar timer without changing persistent schedules."""
+from __future__ import annotations
+
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import secrets
+import subprocess
+import sys
+import time
+
+root = Path(__file__).resolve().parent
+unit = "gripsack-e0-qual-" + secrets.token_hex(6)
+service = unit + ".service"
+timer = unit + ".timer"
+marker = root / "fired.utc"
+started = dt.datetime.now().astimezone()
+trigger = (started + dt.timedelta(seconds=25)).strftime("%Y-%m-%d %H:%M:%S")
+report: dict[str, object] = {
+    "unit": unit,
+    "source_date": started.isoformat(),
+    "requested_calendar": trigger,
+    "user_id": os.getuid(),
+    "service_marker": str(marker),
+    "commands": [],
+}
+
+
+def command(*args: str, required: bool = True, timeout: int = 12) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    report["commands"].append({
+        "argv": list(args), "exit": result.returncode,
+        "stdout": result.stdout.strip(), "stderr": result.stderr.strip(),
+    })
+    if required and result.returncode:
+        raise RuntimeError(f"{args!r} exited {result.returncode}: {result.stderr}")
+    return result
+
+
+try:
+    report["version"] = command("systemd", "--version").stdout.splitlines()[0]
+    report["user_manager"] = command("systemctl", "--user", "is-system-running").stdout.strip()
+    report["linger"] = command("loginctl", "show-user", str(os.getuid()), "-p", "Linger").stdout.strip()
+    report["daily_calendar"] = command("systemd-analyze", "calendar", "daily").stdout.strip()
+    if command("systemctl", "--user", "show", timer, "-p", "LoadState", "--value", required=False).stdout.strip() == "loaded":
+        raise RuntimeError("random fixture unit already exists; do not replace it")
+    service_code = (
+        "from datetime import datetime, timezone; from pathlib import Path; import sys; "
+        "Path(sys.argv[1]).write_text(datetime.now(timezone.utc).isoformat() + '\\n')"
+    )
+    command(
+        "systemd-run", "--user", "--collect", "--unit", unit,
+        "--on-calendar", trigger,
+        "--timer-property=AccuracySec=1s", "--timer-property=Persistent=no",
+        "--property=Type=oneshot", "--property=Restart=no",
+        "/usr/bin/python3", "-c", service_code, str(marker),
+    )
+    report["timer_unit"] = command(
+        "systemctl", "--user", "show", timer,
+        "-p", "LoadState", "-p", "Unit", "-p", "AccuracyUSec",
+        "-p", "Persistent", "-p", "NextElapseUSecRealtime",
+    ).stdout.strip()
+    if "LoadState=loaded" not in report["timer_unit"] or f"Unit={service}" not in report["timer_unit"]:
+        raise RuntimeError(f"timer did not bind intended service: {report['timer_unit']}")
+    deadline = time.monotonic() + 85
+    while time.monotonic() < deadline:
+        if marker.is_file() and marker.stat().st_size:
+            break
+        time.sleep(0.2)
+    if not marker.is_file() or not marker.stat().st_size:
+        raise RuntimeError("user-manager calendar trigger never completed the service output")
+    report["fired_utc"] = marker.read_text().strip()
+    report["marker_owner_uid"] = marker.stat().st_uid
+    if report["marker_owner_uid"] != os.getuid():
+        raise RuntimeError("service did not run in the expected user domain")
+    report["service_after_run"] = command(
+        "systemctl", "--user", "show", service,
+        "-p", "Result", "-p", "ExecMainStatus", "-p", "SubState",
+        required=False,
+    ).stdout.strip()
+finally:
+    command("systemctl", "--user", "stop", timer, required=False)
+    command("systemctl", "--user", "stop", service, required=False)
+    command("systemctl", "--user", "reset-failed", timer, service, required=False)
+    for _ in range(30):
+        timer_state = command("systemctl", "--user", "show", timer, "-p", "LoadState", "--value", required=False).stdout.strip()
+        service_state = command("systemctl", "--user", "show", service, "-p", "LoadState", "--value", required=False).stdout.strip()
+        if timer_state != "loaded" and service_state != "loaded":
+            break
+        time.sleep(0.2)
+    report["timer_after_remove"] = timer_state
+    report["service_after_remove"] = service_state
+    timers = command("systemctl", "--user", "list-timers", "--all", "--no-legend", required=False).stdout
+    report["listed_after_remove"] = unit in timers
+    (root / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report, indent=2))
+    if timer_state == "loaded" or service_state == "loaded" or report["listed_after_remove"]:
+        print("FAIL: transient user timer/service residue remains", file=sys.stderr)
+        sys.exit(1)
+
+if "fired_utc" not in report:
+    raise RuntimeError("fixture did not fire before cleanup")
+print("E0_SYSTEMD_QUALIFICATION=3")
+
+===== actual user-manager outputs and zero-residue cleanup =====
+{
+  "unit": "gripsack-e0-qual-adef93987dd1",
+  "source_date": "2026-09-26T11:56:12.976945+01:00",
+  "requested_calendar": "2026-09-26 11:56:37",
+  "user_id": 1000,
+  "service_marker": "/tmp/gripsack-e0-lane-vcowwz1j/fired.utc",
+  "commands": [
+    {
+      "argv": [
+        "systemd",
+        "--version"
+      ],
+      "exit": 0,
+      "stdout": "systemd 255 (255.4-1ubuntu8.17)\n+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "is-system-running"
+      ],
+      "exit": 0,
+      "stdout": "running",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "loginctl",
+        "show-user",
+        "1000",
+        "-p",
+        "Linger"
+      ],
+      "exit": 0,
+      "stdout": "Linger=no",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemd-analyze",
+        "calendar",
+        "daily"
+      ],
+      "exit": 0,
+      "stdout": "Original form: daily\nNormalized form: *-*-* 00:00:00\n    Next elapse: Sun 2026-09-27 00:00:00 BST\n       (in UTC): Sat 2026-09-26 23:00:00 UTC\n       From now: 12h left",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "show",
+        "gripsack-e0-qual-adef93987dd1.timer",
+        "-p",
+        "LoadState",
+        "--value"
+      ],
+      "exit": 0,
+      "stdout": "not-found",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemd-run",
+        "--user",
+        "--collect",
+        "--unit",
+        "gripsack-e0-qual-adef93987dd1",
+        "--on-calendar",
+        "2026-09-26 11:56:37",
+        "--timer-property=AccuracySec=1s",
+        "--timer-property=Persistent=no",
+        "--property=Type=oneshot",
+        "--property=Restart=no",
+        "/usr/bin/python3",
+        "-c",
+        "from datetime import datetime, timezone; from pathlib import Path; import sys; Path(sys.argv[1]).write_text(datetime.now(timezone.utc).isoformat() + '\\n')",
+        "/tmp/gripsack-e0-lane-vcowwz1j/fired.utc"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": "Running timer as unit: gripsack-e0-qual-adef93987dd1.timer\nWill run service as unit: gripsack-e0-qual-adef93987dd1.service"
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "show",
+        "gripsack-e0-qual-adef93987dd1.timer",
+        "-p",
+        "LoadState",
+        "-p",
+        "Unit",
+        "-p",
+        "AccuracyUSec",
+        "-p",
+        "Persistent",
+        "-p",
+        "NextElapseUSecRealtime"
+      ],
+      "exit": 0,
+      "stdout": "Unit=gripsack-e0-qual-adef93987dd1.service\nNextElapseUSecRealtime=Sat 2026-09-26 11:56:37 BST\nAccuracyUSec=1s\nPersistent=no\nLoadState=loaded",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "show",
+        "gripsack-e0-qual-adef93987dd1.service",
+        "-p",
+        "Result",
+        "-p",
+        "ExecMainStatus",
+        "-p",
+        "SubState"
+      ],
+      "exit": 0,
+      "stdout": "Result=success\nExecMainStatus=0\nSubState=dead",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "stop",
+        "gripsack-e0-qual-adef93987dd1.timer"
+      ],
+      "exit": 5,
+      "stdout": "",
+      "stderr": "Failed to stop gripsack-e0-qual-adef93987dd1.timer: Unit gripsack-e0-qual-adef93987dd1.timer not loaded."
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "stop",
+        "gripsack-e0-qual-adef93987dd1.service"
+      ],
+      "exit": 5,
+      "stdout": "",
+      "stderr": "Failed to stop gripsack-e0-qual-adef93987dd1.service: Unit gripsack-e0-qual-adef93987dd1.service not loaded."
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "reset-failed",
+        "gripsack-e0-qual-adef93987dd1.timer",
+        "gripsack-e0-qual-adef93987dd1.service"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "Failed to reset failed state of unit gripsack-e0-qual-adef93987dd1.timer: Unit gripsack-e0-qual-adef93987dd1.timer not loaded.\nFailed to reset failed state of unit gripsack-e0-qual-adef93987dd1.service: Unit gripsack-e0-qual-adef93987dd1.service not loaded."
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "show",
+        "gripsack-e0-qual-adef93987dd1.timer",
+        "-p",
+        "LoadState",
+        "--value"
+      ],
+      "exit": 0,
+      "stdout": "not-found",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "show",
+        "gripsack-e0-qual-adef93987dd1.service",
+        "-p",
+        "LoadState",
+        "--value"
+      ],
+      "exit": 0,
+      "stdout": "not-found",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "systemctl",
+        "--user",
+        "list-timers",
+        "--all",
+        "--no-legend"
+      ],
+      "exit": 0,
+      "stdout": "Sat 2026-09-26 23:26:31 BST 11h Fri 2026-09-25 23:27:54 BST 12h ago launchpadlib-cache-clean.timer launchpadlib-cache-clean.service",
+      "stderr": ""
+    }
+  ],
+  "version": "systemd 255 (255.4-1ubuntu8.17)",
+  "user_manager": "running",
+  "linger": "Linger=no",
+  "daily_calendar": "Original form: daily\nNormalized form: *-*-* 00:00:00\n    Next elapse: Sun 2026-09-27 00:00:00 BST\n       (in UTC): Sat 2026-09-26 23:00:00 UTC\n       From now: 12h left",
+  "timer_unit": "Unit=gripsack-e0-qual-adef93987dd1.service\nNextElapseUSecRealtime=Sat 2026-09-26 11:56:37 BST\nAccuracyUSec=1s\nPersistent=no\nLoadState=loaded",
+  "fired_utc": "2026-09-26T10:56:37.982633+00:00",
+  "marker_owner_uid": 1000,
+  "service_after_run": "Result=success\nExecMainStatus=0\nSubState=dead",
+  "timer_after_remove": "not-found",
+  "service_after_remove": "not-found",
+  "listed_after_remove": false
+}
+
+E0_SYSTEMD_QUALIFICATION=3
+RUNNER_COUNTS=3 named Linux manager/timing/fixture acceptance groups executed/passed, zero failed/skipped; actual native Mac launchd and E3 Gripsack scheduler remain open.

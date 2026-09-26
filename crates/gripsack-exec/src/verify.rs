@@ -10,6 +10,7 @@ pub(crate) fn run_verify(
     verify: &Verify,
     store_path: &Path,
     version: Option<&str>,
+    context: &gripsack_fetch::FetchContext,
 ) -> Result<(), ExecError> {
     let fail = |detail: String| ExecError::Verify {
         module: name.to_string(),
@@ -22,7 +23,9 @@ pub(crate) fn run_verify(
     match verify {
         Verify::BinaryRuns { path, args } => {
             let bin = store_path.join(subst(path)?);
-            let status = std::process::Command::new(&bin)
+            let mut command = std::process::Command::new(&bin);
+            context.apply_build_env(&mut command);
+            let status = command
                 .args(args)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -43,7 +46,9 @@ pub(crate) fn run_verify(
                 return Err(fail(format!("{} not deployed", path)));
             }
         }
-        Verify::Shell { script } => run_shell(script, store_path, None).map_err(fail)?,
+        Verify::Shell { script } => {
+            run_shell(script, store_path, None, Some(context)).map_err(fail)?
+        }
     }
     Ok(())
 }
@@ -52,11 +57,15 @@ pub(crate) fn run_shell(
     script: &str,
     cwd: &Path,
     build_env: Option<&crate::closure::BuildEnv>,
+    context: Option<&gripsack_fetch::FetchContext>,
 ) -> Result<(), String> {
     // Resolve the interpreter independently of the toolchain PATH, including
     // when the caller deliberately has no ambient PATH.
     let mut command = std::process::Command::new("/bin/sh");
     command.arg("-c").arg(script).current_dir(cwd);
+    if let Some(context) = context {
+        context.apply_build_env(&mut command);
+    }
     if let Some(env) = build_env {
         env.apply(&mut command)?;
     }

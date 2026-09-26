@@ -5,6 +5,7 @@
  * turns that environment into IR. */
 
 import type { Dependency } from "./deps.ts";
+import { rejectUnknownFields } from "./fields.ts";
 import type { Dest, Ownership } from "./entries.ts";
 import type { Fetch } from "./fetch.ts";
 import type { Intent } from "./intents.ts";
@@ -102,39 +103,10 @@ export function module(name: string, spec: ModuleSpec): ModuleValue {
   // type-checker — a typo'd field must not silently lower to an empty
   // desired state (a `confg:` became a prune). Runtime rejection is
   // the backstop for JS callers, casts, and generated objects.
-  const KNOWN = new Set([
+  rejectUnknownFields(`module("${name}")`, spec, [
     "fetch", "build", "install", "config", "depends", "activate",
     "steps", "verify", "lint", "env",
   ]);
-  const editDistance = (a: string, b: string): number => {
-    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-    for (let i = 1; i <= a.length; i++) {
-      const cur: number[] = [i];
-      const prevRow: number[] = prev;
-      for (let j = 1; j <= b.length; j++) {
-        cur[j] = Math.min(
-          prevRow[j]! + 1,
-          cur[j - 1]! + 1,
-          prevRow[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
-        );
-      }
-      prev = cur;
-    }
-    return prev[b.length]!;
-  };
-  for (const key of Object.keys(spec)) {
-    if (!KNOWN.has(key)) {
-      const closest = [...KNOWN]
-        .map((k) => [k, editDistance(key, k)] as const)
-        .filter(([, d]) => d <= 2)
-        .sort((a, b) => a[1] - b[1])[0];
-      throw new Error(
-        `module("${name}"): unknown field "${key}"` +
-          (closest ? ` — did you mean "${closest[0]}"?` : "") +
-          ` (known: ${[...KNOWN].join(", ")})`,
-      );
-    }
-  }
   const ir: IrModule = {};
   if (spec.fetch) ir.fetch = spec.fetch;
   if (spec.build) ir.build = spec.build;

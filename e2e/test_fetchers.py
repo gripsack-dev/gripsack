@@ -96,6 +96,32 @@ export default module("%s", {
 }
 
 
+
+def test_repo_build_env_reaches_plugin_discovery_and_both_child_operations(sandbox):
+    """Repo PATH selects only artifact fetchers; capabilities and fetch see
+    the same declared child variables without mutating grip's environment."""
+    bindir = sandbox / "repo-tools"
+    bindir.mkdir()
+    fetcher = bindir / "gripfetch-demo"
+    fetcher.write_text(
+        FETCH_FIXTURE.replace(
+            "req = json.loads(sys.stdin.readline())",
+            'if os.environ.get("REPO_FETCH_SENTINEL") != "on": sys.exit(24)\n'
+            "req = json.loads(sys.stdin.readline())",
+        )
+    )
+    fetcher.chmod(0o755)
+    repo = make_env_repo(sandbox / "myenv", {"a": PLUGIN_MODULES["a"]})
+    with (repo / "env.toml").open("a") as output:
+        output.write(
+            f'\n[eval]\nenv = {{ PATH = "{bindir}:{os.environ["PATH"]}", '
+            'REPO_FETCH_SENTINEL = "on" }\n'
+        )
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert (sandbox / ".local/bin/demo-a").is_symlink()
+
 def test_throttle_token_bucket_serializes_plugin_fetches(sandbox, monkeypatch):
     """[throttle] (0002): a fetcher declares its rate budget via the
     capabilities op; the core's token bucket enforces it across

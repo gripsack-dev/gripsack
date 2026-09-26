@@ -1,6 +1,7 @@
 //! Executor context, outcomes, and errors.
 
 use gripsack_fetch::FetchError;
+use gripsack_ir::HostName;
 use std::io;
 use std::path::PathBuf;
 
@@ -18,7 +19,7 @@ pub struct Ctx {
     /// §3.6). Empty = the whole graph.
     pub only: Vec<String>,
     /// Host name — selects the lockfile (`locks/<host>.lock`).
-    pub host: String,
+    pub host: HostName,
     /// Progress events `(module, verb)` — the CLI renders spinners.
     pub on_progress: Option<ProgressCallback>,
     /// Overwrite foreign/drifted tracked_copy destinations (explicit

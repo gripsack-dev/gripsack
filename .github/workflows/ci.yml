@@ -11,12 +11,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # test is the protected required check. Delivery validation and
+      # calibration must not live only in an optional sibling job.
+      - name: Delivery inventory and closure calibration
+        run: |
+          python3 scripts/check_delivery.py --validate
+          python3 scripts/delivery_checker_calibration.py
+
+      - name: A1 dependency direction (calibrated)
+        run: python3 scripts/check_architecture.py --self-check
 
       - name: Rust gate (fmt, clippy, tests)
         run: docker compose run --build --rm test
 
       - name: TypeScript frontend tests (deno)
         run: docker compose run --build --rm ts-test
+
+      # B0's qualification is a real Go client against disposable
+      # digest-pinned BuildKit workers. Keep it in the required test job,
+      # not an optional docs/probe job; any failed verifier/load aborts.
+      - name: B0 Linux BuildKit qualification
+        run: |
+          sh verification/buildkit-qualification/bridge/build.sh
+          sh verification/buildkit-qualification/probes.sh
 
       # Flow tests: real binary + real frontend against fixture env
       # repos, offline (file:// fixtures only).

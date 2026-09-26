@@ -1,0 +1,1 @@
+offline recipe source payload for read-only admission

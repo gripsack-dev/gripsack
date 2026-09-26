@@ -1,8 +1,18 @@
-use super::paths;
+use super::{
+    links::{Graph, Kind},
+    paths,
+    tree::Budget,
+};
 use crate::{FetchError, FetchLimits};
-use std::collections::BTreeSet;
 use std::io::{Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+#[derive(Clone, Copy)]
+enum Pass {
+    Files,
+    HardLinks,
+    Symlinks,
+}
 
 pub(super) fn extract(
     file: &mut std::fs::File,
@@ -45,114 +55,108 @@ pub(super) fn extract(
         }
     }
     file.seek(SeekFrom::Start(0))?;
-    let mut links = BTreeSet::new();
-    let mut metadata_bytes = 0u64;
-    let metadata_limit = limits.decoder_bytes.get().min(64 * 1024 * 1024);
+    let mut graph = Graph::new(limits);
     for entry in ::tar::Archive::new(&mut *file).entries_with_seek()? {
         let entry = entry?;
         let kind = entry.header().entry_type().as_byte();
         if matches!(kind, b'g' | b'x' | b'L' | b'K') {
             continue;
         }
-        if !matches!(kind, 0 | b'0' | b'1' | b'2' | b'5' | b'7') {
-            return Err(paths::violation(
-                &entry.path()?,
-                "special tar entry is unsupported",
-            ));
-        }
         let path = paths::relative(&entry.path()?)?;
-        if path.as_os_str().is_empty() && kind != b'5' {
-            return Err(paths::violation(
-                &path,
-                "entry does not name a payload child",
-            ));
+        if path.as_os_str().is_empty() && kind == b'5' {
+            continue;
         }
-        paths::destination(dest, &path)?;
         if entry.size() > limits.expanded_bytes.get() {
             return Err(FetchError::PayloadTooLarge {
                 what: "tar entry".into(),
                 limit: limits.expanded_bytes.get(),
             });
         }
-        // Bound retained path/set overhead, not just each individual name.
-        metadata_bytes = metadata_bytes
-            .checked_add(path.as_os_str().len() as u64 + 128)
-            .filter(|bytes| *bytes <= metadata_limit)
-            .ok_or_else(|| FetchError::PayloadTooLarge {
-                what: "tar path metadata".into(),
-                limit: metadata_limit,
-            })?;
-        if matches!(kind, b'1' | b'2') {
-            let target = entry
-                .link_name()?
-                .ok_or_else(|| paths::violation(&path, "link has no target"))?;
-            paths::link_target(&path, &target, kind == b'1')?;
-            if kind == b'2' {
-                links.insert(path);
+        let node = match kind {
+            0 | b'0' | b'7' => Kind::Regular,
+            b'5' => Kind::Directory { explicit: true },
+            b'1' | b'2' => {
+                let target = entry
+                    .link_name()?
+                    .ok_or_else(|| paths::violation(&path, "link has no target"))?
+                    .into_owned();
+                if kind == b'1' {
+                    Kind::HardLink(target)
+                } else {
+                    Kind::Symlink(target)
+                }
+            }
+            _ => return Err(paths::violation(&path, "special tar entry is unsupported")),
+        };
+        graph.insert(path, node)?;
+    }
+    graph.validate()?;
+    let root = paths::open_root(dest)?;
+    let mut budget = Budget::new(limits);
+    // Hard links may precede their regular targets. Symlinks are last so no
+    // following operation can address an archive-created link as a parent.
+    for pass in [Pass::Files, Pass::HardLinks, Pass::Symlinks] {
+        file.seek(SeekFrom::Start(0))?;
+        for entry in ::tar::Archive::new(&mut *file).entries()? {
+            let mut entry = entry?;
+            let kind = entry.header().entry_type().as_byte();
+            if matches!(kind, b'g' | b'x' | b'L' | b'K') {
+                continue;
+            }
+            let path = paths::relative(&entry.path()?)?;
+            if path.as_os_str().is_empty() && kind == b'5' {
+                continue;
+            }
+            match (pass, kind) {
+                (Pass::Files, b'5') => {
+                    paths::directories(&root, &path)?;
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        root.set_permissions(
+                            &path,
+                            gripsack_fs::cap_std::fs::Permissions::from_std(
+                                std::fs::Permissions::from_mode(0o755),
+                            ),
+                        )?;
+                    }
+                }
+                (Pass::Files, 0 | b'0' | b'7') => {
+                    let mut output = paths::file(&root, &path)?;
+                    let copied = budget.copy(&mut entry, &mut output, |_| {})?;
+                    if copied != entry.size() {
+                        return Err(paths::violation(
+                            &path,
+                            "tar entry size changed during extraction",
+                        ));
+                    }
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        output.set_permissions(gripsack_fs::cap_std::fs::Permissions::from_std(
+                            std::fs::Permissions::from_mode(entry.header().mode()? & 0o777),
+                        ))?;
+                    }
+                }
+                (Pass::HardLinks, b'1') => {
+                    let target = entry
+                        .link_name()?
+                        .ok_or_else(|| paths::violation(&path, "hard link has no target"))?;
+                    let target = paths::link_target(&path, &target, true)?;
+                    paths::hard_link(&root, &path, &target)?;
+                }
+                (Pass::Symlinks, b'2') => {
+                    let target = entry
+                        .link_name()?
+                        .ok_or_else(|| paths::violation(&path, "symlink has no target"))?;
+                    #[cfg(unix)]
+                    paths::symlink(&root, &path, &target)?;
+                    #[cfg(not(unix))]
+                    return Err(paths::violation(&path, "symlinks require Unix"));
+                }
+                _ => {}
             }
         }
-    }
-    // Check every logical name against the complete symlink set before writes.
-    // Re-reading bounded metadata avoids retaining every entry and ancestor.
-    file.seek(SeekFrom::Start(0))?;
-    for entry in ::tar::Archive::new(&mut *file).entries_with_seek()? {
-        let entry = entry?;
-        let kind = entry.header().entry_type().as_byte();
-        if matches!(kind, b'g' | b'x' | b'L' | b'K') {
-            continue;
-        }
-        let path = paths::relative(&entry.path()?)?;
-        check_ancestors(&path, &links)?;
-        if kind == b'1' {
-            let target = entry
-                .link_name()?
-                .ok_or_else(|| paths::violation(&path, "link has no target"))?;
-            let target = paths::link_target(&path, &target, true)?;
-            check_ancestors(&target, &links)?;
-            if links.contains(&target) {
-                return Err(paths::violation(&target, "hard link targets a symlink"));
-            }
-        }
-    }
-    file.seek(SeekFrom::Start(0))?;
-    std::fs::create_dir_all(dest)?;
-    let mut archive = ::tar::Archive::new(file);
-    archive.set_preserve_permissions(false);
-    // Archive::unpack retains directory entries for deferred chmod. Staging
-    // never needs those modes: extract one entry, normalize directories now.
-    for entry in archive.entries()? {
-        let mut entry = entry?;
-        let kind = entry.header().entry_type().as_byte();
-        if matches!(kind, b'g' | b'x' | b'L' | b'K') {
-            continue;
-        }
-        let path = paths::relative(&entry.path()?)?;
-        paths::destination(dest, &path)?;
-        if !entry.unpack_in(dest)? {
-            return Err(paths::violation(
-                &path,
-                "entry was not materialized inside the payload",
-            ));
-        }
-        #[cfg(unix)]
-        if kind == b'5' {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(dest.join(path), std::fs::Permissions::from_mode(0o755))?;
-        }
-    }
-    Ok(())
-}
-
-fn check_ancestors(path: &Path, links: &BTreeSet<PathBuf>) -> Result<(), FetchError> {
-    if path
-        .ancestors()
-        .skip(1)
-        .any(|parent| links.contains(parent))
-    {
-        return Err(paths::violation(
-            path,
-            "archive content is nested beneath a symlink",
-        ));
     }
     Ok(())
 }

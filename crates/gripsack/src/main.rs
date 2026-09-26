@@ -56,9 +56,9 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// Fetch, build, and deploy modules — one new generation per run
+    /// Fetch, build and deploy legacy modules; workspace effects require A2
     Apply {
-        /// Host entrypoint (default: this machine's hostname)
+        /// Legacy host entrypoint (workspace uses gripsack.ts instead)
         #[arg(long)]
         host: Option<String>,
         /// Env repo path or git URL (default: current directory)
@@ -73,18 +73,21 @@ enum Command {
         #[arg(long)]
         jobs: Option<usize>,
     },
-    /// Validate the env — eval, IR sema, linters — and stop (0011 §9).
-    /// Zero side effects; exit code is the CI signal.
+    /// Validate a workspace catalog or legacy env without host activation.
+    /// The provisioned frontend may be prepared; no builder starts.
     Check {
-        /// Host entrypoint (default: this machine's hostname)
+        /// Legacy host entrypoint (ignored for gripsack.ts workspaces)
         #[arg(long)]
         host: Option<String>,
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
+        /// Emit the check report as one JSON document on stdout — the
+        /// same diagnostics the terminal renders (0052 A1-06)
+        #[arg(long)]
+        json: bool,
     },
-    /// Show what an apply would change, without changing anything.
-    /// For now: validate IR and show the execution waves.
+    /// Inspect legacy module operations; workspace execution is not yet available
     Plan {
         #[arg(long)]
         host: Option<String>,
@@ -108,7 +111,7 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
-    /// Re-resolve and rewrite the lockfile (never deploys — apply after)
+    /// Re-resolve legacy module pins; workspace locks are not yet executable
     Update {
         #[arg(long)]
         host: Option<String>,
@@ -209,8 +212,15 @@ fn main() -> ExitCode {
             ),
             Err(code) => code,
         },
-        Command::Check { host, repo } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::check(&repo, host.as_deref(), palette),
+        Command::Check { host, repo, json } => match commands::resolve_repo(repo.as_deref()) {
+            Ok(repo) => {
+                let sink = if json {
+                    render::DiagnosticSink::json()
+                } else {
+                    render::DiagnosticSink::terminal(palette, &repo)
+                };
+                commands::check(&repo, host, sink)
+            }
             Err(code) => code,
         },
         Command::Gc { dry_run } => commands::gc(palette, dry_run),
@@ -227,7 +237,7 @@ fn main() -> ExitCode {
             modules,
             check,
         } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::update(&repo, host.as_deref(), modules, palette, check),
+            Ok(repo) => commands::update(&repo, host, modules, palette, check),
             Err(code) => {
                 if check {
                     ExitCode::from(2)
@@ -259,23 +269,30 @@ fn main() -> ExitCode {
             if let Some(code) = commands::trust_gate(&repo) {
                 return code;
             }
-            let outcome = match commands::eval_repo(&repo, host.as_deref(), palette) {
+            let mut sink = render::DiagnosticSink::terminal(palette, &repo);
+            let outcome = match commands::eval_repo(&repo, host, &mut sink) {
                 Ok(o) => o,
                 Err(code) => return code,
             };
             // the same validation pipeline check/apply run (0033 R5):
             // a plan that succeeds where apply would fail is a lie
-            let ir = match commands::validated_ir(&outcome, &repo, host.as_deref(), palette) {
+            let ir = match commands::validated_ir(&outcome, &repo, &mut sink) {
                 Ok(ir) => ir,
                 Err(code) => return code,
             };
+            if let Err(code) = commands::reject_workspace_execution(&ir, "grip plan", &mut sink) {
+                return code;
+            }
             {
                 match gripsack_exec::expand::expand_all(&ir.modules).and_then(|plans| {
                     gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &plans)
                 }) {
                     Ok(()) => {}
                     Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
-                        eprintln!("{}", render::render_diagnostics(&[d], palette));
+                        eprintln!(
+                            "{}",
+                            render::render_diagnostics_bounded(&[d], palette, &repo)
+                        );
                         return ExitCode::FAILURE;
                     }
                     Err(e) => {

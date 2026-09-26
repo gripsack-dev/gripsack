@@ -2,11 +2,13 @@
 import io
 import json
 import shutil
+import ssl
 import tarfile
 import threading
 import time
 from collections import Counter
 from email.utils import formatdate
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -27,13 +29,15 @@ def archive_bytes():
 
 
 class HttpFixture:
-    def __init__(self):
+    def __init__(self, tls=False):
         self.archive = archive_bytes()
         self.mode = 'healthy'
         self.requests = []
         self.counts = Counter()
         self.redirect_header = False
         self.public_leak = False
+        self.tls = tls
+        self.cert = Path(__file__).parent / 'fixtures/http-localhost.crt'
         owner = self
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -43,6 +47,10 @@ class HttpFixture:
                 header = self.headers.get('Authorization', '')
                 owner.public_leak |= PUBLIC in header
                 authorized = header == f'Bearer {ENTERPRISE}'
+                if owner.mode == 'proxy':
+                    if path != 'http://127.0.0.2:9/tool':
+                        return self.respond(502, b'unexpected proxy destination')
+                    return self.respond(200, owner.archive, 'application/octet-stream')
                 if path == '/redirected':
                     owner.redirect_header |= bool(header)
                 if path.startswith('/api/v3/repos/'):
@@ -60,6 +68,8 @@ class HttpFixture:
                         return self.respond(401, b'authentication required')
                     if owner.mode == 'redirect':
                         return self.respond(302, b'', headers={'Location': owner.base.replace('127.0.0.1', 'localhost') + '/redirected'})
+                    if owner.mode == 'same-host-redirect':
+                        return self.respond(302, b'', headers={'Location': owner.base + '/redirected'})
                 if owner.mode == 'always-500':
                     return self.respond(500, b'upstream failure')
                 if owner.mode == 'flaky' and owner.counts[path] < 3:
@@ -91,12 +101,20 @@ class HttpFixture:
             def log_message(self, *args):
                 pass
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        if tls:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(
+                self.cert.parent / 'http-localhost-server.crt',
+                self.cert.with_suffix('.key'),
+            )
+            self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
     @property
     def base(self):
-        return f'http://127.0.0.1:{self.server.server_port}'
+        scheme = 'https' if self.tls else 'http'
+        return f'{scheme}://127.0.0.1:{self.server.server_port}'
 
     def close(self):
         self.server.shutdown()
@@ -105,10 +123,23 @@ class HttpFixture:
 
 
 @pytest.fixture
-def http_fixture(monkeypatch):
+def clear_github_env(monkeypatch):
     for name in ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_HOST', 'GITHUB_HOST', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']:
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture
+def http_fixture(clear_github_env):
     fixture = HttpFixture()
+    try:
+        yield fixture
+    finally:
+        fixture.close()
+
+
+@pytest.fixture
+def tls_fixture(clear_github_env):
+    fixture = HttpFixture(tls=True)
     try:
         yield fixture
     finally:
@@ -120,6 +151,23 @@ def tarball_repo(sandbox, server, names=('tool',), digest=None):
     return make_env_repo(sandbox / 'env', {name: f'''import {{module,tarball,trackedCopy}} from '@gripsack/core';
 export default module('{name}',{{fetch:tarball('{server.base}/{name}'{pin}),install:{{payload:trackedCopy('~/.{name}')}}}});'''
         for name in names})
+
+
+def test_repo_proxy_overlay_routes_artifact_without_mutating_process_env(sandbox, http_fixture, monkeypatch):
+    server = http_fixture
+    server.mode = 'proxy'
+    for name in ('ALL_PROXY', 'all_proxy', 'HTTPS_PROXY', 'https_proxy'):
+        monkeypatch.delenv(name, raising=False)
+    repo = make_env_repo(sandbox / 'env', '''import {module,tarball} from '@gripsack/core';
+export default module('via-proxy',{fetch:tarball('http://127.0.0.2:9/tool')});''')
+    with (repo / 'env.toml').open('a') as output:
+        output.write(
+            f'\n[eval]\nenv = {{ HTTP_PROXY = "{server.base}", NO_PROXY = "" }}\n'
+        )
+
+    result = grip('update', '--host', 'testhost', cwd=repo)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert server.requests == ['http://127.0.0.2:9/tool']
 
 
 def test_transient_responses_retry_but_do_not_publish_in_check(sandbox, http_fixture):
@@ -192,12 +240,14 @@ def test_hash_mismatch_is_not_retried(sandbox, http_fixture):
     assert not (sandbox / '.local/share/gripsack/store').exists()
 
 
-def test_explicit_host_binding_controls_resolution_and_locked_cold_api_fetch(sandbox, http_fixture, monkeypatch):
-    server = http_fixture
+def test_explicit_host_binding_controls_resolution_and_locked_cold_api_fetch(sandbox, tls_fixture, monkeypatch):
+    server = tls_fixture
     monkeypatch.setenv('GH_ENTERPRISE_TOKEN', ENTERPRISE)
     monkeypatch.setenv('GH_TOKEN', PUBLIC)
     repo = make_env_repo(sandbox / 'env', f'''import {{module,githubRelease,trackedCopy}} from '@gripsack/core';
 export default module('private',{{fetch:githubRelease({{repo:'acme/tool',asset:'pkg-{{version.bare}}.tar.gz',base_url:'{server.base}'}}),install:{{payload:trackedCopy('~/.private')}}}});''')
+    with (repo / 'env.toml').open('a') as output:
+        output.write(f'\n[eval]\nenv = {{ SSL_CERT_FILE = "{server.cert}" }}\n')
     for host in [None, 'different.invalid']:
         if host is not None:
             monkeypatch.setenv('GH_HOST', host)
@@ -232,3 +282,62 @@ export default module('private',{{fetch:githubRelease({{repo:'acme/tool',asset:'
     assert (repo / 'locks/testhost.lock').read_bytes() == lock
     for log in (sandbox / '.local/share/gripsack/runs').glob('*.jsonl'):
         assert ENTERPRISE not in log.read_text() and PUBLIC not in log.read_text()
+
+
+def test_repo_build_env_cannot_rebind_operator_enterprise_token(sandbox, http_fixture, monkeypatch):
+    """0048 §1.2: an operator token bound to another GH_HOST must not
+    be retargeted by repo env.toml before HTTP policy captures it."""
+    server = http_fixture
+    monkeypatch.setenv('GH_HOST', 'trusted.example.invalid')
+    monkeypatch.setenv('GH_ENTERPRISE_TOKEN', ENTERPRISE)
+    repo = make_env_repo(sandbox / 'env', f'''import {{module,githubRelease}} from '@gripsack/core';
+export default module('private',{{fetch:githubRelease({{repo:'acme/tool',asset:'pkg-{{version.bare}}.tar.gz',base_url:'{server.base}'}})}});''')
+    (repo / 'env.toml').write_text(
+        '[env]\nname = "fixture"\n\n[eval]\nenv = { GH_HOST = "127.0.0.1" }\n'
+    )
+
+    result = grip('update', '--host', 'testhost', cwd=repo)
+    assert result.returncode != 0, (result.stdout[:400], result.stderr[:400])
+    assert 'E400' in result.stderr and 'GH_HOST' in result.stderr
+    assert server.requests == []
+    assert ENTERPRISE not in result.stdout + result.stderr
+    checked = grip('check', '--json', '--host', 'testhost', cwd=repo)
+    assert checked.returncode != 0
+    diagnostics = json.loads(checked.stdout)['diagnostics']
+    assert len(diagnostics) == 1 and diagnostics[0]['code'] == 'E400'
+    assert 'GH_HOST' in diagnostics[0]['message']
+    assert diagnostics[0]['labels'][0]['span']['line'] == 5
+    assert server.requests == []
+    assert ENTERPRISE not in checked.stdout + checked.stderr
+
+
+def test_bound_enterprise_http_refuses_cleartext_before_request(sandbox, http_fixture, monkeypatch):
+    server = http_fixture
+    monkeypatch.setenv('GH_HOST', '127.0.0.1')
+    monkeypatch.setenv('GH_ENTERPRISE_TOKEN', ENTERPRISE)
+    repo = make_env_repo(sandbox / 'env', f'''import {{module,githubRelease}} from '@gripsack/core';
+export default module('private',{{fetch:githubRelease({{repo:'acme/tool',asset:'pkg-{{version.bare}}.tar.gz',base_url:'{server.base}'}})}});''')
+
+    result = grip('update', '--host', 'testhost', cwd=repo)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert 'refusing bearer credentials over non-HTTPS URL' in result.stdout + result.stderr
+    assert 'policy attempts 0' in result.stdout + result.stderr
+    assert server.requests == []
+    assert ENTERPRISE not in result.stdout + result.stderr
+
+
+def test_enterprise_token_is_not_forwarded_to_same_host_tls_redirect(sandbox, tls_fixture, monkeypatch):
+    server = tls_fixture
+    server.mode = 'same-host-redirect'
+    monkeypatch.setenv('GH_HOST', '127.0.0.1')
+    monkeypatch.setenv('GH_ENTERPRISE_TOKEN', ENTERPRISE)
+    repo = make_env_repo(sandbox / 'env', f'''import {{module,githubRelease}} from '@gripsack/core';
+export default module('private',{{fetch:githubRelease({{repo:'acme/tool',asset:'pkg-{{version.bare}}.tar.gz',base_url:'{server.base}'}})}});''')
+    with (repo / 'env.toml').open('a') as output:
+        output.write(f'\n[eval]\nenv = {{ SSL_CERT_FILE = "{server.cert}" }}\n')
+
+    result = grip('update', '--host', 'testhost', cwd=repo)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert server.requests == ['/api/v3/repos/acme/tool/releases/latest', '/api-asset', '/redirected']
+    assert not server.redirect_header
+    assert ENTERPRISE not in result.stdout + result.stderr

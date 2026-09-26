@@ -1,0 +1,31 @@
+RUNNER_SOURCE_COMMIT=db1e91b4401cdd1cf69cf51b3ecc49a63d6c0ef3
+RUNNER_SOURCE_DIRTY=clean at commit (all six gates ran on the identical pre-commit bytes; images content-cached)
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Rust 1.98.0; Python 3.13.15; pytest 9.1.1; Deno 2.9.6; TLC 1.7.4; Verus 0.2026.09.06.8dea4a2
+RUNNER_INPUTS=plan/0048 section 2.1 original demonstrated fixtures: dir d; symlink d/up -> ..; symlink leak -> d/up/../sentinel, in both member orders, TAR and ZIP. FAILING-BEFORE (observed pre-patch on this worktree): the two regression tests below returned Ok(()) and the extracted leak resolved to the outside sentinel — matching the original standalone probe. Post-fix runs below are at the exact committed source.
+
+RUNNER_COMMAND=docker compose run --build --rm test cargo test --locked -p gripsack-fetch
+running 68 tests
+test result: ok. 68 passed; 0 failed; 0 ignored (includes:)
+  - tar_composed_links_cannot_escape_the_payload_root_in_either_order ... ok (both orders reject UnsafeArchive; no destination dir created; outside sentinel unchanged)
+  - zip_composed_links_cannot_escape_the_payload_root_in_either_order ... ok (same)
+  - forward_and_composed_internal_links_remain_usable_in_tar_and_zip ... ok (inside -> d/up/item readable after extract, both formats)
+  - tar_hardlink_before_its_file_uses_the_pinned_payload_root ... ok (hard link precedes regular file; same inode)
+  - filesystem_tree_validation_and_copy_share_link_graph ... ok (escaping source rejects before copy dir creation; valid composed link copies and reads)
+  - link_cycles_and_dangling_targets_reject_before_archive_materialization ... ok (a->b->a ZIP cycle; dangling TAR symlink; no destination created)
+RUNNER_EXIT=0
+
+RUNNER_COMMAND=docker compose run --build --rm fuzz (archive corpus replay, bwrap-sandboxed production decoder, strengthened resolved-destination oracle)
+replay archive: composed-link-escape.tar
+replay archive: composed-link-escape.zip
+replay archive: (all prior seeds: bare.gz bomb.gz bomb.zip hostile.tar.gz longname.tar many.zip safe.tar safe.tar.gz safe.tar.xz safe.zip truncated-*.bin ustar-garbage.bin)
+RUNNER_EXIT=0
+
+SAME-BYTES FULL GATES (ran immediately before commit on the identical tracked tree):
+  test        gate passed: fmt + clippy -D warnings + cargo test (fresh)
+  ts-test     gate passed: deno 65/65 + tsc examples (fresh)
+  e2e         320 passed in 1027s, real musl grip, sandboxed HOME (fresh)
+  model       gate passed: TLC positive + calibrated negatives (fresh image, spec layer cached)
+  verify      72 verified, 0 errors; 7 named mutants rejected (fresh)
+  fuzz        full corpus replay incl. both new seeds (fresh)
+PROVENANCE_BOUNDARY=cap-std 4.0.3 root pinning (O_DIRECTORY|O_NOFOLLOW via trusted parent, relative descendants only) is enforced by construction; no machine-checked TOCTOU theorem. Resolver bounded at 64 link hops, entry/decoder caps unchanged. This receipt is acquisition-side containment only (plan/0048 section 2.1 scope note): no deploy-side ownership change, no A2 milestone claim, no protected-CI result at db1e91b yet (required ci passed at parent d946d30).
+M0_ARCHIVE_LINKS=6

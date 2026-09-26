@@ -1,6 +1,6 @@
 //! Layout evidence only: never execute recipes or verification programs.
 use crate::ctx::ExecError;
-use gripsack_ir::{Ownership, Verify, prepared::PreparedModule};
+use gripsack_ir::{HostName, Ownership, Verify, prepared::PreparedModule};
 use std::path::Path;
 
 #[derive(Debug, Default)]
@@ -157,7 +157,7 @@ pub(crate) fn inspect(
 pub fn inspect_known(
     ir: &gripsack_ir::Ir,
     repo: &Path,
-    host: &str,
+    host: &HostName,
 ) -> Result<Vec<(String, LayoutEvidence)>, ExecError> {
     let lock = match crate::lockfile::read(repo, host) {
         crate::lockfile::LockRead::Parsed(lock) => lock,

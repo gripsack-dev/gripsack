@@ -1,0 +1,427 @@
+RUNNER_SOURCE_COMMIT=8583a4652078a66e2a7d06676a12934ceb8f63d1
+RUNNER_SOURCE_ROOTS_DIRTY=clean (git status --porcelain -- SOURCE_ROOTS including examples checked before/after each independent runner; all empty)
+RUNNER_COMMANDS=docker compose run --build --rm -w /app/typescript ts-test deno run --cached-only --no-remote --allow-all node_modules/typescript/bin/tsc --project tsconfig.examples.json --noEmit --listFiles ; docker compose run --build --rm e2e uv run --locked --no-sync pytest -vv test_workspace_contract.py test_golden.py -k "graduated_examples or source_example_alternate_producer" (independent runs at same SHA, outputs concatenated byte-exact)
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; TypeScript 7.0.2 under Deno 2.9.6; pytest 9.1.1
+RUNNER_INPUTS=committed original dotfiles/native-tool/source-built/scheduled-task files and offline archives, production SDK, pinned host facts varied only for alternate producer, sandboxed HOME
+
+=== STRICT TYPECHECK (FOUR SOURCE ENTRYPOINTS) ===
+8583a4652078a66e2a7d06676a12934ceb8f63d1
+ Image gripsack-ts-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 545B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 9.91kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.1s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d
+#5 DONE 0.6s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 DONE 0.0s
+
+#8 [ts-test 1/5] FROM docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d
+#8 resolve docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d 0.0s done
+#8 DONE 0.1s
+
+#7 [internal] load build context
+#7 transferring context: 8.08kB 0.0s done
+#7 DONE 0.1s
+
+#9 [ts-test 2/5] WORKDIR /app
+#9 CACHED
+
+#10 [ts-test 3/5] COPY typescript ./typescript
+#10 CACHED
+
+#11 [ts-test 4/5] COPY examples ./examples
+#11 CACHED
+
+#12 [ts-test 5/5] RUN cd typescript && deno install && deno task test     && deno run --cached-only --no-remote --allow-all node_modules/typescript/bin/tsc        --project tsconfig.examples.json --noEmit
+#12 CACHED
+
+#13 exporting to image
+#13 exporting layers done
+#13 exporting manifest sha256:933681057dab5fd4fd62fad759866bd5a952853b3cd33f3d276f09ea7cc30010 done
+#13 exporting config sha256:baf8ccc56d399040bb0ecb0ff10994559bcc7e4a5aad1500595ec3270de3842d done
+#13 exporting attestation manifest sha256:a5a7a91357397f53972ed0f82d4f507b7ea3c49f613494730dfad34bcff13ebf 0.0s done
+#13 exporting manifest list sha256:5b156f18647a80b95365f721d80cdbbd2c725d46bc910e9096d40951cd208f56 0.0s done
+#13 naming to docker.io/library/gripsack-ts-test:latest done
+#13 unpacking to docker.io/library/gripsack-ts-test:latest 0.0s done
+#13 DONE 0.2s
+
+#14 resolving provenance for metadata file
+#14 DONE 0.0s
+ Image gripsack-ts-test Built 
+ Container gripsack-ts-test-run-2c62de557d38 Creating 
+ Container gripsack-ts-test-run-2c62de557d38 Created 
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es5.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2016.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.dom.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.dom.iterable.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.dom.asynciterable.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.webworker.importscripts.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.scripthost.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.core.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.collection.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.generator.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.iterable.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.promise.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.proxy.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.reflect.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.symbol.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2015.symbol.wellknown.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2016.array.include.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2016.intl.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.arraybuffer.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.date.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.object.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.sharedmemory.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.string.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.intl.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2017.typedarrays.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.asyncgenerator.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.asynciterable.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.intl.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.promise.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2018.regexp.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.array.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.object.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.string.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.symbol.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2019.intl.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.bigint.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.date.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.promise.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.sharedmemory.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.string.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.symbol.wellknown.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.intl.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2020.number.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.promise.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.string.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.weakref.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2021.intl.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.array.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.error.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.intl.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.object.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.string.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.regexp.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2025.float16.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.esnext.disposable.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.decorators.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.decorators.legacy.d.ts
+/app/typescript/node_modules/.deno/@typescript+typescript-linux-x64@7.0.2/node_modules/@typescript/typescript-linux-x64/lib/lib.es2022.full.d.ts
+/app/typescript/src/fields.ts
+/app/typescript/src/entries.ts
+/app/typescript/src/fetch.ts
+/app/typescript/src/intents.ts
+/app/typescript/src/resources.ts
+/app/typescript/src/verify.ts
+/app/typescript/src/steps.ts
+/app/typescript/src/module.ts
+/app/typescript/src/deps.ts
+/app/typescript/src/facts.ts
+/app/typescript/src/conditions.ts
+/app/typescript/src/probe.ts
+/app/typescript/src/graph.ts
+/app/typescript/src/tree.ts
+/app/typescript/src/inputs.ts
+/app/typescript/src/diagnostic.ts
+/app/typescript/src/workspace/ir.ts
+/app/typescript/src/workspace/validate.ts
+/app/typescript/src/workspace/commands.ts
+/app/typescript/src/workspace/files.ts
+/app/typescript/src/workspace/target.ts
+/app/typescript/src/workspace/emit.ts
+/app/typescript/src/workspace/outputs.ts
+/app/typescript/src/workspace.ts
+/app/typescript/src/index.ts
+/app/examples/workspaces/01-dotfiles/gripsack.ts
+/app/examples/workspaces/02-native-tool/gripsack.ts
+/app/examples/workspaces/03-source-built/gripsack.ts
+/app/examples/workspaces/04-scheduled-task/gripsack.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/globals.typedarray.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/buffer.buffer.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/globals.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/abortcontroller.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/blob.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/console.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/crypto.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/domexception.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/encoding.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/events.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/utility.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/header.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/readable.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/fetch.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/formdata.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/connector.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/client-stats.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/client.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/errors.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/dispatcher.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/global-dispatcher.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/global-origin.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/pool-stats.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/pool.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/handlers.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/balanced-pool.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/round-robin-pool.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/h2c-client.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/agent.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/dispatcher1-wrapper.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/mock-interceptor.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/mock-call-history.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/mock-agent.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/mock-client.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/mock-pool.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/snapshot-agent.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/mock-errors.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/proxy-agent.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/socks5-proxy-agent.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/env-http-proxy-agent.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/retry-handler.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/retry-agent.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/api.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/cache-interceptor.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/interceptors.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/util.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/cookies.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/patch.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/websocket.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/eventsource.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/diagnostics-channel.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/content-type.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/cache.d.ts
+/app/typescript/node_modules/.deno/undici-types@8.3.0/node_modules/undici-types/index.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/fetch.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/importmeta.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/messaging.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/navigator.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/performance.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/storage.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/streams.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/timers.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/web-globals/url.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/assert.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/assert/strict.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/async_hooks.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/buffer.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/child_process.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/cluster.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/console.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/constants.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/crypto.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/dgram.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/diagnostics_channel.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/dns.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/dns/promises.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/domain.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/events.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/ffi.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/fs.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/fs/promises.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/http.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/http2.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/https.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/inspector.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/inspector.generated.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/inspector/promises.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/module.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/net.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/os.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/path.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/path/posix.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/path/win32.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/perf_hooks.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/process.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/punycode.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/querystring.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/quic.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/readline.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/readline/promises.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/repl.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/sea.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/sqlite.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/stream.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/stream/consumers.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/stream/iter.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/stream/promises.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/stream/web.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/string_decoder.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/test.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/test/reporters.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/timers.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/timers/promises.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/tls.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/trace_events.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/tty.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/url.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/util.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/util/types.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/v8.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/vm.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/wasi.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/worker_threads.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/zlib.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/zlib/iter.d.ts
+/app/typescript/node_modules/.deno/@types+node@26.2.0/node_modules/@types/node/index.d.ts
+
+=== REAL FRONTEND AND CLI (FIVE BEHAVIORAL CASES) ===
+8583a4652078a66e2a7d06676a12934ceb8f63d1
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 9.91kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.1s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.8s
+
+#7 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#7 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#7 DONE 0.1s
+
+#8 [internal] load .dockerignore
+#8 transferring context: 139B done
+#8 DONE 0.1s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.1s done
+#10 DONE 0.1s
+
+#11 [internal] load build context
+#11 transferring context: 3.17MB 0.2s done
+#11 DONE 0.3s
+
+#12 [builder 10/10] COPY scripts ./scripts
+#12 CACHED
+
+#13 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#13 CACHED
+
+#14 [bin 1/1] RUN cargo build --locked -p gripsack
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 CACHED
+
+#16 [builder  6/10] COPY crates ./crates
+#16 CACHED
+
+#17 [builder  8/10] COPY schema ./schema
+#17 CACHED
+
+#18 [e2e  2/12] WORKDIR /app
+#18 CACHED
+
+#19 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#19 CACHED
+
+#20 [builder  9/10] COPY typescript ./typescript
+#20 CACHED
+
+#21 [e2e 11/12] COPY examples ./examples
+#21 CACHED
+
+#22 [builder  4/10] WORKDIR /app
+#22 CACHED
+
+#23 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#23 CACHED
+
+#24 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#24 CACHED
+
+#25 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#25 CACHED
+
+#26 [e2e  9/12] RUN cd e2e && uv sync --locked
+#26 CACHED
+
+#27 [e2e 10/12] COPY e2e ./e2e
+#27 CACHED
+
+#28 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#28 CACHED
+
+#29 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#29 CACHED
+
+#30 [builder  7/10] COPY fuzz ./fuzz
+#30 CACHED
+
+#31 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#31 CACHED
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 CACHED
+
+#33 exporting to image
+#33 exporting layers done
+#33 exporting manifest sha256:7839984139183e67c3490cf5fdd2373fdc31a15ca4a4423c6324ba26f3ad6217 done
+#33 exporting config sha256:2ed3ff69b1154ec830b60cadc22030e267016c24605376edd35123676cd4cdc2 done
+#33 exporting attestation manifest sha256:835d712e95697a62cd1583a6f8099d9f6792d6c3810d0e3068fd2dfdad4287ec 0.1s done
+#33 exporting manifest list sha256:ee040a3a1a6831dc7897190f7cadcdff356fc2336ce7e6274804e0354960c814
+#33 exporting manifest list sha256:ee040a3a1a6831dc7897190f7cadcdff356fc2336ce7e6274804e0354960c814 0.1s done
+#33 naming to docker.io/library/gripsack-e2e:latest 0.0s done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.0s done
+#33 DONE 0.2s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-d35ae33bc383 Creating 
+ Container gripsack-e2e-run-d35ae33bc383 Created 
+============================= test session starts ==============================
+platform linux -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- /app/e2e/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /app/e2e
+configfile: pyproject.toml
+collecting ... collected 28 items / 23 deselected / 5 selected
+
+test_workspace_contract.py::test_graduated_examples_admit_without_an_executor[dotfiles-only] PASSED [ 20%]
+test_workspace_contract.py::test_graduated_examples_admit_without_an_executor[native-tool-and-profile] PASSED [ 40%]
+test_workspace_contract.py::test_graduated_examples_admit_without_an_executor[source-recipe-and-command-consumer] PASSED [ 60%]
+test_workspace_contract.py::test_graduated_examples_admit_without_an_executor[manual-and-scheduled-task] PASSED [ 80%]
+test_golden.py::test_source_example_alternate_producer_uses_only_injected_platform PASSED [100%]
+
+======================= 5 passed, 23 deselected in 2.42s =======================
+A1_EXAMPLES=9 (4 authored entrypoints typechecked by tsc + 5 real admission/alternate-producer cases passed; 0 errors or skipped)

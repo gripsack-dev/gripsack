@@ -3,53 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt;
 
-/// Stable diagnostic codes (0004 §3). Match on codes, never on text.
+/// Stable diagnostic codes (0004 §3). Allocate in schema/diagnostics.json;
+/// generation keeps the core and sandboxed frontend in lockstep.
 pub mod codes {
-    pub const MALFORMED: &str = "E000";
-    pub const VERSION: &str = "E100";
-    pub const UNKNOWN_DEPENDENCY: &str = "E101";
-    pub const BAD_DESTINATION: &str = "E102";
-    pub const STEPS_WITH_FIELDS: &str = "E103";
-    pub const UNKNOWN_STEP: &str = "E104";
-    pub const DUPLICATE_STEP: &str = "E106";
-    pub const UNKNOWN_RESOURCE: &str = "E107";
-    pub const CONFIG: &str = "E400";
-    pub const UNSUPPORTED_MODE: &str = "E108";
-    pub const VERIFY_PATH_SHAPE: &str = "E109";
-    pub const MISSING_SOURCE: &str = "E110";
-    pub const DUPLICATE_DESTINATION: &str = "E111";
-    /// Probe binding never reached a fixpoint (0013 D6).
-    pub const PROBE_UNSTABLE: &str = "E112";
-    /// The frontend requested a probe kind this grip cannot answer.
-    pub const PROBE_UNSUPPORTED: &str = "E113";
-    /// Fetch/resolution failed at apply (registry, network, hash drift).
-    pub const EXEC_FETCH: &str = "E201";
-    /// An execution step failed (build, deploy, install).
-    pub const EXEC_STEP: &str = "E301";
-    /// A module's verify contract failed.
-    pub const EXEC_VERIFY: &str = "E302";
-    /// Unknown `{placeholder}` in a fetch/install/verify string (0016 §D1).
-    pub const UNKNOWN_PLACEHOLDER: &str = "E114";
-    /// A source or destination path with an illegal shape (0016 §D4).
-    pub const BAD_PATH: &str = "E115";
-    /// Module names that would escape their store segment or break refs.
-    pub const INVALID_MODULE_NAME: &str = "E116";
-    /// Env var name that is not a shell identifier.
-    pub const INVALID_ENV_NAME: &str = "E117";
-    /// Steps modules with more than one fetch step cannot be pinned.
-    pub const UNPINNABLE_STEPS: &str = "E118";
-    /// A step's `needs` references a LATER phase — post-deploy effects
-    /// belong in activate hooks (0035 F8).
-    pub const STEP_PHASE_ORDER: &str = "E121";
-    /// A cycle in a module's step `needs` graph (0033 R4).
-    pub const STEP_CYCLE: &str = "E120";
-    /// Two declarations resolve to one physical destination (aliases:
-    /// `~` vs `$HOME` vs absolute, symlinked ancestors) — 0030 §P0-1.
-    pub const DESTINATION_ALIAS: &str = "E119";
-    /// A dependency edge kind other than `runtime`/`build` (0039).
-    pub const UNKNOWN_EDGE: &str = "E122";
-    /// Two build dependencies normalize to the same GRIP_DEP_* identifier.
-    pub const BUILD_DEP_ENV_COLLISION: &str = "E123";
+    include!("diagnostic_codes.rs");
 }
 
 // ---------------------------------------------------------------- diagnostics

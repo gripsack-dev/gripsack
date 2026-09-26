@@ -1,0 +1,26 @@
+RUNNER_SOURCE_COMMIT=50b829cdb67cbcbb2472093a1c3ca447c09cef4e
+RUNNER_SOURCE_DIRTY=clean at commit (all six container gates ran on the identical pre-commit bytes)
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Rust 1.98.0; pinned golang:1.26.3@sha256:e3665e241a474aba30bbfaf177cfa88e1913e970c83bd86889cacfb67d6e7e51; Go bridge-bin sha256 1535ec43b9c54c7b…
+RUNNER_INPUTS=B1-03 transport slice: (1) the production bridge gains its stdio serve loop (tools/buildkit-bridge/main.go) — strict ReadFrame decode of every core frame, one negotiation exactly, per-session EventGate, Accept at epoch 1, and a deliberately FAIL-CLOSED Submit: no BuildKit client is linked yet, so a submitted session receives one bounded diagnostic log and a terminal Failed(internal) — never a fake success; Cancel is idempotent (unknown/finished sessions acknowledge without inventing state). (2) the Rust core gains transport::BridgeProcess (crates/gripsack-buildkit/src/transport.rs): spawns the bridge, negotiates exactly, drives a submitted session through the fence gate to exactly one terminal (event budget 8192, no-terminal is an error not success), idempotent cancel.
+
+RUNNER_COMMAND=sh tools/buildkit-bridge/build.sh
+  gofmt clean; go vet clean
+  ok  gripsack.dev/buildkit-bridge        (serve loop: fail-closed submit reaches negotiate-ok, accepted, bounded log, Failed internal at the right session/epoch; idempotent cancels; submit-before-negotiation, wrong version, double negotiation and an escaping session all reject)
+  ok  gripsack.dev/buildkit-bridge/protocol (previous suite + shared corpus)
+  bridge gate passed: vet + tests + bridge-bin
+RUNNER_EXIT=0
+
+RUNNER_COMMAND=cargo test --offline -p gripsack-buildkit -- --ignored --nocapture
+  test transport::tests::the_real_go_bridge_negotiates_fails_closed_and_cancels_idempotently ... ok
+CROSS-LANGUAGE, CROSS-PROCESS: the Rust core spawns the REAL compiled Go bridge binary and drives it over stdio — negotiation returns ["protocol.v1"], a submitted session ends in the fenced Failed terminal, and cancel on an unknown session acknowledges twice idempotently. This is the first Rust↔Go end-to-end message flow of the backend. The test is #[ignore]d in the standard gate only because tools/ sits outside the test image; this explicit run is the recorded evidence.
+RUNNER_EXIT=0
+
+SAME-BYTES FULL GATES (pre-commit, identical tracked tree):
+  test    gate passed: fmt + clippy -D warnings + cargo test (transport module included; embedded frontend fresh)
+  ts-test gate passed: deno 67/67 + tsc examples
+  e2e     322 passed in 1003s, real musl grip
+  model   gate passed: TLC positive + calibrated negatives
+  verify  72 verified, 0 errors; 7 named mutants rejected
+  fuzz    full corpus replay incl. buildkit_protocol seeds
+HONESTY=Still no BuildKit client, worker, LLB lowering or submission: Submit terminally fails closed by design. No B row verified; grip unchanged. Defects fixed pre-commit: serve-loop reply-count expectation (Accepted frame), a Copy-semantics bug where the session gate would not persist log budgets across events (now taken/mutated/returned), a spawn-by-value signature, and test-compile fixes.
+B1_TRANSPORT=2 (bridge gate + cross-process ignored test; plus six full gates on identical bytes)

@@ -5,10 +5,10 @@
 #   1. positive — `cargo verus verify -p gripsack-policy --locked`
 #      must succeed with 0 errors and at least the expected obligation
 #      count (zero/subset verification is not success).
-#   2. calibration — a seeded semantic mutant (a crashed roll-forward
-#      misread as committed: the 0.22 bug class) must FAIL its
-#      postcondition. A verification failure for the intended contract
-#      is required; a crash, parse error or missing solver is not.
+#   2. calibration — named semantic mutants in recovery, merge,
+#      graph closure, required validation, target ABI admission and
+#      scheduler policy must fail their intended postconditions. A crash,
+#      parse error, unrelated lemma or missing solver is not calibration.
 #
 # Toolchain (all three pins move together; updates are deliberate):
 #   Verus release 0.2026.09.06.8dea4a2  (provides cargo-verus + verus)
@@ -19,11 +19,10 @@
 set -eu
 
 CRATE=crates/gripsack-policy
-# classify + plan_copy + plan_link + the retention kernels (admission,
-# prune, delete, membership helpers), the merge splice kernel, the
-# graph closure kernels and the scheduler transition system, with
-# their contracts; if the kernel set grows, grow this floor.
-MIN_OBLIGATIONS=50
+# classify + ownership + retention kernels, merge splice, graph
+# closure/roles, exact catalog name-index binding, target compatibility
+# and scheduler transitions. Named mutants protect each kernel family.
+MIN_OBLIGATIONS=72
 
 # verification results are cached by cargo — the gate always runs a
 # CLEAN verification (a stale cache is not evidence)
@@ -83,11 +82,43 @@ run_mutant() {
         echo "FAIL: the $name mutant VERIFIED — the proof does not see the contract"
         exit 1
     fi
-    echo "$out2" | grep -m1 "not satisfied" >/dev/null || {
-        echo "$out2" | tail -20
-        echo "FAIL: the $name mutant failed without a named unsatisfied contract — unrecognised failure, not calibration evidence"
-        exit 1
-    }
+    if [ "$name" = graph-validation ]; then
+        # Verus names the exact production-role proof assertion. A
+        # missing tool, parse error or unrelated lemma cannot calibrate
+        # the dropped-validation-edge contract.
+        printf '%s\n' "$out2" | grep -F "src/$file:" >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'assert(decision.required_validation == (role == GraphRole::Validation));' >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'error: assertion failed' >/dev/null &&
+        printf '%s\n' "$out2" | grep -E 'verification results:: [1-9][0-9]* verified, [1-9][0-9]* errors' >/dev/null || {
+            printf '%s\n' "$out2" | tail -20
+            echo "FAIL: $name did not fail the role-validation contract"
+            exit 1
+        }
+    elif [ "$name" = graph-name-index ]; then
+        printf '%s\n' "$out2" | grep -F "src/$file:" >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'assert(same_name == (names@[position as int]@ == declared@));' >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'error: assertion failed' >/dev/null &&
+        printf '%s\n' "$out2" | grep -E 'verification results:: [1-9][0-9]* verified, [1-9][0-9]* errors' >/dev/null || {
+            printf '%s\n' "$out2" | tail -20
+            echo "FAIL: $name did not fail exact catalog name binding"
+            exit 1
+        }
+    elif [ "$name" = target-abi ]; then
+        printf '%s\n' "$out2" | grep -F "src/$file:" >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'assert(abi_matches == (provider.abi == consumer.abi));' >/dev/null &&
+        printf '%s\n' "$out2" | grep -F 'error: assertion failed' >/dev/null &&
+        printf '%s\n' "$out2" | grep -E 'verification results:: [1-9][0-9]* verified, [1-9][0-9]* errors' >/dev/null || {
+            printf '%s\n' "$out2" | tail -20
+            echo "FAIL: $name did not fail the exact ABI-comparison assertion"
+            exit 1
+        }
+    else
+        echo "$out2" | grep -m1 "not satisfied" >/dev/null || {
+            echo "$out2" | tail -20
+            echo "FAIL: the $name mutant failed without a named unsatisfied contract — unrecognised failure, not calibration evidence"
+            exit 1
+        }
+    fi
     echo "calibration: $name mutant rejected on its contract"
 }
 
@@ -108,6 +139,25 @@ run_mutant "merge-splice" merge.rs \
 run_mutant "graph-closure" graph.rs \
     '                    result.push(target);' \
     ''
+
+# dropping a required publication check from the role projection must
+# violate the verified validation postcondition, never verify as build
+# pruning or a harmless missing output.
+run_mutant "graph-validation" graph/roles.rs \
+    'RoleDecision { build: false, required_validation: true },' \
+    'RoleDecision { build: false, required_validation: false },'
+
+# Treating any in-range index as the requested name would authorize
+# another output's build artifact; reject on the exact-name assertion.
+run_mutant "graph-name-index" graph/name_index.rs \
+    '    let same_name = names[position] == declared;' \
+    '    let same_name = true;'
+
+# A GNU provider/consumer pair must match. Substituting a MUSL consumer
+# for the pair breaks the exact ABI correspondence assertion.
+run_mutant "target-abi" target.rs \
+    'Some(BinaryAbi::Gnu), Some(BinaryAbi::Gnu)' \
+    'Some(BinaryAbi::Gnu), Some(BinaryAbi::Musl)'
 # scheduler: starting work after the failure latch — the "a failed
 # dependency authorized its consumer" class — must fail the named
 # postcondition (old(self).failed ==> result.is_none())

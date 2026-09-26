@@ -67,11 +67,16 @@ pub enum PlanError {
     Cycle(Vec<String>),
     #[error("module {0:?} depends on unknown module {1:?}")]
     UnknownDep(String, String),
+    #[error("{0}")]
+    WorkspaceUnavailable(gripsack_ir::Diagnostic),
 }
 
 /// Module names in dependency-first order. Deterministic: among modules
 /// with equal priority, alphabetical — plans are diffable and stable.
 pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
+    if let Some(diagnostic) = ir.workspace_execution_error("plan") {
+        return Err(PlanError::WorkspaceUnavailable(diagnostic));
+    }
     // Kahn's algorithm with ordered sets for determinism.
     let mut indegree: BTreeMap<&str, usize> = ir.modules.keys().map(|k| (k.as_str(), 0)).collect();
     let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
@@ -176,6 +181,8 @@ mod tests {
             ir_version: gripsack_ir::IR_VERSION,
             host: Default::default(),
             resources: vec![],
+            workspace: None,
+            workspace_v4: None,
             modules: entries
                 .iter()
                 .map(|(name, deps)| (name.to_string(), module_with_deps(deps)))

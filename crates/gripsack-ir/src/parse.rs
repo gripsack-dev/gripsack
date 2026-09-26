@@ -1,10 +1,29 @@
 //! Pass 1 — parse (0004 §4): syntax + version gate.
 
 use crate::diagnostic::{Diagnostic, codes};
-use crate::model::Ir;
+use crate::legacy_v4::LegacyWorkspaceV4;
+use crate::model::{HostFacts, Ir, Resource};
+use std::collections::BTreeMap;
 
-/// The only IR version this core accepts (for now).
-pub const IR_VERSION: u32 = 3;
+/// The legacy module-graph IR version (schema/ir/v3.json), retained
+/// behind version dispatch (plan/0052 §1 resolution 3, §2.3).
+pub const LEGACY_IR_VERSION: u32 = 3;
+/// Historical workspace wire (schema/ir/v4.json); read-only forever.
+pub const WORKSPACE_V4_VERSION: u32 = 4;
+/// Current typed workspace and legacy-modules writer schema.
+pub const IR_VERSION: u32 = 5;
+/// The core retains versioned readers for every supported envelope.
+pub const ACCEPTED_IR_VERSIONS: std::ops::RangeInclusive<u32> = LEGACY_IR_VERSION..=IR_VERSION;
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyIrV4 {
+    ir_version: u32,
+    host: HostFacts,
+    #[serde(default)]
+    resources: Vec<Resource>,
+    workspace: LegacyWorkspaceV4,
+}
 
 /// Parse IR JSON into the typed model (E000 malformed, E100 version).
 /// Pass 1.5 (tagged-field validation) runs BEFORE serde drops unknown
@@ -14,6 +33,25 @@ pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
     crate::tagged::tagged_field_check(json, &mut tagged_diagnostics);
     if let Some(d) = tagged_diagnostics.into_iter().next() {
         return Err(d);
+    }
+    // v4's strict workspace grammar differs from the v5 writer. Keep
+    // its original bytes/meaning in a separate read-only type; never
+    // deserialize its string execution/layout into v5 semantics.
+    if let Ok(raw) = serde_json::from_str::<serde_json::Value>(json)
+        && raw.get("ir_version").and_then(|v| v.as_u64()) == Some(u64::from(WORKSPACE_V4_VERSION))
+        && raw.get("workspace").is_some()
+    {
+        let legacy: LegacyIrV4 = serde_json::from_value(raw).map_err(|e| {
+            Diagnostic::error(codes::MALFORMED, format!("invalid v4 workspace IR: {e}"))
+        })?;
+        return Ok(Ir {
+            ir_version: legacy.ir_version,
+            host: legacy.host,
+            resources: legacy.resources,
+            modules: BTreeMap::new(),
+            workspace: None,
+            workspace_v4: Some(legacy.workspace),
+        });
     }
     let ir: Ir = serde_json::from_str(json).map_err(|e| {
         // A typed failure deep in serialized IR names a byte offset,

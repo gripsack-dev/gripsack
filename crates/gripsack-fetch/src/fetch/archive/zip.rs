@@ -1,4 +1,8 @@
-use super::{paths, tree::Budget};
+use super::{
+    links::{Graph, Kind},
+    paths,
+    tree::Budget,
+};
 use crate::{FetchError, FetchLimits};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -127,6 +131,36 @@ fn metadata_bounds(file: &mut std::fs::File, limits: FetchLimits) -> Result<(), 
     Ok(())
 }
 
+/// Decode only admitted methods, with explicit decoder-memory limits.
+/// Raw ZIP readers would silently copy compressed bytes and bypass CRC.
+fn decoded<'a, R: Read + ?Sized + 'a>(
+    raw: ::zip::read::ZipFile<'a, R>,
+    limits: FetchLimits,
+) -> Result<Box<dyn Read + 'a>, FetchError> {
+    let method = raw.compression();
+    match method {
+        ::zip::CompressionMethod::Stored => Ok(Box::new(raw)),
+        ::zip::CompressionMethod::Deflated => Ok(Box::new(flate2::read::DeflateDecoder::new(raw))),
+        ::zip::CompressionMethod::Bzip2 => {
+            if limits.decoder_bytes.get() < 8 * 1024 * 1024 {
+                return Err(FetchError::PayloadTooLarge {
+                    what: "bzip2 decoder memory".into(),
+                    limit: limits.decoder_bytes.get(),
+                });
+            }
+            Ok(Box::new(bzip2::read::BzDecoder::new(raw)))
+        }
+        ::zip::CompressionMethod::Zstd => {
+            let mut decoder = zstd::stream::read::Decoder::new(raw)?;
+            decoder.window_log_max(limits.decoder_bytes.get().ilog2().min(31))?;
+            Ok(Box::new(decoder))
+        }
+        _ => Err(FetchError::Unsupported(format!(
+            "ZIP compression {method:?}"
+        ))),
+    }
+}
+
 pub(super) fn extract(
     file: &mut std::fs::File,
     dest: &Path,
@@ -139,7 +173,7 @@ pub(super) fn extract(
             limit: limits.archive_entries.get(),
         });
     }
-    std::fs::create_dir_all(dest)?;
+    let mut graph = Graph::new(limits);
     let mut budget = Budget::new(limits);
     for index in 0..archive.len() {
         budget.entry()?;
@@ -157,31 +191,23 @@ pub(super) fn extract(
             ));
         }
         let relative = paths::relative(Path::new(raw.name()))?;
-        let target = paths::destination(dest, &relative)?;
         let is_dir = raw.is_dir();
         let is_link = raw.is_symlink();
         let mode = raw
             .unix_mode()
             .unwrap_or(if is_dir { 0o755 } else { 0o644 });
         let kind = mode & 0o170000;
-        if !matches!(kind, 0 | 0o100000 | 0o040000 | 0o120000) {
+        if !matches!(kind, 0 | 0o100000 | 0o040000 | 0o120000)
+            || (is_dir && matches!(kind, 0o100000 | 0o120000))
+            || (is_link && matches!(kind, 0o100000 | 0o040000))
+        {
             return Err(paths::violation(
                 &relative,
-                "special ZIP entry is unsupported",
+                "special or ambiguous ZIP entry is unsupported",
             ));
         }
-        if is_dir {
-            if raw.size() != 0 {
-                return Err(paths::violation(&relative, "directory contains file data"));
-            }
-            std::fs::create_dir_all(&target)?;
-            continue;
-        }
-        if relative.as_os_str().is_empty() {
-            return Err(paths::violation(
-                &relative,
-                "entry does not name a payload child",
-            ));
+        if is_dir && raw.size() != 0 {
+            return Err(paths::violation(&relative, "directory contains file data"));
         }
         if raw.size() > limits.expanded_bytes.get() {
             return Err(FetchError::PayloadTooLarge {
@@ -189,72 +215,87 @@ pub(super) fn extract(
                 limit: limits.expanded_bytes.get(),
             });
         }
-        let expected_size = raw.size();
-        let expected_crc = raw.crc32();
-        let method = raw.compression();
-        let reader: Box<dyn Read + '_> = match method {
-            ::zip::CompressionMethod::Stored => Box::new(raw),
-            ::zip::CompressionMethod::Deflated => Box::new(flate2::read::DeflateDecoder::new(raw)),
-            ::zip::CompressionMethod::Bzip2 => {
-                if limits.decoder_bytes.get() < 8 * 1024 * 1024 {
-                    return Err(FetchError::PayloadTooLarge {
-                        what: "bzip2 decoder memory".into(),
-                        limit: limits.decoder_bytes.get(),
-                    });
-                }
-                Box::new(bzip2::read::BzDecoder::new(raw))
+        let node = if is_dir {
+            Kind::Directory { explicit: true }
+        } else if is_link {
+            if raw.size() > 4096 {
+                return Err(paths::violation(&relative, "ZIP link target is too long"));
             }
-            ::zip::CompressionMethod::Zstd => {
-                let mut decoder = zstd::stream::read::Decoder::new(raw)?;
-                decoder.window_log_max(limits.decoder_bytes.get().ilog2().min(31))?;
-                Box::new(decoder)
-            }
-            _ => {
-                return Err(FetchError::Unsupported(format!(
-                    "ZIP compression {method:?}"
-                )));
-            }
-        };
-        let mut crc = crc32fast::Hasher::new();
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let size = if is_link {
-            let mut bytes = Vec::new();
-            let size = budget.copy(
-                crate::spool::Limited::new(reader, 4096, "ZIP link target"),
-                &mut bytes,
-                |bytes| crc.update(bytes),
-            )?;
             #[cfg(unix)]
             {
                 use std::os::unix::ffi::OsStringExt;
-                let link = std::path::PathBuf::from(std::ffi::OsString::from_vec(bytes));
-                let resolved = paths::link_target(&relative, &link, false)?;
-                paths::destination(dest, &resolved)?;
-                std::os::unix::fs::symlink(link, &target)?;
+                let size = raw.size();
+                let crc = raw.crc32();
+                let mut checksum = crc32fast::Hasher::new();
+                let mut bytes = Vec::with_capacity(size as usize);
+                let copied = budget.copy(
+                    crate::spool::Limited::new(decoded(raw, limits)?, 4096, "ZIP link target"),
+                    &mut bytes,
+                    |part| checksum.update(part),
+                )?;
+                if copied != size || checksum.finalize() != crc {
+                    return Err(paths::violation(
+                        &relative,
+                        "ZIP link size or CRC does not match decoded bytes",
+                    ));
+                }
+                Kind::Symlink(std::path::PathBuf::from(std::ffi::OsString::from_vec(
+                    bytes,
+                )))
             }
             #[cfg(not(unix))]
             return Err(paths::violation(&relative, "symlinks require Unix"));
-            size
         } else {
-            let output = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&target)?;
-            let size = budget.copy(reader, output, |bytes| crc.update(bytes))?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode & 0o777))?;
-            }
-            size
+            Kind::Regular
         };
-        if size != expected_size || crc.finalize() != expected_crc {
+        graph.insert(relative, node)?;
+    }
+    graph.validate()?;
+    let root = paths::open_root(dest)?;
+    // Materialize only regular content and real directories first. Every
+    // link's CRC/target already passed the complete graph before the root
+    // was opened; no later file write may traverse a created symlink.
+    for index in 0..archive.len() {
+        let raw = archive.by_index_raw(index)?;
+        let relative = paths::relative(Path::new(raw.name()))?;
+        if raw.is_dir() {
+            paths::directories(&root, &relative)?;
+            continue;
+        }
+        if raw.is_symlink() {
+            continue;
+        }
+        let expected_size = raw.size();
+        let expected_crc = raw.crc32();
+        let mode = raw.unix_mode().unwrap_or(0o644);
+        let mut checksum = crc32fast::Hasher::new();
+        let mut output = paths::file(&root, &relative)?;
+        let copied = budget.copy(decoded(raw, limits)?, &mut output, |part| {
+            checksum.update(part)
+        })?;
+        if copied != expected_size || checksum.finalize() != expected_crc {
             return Err(paths::violation(
                 &relative,
                 "ZIP size or CRC does not match decoded bytes",
             ));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            output.set_permissions(gripsack_fs::cap_std::fs::Permissions::from_std(
+                std::fs::Permissions::from_mode(mode & 0o777),
+            ))?;
+        }
+    }
+    #[cfg(unix)]
+    for index in 0..archive.len() {
+        let raw = archive.by_index_raw(index)?;
+        if raw.is_symlink() {
+            let relative = paths::relative(Path::new(raw.name()))?;
+            let target = graph
+                .symlink_target(&relative)
+                .ok_or_else(|| paths::violation(&relative, "validated ZIP link was lost"))?;
+            paths::symlink(&root, &relative, target)?;
         }
     }
     Ok(())

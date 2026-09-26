@@ -1,0 +1,414 @@
+RUNNER_SOURCE_COMMIT=ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c
+RUNNER_SOURCE_FINGERPRINT=872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc
+RUNNER_SOURCE_ROOTS_DIRTY=clean before/after; only ignored bridge-bin/results changed
+RUNNER_COMMAND=sh bridge/build.sh; sh probes.sh in isolated detached checkout /tmp/gripsack-b0-loaded-w_9bc1_0/checkout; real pinned Go client, three fresh worker/cache lifetimes, independent OCI parser, Docker-save byte repack, inspected/runnable independent Docker image
+RUNNER_EXIT=0; observed post-runtime six-case success marker; no claim that grip uses BuildKit as a backend
+RUNNER_TOOL_VERSIONS=Python 3.12.3; Docker 29.7.2 on WSL2 linux/amd64; pinned Go 1.26.3, BuildKit v0.33.0, gcc:15.2.0 and alpine:3.22.1 digest-pinned
+RUNNER_INPUTS=actual Go/LLB, independent OCI verifier and Docker-loaded-image checker at committed source ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c; Docker may re-encode config ID (observed), but platform, Env/WorkingDir, exact rootfs DiffIDs, tag and runtime content are checked; Docker28 CI job not yet observed passing at this source.
+
+CAPTURE_SHA256=fcf322dadd4fe2e64a8d0c38ecb4942c0cf65310f4a0e78f432fc8ead47b345f pins.env (895 bytes)
+CAPTURE_SHA256=0f4fe722cda68ea29b704876c1ce9563773ce04019c52b43f76e0b074c6e15f1 probes.sh (8789 bytes)
+CAPTURE_SHA256=8bb88b49b64cb6d7a16aaabef541c81efc6747f90d9a486f5c137416013d7bce verify_oci.py (8634 bytes)
+CAPTURE_SHA256=b0431c1764a88abeebb89067aa8222a66babeb25a02de7e92b4bbc93b9f349c8 check_loaded.py (2450 bytes)
+CAPTURE_SHA256=9feaa78cf5ae23f6f509729f03f180ad221b01f7b1b2295e6e674e6189aaf828 bridge/go.mod (2985 bytes)
+CAPTURE_SHA256=5084cdc774ac645f2d5327cd154be4834d6e68bbca785268511bb3e95817cc0d bridge/go.sum (17473 bytes)
+CAPTURE_SHA256=2742805feb9592cc5953982f170e07101842bc02d6ea1f6500ac319bbb5b6f6f bridge/bridge-bin (27706720 bytes)
+CAPTURE_SHA256=4f5534033df834e46b12abc8a83af71fb324c8d3185edf0c6995622c4f2c70a1 results/oci-1.tar (3809792 bytes)
+CAPTURE_SHA256=3b2211bf9d4df6e36252a4a9279d16f69aee7d8e4b47c76047ffdf1b48730077 results/oci-2.tar (3809792 bytes)
+CAPTURE_SHA256=ea501f9a539028d1f582064c71919bcface36c7f61802484925ed30885fbd55e results/docker-compat.tar (8611840 bytes)
+CAPTURE_SHA256=7d1776316ed4c0c56332b73a460655c153ac18b428dbb016237f33ef2a0a1200 results/executable/hello (933288 bytes)
+
+===== ACTUAL REAL B0 DRIVER STDOUT =====
+--- probe1: baseline preservation
+native Rust package graph: no builder dependencies
+29.7.2 linux/x86_64
+note: target/debug/grip not built; binary linkage not assessed here
+ID				PLATFORMS
+ro9maasjr8qty8seqxslvgxrt	linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/amd64/v4,linux/386
+buildkitd github.com/moby/buildkit v0.33.0 dddd5621af04ea57823085c93a063383f71d3173
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex shared-dependency completed
+vertex consumer-a completed
+vertex exporting to client directory completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex shared-dependency completed CACHED
+vertex consumer-a completed CACHED
+vertex exporting to client directory completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+vertex shared-dependency completed CACHED
+vertex consumer-b completed
+vertex exporting to client directory completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+vertex slow-op completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+vertex worker-health-check completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+DELIBERATE_FAILURE_MARKER
+vertex deliberate-failure completed
+probe graph: PASS
+vertex declared input (include: allowed.txt) completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+vertex declared input (include: allowed.txt) completed
+vertex observe-declared-input-and-env completed
+vertex exporting to client directory completed
+probe policy: PASS
+vertex mkfile /hello.c completed
+vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+vertex mkfile /hello.c completed
+vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+vertex compile-static-hello (digest-pinned gcc, network=none) completed
+vertex copy /hello /hello completed
+vertex copy /hello /hello completed CACHED
+vertex exporting to client directory completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+NO_NETWORK_CONFIRMED
+vertex verify-no-network completed
+probe executable: PASS
+probe3 retained run after worker+cache removal: gripsack-b0-static-hello
+ID				PLATFORMS
+p01olevsgfvwvilq689jsis08	linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/amd64/v4,linux/386
+buildkitd github.com/moby/buildkit v0.33.0 dddd5621af04ea57823085c93a063383f71d3173
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex oci-content (fixed timestamps) completed
+vertex copy /hello.txt /hello.txt completed
+vertex copy /hello.txt.sha256 /hello.txt.sha256 completed
+vertex exporting to oci image format completed
+probe oci: PASS
+ID				PLATFORMS
+mkk5r66xn4ksfnmdfswox4fse	linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/amd64/v4,linux/386
+buildkitd github.com/moby/buildkit v0.33.0 dddd5621af04ea57823085c93a063383f71d3173
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+vertex oci-content (fixed timestamps) completed
+vertex copy /hello.txt /hello.txt completed
+vertex copy /hello.txt.sha256 /hello.txt.sha256 completed
+vertex exporting to oci image format completed
+probe oci: PASS
+{
+ "verifier": "independent python OCI parser (no buildkit code)",
+ "first": {
+  "tar": "/tmp/gripsack-b0-loaded-w_9bc1_0/checkout/verification/buildkit-qualification/results/oci-1.tar",
+  "tar-bytes": 3809792,
+  "layout-version": "1.0.0",
+  "manifest-digest": "sha256:cd0d33958ee1559e7295b938cc03beb5733ff94881eeb019857b6126299f26af",
+  "config-digest": "sha256:5b78b0f5c0d709313addc1998684af58468c2f541412e4cdfeef8b9844268470",
+  "platform": "linux/amd64",
+  "runtime-config": {
+   "Env": [
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+   ],
+   "WorkingDir": "/"
+  },
+  "diff-ids": [
+   "sha256:418dccb7d85a63a6aa574439840f7a6fa6fd2321b3e2394568a317735e867d35",
+   "sha256:862b5e38bc25f21bb9d2e133a4f099c346c523e93bec4a91659ca3a713a73a7d",
+   "sha256:8b9f1524f2524d604d4f8b0e9fb514ca05b092dd727a98c81887879d1d1f3499"
+  ],
+  "layer-digests": [
+   "sha256:9824c27679d3b27c5e1cb00a73adb6f4f8d556994111c12db3c5d61a0c843df8",
+   "sha256:b63c72c620eacb399d69df218112c6d68ebf156a1789931fe9d0544fd44b292d",
+   "sha256:e34138b5a9a6e1372fe032d19d935e79057e5e2182f81ad27c2d9d908ad13262"
+  ],
+  "files": {
+   "bin/busybox": "58d22501495a1db93e859f6e406460ed5e179d7afc1197d19e16f58bf8562c34",
+   "etc/alpine-release": "08842eac2718502d9d72a2f89396da3c28fbc73356b2077551bf662c832101f8",
+   "etc/apk/arch": "aaf631698ae5160ceb04a97681a14887fdcab47cd6e0f163c87485b3b1340b62",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-4a6a0840.rsa.pub": "9c102bcc376af1498d549b77bdbfa815ae86faa1d2d82f040e616b18ef2df2d4",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-5243ef4b.rsa.pub": "ebf31683b56410ecc4c00acd9f6e2839e237a3b62b5ae7ef686705c7ba0396a9",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-5261cecb.rsa.pub": "12f899e55a7691225603d6fb3324940fc51cd7f133e7ead788663c2b7eecb00c",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub": "207e4696d3c05f7cb05966aee557307151f1f00217af4143c1bcaf33b8df733f",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-61666e3f.rsa.pub": "128d34d4aec39b0daedea8163cd8dc24dff36fd3d848630ab97eeb1d3084bbb3",
+   "etc/apk/repositories": "f9ae9d3ed56e354f96b5e8ead266c89b6c805a97484040e8e780e32ca645994a",
+   "etc/apk/world": "bd4a5bcb2151166a647b1620db4b739423b49bff3bc9c656177cb982caf7e356",
+   "etc/busybox-paths.d/busybox": "e12e0822f5c6426b62f07799a0fc20394241535c5bc2cc8f10c8a25088b8defa",
+   "etc/crontabs/root": "575d810a9fae5f2f0671c9b2c0ce973e46c7207fbe5cb8d1b0d1836a6a0470e3",
+   "etc/fstab": "a3efca2e8d62785c87517283092b4c800d88612b6f3f06b80a4c2f39d8e68841",
+   "etc/group": "6fb6ab5a5526e6f4896b70c7e3c350fd475158a1f0d7b5fc0f3f9bd57f1c3be8",
+   "etc/hostname": "d906aecb61d076a967d9ffe8821c7b04b063f72df9d9e35b33ef36b1c0d98f16",
+   "etc/hosts": "e3998dbe02b51dada33de87ae43d18a93ab6915b9e34f5a751bf2b9b25a55492",
+   "etc/inittab": "7326d8ad56bf5fea63b1ca516a747ff6e6723e25ae84a93c31620b03de6c001d",
+   "etc/issue": "9b89537422a64a9a9407d3cafdf58c802375849629b8f43e64f1cfd7f07c782a",
+   "etc/logrotate.d/acpid": "d608a3b7715886b5735def0cc50a6359fd364fac2e0e0a459c588c04be471031",
+   "etc/modprobe.d/aliases.conf": "3ebaba946f213670170c7d69949f690a3854553bd0b1560f1d980cba4c83a942",
+   "etc/modprobe.d/blacklist.conf": "5cd46031fc7dc7186e67c97fd34780597de4ebff51dbe41eba27220fe5e0d866",
+   "etc/modprobe.d/i386.conf": "6c46c4cbfb8b7594f19eb94801a350fa2221ae9ac5239a8819d15555caa76ae8",
+   "etc/modules": "2c881de75a5409c35d2433a24f180b8b02ba478ef2c1c60ea3434a35bcbc335d",
+   "etc/motd": "ff044e9be5daa2eee2d3d10a4da72e5477e4c24c16f1792de2c91dae844c0e30",
+   "etc/network/if-up.d/dad": "2fd20d1bc67d9ee711990002b24f156635a73f56b8935b2f76592938817fa4e7",
+   "etc/nsswitch.conf": "0afd94c183d30a348b45057f6bf468e121aa448a7641109addb5bb8e282f514d",
+   "etc/passwd": "31a94f06f17bc3b9085fccab1d0fa6ee9e79c4a1e4d91f617fa5de95863be015",
+   "etc/profile": "87e8643d3ce156de0c09370d4d39446f30bd00d264bea248abc191c4d7b9df3e",
+   "etc/profile.d/20locale.sh": "284a6ef56ab97a13a777c6b01ae14f2cc3d2b7a29c19e750e622e70cc3c73186",
+   "etc/profile.d/README": "b73284f27fe2da9ae1902b1fe9596c3ffc61a154e2805a034184f0468f8b09b0",
+   "etc/profile.d/color_prompt.sh.disabled": "ba24425c6864a5d17fa0fdaf914c4d21419e47c4d62080c33830af059fe46617",
+   "etc/protocols": "4959498abbadaa1e50894a266f8d0d94500101cfe5b5f09dcad82e9d5bdfab46",
+   "etc/secfixes.d/alpine": "808a19d200c575a9bd9898b113ca4538bb142878dd6a8e5f14804ba9ae3f5c38",
+   "etc/securetty": "713fcea5109728883b9147e822429133fcc8b5e253afd3c2a197b10cd0bc3b4d",
+   "etc/services": "f6183055fd949f9c53d49ee620f85d0150123ea691d25ed1bba0c641b4ee2f48",
+   "etc/shadow": "d5992a27f05f380fc5faeb82a3359e2f230fd1d6ea6517b45892b771a2194ddb",
+   "etc/shells": "24be6ceb236610df45684c83b06c918ae45635be55f69975e43676b7595bbc5f",
+   "etc/ssl/certs/ca-certificates.crt": "8cf3f2d5222508ca469c78a347764ee1b1fab10a903172612c489ebcca05c91c",
+   "etc/ssl/ct_log_list.cnf": "f1c1803d13d1d0b755b13b23c28bd4e20e07baf9f2b744c9337ba5866aa0ec3b",
+   "etc/ssl/ct_log_list.cnf.dist": "f1c1803d13d1d0b755b13b23c28bd4e20e07baf9f2b744c9337ba5866aa0ec3b",
+   "etc/ssl/openssl.cnf": "a65a2cb9f4ee8ffdc7ef4f0ac600c0bdafb95b7b1ab457188ac610a62f5ad6b3",
+   "etc/ssl/openssl.cnf.dist": "a65a2cb9f4ee8ffdc7ef4f0ac600c0bdafb95b7b1ab457188ac610a62f5ad6b3",
+   "etc/sysctl.conf": "8bba47da45bc8715c69ac904a60410eabffaa7bbbef640f9c1368ab9c48493d0",
+   "etc/udhcpc/udhcpc.conf": "5b372209e01cda07c87b8afa6d1ab3d7e8daf18a1f2332d744203a6dc289eb1a",
+   "lib/apk/db/installed": "736cd0f7019b92b011f11dc9b56051a8724a04d1a71bb36c83efdedcac25504f",
+   "lib/apk/db/lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "lib/apk/db/scripts.tar": "35fb665c07a04efa533f776586aefcffb52c82d8f43a49a4ecd1a0769e75e2ca",
+   "lib/apk/db/triggers": "8ad276905a62a1be4a9a01ebf323ec1c364218b79a84ba796c2088f1fcc0e8d5",
+   "lib/ld-musl-x86_64.so.1": "7d221f4e17e8f7ebfc208d6e621bb7fc71bc99081bed47409d77048d9a69dbd5",
+   "sbin/apk": "317bf595249cd6a3ebc009f1e4368632e5564140805605b5d968e806b64a39a5",
+   "sbin/ldconfig": "b4a2c06db38742e8c42c3c9838b285a7d8cdac6c091ff3df5ff9a15f1e41b9c7",
+   "usr/bin/getconf": "4dbaf95eab0e2e2e727c5e903b97100215cd16f463aa29e5f72af74951fe425a",
+   "usr/bin/getent": "682137a98bd8062d4be1f4be7a68410dfbb4e6f9359a3b3c163890a2fcde4518",
+   "usr/bin/iconv": "3cf6eb89e6481a54d8a9df0f302bb633c4f01673bb3a143ac3d4e084997f3167",
+   "usr/bin/ldd": "9a49c2541a439be89f1ef1496604ef3b607f460d589877c60775acf74cdb5dfb",
+   "usr/bin/scanelf": "cdd7676d80e2b452b3dc177686afd34f2efe9e21a28cdeba7e74ce79410c3d97",
+   "usr/bin/ssl_client": "51bc20da3df12520921587b8ab7746a876cc008d09799c61b1191fbab8306156",
+   "usr/lib/engines-3/afalg.so": "f82cb92be9830954bdcb5c46933130380ebf3b48f6c5c1aa284b490d35acefc6",
+   "usr/lib/engines-3/capi.so": "bc49c717601960808e8ac20adba4defca25a19c768c384b4ac73869b3deb9023",
+   "usr/lib/engines-3/loader_attic.so": "2a2ee123e3ec7a0857bd2fdc236a29d43673d12698a93b11e4ad08fd43d891fe",
+   "usr/lib/engines-3/padlock.so": "8ab99382b49d2a1fb67599625a3aed4208af4cb374358dceee4356314322a41d",
+   "usr/lib/libapk.so.2.14.9": "c646683b6d5a2a99557705559c7270e659e3bcf677f6c65041463af708d62902",
+   "usr/lib/libcrypto.so.3": "9129bc86bb2b1684bdf4d92b28539bd4c88e8e14d44c14820acbcd9835098ea3",
+   "usr/lib/libssl.so.3": "79f7e4d45cad89fdd0331e5521aa787944926535e973900c7a3934e99db1a410",
+   "usr/lib/libz.so.1.3.1": "09b1bbd6ffe274039cefaca595f55cec0af65fe90d9e285e5d57ff7ed96948d2",
+   "usr/lib/os-release": "2fc5dc3fc3f4d3af126e3fdf9e5889ace04f6b9fa9d4e1bf7e78b78ea78598c8",
+   "usr/lib/ossl-modules/legacy.so": "f27833c97146fbb049adc5c2e524f710db9c3a58e6c715b39050e49cb65d327c",
+   "usr/lib/sysctl.d/00-alpine.conf": "ee169bea2cb6859420b55ca7a9c23fb68b50adc1d26c951f904dec9e8f767380",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-4a6a0840.rsa.pub": "9c102bcc376af1498d549b77bdbfa815ae86faa1d2d82f040e616b18ef2df2d4",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-5243ef4b.rsa.pub": "ebf31683b56410ecc4c00acd9f6e2839e237a3b62b5ae7ef686705c7ba0396a9",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-524d27bb.rsa.pub": "1bb2a846c0ea4ca9d0e7862f970863857fc33c32f5506098c636a62a726a847b",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-5261cecb.rsa.pub": "12f899e55a7691225603d6fb3324940fc51cd7f133e7ead788663c2b7eecb00c",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-58199dcc.rsa.pub": "73867d92083f2f8ab899a26ccda7ef63dfaa0032a938620eda605558958a8041",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-58cbb476.rsa.pub": "9a4cd858d9710963848e6d5f555325dc199d1c952b01cf6e64da2c15deedbd97",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-58e4f17d.rsa.pub": "780b3ed41786772cbc7b68136546fa3f897f28a23b30c72dde6225319c44cfff",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-5e69ca50.rsa.pub": "59c01c57b446633249f67c04b115dd6787f4378f183dff2bbf65406df93f176d",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-60ac2099.rsa.pub": "db0b49163f07ffba64a5ca198bcf1688610b0bd1f0d8d5afeaf78559d73f2278",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub": "207e4696d3c05f7cb05966aee557307151f1f00217af4143c1bcaf33b8df733f",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-61666e3f.rsa.pub": "128d34d4aec39b0daedea8163cd8dc24dff36fd3d848630ab97eeb1d3084bbb3",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616a9724.rsa.pub": "10877cce0a935e46ad88cb79e174a2491680508eccda08e92bf04fb9bf37fbc1",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616abc23.rsa.pub": "4a095a9daca86da496a3cd9adcd95ee2197fdbeb84638656d469f05a4d740751",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616ac3bc.rsa.pub": "0caf5662fde45616d88cfd7021b7bda269a2fcaf311e51c48945a967a609ec0b",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616adfeb.rsa.pub": "ebe717d228555aa58133c202314a451f81e71f174781fd7ff8d8970d6cfa60da",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub": "d11f6b21c61b4274e182eb888883a8ba8acdbf820dcc7a6d82a7d9fc2fd2836d",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616db30d.rsa.pub": "40a216cbd163f22e5f16a9e0929de7cde221b9cbae8e36aa368b1e128afe0a31",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-66ba20fe.rsa.pub": "7cf4cb8314e6ccc985b0d7f1aa0c6e0a81e3588f69a41f383af7a63d1ba61793",
+   "usr/share/udhcpc/default.script": "1cf94e3918ce389c722f4408490ae7334321a5ca2aec2c945b0c47662aa274a6",
+   "hello.txt": "638440e475a4fdc7fda80c64faf48a6603f46a42a8d100842d73fbf000c2e1e1",
+   "hello.txt.sha256": "0414f826da1ed066656fc876a9b2cfc21d46c4b23e834174a53ee116f57ec532"
+  }
+ },
+ "verdicts": [
+  "/tmp/gripsack-b0-loaded-w_9bc1_0/checkout/verification/buildkit-qualification/results/oci-1.tar: all blob digests, DiffIDs, media types and platform verified",
+  "two fresh-worker exports reproduce (DiffIDs, normalized config, file digests)",
+  "legacy Docker archive contains the exact independently verified OCI config and layer bytes"
+ ],
+ "reproduction": {
+  "diff-ids-match": true,
+  "config-normalized-match": true,
+  "files-match": true,
+  "manifest-digests": [
+   "sha256:cd0d33958ee1559e7295b938cc03beb5733ff94881eeb019857b6126299f26af",
+   "sha256:aa7b0f80f448538962e0d9a5c32c127a5221c55c8fb700789fbd8ccd4984d783"
+  ],
+  "verdict": "reproduced from two clean workers"
+ },
+ "docker-archive": {
+  "path": "/tmp/gripsack-b0-loaded-w_9bc1_0/checkout/verification/buildkit-qualification/results/docker-compat.tar",
+  "sha256": "ea501f9a539028d1f582064c71919bcface36c7f61802484925ed30885fbd55e",
+  "config-digest": "sha256:5b78b0f5c0d709313addc1998684af58468c2f541412e4cdfeef8b9844268470",
+  "tag": "gripsack-b0-qual:5b78b0f5c0d709313addc1998684af58468c2f541412e4cdfeef8b9844268470",
+  "layer-diff-ids": [
+   "sha256:418dccb7d85a63a6aa574439840f7a6fa6fd2321b3e2394568a317735e867d35",
+   "sha256:862b5e38bc25f21bb9d2e133a4f099c346c523e93bec4a91659ca3a713a73a7d",
+   "sha256:8b9f1524f2524d604d4f8b0e9fb514ca05b092dd727a98c81887879d1d1f3499"
+  ]
+ }
+}
+runtime-image: verified OCI platform/config/layer DiffIDs and tag match Docker image sha256:5af60354a065fa2a52fea9eed92fe2abd06a78b22d90da20836d44b902b5b693 (Docker may re-encode config metadata)
+gripsack b0 oci fixture
+separate-runtime: Docker loaded checked OCI layers/config via portable archive and ran image
+=== B0-01 Linux lane probes complete; results in /tmp/gripsack-b0-loaded-w_9bc1_0/checkout/verification/buildkit-qualification/results
+B0_LINUX_QUALIFICATION=6
+
+===== independent OCI verification and Docker-archive config/layer binding =====
+{
+ "verifier": "independent python OCI parser (no buildkit code)",
+ "first": {
+  "tar": "/tmp/gripsack-b0-loaded-w_9bc1_0/checkout/verification/buildkit-qualification/results/oci-1.tar",
+  "tar-bytes": 3809792,
+  "layout-version": "1.0.0",
+  "manifest-digest": "sha256:cd0d33958ee1559e7295b938cc03beb5733ff94881eeb019857b6126299f26af",
+  "config-digest": "sha256:5b78b0f5c0d709313addc1998684af58468c2f541412e4cdfeef8b9844268470",
+  "platform": "linux/amd64",
+  "runtime-config": {
+   "Env": [
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+   ],
+   "WorkingDir": "/"
+  },
+  "diff-ids": [
+   "sha256:418dccb7d85a63a6aa574439840f7a6fa6fd2321b3e2394568a317735e867d35",
+   "sha256:862b5e38bc25f21bb9d2e133a4f099c346c523e93bec4a91659ca3a713a73a7d",
+   "sha256:8b9f1524f2524d604d4f8b0e9fb514ca05b092dd727a98c81887879d1d1f3499"
+  ],
+  "layer-digests": [
+   "sha256:9824c27679d3b27c5e1cb00a73adb6f4f8d556994111c12db3c5d61a0c843df8",
+   "sha256:b63c72c620eacb399d69df218112c6d68ebf156a1789931fe9d0544fd44b292d",
+   "sha256:e34138b5a9a6e1372fe032d19d935e79057e5e2182f81ad27c2d9d908ad13262"
+  ],
+  "files": {
+   "bin/busybox": "58d22501495a1db93e859f6e406460ed5e179d7afc1197d19e16f58bf8562c34",
+   "etc/alpine-release": "08842eac2718502d9d72a2f89396da3c28fbc73356b2077551bf662c832101f8",
+   "etc/apk/arch": "aaf631698ae5160ceb04a97681a14887fdcab47cd6e0f163c87485b3b1340b62",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-4a6a0840.rsa.pub": "9c102bcc376af1498d549b77bdbfa815ae86faa1d2d82f040e616b18ef2df2d4",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-5243ef4b.rsa.pub": "ebf31683b56410ecc4c00acd9f6e2839e237a3b62b5ae7ef686705c7ba0396a9",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-5261cecb.rsa.pub": "12f899e55a7691225603d6fb3324940fc51cd7f133e7ead788663c2b7eecb00c",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub": "207e4696d3c05f7cb05966aee557307151f1f00217af4143c1bcaf33b8df733f",
+   "etc/apk/keys/alpine-devel@lists.alpinelinux.org-61666e3f.rsa.pub": "128d34d4aec39b0daedea8163cd8dc24dff36fd3d848630ab97eeb1d3084bbb3",
+   "etc/apk/repositories": "f9ae9d3ed56e354f96b5e8ead266c89b6c805a97484040e8e780e32ca645994a",
+   "etc/apk/world": "bd4a5bcb2151166a647b1620db4b739423b49bff3bc9c656177cb982caf7e356",
+   "etc/busybox-paths.d/busybox": "e12e0822f5c6426b62f07799a0fc20394241535c5bc2cc8f10c8a25088b8defa",
+   "etc/crontabs/root": "575d810a9fae5f2f0671c9b2c0ce973e46c7207fbe5cb8d1b0d1836a6a0470e3",
+   "etc/fstab": "a3efca2e8d62785c87517283092b4c800d88612b6f3f06b80a4c2f39d8e68841",
+   "etc/group": "6fb6ab5a5526e6f4896b70c7e3c350fd475158a1f0d7b5fc0f3f9bd57f1c3be8",
+   "etc/hostname": "d906aecb61d076a967d9ffe8821c7b04b063f72df9d9e35b33ef36b1c0d98f16",
+   "etc/hosts": "e3998dbe02b51dada33de87ae43d18a93ab6915b9e34f5a751bf2b9b25a55492",
+   "etc/inittab": "7326d8ad56bf5fea63b1ca516a747ff6e6723e25ae84a93c31620b03de6c001d",
+   "etc/issue": "9b89537422a64a9a9407d3cafdf58c802375849629b8f43e64f1cfd7f07c782a",
+   "etc/logrotate.d/acpid": "d608a3b7715886b5735def0cc50a6359fd364fac2e0e0a459c588c04be471031",
+   "etc/modprobe.d/aliases.conf": "3ebaba946f213670170c7d69949f690a3854553bd0b1560f1d980cba4c83a942",
+   "etc/modprobe.d/blacklist.conf": "5cd46031fc7dc7186e67c97fd34780597de4ebff51dbe41eba27220fe5e0d866",
+   "etc/modprobe.d/i386.conf": "6c46c4cbfb8b7594f19eb94801a350fa2221ae9ac5239a8819d15555caa76ae8",
+   "etc/modules": "2c881de75a5409c35d2433a24f180b8b02ba478ef2c1c60ea3434a35bcbc335d",
+   "etc/motd": "ff044e9be5daa2eee2d3d10a4da72e5477e4c24c16f1792de2c91dae844c0e30",
+   "etc/network/if-up.d/dad": "2fd20d1bc67d9ee711990002b24f156635a73f56b8935b2f76592938817fa4e7",
+   "etc/nsswitch.conf": "0afd94c183d30a348b45057f6bf468e121aa448a7641109addb5bb8e282f514d",
+   "etc/passwd": "31a94f06f17bc3b9085fccab1d0fa6ee9e79c4a1e4d91f617fa5de95863be015",
+   "etc/profile": "87e8643d3ce156de0c09370d4d39446f30bd00d264bea248abc191c4d7b9df3e",
+   "etc/profile.d/20locale.sh": "284a6ef56ab97a13a777c6b01ae14f2cc3d2b7a29c19e750e622e70cc3c73186",
+   "etc/profile.d/README": "b73284f27fe2da9ae1902b1fe9596c3ffc61a154e2805a034184f0468f8b09b0",
+   "etc/profile.d/color_prompt.sh.disabled": "ba24425c6864a5d17fa0fdaf914c4d21419e47c4d62080c33830af059fe46617",
+   "etc/protocols": "4959498abbadaa1e50894a266f8d0d94500101cfe5b5f09dcad82e9d5bdfab46",
+   "etc/secfixes.d/alpine": "808a19d200c575a9bd9898b113ca4538bb142878dd6a8e5f14804ba9ae3f5c38",
+   "etc/securetty": "713fcea5109728883b9147e822429133fcc8b5e253afd3c2a197b10cd0bc3b4d",
+   "etc/services": "f6183055fd949f9c53d49ee620f85d0150123ea691d25ed1bba0c641b4ee2f48",
+   "etc/shadow": "d5992a27f05f380fc5faeb82a3359e2f230fd1d6ea6517b45892b771a2194ddb",
+   "etc/shells": "24be6ceb236610df45684c83b06c918ae45635be55f69975e43676b7595bbc5f",
+   "etc/ssl/certs/ca-certificates.crt": "8cf3f2d5222508ca469c78a347764ee1b1fab10a903172612c489ebcca05c91c",
+   "etc/ssl/ct_log_list.cnf": "f1c1803d13d1d0b755b13b23c28bd4e20e07baf9f2b744c9337ba5866aa0ec3b",
+   "etc/ssl/ct_log_list.cnf.dist": "f1c1803d13d1d0b755b13b23c28bd4e20e07baf9f2b744c9337ba5866aa0ec3b",
+   "etc/ssl/openssl.cnf": "a65a2cb9f4ee8ffdc7ef4f0ac600c0bdafb95b7b1ab457188ac610a62f5ad6b3",
+   "etc/ssl/openssl.cnf.dist": "a65a2cb9f4ee8ffdc7ef4f0ac600c0bdafb95b7b1ab457188ac610a62f5ad6b3",
+   "etc/sysctl.conf": "8bba47da45bc8715c69ac904a60410eabffaa7bbbef640f9c1368ab9c48493d0",
+   "etc/udhcpc/udhcpc.conf": "5b372209e01cda07c87b8afa6d1ab3d7e8daf18a1f2332d744203a6dc289eb1a",
+   "lib/apk/db/installed": "736cd0f7019b92b011f11dc9b56051a8724a04d1a71bb36c83efdedcac25504f",
+   "lib/apk/db/lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "lib/apk/db/scripts.tar": "35fb665c07a04efa533f776586aefcffb52c82d8f43a49a4ecd1a0769e75e2ca",
+   "lib/apk/db/triggers": "8ad276905a62a1be4a9a01ebf323ec1c364218b79a84ba796c2088f1fcc0e8d5",
+   "lib/ld-musl-x86_64.so.1": "7d221f4e17e8f7ebfc208d6e621bb7fc71bc99081bed47409d77048d9a69dbd5",
+   "sbin/apk": "317bf595249cd6a3ebc009f1e4368632e5564140805605b5d968e806b64a39a5",
+   "sbin/ldconfig": "b4a2c06db38742e8c42c3c9838b285a7d8cdac6c091ff3df5ff9a15f1e41b9c7",
+   "usr/bin/getconf": "4dbaf95eab0e2e2e727c5e903b97100215cd16f463aa29e5f72af74951fe425a",
+   "usr/bin/getent": "682137a98bd8062d4be1f4be7a68410dfbb4e6f9359a3b3c163890a2fcde4518",
+   "usr/bin/iconv": "3cf6eb89e6481a54d8a9df0f302bb633c4f01673bb3a143ac3d4e084997f3167",
+   "usr/bin/ldd": "9a49c2541a439be89f1ef1496604ef3b607f460d589877c60775acf74cdb5dfb",
+   "usr/bin/scanelf": "cdd7676d80e2b452b3dc177686afd34f2efe9e21a28cdeba7e74ce79410c3d97",
+   "usr/bin/ssl_client": "51bc20da3df12520921587b8ab7746a876cc008d09799c61b1191fbab8306156",
+   "usr/lib/engines-3/afalg.so": "f82cb92be9830954bdcb5c46933130380ebf3b48f6c5c1aa284b490d35acefc6",
+   "usr/lib/engines-3/capi.so": "bc49c717601960808e8ac20adba4defca25a19c768c384b4ac73869b3deb9023",
+   "usr/lib/engines-3/loader_attic.so": "2a2ee123e3ec7a0857bd2fdc236a29d43673d12698a93b11e4ad08fd43d891fe",
+   "usr/lib/engines-3/padlock.so": "8ab99382b49d2a1fb67599625a3aed4208af4cb374358dceee4356314322a41d",
+   "usr/lib/libapk.so.2.14.9": "c646683b6d5a2a99557705559c7270e659e3bcf677f6c65041463af708d62902",
+   "usr/lib/libcrypto.so.3": "9129bc86bb2b1684bdf4d92b28539bd4c88e8e14d44c14820acbcd9835098ea3",
+   "usr/lib/libssl.so.3": "79f7e4d45cad89fdd0331e5521aa787944926535e973900c7a3934e99db1a410",
+   "usr/lib/libz.so.1.3.1": "09b1bbd6ffe274039cefaca595f55cec0af65fe90d9e285e5d57ff7ed96948d2",
+   "usr/lib/os-release": "2fc5dc3fc3f4d3af126e3fdf9e5889ace04f6b9fa9d4e1bf7e78b78ea78598c8",
+   "usr/lib/ossl-modules/legacy.so": "f27833c97146fbb049adc5c2e524f710db9c3a58e6c715b39050e49cb65d327c",
+   "usr/lib/sysctl.d/00-alpine.conf": "ee169bea2cb6859420b55ca7a9c23fb68b50adc1d26c951f904dec9e8f767380",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-4a6a0840.rsa.pub": "9c102bcc376af1498d549b77bdbfa815ae86faa1d2d82f040e616b18ef2df2d4",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-5243ef4b.rsa.pub": "ebf31683b56410ecc4c00acd9f6e2839e237a3b62b5ae7ef686705c7ba0396a9",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-524d27bb.rsa.pub": "1bb2a846c0ea4ca9d0e7862f970863857fc33c32f5506098c636a62a726a847b",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-5261cecb.rsa.pub": "12f899e55a7691225603d6fb3324940fc51cd7f133e7ead788663c2b7eecb00c",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-58199dcc.rsa.pub": "73867d92083f2f8ab899a26ccda7ef63dfaa0032a938620eda605558958a8041",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-58cbb476.rsa.pub": "9a4cd858d9710963848e6d5f555325dc199d1c952b01cf6e64da2c15deedbd97",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-58e4f17d.rsa.pub": "780b3ed41786772cbc7b68136546fa3f897f28a23b30c72dde6225319c44cfff",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-5e69ca50.rsa.pub": "59c01c57b446633249f67c04b115dd6787f4378f183dff2bbf65406df93f176d",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-60ac2099.rsa.pub": "db0b49163f07ffba64a5ca198bcf1688610b0bd1f0d8d5afeaf78559d73f2278",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub": "207e4696d3c05f7cb05966aee557307151f1f00217af4143c1bcaf33b8df733f",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-61666e3f.rsa.pub": "128d34d4aec39b0daedea8163cd8dc24dff36fd3d848630ab97eeb1d3084bbb3",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616a9724.rsa.pub": "10877cce0a935e46ad88cb79e174a2491680508eccda08e92bf04fb9bf37fbc1",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616abc23.rsa.pub": "4a095a9daca86da496a3cd9adcd95ee2197fdbeb84638656d469f05a4d740751",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616ac3bc.rsa.pub": "0caf5662fde45616d88cfd7021b7bda269a2fcaf311e51c48945a967a609ec0b",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616adfeb.rsa.pub": "ebe717d228555aa58133c202314a451f81e71f174781fd7ff8d8970d6cfa60da",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub": "d11f6b21c61b4274e182eb888883a8ba8acdbf820dcc7a6d82a7d9fc2fd2836d",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616db30d.rsa.pub": "40a216cbd163f22e5f16a9e0929de7cde221b9cbae8e36aa368b1e128afe0a31",
+   "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-66ba20fe.rsa.pub": "7cf4cb8314e6ccc985b0d7f1aa0c6e0a81e3588f69a41f383af7a63d1ba61793",
+   "usr/share/udhcpc/default.script": "1cf94e3918ce389c722f4408490ae7334321a5ca2aec2c945b0c47662aa274a6",
+   "hello.txt": "638440e475a4fdc7fda80c64faf48a6603f46a42a8d100842d73fbf000c2e1e1",
+   "hello.txt.sha256": "0414f826da1ed066656fc876a9b2cfc21d46c4b23e834174a53ee116f57ec532"
+  }
+ },
+ "verdicts": [
+  "/tmp/gripsack-b0-loaded-w_9bc1_0/checkout/verification/buildkit-qualification/results/oci-1.tar: all blob digests, DiffIDs, media types and platform verified",
+  "two fresh-worker exports reproduce (DiffIDs, normalized config, file digests)",
+  "legacy Docker archive contains the exact independently verified OCI config and layer bytes"
+ ],
+ "reproduction": {
+  "diff-ids-match": true,
+  "config-normalized-match": true,
+  "files-match": true,
+  "manifest-digests": [
+   "sha256:cd0d33958ee1559e7295b938cc03beb5733ff94881eeb019857b6126299f26af",
+   "sha256:aa7b0f80f448538962e0d9a5c32c127a5221c55c8fb700789fbd8ccd4984d783"
+  ],
+  "verdict": "reproduced from two clean workers"
+ },
+ "docker-archive": {
+  "path": "/tmp/gripsack-b0-loaded-w_9bc1_0/checkout/verification/buildkit-qualification/results/docker-compat.tar",
+  "sha256": "ea501f9a539028d1f582064c71919bcface36c7f61802484925ed30885fbd55e",
+  "config-digest": "sha256:5b78b0f5c0d709313addc1998684af58468c2f541412e4cdfeef8b9844268470",
+  "tag": "gripsack-b0-qual:5b78b0f5c0d709313addc1998684af58468c2f541412e4cdfeef8b9844268470",
+  "layer-diff-ids": [
+   "sha256:418dccb7d85a63a6aa574439840f7a6fa6fd2321b3e2394568a317735e867d35",
+   "sha256:862b5e38bc25f21bb9d2e133a4f099c346c523e93bec4a91659ca3a713a73a7d",
+   "sha256:8b9f1524f2524d604d4f8b0e9fb514ca05b092dd727a98c81887879d1d1f3499"
+  ]
+ }
+}
+
+===== independent loaded-image comparison =====
+runtime-image: verified OCI platform/config/layer DiffIDs and tag match Docker image sha256:5af60354a065fa2a52fea9eed92fe2abd06a78b22d90da20836d44b902b5b693 (Docker may re-encode config metadata)
+
+===== Docker loader result =====
+Loaded image: gripsack-b0-qual:5b78b0f5c0d709313addc1998684af58468c2f541412e4cdfeef8b9844268470
+
+RUNNER_COUNTS=6 named Linux BuildKit cases executed/passed, zero failed/skipped; unverified GitHub Docker28 container lane and Mac-VM remain open.

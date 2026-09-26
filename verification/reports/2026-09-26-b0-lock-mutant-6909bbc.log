@@ -1,0 +1,15 @@
+RUNNER_SOURCE_COMMIT=6909bbc55226f917238e31c189f7be29e42c41c9
+RUNNER_SOURCE_FINGERPRINT=b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0
+RUNNER_DIRTY_PATCH_SHA256=87f49c82ba6197ec783c5e6dae58645ca6d505cf04c5765f3da89272702c3f57
+RUNNER_COMMAND=sh probes.sh with one buildkit-calibration Cargo.lock package in isolated checkout
+RUNNER_EXIT=1 expected; no worker started and no six-case success marker
+RUNNER_ENVIRONMENT=WSL2 linux/amd64; Python 3.12.3 tomllib present and Docker daemon available
+INTENDED_PROPERTY=native Rust dependency graph must not acquire optional builder/client packages
+OBSERVED_REJECTION=native Rust lock gained builder dependencies: buildkit-calibration before any worker start
+
+===== actual probe1 driver log =====
+--- probe1: baseline preservation
+FAIL: native Rust lock gained builder dependencies: ['buildkit-calibration']
+
+B0_LOCK_MUTANT=1
+RUNNER_COUNTS=1 calibrated intended-failure execution, 1 passing named builder-dependency rejection, zero skipped/missing tools.

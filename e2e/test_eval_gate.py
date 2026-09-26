@@ -4,9 +4,12 @@ self-update — split from test_flow.py; fixture repos come from conftest."""
 
 
 
+import json
 import os
 import shutil
 import subprocess
+
+import pytest
 
 from conftest import (
     GRIP,
@@ -24,6 +27,33 @@ export default module("hello", {
   config: { "configs/demo/a": trackedCopy("~/.config/demo/a") },
 });
 """
+
+
+@pytest.mark.parametrize(
+    ("stream", "reason"),
+    (("stdout", "StdoutLimit"), ("stderr", "StderrLimit")),
+)
+def test_frontend_output_budget_fails_closed(sandbox, monkeypatch, stream, reason):
+    """0048 §1.4: a hostile pinned runtime cannot make check collect
+    arbitrarily many stdout/stderr bytes. Only the supervisor is under
+    test here; other e2e flows exercise the real Deno frontend."""
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    fake = sandbox / "hostile-deno"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        f"stream = sys.{stream}.buffer\n"
+        "stream.write(b'x' * (16 * 1024 * 1024 + 1))\n"
+        "stream.flush()\n"
+    )
+    fake.chmod(0o755)
+    monkeypatch.setenv("GRIPSACK_DENO", str(fake))
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert reason in out.stderr[:1024], (
+        out.returncode, len(out.stderr), out.stderr[:256]
+    )
+    assert not (sandbox / ".local/share/gripsack/generations").exists()
 
 
 def test_binary_exists_and_runs():
@@ -104,6 +134,88 @@ export default module("probe", {
     )
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
+
+
+def test_repo_build_path_selects_structured_run_command(sandbox):
+    """Structured run argv, not just /bin/sh, must resolve repo PATH."""
+    bindir = sandbox / "build-only-bin"
+    bindir.mkdir()
+    tool = bindir / "repo-only-tool"
+    tool.write_text("#!/bin/sh\nprintf 'scoped path\\n' > tool.out\n")
+    tool.chmod(0o755)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """import { module, runStep } from '@gripsack/core';
+export default module('built', {
+  steps: [runStep(['repo-only-tool'], 'from-repo-path', { outputs: ['tool.out'] })],
+});""",
+    )
+    (repo / "env.toml").write_text(
+        f'[env]\nname = "fixture"\n\n[eval]\nenv = {{ PATH = "{bindir}:{os.environ["PATH"]}" }}\n'
+    )
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+
+
+def test_repo_build_path_does_not_choose_core_fact_detector(sandbox):
+    """0048 §1.2: [eval.env] PATH may reach a build child, but it
+    cannot select the ldd process that supplies core-injected facts."""
+    shimdir = sandbox / "fake-bin"
+    shimdir.mkdir()
+    marker = sandbox / "repo-ran-ldd"
+    ldd = shimdir / "ldd"
+    ldd.write_text(
+        "#!/bin/sh\n"
+        f'printf "ran" > "{marker}"\n'
+        'printf "ldd (GNU libc) 999.0\\n"\n'
+    )
+    ldd.chmod(0o755)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "hosted": 'import { module } from "@gripsack/core";\n'
+                      'export default module("hosted", { install: [] });\n'
+        },
+    )
+    (repo / "hosts/testhost.ts").write_text(
+        'import { defineEnv } from "@gripsack/core";\n'
+        'import hosted from "../modules/hosted.ts";\n'
+        'export default defineEnv(ctx => ({ '
+        'modules: [ctx.facts.libc === "glibc-999.0" && hosted] }));\n'
+    )
+    (repo / "env.toml").write_text(
+        f'[env]\nname = "fixture"\n\n[eval]\nenv = {{ PATH = "{shimdir}" }}\n'
+    )
+
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not marker.exists(), "repo PATH must never choose the core's ldd"
+    assert "0 modules" in out.stdout, out.stdout
+
+
+def test_repo_build_env_does_not_reach_frontend_runtime(sandbox, monkeypatch):
+    """A build child receives repo env; the provisioned evaluator does not."""
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    (repo / "configs/demo").mkdir(parents=True)
+    (repo / "configs/demo/a").write_text("a\n")
+    (repo / "env.toml").write_text(
+        '[env]\nname = "fixture"\n\n[eval]\nenv = { REPO_BUILD_SENTINEL = "repo" }\n'
+    )
+    marker = sandbox / "deno-saw-build-env"
+    pinned = os.environ["GRIPSACK_DENO"]
+    wrapper = sandbox / "deno-wrapper"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f'if [ -n "${{REPO_BUILD_SENTINEL+x}}" ]; then printf seen > "{marker}"; fi\n'
+        f'exec "{pinned}" "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("GRIPSACK_DENO", str(wrapper))
+
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert not marker.exists(), "Deno must not inherit repo build env"
 
 
 def test_probe_fixpoint_converges_in_two_rounds(sandbox):
@@ -238,6 +350,57 @@ def test_default_host_resolves_role_named_entrypoint(sandbox):
     out = grip("check", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert "container" in out.stdout
+
+
+def test_default_host_path_traversal_rejects_before_eval_or_lock_write(sandbox):
+    """0048 §1.3: a repo-selected host must never turn into a lock
+    path outside locks/ or an entrypoint outside hosts/."""
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    (repo / "modules" / "role.ts").write_text(
+        'import { defineEnv } from "@gripsack/core";\n'
+        'import hello from "./hello.ts";\n'
+        "export default defineEnv(() => ({ modules: [hello] }));\n"
+    )
+    (repo / "env.toml").write_text(
+        '[env]\nname = "fixture"\ndefault_host = "../modules/role"\n'
+    )
+    out = grip("update", cwd=repo)
+    assert out.returncode != 0
+    assert "E132" in out.stderr, out.stderr
+    assert not (repo / "modules" / "role.lock").exists()
+    assert not (sandbox / ".local/share/gripsack/frontend").exists()
+    checked = grip("check", "--json", cwd=repo)
+    assert checked.returncode != 0
+    diagnostics = json.loads(checked.stdout)["diagnostics"]
+    assert [diagnostic["code"] for diagnostic in diagnostics] == ["E132"]
+
+
+def test_absolute_host_cannot_replace_lock_outside_repo(sandbox):
+    """0048 §1.3: an absolute CLI host is not an arbitrary .lock writer."""
+    repo = make_env_repo(sandbox / "myenv", {})
+    absolute_host = str(sandbox / "victim")
+    nested_host = repo / "hosts" / f"{absolute_host.lstrip('/')}.ts"
+    nested_host.parent.mkdir(parents=True)
+    nested_host.write_text(
+        'import { defineEnv } from "@gripsack/core";\n'
+        "export default defineEnv(() => ({ modules: [] }));\n"
+    )
+    victim = sandbox / "victim.lock"
+    victim.write_text("do not clobber\n")
+    out = grip("update", "--host", absolute_host, cwd=repo)
+    assert out.returncode != 0
+    assert "E132" in out.stderr, out.stderr
+    assert victim.read_text() == "do not clobber\n"
+    assert not (sandbox / ".local/share/gripsack/frontend").exists()
+
+
+def test_explicit_role_host_with_safe_dots_is_unchanged(sandbox):
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE, host="role.dev")
+    (repo / "configs" / "demo").mkdir(parents=True)
+    (repo / "configs" / "demo" / "a").write_text("a\n")
+    out = grip("check", "--host", "role.dev", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert "1 modules" in out.stdout
 
 
 def test_plan_diffs_against_the_current_generation(sandbox):
@@ -586,6 +749,92 @@ export default module("present", { install: [] });
     assert out.returncode != 0
     assert "not in this host's graph" in out.stderr, out.stderr
     assert "ghost" in out.stderr
+
+
+def test_comma_pinned_package_cannot_expand_deno_read_grant(sandbox):
+    """0048 §1.1: comma in a canonical core pin must not turn the
+    Deno --allow-read path list into permission for an outside canary."""
+    outside = sandbox / "outside"
+    outside.mkdir()
+    canary = outside / "canary.ts"
+    canary.write_text('export default "outside";\n')
+    repo = make_env_repo(sandbox / "myenv", {})
+    (repo / "modules" / "evil.ts").write_text(
+        'import { module } from "@gripsack/core";\n'
+        f'import secret from "{canary.as_uri()}";\n'
+        'export default module(secret === "outside" ? "evil" : "bad", { install: [] });\n'
+    )
+    refresh_host(repo)
+
+    control = grip("check", "--host", "testhost", cwd=repo)
+    assert control.returncode != 0, "outside import must not work without a planted pin"
+
+    # Copy the real embedded SDK into a valid package whose *canonical*
+    # path contains `,/tmp/.../outside`. A symlink to the SDK would
+    # canonicalize away the comma and miss the vulnerable grant.
+    frontend = sandbox / ".local/share/gripsack/frontend/current"
+    assert frontend.is_symlink()
+    planted = repo / f"pin,{outside}"
+    planted.parent.mkdir(parents=True)
+    shutil.copytree(frontend.resolve(), planted)
+    pin = repo / "node_modules" / "@gripsack"
+    pin.mkdir(parents=True)
+    (pin / "core").symlink_to(planted, target_is_directory=True)
+
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, (out.returncode, out.stdout[:300], out.stderr[:300])
+    assert "E133" in out.stderr, out.stderr[:500]
+
+
+def test_comma_in_repo_path_cannot_expand_deno_read_grant(sandbox):
+    """A comma in the repo path must fail admission with E133 before
+    launching Deno, not merely crash later on its own split read grant."""
+    outside = sandbox / "outside"
+    outside.mkdir()
+    canary = outside / "canary.ts"
+    canary.write_text('export default "outside";\n')
+    repo = make_env_repo(sandbox / f"env,{outside}", {})
+    (repo / "modules" / "evil.ts").write_text(
+        'import { module } from "@gripsack/core";\n'
+        f'import secret from "{canary.as_uri()}";\n'
+        'export default module(secret === "outside" ? "evil" : "bad", { install: [] });\n'
+    )
+    refresh_host(repo)
+
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, (out.returncode, out.stdout[:300], out.stderr[:300])
+    assert "E133" in out.stderr, out.stderr[:500]
+    checked = grip("check", "--json", "--host", "testhost", cwd=repo)
+    assert checked.returncode != 0
+    assert [d["code"] for d in json.loads(checked.stdout)["diagnostics"]] == ["E133"]
+
+
+def test_comma_in_frontend_home_rejects_before_deno_spawn(sandbox, monkeypatch):
+    """The inputs and embedded frontend are grant paths too, not just
+    the optional package pin."""
+    repo = make_env_repo(sandbox / "myenv", {})
+    monkeypatch.setenv("GRIPSACK_HOME", str(sandbox / "managed,home"))
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "E133" in out.stderr, out.stderr[:500]
+
+
+def test_valid_external_core_pin_still_works_without_extra_grants(sandbox):
+    """An ordinary canonical package pin outside the repo is allowed
+    when its own directory is the only extra read grant."""
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    (repo / "configs/demo").mkdir(parents=True)
+    (repo / "configs/demo/a").write_text("a\n")
+    first = grip("check", "--host", "testhost", cwd=repo)
+    assert first.returncode == 0, first.stderr
+    frontend = sandbox / ".local/share/gripsack/frontend/current"
+    pin_root = sandbox / "valid-pin"
+    shutil.copytree(frontend.resolve(), pin_root)
+    pin = repo / "node_modules" / "@gripsack"
+    pin.mkdir(parents=True)
+    (pin / "core").symlink_to(pin_root, target_is_directory=True)
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
 
 
 def test_a_pin_symlink_to_a_nonpackage_grants_nothing(sandbox):

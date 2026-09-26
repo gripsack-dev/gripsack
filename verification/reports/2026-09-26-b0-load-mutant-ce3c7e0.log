@@ -1,0 +1,46 @@
+RUNNER_SOURCE_COMMIT=ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c
+RUNNER_SOURCE_FINGERPRINT=872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc
+RUNNER_SOURCE_ROOTS_DIRTY=clean before/after; ignored isolated results only
+RUNNER_COMMAND=env PATH=<temporary load-fault/docker wrapper delegating all other calls to real daemon>:PATH sh probes.sh
+RUNNER_EXIT=1 expected; six-case B0 marker absent, no temporary image tag/worker/cache remains
+RUNNER_TOOL_VERSIONS=Python 3.12.3, Docker 29.7.2, pinned real Go 1.26.3 and BuildKit v0.33.0
+RUNNER_INPUTS=two fresh valid OCI layouts, successful independent OCI and Docker-save conversion, one deliberate Docker load exit47; injector SHA-256 604f7114e6e6496b9e665dc54d414f69d1e91790fbe2336588a20f236a313823
+INTENDED_PROPERTY=valid OCI bytes alone cannot qualify an output the independent Docker runtime refuses to load/run
+OBSERVED_REJECTION=calibration: deliberate Docker archive load rejection; driver failed with no six-case success marker
+
+===== passing independent OCI verification before refused runtime =====
+{
+  "verdicts": [
+    "/tmp/gripsack-b0-loaded-w_9bc1_0/checkout/verification/buildkit-qualification/results/oci-1.tar: all blob digests, DiffIDs, media types and platform verified",
+    "two fresh-worker exports reproduce (DiffIDs, normalized config, file digests)",
+    "legacy Docker archive contains the exact independently verified OCI config and layer bytes"
+  ],
+  "reproduction": {
+    "diff-ids-match": true,
+    "config-normalized-match": true,
+    "files-match": true,
+    "manifest-digests": [
+      "sha256:0ab0a1c04ecde5b39cccaf0540b0d71de148cbf1332d19ff1d8781579d975d21",
+      "sha256:e066996f78ab85a62205e8c233c9d53bb41205d63f8348eeb1d9750630cdbcd5"
+    ],
+    "verdict": "reproduced from two clean workers"
+  },
+  "docker-archive": {
+    "path": "/tmp/gripsack-b0-loaded-w_9bc1_0/checkout/verification/buildkit-qualification/results/docker-compat.tar",
+    "sha256": "e4b6eb299a02d4fcd70dfea150c6177b87ef5824fa0d317f6262c8baddf71e58",
+    "config-digest": "sha256:fe571f8851d7cdbce17edbd30f9d8d750a0b073ee266bc57aebdbee3303739c9",
+    "tag": "gripsack-b0-qual:fe571f8851d7cdbce17edbd30f9d8d750a0b073ee266bc57aebdbee3303739c9",
+    "layer-diff-ids": [
+      "sha256:418dccb7d85a63a6aa574439840f7a6fa6fd2321b3e2394568a317735e867d35",
+      "sha256:862b5e38bc25f21bb9d2e133a4f099c346c523e93bec4a91659ca3a713a73a7d",
+      "sha256:8b9f1524f2524d604d4f8b0e9fb514ca05b092dd727a98c81887879d1d1f3499"
+    ]
+  }
+}
+
+===== actual refused Docker load =====
+calibration: deliberate Docker archive load rejection
+FAIL: Docker load rejected the verified OCI-backed portable archive
+
+B0_LOAD_MUTANT=1
+RUNNER_COUNTS=1 calibrated intended runtime-load refusal rejected, zero skipped/missing tools.
