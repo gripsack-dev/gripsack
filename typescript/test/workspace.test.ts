@@ -2,6 +2,10 @@
  *  reference admission, literal Bash and pure deterministic emission. */
 
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { chdir } from "node:process";
 import { emitIr, module } from "../src/index.ts";
 import {
   artifact,
@@ -33,11 +37,12 @@ import {
   targetPlatform,
   task,
   templateText,
+  treeFiles,
   trackedCopyTo,
   weekly,
   workspace,
 } from "../src/workspace.ts";
-import type { WorkspaceArg, WorkspaceValue } from "../src/workspace.ts";
+import type { WorkspaceArg, WorkspaceFile, WorkspaceValue } from "../src/workspace.ts";
 import { githubRelease, tarball } from "../src/fetch.ts";
 import type { HostFacts } from "../src/index.ts";
 import { thrownDiagnostic } from "./diagnostic.ts";
@@ -767,4 +772,112 @@ Deno.test("enum and calendar boundaries reject out-of-grammar values", () => {
     target: linux,
   });
   assert.deepEqual(emit(workspace({ outputs: [iso] })).workspace.outputs[0].execution, { kind: "isolated_linux", worker: "buildkit" });
+});
+
+function treeFixture(files: Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), "gripsack-tree-"));
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), content);
+  }
+  return root;
+}
+
+function repoPath(entry: WorkspaceFile): string {
+  if (!entry.source || entry.source.kind !== "repo_file") {
+    throw new Error("expected a repo_file source");
+  }
+  return entry.source.path;
+}
+
+function destPath(entry: WorkspaceFile): string {
+  if (entry.destination.kind === "managed_block") {
+    throw new Error("expected a path-only destination");
+  }
+  return entry.destination.path;
+}
+
+Deno.test("treeFiles expands a captured repo directory to explicit per-file entries", () => {
+  const previous = Deno.cwd();
+  const root = treeFixture({
+    "b.conf": "b",
+    "a.conf": "a",
+    "nested/deep/y.conf": "y",
+    "nested/x.conf": "x",
+    "other/z.conf": "z",
+  });
+  const boundary = treeFixture({ "s/z": "1", "s/zebra": "2" });
+  try {
+    chdir(root);
+    const files = treeFiles("nested", "~/.config/nested");
+    assert.deepEqual(
+      files.map((entry) => [repoPath(entry), destPath(entry)]),
+      [
+        ["nested/deep/y.conf", "~/.config/nested/deep/y.conf"],
+        ["nested/x.conf", "~/.config/nested/x.conf"],
+      ],
+    );
+    assert.ok(files.every((entry) => entry.content.kind === "identity"));
+    assert.ok(files.every((entry) => entry.destination.kind === "tracked_copy"));
+    assert.ok(files.every((entry) => entry.span.file.endsWith("workspace.test.ts")));
+
+    const linked = treeFiles("nested", "/etc/gripsack/nested", { mode: "symlink" });
+    assert.ok(linked.every((entry) => entry.destination.kind === "symlink"));
+
+    const included = treeFiles(".", "~/.config/all", { include: ["nested"] });
+    assert.deepEqual(
+      included.map(repoPath),
+      ["nested/deep/y.conf", "nested/x.conf"],
+    );
+    const withoutDeep = treeFiles(".", "~/.config/all", { exclude: ["nested/deep"] });
+    assert.deepEqual(
+      withoutDeep.map(repoPath),
+      ["a.conf", "b.conf", "nested/x.conf", "other/z.conf"],
+    );
+    // segment-boundary: excluding "s/z" must not drop the sibling "s/zebra"
+    chdir(boundary);
+    assert.deepEqual(
+      treeFiles("s", "~/.config/s", { exclude: ["z"] }).map(repoPath),
+      ["s/zebra"],
+    );
+
+    chdir(root);
+    assert.throws(() => treeFiles("../outside", "~/.x"), /normalized relative POSIX path/);
+    assert.throws(() => treeFiles("/etc", "~/.x"), /normalized relative POSIX path/);
+    assert.throws(() => treeFiles("nested", "relative"), /must be absolute or start with ~/);
+    assert.throws(
+      () => treeFiles(".", "~/.config/all", { maxEntries: 1 }),
+      /exceeded the 1 entry cap/,
+    );
+    // an invalid destination rejects even when the tree is empty
+    assert.throws(() => treeFiles("nested/empty-missing", "relative"), /must be absolute/);
+    // a missing or non-directory source is an authoring error, not a silent empty tree
+    assert.throws(
+      () => treeFiles("nested/empty-missing", "~/.config/missing"),
+      /must be an existing directory/,
+    );
+  } finally {
+    chdir(previous);
+    rmSync(root, { recursive: true, force: true });
+    rmSync(boundary, { recursive: true, force: true });
+  }
+});
+
+Deno.test("treeFiles never follows symlinks or special entries out of the captured tree", () => {
+  const previous = Deno.cwd();
+  const root = treeFixture({ "real.conf": "x" });
+  const outside = treeFixture({ "secret.conf": "outside" });
+  try {
+    symlinkSync(`${outside}/secret.conf`, `${root}/leak.conf`);
+    chdir(root);
+    assert.throws(() => treeFiles(".", "~/.config/leak"), /is not a regular file or directory/);
+    // a directory symlink is rejected just the same
+    rmSync(`${root}/leak.conf`);
+    symlinkSync(outside, `${root}/leak-dir`);
+    assert.throws(() => treeFiles(".", "~/.config/leak"), /is not a regular file or directory/);
+  } finally {
+    chdir(previous);
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
 });

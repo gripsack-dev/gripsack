@@ -11,6 +11,7 @@ store, no generation.
 from __future__ import annotations
 
 import json
+import os
 import pytest
 
 from conftest import grip, make_env_repo
@@ -72,6 +73,37 @@ def test_typo_field_reports_declaration_site_on_both_surfaces(sandbox):
     # no traceback noise on the structured path
     assert "frontend eval failed" not in terminal.stderr
     assert not (sandbox / ".config/demo/settings.conf").exists()
+
+def test_treefiles_expands_a_captured_repo_directory_into_admitted_files(sandbox):
+    """A1-11: bounded eval-time tree expansion — explicit per-file v5
+    entries with stable enumeration, admitted by `grip check` without
+    any executor or home mutation."""
+    repo = write_repo(
+        sandbox,
+        "tree",
+        'import { defineWorkspace, workspace, profile, treeFiles } from "@gripsack/core";\n'
+        "export default defineWorkspace(() => workspace({ outputs: [\n"
+        '  profile("dotfiles", { files: [\n'
+        '    ...treeFiles("configs", "~/.config/demo", { exclude: ["skipped"] }),\n'
+        "  ] }),\n"
+        "] }));\n",
+    )
+    (repo / "configs").mkdir()
+    (repo / "configs" / "b.conf").write_text("b\n")
+    (repo / "configs" / "a.conf").write_text("a\n")
+    (repo / "configs" / "skipped").mkdir()
+    (repo / "configs" / "skipped" / "x.conf").write_text("x\n")
+    terminal = grip("check", cwd=repo)
+    assert terminal.returncode == 0, terminal.stderr
+    assert "dotfiles" in terminal.stdout
+    assert not (sandbox / ".config/demo").exists()
+
+    # a repo symlink inside the captured tree is an authoring failure,
+    # never followed out of the repo
+    os.symlink(repo / "configs" / "a.conf", repo / "configs" / "leak.conf")
+    hostile = grip("check", cwd=repo)
+    assert hostile.returncode != 0
+    assert "not a regular file or directory" in hostile.stderr
 
 
 def test_wrong_kind_reference_reports_both_sites_on_both_surfaces(sandbox):

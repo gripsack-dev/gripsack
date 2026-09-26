@@ -35,6 +35,8 @@ export {
   templateText,
   trackedCopyTo,
 } from "./workspace/files.ts";
+export { treeFiles } from "./workspace/tree.ts";
+export type { TreeFilesOptions } from "./workspace/tree.ts";
 export { emitWorkspaceIr } from "./workspace/emit.ts";
 export type {
   BashBody,

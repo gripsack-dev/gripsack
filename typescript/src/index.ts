@@ -69,6 +69,7 @@ export {
   task,
   templateText,
   trackedCopyTo,
+  treeFiles,
   weekly,
   workspace,
 } from "./workspace.ts";

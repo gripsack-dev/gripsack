@@ -157,6 +157,7 @@ export const targetPlatform = api.targetPlatform;
 export const task = api.task;
 export const templateText = api.templateText;
 export const trackedCopyTo = api.trackedCopyTo;
+export const treeFiles = api.treeFiles;
 export const weekly = api.weekly;
 export const workspace = api.workspace;
 
@@ -204,6 +205,7 @@ export type {
   StepAction,
   StepOpts,
   TaskSpec,
+  TreeFilesOptions,
   Trigger,
   Verify,
   WorkspaceAbi,

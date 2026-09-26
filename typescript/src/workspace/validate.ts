@@ -268,7 +268,7 @@ export function asDestination(v: unknown, where: string): WorkspaceDestination {
 /** A destination path must be absolute or `~/`-prefixed with
  *  normalized segments — mirrors the core's E102 rule so an escape
  *  fails at authoring, not only at decoded-IR admission. */
-function asDestinationPath(v: unknown, where: string): string {
+export function asDestinationPath(v: unknown, where: string): string {
   const path = asName(v, where);
   const rest = path.startsWith("~/")
     ? path.slice(2)
