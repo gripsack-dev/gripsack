@@ -253,5 +253,5 @@ the new target because `fuzz/run.py` keeps its own TARGETS tuple.
 | B0-01 harness | **verified** in `linux-amd64` and `container-gates` at source `ce3c7e0`: **6/6** real Linux and required Docker28 CI job, with three real-worker negatives and four loaded-image mutants; qualification only, no production backend |
 | B0-02 Mac VM | blocked (no Mac) |
 | B0-03 footprint | in_progress: Linux measurements + zero-builder baseline recorded; VM lane and full budgets at B1 |
-| B1-03 protocol | in_progress: wire contract + fence kernel landed at `d656075` (crate `gripsack-buildkit`, fuzz target with seeds, six gates green; receipt `2026-09-26-b1-protocol-d656075.log`); no Go bridge/transport/worker speaks it yet |
+| B1-03 protocol | in_progress: wire contract + fence kernel landed at `d656075` (Rust crate, fuzz target with seeds, six gates; receipt `2026-09-26-b1-protocol-d656075.log`), and the production Go bridge began at `1d43f0d` (`tools/buildkit-bridge`, package `protocol` mirroring the exact contract; the shared corpus is decoded by BOTH sides; receipt `2026-09-26-b1-bridge-go-d0d0a4a.log`); no transport/worker/lowering yet |
 | Next | B1 continues: Go bridge speaking the protocol, worker lease kernels, then B2 lowering; Mac gate stays open |
