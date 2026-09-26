@@ -100,6 +100,17 @@ on every ID too. None of those registrations claims native, VM,
 registry, parser/fuzz or proof execution. Prior invalid claims remain
 under `historical_claims`.
 
+The checker currently accepts evidence `kind` values `runner`,
+`review` and `mutant-calibration`, but **not** `formal`. The live
+inventory requires `formal` for **39** rows; its hardcoded
+`PROOF_ROWS` covers only **22** of them (17 omitted), while the
+coverage checker unconditionally requires a runner even for the
+five review-only rows. This makes legitimate H0 closure unrepresentable
+and permits a runner with a self-reported obligation count to stand in
+for the declared formal evidence. H0-02 must reconcile row-level
+kinds, count/named proof obligations and adversarial checker negatives
+before promoting any such row.
+
 ## A3-01 — external TypeScript example CI reveals an unpinned Pixi result
 
 Draft PR #164's real
@@ -120,6 +131,15 @@ failing job or advertising A3 parity. A3-01/A3-02's complete frozen
 Rattler lock and native prefix acceptance remain pending; fix the
 producer contract, independently validate bytes, then update the
 separate example repo through its own review and rerun real CI.
+
+The independent RUSTSEC-2026-0285 patch is now merged to protected
+`main` through [PR #165](https://github.com/gripsack-dev/gripsack/pull/165)
+as `db32f2050d19d1d55504f27e7a753432b9ca61e9` (2026-09-26).
+The required `test`, native `e2e-macos`, `audit`, `fuzz` and `docs`
+checks passed. Its separate `typescript-env` check still failed on
+the same Pixi example lock mismatch, not on the rustls 0.23.45
+security update. Merging this isolated patch neither repairs the
+example nor qualifies A3-01/A3-02 or a public release.
 
 ## E0-02 — OS scheduling qualification (systemd lane)
 

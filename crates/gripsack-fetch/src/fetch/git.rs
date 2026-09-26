@@ -8,9 +8,10 @@ use std::path::Path;
 /// The remote's default-branch HEAD — the float resolution for a
 /// rev-less git spec (0016 §D2). Runs at lock/update time; the sha it
 /// returns is what every apply fetches until `grip update`.
-pub fn resolve_head(url: &str) -> Result<String, FetchError> {
+pub fn resolve_head(context: &crate::FetchContext, url: &str) -> Result<String, FetchError> {
     let mut command = std::process::Command::new("git");
     command.args(["ls-remote", "--", url, "HEAD"]);
+    context.apply_build_env(&mut command);
     let out = run(&mut command, url)?;
     let text = String::from_utf8_lossy(&out);
     let sha = text.split_whitespace().next().unwrap_or("");
@@ -74,6 +75,7 @@ pub(crate) fn fetch(
     let git = |args: &[&str]| {
         let mut command = std::process::Command::new("git");
         command.args(args).current_dir(dest);
+        context.apply_build_env(&mut command);
         run(&mut command, url).map(|_| ())
     };
     git(&["init", "--quiet"])?;
@@ -84,6 +86,7 @@ pub(crate) fn fetch(
     command
         .args(["rev-parse", "--verify", "HEAD"])
         .current_dir(dest);
+    context.apply_build_env(&mut command);
     let output = run(&mut command, url)?;
     let commit = String::from_utf8_lossy(&output).trim().to_owned();
     if !matches!(commit.len(), 40 | 64) || !commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {

@@ -102,6 +102,7 @@ check HttpRetry.tla cfg/http-retry-attempt-overflow.cfg BoundedAttempts
 check CredentialRouting.tla cfg/credential-routing.cfg
 check CredentialRouting.tla cfg/credential-routing-base-authority.cfg TokensStayBound
 check CredentialRouting.tla cfg/credential-routing-redirect-forwarding.cfg NoRedirectDisclosure
+check CredentialRouting.tla cfg/credential-routing-repo-audience.cfg TokensStayBound
 check MergeBoundary.tla cfg/merge-boundary.cfg
 check MergeBoundary.tla cfg/merge-boundary-unclosed-marker.cfg ForeignTextPreserved
 check MergeBoundary.tla cfg/merge-boundary-first-mode.cfg AllModeEvidenceRequired

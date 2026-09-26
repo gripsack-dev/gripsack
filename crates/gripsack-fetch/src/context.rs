@@ -1,15 +1,19 @@
 //! One acquisition context per command/environment phase.
 
+use crate::build_env::BuildProcessEnv;
 use crate::fetch::{archive, brew, file, git, pixi, plugin, tarball};
 use crate::limits::AcquisitionGate;
 use crate::{DownloadHash, FetchError, FetchIdentity, FetchLimits, FetchOutcome};
 use gripsack_ir::FetchSpec;
 use serde::de::DeserializeOwned;
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::process::Command;
 
 pub struct FetchContext {
     limits: FetchLimits,
     network: crate::http::Client,
+    build_env: BuildProcessEnv,
     acquisitions: AcquisitionGate,
     provisioning: Option<std::sync::Arc<FetchContext>>,
     /// Platform facts for bottle-tag selection (A0-01): detected once
@@ -26,10 +30,16 @@ impl Default for FetchContext {
 
 impl FetchContext {
     pub fn new(limits: FetchLimits) -> Self {
+        Self::with_build_env(limits, BuildProcessEnv::default())
+    }
+
+    fn with_build_env(limits: FetchLimits, build_env: BuildProcessEnv) -> Self {
+        let network = crate::http::Client::from_env(&build_env);
         Self {
             acquisitions: AcquisitionGate::new(limits.concurrent),
             limits,
-            network: crate::http::Client::from_env(),
+            network,
+            build_env,
             provisioning: None,
             host_platform: crate::bottle::HostPlatform::detect(),
         }
@@ -40,13 +50,27 @@ impl FetchContext {
         &self.host_platform
     }
 
-    /// Capture artifact policy after repo env injection, retaining the earlier
-    /// trusted-tool policy for lazy runtime provisioning.
-    pub fn artifacts(limits: FetchLimits, provisioning: std::sync::Arc<FetchContext>) -> Self {
+    /// Artifact fetches may use repo-declared proxy/CA/build variables.
+    /// The nested provisioning context stays bound to operator env only.
+    pub fn artifacts(
+        limits: FetchLimits,
+        provisioning: std::sync::Arc<FetchContext>,
+        build_env: BTreeMap<String, String>,
+    ) -> Self {
         Self {
             provisioning: Some(provisioning),
-            ..Self::new(limits)
+            ..Self::with_build_env(limits, BuildProcessEnv::new(build_env))
         }
+    }
+
+    /// Apply repo build variables to a selected child, never to grip itself.
+    /// Call before step-specific overrides and closure PATH composition.
+    pub fn apply_build_env(&self, command: &mut Command) {
+        self.build_env.apply(command);
+    }
+
+    pub(crate) fn find_fetcher(&self, name: &str) -> Option<std::path::PathBuf> {
+        crate::find_fetcher_on_path(name, self.build_env.var_os("PATH"))
     }
 
     pub fn limits(&self) -> FetchLimits {
@@ -192,7 +216,7 @@ impl FetchContext {
                 ));
             }
             FetchSpec::Plugin { name, args } => {
-                let metadata = plugin::fetch(name, args, dest, locked, self.limits)?;
+                let metadata = plugin::fetch(self, name, args, dest, locked, self.limits)?;
                 FetchOutcome {
                     identity: FetchIdentity::Tree(metadata.tree),
                     url: metadata.url,

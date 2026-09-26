@@ -68,9 +68,8 @@ pub struct EnvSection {
     pub default_host: Option<String>,
 }
 
-/// Build-time environment injected into the apply process for the
-/// run's duration — build steps, fetchers, and plugins inherit it
-/// (SSL_CERT_FILE is the canonical case).
+/// Repo-declared build variables for selected build/fetch children and
+/// artifact HTTP policy, not the grip process or constrained evaluator.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct EvalSection {
@@ -214,20 +213,39 @@ fn parse_env_as(source: &str, file: &str) -> Result<EnvConfig, Vec<Diagnostic>> 
             ),
         ]);
     }
-    // GRIPSACK_* is the operator's namespace (0035 F10): a repo's
-    // build env must never redefine runtime policy — GRIPSACK_DENO
-    // would redirect the evaluator itself
+    // Repo-owned build env may not redefine operator runtime policy or
+    // credential routing. The same boundary applies before any command
+    // constructs a fetch client or launches a build step.
     for key in env.eval.env.keys() {
-        if let Some(rest) = key.strip_prefix("GRIPSACK_") {
-            let offset = source.find(key.as_str()).unwrap_or(0);
-            let (line, col) = line_col(source, offset);
-            return Err(vec![
-                Diagnostic::error(
-                    codes::CONFIG,
-                    format!(
-                        "env.toml [eval] env: {key:?} is in the reserved GRIPSACK_* namespace"
-                    ),
-                )
+        let (message, help) = if let Some(rest) = key.strip_prefix("GRIPSACK_") {
+            (
+                format!("env.toml [eval] env: {key:?} is in the reserved GRIPSACK_* namespace"),
+                format!(
+                    "build env cannot set GRIPSACK_* — those configure grip itself. \
+                     If you meant a variable for your build steps, rename it (e.g. ENV_{rest})"
+                ),
+            )
+        } else if matches!(key.as_str(), "GH_HOST" | "GITHUB_HOST") {
+            (
+                format!("env.toml [eval] env: {key:?} is an operator-owned credential audience"),
+                "set GitHub host bindings in the invoking environment, not repo build env"
+                    .to_string(),
+            )
+        } else if matches!(
+            key.as_str(),
+            "GH_TOKEN" | "GITHUB_TOKEN" | "GH_ENTERPRISE_TOKEN" | "GITHUB_ENTERPRISE_TOKEN"
+        ) {
+            (
+                format!("env.toml [eval] env: {key:?} is an operator-owned credential"),
+                "set GitHub tokens in the invoking environment, not repo build env".to_string(),
+            )
+        } else {
+            continue;
+        };
+        let offset = source.find(key.as_str()).unwrap_or(0);
+        let (line, col) = line_col(source, offset);
+        return Err(vec![
+            Diagnostic::error(codes::CONFIG, message)
                 .with_label(
                     Some(Span {
                         file: file.to_string(),
@@ -236,11 +254,8 @@ fn parse_env_as(source: &str, file: &str) -> Result<EnvConfig, Vec<Diagnostic>> 
                     }),
                     "declared here",
                 )
-                .with_help(format!(
-                    "build env cannot set GRIPSACK_* — those configure grip itself.                      If you meant a variable for your build steps, rename it (e.g. ENV_{rest})"
-                )),
-            ]);
-        }
+                .with_help(help),
+        ]);
     }
     Ok(env)
 }
@@ -374,6 +389,35 @@ keep_generations = 20
             Some("gripfetch-artifactory")
         );
         assert_eq!(env.settings.keep_generations, Some(20));
+    }
+
+    #[test]
+    fn repo_build_env_cannot_claim_operator_credential_routing() {
+        for (key, role) in [
+            ("GH_HOST", "audience"),
+            ("GITHUB_HOST", "audience"),
+            ("GH_TOKEN", "credential"),
+            ("GITHUB_TOKEN", "credential"),
+            ("GH_ENTERPRISE_TOKEN", "credential"),
+            ("GITHUB_ENTERPRISE_TOKEN", "credential"),
+        ] {
+            let source = format!("[eval]\nenv = {{ {key} = \"attacker\" }}\n");
+            let errors = parse_env(&source).unwrap_err();
+            let diagnostic = &errors[0];
+            assert_eq!(diagnostic.code, codes::CONFIG, "{key}");
+            assert!(diagnostic.message.contains(key), "{key}: {diagnostic}");
+            assert!(diagnostic.message.contains(role), "{key}: {diagnostic}");
+            let span = diagnostic.labels[0].span.as_ref().unwrap();
+            assert_eq!(span.file, "<env.toml>", "{key}");
+            assert_eq!(span.line, 2, "{key}");
+            assert!(
+                diagnostic
+                    .help
+                    .as_deref()
+                    .is_some_and(|help| help.contains("invoking environment")),
+                "{key}: {diagnostic}"
+            );
+        }
     }
 
     #[test]

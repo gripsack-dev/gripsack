@@ -75,6 +75,7 @@ pub(crate) fn fetch(
     let _lock = gripsack_fs::FlockGuard::acquire(&home.join("locks"), "pixi-install")?;
     let pixi_home = home.join("tools/pixi");
     let mut command = std::process::Command::new(executable);
+    context.apply_build_env(&mut command);
     command
         .args([
             "global",

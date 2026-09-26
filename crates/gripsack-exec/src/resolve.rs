@@ -87,7 +87,7 @@ pub(crate) fn resolve_spec(
                 (Some(locked_rev), _) => locked_rev,
                 (None, Some(revision)) => revision,
                 (None, None) => {
-                    gripsack_fetch::resolve_git_head(url).map_err(|e| ExecError::Step {
+                    gripsack_fetch::resolve_git_head(context, url).map_err(|e| ExecError::Step {
                         module: name.to_string(),
                         step: "resolve".into(),
                         detail: e.to_string(),

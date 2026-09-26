@@ -118,6 +118,9 @@ pub fn eval_repo(
         ExitCode::FAILURE
     })?;
     tracing::Span::current().record("host", host.as_str());
+    // The repo may declare a build PATH, but it must never choose the
+    // libc detector that supplies facts to the constrained frontend.
+    let facts = gripsack_exec::facts::detect();
     let limits = acquisition_limits(&config.settings);
     let provisioning = std::sync::Arc::new(gripsack_fetch::FetchContext::new(limits));
     // Rate budgets (0002 §throttle): [throttle] in env.toml overrides
@@ -152,16 +155,13 @@ pub fn eval_repo(
             return Err(ExitCode::FAILURE);
         }
     };
-    // Build-time env (0001 §3.10 build side) — AFTER runtime
-    // selection and provisioning (0035 F10): repo-declared env rides
-    // build/fetch subprocesses, never the evaluator choice. The
-    // GRIPSACK_* namespace is rejected at config parse.
-    for (name, value) in &env.eval.env {
-        unsafe { std::env::set_var(name, value) };
-    }
+    // Artifact transports and selected build/fetch children get repo build
+    // variables through a command-local overlay. The grip process, trusted
+    // provisioning context, facts detector and Deno evaluator never do.
     let fetch = std::sync::Arc::new(gripsack_fetch::FetchContext::artifacts(
         limits,
         provisioning,
+        env.eval.env.clone(),
     ));
     let driver = frontend_dir.join("src/cli.ts");
     // the allow-read grant and the driver's import base must be the
@@ -169,7 +169,6 @@ pub fn eval_repo(
     let repo = repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf());
     let repo = &repo;
 
-    let facts = gripsack_exec::facts::detect();
     let inputs = InputsFile::create(&home).map_err(|e| {
         eprintln!(
             "grip: cannot prepare inputs dir under {}: {e}",

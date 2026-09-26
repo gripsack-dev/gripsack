@@ -136,6 +136,88 @@ export default module("probe", {
     assert out.returncode == 0, out.stderr
 
 
+def test_repo_build_path_selects_structured_run_command(sandbox):
+    """Structured run argv, not just /bin/sh, must resolve repo PATH."""
+    bindir = sandbox / "build-only-bin"
+    bindir.mkdir()
+    tool = bindir / "repo-only-tool"
+    tool.write_text("#!/bin/sh\nprintf 'scoped path\\n' > tool.out\n")
+    tool.chmod(0o755)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        """import { module, runStep } from '@gripsack/core';
+export default module('built', {
+  steps: [runStep(['repo-only-tool'], 'from-repo-path', { outputs: ['tool.out'] })],
+});""",
+    )
+    (repo / "env.toml").write_text(
+        f'[env]\nname = "fixture"\n\n[eval]\nenv = {{ PATH = "{bindir}:{os.environ["PATH"]}" }}\n'
+    )
+
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+
+
+def test_repo_build_path_does_not_choose_core_fact_detector(sandbox):
+    """0048 §1.2: [eval.env] PATH may reach a build child, but it
+    cannot select the ldd process that supplies core-injected facts."""
+    shimdir = sandbox / "fake-bin"
+    shimdir.mkdir()
+    marker = sandbox / "repo-ran-ldd"
+    ldd = shimdir / "ldd"
+    ldd.write_text(
+        "#!/bin/sh\n"
+        f'printf "ran" > "{marker}"\n'
+        'printf "ldd (GNU libc) 999.0\\n"\n'
+    )
+    ldd.chmod(0o755)
+    repo = make_env_repo(
+        sandbox / "myenv",
+        {
+            "hosted": 'import { module } from "@gripsack/core";\n'
+                      'export default module("hosted", { install: [] });\n'
+        },
+    )
+    (repo / "hosts/testhost.ts").write_text(
+        'import { defineEnv } from "@gripsack/core";\n'
+        'import hosted from "../modules/hosted.ts";\n'
+        'export default defineEnv(ctx => ({ '
+        'modules: [ctx.facts.libc === "glibc-999.0" && hosted] }));\n'
+    )
+    (repo / "env.toml").write_text(
+        f'[env]\nname = "fixture"\n\n[eval]\nenv = {{ PATH = "{shimdir}" }}\n'
+    )
+
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not marker.exists(), "repo PATH must never choose the core's ldd"
+    assert "0 modules" in out.stdout, out.stdout
+
+
+def test_repo_build_env_does_not_reach_frontend_runtime(sandbox, monkeypatch):
+    """A build child receives repo env; the provisioned evaluator does not."""
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    (repo / "configs/demo").mkdir(parents=True)
+    (repo / "configs/demo/a").write_text("a\n")
+    (repo / "env.toml").write_text(
+        '[env]\nname = "fixture"\n\n[eval]\nenv = { REPO_BUILD_SENTINEL = "repo" }\n'
+    )
+    marker = sandbox / "deno-saw-build-env"
+    pinned = os.environ["GRIPSACK_DENO"]
+    wrapper = sandbox / "deno-wrapper"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f'if [ -n "${{REPO_BUILD_SENTINEL+x}}" ]; then printf seen > "{marker}"; fi\n'
+        f'exec "{pinned}" "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("GRIPSACK_DENO", str(wrapper))
+
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert not marker.exists(), "Deno must not inherit repo build env"
+
+
 def test_probe_fixpoint_converges_in_two_rounds(sandbox):
     """The probe loop (0013 D6) is bounded demand-driven re-eval: a
     healthy frontend requests its probes in round 1, sees them bound

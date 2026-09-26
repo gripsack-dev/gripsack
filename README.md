@@ -134,6 +134,16 @@ Facts (os, arch, libc, hostname) are core-injected; the core never
 embeds a runtime ([plan/0005](plan/0005-frontends-and-configuration.md),
 [0013](plan/0013-constrained-evaluation.md)).
 
+`env.toml` `[eval].env` is a build/fetch-child environment, not grip's
+process environment: build steps, fetcher plugins and artifact
+proxy/CA configuration receive it, while host facts, tool provisioning
+and the Deno evaluator do not. Operator-only `GRIPSACK_*`,
+`GH_HOST`/`GITHUB_HOST` and GitHub token names are rejected with E400
+if declared there. Supply credentials and their host binding in the
+invoking environment; the HTTP client refuses to send a bound Bearer
+token to a non-HTTPS URL, including loopback. A repo may still declare
+`SSL_CERT_FILE` for an artifact server's CA.
+
 Frontend evaluation is supervised: one ten-minute budget covers all
 probe rounds; stdout and stderr are each limited to 16 MiB, and error
 output retains at most the final 64 KiB. Exceeding a limit fails the

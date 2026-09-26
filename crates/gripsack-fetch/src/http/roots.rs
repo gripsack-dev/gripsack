@@ -9,10 +9,11 @@ pub(super) struct Locations {
 }
 
 impl Locations {
-    pub(super) fn capture() -> Self {
+    pub(super) fn capture(build_env: &crate::build_env::BuildProcessEnv) -> Self {
         Self {
-            file: std::env::var_os("SSL_CERT_FILE").map(PathBuf::from),
-            directories: std::env::var_os("SSL_CERT_DIR")
+            file: build_env.var_os("SSL_CERT_FILE").map(PathBuf::from),
+            directories: build_env
+                .var_os("SSL_CERT_DIR")
                 .map(|paths| std::env::split_paths(&paths).collect())
                 .unwrap_or_default(),
         }

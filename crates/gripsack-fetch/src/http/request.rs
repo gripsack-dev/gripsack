@@ -1,9 +1,9 @@
-use super::Client;
 use super::body::{BodyReadFailure, MetadataDecodeFailure, ResponseReader, TransferBudget};
 use super::failure::{
     AuthenticationDisposition, HttpFailure, HttpFailureKind, safe_url, transport_kind,
 };
 use super::retry::{RequestBudget, RetryDecision, RetryStopReason};
+use super::{Client, CredentialRoute};
 use crate::FetchError;
 use std::io::{self, Read};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -144,9 +144,23 @@ impl Client {
             RequestKind::Artifact { api_url } => api_url,
             _ => None,
         };
-        let selected = api_url
-            .filter(|api| self.policy.header(api).is_some())
-            .unwrap_or(url);
+        // Select a bound API URL even when it is cleartext: dropping it
+        // would silently fetch the browser URL without the intended auth.
+        // Parse the selected route once; retry attempts reuse its header.
+        let route_for = |value| {
+            if matches!(kind, RequestKind::RegistryArtifact { .. }) {
+                CredentialRoute::Unbound
+            } else {
+                self.policy.route(value)
+            }
+        };
+        let (selected, credential) = match api_url {
+            Some(api) => match route_for(api) {
+                CredentialRoute::Unbound => (url, route_for(url)),
+                bound => (api, bound),
+            },
+            None => (url, route_for(url)),
+        };
         let safe = safe_url(selected);
         let host = super::host_port(selected).map(|(host, _)| host);
         let _request_span =
@@ -162,6 +176,19 @@ impl Client {
             error.api_host = api_url.and_then(super::host_port).map(|(host, _)| host);
             error
         };
+        // Refuse the entire operation rather than silently dropping a bound
+        // credential and falling back to a cleartext API/browser URL.
+        let registry_auth = matches!(kind, RequestKind::RegistryArtifact { .. });
+        let insecure_registry =
+            registry_auth && !url::Url::parse(selected).is_ok_and(|url| url.scheme() == "https");
+        if matches!(credential, CredentialRoute::Insecure) || insecure_registry {
+            return Err(failure(
+                HttpFailureKind::InsecureCredential,
+                &budget,
+                RetryStopReason::NonRetryable,
+            )
+            .into());
+        }
         if let Some(host) = &host {
             let mut cooldowns = self.cooldowns.lock().expect("HTTP cooldown lock");
             if let Some(cooldown) = cooldowns.get(host).copied() {
@@ -192,7 +219,10 @@ impl Client {
             request = request.timeout(remaining);
             let authorization = match kind {
                 RequestKind::RegistryArtifact { authorization } => Some(authorization),
-                _ => self.policy.header(selected),
+                _ => match credential {
+                    CredentialRoute::Https(header) => Some(header),
+                    CredentialRoute::Unbound | CredentialRoute::Insecure => None,
+                },
             };
             if let Some(header) = authorization {
                 request = request.set("Authorization", header);
