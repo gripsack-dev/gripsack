@@ -618,11 +618,33 @@
      "inputs": "Plan 0048 §§1.3–1.4 selected Linux-only controls: one HostName grammar, one direct lockfile roundtrip, five retained host/adopt/default-linter cases, two hostile 16MiB+1 stdout/stderr limit cases, non-interactive untrusted adopt and two normal real-Deno probe/adopt cases. None covers the full global fallback/privilege/network/bootstrap/Mac matrix",
      "report_marker": "M0_BOUNDARY=12",
      "counts": {"executed": 12, "passed": 12, "failed": 0, "skipped": 0}
+    },
+    {
+     "milestone": "A1",
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["gripsack_config::parse_env_as", "gripsack::commands::eval_repo", "gripsack_fetch::FetchContext::artifacts", "gripsack_fetch::http::Policy::route", "gripsack_fetch::http::Client::consume", "specs/CredentialRouting.tla"],
+     "environment": "WSL2 Linux/amd64; Docker Compose v5.5.0 pinned Rust, Python 3.13.15, Deno 2.9.6 and TLC 1.7.4 images; real grip with sandboxed HOME, offline local TLS and proxy fixtures",
+     "command": "Direct cargo tests for gripsack-config::repo_build_env_cannot_claim_operator_credential_routing and gripsack-fetch::bound_credentials_require_tls_and_registry_artifact_refuses_cleartext; ten named real CLI e2e checks in test_eval_gate.py/test_fetchers.py/test_http_policy.py; docker compose run --build --rm model sh scripts/check_models.sh /tla/tla2tools.jar (four credential cfgs); exact executable commands and raw output in report",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-m0-env-1c693ef.log",
+     "report_sha256": "ac2b231938c22fba1ca1abd192b5453edf4045b13e0d655681f74c9140ebf3d1",
+     "commit": "1c693efbfc8335f52888a77efa68ba266132b1ed",
+     "source_reuse_sha256": "9a82d56b48bef69d8a57c831a3efa16638123279150689d277ecdd8a81447825",
+     "source_reuse_reason": "Only evidence/plan/report metadata follows this committed-source local runner; tracked SOURCE_ROOTS remain byte-identical until another code change. This receipt cannot qualify full G-05, protected CI or native Mac.",
+     "cases_covered": [],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Rust 1.98.0; Python 3.13.15; pytest 9.1.1; Deno 2.9.6; TLC 1.7.4",
+     "inputs": "Plan 0048 §1.2 selected Linux-only security boundary: pre-fix repo PATH selected ldd and repo GH_HOST sent an operator dummy token over HTTP. New production admission scopes process env, preserves build/plugin/structured PATH and HTTP proxy/CA, rejects E400 in terminal/JSON before I/O, uses local TLS for operator enterprise credentials and rejects cleartext and redirect forwarding. Two Rust, ten real CLI cases and four TLC configs passed. The complete G-05 host/privilege/network/bootstrap/platform matrix, R5/M-V7 proof and original handover scope remain open.",
+     "guarantee_ids": ["REPO-ENV-AUDIENCE-001"],
+     "assumptions": ["The operator environment selects fact tools and GitHub credentials before any repo build overlay; only explicitly selected children receive repo variables.", "TLS verification is trusted to rustls and the offline test CA; the symbolic CredentialRouting model does not prove URL parsing, OS process launch or TLS.", "Native macOS and virtualized Mac outcomes are not inferred from Linux container results."],
+     "report_marker": "M0_ENV_BOUNDARY=12",
+     "counts": {"executed": 12, "passed": 12, "failed": 0, "skipped": 0}
     }
    ],
    "lane_status": {"container-gates": "in_progress", "pure": "in_progress"},
    "status_history": [{"date": "2026-09-26", "from": "pending", "to": "in_progress"}],
-   "implementation_notes": "Typed host-name admission, selected default-host lint pinning, bounded frontend evaluation and pretrust adoption are committed-source local controls for plan 0048 §§1.3–1.4. Two partial A1 receipts are not a verified G-05 or proof of filesystem/process containment. No silent host/privileged/network fallback, builder bootstrap and per-platform honest-capability cases are conjunctive and remain open, with protected CI/native Mac/VM missing. Historical Markdown-only H0/A0 claims remain retracted.",
+   "implementation_notes": "Typed host-name admission, selected default-host lint pinning, bounded frontend evaluation and pretrust adoption are committed-source local controls for plan 0048 §§1.3–1.4. The source-bound 1c693ef packet additionally demonstrates §1.2 operator credential audience admission, scoped build/fetch env and HTTPS-only bearer dispatch on Linux with four TLC credential configs. These partial A1 receipts are not a verified G-05 or proof of filesystem/process containment. No silent host/privileged/network fallback, builder bootstrap and per-platform honest-capability cases are conjunctive and remain open, with protected CI/native Mac/VM missing. Historical Markdown-only H0/A0 claims remain retracted.",
    "historical_claims": [
     {
      "lane": "container-gates",

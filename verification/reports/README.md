@@ -197,3 +197,20 @@ Protected PR `audit` passed with rustls 0.23.45, while the external
 TypeScript example remains failed on an unpinned Pixi ripgrep tree
 digest. M0 §1.2, R1/R5, native Mac/VM and all other release-blocking
 NEXT/proof work are still open.
+
+## M0 §1.2 repo-env/credential/TLS boundary — committed local packet
+
+`1c693efbfc8335f52888a77efa68ba266132b1ed` has clean tracked
+`SOURCE_ROOTS` before/after the direct runner and fingerprint
+`9a82d56b48bef69d8a57c831a3efa16638123279150689d277ecdd8a81447825`.
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-26-m0-env-1c693ef.log` | `ac2b231938c22fba1ca1abd192b5453edf4045b13e0d655681f74c9140ebf3d1` | Two direct Rust config/HTTP admission tests and ten sandboxed real CLI build-shell, structured PATH, plugin, Deno-isolation, proxy/CA, local TLS, wrong-/same-host redirect, E400 terminal/JSON and HTTP-cleartext cases passed **12/12**, zero skipped. Direct TLC ran four credential-routing cfgs: clean base plus three named base-authority/redirect/repo-audience counterexamples, **4/4**. The real pre-fix PATH detector shim ran, and the old GH_HOST rebind let a dummy token reach an HTTP fixture; neither occurs on this source |
+
+The separate local Rust gate passed fmt/clippy/tests on the same
+source; a preceding 316/316 e2e snapshot and the 72/0 Verus run
+were before final test/HTTP route edits and are **not** final-source
+proofs. Fresh final-source full e2e, native Mac and protected CI
+remain outstanding. This receipt is a selected plan/0048 control,
+not H0/G-05 verification, M-V7 proof or a release.
