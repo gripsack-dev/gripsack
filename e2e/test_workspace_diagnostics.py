@@ -692,6 +692,50 @@ def test_escaped_repository_file_origin_rejects_before_executor(sandbox):
         assert "E124" not in result.stderr, "invalid origin precedes executor refusal"
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
+def test_distinct_managed_block_markers_coexist_over_one_host_file(sandbox):
+    """A1-11: a managed block is a per-marker owner inside a shared
+    host file — distinct markers coexist; the same marker twice
+    (case-variant) is E111 labeling both declarations."""
+    repo = sandbox / "managed-blocks"
+    repo.mkdir()
+
+    def block(line, marker):
+        return {
+            "span": {"file": "grip.ts", "line": line},
+            "source": {"kind": "repo_file", "path": "cfg/snippet"},
+            "content": {"kind": "identity"},
+            "destination": {"kind": "managed_block", "path": "~/.shellrc", "marker": marker},
+        }
+
+    def document(blocks):
+        profile = {
+            "kind": "profile", "name": "dotfiles", "span": {"file": "grip.ts", "line": 2},
+            "files": blocks,
+        }
+        path = repo / "workspace.ir.json"
+        path.write_text(json.dumps({
+            "ir_version": 5,
+            "host": {"os": "linux", "arch": "x86_64"},
+            "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
+        }))
+        return path
+
+    # Failing-before: any two blocks over one path were E111.
+    distinct = document([block(3, "gripsack:tools"), block(7, "gripsack:editor")])
+    result = grip("plan", "--ir", str(distinct), cwd=repo)
+    assert result.returncode != 0
+    assert "E111" not in result.stderr, result.stderr
+    assert "E124" in result.stderr, "distinct markers pass ownership; the executor refusal follows"
+
+    duplicate = document([block(3, "gripsack:tools"), block(9, "GRIPSACK:TOOLS")])
+    result = grip("plan", "--ir", str(duplicate), cwd=repo)
+    assert result.returncode != 0
+    assert "error[E111]" in result.stderr, result.stderr
+    assert "grip.ts:3" in result.stderr and "grip.ts:9" in result.stderr
+    assert "managed block" in result.stderr
+    assert "E124" not in result.stderr, "ownership conflicts precede executor refusal"
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
 def test_duplicate_profile_destination_names_both_owners_before_any_executor(sandbox):
     """A1-11: one path has one owner — the module grammar's E111 race
     rule extended to workspace profile files, labeling both files."""
