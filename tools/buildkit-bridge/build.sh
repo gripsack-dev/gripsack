@@ -14,5 +14,5 @@ docker run --rm --network=host \
   -e GOFLAGS=-mod=mod -e GOTOOLCHAIN=local -e GOCACHE=/tmp/gocache \
   "$GOLANG_IMAGE" sh -c \
   'gofmt -l . | grep . && { echo "gofmt needed"; exit 1; } || true;
-   go vet ./... && go test ./... && go build -o bridge-bin .'
+   go vet ./... && go test -race ./... && go build -buildvcs=false -o bridge-bin .'
 echo "bridge gate passed: vet + tests + bridge-bin"
