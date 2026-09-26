@@ -1418,9 +1418,41 @@ source fingerprint is
 These remain local observations; no classification/normalization
 theorem, protected CI or native Mac evidence follows.
 
-## 30. Honesty register
+## 30. A1-11 destination escape admission (not closure)
 
-- This document began as a design candidate; §§9–29 record read-only
+Profile file destination paths were admitted as any non-empty
+string on both surfaces: the TypeScript constructors only checked
+non-emptiness, and decoded IR reached the E124 executor refusal
+with `~/../../etc/passwd`, `..` segments, relative paths, a bare
+`~` and trailing slashes all accepted. Admission now reuses the
+module grammar's E102 rule — absolute or `~/`-prefixed — plus the
+selector segment rules: no NUL, empty, `.` or `..` segments and no
+trailing slash. The TypeScript constructors throw at authoring and
+decoded IR fails a structured E102 labeled at the file's own
+declaration span, before any capability decision; the failing-before
+real CLI case shows the escape path in the message with no E124 and
+no home mutation. Managed-block markers keep their existing
+non-empty check; no wire shape changed.
+
+At committed code revision
+`17513d2d66c1f99bf40e85d5c9d9e62447c0f88d`, tracked behavior
+source roots were clean before and after the direct runners. The
+SHA-256 checked report binds **6/6** Rust span-admission cases
+(nine escape shapes, two admissible shapes), **10/10** real CLI
+destination/owner/coordinate cases and the same-source TypeScript
+gate layer (64 Deno tests + the tsc examples typecheck;
+the fresh full chain at this exact tree passed Rust
+fmt/clippy/tests and real CLI e2e **297/297**): **81** checks. The
+source fingerprint is
+`22ba9b886b3321011a8ba124d821c6823789c0a411ede3019dac8af7d0258983`.
+The `tree` origin (bounded include/exclude expansion, collision
+and containment diagnostics), admission-time rendered-result
+binding, the ownership proof targets, protected CI and native Mac
+evidence remain open; A1-11 stays in progress.
+
+## 31. Honesty register
+
+- This document began as a design candidate; §§9–30 record read-only
   admission, graph, typed-target, command-authoring and diagnostic
   packets, not a completed A1 milestone or release.
 - Plan 0048 §9 NEXT gates bind any public release claiming A1 behavior;

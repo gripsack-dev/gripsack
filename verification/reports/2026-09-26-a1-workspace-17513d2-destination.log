@@ -1,0 +1,358 @@
+RUNNER_SOURCE_COMMIT=17513d2d66c1f99bf40e85d5c9d9e62447c0f88d
+RUNNER_SOURCE_ROOTS_DIRTY=clean (git status --porcelain -- tracked SOURCE_ROOTS before and after all three commands: empty)
+RUNNER_COMMANDS=docker compose run --build --rm test cargo test --locked -p gripsack-ir span_value::tests; docker compose run --build --rm e2e uv run --locked --no-sync pytest -vv test_workspace_diagnostics.py -k 'escaping_profile_file_destination or first_declared or invalid_decoded'; docker compose run --build --rm ts-test
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Rust 1.98.0 in pinned test image; Python 3.13.15; pytest 9.1.1; Deno 2.9.6; TypeScript 7.0.2
+RUNNER_INPUTS=Committed destination-path admission (E102) over absolute/~ rules with nine escape fixtures and two admissible shapes (6 fresh Rust cases), ten fresh real CLI cases spanning the new E102 escape rejection plus the first-declared E124 owner matrix and malformed-coordinate case, and the TypeScript gate whose cache-hit layer ran the 64-test suite plus the tsc examples typecheck at byte-identical SOURCE_ROOTS (fresh full chain at this exact tree: Rust fmt/clippy/tests and real CLI e2e 297/297).
+
+17513d2d66c1f99bf40e85d5c9d9e62447c0f88d
+ Image gripsack-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 530B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.8s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.6s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#7 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 75.56kB 0.0s done
+#8 DONE 0.1s
+
+#9 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#9 CACHED
+
+#10 [builder  4/10] WORKDIR /app
+#10 CACHED
+
+#11 [builder  6/10] COPY crates ./crates
+#11 CACHED
+
+#12 [builder  8/10] COPY schema ./schema
+#12 CACHED
+
+#13 [test 1/2] RUN cargo fmt --check     && cargo clippy --locked --workspace --all-targets -- -D warnings     && cargo test --locked
+#13 CACHED
+
+#14 [builder  7/10] COPY fuzz ./fuzz
+#14 CACHED
+
+#15 [builder  9/10] COPY typescript ./typescript
+#15 CACHED
+
+#16 [builder 10/10] COPY scripts ./scripts
+#16 CACHED
+
+#17 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#17 CACHED
+
+#18 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#18 CACHED
+
+#19 [test 2/2] RUN apk add --no-cache python3     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs"     && python3 scripts/gen_diagnostic_registry.py --check     && python3 scripts/gen_diagnostic_registry.py --self-check     && python3 scripts/gen_frontend_embed.py --check
+#19 CACHED
+
+#20 exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:05e69c2eed03b9407420682b1920171eaee2b00df273ca0e51677df644571aa3 done
+#20 exporting config sha256:3f33e7c830cb2fb32262fc3b566e7e1eab2b2ac67336d837123066bc969439f3 done
+#20 exporting attestation manifest sha256:0cb9a534576eb9d101cef2cc0690bd41331dd65d9e5f8f2ad1eff5a8cbfdf548 0.0s done
+#20 exporting manifest list sha256:13130140cef0e1c957afa6c45362201303bb57218d57c075232fcedbeb43d12c 0.0s done
+#20 naming to docker.io/library/gripsack-test:latest
+#20 naming to docker.io/library/gripsack-test:latest done
+#20 unpacking to docker.io/library/gripsack-test:latest 0.0s done
+#20 DONE 0.1s
+
+#21 resolving provenance for metadata file
+#21 DONE 0.0s
+ Image gripsack-test Built 
+ Container gripsack-test-run-913a675c42f5 Creating 
+ Container gripsack-test-run-913a675c42f5 Created 
+   Compiling memchr v2.8.3
+   Compiling serde_json v1.0.151
+   Compiling smallvec v1.15.2
+   Compiling once_cell v1.21.4
+   Compiling indexmap v2.14.0
+   Compiling syn v3.0.4
+   Compiling syn v2.0.119
+   Compiling parking_lot_core v0.9.12
+   Compiling parking_lot v0.12.5
+   Compiling aho-corasick v1.1.5
+   Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+   Compiling regex-automata v0.4.18
+   Compiling serde_derive v1.0.229
+   Compiling ref-cast-impl v1.0.27
+   Compiling thiserror-impl v2.0.20
+   Compiling ref-cast v1.0.27
+   Compiling synstructure v0.13.2
+   Compiling thiserror v2.0.20
+   Compiling fancy-regex v0.19.1
+   Compiling regex v1.13.1
+   Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+   Compiling strum_macros v0.28.0
+   Compiling serde v1.0.229
+   Compiling ahash v0.8.12
+   Compiling fluent-uri v0.4.1
+   Compiling email_address v0.2.9
+   Compiling jsonschema-value v0.55.0
+   Compiling referencing v0.55.0
+   Compiling strum v0.28.0
+   Compiling jsonschema v0.55.0
+   Compiling vstd v0.0.0-2026-09-06-0133
+   Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+   Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 25.00s
+     Running unittests src/lib.rs (target/debug/deps/gripsack_ir-eab45e62e10ebf28)
+
+running 6 tests
+test sema::workspace::span_value::tests::decoded_bash_interpolation_rejects_at_original_script_line ... ok
+test sema::workspace::span_value::tests::invalid_nested_command_coordinates_remain_source_labeled ... ok
+test sema::workspace::span_value::tests::file_content_requires_source_unless_literal ... ok
+test sema::workspace::span_value::tests::incompatible_abi_and_unsafe_prefix_label_the_declaration ... ok
+test sema::workspace::span_value::tests::degenerate_spans_and_values_are_rejected ... ok
+test sema::workspace::span_value::tests::escaping_profile_file_destinations_reject_at_the_declaration ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 55 filtered out; finished in 0.00s
+
+     Running tests/schema_acceptance.rs (target/debug/deps/schema_acceptance-e26e17c43a31f47c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/workspace_admission.rs (target/debug/deps/workspace_admission-7e484dace91cfc16)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/workspace_v4_compat.rs (target/debug/deps/workspace_v4_compat-c35c9f811f359518)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/workspace_v5_acceptance.rs (target/debug/deps/workspace_v5_acceptance-72a6444be37192ed)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 ...
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.0s
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 1.3s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#9 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#9 DONE 0.0s
+
+#10 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#10 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 548.44kB 0.1s done
+#11 DONE 0.1s
+
+#12 [e2e 11/12] COPY examples ./examples
+#12 CACHED
+
+#13 [e2e  2/12] WORKDIR /app
+#13 CACHED
+
+#14 [bin 1/1] RUN cargo build --locked -p gripsack
+#14 CACHED
+
+#15 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#15 CACHED
+
+#16 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#16 CACHED
+
+#17 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#17 CACHED
+
+#18 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#18 CACHED
+
+#19 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#19 CACHED
+
+#20 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#20 CACHED
+
+#21 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#21 CACHED
+
+#22 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#22 CACHED
+
+#23 [e2e 10/12] COPY e2e ./e2e
+#23 CACHED
+
+#24 [builder  4/10] WORKDIR /app
+#24 CACHED
+
+#25 [e2e  9/12] RUN cd e2e && uv sync --locked
+#25 CACHED
+
+#26 [builder  8/10] COPY schema ./schema
+#26 CACHED
+
+#27 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#27 CACHED
+
+#28 [builder  6/10] COPY crates ./crates
+#28 CACHED
+
+#29 [builder  7/10] COPY fuzz ./fuzz
+#29 CACHED
+
+#30 [builder  9/10] COPY typescript ./typescript
+#30 CACHED
+
+#31 [builder 10/10] COPY scripts ./scripts
+#31 CACHED
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 CACHED
+
+#33 exporting to image
+#33 exporting layers done
+#33 exporting manifest sha256:6178da48d2007535e007cb62db0bf48db9eeac0fb2b7a8cf91863a5df26351e0 done
+#33 exporting config sha256:66265d8699998a3ad107b3a6736b5be5261eb8dc8df47b2a5de0f85b8eceed38 done
+#33 exporting attestation manifest sha256:025aab9a27a2ca77f4de643b81d6acd0e88aa72a94904e610e2f277de75d914c 0.0s done
+#33 exporting manifest list sha256:6bc7b5a9ec0ef1fc8ee5b8be48e7949d4da808b356d3eb23b1633702f4283a0b 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.0s done
+#33 DONE 0.1s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-ab0d7b0a1817 Creating 
+ Container gripsack-e2e-run-ab0d7b0a1817 Created 
+============================= test session starts ==============================
+platform linux -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- /app/e2e/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /app/e2e
+configfile: pyproject.toml
+collecting ... collected 25 items / 15 deselected / 10 selected
+
+test_workspace_diagnostics.py::test_unavailable_capability_names_first_declared_output_and_owner[image-worker] PASSED [ 10%]
+test_workspace_diagnostics.py::test_unavailable_capability_names_first_declared_output_and_owner[environment-invocation] PASSED [ 20%]
+test_workspace_diagnostics.py::test_unavailable_capability_names_first_declared_output_and_owner[check-owner-before-subject] PASSED [ 30%]
+test_workspace_diagnostics.py::test_first_declared_unavailable_output_preserves_its_distinct_owner[host-recipe] PASSED [ 40%]
+test_workspace_diagnostics.py::test_first_declared_unavailable_output_preserves_its_distinct_owner[provider-package] PASSED [ 50%]
+test_workspace_diagnostics.py::test_first_declared_unavailable_output_preserves_its_distinct_owner[task-without-prerequisites] PASSED [ 60%]
+test_workspace_diagnostics.py::test_first_declared_unavailable_output_preserves_its_distinct_owner[profile-before-image] PASSED [ 70%]
+test_workspace_diagnostics.py::test_first_declared_unavailable_output_preserves_its_distinct_owner[post-activate-hook] PASSED [ 80%]
+test_workspace_diagnostics.py::test_invalid_decoded_command_coordinates_keep_labels_without_reading_source PASSED [ 90%]
+test_workspace_diagnostics.py::test_escaping_profile_file_destination_is_a_structured_error PASSED [100%]
+
+====================== 10 passed, 15 deselected in 0.22s =======================
+ Image gripsack-ts-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 545B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d
+#5 DONE 0.6s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [ts-test 1/5] FROM docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d
+#7 resolve docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 3.29kB 0.0s done
+#8 DONE 0.0s
+
+#9 [ts-test 2/5] WORKDIR /app
+#9 CACHED
+
+#10 [ts-test 3/5] COPY typescript ./typescript
+#10 CACHED
+
+#11 [ts-test 4/5] COPY examples ./examples
+#11 CACHED
+
+#12 [ts-test 5/5] RUN cd typescript && deno install && deno task test     && deno run --cached-only --no-remote --allow-all node_modules/typescript/bin/tsc        --project tsconfig.examples.json --noEmit
+#12 CACHED
+
+#13 exporting to image
+#13 exporting layers done
+#13 exporting manifest sha256:580d47ffbce88339b1fc8828eba59259cb3e2f32ca91dbe96d159f5787fd1e0f done
+#13 exporting config sha256:c817348ab3ff50e9e36bb9c212a35c43ffb95366349bdc029fc994beb4c59499 done
+#13 exporting attestation manifest sha256:b9ba25bbe036e5a3e4428f2222312936a765fa252d540be9c16fe1566989136f 0.0s done
+#13 exporting manifest list sha256:644b1b1c53fc420197a664f249a728203989034e33353d0f7587233c7b7d6f23 0.0s done
+#13 naming to docker.io/library/gripsack-ts-test:latest done
+#13 unpacking to docker.io/library/gripsack-ts-test:latest 0.0s done
+#13 DONE 0.1s
+
+#14 resolving provenance for metadata file
+#14 DONE 0.0s
+ Image gripsack-ts-test Built 
+ Container gripsack-ts-test-run-51ed036a3fa1 Creating 
+ Container gripsack-ts-test-run-51ed036a3fa1 Created 
+gate passed: typescript frontend tests (deno test)
+A1_DEST_ESCAPES=81 (6 Rust span admission + 10 real CLI destination/owner/coordinate + 1 Deno suite of 64 + 1 tsc examples typecheck)

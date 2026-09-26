@@ -1574,18 +1574,49 @@
    "mandatory_deliverable": "Orthogonal source/content/destination file contract",
    "required_acceptance_evidence": "Schema/Rust/TS origin references, rendering variables/result binding, link/copy/block policies and per-file tree expansion; no template ownership conflation; old source roots and lint/check stages mapped; production normalization/ownership proof targets named",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "pure",
     "container-gates",
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "Origin/content/destination compose independently: literal, identity and template content pair with symlink, tracked_copy and managed_block destinations; only literal content may omit a source",
+    "Profile file destination paths must be absolute or ~/-prefixed with normalized segments; relative, bare ~, dot-dot, empty/trailing-segment and NUL paths reject at admission with the file's declaration span",
+    "Artifact-file origins address declared outputs through normalized selectors; repo_file origins stay repo-relative",
+    "Equal relative filenames with different origins coexist as distinct owned files",
+    "The v5 tree origin (bounded include/exclude expansion with per-entry provenance, stable enumeration, containment and collision diagnostics) is not yet implemented",
+    "Rendered template result binding at admission and the production normalization/ownership proof targets remain named, unimplemented obligations"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["gripsack-ir::sema::workspace::span_value::admissible_destination", "typescript/src/workspace/validate.ts::asDestinationPath", "grip plan --ir"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; Rust test container, real CLI pytest 9.1.1 under sandboxed HOME, pinned Deno image",
+     "command": "docker compose run --build --rm test cargo test --locked -p gripsack-ir span_value::tests; docker compose run --build --rm e2e uv run --locked --no-sync pytest -vv test_workspace_diagnostics.py -k 'escaping_profile_file_destination or first_declared or invalid_decoded'; docker compose run --build --rm ts-test",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-a1-workspace-17513d2-destination.log",
+     "report_sha256": "c89573d55367642b7baf5fd85d32f67384a37ef2c479a7b989f80f85a0a65f11",
+     "commit": "17513d2d66c1f99bf40e85d5c9d9e62447c0f88d",
+     "source_reuse_sha256": "22ba9b886b3321011a8ba124d821c6823789c0a411ede3019dac8af7d0258983",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [
+      "Profile file destination paths must be absolute or ~/-prefixed with normalized segments; relative, bare ~, dot-dot, empty/trailing-segment and NUL paths reject at admission with the file's declaration span"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Rust 1.98.0; Python 3.13.15; pytest 9.1.1; Deno 2.9.6; TypeScript 7.0.2",
+     "inputs": "Failing-before decoded tracked_copy destination ~/../../etc/passwd previously admitted (then E124); it now fails structured E102 at grip.ts:3 before executor refusal. Nine escape shapes and two admissible shapes in Rust, one real CLI E102 case, authoring-side throws for ../escape, ~, ~/a/../b and /trailing/ in Deno; TypeScript gate layer cache-hit at identical SOURCE_ROOTS with fresh full chain (Rust fmt/clippy/tests, real CLI e2e 297/297, Deno 64/64 + tsc examples)",
+     "report_marker": "A1_DEST_ESCAPES=81",
+     "counts": {"executed": 81, "passed": 81, "failed": 0, "skipped": 0}
+    }
+   ],
+   "status_history": [
+    {"date": "2026-09-26", "from": "pending", "to": "in_progress"}
+   ],
+   "implementation_notes": "v5 files compose origin (repo_file/artifact_file), content (identity/literal/template) and destination (symlink/tracked_copy/managed_block) with mandatory file spans; only literal content may omit a source, and artifact-file selectors share the normalized-selector admission. Destination paths now require the module grammar's absolute-or-~/ shape with selector-style normalized segments on BOTH surfaces: the TypeScript constructors throw at authoring and decoded IR fails structured E102 at the file's declaration span before any E124 — a decoded ~/../../etc/passwd previously admitted. At 17513d2 source-bound focused runners pass 6 Rust span-admission, 10 real CLI destination/owner/coordinate cases and the same-source Deno gate layer (81 checks; fresh full chain at this tree: Rust fmt/clippy/tests, e2e 297/297, Deno 64/64). The tree origin (bounded include/exclude expansion, collision/containment diagnostics), admission-time rendered-result binding, ownership proof targets, protected CI and native Mac remain open; no closure or release."
   },
   {
    "id": "A1-12",
