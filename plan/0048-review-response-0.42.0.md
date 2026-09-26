@@ -2175,7 +2175,10 @@ stages and closes each script inode before renaming it to the executable
 path; this corrects test setup, not production retry/error suppression.
 At committed `70c5502` the local Rust fmt/clippy/tests, focused probe,
 full real e2e **319/319**, TLC and Verus **72/0** with seven mutants pass.
-The old required failure remains a historical result; new manual CI
-run `36231520581` must finish `test` and native arm64 Mac before its
-current-source platform claims are made. It cannot substitute for
-branch-protection enforcement or R5/M-V7 proof.
+The prior failure remains a historical result. Exact-source manual CI
+[`36231520581`](https://github.com/gripsack-dev/gripsack/actions/runs/36231520581)
+at `70c5502` passed required Linux `test` (delivery checker **24/24**,
+Rust fmt/clippy/tests, TypeScript, real e2e, TLC and Verus), native
+macOS 14.8.9 arm64 full e2e **319/319**, audit, fuzz and docs. Manual
+dispatch does not enforce branch protection, qualify Mac-VM/launchd
+or discharge R5/M-V7 process proof.

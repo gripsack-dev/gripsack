@@ -134,8 +134,13 @@ freshly rewritten shell fixture (`ETXTBSY`). At `70c5502` the fixture
 publishes a fully closed staged inode by rename. Local Rust
 fmt/clippy/tests, focused version probe, real e2e **319/319**, fresh
 TLC and Verus **72/0** with seven named mutants pass; TypeScript RUN
-stage is cached. New CI `36231520581` remains pending. Actual H0
-closure still rejects the absent G-03 proof catalog and H0/global rows.
+stage was cached locally. Exact-source manual CI
+[`36231520581`](https://github.com/gripsack-dev/gripsack/actions/runs/36231520581)
+at `70c5502` passes required Linux test, native arm64 Mac full e2e
+**319/319**, audit, fuzz and docs; Mac job bytes are archived under
+`verification/reports/2026-09-26-h0-macos-ci-70c5502.log`. That run
+does not enforce PR branch protection. Actual H0 closure still rejects
+the absent G-03 proof catalog and pending H0/global rows.
 
 ## A3-01 — external TypeScript example CI reveals an unpinned Pixi result
 

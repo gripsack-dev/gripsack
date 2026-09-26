@@ -183,13 +183,16 @@ and actual release gates remain open.
 | `2026-09-26-h0-inventory-953724a.log` | `320e84504d7ab77f4f4b8d8ccdfc62e435cc878b5207317d9d4ed204d0905b9d` | Committed source `953724a`, fingerprint `68ef13d7676043c886626237cff226afdb9d0529f80b4f449fb83f13787e514d`: original eight checksums pass and 178/178 IDs and five immutable index fields match the live ledger; all lanes/cases/kinds are nonempty and no ID is verified. The pre-record ledger input digest is in the report; inserting this receipt changes the ledger bytes |
 | `2026-09-26-h0-kinds-56b1581.log` | `d4feaa90377df2bb2e757dfb437c51334071ff1c89578fef713f24dd14e78964` | Committed source `56b1581`, fingerprint `a145624cac62ebd3a39741ccc21042d6c8d20dc6086a0454bdc726374a40fe38`: synthetic H0/A0 and review-only positives passed, **23/23** named negative checker mutants rejected (wrong kind, runner masquerading as formal, missing proof names/floors/report bytes, skipped lanes and stale source); live H0 closure correctly fails with missing proof catalogs and pending H0/A0 rows. Calibration is not an actual proof or independent semantic review |
 | `2026-09-26-h0-catalog-52943b2.log` | `035213c2b8a068b5915eae8add7ede992039550f959578978ed161dd481264a7` | Earlier committed checker source `52943b2`, fingerprint `b77a36851e3853a82e77ae95ecdc6a3ec72cdbb8e9d8d785e9bcf6f370a1a03c`: synthetic H0/A0 plus review-only positives and 24/24 negatives passed. A later required CI `test` failed at an independent self-update script fixture with `ETXTBSY`; report kept as historical, not reused at new source |
-| `2026-09-26-h0-catalog-70c5502.log` | `dfcff39d73c0ee3987eccaceb558845c9f6f6d110c282aa88f872be832162926` | Latest committed source `70c5502`, fingerprint `5ad7400b5b9ca9e56dba286b34d2bb30c8c523c4360e9407a4f5bac4adab1f67`: **24/24** named negatives including different proof-catalog digest rejected; synthetic H0/A0 and review-only positives pass, real H0 refuses closure for missing proof catalogs/pending rows. The self-update executable fixture is atomically published at this source; exact-source CI `36231520581` is still running |
+| `2026-09-26-h0-catalog-70c5502.log` | `dfcff39d73c0ee3987eccaceb558845c9f6f6d110c282aa88f872be832162926` | Committed source `70c5502`, fingerprint `5ad7400b5b9ca9e56dba286b34d2bb30c8c523c4360e9407a4f5bac4adab1f67`: **24/24** negative checker calibrations and synthetic H0/A0 plus review-only positives pass; real H0 fails on absent proof catalogs/pending rows. `ETXTBSY` fixture staged/renamed before spawn. Exact-source manual CI [`36231520581`](https://github.com/gripsack-dev/gripsack/actions/runs/36231520581) passed required Linux `test` (checker24 + Rust/TS/e2e/TLC/Verus), native arm64 Mac `e2e-macos`, audit, fuzz and docs |
+| `2026-09-26-h0-macos-ci-70c5502.log` | `3ed19280d3c7f10282712eb6c64f24194c33a6f859a428d110528d42dcc63dfd` | [Native Mac job 108375457068](https://github.com/gripsack-dev/gripsack/actions/runs/36231520581/job/108375457068) checked out exact `70c5502`, compiled real grip on macOS 14.8.9 arm64 and ran full flow **319/319**, zero skipped; this covers self-update **production flows** and scoped credentials, not the Rust-only corrected unit fixture, nested Mac-VM, launchd scheduling or H0 semantic review |
 
-These reports cover inventory and checker mechanics, not independent
-semantic review of all 178 acceptance cases. H0-02 stays
-`in_progress`: 39 formal rows need named proof catalogs/count floors,
-and global/native/VM gates need their own reports. A synthetic
-checker fixture cannot close H0 or A0.
+These reports cover inventory/checker mechanics and the named
+runtime cases on their platforms, not semantic review of all 178
+delivery rows. H0-02 remains `in_progress`: 39 formal rows need
+actual named proof catalogs/count floors; global, native manager,
+Mac-VM and registry lanes need separate qualified reports. Neither
+a synthetic fixture nor manual CI dispatch enforces branch protection
+or closes H0/A0.
 
 ## M0 §1.1 comma-grant rejection — committed local behavior, no release
 
