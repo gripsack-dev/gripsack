@@ -129,6 +129,13 @@ on the same host always yields the same graph. The core never embeds a
 runtime ([plan/0005](plan/0005-frontends-and-configuration.md),
 [0013](plan/0013-constrained-evaluation.md)).
 
+Frontend evaluation is supervised: one ten-minute budget covers all
+probe rounds; stdout and stderr are each limited to 16 MiB, and error
+output retains at most the final 64 KiB. Exceeding a limit fails the
+operation rather than parsing a partial envelope. `grip adopt` checks
+repo trust before inspecting the target or generating repo files;
+`--yes` skips confirmation, not trust.
+
 [npm]: https://www.npmjs.com/package/@gripsack/core
 
 ## Sourcing

@@ -125,6 +125,28 @@ def test_adopt_rejects_invalid_host_before_generating_repo_files(sandbox):
     assert (target / "settings.conf").read_text() == "untouched\n"
 
 
+def test_untrusted_adopt_never_inspects_or_generates_repo_files(sandbox, monkeypatch):
+    """0048 §1.4: a missing trust grant must fail before the adoption
+    writes payload, module or host source, even with --yes."""
+    monkeypatch.delenv("GRIPSACK_TRUST_ALL", raising=False)
+    target = sandbox / ".config" / "demo"
+    target.mkdir(parents=True)
+    (target / "settings.conf").write_text("untouched\n")
+    repo = make_env_repo(sandbox / "myenv", {})
+    host_file = repo / "hosts" / "testhost.ts"
+    original_host = host_file.read_bytes()
+    out = grip(
+        "adopt", "~/.config/demo", "--mode", "tracked_copy",
+        "--host", "testhost", "--yes", cwd=repo,
+    )
+    assert out.returncode != 0
+    assert "grip trust add" in out.stderr
+    assert host_file.read_bytes() == original_host
+    assert not (repo / "modules" / "demo.ts").exists()
+    assert not (repo / "configs" / "demo").exists()
+    assert (target / "settings.conf").read_text() == "untouched\n"
+
+
 def test_adopt_refuses_to_clobber_the_repo(sandbox):
     """0015 §7 S4: the never-clobber rule covers the repo too."""
     confdir = sandbox / ".config" / "demo"

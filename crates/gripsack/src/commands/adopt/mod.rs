@@ -60,6 +60,12 @@ pub fn adopt(
             return ExitCode::FAILURE;
         }
     };
+    // Refuse an untrusted repo before inspecting the target or reading
+    // managed state, and before generating any payload, module or host
+    // source. --yes bypasses confirmation, not trust admission.
+    if let Some(code) = trust_gate(&repo) {
+        return code;
+    }
     let dest = expand_home(target);
     let home_dir = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -216,10 +222,6 @@ pub fn adopt(
         palette.good("wrote")
     );
 
-    // ── plan ───────────────────────────────────────────────────────
-    if let Some(code) = trust_gate(&repo) {
-        return code;
-    }
     let mut sink = crate::render::DiagnosticSink::terminal(palette, &repo);
     let outcome = match eval_repo(&repo, Some(host_name.into_string()), &mut sink) {
         Ok(o) => o,

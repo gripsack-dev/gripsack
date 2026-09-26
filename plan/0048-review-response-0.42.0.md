@@ -2001,7 +2001,7 @@ actual runtime/model checks now; this is not a claimed formal proof of
 the source observer. Arbitrary-effect preflight needs a separate accepted
 runtime contract; never ship an inert flag or pretend isolation.
 
-## 14. Live execution/evidence record — M0 §1.3 host identity
+## 14. Live execution/evidence record — M0 evaluator/host admission
 
 This section starts the §9 leaf-level record; it does **not** mark
 other §1–§8/R1–R8 or M-V1–M-V7 leaves complete. The original
@@ -2016,6 +2016,22 @@ leaves lacking evidence remain release blockers, not deferred work.
 | M0-1.3c | NEXT / M0 | M0-1.3a; `adopt` validates `--host` before inspection, payload generation and host-file modification, then passes the admitted name through eval and scoped apply without a second string copy. | **Implemented-unverified** at `681e87b`: failing-before fixture wrote repo files and reported a missing `hosts/../modules/evil.ts`; committed-source e2e rejects E132 before generated repo writes. | Protected CI/native Mac unrun; §1.4's separate adopt trust-gate reordering remains open. |
 | M0-1.3d | NEXT / M0 | M0-1.3a–c; sandboxed offline real CLI cases for `../modules/role`, absolute victim lock, `adopt --host ../…`, valid `role.dev` and default-host version-aware lint. E132 has terminal and `check --json` parity; no native worker/host path is inferred from Linux alone. | **Implemented-unverified** at `681e87b`: SHA-256-checked focused report binds 7/7 distinct checks (`verification/reports/2026-09-26-m0-host-681e87b.log`, SHA `65a710e52fd7d343b96aa3d4c34baa7138b73ed3c15129ff8e585f880680636c`). | Exact-commit protected `test`, native Mac and full M0/M1/M2 release evidence unrun; no waiver. |
 
+### M0 §1.4 — supervised frontend and adopt trust
+
+Responsibility/dependency map: `gripsack-process` owns process-group
+termination, deadlines and byte/line ceilings; `commands/probe.rs` owns
+frontend JSON reconstruction, diagnostic/error precedence and one
+fixpoint deadline; `commands/adopt/mod.rs` owns trust admission before
+repository inventory/generation. Existing `commands/frontend.rs` builds
+the same sandboxed command, and `commands/mod.rs::trust_gate` remains
+the single trust policy. No IR/wire/schema change or second process
+supervisor.
+
+| Leaf | Class / target | Prerequisite, owner and implementation | State / evidence | Unmet acceptance |
+|---|---|---|---|---|
+| M0-1.4a | NEXT / M0 | Existing bounded `gripsack-process::run`; CLI probe fixpoint replaces raw `.output()` with an aggregate timeout and bounded stdout, stderr and JSON line, preserving structured envelopes and bounded traceback reporting. R5/M-V7 own the wider protocol/hostile-descendant campaigns. | **Implementing**; reproduce the former unbounded stdout/stderr path with isolated fake frontend and check both resource-limit failures and ordinary real Deno flow. | Real CLI source-bound negative and positive cases, full gates, required R5 process/proof correspondence, protected CI and native Mac. |
+| M0-1.4b | NEXT / M0 | Existing trust policy; `adopt` calls the gate after repo-shape and typed-host admission, before target inspection, managed-state reads or repo writes. Existing trusted adoption still works. | **Implementing**; reproduce untrusted non-interactive adopt writing generated repo files before a trust failure, then test that no files are written. | Source-bound before/after e2e, full gates, protected CI and native Mac. |
+
 The committed source-root fingerprint is
 `11419c4e1d532fea98b8b2e687f0fed60d964d9388413f4111dfd9a53971968c`.
 The pre-commit worktree five-gate transcript
@@ -2028,14 +2044,16 @@ TypeScript and TLC images were cached. Its source equivalence to
 run and the source commit; it is *not* exact-commit CI evidence.
 The separate focused report above ran on the committed source.
 The original bundle checksum check passes all eight members; live
-delivery inventory has **178/178** original IDs, **149** null
-lane/case inventories, 161 pending, 10 in_progress, six
-implemented_unverified and one blocked. H0-02 and the full release
-remain open.
+delivery inventory has **178/178** original IDs and **zero** null
+lane/case inventories; 160 pending, 11 in_progress, six
+implemented_unverified and one blocked. H0-02 still lacks explicit
+per-row evidence kinds and source-bound H0/global completion; the
+full M0–M2 release remains blocked.
 
 Code-quality ownership: the domain type lives in `gripsack-ir`, the
 selected-host precedence in one CLI eval boundary, lockfile path
 construction in `gripsack-exec`, and lint uses that admitted identity
-without a second validator. This fixes one NEXT leaf only; protected
-branch aggregation, the remaining §9 leaf expansion and all other
-required plan 0048 packets are open. No release is authorized.
+without a second validator. These M0 evaluator leaves are only a
+subset of NEXT; protected branch aggregation, the remaining §9 leaf
+expansion and all other required plan 0048 packets remain open. No
+release is authorized.

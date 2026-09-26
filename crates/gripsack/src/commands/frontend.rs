@@ -2,7 +2,10 @@
 //! needs, bundled so signatures say what they mean — `&Frontend`
 //! instead of six positional `&Path`s a reader must count.
 
+use gripsack_process::{self, Control, Limits, Outcome};
+use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 /// One frontend eval's fixed coordinates: the deno binary, the env
 /// repo being evaluated, the driver script, the materialized
@@ -13,6 +16,13 @@ pub(super) struct Frontend<'a> {
     pub driver: &'a Path,
     pub frontend_dir: &'a Path,
     pub home: &'a Path,
+}
+
+/// Captured JSON bytes and the supervisor's process/limit verdict.
+/// The caller must check `reason` before parsing the bounded output.
+pub(super) struct FrontendExecution {
+    pub stdout: Vec<u8>,
+    pub outcome: Outcome,
 }
 
 impl<'a> Frontend<'a> {
@@ -74,6 +84,38 @@ impl<'a> Frontend<'a> {
             .current_dir(self.repo)
             .env("DENO_DIR", self.home.join("deno-cache"));
         cmd
+    }
+
+    /// One supervised frontend invocation. The emitted envelope is one
+    /// JSON line; use the stdout ceiling as its line ceiling rather than
+    /// the supervisor's smaller line-oriented plugin default. Rejoin
+    /// framed lines so pretty-printed envelopes remain parseable.
+    pub(super) fn run_bounded(
+        &self,
+        inputs: &Path,
+        timeout: Duration,
+    ) -> io::Result<FrontendExecution> {
+        let mut limits = Limits {
+            timeout,
+            ..Limits::default()
+        };
+        limits.line_bytes = limits.stdout_bytes.try_into().map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "frontend stdout limit exceeds addressable memory",
+            )
+        })?;
+        let mut stdout = Vec::new();
+        let mut first_line = true;
+        let outcome = gripsack_process::run(&mut self.command(inputs), &[], limits, |line| {
+            if !first_line {
+                stdout.push(b'\n');
+            }
+            first_line = false;
+            stdout.extend_from_slice(line);
+            Control::Continue
+        })?;
+        Ok(FrontendExecution { stdout, outcome })
     }
 }
 

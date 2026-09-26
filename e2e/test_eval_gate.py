@@ -9,6 +9,8 @@ import os
 import shutil
 import subprocess
 
+import pytest
+
 from conftest import (
     GRIP,
     grip,
@@ -25,6 +27,33 @@ export default module("hello", {
   config: { "configs/demo/a": trackedCopy("~/.config/demo/a") },
 });
 """
+
+
+@pytest.mark.parametrize(
+    ("stream", "reason"),
+    (("stdout", "StdoutLimit"), ("stderr", "StderrLimit")),
+)
+def test_frontend_output_budget_fails_closed(sandbox, monkeypatch, stream, reason):
+    """0048 §1.4: a hostile pinned runtime cannot make check collect
+    arbitrarily many stdout/stderr bytes. Only the supervisor is under
+    test here; other e2e flows exercise the real Deno frontend."""
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    fake = sandbox / "hostile-deno"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        f"stream = sys.{stream}.buffer\n"
+        "stream.write(b'x' * (16 * 1024 * 1024 + 1))\n"
+        "stream.flush()\n"
+    )
+    fake.chmod(0o755)
+    monkeypatch.setenv("GRIPSACK_DENO", str(fake))
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert reason in out.stderr[:1024], (
+        out.returncode, len(out.stderr), out.stderr[:256]
+    )
+    assert not (sandbox / ".local/share/gripsack/generations").exists()
 
 
 def test_binary_exists_and_runs():
