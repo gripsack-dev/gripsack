@@ -175,3 +175,25 @@ The original 178 IDs now have registered lane/case/evidence-kind
 inventories, but source-bound H0 inventory review, stronger proof/kind
 checks, other NEXT leaves, required formal campaigns, native Mac/VM
 and actual release gates remain open.
+
+## H0 edition-5 inventory — source-bound structure, not semantic closure
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-26-h0-inventory-953724a.log` | `320e84504d7ab77f4f4b8d8ccdfc62e435cc878b5207317d9d4ed204d0905b9d` | Committed source `953724a`, fingerprint `68ef13d7676043c886626237cff226afdb9d0529f80b4f449fb83f13787e514d`: original eight checksums pass and 178/178 IDs and five immutable index fields match the live ledger; all lanes/cases/kinds are nonempty and no ID is verified. The pre-record ledger input digest is in the report; inserting this receipt changes the ledger bytes |
+
+This is a structural check, not independent semantic review of every
+expanded acceptance case. H0-02 remains in_progress; per-kind/proof
+checker enforcement, global-gate evidence and H0 closure remain open.
+
+## M0 §1.1 comma-grant rejection — committed local behavior, no release
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-26-m0-grants-953724a.log` | `861c6dce2000c764e77a54244ddbafa3cd812c9dbcd4b18d189114c61a61fbc7` | Exact committed `953724a` source with fingerprint `68ef13d7676043c886626237cff226afdb9d0529f80b4f449fb83f13787e514d` and clean tracked source roots: one Rust grant-construction unit, five real CLI pin/repo/home/valid-control cases and 12 freshly executed Deno driver/pin cases, 18/18. Original pre-fix comma pin read an outside canary and returned success; after E133 both terminal and JSON fail before spawn |
+| `2026-09-26-m0-grants-local-five-gates.log` | `8efaa16213c359407583dd8fcdadc66d84277771d7021db13e52e5c0ec7c5a82` | Local five Compose services pass on the `953724a` source tree: fresh Rust fmt/clippy/tests (38 generated core codes), real CLI e2e 311/311, fresh Verus 72/0 plus seven named mutants. TypeScript and TLC RUN layers explicitly CACHED. No runner-time source-clean assertion: source equivalence is [INFERENCE], not exact-commit protected CI |
+
+Protected PR `audit` passed with rustls 0.23.45, while the external
+TypeScript example remains failed on an unpinned Pixi ripgrep tree
+digest. M0 §1.2, R1/R5, native Mac/VM and all other release-blocking
+NEXT/proof work are still open.

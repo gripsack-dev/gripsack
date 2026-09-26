@@ -196,7 +196,30 @@
     "original edition-5 checksum-covered specifications and generated index reconcile exactly before any completion claim"
    ],
    "evidence_kinds": ["runner", "review"],
-   "evidence_records": [],
+   "evidence_records": [
+    {
+     "lane": "pure",
+     "date": "2026-09-26",
+     "entry_points": ["scripts/check_delivery.py::validate", "verification/delivery.json", "edition-5 requirements-index.json"],
+     "environment": "WSL2 linux/amd64, Python 3.12.3, original immutable edition-5 handover directory and git committed-source checkout",
+     "command": "sha256sum -c CHECKSUMS.sha256 from original bundle; python3 scripts/check_delivery.py --validate from checkout; Python one-off comparison of 178 exact original IDs and five immutable fields plus nonempty registered lane/case/evidence-kind inventories and honest zero-verified status",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-h0-inventory-953724a.log",
+     "report_sha256": "320e84504d7ab77f4f4b8d8ccdfc62e435cc878b5207317d9d4ed204d0905b9d",
+     "commit": "953724a7acaa9e314f145175dee35026f6052f3d",
+     "source_reuse_sha256": "68ef13d7676043c886626237cff226afdb9d0529f80b4f449fb83f13787e514d",
+     "source_reuse_reason": "This structural inventory receipt runs on the committed SOURCE_ROOTS; only evidence-only ledger/report/plan edits follow it. Its ledger input SHA is captured in the report and changes on inserting this record, so it cannot attest its own final evidence fields or case-semantic completeness.",
+     "cases_covered": [
+      "all 178 original delivery IDs registered with owner milestone, tranche scope and honest initial status, including unchanged historical invalid claims",
+      "original edition-5 checksum-covered specifications and generated index reconcile exactly before any completion claim"
+     ],
+     "kind": "runner",
+     "tool_versions": "Python 3.12.3; sha256sum/coreutils; git; WSL2 linux/amd64",
+     "inputs": "Original eight checksum-covered members and generated edition-5 index; live ledger SHA ba82f8637dd40273e8bdc847f6e4f2ed1cf98f136485568b54a28a18d4d1f7e2 before evidence record; exact source commit and clean tracked roots. Verifies syntax/identity/status, not semantic completeness of all paraphrased acceptance cases.",
+     "report_marker": "H0_STRUCTURAL=178",
+     "counts": {"executed": 178, "passed": 178, "failed": 0, "skipped": 0}
+    }
+   ],
    "status_history": [
     {
      "date": "2026-09-24",
@@ -258,7 +281,8 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "Trace from user-visible entry point through admitted domain values to effects/output; declarations, dead code, test-only implementations, and mocks cannot satisfy executable behavior"
+    "trace every claimed milestone behavior from a user-visible CLI/API entry through admitted domain values and production policy to actual effect or output",
+    "declarations, dead paths, test-only implementations and mocks do not count as executable production wiring"
    ],
    "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
@@ -327,7 +351,9 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "Named positive and negative cases, expected execution/obligation counts, actual outcomes and reports; all required cases run and pass for a claimed lane"
+    "register each claimed lane's named positive and negative cases with expected execution and formal-obligation counts before judging results",
+    "actual runner/prover commands, nonempty source-bound reports, passes/failures/skips and complete case coverage agree with declared expectations",
+    "a skipped/mocked/stale/cached but unexecuted case cannot satisfy a required supported-success fixture"
    ],
    "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
@@ -396,7 +422,11 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "Required TLC/TLAPS/Verus obligations, production correspondence, negative calibration, non-vacuity witnesses, and explicit trusted assumptions; no proof-only clone or admitted missing decision"
+    "run the TLC interleaving/failure configurations required by the owning milestone with identifiable positive and negative outcomes",
+    "discharge the focused TLAPS invariants required by that milestone, distinguishing bounded model exploration from general inductive proof",
+    "prove required Verus decision kernels on the same production-used functions and admitted domain values rather than a proof-only clone",
+    "name every checked obligation and semantic mutant, show non-vacuity witnesses and intended negative attribution, and record trusted parser/OS/hash/tool assumptions",
+    "do not infer a proof family from a later unrelated milestone or admit a missing required decision to report completion"
    ],
    "evidence_kinds": ["runner", "formal", "review"],
    "evidence_records": [],
@@ -469,7 +499,10 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "Architecture and code-quality review, documented module ownership and dependency direction, strong types, bounded effects/protocols, reviewed pins, preserved Rust/rustls/musl constraints"
+    "review the owning A §8.2, B §6.1 and applicable C §7, D §9 or E §8 responsibility and dependency direction before calling a slice landed",
+    "meaningful private domain types and cohesive modules keep parser, pure policy, effects, supervision and rendering boundaries discoverable",
+    "new process/transport protocols and effects have explicit byte, time, memory, identity and cleanup bounds with real failure behavior",
+    "review pins, maintenance, target support and actual need while preserving Rust, rustls-only TLS and musl static-core constraints"
    ],
    "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
@@ -538,7 +571,11 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, no platform claim inferred from another platform's result"
+    "no unsupported execution or host-capability request silently falls back to an unqualified host path",
+    "no requested privileged capability silently falls back to privileged, broad-mount or disabled-sandbox execution",
+    "no network restriction or offline request silently gains undeclared network, credential or weaker transport authority",
+    "native acquisition, check and preview never download/bootstrap optional builder or mutate builder state merely to present a plan",
+    "each advertised Linux, native Mac, virtualization-capable Mac and other capability claim has separate actual evidence; one platform result never qualifies another"
    ],
    "evidence_kinds": ["runner", "review"],
    "evidence_records": [
@@ -651,7 +688,10 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "Existing ownership, recovery, generations and retained roots preserved; changed persistent formats have compatible readers or explicit tested migration; no destructive repair of retained objects"
+    "existing configuration ownership and captured prior lineage survive changed operations and remain adoptable and rollback-safe",
+    "generation publication, unfinished journal recovery and all retained artifact/project/process/job roots remain protected through GC and crash paths",
+    "changed persisted locks, manifests, IR-derived records and receipts retain compatible old readers or a deliberate source-bound migration",
+    "repair never discards valid retained objects or corrupt recovery evidence to manufacture a clean result"
    ],
    "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
@@ -720,7 +760,9 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "Relevant CLI/API/docs/examples exercise the actual implementation; structured errors and provenance survive; documented support/limitations match the tested behavior"
+    "actual CLI/API and graduated docs/examples exercise the shipped behavior through real production entry points",
+    "structured errors retain code, correct original declaration provenance and useful remediation across terminal/JSON paths",
+    "published support, platform, trust, latency and limitation claims match actual evidence and preserve blocked cases as open"
    ],
    "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
@@ -789,7 +831,9 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "Delivery/status/guarantee records agree with run evidence and exact revision; no unresolved required row reported complete; next blocked/ready action recorded"
+    "delivery, plan STATUS and guarantee records agree on exact source revision, report bytes, supported lanes, acceptance results and trusted assumptions",
+    "no pending, blocked or implemented-unverified required row is reported complete by a milestone/epic/release claim",
+    "handoff records name every blocked lane, source of its missing evidence and next executable ready action"
    ],
    "evidence_kinds": ["runner", "review"],
    "evidence_records": [],

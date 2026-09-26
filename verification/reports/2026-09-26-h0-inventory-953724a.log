@@ -1,0 +1,22 @@
+RUNNER_SOURCE_COMMIT=953724a7acaa9e314f145175dee35026f6052f3d
+RUNNER_SOURCE_ROOTS_DIRTY=clean (git status --porcelain --untracked-files=all -- tracked SOURCE_ROOTS empty)
+RUNNER_SOURCE_FINGERPRINT=68ef13d7676043c886626237cff226afdb9d0529f80b4f449fb83f13787e514d
+RUNNER_INPUTS=immutable edition-5 requirements-index.json and CHECKSUMS.sha256, current ledger input sha256 ba82f8637dd40273e8bdc847f6e4f2ed1cf98f136485568b54a28a18d4d1f7e2 before evidence-record insertion; no claim that a source-field comparison proves semantic completeness of each paraphrased conjunctive case.
+RUNNER_TOOL_VERSIONS=Python 3.12.3; sha256sum/coreutils in WSL2 linux/amd64; git source-fingerprint over tracked behavior roots
+RUNNER_COMMANDS=sha256sum -c CHECKSUMS.sha256 (from original bundle); python3 scripts/check_delivery.py --validate (from current checkout); Python one-off parse/compare 178 ID sets and five immutable per-ID fields, registered lanes/cases/kinds, vocabulary and zero verified claim; no test-only implementation or system effect
+
+START_HERE.md: OK
+gripsack-architecture-projects-and-nix-gaps.md: OK
+gripsack-frontend-ecosystems-epic.md: OK
+gripsack-builder-epic.md: OK
+gripsack-tasks-scheduling-epic.md: OK
+gripsack-semantic-change-epic.md: OK
+gripsack-artifact-sharing-epic.md: OK
+requirements-index.json: OK
+
+ok: delivery inventory and declared closure claims
+
+H0_STRUCTURAL=178; executed=178; passed=178; failed=0; skipped=0
+CHECKSUMMED_ORIGINAL_MEMBERS=8/8
+STATUS_COUNTS={'implemented_unverified': 6, 'in_progress': 11, 'pending': 160, 'blocked': 1}
+UNPROVED=The original epic prose remains authoritative; structural comparison alone does not discharge per-case semantic review, future runtime/proof evidence, platform results or global closure.

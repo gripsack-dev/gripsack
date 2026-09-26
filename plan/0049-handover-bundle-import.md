@@ -77,9 +77,12 @@ runner/formal/review evidence kinds; later A/B/E/C/D rows still remain
 pending. Distinct `macos-vm`, native arm64 Mac/launchd, real registry,
 isolated recipient, formal, fuzz and OS-timing lanes prohibit a Linux
 or generic hosted Mac result from inheriting an unrun capability.
-Source-bound H0 inventory review/runner evidence, stronger checker
-kind/obligation enforcement and all required H0/A0/global lane results
-remain open; H0-02 is not verified. A1 (A1-07) implements
+A source-bound structural runner at `953724a` now checks 178/178
+unchanged source IDs/fields and eight checksum-covered bundle members;
+it does **not** establish that every paraphrased case is semantically
+complete. A source-bound semantic review, stronger checker kind/proof
+enforcement and H0/A0/global/platform results remain open; H0-02 is
+not verified. A1 (A1-07) implements
 `scripts/check_delivery.py`: inventory validation, scoped closure
 checking, and the required negative calibration; H0/A0 evidence must
 survive that checker or be repaired, not grandfathered. On 2026-09-24 the
@@ -96,6 +99,27 @@ to **zero** on 2026-09-26. Explicit evidence kinds are now registered
 on every ID too. None of those registrations claims native, VM,
 registry, parser/fuzz or proof execution. Prior invalid claims remain
 under `historical_claims`.
+
+## A3-01 — external TypeScript example CI reveals an unpinned Pixi result
+
+Draft PR #164's real
+[`typescript-env` job](https://github.com/gripsack-dev/gripsack/actions/runs/36223635427/job/108353417188)
+at merge SHA `c833a5188586869194b0a45b3ff0bd7e16fe8fe3`
+built the musl CLI and TypeScript package, typechecked the separate
+`gripsack-dev/example-env-typescript` checkout and passed `grip check`
+for seven modules. `grip apply` then failed safely with E301 for
+`pixi("ripgrep")`: the external example's `locks/laptop.lock` expects
+tree SHA-256 `e1d59570954a22ca864004229d6f64764e9f38fd50a673ad25686a19654cb5af`,
+but the real fetched tree hashed
+`6d8dfc5d348b61743ca908598978dc544737e450c4424bd3c56a8aadeede81dc`.
+The shipped `gripsack-fetch/src/fetch/pixi.rs` always does a private
+`pixi global install --force-reinstall`; the example names no resolved
+version or complete transitive archive lock. This **does not** authorize
+replacing the expected digest with observed bytes, ignoring the
+failing job or advertising A3 parity. A3-01/A3-02's complete frozen
+Rattler lock and native prefix acceptance remain pending; fix the
+producer contract, independently validate bytes, then update the
+separate example repo through its own review and rerun real CI.
 
 ## E0-02 — OS scheduling qualification (systemd lane)
 
@@ -174,8 +198,8 @@ regression smoke, not a release closure claim.
 | Item | Status |
 |---|---|
 | H0-01 reconciliation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): the work was done and gates were observed, but the claim cited this Markdown document, not a bound runner report; baseline `test`/`ts-test` logs show CACHED layers and no log carries a commit marker. Prior claim preserved in the ledger's `historical_claims` |
-| H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 rows lacked lanes/cases and 177 lacked evidence kinds. Original-spec platform/capability lanes, conjunctive case/proof inventories and runner/formal/review evidence kinds are now registered for **all 178/178** IDs, including the four former A1 placeholder rows; zero fields remain unregistered. This data does not verify the source-bound semantic inventory review, runner or global/native/proof acceptance; no new row verified and H0 remains open |
+| H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 rows lacked lanes/cases and 177 lacked evidence kinds. Original-spec platform/capability lanes, expanded global and A1 conjunctive cases/proofs and runner/formal/review kinds are registered for **178/178** IDs. The exact-source structural report `verification/reports/2026-09-26-h0-inventory-953724a.log` (SHA `320e84504d7ab77f4f4b8d8ccdfc62e435cc878b5207317d9d4ed204d0905b9d`) proves 178 original identity/field comparisons and 8/8 unchanged bundle checksums, not semantic completeness of case paraphrases. Review, stronger checker kind/proof enforcement and global/native/proof acceptance remain open; no new row verified or H0 closure claimed |
 | A0-01 implementation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): unit + container gates observed green (archived `verification/reports/2026-09-24-a0-*.log`: cargo test executed, gripsack-fetch 61 passed / 0 failed incl. 13 bottle cases; e2e 245 passed; verify 56 verified 0 errors + 4 mutants; ts-test/model CACHED) but the logs lack commit/dirty binding and the evidence was Markdown |
 | A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, 15 calibrated negatives and `check_architecture.py --self-check` (forbidden direct and aliased target-specific crate edges), both wired into protected CI `test`; v3 schema/parser parity is exercised by the existing Rust acceptance corpus. H0-02 registration is complete, but a source-bound review and stronger per-kind/proof-obligation enforcement in the checker and verified H0/CI/platform lanes remain open; v4 schema and caller cutover remain open |
 | Milestone closures | **retracted 2026-09-24** — H0 and A0 are NOT closed. The earlier `--close-milestone {H0,A0}` pass rested on Markdown-only evidence and handwritten counts (incl. a G-03 `obligations.checked: 50` that contradicts the runner logs' `56 verified, 0 errors`); the ledger's global-gate attestation records were moved to `historical_claims`. Closure now requires source-bound runner evidence per lane plus passing global gates G-01–G-08 under the hardened checker |
-| Next | enforce registered per-ID evidence kinds and expected proof obligations in the delivery checker with adversarial calibration; capture source-bound H0 inventory review/runner and H0/A0/global reports before attempting closure; continue A1 grammar, B0-01 portable evidence and plan/0048 NEXT. Native Mac/VM, registry and prover cases require independent real evidence |
+| Next | enforce per-ID evidence kinds and expected proof obligations in the delivery checker with adversarial calibration; obtain source-bound semantic H0 inventory review and H0/A0/global reports before attempting closure; continue A1 grammar, B0-01 portable evidence and plan/0048 NEXT. Native Mac/VM, registry and prover cases require independent real evidence |

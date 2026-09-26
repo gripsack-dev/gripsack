@@ -2090,9 +2090,35 @@ wire change, second grant builder or permissive path fallback.
 
 | Leaf | Class / target | Prerequisite, owner and implementation | State / evidence | Unmet acceptance |
 |---|---|---|---|---|
-| M0-1.1a | NEXT / M0 | Existing plan/0013 D2 permission boundary and current E132 registry; allocate a new core E-code for an unsafe comma-containing grant path and render its actual path safely in terminal/JSON without changing frontend allocations. | **Implementing**; registry/schema/consumer migration pending. | Named diagnostic generated and generator freshness; no false IR version bump. |
-| M0-1.1b | NEXT / M0 | One `commands/frontend.rs` read-grant admission checks repo, inputs, embedded driver directory and canonical optional pin before interpolating `--allow-read`; reject `,` before reading an admitted pinned package or spawning Deno. Preserve legitimate symlinked pin and no-pin behavior. | **Implementing**; previous source used raw `join(",")` without path validation. | Original canary grant-injection witness must fail with path-specific code; every grant path validated and no alternate unchecked caller. |
-| M0-1.1c | NEXT / M0 | Sandboxed HOME real-CLI offline witness for a canonical comma pin that grants an outside canary; adjacent normal pinned-package, nonpackage symlink and real Deno driver cases plus named registry tests. | **Implementing**; source-bound failing-before/pass-after and protected Linux/native Mac evidence pending. | No argument that an invalid pin or Linux-only test proves filesystem containment, R1 source approval or the other §1.2/M0 leaves; release blocked. |
+| M0-1.1a | NEXT / M0 | Existing plan/0013 D2 permission boundary and E132 registry; `schema/diagnostics.json` allocates core-only E133 for an unsafe comma-containing read-grant path. Generated Rust has 38 core IDs, five existing TypeScript frontend allocations; no IR wire/version change. | **Implemented-unverified** at `953724a`: Docker Rust generator freshness/mutant calibration passed; terminal and `check --json` both report E133 naming the actual refused path. | Protected exact-head CI/native Mac and complete release matrix open; diagnostic does not prove filesystem containment or Deno internals. |
+| M0-1.1b | NEXT / M0 | One `commands/frontend.rs::admit_read_grant` checks the repo, inputs, embedded frontend and canonical optional pin before interpolating `--allow-read`; typed `FrontendRunError::Grant` reaches `probe.rs`'s existing sink before spawn. A valid out-of-repo pin still earns only its named package grant; no alternate unchecked command caller. | **Implemented-unverified** at `953724a`: real old-source comma-pin witness read an outside canary and exited 0; new real CLI returns E133, while one committed-source Rust test covers all three built-in grant positions and normal pin tests stay green. | Race/OS path-resolution limits, R1 approval and the other M0 evaluator flaws remain open; native Mac/VM and protected full CI are separate. |
+| M0-1.1c | NEXT / M0 | Sandbox HOME offline real-CLI pin canary, comma repo and frontend home; ordinary external package pin and nonpackage-symlink controls; actual Deno driver pin matrix and JSON parity. | **Implemented-unverified** at `953724a`: the source-bound local report below binds one Rust, five real CLI and twelve real Deno driver checks (18/18); dirty/live build five-gate transcript shows fresh Rust, e2e 311/311 and Verus 72/0 with seven mutants, but cached TS/TLC layers. | Exact-head protected Linux/native Mac check and required R5/M-V7 proof correspondence unrun; no claim that §1.2 or the whole handover/release is verified. |
+
+The committed-source `953724a7acaa9e314f145175dee35026f6052f3d`
+focused receipt is
+`verification/reports/2026-09-26-m0-grants-953724a.log`
+(SHA `861c6dce2000c764e77a54244ddbafa3cd812c9dbcd4b18d189114c61a61fbc7`,
+SOURCE_ROOTS fingerprint
+`68ef13d7676043c886626237cff226afdb9d0529f80b4f449fb83f13787e514d`):
+**18 executed, 18 passed, zero failed/skipped**, with clean tracked
+source roots before/after. One Rust unit covers the three mandatory
+grant positions; five real CLI cases cover the original comma-pin
+canary, a comma repo and frontend home, a valid external SDK pin and a
+nonpackage symlink; twelve Deno driver tests exercise ordinary pins.
+The original bug is a read-grant escape, not proof of a filesystem
+write or credential theft. Its previous real-CLI canary check exited
+0; afterward terminal/JSON E133 abort before frontend eval.
+
+The local five-gate archive
+`verification/reports/2026-09-26-m0-grants-local-five-gates.log`
+(SHA `8efaa16213c359407583dd8fcdadc66d84277771d7021db13e52e5c0ec7c5a82`)
+observed fresh Rust fmt/clippy/tests, **311/311 real e2e** and fresh
+Verus **72/0** with seven named mutants on the `953724a` source tree;
+TypeScript and TLC RUN layers were explicitly **CACHED**. The full
+job did not record a runner-time source-clean assertion, so
+source-equivalence is **[INFERENCE]**, not exact-commit protected CI;
+the separate focused receipt supplies the committed-source boundary
+execution. Neither report qualifies native Mac/VM, TLAPS or release.
 
 ### M0 CI advisory — independently discovered release blocker
 
@@ -2104,8 +2130,37 @@ the existing `rustls 0.23.43` lock has
 whose minimum patched release is 0.23.45. This is a real failed
 release gate, not an optional scan or waiver. `gripsack-fetch` is the
 direct TLS owner; the same rustls-only feature policy and ureq caller
-remain. A targeted Docker-builder `cargo update -p rustls --precise
-0.23.45` changed only that locked crate. The source is currently
-**implementing/unverified** until a fresh protected `audit` check on
-the resulting PR head passes, and the pinned Docker Rust/e2e/release
-paths are checked. No published release is authorized by the patch.
+remain. `crates/gripsack-fetch/Cargo.toml` now requires rustls at
+least 0.23.45; a targeted Docker-builder
+`cargo update -p rustls --precise 0.23.45` changed only the locked rustls
+crate. The protected [`audit` job](https://github.com/gripsack-dev/gripsack/actions/runs/36223635393/job/108353417198)
+then **passed** at PR merge SHA
+`c833a5188586869194b0a45b3ff0bd7e16fe8fe3` containing source
+`953724a`. The local five-gate archive above passed with fresh Rust,
+real e2e 311/311 and Verus 72/0; TypeScript/TLC layers were cached.
+Separate reviewable hotfix PR #165 carries only the patched dependency
+to main. Protected `typescript-env` still fails on the old unpinned
+external Pixi ripgrep tree (`plan/0049`, A3-01), not a reason to ignore
+its hash. Native Mac/VM and other release evidence remain separate.
+No public release is authorized by the patched audit result.
+
+### M0 §1.2 — repo environment, credential audience and TLS boundary
+
+Responsibility/dependency map for the next executable packet:
+`gripsack-config` admits declared build-time variable names;
+`gripsack-exec::facts` detects operator-owned facts before repo
+configuration may influence a subprocess; `gripsack-fetch::http`
+captures operator-owned credential audiences and sends bearer headers
+only to HTTPS origins; `gripsack-exec` and fetch child-process owners
+attach admitted build/proxy/CA variables to their commands rather than
+calling process-global `set_var`; `commands/eval.rs` orchestrates
+these handoffs and never owns a second HTTP policy. No IR wire change;
+the credential-routing TLA+ model and real adapter must agree.
+
+| Leaf | Class / target | Prerequisite, owner and implementation | State / evidence | Unmet acceptance |
+|---|---|---|---|---|
+| M0-1.2a | NEXT / M0 | Remove repo control of facts and detector executable selection: host facts are observed before repo build env, with a qualified libc detector or operator-only PATH. | **Pending**; current global `[eval.env]` mutation precedes `facts::detect`, and the original repo PATH shim executed during `grip check`. | Real PATH shim fails-before/post-fix, facts parity on Linux/native Mac, no imported build env affects evaluator choice. |
+| M0-1.2b | NEXT / M0 | `gripsack-config` rejects credential tokens and `GH_HOST`/`GITHUB_HOST` audiences from `[eval.env]` with a source-labeled error; `gripsack-fetch::http::Policy` captures operator authority without re-reading a repo override. | **Pending**; old GH_HOST-to-dummy-token loopback witness remains a demonstrated boundary failure. | Reproduce and reject audience rebind before network I/O; preserve valid operator-owned enterprise routing and proxy/CA inputs. |
+| M0-1.2c | NEXT / M0 | Replace process-global `set_var` with explicit admitted build/fetch child env maps and scoped HTTP proxy/CA configuration. Every existing producer, plugin and child consumer must receive only its declared phase variables; the evaluator and provisioning clients must not. | **Pending**; `test_eval_env_reaches_build_steps` remains a mandatory real CLI positive, not an excuse to drop `[eval.env]`. | All callers migrated, build-time certificate/proxy variables work, no original process env mutation or hidden credential audience copy. |
+| M0-1.2d | NEXT / M0 | Bearer authorization is HTTPS-only for public/enterprise and explicit registry credentials. Migrate dummy-token loopback HTTP fixtures to local TLS or an isolated explicitly test-only seam; production has no loopback exception. | **Pending**; current `http::Policy::header` matches host only and an HTTP fixture can carry a bearer header. | Real local TLS positive, HTTP wrong-scheme negative, redirects/wrong-host cases and no credential logged or sent in cleartext. |
+| M0-1.2e | NEXT / M0 | Join the three original demonstrated probes, source-bound terminal/JSON errors, ordinary build env, HTTP policy tests and production credential-routing TLA+ bridge with attributable mutants. | **Pending**; no §1.2 behavior or proof has been claimed by §1.1/§1.3/§1.4. | Full M0 acceptance, exact-source Docker/CI/native Mac and required R5/M-V7 proof-to-effect boundaries; release remains blocked. |
