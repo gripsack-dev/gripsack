@@ -191,6 +191,12 @@ ownership change, no archive containment theorem, and no A2/edition-5
 row is verified by this receipt (the passing required CI covers the
 whole tree at `23d4940`, not a containment-specific proof job).
 
+## B1 bridge protocol — first backend component, not a backend
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-26-b1-protocol-d656075.log` | `893b9b1a254e882ce0cbe98b545300c49c216d03fcc181ea8dd1445c61b0a3fa` | Exact source `d656075`: crate `gripsack-buildkit` — bounded framed Rust↔Go wire contract (header-checked 256 KiB cap before allocation, strict tagged shapes, digest-bound Submit, 64 KiB log chunks, exact-pair negotiation) and the pure `EventGate` fence kernel (epoch fencing, exactly-one terminal, duplicate-terminal/cancellation/log-budget rejection). Focused units 7/7; fuzz target `buildkit_protocol` registered in `fuzz/run.py` with 7 shipped seeds replaying through the production decoder; six gates on identical bytes (fresh Rust/Deno 67/67/e2e **322/322**/TLC/Verus **72/0**+7 mutants/fuzz). B1-03 partial: no Go bridge, transport, worker or lowering; `grip` unchanged; no B row verified. Process defect caught pre-commit: the first fuzz run silently skipped the new target (run.py keeps its own TARGETS) |
+
 ## H0 edition-5 inventory — source-bound structure, not semantic closure
 
 | report | sha256 | observed execution |

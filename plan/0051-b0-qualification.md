@@ -212,6 +212,39 @@ The later exact-source `ce3c7e0` required `test` job succeeded with
 the checked-byte correction; the older failures stay archived as
 regressions, never counted as successful cases.
 
+
+
+## B1 start — the bridge wire contract (2026-09-26)
+
+The first production component of the backend landed at exact source
+`d6560758cd4decbb3272926fba3cc5c8bd60b817`: crate `gripsack-buildkit`
+with `protocol` — the bounded Rust↔Go frame transport and pure fence
+kernel from this plan's B1 fences section. Length-prefixed JSON
+frames validate their header against a 256 KiB cap BEFORE any body
+allocation; all messages are strict tagged shapes (unknown fields
+reject); `Submit` binds the exact validated definition/exporter
+digests and length; log chunks cap at 64 KiB after base64 decode;
+negotiation accepts exactly protocol version 1. The `EventGate`
+kernel enforces epoch fencing (stale/future rejection), exactly one
+terminal per session with duplicate-terminal rejection,
+ cancellation-fences-acceptance, and a 4096-chunk log budget.
+Dependencies: base64/serde/serde_json/thiserror/sha2 only — no
+IR/store/exec/fetch coupling (Epic B §5 boundaries).
+
+Evidence: focused unit group 7/7 plus a real fuzz target
+(`buildkit_protocol`, registered in `fuzz/run.py`, 7 shipped seeds;
+the round-trip law and gate-feeding run through the production
+decoder) and all six gates on the identical tree (fresh Rust
+fmt/clippy/tests, Deno 67/67, e2e 322/322, TLC, Verus 72/0+7
+mutants, fuzz replay). Receipt
+`verification/reports/2026-09-26-b1-protocol-d656075.log`, SHA-256
+`893b9b1a254e882ce0cbe98b545300c49c216d03fcc181ea8dd1445c61b0a3fa`.
+Scope honesty: B1-03 partial — no Go bridge speaks this contract yet,
+no transport/I/O, no worker provisioning, no LLB lowering;
+`grip` behavior unchanged and no B row verified. A process defect was
+caught and fixed pre-commit: the first fuzz-gate run silently skipped
+the new target because `fuzz/run.py` keeps its own TARGETS tuple.
+
 ## Record
 
 | Item | Status |
@@ -220,4 +253,5 @@ regressions, never counted as successful cases.
 | B0-01 harness | **verified** in `linux-amd64` and `container-gates` at source `ce3c7e0`: **6/6** real Linux and required Docker28 CI job, with three real-worker negatives and four loaded-image mutants; qualification only, no production backend |
 | B0-02 Mac VM | blocked (no Mac) |
 | B0-03 footprint | in_progress: Linux measurements + zero-builder baseline recorded; VM lane and full budgets at B1 |
-| Next | B1 gated on A1 + qualified lane; Mac gate stays open |
+| B1-03 protocol | in_progress: wire contract + fence kernel landed at `d656075` (crate `gripsack-buildkit`, fuzz target with seeds, six gates green; receipt `2026-09-26-b1-protocol-d656075.log`); no Go bridge/transport/worker speaks it yet |
+| Next | B1 continues: Go bridge speaking the protocol, worker lease kernels, then B2 lowering; Mac gate stays open |
