@@ -1,0 +1,122 @@
+RUNNER_SOURCE_COMMIT=56b1581c6bf0ef382d42da2d4604cff862f38bf6
+RUNNER_SOURCE_FINGERPRINT=a145624cac62ebd3a39741ccc21042d6c8d20dc6086a0454bdc726374a40fe38
+RUNNER_SOURCE_ROOTS_DIRTY=clean before and after direct checks
+RUNNER_TOOL_VERSIONS=Python 3.12.3; git; Docker Compose v5.5.0 (container suite separately observed)
+RUNNER_INPUTS=Edition-5 178-row live ledger and synthetic source-committed H0/A0 fixture. Requirement semantics and missing 39 formal proof catalogs are not discharged by a checker.
+
+RUNNER_COMMAND=python3 scripts/check_delivery.py --validate
+ok: delivery inventory and declared closure claims
+
+RUNNER_EXIT_INVENTORY=0 (success)
+
+RUNNER_COMMAND=python3 scripts/delivery_checker_calibration.py
+  valid source-bound H0/A0 fixture closes; future rows remain pending
+  review-only source-bound row admits its named cases without a fake runner
+  missing required row rejected
+  cyclic prerequisite rejected
+  undeclared evidence-kind vocabulary rejected
+  fake verified row without a runner report rejected
+  blocked Mac lane rejected
+  zero proof obligations rejected
+  proof row with runner and review but no formal evidence rejected
+  runner carrying self-reported obligations cannot impersonate formal evidence
+  H0-02 cannot close before proof inventories are named
+  wrong formal proof name cannot cover a frozen obligation
+  required review kind cannot be replaced by runner plus formal evidence
+  invented proof ID absent from real report bytes rejected
+  observed proof count below frozen expected minimum rejected
+  failed positive case rejected
+  mutant failing for a missing tool rejected
+  evidence from a different revision rejected
+  unexplained downgrade rejected
+  Markdown-only completion evidence rejected
+  unreported required lane rejected
+  changed runner report bytes rejected
+  inflated counts absent from the runner report rejected
+  CI rejects a declared incomplete milestone
+  pending future scope cannot close
+  identical-source evidence reuse across an evidence-only commit accepted
+  changed-source reuse rejected despite an unchanged evidence receipt
+delivery checker calibration: 23 negative cases rejected, valid fixtures accepted
+
+RUNNER_EXIT_CALIBRATION=0 (success)
+
+RUNNER_COMMAND=python3 scripts/check_architecture.py --self-check
+ok: boundary, rustls-only, member-discovery and missing-crate negatives all rejected
+ok: policy, IR and store dependency boundaries are closed
+
+RUNNER_EXIT_ARCHITECTURE=0 (success)
+
+RUNNER_COMMAND=python3 scripts/check_delivery.py --close-milestone H0 --release 56b1581c6bf0ef382d42da2d4604cff862f38bf6
+FAIL delivery closure claim (H0) (65 violation(s)):
+  - H0-01: milestone H0 requires this row verified; status='implemented_unverified'
+  - H0-02: milestone H0 requires this row verified; status='in_progress'
+  - G-01: milestone H0: no per-milestone attestation for H0
+  - G-01: pure: no passing review evidence
+  - G-01: pure: no passing source-bound runner report
+  - G-01: pure: conjunctive cases without passing evidence: ['declarations, dead paths, test-only implementations and mocks do not count as executable production wiring', 'trace every claimed milestone behavior from a user-visible CLI/API entry through admitted domain values and production policy to actual effect or output']
+  - G-01: container-gates: no passing review evidence
+  - G-01: container-gates: no passing source-bound runner report
+  - G-01: container-gates: conjunctive cases without passing evidence: ['declarations, dead paths, test-only implementations and mocks do not count as executable production wiring', 'trace every claimed milestone behavior from a user-visible CLI/API entry through admitted domain values and production policy to actual effect or output']
+  - G-02: milestone H0: no per-milestone attestation for H0
+  - G-02: pure: no passing review evidence
+  - G-02: pure: no passing source-bound runner report
+  - G-02: pure: conjunctive cases without passing evidence: ['a skipped/mocked/stale/cached but unexecuted case cannot satisfy a required supported-success fixture', 'actual runner/prover commands, nonempty source-bound reports, passes/failures/skips and complete case coverage agree with declared expectations', "register each claimed lane's named positive and negative cases with expected execution and formal-obligation counts before judging results"]
+  - G-02: container-gates: no passing review evidence
+  - G-02: container-gates: no passing source-bound runner report
+  - G-02: container-gates: conjunctive cases without passing evidence: ['a skipped/mocked/stale/cached but unexecuted case cannot satisfy a required supported-success fixture', 'actual runner/prover commands, nonempty source-bound reports, passes/failures/skips and complete case coverage agree with declared expectations', "register each claimed lane's named positive and negative cases with expected execution and formal-obligation counts before judging results"]
+  - G-03: milestone H0: no per-milestone attestation for H0
+  - G-03: missing named proof obligation inventory
+  - G-03: missing positive expected proof obligation minimum
+  - G-03: pure: no passing formal evidence
+  - G-03: pure: no passing review evidence
+  - G-03: pure: no passing source-bound runner report
+  - G-03: pure: conjunctive cases without passing evidence: ['discharge the focused TLAPS invariants required by that milestone, distinguishing bounded model exploration from general inductive proof', 'do not infer a proof family from a later unrelated milestone or admit a missing required decision to report completion', 'name every checked obligation and semantic mutant, show non-vacuity witnesses and intended negative attribution, and record trusted parser/OS/hash/tool assumptions', 'prove required Verus decision kernels on the same production-used functions and admitted domain values rather than a proof-only clone', 'run the TLC interleaving/failure configurations required by the owning milestone with identifiable positive and negative outcomes']
+  - G-03: pure: zero executed proof obligations or expected/checked mismatch
+  - G-03: container-gates: no passing formal evidence
+  - G-03: container-gates: no passing review evidence
+  - G-03: container-gates: no passing source-bound runner report
+  - G-03: container-gates: conjunctive cases without passing evidence: ['discharge the focused TLAPS invariants required by that milestone, distinguishing bounded model exploration from general inductive proof', 'do not infer a proof family from a later unrelated milestone or admit a missing required decision to report completion', 'name every checked obligation and semantic mutant, show non-vacuity witnesses and intended negative attribution, and record trusted parser/OS/hash/tool assumptions', 'prove required Verus decision kernels on the same production-used functions and admitted domain values rather than a proof-only clone', 'run the TLC interleaving/failure configurations required by the owning milestone with identifiable positive and negative outcomes']
+  - G-03: container-gates: zero executed proof obligations or expected/checked mismatch
+  - G-04: milestone H0: no per-milestone attestation for H0
+  - G-04: pure: no passing review evidence
+  - G-04: pure: no passing source-bound runner report
+  - G-04: pure: conjunctive cases without passing evidence: ['meaningful private domain types and cohesive modules keep parser, pure policy, effects, supervision and rendering boundaries discoverable', 'new process/transport protocols and effects have explicit byte, time, memory, identity and cleanup bounds with real failure behavior', 'review pins, maintenance, target support and actual need while preserving Rust, rustls-only TLS and musl static-core constraints', 'review the owning A §8.2, B §6.1 and applicable C §7, D §9 or E §8 responsibility and dependency direction before calling a slice landed']
+  - G-04: container-gates: no passing review evidence
+  - G-04: container-gates: no passing source-bound runner report
+  - G-04: container-gates: conjunctive cases without passing evidence: ['meaningful private domain types and cohesive modules keep parser, pure policy, effects, supervision and rendering boundaries discoverable', 'new process/transport protocols and effects have explicit byte, time, memory, identity and cleanup bounds with real failure behavior', 'review pins, maintenance, target support and actual need while preserving Rust, rustls-only TLS and musl static-core constraints', 'review the owning A §8.2, B §6.1 and applicable C §7, D §9 or E §8 responsibility and dependency direction before calling a slice landed']
+  - G-05: milestone H0: no per-milestone attestation for H0
+  - G-05: pure: no passing review evidence
+  - G-05: pure: no passing source-bound runner report
+  - G-05: pure: conjunctive cases without passing evidence: ['each advertised Linux, native Mac, virtualization-capable Mac and other capability claim has separate actual evidence; one platform result never qualifies another', 'native acquisition, check and preview never download/bootstrap optional builder or mutate builder state merely to present a plan', 'no network restriction or offline request silently gains undeclared network, credential or weaker transport authority', 'no requested privileged capability silently falls back to privileged, broad-mount or disabled-sandbox execution', 'no unsupported execution or host-capability request silently falls back to an unqualified host path']
+  - G-05: container-gates: no passing review evidence
+  - G-05: container-gates: no passing source-bound runner report
+  - G-05: container-gates: conjunctive cases without passing evidence: ['each advertised Linux, native Mac, virtualization-capable Mac and other capability claim has separate actual evidence; one platform result never qualifies another', 'native acquisition, check and preview never download/bootstrap optional builder or mutate builder state merely to present a plan', 'no network restriction or offline request silently gains undeclared network, credential or weaker transport authority', 'no requested privileged capability silently falls back to privileged, broad-mount or disabled-sandbox execution', 'no unsupported execution or host-capability request silently falls back to an unqualified host path']
+  - G-06: milestone H0: no per-milestone attestation for H0
+  - G-06: pure: no passing review evidence
+  - G-06: pure: no passing source-bound runner report
+  - G-06: pure: conjunctive cases without passing evidence: ['changed persisted locks, manifests, IR-derived records and receipts retain compatible old readers or a deliberate source-bound migration', 'existing configuration ownership and captured prior lineage survive changed operations and remain adoptable and rollback-safe', 'generation publication, unfinished journal recovery and all retained artifact/project/process/job roots remain protected through GC and crash paths', 'repair never discards valid retained objects or corrupt recovery evidence to manufacture a clean result']
+  - G-06: container-gates: no passing review evidence
+  - G-06: container-gates: no passing source-bound runner report
+  - G-06: container-gates: conjunctive cases without passing evidence: ['changed persisted locks, manifests, IR-derived records and receipts retain compatible old readers or a deliberate source-bound migration', 'existing configuration ownership and captured prior lineage survive changed operations and remain adoptable and rollback-safe', 'generation publication, unfinished journal recovery and all retained artifact/project/process/job roots remain protected through GC and crash paths', 'repair never discards valid retained objects or corrupt recovery evidence to manufacture a clean result']
+  - G-07: milestone H0: no per-milestone attestation for H0
+  - G-07: pure: no passing review evidence
+  - G-07: pure: no passing source-bound runner report
+  - G-07: pure: conjunctive cases without passing evidence: ['actual CLI/API and graduated docs/examples exercise the shipped behavior through real production entry points', 'published support, platform, trust, latency and limitation claims match actual evidence and preserve blocked cases as open', 'structured errors retain code, correct original declaration provenance and useful remediation across terminal/JSON paths']
+  - G-07: container-gates: no passing review evidence
+  - G-07: container-gates: no passing source-bound runner report
+  - G-07: container-gates: conjunctive cases without passing evidence: ['actual CLI/API and graduated docs/examples exercise the shipped behavior through real production entry points', 'published support, platform, trust, latency and limitation claims match actual evidence and preserve blocked cases as open', 'structured errors retain code, correct original declaration provenance and useful remediation across terminal/JSON paths']
+  - G-08: milestone H0: no per-milestone attestation for H0
+  - G-08: pure: no passing review evidence
+  - G-08: pure: no passing source-bound runner report
+  - G-08: pure: conjunctive cases without passing evidence: ['delivery, plan STATUS and guarantee records agree on exact source revision, report bytes, supported lanes, acceptance results and trusted assumptions', 'handoff records name every blocked lane, source of its missing evidence and next executable ready action', 'no pending, blocked or implemented-unverified required row is reported complete by a milestone/epic/release claim']
+  - G-08: container-gates: no passing review evidence
+  - G-08: container-gates: no passing source-bound runner report
+  - G-08: container-gates: conjunctive cases without passing evidence: ['delivery, plan STATUS and guarantee records agree on exact source revision, report bytes, supported lanes, acceptance results and trusted assumptions', 'handoff records name every blocked lane, source of its missing evidence and next executable ready action', 'no pending, blocked or implemented-unverified required row is reported complete by a milestone/epic/release claim']
+  - milestone H0: claim cites no verified delivery rows — empty claims are not closure
+
+RUNNER_EXIT_LIVE_H0_NEGATIVE=1 (expected incomplete closure)
+
+RUNNER_SOURCE_ROOTS_DIRTY_AFTER=clean
+H0_KIND_CALIBRATION=23
+RUNNER_COUNTS=23 named negative mutations rejected, 0 unexpected passes/failures/skips; fully evidenced synthetic H0/A0 and review-only positive accepted; live H0 correctly refuses completion.

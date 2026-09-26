@@ -181,10 +181,13 @@ and actual release gates remain open.
 | report | sha256 | observed execution |
 |---|---|---|
 | `2026-09-26-h0-inventory-953724a.log` | `320e84504d7ab77f4f4b8d8ccdfc62e435cc878b5207317d9d4ed204d0905b9d` | Committed source `953724a`, fingerprint `68ef13d7676043c886626237cff226afdb9d0529f80b4f449fb83f13787e514d`: original eight checksums pass and 178/178 IDs and five immutable index fields match the live ledger; all lanes/cases/kinds are nonempty and no ID is verified. The pre-record ledger input digest is in the report; inserting this receipt changes the ledger bytes |
+| `2026-09-26-h0-kinds-56b1581.log` | `d4feaa90377df2bb2e757dfb437c51334071ff1c89578fef713f24dd14e78964` | Committed source `56b1581`, fingerprint `a145624cac62ebd3a39741ccc21042d6c8d20dc6086a0454bdc726374a40fe38`: synthetic H0/A0 and review-only positives passed, **23/23** named negative checker mutants rejected (wrong kind, runner masquerading as formal, missing proof names/floors/report bytes, skipped lanes and stale source); live H0 closure correctly fails with missing proof catalogs and pending H0/A0 rows. Calibration is not an actual proof or independent semantic review |
 
-This is a structural check, not independent semantic review of every
-expanded acceptance case. H0-02 remains in_progress; per-kind/proof
-checker enforcement, global-gate evidence and H0 closure remain open.
+Both reports cover the inventory/checker structure, not independent
+semantic review of all 178 acceptance cases. H0-02 stays
+`in_progress`: the 39 formal rows need actual named proof catalogs
+and count floors, and global/native/VM gates require their own
+reports. The synthetic checker fixture cannot close H0 or A0.
 
 ## M0 §1.1 comma-grant rejection — committed local behavior, no release
 
@@ -208,6 +211,7 @@ NEXT/proof work are still open.
 |---|---|---|
 | `2026-09-26-m0-env-1c693ef.log` | `ac2b231938c22fba1ca1abd192b5453edf4045b13e0d655681f74c9140ebf3d1` | Two direct Rust config/HTTP admission tests and ten sandboxed real CLI build-shell, structured PATH, plugin, Deno-isolation, proxy/CA, local TLS, wrong-/same-host redirect, E400 terminal/JSON and HTTP-cleartext cases passed **12/12**, zero skipped. Direct TLC ran four credential-routing cfgs: clean base plus three named base-authority/redirect/repo-audience counterexamples, **4/4**. The real pre-fix PATH detector shim ran, and the old GH_HOST rebind let a dummy token reach an HTTP fixture; neither occurs on this source |
 | `2026-09-26-m0-env-local-five-gates.log` | `fd4edb5f0f720971e5e77b2fa0b01842ef189b9d24e438287715fc70538c745d` | Local final-source Docker observations: fresh Rust fmt/clippy/tests, full **319/319** real e2e, uncached direct Deno **64/64** plus examples typecheck, direct full TLC in the committed-source report, fresh Verus **72/0** with seven named mutants. Tracked SOURCE_ROOTS match `1c693ef`; the four compose outputs lack runner-time commit markers, so full-gate exact-head attribution is **[INFERENCE]**, not protected CI or a native Mac proof |
+| `2026-09-26-m0-env-macos-ci-1c693ef.log` | `31e7a23e1377a146df0ef8fda2bef473a30cd831162325a2d213736dec71f3c8` | GitHub [e2e-macos job 108365100726](https://github.com/gripsack-dev/gripsack/actions/runs/36227812302/job/108365100726) checked out exact `1c693ef` and built real grip on macOS **14.8.9 arm64** with pinned Rust 1.98.0/Deno 2.9.6/Python 3.12.10. Full native flow **319/319 passed**, including the new scoped env/TLS/redirect cases. This is neither nested Mac-VM/launchd scheduling qualification nor branch-protection enforcement |
 
 The same implementation source passed the local Docker Rust
 fmt/clippy/tests gate and the full **319/319** real CLI/Deno e2e suite;
@@ -215,8 +219,11 @@ an uncached direct TypeScript/frontend run checked **64/64** Deno tests
 plus strict example typecheck; final-source Verus checked **72**
 obligations with zero errors and seven named mutants rejected. The
 earlier 316-case/72-obligation snapshots are historical, not counted
-as final-source evidence. The native Mac job in manually dispatched
-CI workflow `36227812302` is pending; dispatch alone does not enforce
-branch protection or qualify Mac-VM capability.
-This receipt is a selected plan/0048 control, not H0/G-05
-verification, M-V7 proof or a release.
+as final-source evidence. Manually dispatched CI run
+[`36227812302`](https://github.com/gripsack-dev/gripsack/actions/runs/36227812302)
+checked out exact `1c693ef`: its Linux `test`, native arm64 Mac
+`e2e-macos`, `audit`, `fuzz` and `docs` jobs all passed. The later
+checker-source `56b1581` differs and needs its own CI; dispatch
+does not enforce branch protection or qualify Mac-VM. The receipt is
+a selected plan/0048 control, not H0/G-05 verification, M-V7 proof or
+a release.

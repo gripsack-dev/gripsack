@@ -117,6 +117,16 @@ is a checker hardening packet, **not** a proof: all 39 real formal rows
 still need semantically reviewed named obligations/count floors before
 any H0-02 or milestone closure claim.
 
+Committed-source checker receipt
+`verification/reports/2026-09-26-h0-kinds-56b1581.log`
+(SHA-256 `d4feaa90377df2bb2e757dfb437c51334071ff1c89578fef713f24dd14e78964`)
+binds source `56b1581c6bf0ef382d42da2d4604cff862f38bf6`,
+fingerprint `a145624cac62ebd3a39741ccc21042d6c8d20dc6086a0454bdc726374a40fe38`
+and clean tracked roots before/after the direct runner: **23/23**
+calibrated negatives rejected, synthetic H0/A0 plus review-only
+positive accepted. Actual `--close-milestone H0` fails on the absent
+G-03 proof catalog and still-pending H0 rows; no live closure.
+
 ## A3-01 — external TypeScript example CI reveals an unpinned Pixi result
 
 Draft PR #164's real
@@ -226,6 +236,6 @@ regression smoke, not a release closure claim.
 | H0-01 reconciliation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): the work was done and gates were observed, but the claim cited this Markdown document, not a bound runner report; baseline `test`/`ts-test` logs show CACHED layers and no log carries a commit marker. Prior claim preserved in the ledger's `historical_claims` |
 | H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 rows lacked lanes/cases and 177 lacked evidence kinds. Original-spec lanes, conjunctive cases/proofs and runner/formal/review kinds are registered for **178/178** IDs. The exact-source structural report `verification/reports/2026-09-26-h0-inventory-953724a.log` (SHA `320e84504d7ab77f4f4b8d8ccdfc62e435cc878b5207317d9d4ed204d0905b9d`) proves original identity/field comparisons and 8/8 checksums, not semantic completeness. The checker now enforces per-kind lane coverage and predeclared named proof IDs/minima on closure; **all 39** real formal rows still lack semantically reviewed explicit proof catalogs. Original-case review, H0/A0/global reports and native/proof acceptance remain open; no row promoted to verified |
 | A0-01 implementation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): unit + container gates observed green (archived `verification/reports/2026-09-24-a0-*.log`: cargo test executed, gripsack-fetch 61 passed / 0 failed incl. 13 bottle cases; e2e 245 passed; verify 56 verified 0 errors + 4 mutants; ts-test/model CACHED) but the logs lack commit/dirty binding and the evidence was Markdown |
-| A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, **23** calibrated negatives plus a review-only positive, and `check_architecture.py --self-check` (forbidden direct and aliased target-specific crate edges), wired into required CI `test`. Real `formal` evidence is now distinct from runner; every declared kind is conjunctive per claimed lane, positive proof counts/name/floor must come from repo-local runner bytes and frozen row catalog. The live inventory stays pending for 39 proof catalogs and semantic H0 case review; H0/CI/native/VM lanes, v4 schema and callers remain open |
+| A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, **23** calibrated negatives plus a review-only positive (source-bound `56b1581` report above), and `check_architecture.py --self-check` (forbidden direct and aliased target-specific crate edges), wired into required CI `test`. Real `formal` evidence is now distinct from runner; every declared kind is conjunctive per claimed lane, named proof IDs/counts must occur in repo-local runner bytes and satisfy the row's predeclared catalog/minimum. The live inventory stays pending for 39 named proof catalogs and semantic H0 case review; H0/CI/native/VM lanes, v4 schema and callers remain open |
 | Milestone closures | **retracted 2026-09-24** — H0 and A0 are NOT closed. The earlier `--close-milestone {H0,A0}` pass rested on Markdown-only evidence and handwritten counts (incl. a G-03 `obligations.checked: 50` contradicting the runner logs' `56 verified, 0 errors`); those claims were moved to `historical_claims`. Closure requires source-bound reports for **each declared kind and lane**, named proof catalogs/floors where formal evidence is mandatory, and passing global gates G-01–G-08. Existing checker calibration is synthetic, not a completion report |
 | Next | name and review proof obligations plus count minima for all 39 real formal rows; obtain a source-bound semantic H0 inventory review and H0/A0/global reports before attempting closure; continue A1 grammar, B0-01 portable evidence and plan/0048 NEXT. Native Mac/VM, registry and prover cases require independent real evidence |

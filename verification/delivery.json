@@ -218,6 +218,27 @@
      "inputs": "Original eight checksum-covered members and generated edition-5 index; live ledger SHA ba82f8637dd40273e8bdc847f6e4f2ed1cf98f136485568b54a28a18d4d1f7e2 before evidence record; exact source commit and clean tracked roots. Verifies syntax/identity/status, not semantic completeness of all paraphrased acceptance cases.",
      "report_marker": "H0_STRUCTURAL=178",
      "counts": {"executed": 178, "passed": 178, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "pure",
+     "date": "2026-09-26",
+     "entry_points": ["scripts/check_delivery.py::validate", "scripts/check_delivery.py::close_claim", "scripts/delivery_evidence.py::coverage_violations", "scripts/delivery_checker_calibration.py::main"],
+     "environment": "WSL2 Linux/amd64; Python 3.12.3; actual 178-row edition-5 ledger and a disposable synthetic H0/A0 git checkout with repo-local runner bytes",
+     "command": "python3 scripts/check_delivery.py --validate; python3 scripts/delivery_checker_calibration.py; python3 scripts/check_architecture.py --self-check; python3 scripts/check_delivery.py --close-milestone H0 --release 56b1581c6bf0ef382d42da2d4604cff862f38bf6 (expected rejection)",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-h0-kinds-56b1581.log",
+     "report_sha256": "d4feaa90377df2bb2e757dfb437c51334071ff1c89578fef713f24dd14e78964",
+     "commit": "56b1581c6bf0ef382d42da2d4604cff862f38bf6",
+     "source_reuse_sha256": "a145624cac62ebd3a39741ccc21042d6c8d20dc6086a0454bdc726374a40fe38",
+     "source_reuse_reason": "Evidence-only ledger/plan/report changes follow the committed checker SOURCE_ROOTS; any future code or proof catalog change needs a new source/input-bound run. This calibration does not establish the semantics of 178 paraphrased cases.",
+     "cases_covered": [],
+     "kind": "runner",
+     "tool_versions": "Python 3.12.3; git; Docker Compose v5.5.0 (container gates separately observed)",
+     "inputs": "Live edition-5 178-ID ledger; synthetic fully evidenced H0/A0 and one review-only verified row; 23 adversarial negatives exercise missing/wrong kind, proof ID/count, absent report bytes, skipped platform, stale source and downgrade. Live H0 closure correctly fails because H0-02 remains in_progress, global proof catalogs and required evidence are absent. This is checker behavior, not owner-reviewed case semantics or a formal proof.",
+     "guarantee_ids": [],
+     "assumptions": ["Disposable synthetic proof report names ProofFixture and one counted check solely to calibrate admission; it is not an actual TLC/TLAPS/Verus theorem.", "Original 39 formal rows and required Mac/VM/registry lanes remain unverified."],
+     "report_marker": "H0_KIND_CALIBRATION=23",
+     "counts": {"executed": 23, "passed": 23, "failed": 0, "skipped": 0}
     }
    ],
    "status_history": [
