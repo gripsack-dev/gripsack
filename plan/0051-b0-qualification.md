@@ -129,50 +129,85 @@ VM lane waits for B1's managed worker; B0-03 stays `in_progress`
 
 ## B0-01 current Linux qualification (2026-09-26)
 
-The committed `6909bbc` source retains the fail-closed B0 driver:
-it parses actual native Rust lock packages rather than rejecting
-harmless comments/tests, checks worker-health/version and
-independent OCI verifier exits, requires Docker-engine load/run,
-then prints `B0_LINUX_QUALIFICATION=6` only after success. Its
-real-worker report
-`verification/reports/2026-09-26-b0-linux-6909bbc.log`
-(SHA-256 `d391667269ca65ffac61b45af133f04fa2fc8c040638f941dc9237e191ac2ea4`,
-fingerprint `b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0`)
-records **6/6** Linux cases: pinned tool/image/Go-module
-identities, three disposable real workers with health/version
-witnesses, static executable after worker/cache removal, two
-independently decoded/reproduced OCI exports, and a separate
-Docker-engine load/run after both workers were destroyed.
+At committed source `ce3c7e0`, the qualification remains a
+disposable Go/LLB harness, **not** a `grip` build backend. The
+driver parses actual native Rust lock dependencies, checks
+worker-health/version and independent OCI verification, and
+prints `B0_LINUX_QUALIFICATION=6` only after an independent
+Docker engine runs the content. Report
+`verification/reports/2026-09-26-b0-linux-ce3c7e0.log`
+(SHA-256 `e9359a12bd81207cbc00175e205a24388650824f642188118af9b7d6ab5c53ea`,
+fingerprint `872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc`)
+contains **6/6** Linux cases: pinned tool/image/Go-module
+identities; three disposable real workers; shared graph/cancel/
+bounded failure; input/credential policy; a retained static
+executable after worker/cache removal; two independently decoded
+and reproduced OCI exports; and Docker-engine load/run. GitHub
+Docker 28 cannot load the original pure OCI layout. The
+independent verifier therefore *first* checks/reproduces both
+OCI exports, then repackages the same verified config/layer bytes
+in a Docker-save tar. The driver compares loaded image platform,
+runtime Env/cwd, tag and exact layer DiffIDs with the OCI
+report before running the expected file. Docker may re-encode
+config metadata and assign a different image ID: no raw Docker
+image-ID equivalence or second BuildKit solve is claimed.
 
-Three same-source negatives reject a native builder dependency
-before worker startup (dirty lock patch digest recorded), an
-actually corrupted exported OCI blob through the independent
-Python verifier and a deliberately failed Docker-engine load
-*after* valid independent OCI verification. None prints the
-six-case success marker. SHA-256 reports:
-`2026-09-26-b0-lock-mutant-6909bbc.log`
-(`7f61e6076fca675e59e31248789eaa64a1a4dd58f347bcdcc87cc12460057d70`),
-`2026-09-26-b0-verifier-mutant-6909bbc.log`
-(`e2292232f0b991b40d6381c9e4e9a89ef5a1d9af829670995559d31e27cb011d`),
-and `2026-09-26-b0-load-mutant-6909bbc.log`
-(`61a8e8a357af6654fd9882305165e2ef321552f5e1edf71148bc5d5a468eeb39`).
-Earlier `8352793`/`0be1eaa` receipts are historical after
-the delivery checker added exhaustive case-lane admission.
+Three same-source real-worker negatives reject a native builder
+dependency before startup, a corrupt OCI blob before conversion
+and an intentionally failed Docker archive load after valid
+independent OCI checks. Their SHA-256 reports are
+`2026-09-26-b0-lock-mutant-ce3c7e0.log`
+(`98077a3c2f47a7693c9cc38c562607788e8a4188596c6c65385853bbd591b10a`),
+`2026-09-26-b0-verifier-mutant-ce3c7e0.log`
+(`bd48a7999c34b1759be2595b00ba4521eefcc88cd4ab2dcb439a7ef8efd14198`),
+and `2026-09-26-b0-load-mutant-ce3c7e0.log`
+(`43c325646a67ea9877cc7339475c9a36fcae1965cadd3b7e3605268c0ccbeeba`).
+Four further substitutions in an *actual* loaded Docker image
+inspection (tag, platform, Env, layer DiffID) each fail their
+named production-used checker condition; report
+`2026-09-26-b0-loaded-mutants-ce3c7e0.log`
+(`5cb91dbb82e4ae43705899d8acc0de2167333129ec1fa953c7ee3aee44ff76f6`).
+Earlier `8352793`/`0be1eaa`/`6909bbc` local receipts are
+historical under changed source roots.
 
 The B0-01 `linux-amd64` lane is verified. Its `container-gates`
-lane is wired into the **required** CI `test` job, but is not verified
-until an exact-source successful job/report actually runs this harness
-alongside all five Compose gates. The row remains
-`implemented_unverified`. B0-02's Apple Silicon virtualization/VM
-lane remains blocked; the privileged Linux qualification worker
-is not B1's managed Mac worker.
+lane runs the real harness inside the **required** PR `test` job;
+the B0 step passed on Docker 28 at exact source `ce3c7e0`.
+The full job, including real e2e/TLC/Verus, has not yet finished:
+the lane and row remain `implemented_unverified` until a passing
+exact-source job/report is observed. B0-02 Apple Silicon Mac-VM
+remains blocked; B1 managed worker/protocol/lowering are not landed.
+
+### Required CI loader refusals and checked-byte correction (2026-09-26)
+
+At exact source `0be1eaa`, protected draft PR #164's required
+[`test` job](https://github.com/gripsack-dev/gripsack/actions/runs/36235965010/job/108387656393)
+passed delivery calibration, architecture, Rust, TypeScript and real
+Linux e2e **319/319**. The pinned B0 real daemon and independent
+Python OCI verifier then produced and reproduced valid exports,
+but `docker load` **rejected** the first layout; B0 failed closed.
+TLC and Verus were skipped by CI and cannot be counted from that run.
+The actual job step is archived byte-exact in
+`verification/reports/2026-09-26-b0-ci-failed-0be1eaa.log`
+(SHA-256 `5e021075706371754dbd3661c1544470cc6645264247639eb487fd118f525b5b`).
+The CI checkout had saved Docker's refusal only to a gitignored
+`probe4-load.txt`; the log could not establish its precise cause.
+Source `fc67212` printed the actual failure: CI Docker **28.0.4**
+tried `/blobs/json` while importing a pure OCI-layout tar
+(`verification/reports/2026-09-26-b0-ci-failed-fc67212.log`,
+SHA-256 `dedceed7658c7cd0bb727e04423f50daadad16db6dae5ef274c88b8c18c114c9`).
+Source `ce3c7e0` converts only *independently verified OCI bytes*
+to a legacy Docker-save archive and compares the actual loaded
+image's effective platform/config/DiffIDs before execution.
+No failed job is counted as success; the required full CI gate
+remains open until its exact-source run completes.
 
 ## Record
 
 | Item | Status |
 |---|---|
 | B0-04 inventory | implemented_unverified (binds at B1/B2) |
-| B0-01 harness | implemented_unverified — `linux-amd64` lane source-bound **6/6** and three intended negatives at `6909bbc`; required CI test runs B0 but `container-gates` lane and row await observed exact-source completion |
+| B0-01 harness | implemented_unverified — `linux-amd64` lane source-bound **6/6**, three real-worker negatives and four loaded-image semantic mutants at `ce3c7e0`; required Docker28 B0 step passed, but full `container-gates` job still awaits completion |
 | B0-02 Mac VM | blocked (no Mac) |
 | B0-03 footprint | in_progress: Linux measurements + zero-builder baseline recorded; VM lane and full budgets at B1 |
 | Next | B1 gated on A1 + qualified lane; Mac gate stays open |

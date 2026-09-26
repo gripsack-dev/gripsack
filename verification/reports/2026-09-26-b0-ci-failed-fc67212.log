@@ -1,0 +1,397 @@
+GITHUB_RUN=https://github.com/gripsack-dev/gripsack/actions/runs/36238059335/job/108393368403
+GITHUB_SOURCE_COMMIT=fc672120af17e1ad4ebdfbbc52988f5caa03c737
+GITHUB_RESULT=required test FAILED on the real B0 separate-runtime load; no six-case success marker, TLC/Verus/e2e steps skipped by this required job
+FAILURE_ATTRIBUTION=Docker engine 28.0.4 interpreted a pure OCI-layout tar as a legacy Docker archive and attempted blobs/json; the independent OCI verifier had already checked/reproduced both exports. No independent runnable-image acceptance on this CI lane.
+LOG_PROVENANCE=actual GitHub required test job step bytes from authenticated job-log endpoint; no passing result inferred.
+
+===== B0 failed required CI step =====
+2026-09-26T11:16:55.2451347Z ##[group]Run sh verification/buildkit-qualification/bridge/build.sh
+2026-09-26T11:16:55.2451955Z [36;1msh verification/buildkit-qualification/bridge/build.sh[0m
+2026-09-26T11:16:55.2452444Z [36;1msh verification/buildkit-qualification/probes.sh[0m
+2026-09-26T11:16:55.2516210Z shell: /usr/bin/bash -e {0}
+2026-09-26T11:16:55.2516508Z ##[endgroup]
+2026-09-26T11:16:55.2788590Z Unable to find image 'golang:1.26.3@sha256:e3665e241a474aba30bbfaf177cfa88e1913e970c83bd86889cacfb67d6e7e51' locally
+2026-09-26T11:16:55.7636296Z docker.io/library/golang@sha256:e3665e241a474aba30bbfaf177cfa88e1913e970c83bd86889cacfb67d6e7e51: Pulling from library/golang
+2026-09-26T11:16:55.7637064Z f32f49ce655a: Pulling fs layer
+2026-09-26T11:16:55.7637638Z 8a7504cd2818: Pulling fs layer
+2026-09-26T11:16:55.7637904Z b53089dca505: Pulling fs layer
+2026-09-26T11:16:55.7638160Z 65658bcb04e4: Pulling fs layer
+2026-09-26T11:16:55.7638415Z 1a70bdedd442: Pulling fs layer
+2026-09-26T11:16:55.7638882Z 2b085c4fc755: Pulling fs layer
+2026-09-26T11:16:55.7639258Z 4f4fb700ef54: Pulling fs layer
+2026-09-26T11:16:55.7639585Z 65658bcb04e4: Waiting
+2026-09-26T11:16:55.7639886Z 1a70bdedd442: Waiting
+2026-09-26T11:16:55.7640192Z 2b085c4fc755: Waiting
+2026-09-26T11:16:55.7640508Z 4f4fb700ef54: Waiting
+2026-09-26T11:16:56.2238684Z 8a7504cd2818: Download complete
+2026-09-26T11:16:56.3058671Z f32f49ce655a: Verifying Checksum
+2026-09-26T11:16:56.3063238Z f32f49ce655a: Download complete
+2026-09-26T11:16:56.3701794Z b53089dca505: Verifying Checksum
+2026-09-26T11:16:56.3703371Z b53089dca505: Download complete
+2026-09-26T11:16:56.5524014Z 2b085c4fc755: Verifying Checksum
+2026-09-26T11:16:56.5524853Z 2b085c4fc755: Download complete
+2026-09-26T11:16:56.7361656Z 4f4fb700ef54: Verifying Checksum
+2026-09-26T11:16:56.7362455Z 4f4fb700ef54: Download complete
+2026-09-26T11:16:56.9128394Z 1a70bdedd442: Verifying Checksum
+2026-09-26T11:16:56.9129017Z 1a70bdedd442: Download complete
+2026-09-26T11:16:56.9662364Z 65658bcb04e4: Verifying Checksum
+2026-09-26T11:16:56.9663241Z 65658bcb04e4: Download complete
+2026-09-26T11:16:58.0737049Z f32f49ce655a: Pull complete
+2026-09-26T11:16:59.5972155Z 8a7504cd2818: Pull complete
+2026-09-26T11:17:02.1343351Z b53089dca505: Pull complete
+2026-09-26T11:17:04.8349050Z 65658bcb04e4: Pull complete
+2026-09-26T11:17:09.9856352Z 1a70bdedd442: Pull complete
+2026-09-26T11:17:09.9980723Z 2b085c4fc755: Pull complete
+2026-09-26T11:17:10.0051605Z 4f4fb700ef54: Pull complete
+2026-09-26T11:17:10.0086590Z Digest: sha256:e3665e241a474aba30bbfaf177cfa88e1913e970c83bd86889cacfb67d6e7e51
+2026-09-26T11:17:10.0093072Z Status: Downloaded newer image for golang@sha256:e3665e241a474aba30bbfaf177cfa88e1913e970c83bd86889cacfb67d6e7e51
+2026-09-26T11:17:10.1279189Z go: downloading github.com/opencontainers/go-digest v1.0.0
+2026-09-26T11:17:10.1281195Z go: downloading github.com/moby/buildkit v0.33.0
+2026-09-26T11:17:10.2910793Z go: downloading github.com/opencontainers/image-spec v1.1.1
+2026-09-26T11:17:10.3349190Z go: downloading github.com/tonistiigi/fsutil v0.0.0-20260819142231-83cac42c1c52
+2026-09-26T11:17:10.6464762Z go: downloading github.com/Microsoft/go-winio v0.6.3-0.20251027160822-ad3df93bed29
+2026-09-26T11:17:10.6466904Z go: downloading github.com/containerd/continuity v0.5.0
+2026-09-26T11:17:10.6470973Z go: downloading github.com/moby/patternmatcher v0.6.1
+2026-09-26T11:17:10.6480626Z go: downloading github.com/pkg/errors v0.9.1
+2026-09-26T11:17:10.6785180Z go: downloading golang.org/x/sync v0.22.0
+2026-09-26T11:17:10.6795250Z go: downloading golang.org/x/sys v0.47.0
+2026-09-26T11:17:10.9156946Z go: downloading github.com/containerd/containerd/v2 v2.3.4
+2026-09-26T11:17:10.9565968Z go: downloading github.com/containerd/containerd/api v1.11.1
+2026-09-26T11:17:10.9566774Z go: downloading github.com/stretchr/testify v1.12.1
+2026-09-26T11:17:11.3049668Z go: downloading go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.70.0
+2026-09-26T11:17:11.3051063Z go: downloading go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.45.0
+2026-09-26T11:17:11.3051566Z go: downloading go.opentelemetry.io/otel/sdk v1.45.0
+2026-09-26T11:17:11.3051917Z go: downloading go.opentelemetry.io/otel v1.45.0
+2026-09-26T11:17:11.3307801Z go: downloading go.opentelemetry.io/otel/trace v1.45.0
+2026-09-26T11:17:11.6591511Z go: downloading google.golang.org/grpc v1.83.2
+2026-09-26T11:17:11.9947679Z go: downloading google.golang.org/protobuf v1.36.12
+2026-09-26T11:17:11.9948437Z go: downloading github.com/containerd/errdefs v1.0.0
+2026-09-26T11:17:11.9951857Z go: downloading github.com/containerd/platforms v1.0.0-rc.5
+2026-09-26T11:17:11.9953217Z go: downloading github.com/distribution/reference v0.6.0
+2026-09-26T11:17:12.0106289Z go: downloading github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
+2026-09-26T11:17:12.0292363Z go: downloading github.com/containerd/nydus-snapshotter v0.15.15
+2026-09-26T11:17:12.0293331Z go: downloading github.com/google/go-cmp v0.7.0
+2026-09-26T11:17:12.0690056Z go: downloading github.com/in-toto/in-toto-golang v0.11.0
+2026-09-26T11:17:12.1597872Z go: downloading github.com/moby/policy-helpers v0.0.0-20260901104222-dd6c5499c491
+2026-09-26T11:17:12.1976827Z go: downloading github.com/package-url/packageurl-go v0.1.1
+2026-09-26T11:17:12.2252717Z go: downloading github.com/spdx/tools-golang v0.5.7
+2026-09-26T11:17:12.2855953Z go: downloading golang.org/x/crypto v0.55.0
+2026-09-26T11:17:12.2935179Z go: downloading golang.org/x/mod v0.40.0
+2026-09-26T11:17:12.2944507Z go: downloading github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
+2026-09-26T11:17:12.3752117Z go: downloading github.com/containerd/ttrpc v1.2.9
+2026-09-26T11:17:12.3753893Z go: downloading github.com/containerd/log v0.1.0
+2026-09-26T11:17:12.3771684Z go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d
+2026-09-26T11:17:12.3932234Z go: downloading github.com/gofrs/flock v0.13.0
+2026-09-26T11:17:12.3986239Z go: downloading github.com/moby/sys/signal v0.7.1
+2026-09-26T11:17:12.4038159Z go: downloading github.com/containerd/typeurl/v2 v2.3.0
+2026-09-26T11:17:12.4087015Z go: downloading github.com/sirupsen/logrus v1.10.1
+2026-09-26T11:17:12.4132043Z go: downloading golang.org/x/net v0.58.0
+2026-09-26T11:17:12.4228311Z go: downloading go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.70.0
+2026-09-26T11:17:12.4376302Z go: downloading go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
+2026-09-26T11:17:12.4598415Z go: downloading go.opentelemetry.io/proto/otlp v1.11.0
+2026-09-26T11:17:12.4823721Z go: downloading go.opentelemetry.io/otel/metric v1.45.0
+2026-09-26T11:17:12.5002031Z go: downloading go.opentelemetry.io/otel/sdk/metric v1.45.0
+2026-09-26T11:17:12.5509999Z go: downloading github.com/go-logr/logr v1.4.4
+2026-09-26T11:17:12.5515310Z go: downloading go.uber.org/goleak v1.3.0
+2026-09-26T11:17:12.5811181Z go: downloading github.com/containerd/errdefs/pkg v0.3.0
+2026-09-26T11:17:12.5838212Z go: downloading github.com/containerd/fifo v1.1.0
+2026-09-26T11:17:12.5970246Z go: downloading github.com/containerd/plugin v1.1.0
+2026-09-26T11:17:12.6132012Z go: downloading github.com/opencontainers/runtime-spec v1.3.0
+2026-09-26T11:17:12.6365274Z go: downloading github.com/moby/locker v1.0.1
+2026-09-26T11:17:12.6366064Z go: downloading github.com/klauspost/compress v1.19.2
+2026-09-26T11:17:12.6514087Z go: downloading github.com/in-toto/attestation v1.2.0
+2026-09-26T11:17:12.6522222Z go: downloading github.com/secure-systems-lab/go-securesystemslib v0.11.0
+2026-09-26T11:17:12.6766420Z go: downloading github.com/shibumi/go-pathspec v1.3.0
+2026-09-26T11:17:12.6767280Z go: downloading github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea
+2026-09-26T11:17:12.6907951Z go: downloading github.com/containerd/stargz-snapshotter/estargz v0.18.2
+2026-09-26T11:17:12.7022322Z go: downloading github.com/tonistiigi/go-csvvalue v0.0.0-20240814133006-030d3b2625d0
+2026-09-26T11:17:12.7087109Z go: downloading github.com/containerd/stargz-snapshotter v0.18.2
+2026-09-26T11:17:12.7290798Z go: downloading github.com/ProtonMail/go-crypto v1.4.1
+2026-09-26T11:17:12.7998582Z go: downloading github.com/docker/cli v29.7.2+incompatible
+2026-09-26T11:17:12.8270983Z go: downloading go.yaml.in/yaml/v3 v3.0.5
+2026-09-26T11:17:12.8690946Z go: downloading github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6
+2026-09-26T11:17:12.8972654Z go: downloading github.com/prometheus/procfs v0.21.1
+2026-09-26T11:17:12.9305581Z go: downloading github.com/felixge/httpsnoop v1.1.0
+2026-09-26T11:17:12.9519017Z go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+2026-09-26T11:17:13.1356028Z go: downloading github.com/go-logr/stdr v1.2.2
+2026-09-26T11:17:13.1377925Z go: downloading go.opentelemetry.io/auto/sdk v1.2.1
+2026-09-26T11:17:13.1509866Z go: downloading github.com/google/uuid v1.6.0
+2026-09-26T11:17:13.1598272Z go: downloading github.com/Microsoft/hcsshim v0.15.0-rc.4
+2026-09-26T11:17:13.1599322Z go: downloading github.com/moby/sys/mountinfo v0.7.2
+2026-09-26T11:17:13.1692188Z go: downloading github.com/moby/sys/userns v0.2.0
+2026-09-26T11:17:13.1951871Z go: downloading github.com/moby/sys/sequential v0.7.0
+2026-09-26T11:17:13.2219608Z go: downloading github.com/moby/sys/user v0.4.1
+2026-09-26T11:17:13.2515034Z go: downloading github.com/codahale/rfc6979 v0.0.0-20141003034818-6a90f24967eb
+2026-09-26T11:17:13.2821352Z go: downloading github.com/docker/go-units v0.5.0
+2026-09-26T11:17:13.3104219Z go: downloading github.com/pelletier/go-toml/v2 v2.4.3
+2026-09-26T11:17:13.3743364Z go: downloading github.com/golang/protobuf v1.5.4
+2026-09-26T11:17:13.4238189Z go: downloading github.com/anchore/go-struct-converter v0.1.0
+2026-09-26T11:17:13.4554487Z go: downloading github.com/vbatts/tar-split v0.12.3
+2026-09-26T11:17:13.5030464Z go: downloading github.com/cespare/xxhash/v2 v2.3.0
+2026-09-26T11:17:13.5202622Z go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d
+2026-09-26T11:17:13.5580451Z go: downloading golang.org/x/term v0.45.0
+2026-09-26T11:17:13.5841501Z go: downloading golang.org/x/text v0.41.0
+2026-09-26T11:17:13.6703377Z go: downloading github.com/cloudflare/circl v1.6.3
+2026-09-26T11:17:14.4550553Z go: downloading github.com/sigstore/sigstore-go v1.2.2
+2026-09-26T11:17:14.4554697Z go: downloading gonum.org/v1/gonum v0.17.0
+2026-09-26T11:17:14.4556521Z go: downloading github.com/docker/docker-credential-helpers v0.9.8
+2026-09-26T11:17:14.5030699Z go: downloading github.com/containerd/cgroups/v3 v3.1.3
+2026-09-26T11:17:14.5137931Z go: downloading github.com/sigstore/sigstore v1.10.8
+2026-09-26T11:17:14.5790531Z go: downloading github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78
+2026-09-26T11:17:45.4593290Z built /home/runner/work/gripsack/gripsack/verification/buildkit-qualification/bridge/bridge-bin
+2026-09-26T11:17:45.6381514Z --- probe1: baseline preservation
+2026-09-26T11:17:45.6382312Z native Rust package graph: no builder dependencies
+2026-09-26T11:17:45.6382893Z 28.0.4 linux/x86_64
+2026-09-26T11:17:45.6383651Z note: target/debug/grip not built; binary linkage not assessed here
+2026-09-26T11:17:45.6507603Z Unable to find image 'moby/buildkit:v0.33.0@sha256:a461e7f0ce921972028acfbed628d45663d83e67ac1230722c2b34cf72760a0d' locally
+2026-09-26T11:17:46.1126499Z docker.io/moby/buildkit@sha256:a461e7f0ce921972028acfbed628d45663d83e67ac1230722c2b34cf72760a0d: Pulling from moby/buildkit
+2026-09-26T11:17:46.1127602Z e6f31ffc071e: Pulling fs layer
+2026-09-26T11:17:46.1128046Z 76cc2b5840ce: Pulling fs layer
+2026-09-26T11:17:46.1128537Z 79330c0ded89: Pulling fs layer
+2026-09-26T11:17:46.1128968Z b0fff6ef8f0d: Pulling fs layer
+2026-09-26T11:17:46.1129281Z 74777c122f12: Pulling fs layer
+2026-09-26T11:17:46.1129578Z 40bb10b2669a: Pulling fs layer
+2026-09-26T11:17:46.1129898Z 7c681a5187e5: Pulling fs layer
+2026-09-26T11:17:46.1130183Z 74777c122f12: Waiting
+2026-09-26T11:17:46.1130441Z 40bb10b2669a: Waiting
+2026-09-26T11:17:46.1130696Z 7c681a5187e5: Waiting
+2026-09-26T11:17:46.1130950Z b0fff6ef8f0d: Waiting
+2026-09-26T11:17:46.3123357Z 79330c0ded89: Download complete
+2026-09-26T11:17:46.4747153Z e6f31ffc071e: Verifying Checksum
+2026-09-26T11:17:46.4747778Z e6f31ffc071e: Download complete
+2026-09-26T11:17:46.5013166Z b0fff6ef8f0d: Verifying Checksum
+2026-09-26T11:17:46.5013707Z b0fff6ef8f0d: Download complete
+2026-09-26T11:17:46.5320472Z 76cc2b5840ce: Verifying Checksum
+2026-09-26T11:17:46.5320949Z 76cc2b5840ce: Download complete
+2026-09-26T11:17:46.5956448Z e6f31ffc071e: Pull complete
+2026-09-26T11:17:46.6861126Z 40bb10b2669a: Verifying Checksum
+2026-09-26T11:17:46.6861852Z 40bb10b2669a: Download complete
+2026-09-26T11:17:46.7120531Z 7c681a5187e5: Verifying Checksum
+2026-09-26T11:17:46.7121373Z 7c681a5187e5: Download complete
+2026-09-26T11:17:46.9028894Z 76cc2b5840ce: Pull complete
+2026-09-26T11:17:46.9421129Z 79330c0ded89: Pull complete
+2026-09-26T11:17:46.9589978Z b0fff6ef8f0d: Pull complete
+2026-09-26T11:17:47.1609139Z 74777c122f12: Verifying Checksum
+2026-09-26T11:17:47.1609496Z 74777c122f12: Download complete
+2026-09-26T11:17:48.2775232Z 74777c122f12: Pull complete
+2026-09-26T11:17:48.2878058Z 40bb10b2669a: Pull complete
+2026-09-26T11:17:48.3009450Z 7c681a5187e5: Pull complete
+2026-09-26T11:17:48.3041346Z Digest: sha256:a461e7f0ce921972028acfbed628d45663d83e67ac1230722c2b34cf72760a0d
+2026-09-26T11:17:48.3051135Z Status: Downloaded newer image for moby/buildkit@sha256:a461e7f0ce921972028acfbed628d45663d83e67ac1230722c2b34cf72760a0d
+2026-09-26T11:17:48.6570116Z ID				PLATFORMS
+2026-09-26T11:17:48.6570651Z akbhsb4nl9wwgire0ciln6h97	linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/386
+2026-09-26T11:17:48.7149797Z buildkitd github.com/moby/buildkit v0.33.0 dddd5621af04ea57823085c93a063383f71d3173
+2026-09-26T11:17:52.9850552Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9852307Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9853321Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9854499Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9855508Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9856132Z vertex shared-dependency completed
+2026-09-26T11:17:52.9856401Z vertex consumer-a completed
+2026-09-26T11:17:52.9856674Z vertex exporting to client directory completed
+2026-09-26T11:17:52.9857289Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9857918Z vertex shared-dependency completed CACHED
+2026-09-26T11:17:52.9858336Z vertex consumer-a completed CACHED
+2026-09-26T11:17:52.9858732Z vertex exporting to client directory completed
+2026-09-26T11:17:52.9859374Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9860502Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+2026-09-26T11:17:52.9861344Z vertex shared-dependency completed CACHED
+2026-09-26T11:17:52.9861623Z vertex consumer-b completed
+2026-09-26T11:17:52.9861992Z vertex exporting to client directory completed
+2026-09-26T11:17:52.9862653Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9863748Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+2026-09-26T11:17:52.9864799Z vertex slow-op completed
+2026-09-26T11:17:52.9865697Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9866864Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+2026-09-26T11:17:52.9868002Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+2026-09-26T11:17:52.9868779Z vertex worker-health-check completed
+2026-09-26T11:17:52.9869590Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:52.9871038Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+2026-09-26T11:17:52.9872160Z DELIBERATE_FAILURE_MARKER
+2026-09-26T11:17:52.9872417Z vertex deliberate-failure completed
+2026-09-26T11:17:52.9872880Z probe graph: PASS
+2026-09-26T11:17:53.0799987Z vertex declared input (include: allowed.txt) completed
+2026-09-26T11:17:53.0801216Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:17:53.0802872Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+2026-09-26T11:17:53.0803636Z vertex declared input (include: allowed.txt) completed
+2026-09-26T11:17:53.0804000Z vertex observe-declared-input-and-env completed
+2026-09-26T11:17:53.0804690Z vertex exporting to client directory completed
+2026-09-26T11:17:53.0805192Z probe policy: PASS
+2026-09-26T11:18:08.3065677Z vertex mkfile /hello.c completed
+2026-09-26T11:18:08.3066481Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3067926Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3068987Z vertex mkfile /hello.c completed
+2026-09-26T11:18:08.3069564Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3070432Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3071313Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3072172Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3073027Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3073905Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3075061Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3075934Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3076792Z vertex docker-image://docker.io/library/gcc:15.2.0@sha256:c101370f78e4a30be178c11dd18aeee64c65d617908a98157db2392ca73ab04f completed
+2026-09-26T11:18:08.3077471Z vertex compile-static-hello (digest-pinned gcc, network=none) completed
+2026-09-26T11:18:08.3077873Z vertex copy /hello /hello completed
+2026-09-26T11:18:08.3078152Z vertex copy /hello /hello completed CACHED
+2026-09-26T11:18:08.3078472Z vertex exporting to client directory completed
+2026-09-26T11:18:08.3079096Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:08.3080324Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed CACHED
+2026-09-26T11:18:08.3080945Z NO_NETWORK_CONFIRMED
+2026-09-26T11:18:08.3081171Z vertex verify-no-network completed
+2026-09-26T11:18:08.3081429Z probe executable: PASS
+2026-09-26T11:18:10.9578892Z probe3 retained run after worker+cache removal: gripsack-b0-static-hello
+2026-09-26T11:18:11.2559017Z ID				PLATFORMS
+2026-09-26T11:18:11.2559618Z dakdntj0vsiolqjw647gjx5t0	linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/386
+2026-09-26T11:18:11.3127284Z buildkitd github.com/moby/buildkit v0.33.0 dddd5621af04ea57823085c93a063383f71d3173
+2026-09-26T11:18:12.3652068Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:12.3655091Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:12.3656842Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:12.3658262Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:12.3659380Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:12.3660041Z vertex oci-content (fixed timestamps) completed
+2026-09-26T11:18:12.3660360Z vertex copy /hello.txt /hello.txt completed
+2026-09-26T11:18:12.3660696Z vertex copy /hello.txt.sha256 /hello.txt.sha256 completed
+2026-09-26T11:18:12.3661066Z vertex exporting to oci image format completed
+2026-09-26T11:18:12.3661351Z probe oci: PASS
+2026-09-26T11:18:12.7948688Z ID				PLATFORMS
+2026-09-26T11:18:12.7949160Z td91l7uwl0ysg7v6uievmmiz6	linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/386
+2026-09-26T11:18:12.8505425Z buildkitd github.com/moby/buildkit v0.33.0 dddd5621af04ea57823085c93a063383f71d3173
+2026-09-26T11:18:13.8936394Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:13.8937442Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:13.8938363Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:13.8939256Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:13.8940177Z vertex docker-image://docker.io/library/alpine:3.22.1@sha256:eafc1edb577d2e9b458664a15f23ea1c370214193226069eb22921169fc7e43f completed
+2026-09-26T11:18:13.8940802Z vertex oci-content (fixed timestamps) completed
+2026-09-26T11:18:13.8941137Z vertex copy /hello.txt /hello.txt completed
+2026-09-26T11:18:13.8941476Z vertex copy /hello.txt.sha256 /hello.txt.sha256 completed
+2026-09-26T11:18:13.8941821Z vertex exporting to oci image format completed
+2026-09-26T11:18:13.8942103Z probe oci: PASS
+2026-09-26T11:18:14.2100924Z {
+2026-09-26T11:18:14.2101543Z  "verifier": "independent python OCI parser (no buildkit code)",
+2026-09-26T11:18:14.2102316Z  "first": {
+2026-09-26T11:18:14.2103032Z   "tar": "/home/runner/work/gripsack/gripsack/verification/buildkit-qualification/results/oci-1.tar",
+2026-09-26T11:18:14.2104072Z   "tar-bytes": 3809792,
+2026-09-26T11:18:14.2104710Z   "layout-version": "1.0.0",
+2026-09-26T11:18:14.2105553Z   "manifest-digest": "sha256:ee041e6225bf71d37ca31e650aa978b7644950b3c0f0fc480c577258ad1e4179",
+2026-09-26T11:18:14.2107037Z   "config-digest": "sha256:dcf5526972f8fb3597565434f3eb26afca0eb6f966f60dc5a043ed7750893ff9",
+2026-09-26T11:18:14.2107986Z   "platform": "linux/amd64",
+2026-09-26T11:18:14.2108472Z   "diff-ids": [
+2026-09-26T11:18:14.2109485Z    "sha256:418dccb7d85a63a6aa574439840f7a6fa6fd2321b3e2394568a317735e867d35",
+2026-09-26T11:18:14.2110628Z    "sha256:862b5e38bc25f21bb9d2e133a4f099c346c523e93bec4a91659ca3a713a73a7d",
+2026-09-26T11:18:14.2111737Z    "sha256:8b9f1524f2524d604d4f8b0e9fb514ca05b092dd727a98c81887879d1d1f3499"
+2026-09-26T11:18:14.2112555Z   ],
+2026-09-26T11:18:14.2112929Z   "layer-digests": [
+2026-09-26T11:18:14.2113557Z    "sha256:9824c27679d3b27c5e1cb00a73adb6f4f8d556994111c12db3c5d61a0c843df8",
+2026-09-26T11:18:14.2114686Z    "sha256:b63c72c620eacb399d69df218112c6d68ebf156a1789931fe9d0544fd44b292d",
+2026-09-26T11:18:14.2115589Z    "sha256:e34138b5a9a6e1372fe032d19d935e79057e5e2182f81ad27c2d9d908ad13262"
+2026-09-26T11:18:14.2116468Z   ],
+2026-09-26T11:18:14.2116763Z   "files": {
+2026-09-26T11:18:14.2117333Z    "bin/busybox": "58d22501495a1db93e859f6e406460ed5e179d7afc1197d19e16f58bf8562c34",
+2026-09-26T11:18:14.2118337Z    "etc/alpine-release": "08842eac2718502d9d72a2f89396da3c28fbc73356b2077551bf662c832101f8",
+2026-09-26T11:18:14.2119340Z    "etc/apk/arch": "aaf631698ae5160ceb04a97681a14887fdcab47cd6e0f163c87485b3b1340b62",
+2026-09-26T11:18:14.2120657Z    "etc/apk/keys/alpine-devel@lists.alpinelinux.org-4a6a0840.rsa.pub": "9c102bcc376af1498d549b77bdbfa815ae86faa1d2d82f040e616b18ef2df2d4",
+2026-09-26T11:18:14.2122306Z    "etc/apk/keys/alpine-devel@lists.alpinelinux.org-5243ef4b.rsa.pub": "ebf31683b56410ecc4c00acd9f6e2839e237a3b62b5ae7ef686705c7ba0396a9",
+2026-09-26T11:18:14.2123962Z    "etc/apk/keys/alpine-devel@lists.alpinelinux.org-5261cecb.rsa.pub": "12f899e55a7691225603d6fb3324940fc51cd7f133e7ead788663c2b7eecb00c",
+2026-09-26T11:18:14.2125777Z    "etc/apk/keys/alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub": "207e4696d3c05f7cb05966aee557307151f1f00217af4143c1bcaf33b8df733f",
+2026-09-26T11:18:14.2127427Z    "etc/apk/keys/alpine-devel@lists.alpinelinux.org-61666e3f.rsa.pub": "128d34d4aec39b0daedea8163cd8dc24dff36fd3d848630ab97eeb1d3084bbb3",
+2026-09-26T11:18:14.2128834Z    "etc/apk/repositories": "f9ae9d3ed56e354f96b5e8ead266c89b6c805a97484040e8e780e32ca645994a",
+2026-09-26T11:18:14.2129877Z    "etc/apk/world": "bd4a5bcb2151166a647b1620db4b739423b49bff3bc9c656177cb982caf7e356",
+2026-09-26T11:18:14.2130940Z    "etc/busybox-paths.d/busybox": "e12e0822f5c6426b62f07799a0fc20394241535c5bc2cc8f10c8a25088b8defa",
+2026-09-26T11:18:14.2132031Z    "etc/crontabs/root": "575d810a9fae5f2f0671c9b2c0ce973e46c7207fbe5cb8d1b0d1836a6a0470e3",
+2026-09-26T11:18:14.2132960Z    "etc/fstab": "a3efca2e8d62785c87517283092b4c800d88612b6f3f06b80a4c2f39d8e68841",
+2026-09-26T11:18:14.2133861Z    "etc/group": "6fb6ab5a5526e6f4896b70c7e3c350fd475158a1f0d7b5fc0f3f9bd57f1c3be8",
+2026-09-26T11:18:14.2135149Z    "etc/hostname": "d906aecb61d076a967d9ffe8821c7b04b063f72df9d9e35b33ef36b1c0d98f16",
+2026-09-26T11:18:14.2136072Z    "etc/hosts": "e3998dbe02b51dada33de87ae43d18a93ab6915b9e34f5a751bf2b9b25a55492",
+2026-09-26T11:18:14.2137020Z    "etc/inittab": "7326d8ad56bf5fea63b1ca516a747ff6e6723e25ae84a93c31620b03de6c001d",
+2026-09-26T11:18:14.2137983Z    "etc/issue": "9b89537422a64a9a9407d3cafdf58c802375849629b8f43e64f1cfd7f07c782a",
+2026-09-26T11:18:14.2138983Z    "etc/logrotate.d/acpid": "d608a3b7715886b5735def0cc50a6359fd364fac2e0e0a459c588c04be471031",
+2026-09-26T11:18:14.2140111Z    "etc/modprobe.d/aliases.conf": "3ebaba946f213670170c7d69949f690a3854553bd0b1560f1d980cba4c83a942",
+2026-09-26T11:18:14.2141327Z    "etc/modprobe.d/blacklist.conf": "5cd46031fc7dc7186e67c97fd34780597de4ebff51dbe41eba27220fe5e0d866",
+2026-09-26T11:18:14.2142594Z    "etc/modprobe.d/i386.conf": "6c46c4cbfb8b7594f19eb94801a350fa2221ae9ac5239a8819d15555caa76ae8",
+2026-09-26T11:18:14.2143630Z    "etc/modules": "2c881de75a5409c35d2433a24f180b8b02ba478ef2c1c60ea3434a35bcbc335d",
+2026-09-26T11:18:14.2144839Z    "etc/motd": "ff044e9be5daa2eee2d3d10a4da72e5477e4c24c16f1792de2c91dae844c0e30",
+2026-09-26T11:18:14.2145859Z    "etc/network/if-up.d/dad": "2fd20d1bc67d9ee711990002b24f156635a73f56b8935b2f76592938817fa4e7",
+2026-09-26T11:18:14.2147111Z    "etc/nsswitch.conf": "0afd94c183d30a348b45057f6bf468e121aa448a7641109addb5bb8e282f514d",
+2026-09-26T11:18:14.2148157Z    "etc/passwd": "31a94f06f17bc3b9085fccab1d0fa6ee9e79c4a1e4d91f617fa5de95863be015",
+2026-09-26T11:18:14.2149149Z    "etc/profile": "87e8643d3ce156de0c09370d4d39446f30bd00d264bea248abc191c4d7b9df3e",
+2026-09-26T11:18:14.2150134Z    "etc/profile.d/20locale.sh": "284a6ef56ab97a13a777c6b01ae14f2cc3d2b7a29c19e750e622e70cc3c73186",
+2026-09-26T11:18:14.2151191Z    "etc/profile.d/README": "b73284f27fe2da9ae1902b1fe9596c3ffc61a154e2805a034184f0468f8b09b0",
+2026-09-26T11:18:14.2152324Z    "etc/profile.d/color_prompt.sh.disabled": "ba24425c6864a5d17fa0fdaf914c4d21419e47c4d62080c33830af059fe46617",
+2026-09-26T11:18:14.2153399Z    "etc/protocols": "4959498abbadaa1e50894a266f8d0d94500101cfe5b5f09dcad82e9d5bdfab46",
+2026-09-26T11:18:14.2154830Z    "etc/secfixes.d/alpine": "808a19d200c575a9bd9898b113ca4538bb142878dd6a8e5f14804ba9ae3f5c38",
+2026-09-26T11:18:14.2155784Z    "etc/securetty": "713fcea5109728883b9147e822429133fcc8b5e253afd3c2a197b10cd0bc3b4d",
+2026-09-26T11:18:14.2156692Z    "etc/services": "f6183055fd949f9c53d49ee620f85d0150123ea691d25ed1bba0c641b4ee2f48",
+2026-09-26T11:18:14.2157589Z    "etc/shadow": "d5992a27f05f380fc5faeb82a3359e2f230fd1d6ea6517b45892b771a2194ddb",
+2026-09-26T11:18:14.2158475Z    "etc/shells": "24be6ceb236610df45684c83b06c918ae45635be55f69975e43676b7595bbc5f",
+2026-09-26T11:18:14.2159477Z    "etc/ssl/certs/ca-certificates.crt": "8cf3f2d5222508ca469c78a347764ee1b1fab10a903172612c489ebcca05c91c",
+2026-09-26T11:18:14.2160579Z    "etc/ssl/ct_log_list.cnf": "f1c1803d13d1d0b755b13b23c28bd4e20e07baf9f2b744c9337ba5866aa0ec3b",
+2026-09-26T11:18:14.2161658Z    "etc/ssl/ct_log_list.cnf.dist": "f1c1803d13d1d0b755b13b23c28bd4e20e07baf9f2b744c9337ba5866aa0ec3b",
+2026-09-26T11:18:14.2162810Z    "etc/ssl/openssl.cnf": "a65a2cb9f4ee8ffdc7ef4f0ac600c0bdafb95b7b1ab457188ac610a62f5ad6b3",
+2026-09-26T11:18:14.2163902Z    "etc/ssl/openssl.cnf.dist": "a65a2cb9f4ee8ffdc7ef4f0ac600c0bdafb95b7b1ab457188ac610a62f5ad6b3",
+2026-09-26T11:18:14.2165230Z    "etc/sysctl.conf": "8bba47da45bc8715c69ac904a60410eabffaa7bbbef640f9c1368ab9c48493d0",
+2026-09-26T11:18:14.2166291Z    "etc/udhcpc/udhcpc.conf": "5b372209e01cda07c87b8afa6d1ab3d7e8daf18a1f2332d744203a6dc289eb1a",
+2026-09-26T11:18:14.2167386Z    "lib/apk/db/installed": "736cd0f7019b92b011f11dc9b56051a8724a04d1a71bb36c83efdedcac25504f",
+2026-09-26T11:18:14.2168441Z    "lib/apk/db/lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+2026-09-26T11:18:14.2169516Z    "lib/apk/db/scripts.tar": "35fb665c07a04efa533f776586aefcffb52c82d8f43a49a4ecd1a0769e75e2ca",
+2026-09-26T11:18:14.2170523Z    "lib/apk/db/triggers": "8ad276905a62a1be4a9a01ebf323ec1c364218b79a84ba796c2088f1fcc0e8d5",
+2026-09-26T11:18:14.2171587Z    "lib/ld-musl-x86_64.so.1": "7d221f4e17e8f7ebfc208d6e621bb7fc71bc99081bed47409d77048d9a69dbd5",
+2026-09-26T11:18:14.2172624Z    "sbin/apk": "317bf595249cd6a3ebc009f1e4368632e5564140805605b5d968e806b64a39a5",
+2026-09-26T11:18:14.2173555Z    "sbin/ldconfig": "b4a2c06db38742e8c42c3c9838b285a7d8cdac6c091ff3df5ff9a15f1e41b9c7",
+2026-09-26T11:18:14.2174812Z    "usr/bin/getconf": "4dbaf95eab0e2e2e727c5e903b97100215cd16f463aa29e5f72af74951fe425a",
+2026-09-26T11:18:14.2175835Z    "usr/bin/getent": "682137a98bd8062d4be1f4be7a68410dfbb4e6f9359a3b3c163890a2fcde4518",
+2026-09-26T11:18:14.2176839Z    "usr/bin/iconv": "3cf6eb89e6481a54d8a9df0f302bb633c4f01673bb3a143ac3d4e084997f3167",
+2026-09-26T11:18:14.2177809Z    "usr/bin/ldd": "9a49c2541a439be89f1ef1496604ef3b607f460d589877c60775acf74cdb5dfb",
+2026-09-26T11:18:14.2178787Z    "usr/bin/scanelf": "cdd7676d80e2b452b3dc177686afd34f2efe9e21a28cdeba7e74ce79410c3d97",
+2026-09-26T11:18:14.2179760Z    "usr/bin/ssl_client": "51bc20da3df12520921587b8ab7746a876cc008d09799c61b1191fbab8306156",
+2026-09-26T11:18:14.2180841Z    "usr/lib/engines-3/afalg.so": "f82cb92be9830954bdcb5c46933130380ebf3b48f6c5c1aa284b490d35acefc6",
+2026-09-26T11:18:14.2182012Z    "usr/lib/engines-3/capi.so": "bc49c717601960808e8ac20adba4defca25a19c768c384b4ac73869b3deb9023",
+2026-09-26T11:18:14.2183415Z    "usr/lib/engines-3/loader_attic.so": "2a2ee123e3ec7a0857bd2fdc236a29d43673d12698a93b11e4ad08fd43d891fe",
+2026-09-26T11:18:14.2184897Z    "usr/lib/engines-3/padlock.so": "8ab99382b49d2a1fb67599625a3aed4208af4cb374358dceee4356314322a41d",
+2026-09-26T11:18:14.2186052Z    "usr/lib/libapk.so.2.14.9": "c646683b6d5a2a99557705559c7270e659e3bcf677f6c65041463af708d62902",
+2026-09-26T11:18:14.2187177Z    "usr/lib/libcrypto.so.3": "9129bc86bb2b1684bdf4d92b28539bd4c88e8e14d44c14820acbcd9835098ea3",
+2026-09-26T11:18:14.2188215Z    "usr/lib/libssl.so.3": "79f7e4d45cad89fdd0331e5521aa787944926535e973900c7a3934e99db1a410",
+2026-09-26T11:18:14.2189092Z    "usr/lib/libz.so.1.3.1": "09b1bbd6ffe274039cefaca595f55cec0af65fe90d9e285e5d57ff7ed96948d2",
+2026-09-26T11:18:14.2190109Z    "usr/lib/os-release": "2fc5dc3fc3f4d3af126e3fdf9e5889ace04f6b9fa9d4e1bf7e78b78ea78598c8",
+2026-09-26T11:18:14.2190907Z    "usr/lib/ossl-modules/legacy.so": "f27833c97146fbb049adc5c2e524f710db9c3a58e6c715b39050e49cb65d327c",
+2026-09-26T11:18:14.2191653Z    "usr/lib/sysctl.d/00-alpine.conf": "ee169bea2cb6859420b55ca7a9c23fb68b50adc1d26c951f904dec9e8f767380",
+2026-09-26T11:18:14.2192687Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-4a6a0840.rsa.pub": "9c102bcc376af1498d549b77bdbfa815ae86faa1d2d82f040e616b18ef2df2d4",
+2026-09-26T11:18:14.2193941Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-5243ef4b.rsa.pub": "ebf31683b56410ecc4c00acd9f6e2839e237a3b62b5ae7ef686705c7ba0396a9",
+2026-09-26T11:18:14.2195320Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-524d27bb.rsa.pub": "1bb2a846c0ea4ca9d0e7862f970863857fc33c32f5506098c636a62a726a847b",
+2026-09-26T11:18:14.2196457Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-5261cecb.rsa.pub": "12f899e55a7691225603d6fb3324940fc51cd7f133e7ead788663c2b7eecb00c",
+2026-09-26T11:18:14.2197899Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-58199dcc.rsa.pub": "73867d92083f2f8ab899a26ccda7ef63dfaa0032a938620eda605558958a8041",
+2026-09-26T11:18:14.2199220Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-58cbb476.rsa.pub": "9a4cd858d9710963848e6d5f555325dc199d1c952b01cf6e64da2c15deedbd97",
+2026-09-26T11:18:14.2200398Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-58e4f17d.rsa.pub": "780b3ed41786772cbc7b68136546fa3f897f28a23b30c72dde6225319c44cfff",
+2026-09-26T11:18:14.2201519Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-5e69ca50.rsa.pub": "59c01c57b446633249f67c04b115dd6787f4378f183dff2bbf65406df93f176d",
+2026-09-26T11:18:14.2202628Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-60ac2099.rsa.pub": "db0b49163f07ffba64a5ca198bcf1688610b0bd1f0d8d5afeaf78559d73f2278",
+2026-09-26T11:18:14.2203735Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub": "207e4696d3c05f7cb05966aee557307151f1f00217af4143c1bcaf33b8df733f",
+2026-09-26T11:18:14.2205179Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-61666e3f.rsa.pub": "128d34d4aec39b0daedea8163cd8dc24dff36fd3d848630ab97eeb1d3084bbb3",
+2026-09-26T11:18:14.2206303Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616a9724.rsa.pub": "10877cce0a935e46ad88cb79e174a2491680508eccda08e92bf04fb9bf37fbc1",
+2026-09-26T11:18:14.2207412Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616abc23.rsa.pub": "4a095a9daca86da496a3cd9adcd95ee2197fdbeb84638656d469f05a4d740751",
+2026-09-26T11:18:14.2208516Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616ac3bc.rsa.pub": "0caf5662fde45616d88cfd7021b7bda269a2fcaf311e51c48945a967a609ec0b",
+2026-09-26T11:18:14.2209482Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616adfeb.rsa.pub": "ebe717d228555aa58133c202314a451f81e71f174781fd7ff8d8970d6cfa60da",
+2026-09-26T11:18:14.2210559Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub": "d11f6b21c61b4274e182eb888883a8ba8acdbf820dcc7a6d82a7d9fc2fd2836d",
+2026-09-26T11:18:14.2211775Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-616db30d.rsa.pub": "40a216cbd163f22e5f16a9e0929de7cde221b9cbae8e36aa368b1e128afe0a31",
+2026-09-26T11:18:14.2212798Z    "usr/share/apk/keys/alpine-devel@lists.alpinelinux.org-66ba20fe.rsa.pub": "7cf4cb8314e6ccc985b0d7f1aa0c6e0a81e3588f69a41f383af7a63d1ba61793",
+2026-09-26T11:18:14.2213641Z    "usr/share/udhcpc/default.script": "1cf94e3918ce389c722f4408490ae7334321a5ca2aec2c945b0c47662aa274a6",
+2026-09-26T11:18:14.2214498Z    "hello.txt": "638440e475a4fdc7fda80c64faf48a6603f46a42a8d100842d73fbf000c2e1e1",
+2026-09-26T11:18:14.2215358Z    "hello.txt.sha256": "0414f826da1ed066656fc876a9b2cfc21d46c4b23e834174a53ee116f57ec532"
+2026-09-26T11:18:14.2216088Z   }
+2026-09-26T11:18:14.2228108Z  },
+2026-09-26T11:18:14.2228456Z  "verdicts": [
+2026-09-26T11:18:14.2229584Z   "/home/runner/work/gripsack/gripsack/verification/buildkit-qualification/results/oci-1.tar: all blob digests, DiffIDs, media types and platform verified",
+2026-09-26T11:18:14.2231276Z   "two fresh-worker exports reproduce (DiffIDs, normalized config, file digests)"
+2026-09-26T11:18:14.2231877Z  ],
+2026-09-26T11:18:14.2232080Z  "reproduction": {
+2026-09-26T11:18:14.2232444Z   "diff-ids-match": true,
+2026-09-26T11:18:14.2232816Z   "config-normalized-match": true,
+2026-09-26T11:18:14.2233254Z   "files-match": true,
+2026-09-26T11:18:14.2233675Z   "manifest-digests": [
+2026-09-26T11:18:14.2234033Z    "sha256:ee041e6225bf71d37ca31e650aa978b7644950b3c0f0fc480c577258ad1e4179",
+2026-09-26T11:18:14.2235060Z    "sha256:d00bf4a721bb12bfa7c8caf637debe8af6425d087145331f518e3bee044034a1"
+2026-09-26T11:18:14.2235669Z   ],
+2026-09-26T11:18:14.2236071Z   "verdict": "reproduced from two clean workers"
+2026-09-26T11:18:14.2236406Z  }
+2026-09-26T11:18:14.2236577Z }
+2026-09-26T11:18:14.2317263Z open /var/lib/docker/tmp/docker-import-3614835592/blobs/json: no such file or directory
+2026-09-26T11:18:14.2328129Z FAIL: separate-runtime docker load rejected the OCI layout (see probe4-load.txt)
+2026-09-26T11:18:14.2478832Z ##[error]Process completed with exit code 1.

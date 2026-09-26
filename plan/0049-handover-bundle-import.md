@@ -141,16 +141,16 @@ remains blocked, with no fake runner case credited. This does
 **not** constitute independent semantic review of all 178 rows.
 
 The current committed-source checker receipt
-`verification/reports/2026-09-26-h0-catalog-6909bbc.log`
-(SHA-256 `a175cbf869b711e39439f1d33ee34a4bfabd7ae12d44cea0af551c4262ebb99f`)
-binds source `6909bbc55226f917238e31c189f7be29e42c41c9`,
-fingerprint `b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0`
+`verification/reports/2026-09-26-h0-catalog-ce3c7e0.log`
+(SHA-256 `94d6167d388ae361e63efd078bb3f907186d194c61be0b90e8c3b75d3e5e1679`)
+binds source `ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c`,
+fingerprint `872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc`
 and clean tracked roots before/after direct execution: **30/30**
 negative calibrations rejected, synthetic H0/A0/E0-lane and
-review-only positives accepted; actual H0 closure still rejects
-the missing G-03/H0 catalog and pending H0-02. Earlier `56b1581`,
-`52943b2`, `70c5502`, `8c27693`, `ace9496` and `0be1eaa`
-checker receipts are historical.
+review-only positives accepted. Actual H0 closure still rejects
+missing G-03/H0 proof catalog and pending H0-02. Earlier
+`56b1581`, `52943b2`, `70c5502`, `8c27693`, `ace9496`,
+`0be1eaa`, `6909bbc` and `fc67212` checker receipts are historical.
 
 Required CI
 `36230541824` failed on source `52943b2` with `ETXTBSY` in a self-update
@@ -197,20 +197,21 @@ example nor qualifies A3-01/A3-02 or a public release.
 
 The 2026-09-24 persistent-unit fixture was observed, but its
 Markdown-only record could not verify the lane. A new exact-source
-real user-manager fixture at `6909bbc` is archived as
-`verification/reports/2026-09-26-e0-systemd-6909bbc.log`
-(SHA-256 `8c387e273f85e8628e483cbda16e523a9a45e6741716637eb3a9f23cfc30eb14`):
+real user-manager fixture at `ce3c7e0` is archived as
+`verification/reports/2026-09-26-e0-systemd-ce3c7e0.log`
+(SHA-256 `728a7519c28665ff17516cbe7266eab862c0499fbc1db2cdf9c53e8997a3947b`):
 systemd 255, UID 1000, manager running, Linger=no; `daily`
 normalizes to `*-*-* 00:00:00` local BST. A uniquely named
 transient `.timer` bound a finite user `.service` with
 `Persistent=no`, `AccuracySec=1s`, `Restart=no`; it fired
-0.983 seconds after the requested local second, then both units
+0.995 seconds after the requested local second, then both units
 were `not-found`, absent from timers, and no persistent files
-or user schedules were modified. The earlier `0be1eaa` receipt
-is historical. The `systemd-linux` lane is verified, **not**
-E0-02 as a row: launchd/macOS has separate **positive** cases
-and remains **blocked** without native Mac hardware. E3 Gripsack
-job registration and sleep/reboot/DST remain separately required.
+or user schedules were modified. Earlier `0be1eaa`, `6909bbc`
+and `fc67212` receipts are historical. The `systemd-linux` lane
+is verified, **not** E0-02 as a row: launchd/macOS has separate
+**positive** cases and remains **blocked** without native Mac
+hardware. E3 Gripsack registration and sleep/reboot/DST are
+separately required.
 
 
 ## A0-01 — pure OS/architecture/version-aware bottle selection
@@ -277,6 +278,6 @@ regression smoke, not a release closure claim.
 | H0-01 reconciliation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): the work was done and gates were observed, but the claim cited this Markdown document, not a bound runner report; baseline `test`/`ts-test` logs show CACHED layers and no log carries a commit marker. Prior claim preserved in the ledger's `historical_claims` |
 | H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 rows lacked lanes/cases and 177 lacked evidence kinds. Original-spec lanes, conjunctive cases/proofs and runner/formal/review kinds are registered for **178/178** IDs. The exact-source structural report `verification/reports/2026-09-26-h0-inventory-953724a.log` (SHA `320e84504d7ab77f4f4b8d8ccdfc62e435cc878b5207317d9d4ed204d0905b9d`) proves original identity/field comparisons and 8/8 checksums, not semantic completeness. The checker now enforces per-kind lane coverage and predeclared named proof IDs/minima on closure; **all 39** real formal rows still lack semantically reviewed explicit proof catalogs. Original-case review, H0/A0/global reports and native/proof acceptance remain open; no row promoted to verified |
 | A0-01 implementation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): unit + container gates observed green (archived `verification/reports/2026-09-24-a0-*.log`: cargo test executed, gripsack-fetch 61 passed / 0 failed incl. 13 bottle cases; e2e 245 passed; verify 56 verified 0 errors + 4 mutants; ts-test/model CACHED) but the logs lack commit/dirty binding and the evidence was Markdown |
-| A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, **27** calibrated negatives and a review-only positive (current source-bound `0be1eaa` report above), plus `check_architecture.py --self-check` wired into required CI `test`. Formal evidence is distinct from runner; every declared kind is conjunctive per claimed lane. Named proof IDs, labeled checked count and canonical row ID/names/minimum/**milestone** digest must occur in repo-local runner bytes and match the declared catalog; an A0 proof cannot impersonate H0 and a SHA-256 digit cannot stand in for a passing count. The live inventory still lacks all 39 reviewed proof catalogs and independent semantic H0 case review; H0/CI/native/VM lanes, schema and callers remain open |
+| A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, **30** calibrated negatives and H0/A0/E0-lane/review-only positives (current source-bound `ce3c7e0` report above), plus `check_architecture.py --self-check` in required CI `test`. Every declared kind is conjunctive per claimed lane; optional platform case maps must cover all lanes and exactly the registered case union, so Linux systemd cannot stand in for native launchd. Formal proof IDs, labeled checked count and canonical row ID/names/minimum/**milestone** digest must occur in repo-local runner bytes. All 39 real proof catalogs and independent 178-row semantic review remain open; H0/CI/native/VM lanes, schema and callers are not closed |
 | Milestone closures | **retracted 2026-09-24** — H0 and A0 are NOT closed. The earlier `--close-milestone {H0,A0}` pass rested on Markdown-only evidence and handwritten counts (incl. a G-03 `obligations.checked: 50` contradicting the runner logs' `56 verified, 0 errors`); those claims were moved to `historical_claims`. Closure requires source-bound reports for **each declared kind and lane**, named proof catalogs/floors where formal evidence is mandatory, and passing global gates G-01–G-08. Existing checker calibration is synthetic, not a completion report |
-| Next | name and review proof obligations plus count minima for all 39 real formal rows; obtain a source-bound semantic H0 inventory review and H0/A0/global reports before attempting closure; continue A1 grammar, B0-01's required CI/container-gate evidence and plan/0048 NEXT. B0-01 Linux real-daemon qualification is source-bound at `0be1eaa`, not B0 closure; native Mac/VM, registry and prover cases require independent real evidence |
+| Next | name and review proof obligations plus count minima for all 39 real formal rows; obtain a source-bound semantic H0 inventory review and H0/A0/global reports before attempting closure; continue A1 grammar, B0-01's exact-source full required CI/container-gate result and plan/0048 NEXT. B0-01 Linux real-daemon qualification is source-bound at `ce3c7e0`, **not** a `grip` BuildKit backend or B0 closure; native Mac/VM, registry and prover cases require independent real evidence |
