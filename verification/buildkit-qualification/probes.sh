@@ -175,3 +175,4 @@ else
 fi
 
 echo "=== B0-01 Linux lane probes complete; results in $RESULTS"
+echo "B0_LINUX_QUALIFICATION=6"

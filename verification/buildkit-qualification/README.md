@@ -68,6 +68,9 @@ status is checked **before** a passing report is printed, never
 inferred from `tee`'s exit code.
 `probe4-verify.json` is valid JSON; the independent runtime outcome
 is recorded separately in `probe4-runtime.txt`.
+Only a completed six-case run prints `B0_LINUX_QUALIFICATION=6`;
+the required CI `test` job records that marker after the real daemon
+and independent runtime finish.
 
 ## Honesty notes
 
