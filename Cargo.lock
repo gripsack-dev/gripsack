@@ -590,6 +590,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gripsack-buildkit"
+version = "0.42.0"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "gripsack-config"
 version = "0.42.0"
 dependencies = [
@@ -663,12 +674,14 @@ dependencies = [
 name = "gripsack-fuzz"
 version = "0.0.0"
 dependencies = [
+ "gripsack-buildkit",
  "gripsack-exec",
  "gripsack-fetch",
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-store",
  "libfuzzer-sys",
+ "serde",
  "serde_json",
  "tempfile",
 ]
