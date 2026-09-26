@@ -141,3 +141,23 @@ Mac attestations.
 The records cover selected A1 cases only. They do **not** prove the
 schema/name-index refinement, complete A1 proof family, native macOS
 behavior, live CI protection or an A1 milestone closure.
+
+## M0 §1.3 host admission — local evidence, not release closure
+
+The original edition-5 handover checksums pass for all eight files,
+and the live delivery ledger contains all **178** IDs. At source
+commit `681e87b439cd979978a12dbefab2eccb18989944` the tracked
+`SOURCE_ROOTS` fingerprint is
+`11419c4e1d532fea98b8b2e687f0fed60d964d9388413f4111dfd9a53971968c`.
+The focused runner checked clean roots before and after; the separate
+five-gate run was **pre-commit worktree** observation with inferred
+source equivalence, not an exact-commit CI attestation.
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-26-m0-host-681e87b.log` | `65a710e52fd7d343b96aa3d4c34baa7138b73ed3c15129ff8e585f880680636c` | Committed source: E132 typed-host unit, direct lockfile roundtrip and five real CLI cases including the three original failing-before host/adopt witnesses; 7/7, sandboxed HOME, no outside file writes |
+| `2026-09-26-m0-host-precommit-five-gates.log` | `9249ecbb2e1a0a39bb5d0360bd93d90391641c708100a0e89e72e072e281e5ce` | Pre-commit worktree: fresh Rust fmt/clippy/tests, real CLI e2e 304/304, fresh Verus 72/0 with seven named mutants; cached TypeScript/TLC image layers — not protected CI or Mac evidence |
+
+This binds only plan/0048 §1.3's selected Linux behavior. All 149
+unresolved handover lane inventories, the other M0–M2 NEXT leaves,
+protected CI, native Mac and public release remain open.

@@ -1,0 +1,2066 @@
+RUNNER_SOURCE_STATE=pre-commit worktree (the five gates ran before commit 681e87b439cd979978a12dbefab2eccb18989944; no runner-time clean-source assertion was captured)
+RUNNER_SOURCE_EQUIVALENCE=[INFERENCE] source-bearing files were not edited between the worktree run and that source commit; this log is local observational evidence, NOT an exact-commit CI attestation. The separate M0_HOST_BOUNDARY=7 report was executed at the committed SHA.
+RUNNER_COMMANDS=docker compose run --build --rm test && docker compose run --build --rm ts-test && docker compose run --build --rm e2e && docker compose run --build --rm model && docker compose run --build --rm verify
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Rust 1.98.0; Deno 2.9.6; pytest 9.1.1; TLC 1.7.4; Verus 0.2026.09.06.8dea4a2; Z3 4.16.0
+RUNNER_INPUTS=typed HostName E132 source plus sandboxed offline host/adopt/lint witnesses; Rust test stage rebuilt, e2e rebuilt and exercised 304 cases, Verus rebuilt with 72 obligations and seven named mutants; TypeScript and TLC stages reused cached build layers on unchanged sources.
+
+ Image gripsack-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 530B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.3s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#7 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 75.69kB 0.1s done
+#8 DONE 0.1s
+
+#9 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#9 CACHED
+
+#10 [builder  4/10] WORKDIR /app
+#10 CACHED
+
+#11 [builder  6/10] COPY crates ./crates
+#11 CACHED
+
+#12 [builder  7/10] COPY fuzz ./fuzz
+#12 CACHED
+
+#13 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#13 CACHED
+
+#14 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#14 CACHED
+
+#15 [builder  8/10] COPY schema ./schema
+#15 CACHED
+
+#16 [builder  9/10] COPY typescript ./typescript
+#16 CACHED
+
+#17 [builder 10/10] COPY scripts ./scripts
+#17 CACHED
+
+#18 [test 1/2] RUN cargo fmt --check     && cargo clippy --locked --workspace --all-targets -- -D warnings     && cargo test --locked
+#18 2.673     Updating crates.io index
+#18 4.328  Downloading crates ...
+#18 4.385   Downloaded adler2 v2.0.1
+#18 4.405   Downloaded ambient-authority v0.0.2
+#18 4.414   Downloaded anstream v1.0.0
+#18 4.418   Downloaded anstyle v1.0.14
+#18 4.425   Downloaded anstyle-query v1.1.5
+#18 4.432   Downloaded bit-set v0.8.0
+#18 4.439   Downloaded block-buffer v0.12.1
+#18 4.445   Downloaded anstyle-parse v1.0.0
+#18 4.450   Downloaded autocfg v1.5.1
+#18 4.459   Downloaded borrow-or-share v0.2.4
+#18 4.471   Downloaded cfg-if v1.0.4
+#18 4.483   Downloaded clap_lex v1.1.0
+#18 4.489   Downloaded colorchoice v1.0.5
+#18 4.494   Downloaded bytecount v0.6.9
+#18 4.503   Downloaded displaydoc v0.2.7
+#18 4.510   Downloaded errno v0.3.14
+#18 4.517   Downloaded email_address v0.2.9
+#18 4.530   Downloaded bit-vec v0.8.0
+#18 4.539   Downloaded idna_adapter v1.2.2
+#18 4.543   Downloaded itoa v1.0.18
+#18 4.549   Downloaded httpdate v1.0.3
+#18 4.554   Downloaded simd-adler32 v0.3.10
+#18 4.562   Downloaded num v0.4.3
+#18 4.564   Downloaded form_urlencoded v1.2.2
+#18 4.567   Downloaded rustls-pki-types v1.15.1
+#18 4.575   Downloaded rustls-native-certs v0.8.4
+#18 4.579   Downloaded is_terminal_polyfill v1.70.2
+#18 4.582   Downloaded clap_derive v4.6.4
+#18 4.592   Downloaded jsonschema-regex v0.55.0
+#18 4.595   Downloaded equivalent v1.0.2
+#18 4.600   Downloaded maybe-owned v0.3.4
+#18 4.604   Downloaded num-cmp v0.1.0
+#18 4.608   Downloaded convert_case v0.4.0
+#18 4.612   Downloaded lazy_static v1.5.0
+#18 4.619   Downloaded cpufeatures v0.3.0
+#18 4.628   Downloaded matchers v0.2.0
+#18 4.632   Downloaded shell-words v1.1.1
+#18 4.635   Downloaded heck v0.5.0
+#18 4.640   Downloaded scopeguard v1.2.0
+#18 4.647   Downloaded num-iter v0.1.46
+#18 4.651   Downloaded ahash v0.8.12
+#18 4.662   Downloaded bzip2 v0.6.1
+#18 4.671   Downloaded cap-std v4.0.3
+#18 4.688   Downloaded fs-set-times v0.20.3
+#18 4.692   Downloaded tracing-serde v0.2.0
+#18 4.697   Downloaded strum v0.28.0
+#18 4.702   Downloaded subtle v2.6.1
+#18 4.707   Downloaded filetime v0.2.29
+#18 4.721   Downloaded lock_api v0.4.14
+#18 4.721   Downloaded unit-prefix v0.5.2
+#18 4.728   Downloaded ipnet v2.12.1
+#18 4.734   Downloaded find-msvc-tools v0.1.11
+#18 4.742   Downloaded strsim v0.11.1
+#18 4.748   Downloaded potential_utf v0.1.6
+#18 4.752   Downloaded rustix-linux-procfs v0.1.1
+#18 4.757   Downloaded clap v4.6.6
+#18 4.786   Downloaded fastrand v2.5.0
+#18 4.793   Downloaded jobserver v0.1.35
+#18 4.801   Downloaded num-complex v0.4.6
+#18 4.806   Downloaded nu-ansi-term v0.50.3
+#18 4.817   Downloaded serde_spanned v1.1.1
+#18 4.822   Downloaded dialoguer v0.12.0
+#18 4.837   Downloaded thread_local v1.1.10
+#18 4.842   Downloaded num-rational v0.4.2
+#18 4.846   Downloaded crypto-common v0.2.2
+#18 4.850   Downloaded data-encoding v2.11.1
+#18 4.854   Downloaded io-lifetimes v3.0.1
+#18 4.860   Downloaded num-integer v0.1.47
+#18 4.865   Downloaded foldhash v0.2.0
+#18 4.868   Downloaded bitflags v2.13.1
+#18 4.882   Downloaded stable_deref_trait v1.2.1
+#18 4.885   Downloaded digest v0.11.3
+#18 4.896   Downloaded getrandom v0.2.17
+#18 4.905   Downloaded io-extras v0.19.0
+#18 4.911   Downloaded yoke-derive v0.8.2
+#18 4.915   Downloaded zerofrom-derive v0.1.7
+#18 4.918   Downloaded zstd v0.13.3
+#18 4.933   Downloaded openssl-probe v0.2.1
+#18 4.939   Downloaded percent-encoding v2.3.2
+#18 4.943   Downloaded zerofrom v0.1.8
+#18 4.947   Downloaded zmij v1.0.23
+#18 4.958   Downloaded allocator-api2 v0.2.21
+#18 4.965   Downloaded ref-cast v1.0.27
+#18 4.975   Downloaded utf8parse v0.2.2
+#18 4.979   Downloaded hybrid-array v0.4.14
+#18 4.987   Downloaded litemap v0.8.3
+#18 4.996   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#18 5.001   Downloaded xattr v1.6.1
+#18 5.013   Downloaded ref-cast-impl v1.0.27
+#18 5.014   Downloaded io-lifetimes v2.0.4
+#18 5.018   Downloaded version_check v0.9.5
+#18 5.023   Downloaded console v0.16.4
+#18 5.029   Downloaded webpki-roots v0.26.11
+#18 5.034   Downloaded utf8_iter v1.0.4
+#18 5.040   Downloaded uuid-simd v0.8.0
+#18 5.048   Downloaded crc32fast v1.5.1
+#18 5.057   Downloaded untrusted v0.9.0
+#18 5.063   Downloaded outref v0.5.2
+#18 5.070   Downloaded shlex v2.0.1
+#18 5.075   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#18 5.079   Downloaded fluent-uri v0.4.1
+#18 5.089   Downloaded log v0.4.34
+#18 5.100   Downloaded micromap v0.3.0
+#18 5.118   Downloaded thiserror v2.0.20
+#18 5.137   Downloaded icu_provider v2.3.1
+#18 5.146   Downloaded libbz2-rs-sys v0.2.5
+#18 5.152   Downloaded once_cell v1.21.4
+#18 5.161   Downloaded owo-colors v4.3.0
+#18 5.167   Downloaded tracing-log v0.2.0
+#18 5.173   Downloaded synstructure v0.13.2
+#18 5.176   Downloaded thiserror-impl v2.0.20
+#18 5.181   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#18 5.186   Downloaded toml_writer v1.1.2+spec-1.1.0
+#18 5.190   Downloaded getrandom v0.4.3
+#18 5.203   Downloaded base64 v0.22.1
+#18 5.218   Downloaded icu_normalizer_data v2.3.0
+#18 5.224   Downloaded quote v1.0.47
+#18 5.234   Downloaded getrandom v0.3.4
+#18 5.243   Downloaded icu_locale_core v2.3.0
+#18 5.269   Downloaded zeroize v1.9.0
+#18 5.274   Downloaded zopfli v0.8.3
+#18 5.281   Downloaded pin-project-lite v0.2.17
+#18 5.302   Downloaded parking_lot_core v0.9.12
+#18 5.310   Downloaded xz2 v0.1.7
+#18 5.317   Downloaded vsimd v0.8.0
+#18 5.325   Downloaded jsonschema-value v0.55.0
+#18 5.332   Downloaded miniz_oxide v0.8.9
+#18 5.338   Downloaded pkg-config v0.3.34
+#18 5.344   Downloaded cc v1.4.4
+#18 5.351   Downloaded const-oid v0.10.2
+#18 5.358   Downloaded cap-primitives v4.0.3
+#18 5.393   Downloaded indicatif v0.18.6
+#18 5.404   Downloaded parking_lot v0.12.5
+#18 5.412   Downloaded referencing v0.55.0
+#18 5.427   Downloaded bumpalo v3.20.3
+#18 5.435   Downloaded strum_macros v0.28.0
+#18 5.443   Downloaded flate2 v1.1.9
+#18 5.462   Downloaded tracing-attributes v0.1.31
+#18 5.467   Downloaded toml_parser v1.1.3+spec-1.1.0
+#18 5.475   Downloaded tinystr v0.8.4
+#18 5.482   Downloaded unicode-general-category v1.1.0
+#18 5.487   Downloaded sha2 v0.11.0
+#18 5.501   Downloaded yoke v0.8.3
+#18 5.507   Downloaded zstd-safe v7.2.4
+#18 5.512   Downloaded icu_collections v2.3.0
+#18 5.531   Downloaded icu_properties v2.3.0
+#18 5.541   Downloaded zerovec-derive v0.11.6
+#18 5.547   Downloaded num-bigint v0.4.8
+#18 5.562   Downloaded memchr v2.8.3
+#18 5.585   Downloaded indexmap v2.14.0
+#18 5.600   Downloaded writeable v0.6.4
+#18 5.608   Downloaded ryu v1.0.23
+#18 5.619   Downloaded smallvec v1.15.2
+#18 5.625   Downloaded serde_yaml v0.9.34+deprecated
+#18 5.634   Downloaded unicode-ident v1.0.24
+#18 5.650   Downloaded fraction v0.17.0
+#18 5.663   Downloaded tempfile v3.27.0
+#18 5.672   Downloaded toml v0.9.12+spec-1.1.0
+#18 5.686   Downloaded toml v1.1.4+spec-1.1.0
+#18 5.699   Downloaded clap_builder v4.6.6
+#18 5.717   Downloaded idna v1.1.0
+#18 5.725   Downloaded num-traits v0.2.19
+#18 5.733   Downloaded zerovec v0.11.8
+#18 5.751   Downloaded tracing-core v0.1.36
+#18 5.758   Downloaded sharded-slab v0.1.7
+#18 5.770   Downloaded aho-corasick v1.1.5
+#18 5.783   Downloaded hashbrown v0.17.1
+#18 5.794   Downloaded icu_properties_data v2.3.0
+#18 5.815   Downloaded serde_derive v1.0.229
+#18 5.821   Downloaded unsafe-libyaml v0.2.11
+#18 5.833   Downloaded serde_core v1.0.229
+#18 5.842   Downloaded fancy-regex v0.19.1
+#18 5.862   Downloaded toml_edit v0.25.13+spec-1.1.0
+#18 5.871   Downloaded proc-macro2 v1.0.107
+#18 5.878   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#18 5.888   Downloaded rustls-webpki v0.103.15
+#18 5.895   Downloaded tar v0.4.46
+#18 5.906   Downloaded serde v1.0.229
+#18 5.917   Downloaded url v2.5.8
+#18 5.922   Downloaded zerotrie v0.2.5
+#18 5.934   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#18 5.940   Downloaded typenum v1.20.1
+#18 5.948   Downloaded typed-path v0.12.3
+#18 5.978   Downloaded icu_normalizer v2.3.0
+#18 5.995   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#18 6.002   Downloaded jsonschema v0.55.0
+#18 6.049   Downloaded ureq v2.12.1
+#18 6.063   Downloaded zip v8.6.0
+#18 6.075   Downloaded lzma-sys v0.1.20
+#18 6.155   Downloaded regex v1.13.1
+#18 6.169   Downloaded libc v0.2.189
+#18 6.373   Downloaded serde_json v1.0.151
+#18 6.392   Downloaded winnow v1.0.4
+#18 6.420   Downloaded winnow v0.7.15
+#18 6.446   Downloaded portable-atomic v1.15.0
+#18 6.462   Downloaded tracing-subscriber v0.3.23
+#18 6.482   Downloaded webpki-roots v1.0.9
+#18 6.488   Downloaded zlib-rs v0.6.7
+#18 6.500   Downloaded zerocopy v0.8.56
+#18 6.543   Downloaded unicode-width v0.2.2
+#18 6.553   Downloaded syn v2.0.119
+#18 6.574   Downloaded syn v3.0.4
+#18 6.593   Downloaded vstd v0.0.0-2026-09-06-0133
+#18 6.615   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#18 6.636   Downloaded linux-raw-sys v0.12.1
+#18 6.724   Downloaded rustls v0.23.43
+#18 6.754   Downloaded regex-syntax v0.8.11
+#18 6.766   Downloaded rustix v1.1.4
+#18 6.846   Downloaded tracing v0.1.44
+#18 6.871   Downloaded regex-automata v0.4.18
+#18 6.907   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#18 6.937   Downloaded ring v0.17.14
+#18 7.429    Compiling proc-macro2 v1.0.107
+#18 7.429    Compiling quote v1.0.47
+#18 7.429    Compiling unicode-ident v1.0.24
+#18 7.430    Compiling libc v0.2.189
+#18 7.434    Compiling serde_core v1.0.229
+#18 7.437     Checking cfg-if v1.0.4
+#18 7.437     Checking once_cell v1.21.4
+#18 7.437     Checking memchr v2.8.3
+#18 7.437    Compiling serde v1.0.229
+#18 7.437     Checking allocator-api2 v0.2.21
+#18 7.444     Checking foldhash v0.2.0
+#18 7.445     Checking equivalent v1.0.2
+#18 7.445    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#18 7.448    Compiling zmij v1.0.23
+#18 7.448    Compiling hashbrown v0.17.1
+#18 7.459    Compiling serde_json v1.0.151
+#18 7.466     Checking itoa v1.0.18
+#18 7.499    Compiling convert_case v0.4.0
+#18 7.499    Compiling vstd v0.0.0-2026-09-06-0133
+#18 7.515     Checking verus_builtin v0.0.0-2026-09-06-0133
+#18 7.526    Compiling find-msvc-tools v0.1.11
+#18 7.529    Compiling shlex v2.0.1
+#18 7.529     Checking smallvec v1.15.2
+#18 7.530    Compiling rustix v1.1.4
+#18 7.530    Compiling thiserror v2.0.20
+#18 7.540     Checking linux-raw-sys v0.12.1
+#18 7.541     Checking bitflags v2.13.1
+#18 7.541     Checking stable_deref_trait v1.2.1
+#18 7.541     Checking winnow v1.0.4
+#18 7.542    Compiling io-lifetimes v2.0.4
+#18 7.542    Compiling io-lifetimes v3.0.1
+#18 7.542    Compiling pkg-config v0.3.34
+#18 7.543     Checking toml_writer v1.1.2+spec-1.1.0
+#18 7.684    Compiling io-extras v0.19.0
+#18 7.693     Checking percent-encoding v2.3.2
+#18 7.693    Compiling cap-primitives v4.0.3
+#18 7.693     Checking typenum v1.20.1
+#18 7.735    Compiling getrandom v0.4.3
+#18 7.794     Checking litemap v0.8.3
+#18 7.933     Checking zeroize v1.9.0
+#18 7.944    Compiling cap-std v4.0.3
+#18 7.990     Checking ambient-authority v0.0.2
+#18 8.027     Checking log v0.4.34
+#18 8.031     Checking ipnet v2.12.1
+#18 8.031     Checking writeable v0.6.4
+#18 8.075     Checking maybe-owned v0.3.4
+#18 8.077    Compiling icu_properties_data v2.3.0
+#18 8.103     Checking winnow v0.7.15
+#18 8.106     Checking fastrand v2.5.0
+#18 8.130    Compiling icu_normalizer_data v2.3.0
+#18 8.133     Checking utf8_iter v1.0.4
+#18 8.178     Checking tracing-core v0.1.36
+#18 8.180     Checking const-oid v0.10.2
+#18 8.290    Compiling crc32fast v1.5.1
+#18 8.392     Checking cpufeatures v0.3.0
+#18 8.433     Checking untrusted v0.9.0
+#18 8.463     Checking pin-project-lite v0.2.17
+#18 8.463     Checking simd-adler32 v0.3.10
+#18 8.509     Checking rustls-pki-types v1.15.1
+#18 8.510    Compiling zstd-safe v7.2.4
+#18 8.520    Compiling autocfg v1.5.1
+#18 8.553     Checking regex-syntax v0.8.11
+#18 8.564     Checking adler2 v2.0.1
+#18 8.569    Compiling rustls v0.23.43
+#18 8.619     Checking aho-corasick v1.1.5
+#18 8.719     Checking form_urlencoded v1.2.2
+#18 8.720     Checking zlib-rs v0.6.7
+#18 8.722     Checking bumpalo v3.20.3
+#18 8.779     Checking libbz2-rs-sys v0.2.5
+#18 8.780     Checking subtle v2.6.1
+#18 8.830     Checking typed-path v0.12.3
+#18 8.854     Checking base64 v0.22.1
+#18 8.857     Checking openssl-probe v0.2.1
+#18 8.875     Checking miniz_oxide v0.8.9
+#18 8.930     Checking httpdate v1.0.3
+#18 8.952    Compiling heck v0.5.0
+#18 8.996    Compiling zerocopy v0.8.56
+#18 9.018    Compiling version_check v0.9.5
+#18 9.043    Compiling getrandom v0.3.4
+#18 9.058    Compiling parking_lot_core v0.9.12
+#18 9.127     Checking scopeguard v1.2.0
+#18 9.171    Compiling ref-cast v1.0.27
+#18 9.191     Checking bit-vec v0.8.0
+#18 9.216     Checking borrow-or-share v0.2.4
+#18 9.236    Compiling unicode-general-category v1.1.0
+#18 9.294     Checking outref v0.5.2
+#18 9.350     Checking webpki-roots v1.0.9
+#18 9.351    Compiling indexmap v2.14.0
+#18 9.395     Checking zopfli v0.8.3
+#18 9.450     Checking rustls-native-certs v0.8.4
+#18 9.512     Checking lock_api v0.4.14
+#18 9.558     Checking micromap v0.3.0
+#18 9.579    Compiling num-traits v0.2.19
+#18 9.579     Checking unsafe-libyaml v0.2.11
+#18 9.579     Checking num-cmp v0.1.0
+#18 9.581     Checking webpki-roots v0.26.11
+#18 9.648     Checking vsimd v0.8.0
+#18 9.708     Checking bit-set v0.8.0
+#18 9.767     Checking bytecount v0.6.9
+#18 9.806     Checking ryu v1.0.23
+#18 9.818     Checking utf8parse v0.2.2
+#18 9.967     Checking lazy_static v1.5.0
+#18 9.985    Compiling ahash v0.8.12
+#18 10.01     Checking data-encoding v2.11.1
+#18 10.04     Checking anstyle-parse v1.0.0
+#18 10.08     Checking tracing-log v0.2.0
+#18 10.13     Checking thread_local v1.1.10
+#18 10.15     Checking sharded-slab v0.1.7
+#18 10.16     Checking anstyle v1.0.14
+#18 10.26     Checking unicode-width v0.2.2
+#18 10.27    Compiling syn v3.0.4
+#18 10.30    Compiling syn v2.0.119
+#18 10.38    Compiling verus_syn v0.0.0-2026-09-06-0133
+#18 10.38     Checking hybrid-array v0.4.14
+#18 10.42     Checking bzip2 v0.6.1
+#18 10.45     Checking is_terminal_polyfill v1.70.2
+#18 10.49     Checking anstyle-query v1.1.5
+#18 10.53    Compiling portable-atomic v1.15.0
+#18 10.59     Checking colorchoice v1.0.5
+#18 10.61     Checking nu-ansi-term v0.50.3
+#18 10.70     Checking strsim v0.11.1
+#18 10.70     Checking clap_lex v1.1.0
+#18 10.74    Compiling owo-colors v4.3.0
+#18 10.74     Checking unit-prefix v0.5.2
+#18 10.74     Checking shell-words v1.1.1
+#18 10.76     Checking anstream v1.0.0
+#18 10.81    Compiling jobserver v0.1.35
+#18 10.94     Checking getrandom v0.2.17
+#18 10.96     Checking filetime v0.2.29
+#18 11.03     Checking gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#18 11.16     Checking console v0.16.4
+#18 11.29     Checking clap_builder v4.6.6
+#18 11.33    Compiling cc v1.4.4
+#18 11.33     Checking uuid-simd v0.8.0
+#18 11.39     Checking flate2 v1.1.9
+#18 11.45     Checking toml_parser v1.1.3+spec-1.1.0
+#18 11.50     Checking parking_lot v0.12.5
+#18 11.94     Checking block-buffer v0.12.1
+#18 11.94     Checking crypto-common v0.2.2
+#18 12.20     Checking regex-automata v0.4.18
+#18 12.20     Checking jsonschema-regex v0.55.0
+#18 12.23     Checking num-integer v0.1.47
+#18 12.23     Checking num-complex v0.4.6
+#18 12.61     Checking num-bigint v0.4.8
+#18 12.61     Checking num-iter v0.1.46
+#18 12.78     Checking indicatif v0.18.6
+#18 13.21     Checking digest v0.11.3
+#18 13.41     Checking sha2 v0.11.0
+#18 13.50     Checking serde_spanned v1.1.1
+#18 13.50     Checking toml_datetime v0.7.5+spec-1.1.0
+#18 13.50     Checking toml_datetime v1.1.1+spec-1.1.0
+#18 13.83     Checking toml v1.1.4+spec-1.1.0
+#18 13.83     Checking toml_edit v0.25.13+spec-1.1.0
+#18 13.84     Checking toml v0.9.12+spec-1.1.0
+#18 14.04    Compiling ring v0.17.14
+#18 14.04    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#18 14.04    Compiling lzma-sys v0.1.20
+#18 14.50     Checking num-rational v0.4.2
+#18 14.82     Checking rustix-linux-procfs v0.1.1
+#18 14.82     Checking fs-set-times v0.20.3
+#18 14.82     Checking tempfile v3.27.0
+#18 14.82     Checking xattr v1.6.1
+#18 14.99     Checking num v0.4.3
+#18 15.04     Checking tar v0.4.46
+#18 15.06     Checking fraction v0.17.0
+#18 15.17     Checking dialoguer v0.12.0
+#18 15.79     Checking xz2 v0.1.7
+#18 16.30     Checking gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#18 16.50     Checking regex v1.13.1
+#18 16.50     Checking fancy-regex v0.19.1
+#18 16.50     Checking matchers v0.2.0
+#18 17.65    Compiling synstructure v0.13.2
+#18 17.89    Compiling serde_derive v1.0.229
+#18 17.89    Compiling thiserror-impl v2.0.20
+#18 17.89    Compiling zerovec-derive v0.11.6
+#18 17.89    Compiling displaydoc v0.2.7
+#18 17.90    Compiling ref-cast-impl v1.0.27
+#18 17.90    Compiling clap_derive v4.6.4
+#18 18.37     Checking zstd v0.13.3
+#18 18.54     Checking rustls-webpki v0.103.15
+#18 18.64     Checking zip v8.6.0
+#18 19.22    Compiling zerofrom-derive v0.1.7
+#18 19.22    Compiling yoke-derive v0.8.2
+#18 19.22    Compiling tracing-attributes v0.1.31
+#18 19.22    Compiling strum_macros v0.28.0
+#18 20.32     Checking clap v4.6.6
+#18 20.78     Checking zerofrom v0.1.8
+#18 20.92     Checking yoke v0.8.3
+#18 20.99     Checking tracing v0.1.44
+#18 21.14     Checking zerovec v0.11.8
+#18 21.14     Checking zerotrie v0.2.5
+#18 21.59    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#18 21.59    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#18 21.79     Checking strum v0.28.0
+#18 21.83     Checking tinystr v0.8.4
+#18 21.83     Checking potential_utf v0.1.6
+#18 21.90     Checking icu_collections v2.3.0
+#18 21.96     Checking icu_locale_core v2.3.0
+#18 22.29     Checking fluent-uri v0.4.1
+#18 22.29     Checking email_address v0.2.9
+#18 22.29     Checking serde_yaml v0.9.34+deprecated
+#18 22.29     Checking tracing-serde v0.2.0
+#18 22.39     Checking tracing-subscriber v0.3.23
+#18 22.51     Checking jsonschema-value v0.55.0
+#18 22.74     Checking icu_provider v2.3.1
+#18 22.90     Checking referencing v0.55.0
+#18 22.92     Checking icu_normalizer v2.3.0
+#18 22.92     Checking icu_properties v2.3.0
+#18 23.45     Checking jsonschema v0.55.0
+#18 24.06     Checking idna_adapter v1.2.2
+#18 24.13     Checking idna v1.1.0
+#18 24.39     Checking url v2.5.8
+#18 25.02     Checking ureq v2.12.1
+#18 34.40     Checking gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#18 34.79     Checking gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#18 38.14     Checking gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#18 38.14     Checking gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#18 38.14     Checking griplint v0.42.0 (/app/crates/griplint)
+#18 38.93     Checking gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#18 38.93     Checking gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#18 40.05     Checking gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#18 40.05     Checking gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#18 41.21     Checking gripsack-fuzz v0.0.0 (/app/fuzz)
+#18 41.21     Checking gripsack v0.42.0 (/app/crates/gripsack)
+#18 42.53     Finished `dev` profile [unoptimized + debuginfo] target(s) in 40.06s
+#18 43.18    Compiling cfg-if v1.0.4
+#18 43.18    Compiling equivalent v1.0.2
+#18 43.18    Compiling memchr v2.8.3
+#18 43.19    Compiling once_cell v1.21.4
+#18 43.19    Compiling allocator-api2 v0.2.21
+#18 43.19    Compiling foldhash v0.2.0
+#18 43.20    Compiling itoa v1.0.18
+#18 43.20    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#18 43.20    Compiling smallvec v1.15.2
+#18 43.20    Compiling linux-raw-sys v0.12.1
+#18 43.20    Compiling bitflags v2.13.1
+#18 43.20    Compiling winnow v1.0.4
+#18 43.20    Compiling toml_writer v1.1.2+spec-1.1.0
+#18 43.20    Compiling stable_deref_trait v1.2.1
+#18 43.22    Compiling percent-encoding v2.3.2
+#18 43.22    Compiling libc v0.2.189
+#18 43.22    Compiling serde_core v1.0.229
+#18 43.22    Compiling zmij v1.0.23
+#18 43.22    Compiling io-lifetimes v2.0.4
+#18 43.22    Compiling io-lifetimes v3.0.1
+#18 43.23    Compiling typenum v1.20.1
+#18 43.23    Compiling ambient-authority v0.0.2
+#18 43.23    Compiling maybe-owned v0.3.4
+#18 43.23    Compiling ipnet v2.12.1
+#18 43.24    Compiling winnow v0.7.15
+#18 43.24    Compiling fastrand v2.5.0
+#18 43.25    Compiling indexmap v2.14.0
+#18 43.25    Compiling log v0.4.34
+#18 43.25    Compiling writeable v0.6.4
+#18 43.25    Compiling zeroize v1.9.0
+#18 43.25    Compiling thiserror v2.0.20
+#18 43.26    Compiling zerofrom v0.1.8
+#18 43.26    Compiling litemap v0.8.3
+#18 43.26    Compiling const-oid v0.10.2
+#18 43.26    Compiling cpufeatures v0.3.0
+#18 43.29    Compiling utf8_iter v1.0.4
+#18 43.39    Compiling io-extras v0.19.0
+#18 43.39    Compiling icu_properties_data v2.3.0
+#18 43.41    Compiling tracing-core v0.1.36
+#18 43.42    Compiling icu_normalizer_data v2.3.0
+#18 43.43    Compiling pin-project-lite v0.2.17
+#18 43.45    Compiling simd-adler32 v0.3.10
+#18 43.48    Compiling untrusted v0.9.0
+#18 43.50    Compiling crc32fast v1.5.1
+#18 43.54    Compiling adler2 v2.0.1
+#18 43.55    Compiling form_urlencoded v1.2.2
+#18 43.55    Compiling libbz2-rs-sys v0.2.5
+#18 43.56    Compiling subtle v2.6.1
+#18 43.57    Compiling yoke v0.8.3
+#18 43.59    Compiling bumpalo v3.20.3
+#18 43.59    Compiling regex-syntax v0.8.11
+#18 43.60    Compiling rustls-pki-types v1.15.1
+#18 43.61    Compiling zlib-rs v0.6.7
+#18 43.62    Compiling typed-path v0.12.3
+#18 43.65    Compiling base64 v0.22.1
+#18 43.66    Compiling openssl-probe v0.2.1
+#18 43.74    Compiling num-traits v0.2.19
+#18 43.75    Compiling httpdate v1.0.3
+#18 43.77    Compiling scopeguard v1.2.0
+#18 43.78    Compiling zerocopy v0.8.56
+#18 43.82    Compiling ref-cast v1.0.27
+#18 43.83    Compiling bit-vec v0.8.0
+#18 43.88    Compiling borrow-or-share v0.2.4
+#18 43.90    Compiling hashbrown v0.17.1
+#18 43.93    Compiling rustix v1.1.4
+#18 43.93    Compiling zerovec v0.11.8
+#18 43.95    Compiling zerotrie v0.2.5
+#18 43.96    Compiling lock_api v0.4.14
+#18 43.98    Compiling bytecount v0.6.9
+#18 43.99    Compiling micromap v0.3.0
+#18 44.01    Compiling vsimd v0.8.0
+#18 44.04    Compiling miniz_oxide v0.8.9
+#18 44.04    Compiling outref v0.5.2
+#18 44.13    Compiling zopfli v0.8.3
+#18 44.14    Compiling ryu v1.0.23
+#18 44.18    Compiling tracing v0.1.44
+#18 44.22    Compiling aho-corasick v1.1.5
+#18 44.28    Compiling unsafe-libyaml v0.2.11
+#18 44.48    Compiling webpki-roots v1.0.9
+#18 44.48    Compiling rustls-native-certs v0.8.4
+#18 44.49    Compiling bit-set v0.8.0
+#18 44.51    Compiling num-cmp v0.1.0
+#18 44.53    Compiling strum v0.28.0
+#18 44.67    Compiling webpki-roots v0.26.11
+#18 44.74    Compiling bzip2 v0.6.1
+#18 44.81    Compiling unicode-general-category v1.1.0
+#18 44.85    Compiling data-encoding v2.11.1
+#18 44.90    Compiling lazy_static v1.5.0
+#18 45.04    Compiling sharded-slab v0.1.7
+#18 45.04    Compiling tracing-log v0.2.0
+#18 45.06    Compiling thread_local v1.1.10
+#18 45.08    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#18 45.12    Compiling nu-ansi-term v0.50.3
+#18 45.16    Compiling utf8parse v0.2.2
+#18 45.33    Compiling is_terminal_polyfill v1.70.2
+#18 45.50    Compiling tinystr v0.8.4
+#18 45.50    Compiling potential_utf v0.1.6
+#18 45.52    Compiling anstyle-parse v1.0.0
+#18 45.56    Compiling unicode-width v0.2.2
+#18 45.61    Compiling jobserver v0.1.35
+#18 45.77    Compiling hybrid-array v0.4.14
+#18 45.82    Compiling getrandom v0.4.3
+#18 45.91    Compiling getrandom v0.2.17
+#18 45.93    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#18 45.98    Compiling icu_collections v2.3.0
+#18 46.03    Compiling filetime v0.2.29
+#18 46.03    Compiling parking_lot_core v0.9.12
+#18 46.03    Compiling getrandom v0.3.4
+#18 46.05    Compiling uuid-simd v0.8.0
+#18 46.13    Compiling icu_locale_core v2.3.0
+#18 46.13    Compiling anstyle-query v1.1.5
+#18 46.16    Compiling anstyle v1.0.14
+#18 46.37    Compiling colorchoice v1.0.5
+#18 46.51    Compiling strsim v0.11.1
+#18 46.57    Compiling cc v1.4.4
+#18 46.63    Compiling num-integer v0.1.47
+#18 46.74    Compiling parking_lot v0.12.5
+#18 46.77    Compiling num-complex v0.4.6
+#18 46.78    Compiling console v0.16.4
+#18 46.94    Compiling anstream v1.0.0
+#18 46.94    Compiling clap_lex v1.1.0
+#18 47.09    Compiling portable-atomic v1.15.0
+#18 47.20    Compiling shell-words v1.1.1
+#18 47.23    Compiling unit-prefix v0.5.2
+#18 47.31    Compiling owo-colors v4.3.0
+#18 47.83    Compiling clap_builder v4.6.6
+#18 47.92    Compiling num-bigint v0.4.8
+#18 47.98    Compiling crypto-common v0.2.2
+#18 48.06    Compiling block-buffer v0.12.1
+#18 48.06    Compiling num-iter v0.1.46
+#18 48.96    Compiling toml_parser v1.1.3+spec-1.1.0
+#18 49.24    Compiling indicatif v0.18.6
+#18 50.02    Compiling icu_provider v2.3.1
+#18 50.38    Compiling regex-automata v0.4.18
+#18 50.38    Compiling jsonschema-regex v0.55.0
+#18 50.71    Compiling icu_properties v2.3.0
+#18 50.71    Compiling icu_normalizer v2.3.0
+#18 50.96    Compiling ring v0.17.14
+#18 50.96    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#18 50.96    Compiling lzma-sys v0.1.20
+#18 51.24    Compiling digest v0.11.3
+#18 51.37    Compiling num-rational v0.4.2
+#18 51.39    Compiling flate2 v1.1.9
+#18 51.60    Compiling sha2 v0.11.0
+#18 52.24    Compiling serde v1.0.229
+#18 52.24    Compiling serde_json v1.0.151
+#18 52.24    Compiling serde_spanned v1.1.1
+#18 52.29    Compiling toml_datetime v0.7.5+spec-1.1.0
+#18 52.34    Compiling toml_datetime v1.1.1+spec-1.1.0
+#18 52.46    Compiling num v0.4.3
+#18 52.59    Compiling fraction v0.17.0
+#18 52.79    Compiling toml v0.9.12+spec-1.1.0
+#18 52.90    Compiling toml v1.1.4+spec-1.1.0
+#18 52.90    Compiling toml_edit v0.25.13+spec-1.1.0
+#18 53.85    Compiling idna_adapter v1.2.2
+#18 54.14    Compiling idna v1.1.0
+#18 54.27    Compiling rustix-linux-procfs v0.1.1
+#18 54.27    Compiling fs-set-times v0.20.3
+#18 54.32    Compiling tempfile v3.27.0
+#18 54.33    Compiling xattr v1.6.1
+#18 54.35    Compiling xz2 v0.1.7
+#18 54.48    Compiling fluent-uri v0.4.1
+#18 54.61    Compiling cap-primitives v4.0.3
+#18 54.64    Compiling rustls v0.23.43
+#18 54.66    Compiling serde_yaml v0.9.34+deprecated
+#18 54.67    Compiling email_address v0.2.9
+#18 54.70    Compiling tracing-serde v0.2.0
+#18 54.84    Compiling tar v0.4.46
+#18 55.03    Compiling url v2.5.8
+#18 55.30    Compiling dialoguer v0.12.0
+#18 55.31    Compiling clap v4.6.6
+#18 56.48    Compiling cap-std v4.0.3
+#18 56.87    Compiling ahash v0.8.12
+#18 57.38    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#18 57.50    Compiling jsonschema-value v0.55.0
+#18 57.51    Compiling referencing v0.55.0
+#18 58.36    Compiling vstd v0.0.0-2026-09-06-0133
+#18 58.91    Compiling zstd-safe v7.2.4
+#18 59.30    Compiling zstd v0.13.3
+#18 59.84    Compiling zip v8.6.0
+#18 60.47    Compiling rustls-webpki v0.103.15
+#18 60.69    Compiling regex v1.13.1
+#18 60.69    Compiling fancy-regex v0.19.1
+#18 60.69    Compiling matchers v0.2.0
+#18 60.86    Compiling tracing-subscriber v0.3.23
+#18 62.50    Compiling jsonschema v0.55.0
+#18 63.28    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#18 63.78    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#18 68.08    Compiling ureq v2.12.1
+#18 70.03    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#18 70.03    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#18 70.03    Compiling griplint v0.42.0 (/app/crates/griplint)
+#18 72.04    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#18 72.04    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#18 75.32    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#18 75.32    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#18 78.51    Compiling gripsack-fuzz v0.0.0 (/app/fuzz)
+#18 82.37    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#18 95.37     Finished `test` profile [unoptimized + debuginfo] target(s) in 52.85s
+#18 95.68      Running unittests src/lib.rs (target/debug/deps/griplint-649ce6e1a3a65ac3)
+#18 95.68 
+#18 95.68 running 19 tests
+#18 95.69 test admission::tests::explicit_no_table_preserves_coverage_without_parsing ... ok
+#18 95.69 test admission::tests::file_loader_has_the_same_admission_boundary ... ok
+#18 95.69 test document::tests::error_spans_map_bytes_to_code_point_columns ... ok
+#18 95.69 test document::tests::indented_multichar_keys_get_real_columns ... ok
+#18 95.69 test checks::tests::version_coverage_is_numeric_not_textual ... ok
+#18 95.69 test golden::severity_serializes_lowercase ... ok
+#18 95.69 test value::tests::typed_matching_keeps_null_and_boolean_distinct ... ok
+#18 95.69 test value::tests::numbers_compare_across_int_and_float ... ok
+#18 95.69 test document::tests::json_and_yaml_null_stay_null ... ok
+#18 95.69 test difflib::tests::the_fixture_suggestions_hold ... ok
+#18 95.69 test admission::tests::free_keys_and_sections_preserve_arbitrary_descendants ... ok
+#18 95.69 test admission::tests::formats_dispatch_without_extension_assumptions ... ok
+#18 95.69 test admission::tests::key_diagnostics_and_leniency_survive_admission ... ok
+#18 95.69 test admission::tests::whole_rules_check_sections_without_checking_their_members ... ok
+#18 95.70 test admission::tests::malformed_key_rules_never_turn_sections_free ... ok
+#18 95.70 test admission::tests::markers_are_typed_and_exclusive ... ok
+#18 95.70 test admission::tests::metadata_and_dispatch_must_be_actionable ... ok
+#18 95.74 test admission::tests::every_embedded_pack_is_admitted ... ok
+#18 95.91 test golden::golden_corpus_replays ... ok
+#18 95.91 
+#18 95.91 test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+#18 95.91 
+#18 95.91      Running unittests src/main.rs (target/debug/deps/grip-cbad5dbf9152979c)
+#18 95.91 
+#18 95.91 running 21 tests
+#18 95.91 test commands::adopt::generate::tests::ident_is_always_a_valid_ts_identifier ... ok
+#18 95.91 test commands::adopt::generate::tests::module_source_escapes_hostile_strings ... ok
+#18 95.91 test commands::adopt::generate::tests::module_source_shapes ... ok
+#18 95.91 test commands::adopt::generate::tests::update_host_bails_on_unexpected_shape ... ok
+#18 95.91 test commands::adopt::generate::tests::names_and_idents ... ok
+#18 95.91 test commands::adopt::generate::tests::update_host_ignores_the_template_header_comment ... ok
+#18 95.91 test commands::adopt::generate::tests::update_host_multiline_array ... ok
+#18 95.91 test commands::adopt::generate::tests::update_host_single_line_arrays ... ok
+#18 95.91 test render::tests::missing_file_degrades_gracefully ... ok
+#18 95.91 test render::tests::renders_header_and_help_without_color ... ok
+#18 95.91 test commands::self_update::installation::tests::deleted_suffix_is_only_stripped_for_a_missing_original ... ok
+#18 95.91 test commands::self_update::installation::tests::replacement_invalidates_installed_version_evidence ... ok
+#18 95.91 test commands::self_update::installation::tests::parent_drift_does_not_redirect_publication ... ok
+#18 95.91 test commands::self_update::payload::tests::root_and_nested_candidates_are_ambiguous ... ok
+#18 95.91 test render::tests::invalid_diagnostic_coordinates_never_read_a_source_snippet ... ok
+#18 95.91 test commands::self_update::payload::tests::probe_requires_success_and_a_single_grip_version ... ok
+#18 95.91 test render::tests::renders_snippet_when_file_exists ... ok
+#18 95.91 test commands::self_update::payload::tests::symlink_files_and_symlink_directories_are_not_candidates ... ok
+#18 95.91 test render::tests::source_snippets_cannot_escape_the_repo_capability ... ok
+#18 95.92 test commands::self_update::payload::tests::flooding_version_peer_is_rejected ... ok
+#18 95.92 test commands::self_update::installation::tests::symlink_install_keeps_target_semantics ... ok
+#18 95.92 
+#18 95.92 test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+#18 95.92 
+#18 95.92      Running unittests src/lib.rs (target/debug/deps/gripsack_config-98cadf244e260699)
+#18 95.93 
+#18 95.93 running 11 tests
+#18 95.93 test tests::defaults_are_sane ... ok
+#18 95.93 test tests::eval_deps_is_gone ... ok
+#18 95.93 test tests::python_frontend_is_a_migration_error ... ok
+#18 95.93 test tests::parses_throttle_table ... ok
+#18 95.93 test tests::parses_env_toml ... ok
+#18 95.93 test tests::typescript_frontend_declaration_is_tolerated ... ok
+#18 95.93 test tests::repo_wins_user_fills_gaps ... ok
+#18 95.93 test tests::typo_key_is_a_span_labeled_diagnostic ... ok
+#18 95.93 test tests::unknown_frontend_value_errors_the_same_way ... ok
+#18 95.93 test tests::unknown_top_level_key_is_an_error ... ok
+#18 95.93 test tests::user_value_used_when_repo_silent ... ok
+#18 95.93 
+#18 95.93 test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 95.93 
+#18 95.93      Running unittests src/lib.rs (target/debug/deps/gripsack_exec-6cb5e4477367be3e)
+#18 95.93 
+#18 95.93 running 49 tests
+#18 95.93 test facts::tests::glibc_version_parses_both_ldd_wordings ... ok
+#18 95.93 test facts::tests::facts_match_the_running_host ... ok
+#18 95.93 test frontend::tests::path_deno_version_gate_matches_major ... ok
+#18 95.93 test lineage_model::a_mid_apply_external_write_is_aborted_never_clobbered ... ok
+#18 95.93 test lineage_model::chmod_only_drift_is_preserved_never_silently_reverted ... ok
+#18 95.93 test lineage_model::preserved_drift_never_authorizes_an_update ... ok
+#18 95.93 test managed_blocks::tests::malformed_markers_never_grant_splice_ranges ... ok
+#18 95.93 test managed_blocks::tests::later_hand_edits_are_classified_and_other_modules_stay_untouched ... ok
+#18 95.93 test managed_blocks::tests::foreign_bytes_survive_reconcile_and_removal ... ok
+#18 95.93 test managed_blocks::tests::markers_roundtrip_across_comment_styles_and_legacy_metadata ... ok
+#18 95.93 test deploy::tests::symlinked_ancestor_into_repo_is_detected ... ok
+#18 95.93 test report::update_model::every_survey_order_preserves_error_over_change_precedence ... ok
+#18 95.93 test resolve::identity_tests::provenance_differences_hash_identically ... ok
+#18 95.93 test template::tests::template_substitutes_and_escapes ... ok
+#18 95.93 test template::tests::template_unbalanced_braces_error ... ok
+#18 95.93 test template::tests::template_undefined_variable_is_a_loud_error ... ok
+#18 95.94 test tests::build_edges_constrain_order_too ... ok
+#18 95.94 test tests::cycles_are_named ... ok
+#18 95.94 test tests::dependencies_come_first ... ok
+#18 95.94 test tests::diamond_is_deterministic ... ok
+#18 95.94 test deploy::tests::restore_never_writes_a_dangling_owned_link ... ok
+#18 95.94 test tests::waves_levelize_the_dag ... ok
+#18 95.94 test managed_blocks::tests::every_mode_record_participates_independently_of_order ... ok
+#18 95.94 test source::overlay::tests::leaf_link_is_replaced_without_writing_its_target ... ok
+#18 95.94 test source::overlay::tests::fetched_link_ancestor_cannot_redirect_an_overlay ... ok
+#18 95.94 test source::overlay::tests::overlay_pin_and_bytes_belong_to_the_same_snapshot ... ok
+#18 95.95 test lineage_model::ownership_lineage_holds_over_every_sequence ... ok
+#18 95.95 test ops::model::tests::a_build_only_dep_plans_zero_destination_ops ... ok
+#18 95.95 test source::overlay::tests::top_level_links_have_the_same_preview_and_staged_identity ... ok
+#18 95.96 test lockfile::tests::roundtrip ... ok
+#18 95.96 test env::tests::empty_contributions_remove_the_file ... ok
+#18 95.96 test deploy::tests::journaled_mutation_must_reach_its_intended_state ... ok
+#18 95.97 test env::tests::duplicate_contributions_render_once ... ok
+#18 95.97 test env::tests::renders_set_prepend_append_with_store_resolution ... ok
+#18 95.97 test ops::model::tests::a_spelling_change_plans_no_op ... ok
+#18 96.00 test mode_model::links_carry_the_payload_mode_without_normalizing_it ... ok
+#18 96.00 test gc::tests::collects_only_unreferenced_store_paths ... ok
+#18 96.01 test gc::tests::keep_generations_prunes_oldest_and_their_paths ... ok
+#18 96.01 test gc::tests::never_prunes_the_current_generation ... ok
+#18 96.02 test gc::tests::why_owns_finds_the_owner ... ok
+#18 96.04 test gc::tests::a_session_for_another_home_authorizes_nothing_here ... ok
+#18 96.05 test gc::tests::unfinished_recovery_blocks_collection ... ok
+#18 96.05 test gc::tests::quarantined_entries_block_collection ... ok
+#18 96.06 test gc::tests::reconciled_journal_unblocks_collection ... ok
+#18 96.17 test mode_model::merge_host_modes_are_planned_and_drift_never_authorizes_prune ... ok
+#18 96.21 test frontend::tests::embed_materializes_tree_and_marker ... ok
+#18 96.48 test frontend::tests::materialize_flips_the_stable_current_link ... ok
+#18 97.38 test ops::model::tests::the_planned_op_matches_the_algebra_and_executes_to_its_intent ... ok
+#18 97.77 test mode_model::whole_file_modes_survive_update_restore_drift_and_prune ... ok
+#18 97.77 
+#18 97.77 test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.85s
+#18 97.77 
+#18 97.78      Running tests/workspace_execution_gate.rs (target/debug/deps/workspace_execution_gate-7d9cf650dc067800)
+#18 97.78 
+#18 97.78 running 1 test
+#18 97.78 test every_direct_executor_entry_rejects_before_home_mutation ... ok
+#18 97.78 
+#18 97.78 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 97.78 
+#18 97.78      Running unittests src/lib.rs (target/debug/deps/gripsack_fetch-2b9ac72ec00022b4)
+#18 97.78 
+#18 97.78 running 61 tests
+#18 97.78 test bottle::tests::apple_silicon_orders_by_chronology_not_spelling ... ok
+#18 97.79 test bottle::tests::all_is_a_last_resort_under_a_validated_policy ... ok
+#18 97.79 test bottle::tests::future_macos_major_admits_its_own_codename ... ok
+#18 97.79 test bottle::tests::arm64_linux_is_not_a_mac_bottle ... ok
+#18 97.79 test bottle::tests::intel_mac_never_takes_the_linux_bottle ... ok
+#18 97.79 test bottle::tests::intel_mac_takes_the_newest_bottle_the_host_can_run ... ok
+#18 97.79 test bottle::tests::linux_matches_exact_architecture ... ok
+#18 97.79 test bottle::tests::missing_macos_version_fact_refuses_rather_than_guessing ... ok
+#18 97.79 test bottle::tests::older_macos_refuses_newer_bottle_with_the_requirement ... ok
+#18 97.79 test bottle::tests::unknown_tags_are_reported_not_matched ... ok
+#18 97.79 test bottle::tests::unsupported_architecture_fails_clearly ... ok
+#18 97.79 test bottle::tests::version_parsing_is_componentwise ... ok
+#18 97.79 test host::tests::bundled_releases_have_full_platform_tables ... ok
+#18 97.79 test host::tests::deno_urls_use_the_glibc_linux_assets ... ok
+#18 97.79 test host::tests::placeholder_table_covers_every_convention ... ok
+#18 97.79 test host::tests::resolves_the_host_asset ... ok
+#18 97.79 test http::body::tests::a_new_attempt_cannot_reset_consumed_transfer_bytes ... ok
+#18 97.79 test http::failure::tests::certificate_failures_are_not_transient_connections ... ok
+#18 97.79 test http::retry::tests::real_retry_policy_has_fixed_deadline_and_bounded_attempts ... ok
+#18 97.79 test http::failure::tests::rate_limit_advice_is_evidence_based_and_locations_are_redacted ... ok
+#18 97.79 test http::retry::tests::terminal_classes_and_upstream_cooldowns_never_get_fast_replays ... ok
+#18 97.79 test http::tests::host_binding_survives_url_normalization ... ok
+#18 97.79 test http::tests::credential_routing_model_uses_actual_host_selector ... ok
+#18 97.79 test http::tests::proxy_bypass_preserves_domain_and_port_boundaries ... ok
+#18 97.79 test placeholders::tests::explicit_bare_version_is_shared_without_changing_legacy_asset_precedence ... ok
+#18 97.79 test plugins::segment_tests::traversal_tags_are_refused ... ok
+#18 97.79 test placeholders::tests::missing_empty_or_escaping_expansions_never_become_paths ... ok
+#18 97.79 test plugins::tests::parse_ref_shapes ... ok
+#18 97.79 test resolve::atom_tests::no_core_tag_is_none_and_malformed_versions_skip ... ok
+#18 97.79 test resolve::base_url_tests::bare_ghe_host_gets_api_v3 ... ok
+#18 97.79 test resolve::tests::missing_asset_lists_available ... ok
+#18 97.79 test resolve::atom_tests::picks_the_newest_core_tag_among_mixed_namespaces ... ok
+#18 97.79 test resolve::tests::v_prefix_variants_match ... ok
+#18 97.79 test resolve::tests::picks_expanded_asset ... ok
+#18 97.79 test throttle::tests::parses_budget_syntax ... ok
+#18 97.79 test tests::exe_naming ... ok
+#18 97.79 test throttle::tests::plugin_declaration_replaces_builtin_default ... ok
+#18 97.79 test throttle::tests::unknown_domains_pass_through ... ok
+#18 97.79 test throttle::tests::url_host_extraction ... ok
+#18 97.79 test throttle::tests::user_override_beats_plugin_declaration ... ok
+#18 97.79 test fetch::archive::tests::traversal_is_rejected_before_tar_materialization ... ok
+#18 97.79 test fetch::archive::tests::zip_entry_budget_precedes_directory_allocation ... ok
+#18 97.80 test fetch::archive::tests::a_symlink_destination_cannot_redirect_acquisition ... ok
+#18 97.80 test fetch::plugin::tests::bounded_tree_is_checked_before_hash ... ok
+#18 97.80 test fetch::archive::tests::aggregate_tar_path_metadata_is_bounded_before_extraction ... ok
+#18 97.80 test tests::discovers_executable_on_path ... ok
+#18 97.80 test fetch::archive::tests::zip_crc_cannot_be_bypassed_by_raw_stream_decoding ... ok
+#18 97.80 test fetch::tarball::tests::transport_mismatch_never_extracts_payload ... ok
+#18 97.80 test fetch::archive::tests::bare_and_compressed_binaries_preserve_executability ... ok
+#18 97.80 test fetch::archive::tests::xz_tar_extracts_without_a_payload_buffer ... ok
+#18 97.80 test plugins::tests::receipt_roundtrips_and_current_resolves ... ok
+#18 97.80 test fetch::archive::tests::decompressed_limit_is_checked_on_actual_bytes ... ok
+#18 97.80 test fetch::plugin::tests::no_response_or_nonzero_exit_is_not_a_fetch ... ok
+#18 97.80 test fetch::plugin::tests::round_trip_and_reported_hash_verification ... ok
+#18 97.80 test fetch::file::tests::file_fetch_extracts_tarball ... ok
+#18 97.81 test fetch::plugin::tests::simultaneous_pipe_pressure_and_early_response ... ok
+#18 97.81 test fetch::plugin::tests::response_does_not_hide_output_failure ... ok
+#18 97.86 test fetch::git::tests::git_fetch_clones_at_rev ... ok
+#18 98.04 test throttle::tests::bucket_enforces_the_budget ... ok
+#18 102.3 test fetch::plugin::tests::silent_and_response_then_linger_both_fail ... ok
+#18 102.3 test fetch::plugin::tests::capability_results_require_a_clean_exit ... ok
+#18 102.3 
+#18 102.3 test result: ok. 61 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.54s
+#18 102.3 
+#18 102.3      Running unittests src/lib.rs (target/debug/deps/gripsack_fs-269bf90eee70c137)
+#18 102.3 
+#18 102.3 running 14 tests
+#18 102.3 test streamed::tests::failed_stream_keeps_old_destination_and_cleans_private_temp ... ok
+#18 102.3 test tests::copy_dir_preserves_symlinks_and_merges ... ok
+#18 102.3 test streamed::tests::publishes_complete_bytes_and_exact_mode_in_real_operation_order ... ok
+#18 102.3 test persistence_model::streamed_executable_publication_is_ordered_at_every_cut ... ok
+#18 102.3 test tests::symlink_replace_flips_atomically ... ok
+#18 102.4 test tests::atomic_write_creates_parent_dirs ... ok
+#18 102.4 test tests::atomic_write_with_mode_lands_exact_permissions ... ok
+#18 102.4 test tests::atomic_write_preserves_the_destinations_mode ... ok
+#18 102.4 test tests::atomic_write_lands_content_without_leftovers ... ok
+#18 102.4 test tests::publish_lands_files_read_only ... ok
+#18 102.4 test tests::publish_refuses_an_existing_dest ... ok
+#18 102.4 test tests::publish_cross_filesystem_preserves_modes ... ok
+#18 102.4 test persistence_model::atomic_file_link_and_tree_publication_are_ordered_at_every_cut ... ok
+#18 103.4 test tests::writes_stay_on_the_pinned_inode_under_parent_swap ... ok
+#18 103.4 
+#18 103.4 test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.03s
+#18 103.4 
+#18 103.4      Running unittests src/lib.rs (target/debug/deps/gripsack_fuzz-52dc0c8d70c978ff)
+#18 103.4 
+#18 103.4 running 0 tests
+#18 103.4 
+#18 103.4 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 103.4 
+#18 103.4      Running unittests src/bin/replay.rs (target/debug/deps/replay-df42e37a883b52aa)
+#18 103.4 
+#18 103.4 running 0 tests
+#18 103.4 
+#18 103.4 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 103.4 
+#18 103.4      Running unittests src/lib.rs (target/debug/deps/gripsack_ir-3b19633ffcb5d796)
+#18 103.4 
+#18 103.4 running 65 tests
+#18 103.4 test host_name::tests::rejects_path_shaped_hosts_before_they_can_name_files ... ok
+#18 103.4 test sema::contract_tests::unknown_fields_are_parse_errors_now ... ok
+#18 103.4 test sema::destinations::tests::step_entries_obey_destination_rules ... ok
+#18 103.4 test sema::destinations::case_tests::case_variant_destinations_fold_on_every_host ... ok
+#18 103.4 test sema::steps::tests::single_fetch_step_pins_multiple_refused ... ok
+#18 103.4 test sema::tests::malformed_json_is_e000 ... ok
+#18 103.4 test sema::placeholders::tests::the_known_set_passes_clean ... ok
+#18 103.4 test sema::tests::spanless_nodes_still_render ... ok
+#18 103.4 test sema::tests::dotfiles_only_module_needs_no_source ... ok
+#18 103.4 test sema::tests::destination_shaped_verify_path_is_e109 ... ok
+#18 103.4 test sema::tests::legacy_ir_is_rejected_before_decoding_renamed_fields ... ok
+#18 103.4 test sema::placeholders::tests::a_typo_is_an_error_with_a_span_and_a_suggestion ... ok
+#18 103.4 test sema::tests::rejects_wrong_version ... ok
+#18 103.4 test sema::tests::declared_and_builtin_resources_pass ... ok
+#18 103.4 test sema::tests::merge_and_template_modes_pass_sema_with_vars_and_marker ... ok
+#18 103.4 test sema::tests::explicit_steps_validate ... ok
+#18 103.4 test sema::tests::unknown_edge_kind_is_span_labeled_e122 ... ok
+#18 103.4 test sema::tests::collects_multiple_diagnostics ... ok
+#18 103.4 test sema::tests::cross_module_ref_into_declarative_module ... ok
+#18 103.4 test sema::tests::steps_plus_declarative_fields_is_e103 ... ok
+#18 103.4 test sema::tests::run_action_parses_with_outputs ... ok
+#18 103.4 test sema::tests::undeclared_resource_is_e107 ... ok
+#18 103.4 test sema::tests::duplicate_and_reserved_step_ids_are_e106 ... ok
+#18 103.4 test sema::tests::external_done_barrier_is_valid_but_self_barrier_is_rejected ... ok
+#18 103.4 test sema::tests::unknown_dependency_carries_span_and_code ... ok
+#18 103.4 test sema::workspace::names::tests::duplicate_output_names_label_both_spans ... ok
+#18 103.4 test sema::workspace::destinations::tests::mixed_policies_over_one_path_still_collide ... ok
+#18 103.4 test sema::workspace::destinations::tests::duplicate_profile_destinations_label_every_declaration ... ok
+#18 103.4 test sema::workspace::cycles::tests::production_cycles_label_every_member ... ok
+#18 103.4 test sema::workspace::cycles::tests::validation_edges_never_close_a_cycle ... ok
+#18 103.4 test sema::workspace::cycles::tests::task_dependency_cycles_are_rejected ... ok
+#18 103.4 test sema::tests::parses_and_validates_example ... ok
+#18 103.4 test sema::workspace::policy::tests::omitted_required_validation_and_producer_fail_closed_with_both_sites ... ok
+#18 103.4 test sema::workspace::policy::tests::omitted_build_input_and_runtime_edges_fail_admission ... ok
+#18 103.4 test sema::workspace::refs::tests::check_subject_must_resolve_to_an_output ... ok
+#18 103.4 test sema::workspace::destinations::tests::same_destination_across_profiles_rejects_and_equal_names_coexist ... ok
+#18 103.4 test sema::workspace::policy::tests::projected_kind_or_binding_reclassification_fails_closed ... ok
+#18 103.4 test sema::workspace::policy::tests::catalog_index_corruption_rejects_before_closure ... ok
+#18 103.4 test sema::workspace::policy::tests::production_closure_excludes_runtime_and_preserves_validation ... ok
+#18 103.4 test sema::workspace::policy::tests::adjacent_local_steps_lower_to_ordering_not_build_edges ... ok
+#18 103.4 test sema::workspace::tests::envelope_shape_is_version_dispatched ... ok
+#18 103.4 test sema::workspace::refs::tests::selection_target_mismatch_labels_both_sites ... ok
+#18 103.4 test sema::workspace::span_value::tests::decoded_bash_interpolation_rejects_at_original_script_line ... ok
+#18 103.4 test workspace::platform::tests::target_floor_and_abi_admit_only_compatible_consumers ... ok
+#18 103.4 test sema::paths::tests::path_shape_rules ... ok
+#18 103.4 test sema::workspace::tests::profile_with_literal_file_needs_no_synthetic_package ... ok
+#18 103.4 test sema::workspace::tests::provider_backed_package_needs_no_recipe_output ... ok
+#18 103.4 test sema::workspace::tests::package_and_recipe_workspace_admits ... ok
+#18 103.4 test sema::workspace::refs::tests::producer_target_mismatch_labels_both_sites ... ok
+#18 103.4 test sema::workspace::refs::tests::artifact_references_reject_non_artifact_kinds ... ok
+#18 103.4 test sema::workspace::tests::unknown_workspace_fields_label_the_declaring_span ... ok
+#18 103.4 test sema::workspace::span_value::tests::file_content_requires_source_unless_literal ... ok
+#18 103.4 test sema::workspace::span_value::tests::incompatible_abi_and_unsafe_prefix_label_the_declaration ... ok
+#18 103.4 test sema::workspace::span_value::tests::invalid_nested_command_coordinates_remain_source_labeled ... ok
+#18 103.4 test sema::workspace::policy::tests::projected_reference_site_substitution_fails_closed ... ok
+#18 103.4 test sema::workspace::refs::tests::invalid_references_are_rejected ... ok
+#18 103.4 test sema::workspace::span_value::tests::degenerate_spans_and_values_are_rejected ... ok
+#18 103.4 test sema::workspace::tests::provider_fetch_fields_never_drop_silently ... ok
+#18 103.4 test sema::workspace::tests::unknown_workspace_fields_never_drop_silently ... ok
+#18 103.4 test sema::workspace::policy::tests::substituted_graph_references_fail_closed_at_declaration ... ok
+#18 103.4 test sema::workspace::context::tests::command_references_and_contexts_are_admitted ... ok
+#18 103.4 test sema::workspace::refs::tests::fixed_prefix_packages_cannot_be_selected_without_prefix ... ok
+#18 103.4 test sema::workspace::span_value::tests::escaping_profile_file_destinations_reject_at_the_declaration ... ok
+#18 103.4 test sema::workspace::refs::tests::task_schedule_profile_image_refs_are_typed ... ok
+#18 103.4 test sema::workspace::refs::tests::artifact_selectors_must_be_normalized_relative_paths ... ok
+#18 103.4 
+#18 103.4 test result: ok. 65 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+#18 103.4 
+#18 103.4      Running tests/schema_acceptance.rs (target/debug/deps/schema_acceptance-1a169573e71c6ca0)
+#18 103.4 
+#18 103.4 running 3 tests
+#18 103.4 test schema_pattern_assertions_execute ... ok
+#18 103.4 test valid_documents_are_admitted_by_both_sides ... ok
+#18 103.4 test rejected_documents_fail_both_sides ... ok
+#18 103.4 
+#18 103.4 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+#18 103.4 
+#18 103.4      Running tests/workspace_admission.rs (target/debug/deps/workspace_admission-69161928380216ad)
+#18 103.4 
+#18 103.4 running 3 tests
+#18 103.4 test admitted_workspace_exposes_named_outputs ... ok
+#18 103.4 test provider_backed_package_lists_as_single_output ... ok
+#18 103.4 test serialization_preserves_each_version_envelope ... ok
+#18 103.4 
+#18 103.4 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 103.4 
+#18 103.4      Running tests/workspace_v4_compat.rs (target/debug/deps/workspace_v4_compat-b35fac2a52f57c5d)
+#18 103.4 
+#18 103.4 running 3 tests
+#18 103.5 test versions_reject_each_others_fields_and_bad_refs ... ok
+#18 103.5 test historical_recipe_execution_and_fixed_layout_never_gain_new_policy ... ok
+#18 103.5 test historical_schema_and_reader_preserve_opaque_platform_strings ... ok
+#18 103.5 
+#18 103.5 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+#18 103.5 
+#18 103.5      Running tests/workspace_v5_acceptance.rs (target/debug/deps/workspace_v5_acceptance-33fcbef4cdc72330)
+#18 103.5 
+#18 103.5 running 5 tests
+#18 103.6 test version_dispatch_asymmetry ... ok
+#18 103.6 test schema_authored_constraints_execute ... ok
+#18 103.6 test valid_documents_are_admitted_by_both_sides ... ok
+#18 103.6 test rejected_documents_fail_both_sides ... ok
+#18 103.6 test each_output_kind_rejects_undeclared_authority_with_its_own_span ... ok
+#18 103.6 
+#18 103.6 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+#18 103.6 
+#18 103.6      Running unittests src/lib.rs (target/debug/deps/gripsack_lint-82a26c28fd41521b)
+#18 103.6 
+#18 103.6 running 8 tests
+#18 103.6 test exchange::tests::severity_coercion_and_crash_codes ... ok
+#18 103.6 test exchange::tests::spawn_failure_is_e01 ... ok
+#18 103.6 test exchange::tests::missing_response_retains_only_last_three_stderr_lines ... ok
+#18 103.6 test exchange::tests::valid_diagnostics_survive_nonzero_exit ... ok
+#18 103.6 test exchange::tests::pressure_before_input_and_response_before_input_completion ... ok
+#18 103.6 test exchange::tests::output_failure_after_response_keeps_diagnostics_and_adds_e02 ... ok
+#18 103.7 test exchange::tests::input_limit_is_not_a_success ... ok
+#18 108.1 test exchange::tests::silence_and_response_then_linger_are_deadline_failures ... ok
+#18 108.1 
+#18 108.1 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.52s
+#18 108.1 
+#18 108.1      Running unittests src/lib.rs (target/debug/deps/gripsack_policy-6fb76687af620f0e)
+#18 108.1 
+#18 108.1 running 0 tests
+#18 108.1 
+#18 108.1 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 108.1 
+#18 108.1      Running tests/name_index.rs (target/debug/deps/name_index-b8d7482da2a86275)
+#18 108.1 
+#18 108.1 running 1 test
+#18 108.1 test catalog_indices_cannot_bind_another_name_or_escape_the_catalog ... ok
+#18 108.1 
+#18 108.1 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 108.1 
+#18 108.1      Running tests/schedule_smoke.rs (target/debug/deps/schedule_smoke-94fdc3e3d650f21b)
+#18 108.2 
+#18 108.2 running 2 tests
+#18 108.2 test pure_scheduler_latches_on_failure ... ok
+#18 108.2 test pure_scheduler_runs_a_diamond ... ok
+#18 108.2 
+#18 108.2 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 108.2 
+#18 108.2      Running unittests src/lib.rs (target/debug/deps/gripsack_process-1808502d2508137d)
+#18 108.2 
+#18 108.2 running 19 tests
+#18 108.2 test tests::defaults_match_contract ... ok
+#18 108.2 test tests::input_rejected_before_spawn ... ok
+#18 108.2 test tests::empty_input_is_closed_immediately ... ok
+#18 108.2 test tests::lifecycle::no_response_is_a_normal_exit ... ok
+#18 108.2 test tests::framing_and_input_eof ... ok
+#18 108.2 test tests::lifecycle::callback_panic_kills_and_reaps_the_leader ... ok
+#18 108.2 test tests::exact_line_limit_and_empty_lines ... ok
+#18 108.2 test tests::spawn_error_and_zero_budget ... ok
+#18 108.2 test tests::lifecycle::exit_and_signal_status_are_not_routing_policy ... ok
+#18 108.2 test tests::pressure::response_still_sends_input_and_preserves_exit_failure ... ok
+#18 108.2 test tests::lifecycle::inherited_pipes_are_killed_on_leader_exit_not_after_a_linger ... ok
+#18 108.2 test tests::tail_is_exact_and_can_be_disabled ... ok
+#18 108.2 test tests::pressure::huge_unterminated_line_is_stopped_incrementally ... ok
+#18 108.2 test tests::pressure::simultaneous_input_and_output_pressure ... ok
+#18 108.2 test tests::pressure::stdout_and_stderr_floods_are_cumulative ... ok
+#18 108.2 test tests::pressure::response_does_not_disable_any_output_bound ... ok
+#18 108.3 test tests::pressure::early_stdin_close_is_not_an_io_error ... ok
+#18 111.1 test tests::lifecycle::silent_process_with_closed_pipes_still_has_a_deadline ... ok
+#18 111.1 test tests::pressure::blocked_input_does_not_block_response_or_deadline ... ok
+#18 111.1 
+#18 111.1 test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.01s
+#18 111.1 
+#18 111.1      Running unittests src/lib.rs (target/debug/deps/gripsack_store-565ba7d1566be399)
+#18 111.1 
+#18 111.1 running 58 tests
+#18 111.1 test hash::tests::the_two_identity_domains_never_collide ... ok
+#18 111.1 test journal::marker::repeated_model::ambiguous_current_retains_partial_journal_without_touching_destinations ... ok
+#18 111.1 test journal::marker::repeated_model::partial_restore_then_second_crash_keeps_new_edit_and_restores_other_dest ... ok
+#18 111.1 test journal::tests::cross_variant_identities_never_compare_equal ... ok
+#18 111.1 test journal::tests::marker_null_previous_generation_is_a_fresh_machine ... ok
+#18 111.1 test journal::tests::marker_missing_previous_generation_is_rejected ... ok
+#18 111.1 test journal::tests::marker_rejects_duplicates_wrong_types_and_overflow ... ok
+#18 111.1 test journal::tests::marker_round_trips_through_the_wire ... ok
+#18 111.1 test hash::reference_vector::pinned_tree_vector ... ok
+#18 111.1 test journal::model::tests::every_schedule_satisfies_the_oracle ... ok
+#18 111.1 test hash::tests::canonical_hash_ignores_mtime_but_not_exec_bit ... ok
+#18 111.1 test paths::tests::canonical_dest_refuses_parent_traversal ... ok
+#18 111.1 test journal::tests::wire_admission_rejects_legacy_versions_and_malformed ... ok
+#18 111.1 test paths::tests::generation_layout ... ok
+#18 111.1 test activation::tests::a_corrupt_record_fails_closed ... ok
+#18 111.1 test hash::tests::canonical_hash_covers_symlink_target ... ok
+#18 111.1 test paths::tests::hash_is_stable_and_input_sensitive ... ok
+#18 111.1 test paths::tests::home_resolution ... ok
+#18 111.1 test paths::tests::store_path_format ... ok
+#18 111.1 test trust::tests::canonical_key_falls_back_to_absolute ... ok
+#18 111.1 test trust::tests::only_an_explicit_y_trusts ... ok
+#18 111.1 test trust::tests::prompt_values_with_control_chars_are_escaped ... ok
+#18 111.1 test hash::tests::tree_hash_is_deterministic_and_content_sensitive ... ok
+#18 111.1 test hash::tests::overlay_hash_matches_materialized_staging ... ok
+#18 111.1 test trust::tests::sandbox_summary_survives_wrapping_intact ... ok
+#18 111.1 test trust::tests::rfc3339_known_instants ... ok
+#18 111.1 test journal::marker::repeated_model::numeric_commit_mutant_fails_the_identical_oracle ... ok
+#18 111.1 test hash::tests::overlay_hash_of_dir_source_matches_staged_tree ... ok
+#18 111.1 test journal::tests::non_utf8_destinations_are_refused_at_record ... ok
+#18 111.1 test activation::tests::pending_record_round_trips_and_clears ... ok
+#18 111.1 test journal::tests::non_utf8_link_targets_are_refused_not_lossy_compared ... ok
+#18 111.1 test paths::tests::canonical_dest_collapses_spelling_aliases ... ok
+#18 111.2 test journal::tests::user_edit_after_crash_wins ... ok
+#18 111.2 test generations::tests::flip_and_current ... ok
+#18 111.2 test paths::tests::canonical_dest_resolves_a_symlinked_ancestor ... ok
+#18 111.2 test journal::tests::legacy_untagged_entries_fail_closed_with_evidence_kept ... ok
+#18 111.2 test trust::tests::gate_blocks_untrusted_repos_without_a_tty ... ok
+#18 111.2 test journal::tests::crash_after_write_restores_prior_bytes ... ok
+#18 111.2 test generations::tests::manifests_are_strictly_validated ... ok
+#18 111.2 test journal::tests::malformed_entries_fail_closed_into_quarantine ... ok
+#18 111.2 test trust::tests::trust_is_keyed_on_canonical_path ... ok
+#18 111.2 test journal::tests::crash_before_flip_restores ... ok
+#18 111.2 test trust::tests::concurrent_adds_keep_both_entries ... ok
+#18 111.2 test generations::tests::manifest_roundtrip_and_listing ... ok
+#18 111.2 test trust::tests::remove_forgets_the_repo ... ok
+#18 111.2 test trust::tests::trust_toml_round_trip ... ok
+#18 111.2 test journal::tests::tagged_entries_round_trip_through_the_wire ... ok
+#18 111.2 test journal::tests::crash_between_record_and_write_restores_prior ... ok
+#18 111.2 test journal::tests::post_crash_edit_beats_the_landed_mutation ... ok
+#18 111.2 test journal::tests::absent_prior_and_symlink_prior_recover ... ok
+#18 111.2 test journal::tests::recovery_restores_the_exact_mode ... ok
+#18 111.2 test journal::tests::post_crash_sentinel_symlink_is_kept ... ok
+#18 111.2 test journal::tests::commit_run_clears_the_window ... ok
+#18 111.2 test journal::tests::completed_rollback_reads_committed ... ok
+#18 111.2 test journal::tests::crashed_rollback_restores_priors ... ok
+#18 111.2 test journal::tests::crash_after_flip_but_before_cleanup_reads_committed ... ok
+#18 111.2 test journal::marker::repeated_model::exhaustive_independent_destinations_and_two_crashes ... ok
+#18 111.2 test generations::tests::publish_is_atomic_and_allocation_monotonic ... ok
+#18 111.2 
+#18 111.2 test result: ok. 58 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+#18 111.2 
+#18 111.2      Running unittests src/lib.rs (target/debug/deps/gripsack_trace-5f9edfcb191b89c2)
+#18 111.2 
+#18 111.2 running 0 tests
+#18 111.2 
+#18 111.2 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 111.2 
+#18 111.2    Doc-tests griplint
+#18 111.3 
+#18 111.3 running 0 tests
+#18 111.3 
+#18 111.3 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 111.3 
+#18 111.3    Doc-tests gripsack_config
+#18 111.4 
+#18 111.4 running 0 tests
+#18 111.4 
+#18 111.4 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 111.4 
+#18 111.4    Doc-tests gripsack_exec
+#18 111.5 
+#18 111.5 running 0 tests
+#18 111.5 
+#18 111.5 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 111.5 
+#18 111.6    Doc-tests gripsack_fetch
+#18 111.7 
+#18 111.7 running 0 tests
+#18 111.7 
+#18 111.7 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 111.7 
+#18 111.7    Doc-tests gripsack_fs
+#18 111.8 
+#18 111.8 running 0 tests
+#18 111.8 
+#18 111.8 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 111.8 
+#18 111.8    Doc-tests gripsack_fuzz
+#18 111.8 
+#18 111.8 running 0 tests
+#18 111.8 
+#18 111.8 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 111.8 
+#18 111.8    Doc-tests gripsack_ir
+#18 112.3 
+#18 112.3 running 0 tests
+#18 112.3 
+#18 112.3 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 112.3 
+#18 112.3    Doc-tests gripsack_lint
+#18 112.3 
+#18 112.3 running 0 tests
+#18 112.3 
+#18 112.3 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 112.3 
+#18 112.3    Doc-tests gripsack_policy
+#18 112.5 
+#18 112.5 running 0 tests
+#18 112.5 
+#18 112.5 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 112.5 
+#18 112.5    Doc-tests gripsack_process
+#18 112.5 
+#18 112.5 running 0 tests
+#18 112.5 
+#18 112.5 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 112.5 
+#18 112.5    Doc-tests gripsack_store
+#18 112.7 
+#18 112.7 running 0 tests
+#18 112.7 
+#18 112.7 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 112.7 
+#18 112.7    Doc-tests gripsack_trace
+#18 112.7 
+#18 112.7 running 0 tests
+#18 112.7 
+#18 112.7 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 112.7 
+#18 DONE 112.9s
+
+#19 [test 2/2] RUN apk add --no-cache python3     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs"     && python3 scripts/gen_diagnostic_registry.py --check     && python3 scripts/gen_diagnostic_registry.py --self-check     && python3 scripts/gen_frontend_embed.py --check
+#19 0.891 ( 1/13) Installing libbz2 (1.0.8-r6)
+#19 0.903 ( 2/13) Installing libffi (3.5.2-r1)
+#19 0.914 ( 3/13) Installing gdbm (1.26-r0)
+#19 0.926 ( 4/13) Installing mpdecimal (4.0.1-r0)
+#19 0.939 ( 5/13) Installing ncurses-terminfo-base (6.6_p20260516-r0)
+#19 0.955 ( 6/13) Installing libncursesw (6.6_p20260516-r0)
+#19 0.977 ( 7/13) Installing libpanelw (6.6_p20260516-r0)
+#19 0.986 ( 8/13) Installing readline (8.3.3-r1)
+#19 1.002 ( 9/13) Installing sqlite-libs (3.53.4-r0)
+#19 1.061 (10/13) Installing python3 (3.14.7-r1)
+#19 1.461 (11/13) Installing python3-pycache-pyc0 (3.14.7-r1)
+#19 1.669 (12/13) Installing pyc (3.14.7-r1)
+#19 1.669 (13/13) Installing python3-pyc (3.14.7-r1)
+#19 1.669 Executing busybox-1.37.0-r31.trigger
+#19 1.679 OK: 246.6 MiB in 58 packages
+#19 1.833 diagnostic registry: 37 unique core codes, 5 frontend allocations; generated files fresh
+#19 1.856 calibration: invalid registry version rejected on its named property
+#19 1.856 calibration: duplicate diagnostic code rejected on its named property
+#19 1.856 calibration: duplicate frontend diagnostic name rejected on its named property
+#19 1.856 diagnostic registry calibration: 3 named mutants rejected
+#19 1.886 embedded_frontend.rs: fresh (30 files)
+#19 DONE 2.0s
+
+#20 exporting to image
+#20 exporting layers
+#20 exporting layers 65.7s done
+#20 exporting manifest sha256:16c1107d3975f2a13b272161f872c13420a7aed31a2347a74cc3ed2f03c90ca9 0.0s done
+#20 exporting config sha256:872c27e166aa615fdc0c3158cba6b2c0374c639b73b5b7bddc85cf84dec7761d 0.0s done
+#20 exporting attestation manifest sha256:bd1d85cb8cc1ac737ffe5741f766d6d5de4e7e2dd808af36edd05c1630f3ce62 0.0s done
+#20 exporting manifest list sha256:7efb533488c706578d8ea0ced16c9cc58c395f5012ca81ba57b0078b0a8f0a9c 0.0s done
+#20 naming to docker.io/library/gripsack-test:latest done
+#20 unpacking to docker.io/library/gripsack-test:latest
+#20 unpacking to docker.io/library/gripsack-test:latest 13.5s done
+#20 DONE 79.3s
+
+#21 resolving provenance for metadata file
+#21 DONE 0.0s
+ Image gripsack-test Built 
+ Container gripsack-test-run-ed9bf72d196e Creating 
+ Container gripsack-test-run-ed9bf72d196e Created 
+gate passed: fmt + clippy -D warnings + cargo test
+ Image gripsack-ts-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 545B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d
+#5 DONE 0.6s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [ts-test 1/5] FROM docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d
+#7 resolve docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 8.13kB 0.1s done
+#8 DONE 0.1s
+
+#9 [ts-test 2/5] WORKDIR /app
+#9 CACHED
+
+#10 [ts-test 3/5] COPY typescript ./typescript
+#10 CACHED
+
+#11 [ts-test 4/5] COPY examples ./examples
+#11 CACHED
+
+#12 [ts-test 5/5] RUN cd typescript && deno install && deno task test     && deno run --cached-only --no-remote --allow-all node_modules/typescript/bin/tsc        --project tsconfig.examples.json --noEmit
+#12 CACHED
+
+#13 exporting to image
+#13 exporting layers done
+#13 exporting manifest sha256:580d47ffbce88339b1fc8828eba59259cb3e2f32ca91dbe96d159f5787fd1e0f done
+#13 exporting config sha256:c817348ab3ff50e9e36bb9c212a35c43ffb95366349bdc029fc994beb4c59499 done
+#13 exporting attestation manifest sha256:f14212d54a381bbb7b845595e53fddbbf44f8e26ff34ff9a7672d15e95e6d6d6 0.0s done
+#13 exporting manifest list sha256:d0cf4af2a31a7cf40b22d76400d8c2290f7bba7d828c810dc3858bd4971aac77 0.0s done
+#13 naming to docker.io/library/gripsack-ts-test:latest
+#13 naming to docker.io/library/gripsack-ts-test:latest done
+#13 unpacking to docker.io/library/gripsack-ts-test:latest 0.0s done
+#13 DONE 0.1s
+
+#14 resolving provenance for metadata file
+#14 DONE 0.0s
+ Image gripsack-ts-test Built 
+ Container gripsack-ts-test-run-773676788dc9 Creating 
+ Container gripsack-ts-test-run-773676788dc9 Created 
+gate passed: typescript frontend tests (deno test)
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.7s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 DONE 0.0s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.1s done
+#10 DONE 0.1s
+
+#11 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.1s done
+#11 DONE 0.1s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 DONE 0.1s
+
+#8 [internal] load build context
+#8 transferring context: 3.01MB 0.2s done
+#8 DONE 0.2s
+
+#12 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#12 CACHED
+
+#13 [builder  9/10] COPY typescript ./typescript
+#13 CACHED
+
+#14 [builder  8/10] COPY schema ./schema
+#14 CACHED
+
+#15 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#15 CACHED
+
+#16 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#16 CACHED
+
+#17 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#17 CACHED
+
+#18 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#18 CACHED
+
+#19 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#19 CACHED
+
+#20 [builder  6/10] COPY crates ./crates
+#20 CACHED
+
+#21 [e2e  2/12] WORKDIR /app
+#21 CACHED
+
+#22 [builder 10/10] COPY scripts ./scripts
+#22 CACHED
+
+#23 [builder  4/10] WORKDIR /app
+#23 CACHED
+
+#24 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#24 CACHED
+
+#25 [bin 1/1] RUN cargo build --locked -p gripsack
+#25 CACHED
+
+#26 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#26 CACHED
+
+#27 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#27 CACHED
+
+#28 [builder  7/10] COPY fuzz ./fuzz
+#28 CACHED
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 CACHED
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 0.2s done
+#33 exporting manifest sha256:cc77d14329735350546773b0f303d1aa70f8952de600388f4119c7d48b546d5f 0.0s done
+#33 exporting config sha256:f6c01aeba67624b80704318242321313915825bb71650da44ed75b5fc6d8805e 0.0s done
+#33 exporting attestation manifest sha256:dd4bb96a7c98b8617d9fe6a9f76d09d4de3e2026b9666dd3cf382059573aaff7 0.0s done
+#33 exporting manifest list sha256:3dbabe4ad7e980b9393c0e789a85effde1c148960a08940c08a05f020697fccc 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.1s done
+#33 DONE 0.4s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-dc5c2ddbae38 Creating 
+ Container gripsack-e2e-run-dc5c2ddbae38 Created 
+============================= test session starts ==============================
+platform linux -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /app/e2e
+configfile: pyproject.toml
+collected 304 items
+
+test_activation_lifecycle.py ...........                                 [  3%]
+test_adopt.py ............                                               [  7%]
+test_apply_lifecycle.py .......                                          [  9%]
+test_build_closures.py .......                                           [ 12%]
+test_complete_pins.py ...........                                        [ 15%]
+test_contract_fidelity.py ....................                           [ 22%]
+test_destination_ownership.py .............                              [ 26%]
+test_eval_gate.py .......................                                [ 34%]
+test_execution_contracts.py ..........                                   [ 37%]
+test_fetchers.py ...........                                             [ 41%]
+test_gc_admission.py ................                                    [ 46%]
+test_generation_history.py .......                                       [ 48%]
+test_golden.py .....                                                     [ 50%]
+test_http_policy.py ........                                             [ 52%]
+test_journey.py .....                                                    [ 54%]
+test_journey_contracts.py ...                                            [ 55%]
+test_linters.py ............                                             [ 59%]
+test_merge_boundaries.py .......                                         [ 61%]
+test_migration_feedback.py .........                                     [ 64%]
+test_ownership_modes.py ................                                 [ 70%]
+test_persistence_matrix.py ......                                        [ 72%]
+test_plan_operations.py ...                                              [ 73%]
+test_self_update.py .....                                                [ 74%]
+test_store_hygiene.py ........                                           [ 77%]
+test_trace_context.py ..                                                 [ 77%]
+test_transaction_recovery.py ..........                                  [ 81%]
+test_update_surveys.py .......                                           [ 83%]
+test_workspace_contract.py .......................                       [ 91%]
+test_workspace_diagnostics.py ...........................                [100%]
+
+======================= 304 passed in 956.72s (0:15:56) ========================
+ Image gripsack-model Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 535B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.5s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#5 DONE 0.0s
+
+#6 [model 2/5] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#6 DONE 0.0s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [model 1/6] FROM docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#8 resolve docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 0.0s done
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 transferring context: 94.66kB 0.0s done
+#9 DONE 0.0s
+
+#10 [model 5/6] COPY scripts/check_models.sh ./scripts/check_models.sh
+#10 CACHED
+
+#11 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#11 CACHED
+
+#12 [model 3/6] WORKDIR /work
+#12 CACHED
+
+#13 [model 4/6] COPY specs ./specs
+#13 CACHED
+
+#14 [model 6/6] RUN sh scripts/check_models.sh /tla/tla2tools.jar
+#14 CACHED
+
+#15 exporting to image
+#15 exporting layers done
+#15 exporting manifest sha256:2b4180e4243bc3bda5bc6ad9926b4510523b4e4ec679d0bffc89d427ad1b7b7c done
+#15 exporting config sha256:4e23e36598c6c7f802e55f0bf681e204b688ec7e88cdcc9ca72639ea70aa6073 done
+#15 exporting attestation manifest sha256:576d58a96e6e274b2a9e8fbe5f3fa2bca86f2a84963f6c666ec3298fbc780b00 0.0s done
+#15 exporting manifest list sha256:cea1466b7c0ad9399924b0f07ef7b2aff2004122c71694a3551dc2e05db8ead4 0.0s done
+#15 naming to docker.io/library/gripsack-model:latest done
+#15 unpacking to docker.io/library/gripsack-model:latest 0.0s done
+#15 DONE 0.1s
+
+#16 resolving provenance for metadata file
+#16 DONE 0.0s
+ Image gripsack-model Built 
+ Container gripsack-model-run-51401abad61d Creating 
+ Container gripsack-model-run-51401abad61d Created 
+gate passed: model checks via scripts/check_models.sh (TLC, positive + calibrated negative configs)
+ Image gripsack-verify Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 540B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+#5 DONE 1.2s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [verify  1/11] FROM docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+#7 resolve docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 0.0s done
+#7 DONE 0.1s
+
+#8 [internal] load build context
+#8 transferring context: 2.22MB 0.2s done
+#8 DONE 0.2s
+
+#9 [verify  4/11] ADD --checksum=sha256:7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip /tmp/z3.zip
+#9 DONE 6.3s
+
+#10 [verify  3/11] ADD --checksum=sha256:13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16 https://github.com/verus-lang/verus/releases/download/release/0.2026.09.06.8dea4a2/verus-0.2026.09.06.8dea4a2-x86-linux.zip /tmp/verus.zip
+#10 ...
+
+#11 [verify  2/11] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends     curl ca-certificates unzip build-essential     && rm -rf /var/lib/apt/lists/*
+#11 17.63 debconf: delaying package configuration, since apt-utils is not installed
+#11 17.71 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 4381 files and directories currently installed.)
+#11 17.74 Preparing to unpack .../perl-base_5.38.2-3.2ubuntu0.6_amd64.deb ...
+#11 17.77 Unpacking perl-base (5.38.2-3.2ubuntu0.6) over (5.38.2-3.2ubuntu0.4) ...
+#11 19.89 Setting up perl-base (5.38.2-3.2ubuntu0.6) ...
+#11 19.96 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 4381 files and directories currently installed.)
+#11 19.97 Preparing to unpack .../libc6_2.39-0ubuntu8.9_amd64.deb ...
+#11 20.04 debconf: unable to initialize frontend: Dialog
+#11 20.04 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#11 20.04 debconf: falling back to frontend: Readline
+#11 20.04 debconf: unable to initialize frontend: Readline
+#11 20.04 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.38.2 /usr/local/share/perl/5.38.2 /usr/lib/x86_64-linux-gnu/perl5/5.38 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.38 /usr/share/perl/5.38 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 8.)
+#11 20.04 debconf: falling back to frontend: Teletype
+#11 20.08 Unpacking libc6:amd64 (2.39-0ubuntu8.9) over (2.39-0ubuntu8.8) ...
+#11 21.12 Setting up libc6:amd64 (2.39-0ubuntu8.9) ...
+#11 21.20 debconf: unable to initialize frontend: Dialog
+#11 21.20 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#11 21.20 debconf: falling back to frontend: Readline
+#11 21.20 debconf: unable to initialize frontend: Readline
+#11 21.20 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.38.2 /usr/local/share/perl/5.38.2 /usr/lib/x86_64-linux-gnu/perl5/5.38 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.38 /usr/share/perl/5.38 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 8.)
+#11 21.20 debconf: falling back to frontend: Teletype
+#11 22.27 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 4381 files and directories currently installed.)
+#11 22.28 Preparing to unpack .../libc-bin_2.39-0ubuntu8.9_amd64.deb ...
+#11 22.30 Unpacking libc-bin (2.39-0ubuntu8.9) over (2.39-0ubuntu8.8) ...
+#11 22.46 Setting up libc-bin (2.39-0ubuntu8.9) ...
+#11 22.60 Selecting previously unselected package perl-modules-5.38.
+#11 22.60 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 4381 files and directories currently installed.)
+#11 22.60 Preparing to unpack .../00-perl-modules-5.38_5.38.2-3.2ubuntu0.6_all.deb ...
+#11 22.61 Unpacking perl-modules-5.38 (5.38.2-3.2ubuntu0.6) ...
+#11 22.97 Selecting previously unselected package libgdbm6t64:amd64.
+#11 22.97 Preparing to unpack .../01-libgdbm6t64_1.23-5.1build1_amd64.deb ...
+#11 22.98 Unpacking libgdbm6t64:amd64 (1.23-5.1build1) ...
+#11 23.02 Selecting previously unselected package libgdbm-compat4t64:amd64.
+#11 23.02 Preparing to unpack .../02-libgdbm-compat4t64_1.23-5.1build1_amd64.deb ...
+#11 23.03 Unpacking libgdbm-compat4t64:amd64 (1.23-5.1build1) ...
+#11 23.07 Selecting previously unselected package libperl5.38t64:amd64.
+#11 23.07 Preparing to unpack .../03-libperl5.38t64_5.38.2-3.2ubuntu0.6_amd64.deb ...
+#11 23.08 Unpacking libperl5.38t64:amd64 (5.38.2-3.2ubuntu0.6) ...
+#11 23.33 Selecting previously unselected package perl.
+#11 23.33 Preparing to unpack .../04-perl_5.38.2-3.2ubuntu0.6_amd64.deb ...
+#11 23.34 Unpacking perl (5.38.2-3.2ubuntu0.6) ...
+#11 23.39 Selecting previously unselected package openssl.
+#11 23.39 Preparing to unpack .../05-openssl_3.0.13-0ubuntu3.15_amd64.deb ...
+#11 23.40 Unpacking openssl (3.0.13-0ubuntu3.15) ...
+#11 23.47 Selecting previously unselected package ca-certificates.
+#11 23.48 Preparing to unpack .../06-ca-certificates_20260601~24.04.1_all.deb ...
+#11 23.48 Unpacking ca-certificates (20260601~24.04.1) ...
+#11 23.57 Selecting previously unselected package libkrb5support0:amd64.
+#11 23.57 Preparing to unpack .../07-libkrb5support0_1.20.1-6ubuntu2.10_amd64.deb ...
+#11 23.58 Unpacking libkrb5support0:amd64 (1.20.1-6ubuntu2.10) ...
+#11 23.63 Selecting previously unselected package libk5crypto3:amd64.
+#11 23.63 Preparing to unpack .../08-libk5crypto3_1.20.1-6ubuntu2.10_amd64.deb ...
+#11 23.63 Unpacking libk5crypto3:amd64 (1.20.1-6ubuntu2.10) ...
+#11 23.68 Selecting previously unselected package libkeyutils1:amd64.
+#11 23.68 Preparing to unpack .../09-libkeyutils1_1.6.3-3build1_amd64.deb ...
+#11 23.69 Unpacking libkeyutils1:amd64 (1.6.3-3build1) ...
+#11 23.73 Selecting previously unselected package libkrb5-3:amd64.
+#11 23.73 Preparing to unpack .../10-libkrb5-3_1.20.1-6ubuntu2.10_amd64.deb ...
+#11 23.74 Unpacking libkrb5-3:amd64 (1.20.1-6ubuntu2.10) ...
+#11 23.80 Selecting previously unselected package libgssapi-krb5-2:amd64.
+#11 23.80 Preparing to unpack .../11-libgssapi-krb5-2_1.20.1-6ubuntu2.10_amd64.deb ...
+#11 23.80 Unpacking libgssapi-krb5-2:amd64 (1.20.1-6ubuntu2.10) ...
+#11 23.85 Selecting previously unselected package libjansson4:amd64.
+#11 23.85 Preparing to unpack .../12-libjansson4_2.14-2build2_amd64.deb ...
+#11 23.86 Unpacking libjansson4:amd64 (2.14-2build2) ...
+#11 23.91 Selecting previously unselected package libnghttp2-14:amd64.
+#11 23.91 Preparing to unpack .../13-libnghttp2-14_1.59.0-1ubuntu0.4_amd64.deb ...
+#11 23.91 Unpacking libnghttp2-14:amd64 (1.59.0-1ubuntu0.4) ...
+#11 23.96 Selecting previously unselected package libpsl5t64:amd64.
+#11 23.96 Preparing to unpack .../14-libpsl5t64_0.21.2-1.1build1_amd64.deb ...
+#11 23.96 Unpacking libpsl5t64:amd64 (0.21.2-1.1build1) ...
+#11 24.01 Selecting previously unselected package xz-utils.
+#11 24.01 Preparing to unpack .../15-xz-utils_5.6.1+really5.4.5-1ubuntu0.3_amd64.deb ...
+#11 24.02 Unpacking xz-utils (5.6.1+really5.4.5-1ubuntu0.3) ...
+#11 23.96 Selecting previously unselected package binutils-common:amd64.
+#11 23.97 Preparing to unpack .../16-binutils-common_2.42-4ubuntu2.10_amd64.deb ...
+#11 23.97 Unpacking binutils-common:amd64 (2.42-4ubuntu2.10) ...
+#11 24.02 Selecting previously unselected package libsframe1:amd64.
+#11 24.02 Preparing to unpack .../17-libsframe1_2.42-4ubuntu2.10_amd64.deb ...
+#11 24.02 Unpacking libsframe1:amd64 (2.42-4ubuntu2.10) ...
+#11 24.06 Selecting previously unselected package libbinutils:amd64.
+#11 24.06 Preparing to unpack .../18-libbinutils_2.42-4ubuntu2.10_amd64.deb ...
+#11 24.07 Unpacking libbinutils:amd64 (2.42-4ubuntu2.10) ...
+#11 24.12 Selecting previously unselected package libctf-nobfd0:amd64.
+#11 24.12 Preparing to unpack .../19-libctf-nobfd0_2.42-4ubuntu2.10_amd64.deb ...
+#11 24.12 Unpacking libctf-nobfd0:amd64 (2.42-4ubuntu2.10) ...
+#11 24.17 Selecting previously unselected package libctf0:amd64.
+#11 24.17 Preparing to unpack .../20-libctf0_2.42-4ubuntu2.10_amd64.deb ...
+#11 24.18 Unpacking libctf0:amd64 (2.42-4ubuntu2.10) ...
+#11 24.23 Selecting previously unselected package libgprofng0:amd64.
+#11 24.23 Preparing to unpack .../21-libgprofng0_2.42-4ubuntu2.10_amd64.deb ...
+#11 24.23 Unpacking libgprofng0:amd64 (2.42-4ubuntu2.10) ...
+#11 24.29 Selecting previously unselected package binutils-x86-64-linux-gnu.
+#11 24.29 Preparing to unpack .../22-binutils-x86-64-linux-gnu_2.42-4ubuntu2.10_amd64.deb ...
+#11 24.29 Unpacking binutils-x86-64-linux-gnu (2.42-4ubuntu2.10) ...
+#11 24.43 Selecting previously unselected package binutils.
+#11 24.43 Preparing to unpack .../23-binutils_2.42-4ubuntu2.10_amd64.deb ...
+#11 24.44 Unpacking binutils (2.42-4ubuntu2.10) ...
+#11 24.48 Selecting previously unselected package libc-dev-bin.
+#11 24.48 Preparing to unpack .../24-libc-dev-bin_2.39-0ubuntu8.9_amd64.deb ...
+#11 24.49 Unpacking libc-dev-bin (2.39-0ubuntu8.9) ...
+#11 24.52 Selecting previously unselected package linux-libc-dev:amd64.
+#11 24.53 Preparing to unpack .../25-linux-libc-dev_6.8.0-142.142_amd64.deb ...
+#11 24.53 Unpacking linux-libc-dev:amd64 (6.8.0-142.142) ...
+#11 24.83 Selecting previously unselected package libcrypt-dev:amd64.
+#11 24.83 Preparing to unpack .../26-libcrypt-dev_1%3a4.4.36-4build1_amd64.deb ...
+#11 24.84 Unpacking libcrypt-dev:amd64 (1:4.4.36-4build1) ...
+#11 24.88 Selecting previously unselected package rpcsvc-proto.
+#11 24.88 Preparing to unpack .../27-rpcsvc-proto_1.4.2-0ubuntu7_amd64.deb ...
+#11 24.89 Unpacking rpcsvc-proto (1.4.2-0ubuntu7) ...
+#11 24.94 Selecting previously unselected package libc6-dev:amd64.
+#11 24.94 Preparing to unpack .../28-libc6-dev_2.39-0ubuntu8.9_amd64.deb ...
+#11 24.95 Unpacking libc6-dev:amd64 (2.39-0ubuntu8.9) ...
+#11 25.14 Selecting previously unselected package gcc-13-base:amd64.
+#11 25.14 Preparing to unpack .../29-gcc-13-base_13.3.0-6ubuntu2~24.04.1_amd64.deb ...
+#11 25.14 Unpacking gcc-13-base:amd64 (13.3.0-6ubuntu2~24.04.1) ...
+#11 25.19 Selecting previously unselected package libisl23:amd64.
+#11 25.19 Preparing to unpack .../30-libisl23_0.26-3build1.1_amd64.deb ...
+#11 25.20 Unpacking libisl23:amd64 (0.26-3build1.1) ...
+#11 25.26 Selecting previously unselected package libmpfr6:amd64.
+#11 25.26 Preparing to unpack .../31-libmpfr6_4.2.1-1build1.1_amd64.deb ...
+#11 25.26 Unpacking libmpfr6:amd64 (4.2.1-1build1.1) ...
+#11 25.31 Selecting previously unselected package libmpc3:amd64.
+#11 25.31 Preparing to unpack .../32-libmpc3_1.3.1-1build1.1_amd64.deb ...
+#11 25.32 Unpacking libmpc3:amd64 (1.3.1-1build1.1) ...
+#11 25.36 Selecting previously unselected package cpp-13-x86-64-linux-gnu.
+#11 25.36 Preparing to unpack .../33-cpp-13-x86-64-linux-gnu_13.3.0-6ubuntu2~24.04.1_amd64.deb ...
+#11 25.36 Unpacking cpp-13-x86-64-linux-gnu (13.3.0-6ubuntu2~24.04.1) ...
+#11 25.55 Selecting previously unselected package cpp-13.
+#11 25.55 Preparing to unpack .../34-cpp-13_13.3.0-6ubuntu2~24.04.1_amd64.deb ...
+#11 25.56 Unpacking cpp-13 (13.3.0-6ubuntu2~24.04.1) ...
+#11 25.59 Selecting previously unselected package cpp-x86-64-linux-gnu.
+#11 25.59 Preparing to unpack .../35-cpp-x86-64-linux-gnu_4%3a13.2.0-7ubuntu1_amd64.deb ...
+#11 25.60 Unpacking cpp-x86-64-linux-gnu (4:13.2.0-7ubuntu1) ...
+#11 25.64 Selecting previously unselected package cpp.
+#11 25.65 Preparing to unpack .../36-cpp_4%3a13.2.0-7ubuntu1_amd64.deb ...
+#11 25.66 Unpacking cpp (4:13.2.0-7ubuntu1) ...
+#11 25.70 Selecting previously unselected package libcc1-0:amd64.
+#11 25.70 Preparing to unpack .../37-libcc1-0_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 25.71 Unpacking libcc1-0:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 25.75 Selecting previously unselected package libgomp1:amd64.
+#11 25.75 Preparing to unpack .../38-libgomp1_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 25.76 Unpacking libgomp1:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 25.81 Selecting previously unselected package libitm1:amd64.
+#11 25.81 Preparing to unpack .../39-libitm1_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 25.81 Unpacking libitm1:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 25.86 Selecting previously unselected package libatomic1:amd64.
+#11 25.86 Preparing to unpack .../40-libatomic1_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 25.86 Unpacking libatomic1:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 25.91 Selecting previously unselected package libasan8:amd64.
+#11 25.91 Preparing to unpack .../41-libasan8_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 25.91 Unpacking libasan8:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 26.01 Selecting previously unselected package liblsan0:amd64.
+#11 26.01 Preparing to unpack .../42-liblsan0_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 26.01 Unpacking liblsan0:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 26.08 Selecting previously unselected package libtsan2:amd64.
+#11 26.08 Preparing to unpack .../43-libtsan2_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 26.08 Unpacking libtsan2:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 26.17 Selecting previously unselected package libubsan1:amd64.
+#11 26.17 Preparing to unpack .../44-libubsan1_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 26.17 Unpacking libubsan1:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 26.23 Selecting previously unselected package libhwasan0:amd64.
+#11 26.23 Preparing to unpack .../45-libhwasan0_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 26.23 Unpacking libhwasan0:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 26.30 Selecting previously unselected package libquadmath0:amd64.
+#11 26.30 Preparing to unpack .../46-libquadmath0_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+#11 26.31 Unpacking libquadmath0:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 26.35 Selecting previously unselected package libgcc-13-dev:amd64.
+#11 26.35 Preparing to unpack .../47-libgcc-13-dev_13.3.0-6ubuntu2~24.04.1_amd64.deb ...
+#11 26.35 Unpacking libgcc-13-dev:amd64 (13.3.0-6ubuntu2~24.04.1) ...
+#11 26.48 Selecting previously unselected package gcc-13-x86-64-linux-gnu.
+#11 26.48 Preparing to unpack .../48-gcc-13-x86-64-linux-gnu_13.3.0-6ubuntu2~24.04.1_amd64.deb ...
+#11 26.49 Unpacking gcc-13-x86-64-linux-gnu (13.3.0-6ubuntu2~24.04.1) ...
+#11 26.78 Selecting previously unselected package gcc-13.
+#11 26.79 Preparing to unpack .../49-gcc-13_13.3.0-6ubuntu2~24.04.1_amd64.deb ...
+#11 26.79 Unpacking gcc-13 (13.3.0-6ubuntu2~24.04.1) ...
+#11 26.83 Selecting previously unselected package gcc-x86-64-linux-gnu.
+#11 26.83 Preparing to unpack .../50-gcc-x86-64-linux-gnu_4%3a13.2.0-7ubuntu1_amd64.deb ...
+#11 26.83 Unpacking gcc-x86-64-linux-gnu (4:13.2.0-7ubuntu1) ...
+#11 26.87 Selecting previously unselected package gcc.
+#11 26.87 Preparing to unpack .../51-gcc_4%3a13.2.0-7ubuntu1_amd64.deb ...
+#11 26.88 Unpacking gcc (4:13.2.0-7ubuntu1) ...
+#11 26.91 Selecting previously unselected package libstdc++-13-dev:amd64.
+#11 26.91 Preparing to unpack .../52-libstdc++-13-dev_13.3.0-6ubuntu2~24.04.1_amd64.deb ...
+#11 26.92 Unpacking libstdc++-13-dev:amd64 (13.3.0-6ubuntu2~24.04.1) ...
+#11 27.17 Selecting previously unselected package g++-13-x86-64-linux-gnu.
+#11 27.17 Preparing to unpack .../53-g++-13-x86-64-linux-gnu_13.3.0-6ubuntu2~24.04.1_amd64.deb ...
+#11 27.17 Unpacking g++-13-x86-64-linux-gnu (13.3.0-6ubuntu2~24.04.1) ...
+#11 27.38 Selecting previously unselected package g++-13.
+#11 27.38 Preparing to unpack .../54-g++-13_13.3.0-6ubuntu2~24.04.1_amd64.deb ...
+#11 27.38 Unpacking g++-13 (13.3.0-6ubuntu2~24.04.1) ...
+#11 27.42 Selecting previously unselected package g++-x86-64-linux-gnu.
+#11 27.42 Preparing to unpack .../55-g++-x86-64-linux-gnu_4%3a13.2.0-7ubuntu1_amd64.deb ...
+#11 27.42 Unpacking g++-x86-64-linux-gnu (4:13.2.0-7ubuntu1) ...
+#11 27.46 Selecting previously unselected package g++.
+#11 27.46 Preparing to unpack .../56-g++_4%3a13.2.0-7ubuntu1_amd64.deb ...
+#11 27.47 Unpacking g++ (4:13.2.0-7ubuntu1) ...
+#11 27.50 Selecting previously unselected package make.
+#11 27.51 Preparing to unpack .../57-make_4.3-4.1build2_amd64.deb ...
+#11 27.51 Unpacking make (4.3-4.1build2) ...
+#11 27.55 Selecting previously unselected package libdpkg-perl.
+#11 27.55 Preparing to unpack .../58-libdpkg-perl_1.22.6ubuntu6.6_all.deb ...
+#11 27.55 Unpacking libdpkg-perl (1.22.6ubuntu6.6) ...
+#11 27.63 Selecting previously unselected package bzip2.
+#11 27.63 Preparing to unpack .../59-bzip2_1.0.8-5.1ubuntu0.1_amd64.deb ...
+#11 27.63 Unpacking bzip2 (1.0.8-5.1ubuntu0.1) ...
+#11 27.68 Selecting previously unselected package patch.
+#11 27.68 Preparing to unpack .../60-patch_2.7.6-7build3_amd64.deb ...
+#11 27.68 Unpacking patch (2.7.6-7build3) ...
+#11 27.72 Selecting previously unselected package lto-disabled-list.
+#11 27.72 Preparing to unpack .../61-lto-disabled-list_47_all.deb ...
+#11 27.73 Unpacking lto-disabled-list (47) ...
+#11 27.77 Selecting previously unselected package dpkg-dev.
+#11 27.77 Preparing to unpack .../62-dpkg-dev_1.22.6ubuntu6.6_all.deb ...
+#11 27.78 Unpacking dpkg-dev (1.22.6ubuntu6.6) ...
+#11 27.85 Selecting previously unselected package build-essential.
+#11 27.86 Preparing to unpack .../63-build-essential_12.10ubuntu1_amd64.deb ...
+#11 27.86 Unpacking build-essential (12.10ubuntu1) ...
+#11 27.91 Selecting previously unselected package libbrotli1:amd64.
+#11 27.91 Preparing to unpack .../64-libbrotli1_1.1.0-2build2_amd64.deb ...
+#11 27.91 Unpacking libbrotli1:amd64 (1.1.0-2build2) ...
+#11 27.96 Selecting previously unselected package libsasl2-modules-db:amd64.
+#11 27.96 Preparing to unpack .../65-libsasl2-modules-db_2.1.28+dfsg1-5ubuntu3.1_amd64.deb ...
+#11 27.96 Unpacking libsasl2-modules-db:amd64 (2.1.28+dfsg1-5ubuntu3.1) ...
+#11 28.01 Selecting previously unselected package libsasl2-2:amd64.
+#11 28.01 Preparing to unpack .../66-libsasl2-2_2.1.28+dfsg1-5ubuntu3.1_amd64.deb ...
+#11 28.01 Unpacking libsasl2-2:amd64 (2.1.28+dfsg1-5ubuntu3.1) ...
+#11 28.06 Selecting previously unselected package libldap2:amd64.
+#11 ...
+
+#10 [verify  3/11] ADD --checksum=sha256:13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16 https://github.com/verus-lang/verus/releases/download/release/0.2026.09.06.8dea4a2/verus-0.2026.09.06.8dea4a2-x86-linux.zip /tmp/verus.zip
+#10 DONE 28.2s
+
+#11 [verify  2/11] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends     curl ca-certificates unzip build-essential     && rm -rf /var/lib/apt/lists/*
+#11 28.06 Preparing to unpack .../67-libldap2_2.6.10+dfsg-0ubuntu0.24.04.1_amd64.deb ...
+#11 28.07 Unpacking libldap2:amd64 (2.6.10+dfsg-0ubuntu0.24.04.1) ...
+#11 28.12 Selecting previously unselected package librtmp1:amd64.
+#11 28.12 Preparing to unpack .../68-librtmp1_2.4+20151223.gitfa8646d.1-2build7_amd64.deb ...
+#11 28.13 Unpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2build7) ...
+#11 28.18 Selecting previously unselected package libssh-4:amd64.
+#11 28.18 Preparing to unpack .../69-libssh-4_0.10.6-2ubuntu0.5_amd64.deb ...
+#11 28.19 Unpacking libssh-4:amd64 (0.10.6-2ubuntu0.5) ...
+#11 28.23 Selecting previously unselected package libcurl4t64:amd64.
+#11 28.23 Preparing to unpack .../70-libcurl4t64_8.5.0-2ubuntu10.15_amd64.deb ...
+#11 28.24 Unpacking libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...
+#11 28.28 Selecting previously unselected package curl.
+#11 28.28 Preparing to unpack .../71-curl_8.5.0-2ubuntu10.15_amd64.deb ...
+#11 28.28 Unpacking curl (8.5.0-2ubuntu10.15) ...
+#11 28.32 Selecting previously unselected package unzip.
+#11 28.32 Preparing to unpack .../72-unzip_6.0-28ubuntu4.1_amd64.deb ...
+#11 28.33 Unpacking unzip (6.0-28ubuntu4.1) ...
+#11 28.38 Setting up libkeyutils1:amd64 (1.6.3-3build1) ...
+#11 28.39 Setting up lto-disabled-list (47) ...
+#11 28.41 Setting up libgdbm6t64:amd64 (1.23-5.1build1) ...
+#11 28.42 Setting up libgdbm-compat4t64:amd64 (1.23-5.1build1) ...
+#11 28.44 Setting up unzip (6.0-28ubuntu4.1) ...
+#11 28.46 Setting up libbrotli1:amd64 (1.1.0-2build2) ...
+#11 28.47 Setting up binutils-common:amd64 (2.42-4ubuntu2.10) ...
+#11 28.49 Setting up libpsl5t64:amd64 (0.21.2-1.1build1) ...
+#11 28.50 Setting up libnghttp2-14:amd64 (1.59.0-1ubuntu0.4) ...
+#11 28.52 Setting up linux-libc-dev:amd64 (6.8.0-142.142) ...
+#11 28.53 Setting up libctf-nobfd0:amd64 (2.42-4ubuntu2.10) ...
+#11 28.55 Setting up libgomp1:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 28.56 Setting up bzip2 (1.0.8-5.1ubuntu0.1) ...
+#11 28.58 Setting up libsframe1:amd64 (2.42-4ubuntu2.10) ...
+#11 28.60 Setting up libjansson4:amd64 (2.14-2build2) ...
+#11 28.61 Setting up libkrb5support0:amd64 (1.20.1-6ubuntu2.10) ...
+#11 28.62 Setting up libsasl2-modules-db:amd64 (2.1.28+dfsg1-5ubuntu3.1) ...
+#11 28.64 Setting up rpcsvc-proto (1.4.2-0ubuntu7) ...
+#11 28.65 Setting up gcc-13-base:amd64 (13.3.0-6ubuntu2~24.04.1) ...
+#11 28.67 Setting up make (4.3-4.1build2) ...
+#11 28.68 Setting up libmpfr6:amd64 (4.2.1-1build1.1) ...
+#11 28.70 Setting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2build7) ...
+#11 28.71 Setting up xz-utils (5.6.1+really5.4.5-1ubuntu0.3) ...
+#11 28.73 update-alternatives: using /usr/bin/xz to provide /usr/bin/lzma (lzma) in auto mode
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/lzma.1.gz because associated file /usr/share/man/man1/xz.1.gz (of link group lzma) doesn't exist
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/unlzma.1.gz because associated file /usr/share/man/man1/unxz.1.gz (of link group lzma) doesn't exist
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/lzcat.1.gz because associated file /usr/share/man/man1/xzcat.1.gz (of link group lzma) doesn't exist
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/lzmore.1.gz because associated file /usr/share/man/man1/xzmore.1.gz (of link group lzma) doesn't exist
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/lzless.1.gz because associated file /usr/share/man/man1/xzless.1.gz (of link group lzma) doesn't exist
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/lzdiff.1.gz because associated file /usr/share/man/man1/xzdiff.1.gz (of link group lzma) doesn't exist
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/lzcmp.1.gz because associated file /usr/share/man/man1/xzcmp.1.gz (of link group lzma) doesn't exist
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/lzgrep.1.gz because associated file /usr/share/man/man1/xzgrep.1.gz (of link group lzma) doesn't exist
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/lzegrep.1.gz because associated file /usr/share/man/man1/xzegrep.1.gz (of link group lzma) doesn't exist
+#11 28.73 update-alternatives: warning: skip creation of /usr/share/man/man1/lzfgrep.1.gz because associated file /usr/share/man/man1/xzfgrep.1.gz (of link group lzma) doesn't exist
+#11 28.74 Setting up perl-modules-5.38 (5.38.2-3.2ubuntu0.6) ...
+#11 28.75 Setting up libquadmath0:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 28.77 Setting up libmpc3:amd64 (1.3.1-1build1.1) ...
+#11 28.78 Setting up libatomic1:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 28.80 Setting up patch (2.7.6-7build3) ...
+#11 28.81 Setting up libk5crypto3:amd64 (1.20.1-6ubuntu2.10) ...
+#11 28.83 Setting up libsasl2-2:amd64 (2.1.28+dfsg1-5ubuntu3.1) ...
+#11 28.84 Setting up libubsan1:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 28.86 Setting up libhwasan0:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 28.87 Setting up libcrypt-dev:amd64 (1:4.4.36-4build1) ...
+#11 28.89 Setting up libasan8:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 28.91 Setting up libkrb5-3:amd64 (1.20.1-6ubuntu2.10) ...
+#11 28.92 Setting up libperl5.38t64:amd64 (5.38.2-3.2ubuntu0.6) ...
+#11 28.94 Setting up libtsan2:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 28.95 Setting up libbinutils:amd64 (2.42-4ubuntu2.10) ...
+#11 28.97 Setting up libisl23:amd64 (0.26-3build1.1) ...
+#11 28.98 Setting up libc-dev-bin (2.39-0ubuntu8.9) ...
+#11 29.00 Setting up openssl (3.0.13-0ubuntu3.15) ...
+#11 29.02 Setting up libcc1-0:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 29.03 Setting up libldap2:amd64 (2.6.10+dfsg-0ubuntu0.24.04.1) ...
+#11 29.05 Setting up liblsan0:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 29.06 Setting up libitm1:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+#11 29.07 Setting up libctf0:amd64 (2.42-4ubuntu2.10) ...
+#11 29.09 Setting up cpp-13-x86-64-linux-gnu (13.3.0-6ubuntu2~24.04.1) ...
+#11 29.10 Setting up ca-certificates (20260601~24.04.1) ...
+#11 29.16 debconf: unable to initialize frontend: Dialog
+#11 29.16 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#11 29.16 debconf: falling back to frontend: Readline
+#11 29.17 debconf: unable to initialize frontend: Readline
+#11 29.17 debconf: (This frontend requires a controlling tty.)
+#11 29.17 debconf: falling back to frontend: Teletype
+#11 29.57 Updating certificates in /etc/ssl/certs...
+#11 30.16 121 added, 0 removed; done.
+#11 30.19 Setting up perl (5.38.2-3.2ubuntu0.6) ...
+#11 30.21 Setting up libgprofng0:amd64 (2.42-4ubuntu2.10) ...
+#11 30.23 Setting up libgssapi-krb5-2:amd64 (1.20.1-6ubuntu2.10) ...
+#11 30.24 Setting up libdpkg-perl (1.22.6ubuntu6.6) ...
+#11 30.26 Setting up libssh-4:amd64 (0.10.6-2ubuntu0.5) ...
+#11 30.27 Setting up libgcc-13-dev:amd64 (13.3.0-6ubuntu2~24.04.1) ...
+#11 30.29 Setting up libc6-dev:amd64 (2.39-0ubuntu8.9) ...
+#11 30.30 Setting up libstdc++-13-dev:amd64 (13.3.0-6ubuntu2~24.04.1) ...
+#11 30.32 Setting up binutils-x86-64-linux-gnu (2.42-4ubuntu2.10) ...
+#11 30.33 Setting up cpp-x86-64-linux-gnu (4:13.2.0-7ubuntu1) ...
+#11 30.35 Setting up cpp-13 (13.3.0-6ubuntu2~24.04.1) ...
+#11 30.36 Setting up libcurl4t64:amd64 (8.5.0-2ubuntu10.15) ...
+#11 30.38 Setting up gcc-13-x86-64-linux-gnu (13.3.0-6ubuntu2~24.04.1) ...
+#11 30.39 Setting up binutils (2.42-4ubuntu2.10) ...
+#11 30.41 Setting up dpkg-dev (1.22.6ubuntu6.6) ...
+#11 30.43 Setting up gcc-13 (13.3.0-6ubuntu2~24.04.1) ...
+#11 30.45 Setting up cpp (4:13.2.0-7ubuntu1) ...
+#11 30.47 Setting up curl (8.5.0-2ubuntu10.15) ...
+#11 30.49 Setting up g++-13-x86-64-linux-gnu (13.3.0-6ubuntu2~24.04.1) ...
+#11 30.50 Setting up gcc-x86-64-linux-gnu (4:13.2.0-7ubuntu1) ...
+#11 30.52 Setting up gcc (4:13.2.0-7ubuntu1) ...
+#11 30.54 Setting up g++-x86-64-linux-gnu (4:13.2.0-7ubuntu1) ...
+#11 30.56 Setting up g++-13 (13.3.0-6ubuntu2~24.04.1) ...
+#11 30.57 Setting up g++ (4:13.2.0-7ubuntu1) ...
+#11 30.58 update-alternatives: using /usr/bin/g++ to provide /usr/bin/c++ (c++) in auto mode
+#11 30.58 update-alternatives: warning: skip creation of /usr/share/man/man1/c++.1.gz because associated file /usr/share/man/man1/g++.1.gz (of link group c++) doesn't exist
+#11 30.59 Setting up build-essential (12.10ubuntu1) ...
+#11 30.61 Processing triggers for libc-bin (2.39-0ubuntu8.9) ...
+#11 30.63 Processing triggers for ca-certificates (20260601~24.04.1) ...
+#11 30.64 Updating certificates in /etc/ssl/certs...
+#11 31.02 0 added, 0 removed; done.
+#11 31.02 Running hooks in /etc/ca-certificates/update.d...
+#11 31.04 done.
+#11 DONE 31.3s
+
+#12 [verify  3/11] ADD --checksum=sha256:13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16 https://github.com/verus-lang/verus/releases/download/release/0.2026.09.06.8dea4a2/verus-0.2026.09.06.8dea4a2-x86-linux.zip /tmp/verus.zip
+#12 DONE 0.7s
+
+#13 [verify  4/11] ADD --checksum=sha256:7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip /tmp/z3.zip
+#13 DONE 0.1s
+
+#14 [verify  5/11] RUN unzip -q /tmp/verus.zip -d /opt && unzip -q /tmp/z3.zip -d /opt     && rm /tmp/verus.zip /tmp/z3.zip     && curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.98.0        --component rustc-dev --component llvm-tools --component rustfmt
+#14 9.416 info: downloading installer
+#14 10.33 info: profile set to default
+#14 10.33 info: default host tuple is x86_64-unknown-linux-gnu
+#14 10.34 info: syncing channel updates for 1.98.0-x86_64-unknown-linux-gnu
+#14 10.51 info: latest update on 2026-08-20 for version 1.98.0 (88d9e12ae 2026-08-18)
+#14 10.51 info: downloading 8 components
+#14 45.93 info: default toolchain set to 1.98.0-x86_64-unknown-linux-gnu
+#14 45.93 
+#14 45.99   1.98.0-x86_64-unknown-linux-gnu installed - rustc 1.98.0 (88d9e12ae 2026-08-18)
+#14 45.99 
+#14 45.99 
+#14 45.99 Rust is installed now. Great!
+#14 45.99 
+#14 45.99 To get started you may need to restart your current shell.
+#14 45.99 This would reload your PATH environment variable to include
+#14 45.99 Cargo's bin directory ($HOME/.cargo/bin).
+#14 45.99 
+#14 45.99 To configure your current shell, you need to source the
+#14 45.99 corresponding env file under $HOME/.cargo.
+#14 45.99 
+#14 45.99 Consider running the right command for your shell (note the leading DOT):
+#14 45.99 . "$HOME/.cargo/env" # For sh/ash/dash/pdksh/bash
+#14 45.99 cargo:rerun-if-env-changed=CC_x86_64-unknown-linux-gnu
+#14 45.99 CC_x86_64-unknown-linux-gnu = None
+#14 45.99 cargo:rerun-if-env-changed=CC_x86_64_unknown_linux_gnu
+#14 45.99 CC_x86_64_unknown_linux_gnu = None
+#14 45.99 cargo:rerun-if-env-changed=HOST_CC
+#14 45.99 HOST_CC = None
+#14 45.99 cargo:rerun-if-env-changed=CC
+#14 45.99 CC = None
+#14 46.00 cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#14 46.03 cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#14 46.03 CRATE_CC_NO_DEFAULTS = None
+#14 46.03 cargo:rerun-if-env-changed=CFLAGS
+#14 46.03 CFLAGS = None
+#14 46.03 cargo:rerun-if-env-changed=HOST_CFLAGS
+#14 46.03 HOST_CFLAGS = None
+#14 46.03 cargo:rerun-if-env-changed=CFLAGS_x86_64_unknown_linux_gnu
+#14 46.03 CFLAGS_x86_64_unknown_linux_gnu = None
+#14 46.03 cargo:rerun-if-env-changed=CFLAGS_x86_64-unknown-linux-gnu
+#14 46.03 CFLAGS_x86_64-unknown-linux-gnu = None
+#14 DONE 46.4s
+
+#15 [verify  6/11] WORKDIR /app
+#15 DONE 0.5s
+
+#16 [verify  7/11] COPY Cargo.toml Cargo.lock ./
+#16 DONE 0.1s
+
+#17 [verify  8/11] COPY crates ./crates
+#17 DONE 0.5s
+
+#18 [verify  9/11] COPY fuzz ./fuzz
+#18 DONE 0.5s
+
+#19 [verify 10/11] COPY scripts/check_verus.sh ./scripts/check_verus.sh
+#19 DONE 0.1s
+
+#20 [verify 11/11] RUN sh scripts/check_verus.sh
+#20 0.311 == positive: cargo verus verify -p gripsack-policy --locked
+#20 52.64 positive: verification results:: 72 verified, 0 errors
+#20 52.64 == calibration: semantic mutants must fail their postconditions
+#20 93.79 calibration: classifier mutant rejected on its contract
+#20 125.2 calibration: merge-splice mutant rejected on its contract
+#20 155.5 calibration: graph-closure mutant rejected on its contract
+#20 182.0 calibration: graph-validation mutant rejected on its contract
+#20 208.8 calibration: graph-name-index mutant rejected on its contract
+#20 235.3 calibration: target-abi mutant rejected on its contract
+#20 261.7 calibration: scheduler-latch mutant rejected on its contract
+#20 261.7 verify gate: OK
+#20 DONE 262.0s
+
+#21 exporting to image
+#21 exporting layers
+#21 exporting layers 82.8s done
+#21 exporting manifest sha256:dafe6703a3949b810225022ce341ab4f2de358fb5ebd60c53d1172f776ad8391 0.0s done
+#21 exporting config sha256:447749ba239bb10b8267b42237b86dba2eaa1475e62bfa5c71c2fc5da4b09293 0.0s done
+#21 exporting attestation manifest sha256:4fcc870dbdac30c8e84cc1bbd6ea92288b485b362a428afd82932b288467dbc4 0.0s done
+#21 exporting manifest list sha256:5650e3a9ec7c5caee130da0faa43e4654e4b967d5cdf24f84bc572b2246fea32 0.0s done
+#21 naming to docker.io/library/gripsack-verify:latest done
+#21 unpacking to docker.io/library/gripsack-verify:latest
+#21 unpacking to docker.io/library/gripsack-verify:latest 32.8s done
+#21 DONE 115.7s
+
+#22 resolving provenance for metadata file
+#22 DONE 0.0s
+ Image gripsack-verify Built 
+ Container gripsack-verify-run-579505548eaf Creating 
+ Container gripsack-verify-run-579505548eaf Created 
+gate passed: cargo verus verify -p gripsack-policy + seeded-mutant calibration (scripts/check_verus.sh)

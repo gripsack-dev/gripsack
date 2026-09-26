@@ -2011,10 +2011,27 @@ leaves lacking evidence remain release blockers, not deferred work.
 
 | Leaf | Class / target | Prerequisite, owner and implementation | State / evidence | Unmet acceptance |
 |---|---|---|---|---|
-| M0-1.3a | NEXT / M0 | None; `gripsack-ir` owns the private `HostName` constructor and E132 allocation, reusing the E116 safe-segment rule. `grip init` and eval share ASCII-safe default sanitization; no IR wire/version or hash change. | Implementing; source-bound Docker Rust and generated-code freshness receipt pending. | Native macOS and protected CI evidence unrun. |
-| M0-1.3b | NEXT / M0 | M0-1.3a; CLI `eval_repo` admits the selected `--host` > `env.toml` default > sanitized machine name before throttle state, plugin/deno provisioning, build-env injection and frontend/lockfile I/O. `EvalOutcome`, executor `Ctx`, lockfile path/read/write, preview, and linter pin lookup carry `HostName`; the linter uses the evaluated selection, not the raw optional flag. One producer owns the invariant, no unchecked overload. | Implementing; original traversal and absolute-host e2e witnesses failed-before, then focused real CLI and direct policy cases passed-after. | Final source-bound full gates and retained-state/CI report pending. |
-| M0-1.3c | NEXT / M0 | M0-1.3a; `adopt` validates `--host` before inspection, payload generation and host-file modification, then passes the admitted value through eval and scoped apply. | Implementing; failing-before fixture wrote repo files then reported a missing `hosts/../modules/evil.ts`; focused real CLI case passed-after without repo writes. | Protected CI/native Mac evidence unrun; §1.4's separate adopt trust-gate reordering remains open. |
-| M0-1.3d | NEXT / M0 | M0-1.3a–c; sandboxed, offline real CLI tests for `../modules/role`, an absolute `--host` naming a protected lock outside the repo, `adopt --host ../…`, a valid `role.dev` and default-host version-aware lint. Distinct E132 has terminal and `check --json` coverage. | Implementing; three original witnesses failed-before on the real binary; four host cases and one default-host lint case passed after. | Attach exact source SHA, tool versions, byte-hashed logs, case counts and final Docker gates. |
+| M0-1.3a | NEXT / M0 | None; `gripsack-ir` owns the private `HostName` constructor and E132 allocation, reusing E116 safe-segment grammar. `grip init` and eval share ASCII-safe default sanitization; no IR wire/version or store-hash change. | **Implemented-unverified** at `681e87b`: committed-source Rust host-rule regression 1/1, registry fresh at 37 core IDs and five frontend allocations. | No theorem for arbitrary source/OS path resolution; protected CI and native Mac unrun. |
+| M0-1.3b | NEXT / M0 | M0-1.3a; CLI `eval_repo` admits selected `--host` > `env.toml` default > sanitized name before throttle state, plugin/deno provisioning, build-env injection and frontend/lockfile I/O. `EvalOutcome`, executor `Ctx`, lockfile path/read/write, preview, and linter pin lookup carry `HostName`; lint uses the evaluated selection, not the optional raw flag. No unchecked overload. | **Implemented-unverified** at `681e87b`: original traversal and absolute-host witnesses failed-before; committed-source lockfile roundtrip 1/1 and three real CLI selection/boundary cases passed. | Direct host boundary lacks protected CI/native Mac evidence; §1.4's separate unbounded evaluator output remains open. |
+| M0-1.3c | NEXT / M0 | M0-1.3a; `adopt` validates `--host` before inspection, payload generation and host-file modification, then passes the admitted name through eval and scoped apply without a second string copy. | **Implemented-unverified** at `681e87b`: failing-before fixture wrote repo files and reported a missing `hosts/../modules/evil.ts`; committed-source e2e rejects E132 before generated repo writes. | Protected CI/native Mac unrun; §1.4's separate adopt trust-gate reordering remains open. |
+| M0-1.3d | NEXT / M0 | M0-1.3a–c; sandboxed offline real CLI cases for `../modules/role`, absolute victim lock, `adopt --host ../…`, valid `role.dev` and default-host version-aware lint. E132 has terminal and `check --json` parity; no native worker/host path is inferred from Linux alone. | **Implemented-unverified** at `681e87b`: SHA-256-checked focused report binds 7/7 distinct checks (`verification/reports/2026-09-26-m0-host-681e87b.log`, SHA `65a710e52fd7d343b96aa3d4c34baa7138b73ed3c15129ff8e585f880680636c`). | Exact-commit protected `test`, native Mac and full M0/M1/M2 release evidence unrun; no waiver. |
+
+The committed source-root fingerprint is
+`11419c4e1d532fea98b8b2e687f0fed60d964d9388413f4111dfd9a53971968c`.
+The pre-commit worktree five-gate transcript
+`verification/reports/2026-09-26-m0-host-precommit-five-gates.log`
+(SHA `9249ecbb2e1a0a39bb5d0360bd93d90391641c708100a0e89e72e072e281e5ce`)
+records fresh Rust fmt/clippy/tests, real CLI e2e **304/304**
+and fresh Verus **72 verified / 0 errors** with seven mutants;
+TypeScript and TLC images were cached. Its source equivalence to
+`681e87b` is **inferred** from no behavior-root edits between that
+run and the source commit; it is *not* exact-commit CI evidence.
+The separate focused report above ran on the committed source.
+The original bundle checksum check passes all eight members; live
+delivery inventory has **178/178** original IDs, **149** null
+lane/case inventories, 161 pending, 10 in_progress, six
+implemented_unverified and one blocked. H0-02 and the full release
+remain open.
 
 Code-quality ownership: the domain type lives in `gripsack-ir`, the
 selected-host precedence in one CLI eval boundary, lockfile path

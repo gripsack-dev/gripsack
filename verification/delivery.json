@@ -514,7 +514,7 @@
    "mandatory_deliverable": "Honest capabilities and isolation",
    "required_acceptance_evidence": "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, and no platform claim inferred from another platform's result",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "container-gates",
     "pure"
@@ -523,7 +523,31 @@
    "case_and_proof_inventory": [
     "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, no platform claim inferred from another platform's result"
    ],
-   "evidence_records": [],
+   "evidence_records": [
+    {
+     "milestone": "A1",
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["gripsack-ir::HostName::parse", "grip update", "grip adopt", "grip check --json", "gripsack-exec::lockfile::read/write", "gripsack-lint::versions::tool_versions"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; Rust test image; sandboxed HOME real CLI with pytest 9.1.1 and offline fixtures",
+     "command": "docker compose run --build --rm test cargo test --locked -p gripsack-ir host_name::tests; docker compose run --build --rm test cargo test --locked -p gripsack-exec lockfile::tests; docker compose run --build --rm e2e uv run --locked --no-sync pytest -vv test_eval_gate.py test_adopt.py test_linters.py -k 'default_host_path_traversal or absolute_host_cannot or adopt_rejects_invalid or explicit_role_host or default_host_selects_the_same_lockfile'",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-m0-host-681e87b.log",
+     "report_sha256": "65a710e52fd7d343b96aa3d4c34baa7138b73ed3c15129ff8e585f880680636c",
+     "commit": "681e87b439cd979978a12dbefab2eccb18989944",
+     "source_reuse_sha256": "11419c4e1d532fea98b8b2e687f0fed60d964d9388413f4111dfd9a53971968c",
+     "source_reuse_reason": "Evidence-only ledger, plan and report commits reuse this receipt only while the tracked SOURCE_ROOTS fingerprint remains identical",
+     "cases_covered": [],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Rust 1.98.0; Python 3.13.15; pytest 9.1.1; Deno 2.9.6 in the e2e image",
+     "inputs": "Plan 0048 §1.3 selected Linux-only host-boundary subcase: one typed name grammar, one direct lockfile roundtrip and five real CLI E132/valid-role/default-host-lint cases; parent traversal, absolute victim-lock and adopt witnesses failed-before on the real binary. The broader G-05 no-silent-fallback/privilege/network/build/platform matrix is NOT covered by this report",
+     "report_marker": "M0_HOST_BOUNDARY=7",
+     "counts": {"executed": 7, "passed": 7, "failed": 0, "skipped": 0}
+    }
+   ],
+   "lane_status": {"container-gates": "in_progress", "pure": "in_progress"},
+   "status_history": [{"date": "2026-09-26", "from": "pending", "to": "in_progress"}],
+   "implementation_notes": "Typed host-name admission and selected default-host lint pinning are source-bound local controls for plan 0048 §1.3, not a verified G-05 or proof of filesystem containment. No silent host/privileged/network fallback, builder bootstrap and per-platform honest-capability cases are conjunctive and remain open, with protected CI/native Mac missing. Historical Markdown-only H0/A0 claims remain retracted.",
    "historical_claims": [
     {
      "lane": "container-gates",
@@ -1401,7 +1425,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts; snippets are bounded to the evaluated repo capability and 1 MiB per file. E124 names the first declared unavailable output and owner for host recipe/provider package/profile/hook A2, isolated recipes B2, environments and plain tasks A2-P, task prerequisites E1, schedules E2/E3, checks A2/E1, images B4 and v4 A5 migration, with first-declared precedence exercised against a later B4 image. E129 labels every empty-file/line-0/col-0 rejection with the invalid span itself. A single manifest generates 36 Rust IDs, five frontend code constants and a static frontend membership Record; a user-thrown unallocated E999 stays a traceback with no check --json diagnostic. The console tracing layer now writes to stderr — a failing-before core-side E111 tracing::error! polluted check --json stdout (json.loads Extra data) because frontend-envelope diagnostics never hit that log call — and the shared parity helper now also asserts help text on both surfaces via an authored E111 case. Source-bound receipts: b421944 binds JSON purity + help parity (9 checks; fresh full chain e2e 299/299 at that tree), 90e68ac binds span labels/owner matrix (74 checks), ec11c7c binds the allocation surface (85 checks); earlier receipts are historical for these surfaces. Allocated-code authorship by trusted code, semantic classification, protected CI and native Mac keep A1-06 in_progress; no release."
+   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts; snippets are bounded to the evaluated repo capability and 1 MiB per file. E124 names the first declared unavailable output and owner for host recipe/provider package/profile/hook A2, isolated recipes B2, environments and plain tasks A2-P, task prerequisites E1, schedules E2/E3, checks A2/E1, images B4 and v4 A5 migration, with first-declared precedence exercised against a later B4 image. E129 labels every empty-file/line-0/col-0 rejection with the invalid span itself. A single manifest now generates 37 Rust IDs (E132 is core-only), five frontend code constants and a static frontend membership Record; a user-thrown unallocated E999 stays a traceback with no check --json diagnostic. The console tracing layer writes to stderr — a failing-before core-side E111 tracing::error! polluted check --json stdout (json.loads Extra data) because frontend-envelope diagnostics never hit that log call — and the shared parity helper asserts help text on both surfaces via an authored E111 case. Source-bound receipts: b421944 binds JSON purity + help parity (9 checks), 90e68ac binds span labels/owner matrix (74 checks), ec11c7c binds the earlier 36-core-ID allocation surface (85 checks). M0 §1.3 adds core-only E132 at 681e87b with a separate source-bound host-boundary receipt, not an A1-06 classification proof; older A1 receipts are historical for this source. Allocated-code authorship by trusted code, semantic classification, protected CI and native Mac keep A1-06 in_progress; no release."
   },
   {
    "id": "A1-07",
