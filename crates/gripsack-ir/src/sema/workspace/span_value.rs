@@ -7,7 +7,7 @@ use crate::diagnostic::{Diagnostic, codes};
 use crate::span::Span;
 use crate::workspace::{
     PackageLayout, Workspace, WorkspaceCalendar, WorkspaceCommand, WorkspaceContent,
-    WorkspaceOutput, WorkspacePlatform, WorkspaceProducer,
+    WorkspaceDestination, WorkspaceOutput, WorkspacePlatform, WorkspaceProducer,
 };
 
 pub(super) fn check(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
@@ -189,11 +189,49 @@ fn check_values(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
                             .with_label(Some(file.span.clone()), "file declared here"),
                         );
                     }
+                    if !admissible_destination(match &file.destination {
+                        WorkspaceDestination::Symlink { path }
+                        | WorkspaceDestination::TrackedCopy { path }
+                        | WorkspaceDestination::ManagedBlock { path, .. } => path,
+                    }) {
+                        diagnostics.push(
+                            Diagnostic::error(
+                                codes::BAD_DESTINATION,
+                                format!(
+                                    "profile `{}` file destination {:?} must be absolute or start with ~/ \
+                                     and use normalized segments — no NUL, \".\", \"..\", empty or trailing segments",
+                                    profile.name,
+                                    match &file.destination {
+                                        WorkspaceDestination::Symlink { path }
+                                        | WorkspaceDestination::TrackedCopy { path }
+                                        | WorkspaceDestination::ManagedBlock { path, .. } => path,
+                                    }
+                                ),
+                            )
+                            .with_label(Some(file.span.clone()), "destination declared here"),
+                        );
+                    }
                 }
             }
             _ => {}
         }
     }
+}
+
+/// A destination policy path must be absolute or `~/`-prefixed with
+/// normalized segments — the module grammar's E102 rule plus the
+/// selector segment rules, so no profile file can address `..`, a
+/// bare `~`, a relative path or an empty/trailing segment.
+fn admissible_destination(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix('/')) else {
+        return false;
+    };
+    !rest.is_empty()
+        && !rest.ends_with('/')
+        && !rest.contains('\0')
+        && rest
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
 /// The decoded wire is not necessarily produced by the TypeScript
@@ -316,6 +354,42 @@ mod tests {
                 (span.file.as_str(), span.line, span.col),
                 ("source.ts", 0, Some(0))
             );
+        }
+    }
+
+    #[test]
+    fn escaping_profile_file_destinations_reject_at_the_declaration() {
+        let profile = |path: &str| {
+            format!(
+                r#"{{
+            "kind": "profile", "name": "p", "span": {{"file": "grip.ts", "line": 2}},
+            "files": [{{
+                "span": {{"file": "grip.ts", "line": 3}},
+                "content": {{"kind": "literal", "text": "x\n"}},
+                "destination": {{"kind": "tracked_copy", "path": "{path}"}}}}]}}"#
+            )
+        };
+        for admissible in ["~/.vimrc", "/etc/gripsack/tool.conf"] {
+            check(&doc(&profile(admissible))).unwrap();
+        }
+        for escaping in [
+            "relative/path",
+            "~",
+            "~/",
+            "~/..",
+            "~/a/../b",
+            "/../etc/passwd",
+            "/a//b",
+            "/trailing/",
+            "~user/x",
+        ] {
+            let diagnostics = check(&doc(&profile(escaping))).unwrap_err();
+            let rejection = diagnostics
+                .iter()
+                .find(|diagnostic| diagnostic.code == codes::BAD_DESTINATION)
+                .unwrap_or_else(|| panic!("{escaping:?} must fail destination admission"));
+            assert_eq!(rejection.labels.len(), 1);
+            assert_eq!(rejection.labels[0].span.as_ref().unwrap().line, 3);
         }
     }
 

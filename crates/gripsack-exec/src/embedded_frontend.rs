@@ -3651,16 +3651,40 @@ export function asDestination(v: unknown, where: string): WorkspaceDestination {
   const rec = asRecord(v, where);
   if (rec.kind === "symlink" || rec.kind === "tracked_copy") {
     rejectUnknownFields(where, rec, ["kind", "path"]);
-    asName(rec.path, `${where}.path`);
+    asDestinationPath(rec.path, `${where}.path`);
     return v as WorkspaceDestination;
   }
   if (rec.kind === "managed_block") {
     rejectUnknownFields(where, rec, ["kind", "path", "marker"]);
-    asName(rec.path, `${where}.path`);
+    asDestinationPath(rec.path, `${where}.path`);
     asName(rec.marker, `${where}.marker`);
     return v as WorkspaceDestination;
   }
   throw new Error(`${where}: kind must be "symlink", "tracked_copy" or "managed_block"`);
+}
+
+/** A destination path must be absolute or `~/`-prefixed with
+ *  normalized segments — mirrors the core's E102 rule so an escape
+ *  fails at authoring, not only at decoded-IR admission. */
+function asDestinationPath(v: unknown, where: string): string {
+  const path = asName(v, where);
+  const rest = path.startsWith("~/")
+    ? path.slice(2)
+    : path.startsWith("/")
+      ? path.slice(1)
+      : null;
+  const normalized = rest !== null
+    && rest.length > 0
+    && !rest.endsWith("/")
+    && !rest.includes("\0")
+    && rest.split("/").every((s) => s !== "" && s !== "." && s !== "..");
+  if (!normalized) {
+    throw new Error(
+      `${where}: must be absolute or start with ~/ and use normalized segments ` +
+        `(no NUL, ".", "..", empty or trailing segments) — got ${JSON.stringify(path)}`,
+    );
+  }
+  return path;
 }
 
 export function asFile(v: unknown, where: string): WorkspaceFile {

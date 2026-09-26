@@ -478,6 +478,27 @@ Deno.test("file origin is optional only for literal content", () => {
   assert.equal(templated.source?.kind, "repo_file");
 });
 
+Deno.test("file destinations reject escapes at authoring, not just in decoded IR", () => {
+  for (const destination of [
+    trackedCopyTo("../escape"),
+    symlinkTo("~"),
+    managedBlock("~/a/../b", "gripsack"),
+    trackedCopyTo("/trailing/"),
+  ]) {
+    assert.throws(
+      () => file({ content: literalText("x"), destination }),
+      /must be absolute or start with ~\//,
+    );
+  }
+  // The same shape admits across every destination policy.
+  file({ content: literalText("x"), destination: symlinkTo("~/.vimrc") });
+  file({ content: literalText("x"), destination: trackedCopyTo("/etc/gripsack/tool.conf") });
+  file({
+    content: literalText("x"),
+    destination: managedBlock("~/.shellrc", "gripsack:block"),
+  });
+});
+
 Deno.test("emit rejects unknown output references with the reference span", () => {
   const t = task("build", {
     run: exec({ argv: [lit("true")] }),

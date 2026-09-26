@@ -602,6 +602,35 @@ def test_invalid_decoded_command_coordinates_keep_labels_without_reading_source(
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
+
+def test_escaping_profile_file_destination_is_a_structured_error(sandbox):
+    """A1-11: `..`/relative/bare-~ destination paths reject at admission
+    with the file's own declaration span — before any E124 or effect."""
+    repo = sandbox / "escaping-destination"
+    repo.mkdir()
+    profile = {
+        "kind": "profile", "name": "dotfiles", "span": {"file": "grip.ts", "line": 2},
+        "files": [{
+            "span": {"file": "grip.ts", "line": 3},
+            "content": {"kind": "literal", "text": "x\n"},
+            "destination": {"kind": "tracked_copy", "path": "~/../../etc/passwd"},
+        }],
+    }
+    path = repo / "workspace.ir.json"
+    path.write_text(json.dumps({
+        "ir_version": 5,
+        "host": {"os": "linux", "arch": "x86_64"},
+        "workspace": {"span": {"file": "grip.ts", "line": 1}, "outputs": [profile]},
+    }))
+    result = grip("plan", "--ir", str(path), cwd=repo)
+    assert result.returncode != 0
+    assert "error[E102]" in result.stderr, result.stderr
+    assert "~/../../etc/passwd" in result.stderr
+    assert "grip.ts:3" in result.stderr
+    assert "E124" not in result.stderr, "invalid destination precedes executor refusal"
+    assert not (sandbox / "etc").exists()
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
 def test_user_exception_stays_a_traceback_on_both_surfaces(sandbox):
     """A1-06 boundary: a user exception is a real defect, not an
     authoring typo — both surfaces pass the traceback through and the
