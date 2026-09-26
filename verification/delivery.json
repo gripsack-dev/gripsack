@@ -1611,12 +1611,33 @@
      "inputs": "Failing-before decoded tracked_copy destination ~/../../etc/passwd previously admitted (then E124); it now fails structured E102 at grip.ts:3 before executor refusal. Nine escape shapes and two admissible shapes in Rust, one real CLI E102 case, authoring-side throws for ../escape, ~, ~/a/../b and /trailing/ in Deno; TypeScript gate layer cache-hit at identical SOURCE_ROOTS with fresh full chain (Rust fmt/clippy/tests, real CLI e2e 297/297, Deno 64/64 + tsc examples)",
      "report_marker": "A1_DEST_ESCAPES=81",
      "counts": {"executed": 81, "passed": 81, "failed": 0, "skipped": 0}
+    },
+    {
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["gripsack-ir::sema::workspace::destinations::check", "grip plan --ir"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; Rust test container and real CLI pytest 9.1.1 under sandboxed HOME",
+     "command": "docker compose run --build --rm test cargo test --locked -p gripsack-ir 'workspace::destinations'; docker compose run --build --rm e2e uv run --locked --no-sync pytest -vv test_workspace_diagnostics.py -k 'duplicate_profile_destination or escaping_profile_file_destination'",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-a1-workspace-d8711b2-dest-collision.log",
+     "report_sha256": "4c7eaa90a6ff2b8300b9883c28a561b754c7b3b9e2cd630ac385fe2051a55240",
+     "commit": "d8711b2208b99e73fc9f3ce811405a836f6da977",
+     "source_reuse_sha256": "de296f15fcff42625c58b29d0ee7bd0b2eb09511f9e4aaa1510dd67f5791eca5",
+     "source_reuse_reason": "Reuse only across evidence-only ledger/report/docs commits with identical SOURCE_ROOTS",
+     "cases_covered": [
+      "Equal relative filenames with different origins coexist as distinct owned files"
+     ],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Rust 1.98.0; Python 3.13.15; pytest 9.1.1",
+     "inputs": "Failing-before duplicate profile-file destinations (case-folded, within one profile, across profiles and across symlink/managed_block policies) previously admitted; now E111 labels every file declaration before any E124. Three Rust cases including the equal-basename coexistence positive and one real CLI duplicate case plus the prior E102 escape case; fresh full chain at this tree passed Rust fmt/clippy/tests and real CLI e2e 297/297",
+     "report_marker": "A1_FILE_OWNERS=5",
+     "counts": {"executed": 5, "passed": 5, "failed": 0, "skipped": 0}
     }
    ],
    "status_history": [
     {"date": "2026-09-26", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "v5 files compose origin (repo_file/artifact_file), content (identity/literal/template) and destination (symlink/tracked_copy/managed_block) with mandatory file spans; only literal content may omit a source, and artifact-file selectors share the normalized-selector admission. Destination paths now require the module grammar's absolute-or-~/ shape with selector-style normalized segments on BOTH surfaces: the TypeScript constructors throw at authoring and decoded IR fails structured E102 at the file's declaration span before any E124 — a decoded ~/../../etc/passwd previously admitted. At 17513d2 source-bound focused runners pass 6 Rust span-admission, 10 real CLI destination/owner/coordinate cases and the same-source Deno gate layer (81 checks; fresh full chain at this tree: Rust fmt/clippy/tests, e2e 297/297, Deno 64/64). The tree origin (bounded include/exclude expansion, collision/containment diagnostics), admission-time rendered-result binding, ownership proof targets, protected CI and native Mac remain open; no closure or release."
+   "implementation_notes": "v5 files compose origin (repo_file/artifact_file), content (identity/literal/template) and destination (symlink/tracked_copy/managed_block) with mandatory file spans; only literal content may omit a source, and artifact-file selectors share the normalized-selector admission. Destination paths require the module grammar's absolute-or-~/ shape with selector-style normalized segments on BOTH surfaces (TypeScript throws at authoring; decoded IR fails structured E102 at the file's declaration span before any E124 — a decoded ~/../../etc/passwd previously admitted). One path now has one owner: case-folded duplicate destinations across profile files (within a profile, across profiles, across policies) reject with E111 labeling every declaration before any executor — previously a silently admitted two-owner race — while equal relative filenames with distinct destinations coexist; multiple managed blocks over one host path stay blocked until the marker/tree grammar makes per-block ownership explicit. At 17513d2 focused runners pass 6 Rust + 10 real CLI destination/owner/coordinate cases plus the same-source Deno gate layer (81 checks); at d8711b2 3 Rust + 2 real CLI collision cases pass (5 checks) after fresh full-chain Rust fmt/clippy/tests and e2e 297/297 at each tree. The tree origin (bounded include/exclude expansion with per-entry collision/containment diagnostics), admission-time rendered-result binding, ownership proof targets, protected CI and native Mac remain open; no closure or release."
   },
   {
    "id": "A1-12",

@@ -1450,6 +1450,24 @@ and containment diagnostics), admission-time rendered-result
 binding, the ownership proof targets, protected CI and native Mac
 evidence remain open; A1-11 stays in progress.
 
+The same session closed the ownership half of the same admission:
+two profile files declaring one destination — case-insensitively,
+within a profile, across profiles or across symlink/managed-block
+policies — previously admitted as a silent two-owner race (exactly
+what module E111 rejects for module entries). A new
+`sema::workspace::destinations` pass folds destinations
+case-insensitively and emits one E111 labeling every file
+declaration before any executor; equal relative filenames with
+distinct destinations remain distinct owned files, and multiple
+managed blocks over one host path stay blocked until the marker/tree
+grammar makes per-block ownership explicit. At committed code
+revision `d8711b2208b99e73fc9f3ce811405a836f6da977` (clean tracked
+source roots around the runners), the SHA-256 checked report binds
+**3/3** Rust collision cases and **2/2** real CLI destination cases
+after a fresh full chain (Rust fmt/clippy/tests, real CLI e2e
+**297/297**): **5** checks, source fingerprint
+`de296f15fcff42625c58b29d0ee7bd0b2eb09511f9e4aaa1510dd67f5791eca5`.
+
 ## 31. Honesty register
 
 - This document began as a design candidate; §§9–30 record read-only
