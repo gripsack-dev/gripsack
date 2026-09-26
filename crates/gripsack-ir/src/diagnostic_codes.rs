@@ -67,6 +67,8 @@ pub const INVALID_WORKSPACE_VALUE: &str = "E130";
 pub const REQUIRED_WORKSPACE_EDGE_MISSING: &str = "E131";
 /// Unsafe host entrypoint or lockfile identifier.
 pub const INVALID_HOST_NAME: &str = "E132";
+/// Comma in an evaluator read-grant path.
+pub const UNSAFE_EVAL_READ_GRANT: &str = "E133";
 /// Fetch or source resolution failed.
 pub const EXEC_FETCH: &str = "E201";
 /// Execution step failed.

@@ -89,6 +89,7 @@
   "container-gates": "docker compose test/ts-test/e2e/model/verify on linux/amd64",
   "linux-amd64": "native linux/amd64 host processes",
   "macos": "native macOS (architecture recorded per fixture) — absent on this workstation; hosted Mac CI is usable only after an observed source-bound native run",
+  "macos-arm64": "native Apple Silicon macOS runtime/ABI lane with actual arm64 artifacts; x86_64 Mac or a Linux VM does not substitute",
   "macos-vm": "native Apple Silicon macOS with verified nested virtualization for a private Lima/BuildKit worker; generic macOS CI is not this capability and this workstation has none",
   "protocol-fuzz-race": "bounded Rust/Go protocol and actual LLB-decoder fuzz replay, shared wire conformance and Go race fixtures; no mock-only replacement for real worker lanes",
   "fuzz": "bounded deterministic seeds and specified decoder/admission fuzz campaigns on actual production paths; syntax/tool failure is not behavioral negative evidence",
@@ -127,6 +128,7 @@
     "unmodified baseline gate results at 176eaec recorded before new-work attribution",
     "available/missing tools and platforms inventoried (docker+compose yes; Mac/launchd/virtualization-capable Mac CI missing; go/deno host binaries absent, container-provided)"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "status_history": [
     {
@@ -188,11 +190,12 @@
    ],
    "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "all 178 delivery IDs registered with owner milestone, tranche scope and status",
-    "near-term rows (H0/A0/B0/E0/A1) carry populated platform/capability lanes and conjunctive case inventories",
-    "future rows remain pending with lane_inventory_state marking live registration still required before any closure claim",
-    "handover checksums verified before import"
+    "all 178 original delivery IDs registered with owner milestone, tranche scope and honest initial status, including unchanged historical invalid claims",
+    "every required platform/capability lane, conjunctive named case, proof-family inventory and runner/formal/review evidence kind is explicit rather than null or placeholder",
+    "future runtime/proof rows may remain pending but their inventories cannot defer named Mac/VM, registry, native-manager or formal cases at closure",
+    "original edition-5 checksum-covered specifications and generated index reconcile exactly before any completion claim"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "status_history": [
     {
@@ -257,6 +260,7 @@
    "case_and_proof_inventory": [
     "Trace from user-visible entry point through admitted domain values to effects/output; declarations, dead code, test-only implementations, and mocks cannot satisfy executable behavior"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "historical_claims": [
     {
@@ -325,6 +329,7 @@
    "case_and_proof_inventory": [
     "Named positive and negative cases, expected execution/obligation counts, actual outcomes and reports; all required cases run and pass for a claimed lane"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "historical_claims": [
     {
@@ -393,6 +398,7 @@
    "case_and_proof_inventory": [
     "Required TLC/TLAPS/Verus obligations, production correspondence, negative calibration, non-vacuity witnesses, and explicit trusted assumptions; no proof-only clone or admitted missing decision"
    ],
+   "evidence_kinds": ["runner", "formal", "review"],
    "evidence_records": [],
    "historical_claims": [
     {
@@ -465,6 +471,7 @@
    "case_and_proof_inventory": [
     "Architecture and code-quality review, documented module ownership and dependency direction, strong types, bounded effects/protocols, reviewed pins, preserved Rust/rustls/musl constraints"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "historical_claims": [
     {
@@ -533,6 +540,7 @@
    "case_and_proof_inventory": [
     "No silent host/privileged/network fallback, no accidental builder bootstrap in native/preview flows, no platform claim inferred from another platform's result"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [
     {
      "milestone": "A1",
@@ -645,6 +653,7 @@
    "case_and_proof_inventory": [
     "Existing ownership, recovery, generations and retained roots preserved; changed persistent formats have compatible readers or explicit tested migration; no destructive repair of retained objects"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "historical_claims": [
     {
@@ -713,6 +722,7 @@
    "case_and_proof_inventory": [
     "Relevant CLI/API/docs/examples exercise the actual implementation; structured errors and provenance survive; documented support/limitations match the tested behavior"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "historical_claims": [
     {
@@ -781,6 +791,7 @@
    "case_and_proof_inventory": [
     "Delivery/status/guarantee records agree with run evidence and exact revision; no unresolved required row reported complete; next blocked/ready action recorded"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "historical_claims": [
     {
@@ -856,6 +867,7 @@
     "useful errors name the host facts and per-tag rejection reasons",
     "URL/hash transport unchanged (locked pins bypass selection; ResolvedRelease fields unchanged)"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": [],
    "status_history": [
     {
@@ -996,6 +1008,7 @@
     "Versioned workspace graph adapters use the production policy kernel, including the build-only projection and required checks",
     "Production-connected graph/closure proof and a dropped-validation-edge mutant run at A1 closure"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": [
     {
      "lane": "container-gates",
@@ -1198,6 +1211,7 @@
     "Recipe host access policy stays explicit and hooks retain post_link/post_activate/on_remove lifecycle semantics",
     "Production-connected normalization proof for fluent/object equivalence and an attributable mutant run before A1 closure"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": [
     {
      "lane": "container-gates",
@@ -1266,10 +1280,15 @@
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "raw downloaded archive, canonical tree, recipe, workspace lock and OCI result use distinct typed digest domains; provenance locations and user labels are not cache inputs",
+    "source bytes, literal Bash/script order, toolchain, complete pins, execution platform/target, layout and enforcement policy changes invalidate only affected producer identities",
+    "equivalent object/fluent declarations and diagnostic-only span/module/label edits preserve admitted recipe identity, while ordered argv/PATH/action edits do not",
+    "moving a package among project, personal profile or image consumers and changing its deployment path cannot rebuild a compatible producer",
+    "production-used Verus semantic normalization/admission proves encoding injectivity and the stated equivalence/invalidation relation over admitted inputs; schema/serialization/hash/parser correspondence and semantic mutants have real runner evidence"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -1287,10 +1306,16 @@
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "versioned workspace lock pins each target/platform resolution and imported recipe/frontend library with complete transitive source and ecosystem records",
+    "locked realization never floats an archive/revision/toolchain, re-solves a provider or rewrites the lock; only explicit update changes external resolution",
+    "changed transitive package/import pin and captured declared source bytes invalidate affected semantic plan identity, while local worker socket, VM cache path and lease state are excluded",
+    "bounded dirty-worktree/source-import snapshot binds admitted bytes and recorded facts/probes before effects; a development Task retains its explicit live writable checkout instead",
+    "repeat eval with equivalent admitted input gives equal plan under declared controls, without pretending Deno sandbox proves arbitrary TypeScript clock/randomness determinism",
+    "production lock/plan admission and pure kernel proof/adapter cases, historical stored locks and source-bound negative calibration remain required at A1 closure"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -1318,6 +1343,7 @@
     "Snippet reads stay bounded to the evaluated repo capability; malformed coordinates and out-of-repo symlinks never leak file bytes",
     "Registry parity, positive/negative runner reports and source-bound CI/proof lanes remain required for closure"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": [
     {
      "lane": "container-gates",
@@ -1455,7 +1481,7 @@
    "status_history": [
     {"date": "2026-09-24", "from": "pending", "to": "in_progress"}
    ],
-   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts; snippets are bounded to the evaluated repo capability and 1 MiB per file. E124 names the first declared unavailable output and owner for host recipe/provider package/profile/hook A2, isolated recipes B2, environments and plain tasks A2-P, task prerequisites E1, schedules E2/E3, checks A2/E1, images B4 and v4 A5 migration, with first-declared precedence exercised against a later B4 image. E129 labels every empty-file/line-0/col-0 rejection with the invalid span itself. A single manifest now generates 37 Rust IDs (E132 is core-only), five frontend code constants and a static frontend membership Record; a user-thrown unallocated E999 stays a traceback with no check --json diagnostic. The console tracing layer writes to stderr — a failing-before core-side E111 tracing::error! polluted check --json stdout (json.loads Extra data) because frontend-envelope diagnostics never hit that log call — and the shared parity helper asserts help text on both surfaces via an authored E111 case. Source-bound receipts: b421944 binds JSON purity + help parity (9 checks), 90e68ac binds span labels/owner matrix (74 checks), ec11c7c binds the earlier 36-core-ID allocation surface (85 checks). M0 §1.3 adds core-only E132 at 681e87b with a separate source-bound host-boundary receipt, not an A1-06 classification proof; older A1 receipts are historical for this source. Allocated-code authorship by trusted code, semantic classification, protected CI and native Mac keep A1-06 in_progress; no release."
+   "implementation_notes": "Frontend/core diagnostics share terminal and check --json facts; snippets are bounded to the evaluated repo capability and 1 MiB per file. E124 names the first declared unavailable output and owner for host recipe/provider package/profile/hook A2, isolated recipes B2, environments and plain tasks A2-P, task prerequisites E1, schedules E2/E3, checks A2/E1, images B4 and v4 A5 migration, with first-declared precedence exercised against a later B4 image. E129 labels every empty-file/line-0/col-0 rejection with the invalid span itself. A single manifest now generates 38 Rust IDs (E132 host and E133 evaluator read grant are core-only), five frontend code constants and a static frontend membership Record; a user-thrown unallocated E999 stays a traceback with no check --json diagnostic. The console tracing layer writes to stderr — a failing-before core-side E111 tracing::error! polluted check --json stdout (json.loads Extra data) because frontend-envelope diagnostics never hit that log call — and the shared parity helper asserts help text on both surfaces via an authored E111 case. Source-bound receipts: b421944 binds JSON purity + help parity (9 checks), 90e68ac binds span labels/owner matrix (74 checks), ec11c7c binds the earlier 36-core-ID allocation surface (85 checks). M0 §1.3 added E132 at 681e87b with its own host-boundary receipt; M0 §1.1 adds core-only E133 on this newer working source, not an A1-06 semantic-classification proof. Earlier A1 receipts are historical for this source. Allocated-code authorship by trusted code, semantic classification, protected CI and native Mac keep A1-06 in_progress; no release."
   },
   {
    "id": "A1-07",
@@ -1480,6 +1506,7 @@
     "v3/v4/v5 schema/parser acceptance and TypeScript golden corpus exercise every admitted output kind with negative drift calibration",
     "The protected test CI job runs delivery inventory/closure and architecture self-check; runner reports bind all required cases and lanes to exact source revisions"
    ],
+   "evidence_kinds": ["runner", "formal", "review"],
    "evidence_records": [
     {
      "lane": "container-gates",
@@ -1564,6 +1591,7 @@
     "Recipe/consumer/invocation identity separation and the context-admission kernel with a phase-grant mutant remain unimplemented A1-closure obligations",
     "Hostile decoded-IR edge/context corpus beyond the field-granularity cases and protected CI/native Mac lanes remain open"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": [
     {
      "lane": "container-gates",
@@ -1610,10 +1638,15 @@
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "plain TypeScript factories/values/namespaces and equivalent object/fluent forms return ordinary workspace outputs without import-time registration or a module cache identity",
+    "moving an unchanged declaration between TS modules or changing its diagnostic label preserves admitted recipe semantics while a real script/action-order edit does not",
+    "recipe-local ordered command/action lists normalize to explicit sequencing edges; Task prerequisites, package runtime refs, validators and hook intents retain distinct lifecycles",
+    "decoded forged phase/context flags cannot grant build, Task or host effects; unknown encoded variants reject with the user's declaring source span",
+    "legacy Module fetch/build/install/config/env/activate/verify field and preflip-check mapping is documented without reclassifying ambiguous host scripts; A5 migration/retained generation acceptance remains separate"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -1641,6 +1674,7 @@
     "One shared command construction preserves build-check, task-postcondition, hook and recipe lifecycles plus literal Bash source maps",
     "Source-bound normalization/provenance proof, mutation calibration, protected CI and required platform lanes cover the compact authoring surface"
    ],
+   "evidence_kinds": ["runner", "formal", "review"],
    "evidence_records": [
     {
      "lane": "container-gates",
@@ -1699,6 +1733,7 @@
     "The v5 tree origin (bounded include/exclude expansion with per-entry provenance, stable enumeration, containment and collision diagnostics) is not yet implemented",
     "Rendered template result binding at admission and the production normalization/ownership proof targets remain named, unimplemented obligations"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": [
     {
      "lane": "container-gates",
@@ -1763,10 +1798,16 @@
     "ci",
     "proofs"
    ],
-   "lane_inventory_state": "live_registration_pending_expansion",
+   "lane_inventory_state": "registered",
    "case_and_proof_inventory": [
-    "conjunctive acceptance cases from the A1 row's evidence text, expanded at A1 implementation time"
+    "pure returned scoped mutation lock references have admitted stable user/store namespace and logical key, independent of object identity, task revision or module pathname",
+    "two reachable same-scope/key references deduplicate, conflicting declarations label both sites and explicitly different admitted namespaces do not alias",
+    "repeated same-process evaluation and imported module reorder produce identical reachable lock sets with no registry reset or import-time registration",
+    "host mutation exclusion remains distinct from BuildKit capacity/cache-mount controls and cannot grant backend, network or credential authority",
+    "installed ordinary SDK exports hide compiler/driver/registry-reset utilities while a separately documented advanced/internal entrypoint retains only deliberate access",
+    "producer-used lock normalization/admission proof, typed emitter/parser parity and intended conflict/mutation mutants remain required at A1 closure"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -1786,6 +1827,7 @@
     "shared verified acquisition yields one reusable package for distinct project, basic task and personal-profile consumers",
     "producing a package alone neither switches a personal generation nor invokes activation hooks or provisions the optional builder"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -1806,6 +1848,7 @@
     "existing transaction/publication TLA+/TLC crash/interleaving model and focused TLAPS protected-publication invariant cover validated receipt, retained references and divergent attempts",
     "production-used Verus publication/admission decisions connect to real parsed receipts, selected lock/platform/prefix and validators; independent real filesystem crash/fault correspondence and publish-before-validation mutant pass"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -1826,6 +1869,7 @@
     "policy root-set proof and production adapter agree with actual parsed receipts; omitted-runtime-root mutant rejects for missing retained dependency",
     "retained store references are never only references into disposable worker or cache storage; stale-root cleanup does not infer process death from time alone"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -1844,6 +1888,7 @@
     "the declared final prefix participates in identity whenever materialized bytes depend on it; the realized content digest is independently recorded",
     "a second realization yielding different bytes at one durable recipe location fails with a conflict instead of replacing retained data"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -1862,6 +1907,7 @@
     "no recursive grip CLI, duplicate store or second publication/GC coordinator; consumer roots are protected before process launch or activation",
     "typed installed-job/revision root representation round-trips and uses the existing protected publication protocol without pretending E3 OS root construction is implemented in A2"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -1883,6 +1929,7 @@
     "failed rendering/validation, post-preparation crash, interrupted publication, rollback and GC retain required source/result/lineage and protect recovery",
     "production ownership/merge/graph decisions and shared TLC/TLAPS validated-publication proof correspond to real emitted operations; source-origin, merge-as-cached-transform and dropped-check mutants reject"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -1902,6 +1949,7 @@
     "one compatible typed package command interface serves project and profile consumers without accidental personal activation or optional builder bootstrap",
     "generic downloads do not masquerade as coherent Conda environments or supported Homebrew bottles; A3/A4 retain those ecosystem-specific success/rejection obligations"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -1921,6 +1969,7 @@
     "live writable checkout and explicit host/network access are honest; task invocation success is ordinarily uncached",
     "entering one project never changes a personal generation, starts personal hooks, mutates global PATH or another worktree selection"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -1940,6 +1989,7 @@
     "typed executable/platform/ABI/layout incompatibility rejects before a native launch; ambient variable inheritance is explicit and process-scoped",
     "production-used composition/admission kernel has Verus exact-decision obligations, shrinking conflicting-operation cases and a named acceptance mutant"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -1960,6 +2010,7 @@
     "dropped project/runtime root, premature release and accidental personal-generation mutation mutants fail their intended named property, not an absent prover",
     "the lifecycle contract distinguishes PID observation from retained/root authority and declares OS/process-group limitations"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -1978,6 +2029,7 @@
     "unrelated live application-source edits reuse an unchanged immutable tool environment; running a command leaves immutable package prefixes unchanged",
     "native Linux x86_64 and native macOS are exercised separately with exact platform/ABI compatibility and without a false hermetic claim for host-access development tasks"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -1996,6 +2048,7 @@
     "compatible artifact requirements realize once and acquire protected process roots for each invocation; two real Task invocations run despite a reused package result",
     "unavailable task prerequisite graphs, schedule registration or other E-owned execution modes reject explicitly instead of being presented as implemented in A2-P"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2015,6 +2068,7 @@
     "update may resolve and atomically replace locks, while frozen apply consumes selected full archives offline without solve, repodata refresh or ambient Pixi configuration fallback",
     "system virtual packages including glibc, osx, architecture and cuda are checked against injected facts without claiming a solver assumption proves real GPU/ABI"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2035,6 +2089,7 @@
     "no file that may be patched shares a mutable hardlink with immutable archive/cache, and a running command leaves the published prefix unchanged",
     "native macOS Mach-O/signing and native Linux loader/libc behavior are separately executed; absent signing capability or incompatible ABI is an actionable refusal, not a Linux-on-Mac inference"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2055,6 +2110,7 @@
     "real crossprocess positive/negative wire fixtures and actual decoder fuzz seeds/campaigns exercise length and identity admission",
     "production-used Verus terminal/admission decision kernel and semantic mutant tie helper success to the live attempt rather than an untrusted success flag"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -2073,6 +2129,7 @@
     "retained prior generation or project selection still launches after a newer environment update and deletion of the old private Pixi state",
     "real legacy production path is removed only after native replacement parity on both required platforms and retained-state readers preserve old receipts"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2093,6 +2150,7 @@
     "unknown tags, unsupported architectures, wrong target or ABI and incomplete dependency metadata name the precise refusal rather than silently invoking brew, privileged paths or a host source build",
     "synthetic collision/link/long-prefix and formula-metadata parser fuzz fixtures plus named Verus compatibility/closure mutations exercise the same production boundary"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -2112,6 +2170,7 @@
     "verified dependency receipts remain protected through GC, retained generations and project lifetime; no global Homebrew Cellar, owner database or /opt/homebrew symlink is mutated",
     "unsupported real package dependency/layout/script requirement fails before exposure rather than a partial installation or automatic external brew fallback"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2131,6 +2190,7 @@
     "a rejected unsupported tag, signing/relocation or fixed-prefix case fails before consumption with the required reason",
     "Apple Silicon success never qualifies Intel macOS or a different macOS version; each newly advertised architecture requires its own native evidence"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2150,6 +2210,7 @@
     "real old-state fixtures survive update, inspect, rollback, drift resolution and GC before and after cutover; retained old generations remain usable",
     "obsolete execution/authoring paths, aliases and dead schemas are removed only after their one replacement and every caller pass equivalent native behavior"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2169,6 +2230,7 @@
     "a complete selected runtime dependency chain has stable causal IDs, requesting spans and actual receipt-to-consumer edges",
     "unknown, unavailable or host-effect evidence remains explicitly incomplete rather than an invented deterministic rebuild/verification claim"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2187,6 +2249,7 @@
     "documented CI or DevContainer invokes that same environment selection and checks the actual task outcome on its claimed platforms",
     "existing independent Docker/Compose bootstrap and tests still run with the new native development feature entirely absent"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2206,6 +2269,7 @@
     "project and job roots, stale selection cleanup, shell startup and retained generation rollback/GC are documented against executed behavior",
     "release-support matrix distinguishes native macOS from Linux-in-VM and records any blocked lane as open; published capability/CLI/API docs and guaranteed proof claims match exact artifacts"
    ],
+   "evidence_kinds": ["runner", "formal", "review"],
    "evidence_records": []
   },
   {
@@ -2225,6 +2289,7 @@
     "old owned, merge, template and tracked-copy files preserve lineage, adoption/drift, rollback/GC and hook replay after changing authoring syntax",
     "retained historical generations inspect and roll back through original stored meanings; migrating these native flows does not depend on E schedule registration"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2244,6 +2309,7 @@
     "typed source/rendered-content/destination, stage-aware checks, pure locks and conda/pixi/bottle provider naming work through real native project and profile consumers",
     "retained owned/template/managed-block/tracked-copy generations still inspect, update, roll back, adopt, remove and GC without losing original hash, origin or ownership semantics"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2263,6 +2329,7 @@
     "native journeys work with every optional BuildKit/Lima component absent and no required Gripsack resident daemon, while optional worker/manager ownership limits stay truthful in docs",
     "graduated source package and installed schedule examples remain separately required at B3/B5 and E3/E5 and are not claimed by these native runs"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2282,6 +2349,7 @@
     "real Python/compiled-extension command fixtures run on native Linux and Mac after staging/cache loss and preserve the final-prefix contract",
     "source archives and editable records reject until A7 supplies declared qualified builds; the adapter never silently discards or executes them"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2300,6 +2368,7 @@
     "an independent clean supported target reconstructs from local bundle only at a different final prefix, validates the realized receipt and executes its selected commands",
     "missing archive/helper/input fails with a precise offline diagnostic and no implicit registry, solver or download fallback; producer store and staging prefix need not exist"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2319,6 +2388,7 @@
     "produced Conda archive has complete pinned metadata and a validated receipt, then passes actual A3 final-prefix native materialization/runtime on a compatible Linux consumer",
     "Mac requests remain Linux-VM target work only; no native Darwin source-build or Mac executable is claimed"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2337,6 +2407,7 @@
     "unsupported source, unresolved dynamic dependencies, required package scripts and incompatible target/materializer policy reject before unsandboxed execution or release",
     "an explicitly supported script policy is tested with real fixtures and exact authority/bounds; neither customHook nor host fallback conceals an unavailable isolated capability"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2361,6 +2432,7 @@
     "independent runnable OCI result produced",
     "actual versions/configuration recorded"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": [],
    "lane_status": {
     "container-gates": "implemented_unverified",
@@ -2423,6 +2495,7 @@
     "socket/resource/lifecycle/cleanup evidence",
     "each further advertised Mac architecture requires its own physical/virtualization-capable worker qualification"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": [],
    "status_history": [
     {
@@ -2452,6 +2525,7 @@
     "budgets and rationale recorded",
     "native/prebuilt/check/preview/rollback workflows download/start zero builder components"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "lane_status": {
     "linux-amd64": "in_progress",
@@ -2515,6 +2589,7 @@
     "independent emitted-LLB inspection witness defined",
     "scheduler guarantee migration plan written"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": [],
    "status_history": [
     {
@@ -2568,6 +2643,7 @@
     "bounded health/version/platform/capability handshake and build lease precede checked submission; output is exported into the Gripsack store before host activation",
     "unsupported host or missing offline bootstrap input fails with actionable diagnostics, never a privileged, insecure or ambient-worker fallback"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2588,6 +2664,7 @@
     "idle-only version replacement retains recoverable previous configuration and installed artifacts, with no downgrade of version/capability validation",
     "status, stop, reset, cache pruning and owned cleanup refuse live leases and never modify a user-supplied worker, global Lima config or retained host artifacts"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2609,6 +2686,7 @@
     "session callbacks may access only declared immutable inputs and scoped credentials; arbitrary bridge path/host/secret requests are denied before transport",
     "actual Rust and Go decoders/state adapters run persisted fuzz seeds, bounded fuzz and Go race fixtures; real Linux worker and qualified Mac VM paths remain mandatory"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2629,6 +2707,7 @@
     "named bad event, early lease release, accepted canceled attempt, dropped root and solve-as-publish mutants fail their exact intended obligations, not a missing prover",
     "real Rust/Go/worker histories map to the model and production constructors; no proof-only clone or declaration-only safety claim"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -2648,6 +2727,7 @@
     "owned stop/reset/cache prune work correctly without deleting user-supplied workers or artifacts retained outside a disposable cache",
     "prebuilt archive, native package, check, preview, rollback and ordinary project workflows with optional Lima/bridge/BuildKit binaries absent neither download nor start a builder"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2667,6 +2747,7 @@
     "pinned Bash and declared verified archives keep their source/auth/extraction policy; unsupported host, task, calendar or activation work rejects before bridge submission",
     "actual BuildKit schedules graph vertices, not generated Dockerfiles or a competing per-vertex Gripsack scheduler; outer native/store/host coordination remains"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2687,6 +2768,7 @@
     "the exact checked definition bytes/digest and exporter/session options are the bytes submitted; substituted bytes/options after check reject, with no generator re-run or ambient merge",
     "actual decoder limits, persisted corrupt-LLB fuzz and real Rust/Go/worker fixtures demonstrate the validation boundary, not a golden protobuf snapshot"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2707,6 +2789,7 @@
     "controlled real process/BuildKit fixtures cover every supported operation and successful valid graphs as well as failures; neither proof-only checker, self-comparison nor golden-only fixture substitutes",
     "parser, transport, cryptographic collision resistance and upstream BuildKit solver remain explicitly trusted/tested adapters, not Verus theorems"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -2726,6 +2809,7 @@
     "real worker enforces declared inputs, no ambient host-home/network/privileged entitlement, cancellation and bounded logs; missing enforcement refuses instead of falling back to host mode",
     "Linux package production can finish without changing personal generation; interrupted export never exposes a partial installed result"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2744,6 +2828,7 @@
     "bounded causal operation IDs and status/log/error classification connect Rust coordinator, Go bridge, upstream daemon and protected publication",
     "terminal and structured JSON show the same cause, target/capability, declared versus actual source and remedies without unbounded stderr or leaked credentials"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2763,6 +2848,7 @@
     "task/run/job IDs, diagnostic-only labels and host lock keys cannot contaminate recipe or LLB cache identity or authorize a network/worker policy",
     "Task ensure-artifact requests use the one A2/B realization service; no synthetic recursive CLI or host-to-BuildKit task executor"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2782,6 +2868,7 @@
     "required check edges survive normalization, deduplication, reuse and BuildKit dead-code pruning, including warm-cache publication",
     "source-origin, reordered-command, wrong-context and lost-check semantic mutants reject on the real independent checker and real worker fixtures"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2801,6 +2888,7 @@
     "actual production LLB returns declared output and tested runtime layout as a durable package receipt, not only an API/schema example",
     "same qualified Linux build operation can be requested from a supported Mac through its owned worker without claiming native Darwin output"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2820,6 +2908,7 @@
     "unhandled ELF loader, hardcoded build path, missing library, ABI mismatch and ambient /usr/lib-copy workaround reject rather than yield a false portable package",
     "previous generation and project selection still run after update, rollback, worker removal and GC without referencing disposable worker/cache objects"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2839,6 +2928,7 @@
     "native macOS project/schedule admission refuses a Linux executable before launch/registration even when a Mac can request Linux building through a VM",
     "execution platform, output target and host ABI/layout remain separate and visible in CLI/JSON rather than defaulted from the host"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2857,6 +2947,7 @@
     "failing real check prevents package acceptance and leaves prior retained output usable, with a source-mapped diagnostic",
     "success, failed verification, changed-check-input and warm-cache cases run the actual admission path; a cache hit cannot suppress a mandatory changed validator"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2876,6 +2967,7 @@
     "Task ensure-artifact does not recursively invoke grip, create a second store or synthetic LLB node, or cache an invocation/postcondition result",
     "Linux source-build request from Mac is build-only unless a compatible Linux consumer exists; the full E4 manual/timer journey remains E-owned and open"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2895,6 +2987,7 @@
     "independent reader verifies actual index/manifest/config references, blob digests/sizes, DiffIDs, media types, compressed versus uncompressed identity and source output bindings",
     "one supported compression/media-type/exporter option set is pinned; no competing Rust OCI exporter or host toolchain tree silently broadens the image"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2913,6 +3006,7 @@
     "Linux materializer installs against the image's actual /opt/env or declared final prefix, recording its realized bytes instead of copying a prefix containing a developer home path",
     "independent image runtime executes Python and a compiled extension with ABI/base qualification and complete interpreter/library environment; incompatible base fails before export"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2931,6 +3025,7 @@
     "two independent clean cache-bypassing builds and exports of every deterministic acceptance fixture use pinned source/toolchain/options/timestamps and produce matching qualified output",
     "cache reuse is never labeled clean reproduction; an unexplained byte/digest mismatch leaves this row failed/open rather than a passing nondeterminism claim"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2949,6 +3044,7 @@
     "exported rootfs/config contain no host or staging paths, credentials, unsupported compiler tree or unpinned ambient base contents",
     "local OCI layout/archive imports and runs independently without any registry; remote push is an explicit separate user operation with no automatic publication"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -2968,6 +3064,7 @@
     "SCHEDULER-001 and GRAPH-CLOSURE-001 guarantee text and proof-to-effect bridge are updated to the surviving native/outer domain, not mislabeled as proof of BuildKit",
     "failure/cancellation submission fence and late-result rejection prevent new unauthorized work or publication while already-submitted BuildKit cancellation remains honestly asynchronous"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -2991,6 +3088,7 @@
     "clean Mac Linux-worker bootstrap needs no preinstalled Lima/Homebrew/Docker Desktop while native release-only workflow provisions no builder; A5 old-state migration remains intact",
     "E's separate source-tool/manual-and-timer/launchd journey is still E-owned and cannot be claimed by this source-image fixture"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3010,6 +3108,7 @@
     "declared versus actual execution platform, worker capability and target incompatibility plus source span/requester provenance are correlated from Rust through bridge/daemon to protected output",
     "no backend-only explanation schema or disconnected static diagram substitutes for the real production journey"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3030,6 +3129,7 @@
     "public support/platform/layout/error and no-daemon/optional-worker wording, guarantee ledger, STATUS and closure checker all match actual receipts and tested combinations",
     "a blocked promised Mac/VM/prover lane stays open rather than being represented by a skipped test or a weaker source-only substitute"
    ],
+   "evidence_kinds": ["runner", "formal", "review"],
    "evidence_records": []
   },
   {
@@ -3048,6 +3148,7 @@
     "A/E task readiness, local/native host work, ownership/recovery, published store roots and outer failure/publication policy remain in their original coordinator",
     "no claim that BuildKit schedules all Gripsack tasks, systemd/launchd jobs, native acquisition or host activation; affected scheduler/graph proofs are narrowed only to their actual surviving production callers"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3067,6 +3168,7 @@
     "A5 file/command/module API and old stored-state migration remain valid; dotfile destination, local label or profile-only edit does not rebuild unrelated tool",
     "small executed source example and docs honestly describe qualified Linux worker/VM lifecycle, no mandatory native resident daemon and no pretend Darwin source builder"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3085,6 +3187,7 @@
     "lower through the same admitted B2 process/file/tree/check/output operations and produce a tested durable runtime package",
     "A7 source-to-Conda case reuses existing bridge, lock, receipt and protected publication rather than a second ecosystem builder"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3104,6 +3207,7 @@
     "no auto-discovered open TCP or Docker socket, inherited credentials or undeclared host paths grant the remote worker authority",
     "native client platform claims are tested separately; remote worker result remains a Linux target and not a Darwin executable"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3122,6 +3226,7 @@
     "actual resulting target artifact executes with correct argv/runtime dependencies on a compatible distinct target runtime",
     "cache/receipt and CLI correctly distinguish native execution from cross/emulated/remote production; unsupported host/target/toolchain combinations fail before any accidental execution"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3141,6 +3246,7 @@
     "unauthorized or tampered recipe-to-result mapping, wrong target/layout and missing runtime/check evidence reject; local required output checks still run on a valid hit",
     "archive SHA-256 verifies input bytes but never substitutes for publisher authority over a remotely cached result"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3160,6 +3266,7 @@
     "bounded redirect/auth/timeout and missing/wrong credential failures preserve secrecy and correct host audience in logs and receipts",
     "successful local or test-registry fixture is not permission for a real public push or an unqualified cross-architecture image claim"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3181,6 +3288,7 @@
     "result/exit vocabulary, budgets, boundaries fixed",
     "production proof targets named"
    ],
+   "evidence_kinds": ["review"],
    "evidence_records": [],
    "status_history": [
     {
@@ -3233,6 +3341,7 @@
     "fixture install/run/remove and timing-behavior inventory on systemd",
     "native macOS/launchd lane: BLOCKED here (no Mac); remains open, never inferred from Linux results"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": [],
    "lane_status": {
     "systemd-linux": "implemented_unverified",
@@ -3292,6 +3401,7 @@
     "different bound arguments, environment selection or Task revisions remain distinct; unordered deps allow bounded parallelism while explicit local sequencing enforces order",
     "cycle/unknown/invalid-context edges fail with source and causal path before any command; no prior task success cache suppresses a later invocation"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3310,6 +3420,7 @@
     "artifact compatibility and protected runtime roots are checked/acquired before command launch; missing output/selected tool/ABI/layout blocks dependents",
     "Task ensure-artifact uses the shared native/BuildKit realization API as available and never turns an arbitrary completed host task into an immutable package"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3329,6 +3440,7 @@
     "skipped-busy, canceled, indeterminate and unknown outcomes cannot satisfy a required prerequisite",
     "required recipe build checks remain candidate-publication gates, never discharged by a cached Task success or a task postcondition"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3348,6 +3460,7 @@
     "timeout covers command and verification; signals, child/descendant lifetime, process crash and uncertain cleanup retain protected roots and classify indeterminate outcomes",
     "canceled or unknown task does not get an implicit retry, queue replacement or claimed exactly-once external effect"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3367,6 +3480,7 @@
     "independent diamond/parameter/late-event graph oracle and real decoded-IR, scheduler and lock adapters agree with the proved decisions",
     "omitted artifact edge, false prerequisite success, conflict acceptance and lost failure mutant each fails its named nonempty obligation rather than a missing prover"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -3385,6 +3499,7 @@
     "quoted/empty/Unicode argv, stdin, explicit env/cwd, exit and signal behavior plus Bash source-map failure labels exercise the actual launcher",
     "read-only preview cannot fetch, provision a worker, register a job or execute postcondition/effect commands; missing inputs and unsupported graph modes diagnose before effects"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3406,6 +3521,7 @@
     "host Task, recipe, check and activation owners admit only their own command contexts; decoded wrong-context/phase/cache-control IR fails before effects",
     "production readiness/conflict Verus obligations and intended semantic mutants cover new action-list and lock boundary without a parallel universal Step runtime"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -3424,6 +3540,7 @@
     "Linux missed-native means explicit Persistence false while Mac keeps documented native calendar behavior; effective user-session and overlap policy are shown",
     "invalid time/date/weekday, arbitrary cron, interval, named timezone, portable catch-up, system/root service and unsupported manager scope/version reject before generation"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3443,6 +3560,7 @@
     "checked unit/plist bytes remain identical through staging and protected installation, including replacement-between-check-and-register rejection",
     "changed executable, argv, trigger, restart and job identity mutants fail the named independent byte comparison, not serializer snapshots"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3461,6 +3579,7 @@
     "qualified real launchd user-agent validates installed plist and invokes the same admitted runner with the intended argv/user scope",
     "task prerequisites stay inside the Gripsack graph, not per-task OS dependency units, and neither native config injects a shell, KeepAlive or a hidden restart"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3479,6 +3598,7 @@
     "read-only plan reports Linux Persistence false versus Mac native session/calendar behavior and explicitly unavailable sleep/wake or catch-up guarantees",
     "inspection/preview does not bootstrap any scheduler, register a unit/plist, fetch artifacts, start BuildKit or run a Task merely to produce a report"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3498,6 +3618,7 @@
     "corrupt, duplicated, truncated or wrong-version stored job records reject before invoking a command or changing active authority",
     "stable runner survives core upgrades, retains required dependencies and uses admitted JobId plus exact expected JobRevision; timer callback never re-evaluates changed TypeScript"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3518,6 +3639,7 @@
     "stale saved profile or schedule selection fails current-state revalidation before registration; C4 later adds separate saved-plan binding",
     "no automatic post-hook rollback or pretend atomic OS registration; existing recovery retains a durable actionable intent"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3537,6 +3659,7 @@
     "admission linearization checks current active revision and acquires invocation lease in the same protocol as profile updates",
     "manual/timer and overlapping schedule invocations share typed scope/key exclusion; real crossprocess conflicts and terminal outcomes match the admitted policy"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3556,6 +3679,7 @@
     "crash with surviving descendants and unknown supervisor state retains protection; neither elapsed time nor PID existence alone proves release",
     "worker/cache/VM removal never breaks a retained job and OS unit/plist file is never the only durable root record"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -3575,6 +3699,7 @@
     "production-used Verus admission/lease/root transitions connect decoded job records and journal facts to actual register and launch effects",
     "named stale-launch, early-root-release, omitted-runtime-root and false-success mutants fail intended properties; native manager traces map to model events"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -3594,6 +3719,7 @@
     "one per-run timeout covers command plus verification and cleanup; stdout/stderr, retained logs and progress are bounded even under log flood",
     "inspection, job status and private causal run reports distinguish prepared, installed, observed invocation and unconfirmed OS registration"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3612,6 +3738,7 @@
     "native Linux manual and actual timer-triggered Task use that same tool twice and execute invocation postconditions twice, including failed required prerequisite blocking dependents",
     "source-built artifact still runs when owned worker/VM cache is removed; no second per-LLB Gripsack scheduler or cached host task result appears"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3631,6 +3758,7 @@
     "explicit Mac-scheduled Linux build-only Task uses the qualified owned Lima worker for cold preparation and reuses a warm retained output at timer time without unnecessary VM startup",
     "Mac VM output is still Linux software; no Darwin isolated source-build or Linux shell inside the worker is inferred"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3649,6 +3777,7 @@
     "failed replacement build/validation retains the old active scheduled job and its protected roots; in-flight run remains bound to old revision",
     "timing-only, Task argument-only and unrelated dotfile destination edits update relevant job binding without rebuilding independent package"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3668,6 +3797,7 @@
     "two consumers sharing a production attempt keep independent leases; canceling one Task never kills a still-leased shared build or publishes a late canceled result",
     "a scheduled build-only request on Mac uses qualified Linux worker without treating its result as a natively runnable command"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3686,6 +3816,7 @@
     "qualified native sleep/wake, logout/login, reboot and clock/daylight-saving transition probes capture effective calendar/session/missed behavior and runtime limits",
     "OS/version/user-scope differences and long-running/coalesced job observations remain visible; missing physical/VM lifecycle fixtures stay blocked, never satisfied by synthetic timestamps"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3705,6 +3836,7 @@
     "core runner upgrade fixture shows old retained installed jobs still use a compatible stable dispatcher or fail before effects",
     "schema, Rust/TS, five Compose gates and native Linux/Mac CI bind exact source with no skipped required cases"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": []
   },
   {
@@ -3725,6 +3857,7 @@
     "delivery checker rejects missing Mac, sleep/clock timing, exact-byte translation, proof or failed fixture rather than accepting mock/skip evidence",
     "plan STATUS, guarantee and support documentation list blocked/unknown cases as open instead of inferring platform behavior"
    ],
+   "evidence_kinds": ["runner", "formal", "review"],
    "evidence_records": []
   },
   {
@@ -3744,6 +3877,7 @@
     "docs explain timing/native missed limits, explicit manager/user scope, profile registration ownership, failure and recovery/cleanup with actual executed transcripts",
     "no general daemon, all-formats schedule parser or BuildKit host-task fallback is presented as part of the native journeys"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3764,6 +3898,7 @@
     "Linux source-versus-download producer swap runs through B3 without Task rewrite, while native Mac uses a compatible prebuilt tool rather than a Linux executable",
     "retained old generation/job migration works and minimal example/docs require only the actually used task/profile/manager concepts with explicit worker/OS limits"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3782,6 +3917,7 @@
     "map A/B native and builder responsibilities without adding a second planner, semantic identity or delivery ledger",
     "reconcile the final comparison and saved-plan CLI spellings/options/exit codes with live check, update --check, plan and apply behavior"
    ],
+   "evidence_kinds": ["review"],
    "evidence_records": []
   },
   {
@@ -3800,6 +3936,7 @@
     "register distinct Linux x86_64 and native macOS arm64 lanes and the B-qualified Linux image lane with their prerequisites; C0 inventory does not execute those later runtime cases",
     "fix the versioned report/JSON/exit and completeness contract, named positive/negative cases, production-connected proof IDs, non-vacuity/calibration and performance/resource budgets before results"
    ],
+   "evidence_kinds": ["review"],
    "evidence_records": []
   },
   {
@@ -3819,6 +3956,7 @@
     "duplicate/unknown required field or identity, unsupported version, malformed/oversized/deep snapshot, invalid edge and contradictory target/layout reject at the real parser",
     "captured source, facts/probes, policy/canonicalization and receipt versions bind interpretation while imported bytes perform no fetch, build, manager operation or activation"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3838,6 +3976,7 @@
     "argv, PATH, overlay, script and array order remain meaningful while declared unordered maps normalize; transitive lock/source/toolchain/policy changes affect the correct consumers",
     "recipe, portable artifact, selected consumer and exact stored byte digests remain typed distinct identities"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3856,6 +3995,7 @@
     "unknown versus unknown cannot become complete equality, unchanged identity, no-op or presumed successful prior Task",
     "unsupported old/new snapshot versions and truncated/redacted observations explain incomplete result and cannot be interpreted as a safe saved-plan authorization"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3875,6 +4015,7 @@
     "independent semantic oracle covers equivalent forms, ordered changes and unknown-as-equal negative, with nonempty obligations and intended label/order/unknown semantic mutants",
     "parser correctness, field inventory completeness, crypto collision assumptions and arbitrary TypeScript determinism remain explicit outside pure kernel proof"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -3893,6 +4034,7 @@
     "arguments, prerequisites, required checks, concurrency keys, trigger timing/scope and installed revision are captured even when a completed run cannot prove the next one succeeds",
     "mutable external commands, cwd, manager observations and host facts remain live or unknown; offline comparison never registers/disables a job or executes a Task"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3912,6 +4054,7 @@
     "equivalent authoring forms, diagnostic labels, TS module/import location and nonsemantic provenance moves do not invent a package rebuild",
     "production decoder-to-kernel correspondence and intended source-origin/lock/check mutants calibrate the proof instead of a parallel file or task comparator"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -3930,6 +4073,7 @@
     "build, runtime, validation, ordering-only and retention edges produce their exact documented effects without manufacturing content dependencies",
     "unrelated branches remain unchanged; independent reference oracle and shrinkable generated graphs agree on the complete affected set"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3949,6 +4093,7 @@
     "changed recipe reports needs-realization rather than guaranteed execution or cache hit; selected artifact bytes and runtime layout remain separate",
     "required build checks and unknown evidence remain visible even where no public file output is changed"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3967,6 +4112,7 @@
     "large fan-out summary and truncation markers preserve the complete machine-readable affected set and explicit incompleteness",
     "bounded time/memory/output budgets refuse excessive inputs without silently dropping affected names or reporting complete no-change"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -3986,6 +4132,7 @@
     "dropped removed-edge, runtime-edge and mandatory-validator mutants fail the specific named proof/consumer case rather than parsing or tool startup",
     "no pure graph theorem is mislabeled a proof that the filesystem supplied a complete snapshot"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -4005,6 +4152,7 @@
     "old and new runtime/check/prerequisite graphs retain removed edges and independent oracle agrees with actual E3 job receipts",
     "manager status and external mutable paths remain observed or unknown, not invented scheduling or exactly-once guarantees"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4024,6 +4172,7 @@
     "same relative path from repository versus artifact origin stays distinct, ordered command reordering remains semantic and scoped lock-key change affects exclusion",
     "independent comparison oracle and actual predicted operation/receipt fixtures agree on drift, foreign-byte preservation, validation stage and required check visibility"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4042,6 +4191,7 @@
     "documented unchanged, changed, incomplete and error exit semantics agree with terminal and structured JSON facts including source and uncertainty",
     "native diff/plan works with every optional BuildKit/VM binary absent; B image lane is additive and does not block native read-only use"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4061,6 +4211,7 @@
     "duplicate JSON keys, invalid/binary/oversized content and unsupported formats show a labeled bounded exact-byte fallback rather than false empty structural equality",
     "managed-block proposed bytes and existing foreign drift stay separate through the one shared operation planner; adversarial decoders run bounded regression/fuzz fixtures"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4079,6 +4230,7 @@
     "live plan distinguishes its existing trusted read-only evaluator/observation path from pure offline comparison; missing evaluator, locked input or observation remains explicit",
     "saved historical snapshots compare without Deno, BuildKit or registry and bound bytes/depth/graph/time/output rather than bootstrapping a missing capability"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4098,6 +4250,7 @@
     "hostile ANSI/control bytes are neutralized and truncation/redaction/completeness explicitly surfaced in terminal and machine output",
     "portable report defaults omit raw configuration values; adversarial oversized/binary input does not create a false complete no-op"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4117,6 +4270,7 @@
     "tampered, unsupported-version, duplicate/ambiguous, missing binding and wrong selected scope refuse before newly authorized effects; credentials stay outside saved bytes",
     "receipt versus recipe-bound unknown result is distinguished at plan time, never silently re-evaluated from changed TypeScript"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4136,6 +4290,7 @@
     "unrelated cache availability may change execution choice but cannot authorize a different recipe/artifact or bypass current validation",
     "failure explains the exact changed binding with both provenance sites, and no new second journal or planner performs an optimistic effect"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4155,6 +4310,7 @@
     "changed or unavailable builder/workload capability fails instead of secretly using host mode; no new global force, take-over or bearer-token authority",
     "execution uses existing protected publication, transaction, activation and hook replay semantics without claiming arbitrary build/check or hook effects are reversible"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4173,6 +4329,7 @@
     "crash and restart at binding, publication and activation boundaries use existing journal, generation, protected roots and GC with no destroyed prior evidence",
     "external writer observation-to-write window and arbitrary hook effects remain explicit limitations; no false exactly-once, automatic compensation or rollback is claimed"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4193,6 +4350,7 @@
     "actual source/lock/receipt/session trace maps to the proof model and named stale-token/changed trust mutants fail their intended property",
     "filesystem writer races, hash assumptions and OS durability remain separately tested/trusted boundaries, not inferred from policy proof"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -4212,6 +4370,7 @@
     "explicit profile installation changes the scheduled state but does not execute an immediate Task or grant future portable bearer authority",
     "already running old revision retains its roots; no invented automatic hook/task rollback or exactly-once replay after a stale plan refusal"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4231,6 +4390,7 @@
     "changed destination or profile rollback matches real operation list and retained generation; unrelated tool producer remains unchanged",
     "compare C's before/after terminal and JSON predictions against executed source/package/image operations, protected receipts and rollback result on native Linux and Mac lanes"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4251,6 +4411,7 @@
     "measure a 10000-node/100000-edge graph plus realistic repository snapshot within C0's declared memory, wall-time, startup and output budgets without dropping changes",
     "a missing Mac, proof, B image or oversized-data case remains open and cannot be hidden as skipped"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -4270,6 +4431,7 @@
     "AGENTS module ownership, plan STATUS, guarantee boundaries and 178-ID delivery ledger agree with real source-bound reports and protected CI",
     "every applicable C0–C5 row, supported native/B-image lane and global gate is independently verified before calling the full semantic-change epic complete"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": []
   },
   {
@@ -4289,6 +4451,7 @@
     "in-flight old invocation retains its admitted prior JobRevision and roots while stale profile apply fails current-state admission",
     "terminal and JSON agree with actual predicted operations and no schedule-specific second diff, planner or registration authority exists"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4307,6 +4470,7 @@
     "map reusable signature, registry, transport, layout and ecosystem adapters against one store, planner and solver",
     "record D0-to-D6 dependencies, exact unsupported capabilities and live blockers before a format or implementation claim"
    ],
+   "evidence_kinds": ["review"],
    "evidence_records": []
   },
   {
@@ -4330,6 +4494,7 @@
     "direct/symlink/spaced/moved-root entry, /proc/self/exe, argv[0], re-exec, loader search and inherited-variable support or explicit unsupported rejection fixed before results",
     "required successful fixtures and deliberate unsupported platform/layout/signature cases classified in a frozen capability matrix before the qualification harness runs"
    ],
+   "evidence_kinds": ["runner"],
    "lane_status": {"linux-amd64": "pending", "macos": "blocked"},
    "implementation_notes": "Portability qualification has not run. macos requires an actual native arm64 Mac, absent on this workstation; pending Linux and blocked Mac cases are not interchangeable.",
    "evidence_records": []
@@ -4352,6 +4517,7 @@
     "record bounded payload/archive bytes and entry counts, graph depth/size, concurrency, time and memory budgets plus parser/transport/launcher failure cases",
     "register production-entry proof kernels, independent oracles, mutants and Linux/macOS qualification evidence inventory before declaring any result"
    ],
+   "evidence_kinds": ["review"],
    "evidence_records": []
   },
   {
@@ -4371,6 +4537,7 @@
     "malformed, ambiguous, duplicate key/identity, oversized/deep, unknown mandatory authority field and invalid path/reference cases reject before admission or local publication",
     "producer home/credentials/attempt metadata stay out of portable identity; changed transport compression or timestamp cannot silently re-key a fixed portable payload"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4390,6 +4557,7 @@
     "build-only provenance ancestors do not become application runtime requirements while all declared libraries, interpreters, plugins and data do",
     "closure declaration and validation do not claim a binary scanner can infer every dynamic/optional runtime access"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4409,6 +4577,7 @@
     "Conda relocated result and native immutable archive identity cannot be interchanged; modified files never rewrite an immutable original CAS entry",
     "versioned readers keep every valid old generation, ownership and original receipt inspectable/rollback-capable without declaring a newly signed legacy object"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4428,6 +4597,7 @@
     "named dropped-runtime-root, build-only-as-runtime and mismatched-prefix mutants fail nonempty checked obligations",
     "graph closure proof is conditional on declared members and not a theorem that arbitrary binary dependencies were all discovered"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -4447,6 +4617,7 @@
     "spaces and moved-root paths work with producer source, home, BuildKit worker and cache unavailable",
     "unhandled loader, embedded producer path, host ABI or unsupported entry behavior refuses before exposing a supposedly portable executable"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4466,6 +4637,7 @@
     "omitted declared member, wrong host ABI and undeclared external dependency are errors, not silent host-library or /usr/lib copying",
     "self-exe, re-exec, argv0, loader search, inherited environment and unsupported privileged behavior have tested success or exact documented refusal"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4485,6 +4657,7 @@
     "native import uses no Linux VM, BuildKit, producer-home mount or invented notarization/Gatekeeper guarantee",
     "successful Linux execution or generic hosted Mac compile is not substituted for this actual native macOS runtime path"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4503,6 +4676,7 @@
     "supported A4 bottle closure/layout transfer uses an inspected real supported case without claiming arbitrary Homebrew compatibility",
     "fixed-prefix exact destination succeeds while a different prefix fails before installation; required scripts or unhandled relocation reject instead of arbitrary hook execution"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4522,6 +4696,7 @@
     "immutable original blobs are never changed through a shared hardlink by relocation, signing or process use; clone/reflink policy has separate mutability checks",
     "bounded fuzz/adversarial archive and registry descriptors exercise actual production path, not a mock parser or syntax-only failure"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4541,6 +4716,7 @@
     "key ID is an untrusted lookup hint; trusted root package publisher cannot impersonate independently selected upstream dependency authority",
     "signing keys remain explicit, private and outside core IR, locks, portable records and logs; no same-code round trip claims crypto interoperability"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4560,6 +4736,7 @@
     "registry and signing credentials never enter IR, signed metadata, portable snapshot, stdout/stderr log or redirect to a wrong audience/host",
     "already-running external program is not retroactively killed and retained bytes are not deleted merely because current trust changed"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4579,6 +4756,7 @@
     "interruptions, corrupt or absent blob, replayed tag, auth/redirect/timeout and bounded retry failures preserve exact digest pinning, confidentiality and honest unknown outcome",
     "producer-unavailable independent recipient can import only locally admitted verified bytes, with no implicit solver/registry access in offline mode"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4598,6 +4776,7 @@
     "Gripsack-owned roots protect in-flight export and old durable source while an interrupted transfer cleans only attempt-owned staging",
     "no real public push, production trust-root change or signed release is authorized by offline/test-registry evidence alone"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4616,6 +4795,7 @@
     "valid eligible local trust and verified payload cause source-build counter to remain zero while native process/project/profile consumption succeeds",
     "absent or changed publisher authority, missing runtime root or an unavailable compatible result never turn a candidate digest into automatic build-result authorization"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4635,6 +4815,7 @@
     "require-published miss is an explicit failure; allowed prefer-published miss uses the existing fully declared qualified native or isolated Linux build path",
     "source-build mode cannot silently accept unauthorized cache, and an unsupported Mac target never triggers a native Darwin source-build fiction"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4654,6 +4835,7 @@
     "only specifically delegated publisher validation is labeled trusted-to-publisher with receipt provenance; missing or unknown checks stay unverified",
     "inspection does not run downloaded hooks, install user schedules or grant activation merely because manifest bytes are signed"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4673,6 +4855,7 @@
     "independent recipient continues to launch a retained tool with producer source/store/worker and registry inaccessible",
     "registered installed-job and live-invocation roots remain protected when E consumes an imported result, not only during artifact transfer"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -4693,6 +4876,7 @@
     "focused TLAPS inductive protected-admitted-publication invariant includes current trust epoch and complete required roots under explicit durability assumptions",
     "key-ID-as-authority, wrong payload, missing runtime member, warm trust bypass, omitted validator, canceled publish and GC-root mutants fail intended nonempty obligations"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -4712,6 +4896,7 @@
     "changed local publisher trust blocks a new managed invocation without deleting retained bytes or killing an already admitted run",
     "imported package or environment grants no registration, Task graph, hook or issuer-controlled scheduler authority to the recipient"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4731,6 +4916,7 @@
     "export contains no producer home, host paths, credentials, raw secret values, dotfile payloads, profile generation, hooks or schedule authority",
     "unsupported platform/layout or unknown mandatory authority field rejects before changing a personal generation"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4750,6 +4936,7 @@
     "producer installed prefix/store/worker unavailable, no network registry or new dependency solve; missing archive, helper or lock yields precise offline error",
     "copying a tarred installed prefix or relying on hidden ambient installer does not satisfy this fixture"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4769,6 +4956,7 @@
     "wrong native platform, host ABI or fixed-layout destination refuses before exposure; native Mac never runs a Linux-only binary",
     "local consumer destination, command mapping or configuration edits alter local realization/ownership receipts rather than publisher's portable package identity"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4788,6 +4976,7 @@
     "prefix relocation, signing or other local transform records original verified bytes, transform/version/final prefix and changed realized digest separately",
     "neither signature on the source archive nor one clean fixture implies byte-identical arbitrary builds or materialized prefixes"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4807,6 +4996,7 @@
     "v1 export excludes host paths, personal configuration/template inputs, secrets, Task graphs, mutation lock namespaces and scheduler registration authority",
     "recipient-authored local Task/profile retains its own invocation/check/ownership behavior; publishing signature is never a bearer grant to run it"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4826,6 +5016,7 @@
     "decoded normalized old phase/placement/template-private/lock/hook fields cannot smuggle producer authority into package or environment import",
     "no implicit personal payload export, Task-success attestation or consumer-specific installer/package format is created"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4848,6 +5039,7 @@
     "imported Linux package assembles/runs a qualified OCI image and Conda re-materializes for image prefix rather than claiming package artifact is itself runnable OCI",
     "tampered blob/signature, revoked key, altered validator/layout and unauthorized recipe-matching output each refuse before publication or activation"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4866,6 +5058,7 @@
     "exact package identity, local relocation/realized digest, required runtime closure and trust-policy revision changes agree with actual retained receipts and source spans",
     "redacted credentials and secret versions remain unknown; bounded stable causal IDs connect producer, transfer and recipient without a second backend-specific change analyzer"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   },
   {
@@ -4886,6 +5079,7 @@
     "actual byte, entry, graph, network, memory, deadline and cleanup budgets from D0 are measured under hostile inputs without privileged or hidden host fallback",
     "missing Mac, independent recipient, registry, prover or supported successful dynamic fixture stays blocked, never represented by a skipped/mock pass"
    ],
+   "evidence_kinds": ["runner", "formal"],
    "evidence_records": []
   },
   {
@@ -4905,6 +5099,7 @@
     "AGENTS, numbered plan STATUS, guarantee ledger and 178-ID delivery checker match actual source-bound implementation and protected CI with no unauthorized public publish",
     "every applicable D0–D6 row, native Mac, dynamic fixture, format proof, registry and global gate is verified before full sharing release is claimed"
    ],
+   "evidence_kinds": ["runner", "review"],
    "evidence_records": []
   },
   {
@@ -4924,6 +5119,7 @@
     "wrong platform or publisher trust rejects before native job registration and never borrows automation authority from signed import",
     "C reports package/substitution identity separately from local Task/JobRevision/timing changes; import itself invokes nothing"
    ],
+   "evidence_kinds": ["runner"],
    "evidence_records": []
   }
  ],

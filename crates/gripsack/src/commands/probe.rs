@@ -6,6 +6,7 @@
 //! [`PROBE_ROUNDS`]; a set that never settles is an authoring error.
 
 use super::eval::EvalEnvelope;
+use super::frontend::FrontendRunError;
 use crate::render::DiagnosticSink;
 use gripsack_ir::diagnostic::codes;
 use gripsack_ir::{Diagnostic, Severity};
@@ -125,10 +126,17 @@ pub(super) fn eval_to_fixpoint(
         })?;
         tracing::info!(round, probes_bound = bound.len(), "frontend eval");
         let remaining = deadline.saturating_duration_since(Instant::now());
-        let execution = frontend.run_bounded(&inputs.path, remaining).map_err(|e| {
-            eprintln!("grip: cannot spawn deno: {e} (see `grip doctor`)");
-            ExitCode::FAILURE
-        })?;
+        let execution = match frontend.run_bounded(&inputs.path, remaining) {
+            Ok(execution) => execution,
+            Err(FrontendRunError::Grant(diagnostic)) => {
+                sink.report(&[diagnostic]);
+                return Err(ExitCode::FAILURE);
+            }
+            Err(FrontendRunError::Process(error)) => {
+                eprintln!("grip: cannot run deno: {error} (see `grip doctor`)");
+                return Err(ExitCode::FAILURE);
+            }
+        };
         let out = execution.outcome;
         if !matches!(&out.reason, StopReason::Exited) {
             eprintln!("grip: frontend eval stopped ({:?})", out.reason);

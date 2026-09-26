@@ -122,11 +122,16 @@ host-derived file access. `grip init` sanitizes the detected machine
 hostname to this spelling; role-named hosts such as `work.dev` remain
 valid.
 
-Evaluation runs in Deno, spawned deny-by-default: no env vars, no
-network, no subprocesses, read-only within the repo. Facts (os, arch,
-libc, hostname) are detected by the core and injected — the same repo
-on the same host always yields the same graph. The core never embeds a
-runtime ([plan/0005](plan/0005-frontends-and-configuration.md),
+Evaluation runs in Deno, spawned deny-by-default: no env vars,
+network, or subprocesses. Reads are limited to the repo, injected
+inputs, embedded frontend, and an explicitly detected
+`@gripsack/core` pin whose canonical target proves its package name
+(the pin may live outside the repo). E133 rejects a comma in **any**
+granted path before Deno starts: Deno treats commas in `--allow-read`
+as new path grants. Move a comma-named repo, Gripsack home, or pinned
+package to an unambiguous path rather than widening permission.
+Facts (os, arch, libc, hostname) are core-injected; the core never
+embeds a runtime ([plan/0005](plan/0005-frontends-and-configuration.md),
 [0013](plan/0013-constrained-evaluation.md)).
 
 Frontend evaluation is supervised: one ten-minute budget covers all

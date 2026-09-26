@@ -669,6 +669,92 @@ export default module("present", { install: [] });
     assert "ghost" in out.stderr
 
 
+def test_comma_pinned_package_cannot_expand_deno_read_grant(sandbox):
+    """0048 §1.1: comma in a canonical core pin must not turn the
+    Deno --allow-read path list into permission for an outside canary."""
+    outside = sandbox / "outside"
+    outside.mkdir()
+    canary = outside / "canary.ts"
+    canary.write_text('export default "outside";\n')
+    repo = make_env_repo(sandbox / "myenv", {})
+    (repo / "modules" / "evil.ts").write_text(
+        'import { module } from "@gripsack/core";\n'
+        f'import secret from "{canary.as_uri()}";\n'
+        'export default module(secret === "outside" ? "evil" : "bad", { install: [] });\n'
+    )
+    refresh_host(repo)
+
+    control = grip("check", "--host", "testhost", cwd=repo)
+    assert control.returncode != 0, "outside import must not work without a planted pin"
+
+    # Copy the real embedded SDK into a valid package whose *canonical*
+    # path contains `,/tmp/.../outside`. A symlink to the SDK would
+    # canonicalize away the comma and miss the vulnerable grant.
+    frontend = sandbox / ".local/share/gripsack/frontend/current"
+    assert frontend.is_symlink()
+    planted = repo / f"pin,{outside}"
+    planted.parent.mkdir(parents=True)
+    shutil.copytree(frontend.resolve(), planted)
+    pin = repo / "node_modules" / "@gripsack"
+    pin.mkdir(parents=True)
+    (pin / "core").symlink_to(planted, target_is_directory=True)
+
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, (out.returncode, out.stdout[:300], out.stderr[:300])
+    assert "E133" in out.stderr, out.stderr[:500]
+
+
+def test_comma_in_repo_path_cannot_expand_deno_read_grant(sandbox):
+    """A comma in the repo path must fail admission with E133 before
+    launching Deno, not merely crash later on its own split read grant."""
+    outside = sandbox / "outside"
+    outside.mkdir()
+    canary = outside / "canary.ts"
+    canary.write_text('export default "outside";\n')
+    repo = make_env_repo(sandbox / f"env,{outside}", {})
+    (repo / "modules" / "evil.ts").write_text(
+        'import { module } from "@gripsack/core";\n'
+        f'import secret from "{canary.as_uri()}";\n'
+        'export default module(secret === "outside" ? "evil" : "bad", { install: [] });\n'
+    )
+    refresh_host(repo)
+
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0, (out.returncode, out.stdout[:300], out.stderr[:300])
+    assert "E133" in out.stderr, out.stderr[:500]
+    checked = grip("check", "--json", "--host", "testhost", cwd=repo)
+    assert checked.returncode != 0
+    assert [d["code"] for d in json.loads(checked.stdout)["diagnostics"]] == ["E133"]
+
+
+def test_comma_in_frontend_home_rejects_before_deno_spawn(sandbox, monkeypatch):
+    """The inputs and embedded frontend are grant paths too, not just
+    the optional package pin."""
+    repo = make_env_repo(sandbox / "myenv", {})
+    monkeypatch.setenv("GRIPSACK_HOME", str(sandbox / "managed,home"))
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode != 0
+    assert "E133" in out.stderr, out.stderr[:500]
+
+
+def test_valid_external_core_pin_still_works_without_extra_grants(sandbox):
+    """An ordinary canonical package pin outside the repo is allowed
+    when its own directory is the only extra read grant."""
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    (repo / "configs/demo").mkdir(parents=True)
+    (repo / "configs/demo/a").write_text("a\n")
+    first = grip("check", "--host", "testhost", cwd=repo)
+    assert first.returncode == 0, first.stderr
+    frontend = sandbox / ".local/share/gripsack/frontend/current"
+    pin_root = sandbox / "valid-pin"
+    shutil.copytree(frontend.resolve(), pin_root)
+    pin = repo / "node_modules" / "@gripsack"
+    pin.mkdir(parents=True)
+    (pin / "core").symlink_to(pin_root, target_is_directory=True)
+    out = grip("check", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+
+
 def test_a_pin_symlink_to_a_nonpackage_grants_nothing(sandbox):
     """0033 R3: node_modules/@gripsack/core symlinking OUTSIDE the
     repo must not enlarge the eval sandbox unless the resolved target

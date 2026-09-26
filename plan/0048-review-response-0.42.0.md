@@ -2063,11 +2063,11 @@ TypeScript and TLC images were cached. Its source equivalence to
 run and the source commit; it is *not* exact-commit CI evidence.
 The separate focused report above ran on the committed source.
 The original bundle checksum check passes all eight members; live
-delivery inventory has **178/178** original IDs and **zero** null
-lane/case inventories; 160 pending, 11 in_progress, six
-implemented_unverified and one blocked. H0-02 still lacks explicit
-per-row evidence kinds and source-bound H0/global completion; the
-full M0–M2 release remains blocked.
+delivery inventory has **178/178** original IDs with registered
+platform/case/proof/evidence-kind inventories; 160 pending, 11
+in_progress, six implemented_unverified and one blocked. H0-02 still
+requires source-bound review and stronger kind/proof enforcement before
+closure; H0/global and full M0–M2 release remain blocked.
 
 Code-quality ownership: the domain type lives in `gripsack-ir`, the
 selected-host precedence in one CLI eval boundary, lockfile path
@@ -2076,3 +2076,36 @@ without a second validator. These M0 evaluator leaves are only a
 subset of NEXT; protected branch aggregation, the remaining §9 leaf
 expansion and all other required plan 0048 packets remain open. No
 release is authorized.
+
+### M0 §1.1 — comma-delimited Deno read grants
+
+Responsibility/dependency map: `commands/frontend.rs` alone admits
+repo, inputs directory, embedded frontend and canonical optional
+`@gripsack/core` pin paths before joining Deno's `--allow-read` list.
+`gripsack-ir` owns the core-only diagnostic allocation; `probe.rs`
+renders the admission failure through the existing sink before any
+child spawn. The existing pinned-package name check and the
+`gripsack-process` supervisor keep their separate invariants. No IR
+wire change, second grant builder or permissive path fallback.
+
+| Leaf | Class / target | Prerequisite, owner and implementation | State / evidence | Unmet acceptance |
+|---|---|---|---|---|
+| M0-1.1a | NEXT / M0 | Existing plan/0013 D2 permission boundary and current E132 registry; allocate a new core E-code for an unsafe comma-containing grant path and render its actual path safely in terminal/JSON without changing frontend allocations. | **Implementing**; registry/schema/consumer migration pending. | Named diagnostic generated and generator freshness; no false IR version bump. |
+| M0-1.1b | NEXT / M0 | One `commands/frontend.rs` read-grant admission checks repo, inputs, embedded driver directory and canonical optional pin before interpolating `--allow-read`; reject `,` before reading an admitted pinned package or spawning Deno. Preserve legitimate symlinked pin and no-pin behavior. | **Implementing**; previous source used raw `join(",")` without path validation. | Original canary grant-injection witness must fail with path-specific code; every grant path validated and no alternate unchecked caller. |
+| M0-1.1c | NEXT / M0 | Sandboxed HOME real-CLI offline witness for a canonical comma pin that grants an outside canary; adjacent normal pinned-package, nonpackage symlink and real Deno driver cases plus named registry tests. | **Implementing**; source-bound failing-before/pass-after and protected Linux/native Mac evidence pending. | No argument that an invalid pin or Linux-only test proves filesystem containment, R1 source approval or the other §1.2/M0 leaves; release blocked. |
+
+### M0 CI advisory — independently discovered release blocker
+
+Draft PR #164's protected `audit` job at merge SHA
+`cf6ab9c963cbd0ba3dc9cb00e92e651c84130798` failed in
+[`cargo audit`](https://github.com/gripsack-dev/gripsack/actions/runs/36222426178/job/108350065391):
+the existing `rustls 0.23.43` lock has
+[RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285.html),
+whose minimum patched release is 0.23.45. This is a real failed
+release gate, not an optional scan or waiver. `gripsack-fetch` is the
+direct TLS owner; the same rustls-only feature policy and ureq caller
+remain. A targeted Docker-builder `cargo update -p rustls --precise
+0.23.45` changed only that locked crate. The source is currently
+**implementing/unverified** until a fresh protected `audit` check on
+the resulting PR head passes, and the pinned Docker Rust/e2e/release
+paths are checked. No published release is authorized by the patch.

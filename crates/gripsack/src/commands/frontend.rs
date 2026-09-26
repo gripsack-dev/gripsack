@@ -2,6 +2,8 @@
 //! needs, bundled so signatures say what they mean — `&Frontend`
 //! instead of six positional `&Path`s a reader must count.
 
+use gripsack_ir::Diagnostic;
+use gripsack_ir::diagnostic::codes;
 use gripsack_process::{self, Control, Limits, Outcome};
 use std::io;
 use std::path::Path;
@@ -24,6 +26,12 @@ pub(super) struct FrontendExecution {
     pub stdout: Vec<u8>,
     pub outcome: Outcome,
 }
+/// A denied read grant is an authoring/configuration error. Process
+/// errors remain separate so the CLI can report the existing spawn hint.
+pub(super) enum FrontendRunError {
+    Grant(Diagnostic),
+    Process(io::Error),
+}
 
 impl<'a> Frontend<'a> {
     /// The sandboxed spawn (0013 D2): read is the ONLY grant — no
@@ -33,36 +41,47 @@ impl<'a> Frontend<'a> {
     /// files and relative imports. DENO_DIR points the cache under
     /// $GRIPSACK_HOME — never $HOME, so a sandboxed-HOME run can
     /// neither poison nor depend on the user's deno cache.
-    pub(super) fn command(&self, inputs: &Path) -> std::process::Command {
+    pub(super) fn command(&self, inputs: &Path) -> Result<std::process::Command, Diagnostic> {
         // the deliberate pin (the repo's own @gripsack/core) may
         // symlink OUTSIDE the repo — `npm install <path>`,
         // monorepos — and deno checks permissions against the
         // canonical path; grant the real location or the sandbox
         // blocks the very pin it must honor
-        let mut reads = vec![
-            self.repo.to_path_buf(),
-            inputs
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .to_path_buf(),
-            self.frontend_dir.to_path_buf(),
-        ];
+        let mut reads = Vec::with_capacity(4);
+        for (kind, path) in [
+            ("repository", self.repo),
+            (
+                "host inputs",
+                inputs.parent().unwrap_or_else(|| Path::new(".")),
+            ),
+            ("embedded frontend", self.frontend_dir),
+        ] {
+            admit_read_grant(kind, path)?;
+            reads.push(path);
+        }
         // the deliberate pin may enlarge the read set — so the grant
         // is only as strong as the proof: the RESOLVED target must be
         // a @gripsack/core package (0033 R3). Without the check, a
         // repo-planted symlink would extend its own sandbox reads to
         // wherever it points.
-        if let Ok(pin) = self.repo.join("node_modules/@gripsack/core").canonicalize()
-            && !reads.contains(&pin)
-            && pin_is_gripsack_core(&pin)
-        {
-            reads.push(pin);
+        let pin = self
+            .repo
+            .join("node_modules/@gripsack/core")
+            .canonicalize()
+            .ok();
+        if let Some(pin) = pin.as_deref() {
+            admit_read_grant("pinned @gripsack/core package", pin)?;
+            if !reads.contains(&pin) && pin_is_gripsack_core(pin) {
+                reads.push(pin);
+            }
         }
-        let reads = reads
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-            .join(",");
+        let mut read_grants = String::new();
+        for path in reads {
+            if !read_grants.is_empty() {
+                read_grants.push(',');
+            }
+            read_grants.push_str(&path.to_string_lossy());
+        }
         // --import-map, NOT deno.json discovery: a discovered deno.json
         // puts deno in project mode where BYONM (the repo's npm-managed
         // node_modules) never engages — third-party bare imports in module
@@ -76,14 +95,14 @@ impl<'a> Frontend<'a> {
                 "--import-map={}",
                 self.frontend_dir.join("deno.json").display()
             ))
-            .arg(format!("--allow-read={reads}"))
+            .arg(format!("--allow-read={read_grants}"))
             .arg(self.driver)
             .arg(self.repo)
             .arg("--inputs")
             .arg(inputs)
             .current_dir(self.repo)
             .env("DENO_DIR", self.home.join("deno-cache"));
-        cmd
+        Ok(cmd)
     }
 
     /// One supervised frontend invocation. The emitted envelope is one
@@ -94,27 +113,29 @@ impl<'a> Frontend<'a> {
         &self,
         inputs: &Path,
         timeout: Duration,
-    ) -> io::Result<FrontendExecution> {
+    ) -> Result<FrontendExecution, FrontendRunError> {
         let mut limits = Limits {
             timeout,
             ..Limits::default()
         };
         limits.line_bytes = limits.stdout_bytes.try_into().map_err(|_| {
-            io::Error::new(
+            FrontendRunError::Process(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "frontend stdout limit exceeds addressable memory",
-            )
+            ))
         })?;
         let mut stdout = Vec::new();
         let mut first_line = true;
-        let outcome = gripsack_process::run(&mut self.command(inputs), &[], limits, |line| {
+        let mut command = self.command(inputs).map_err(FrontendRunError::Grant)?;
+        let outcome = gripsack_process::run(&mut command, &[], limits, |line| {
             if !first_line {
                 stdout.push(b'\n');
             }
             first_line = false;
             stdout.extend_from_slice(line);
             Control::Continue
-        })?;
+        })
+        .map_err(FrontendRunError::Process)?;
         Ok(FrontendExecution { stdout, outcome })
     }
 }
@@ -128,4 +149,64 @@ fn pin_is_gripsack_core(pin: &Path) -> bool {
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .and_then(|v| v.get("name")?.as_str().map(str::to_string))
         .is_some_and(|name| name == "@gripsack/core")
+}
+
+/// Deno interprets a comma inside --allow-read as another permission
+/// entry, even when the path is canonical and belongs to a valid pin.
+/// Validate *every* grant path before formatting the single CLI flag.
+fn admit_read_grant(kind: &str, path: &Path) -> Result<(), Diagnostic> {
+    if !path.as_os_str().as_encoded_bytes().contains(&b',') {
+        return Ok(());
+    }
+    Err(Diagnostic::error(
+        codes::UNSAFE_EVAL_READ_GRANT,
+        format!(
+            "{kind} path {} cannot be a frontend read grant: ',' splits Deno permission lists",
+            path.to_string_lossy().escape_debug()
+        ),
+    )
+    .with_help("move the repo, frontend home or pinned package to a path without commas"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_builtin_read_grant_rejects_a_comma_before_deno_spawn() {
+        let root = tempfile::tempdir().unwrap();
+        let safe_repo = root.path().join("repo");
+        std::fs::create_dir(&safe_repo).unwrap();
+        let safe_inputs = root.path().join("inputs/facts.json");
+        let safe_frontend = root.path().join("frontend");
+        let comma_path = root.path().join("bad,grant");
+
+        for kind in ["repository", "host inputs", "embedded frontend"] {
+            let repo = if kind == "repository" {
+                comma_path.as_path()
+            } else {
+                safe_repo.as_path()
+            };
+            let inputs = if kind == "host inputs" {
+                comma_path.join("facts.json")
+            } else {
+                safe_inputs.clone()
+            };
+            let frontend_dir = if kind == "embedded frontend" {
+                comma_path.as_path()
+            } else {
+                safe_frontend.as_path()
+            };
+            let frontend = Frontend {
+                deno: Path::new("deno"),
+                repo,
+                driver: Path::new("driver.ts"),
+                frontend_dir,
+                home: root.path(),
+            };
+            let diagnostic = frontend.command(&inputs).unwrap_err();
+            assert_eq!(diagnostic.code, codes::UNSAFE_EVAL_READ_GRANT);
+            assert!(diagnostic.message.contains(kind), "{diagnostic:?}");
+        }
+    }
 }

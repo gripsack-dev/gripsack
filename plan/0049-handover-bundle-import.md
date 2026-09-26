@@ -71,14 +71,15 @@ attributable to new work, not the inherited state.
 `verification/delivery.json` (format `gripsack-delivery-ledger` v2)
 registers every ID with owner milestone, closure scope, source
 document, verbatim deliverable/evidence, and honest status. All
-**178/178** original IDs now have non-null, original-spec platform/
-capability lanes and conjunctive case/proof inventories; later A/B/E/C/D
-rows remain pending. Separate `macos-vm`, native Mac/launchd,
-real `private-registry`, isolated recipient, formal, fuzz and OS-timing
-lanes prohibit a Linux or generic hosted Mac result from inheriting an
-unrun capability. The per-row required **evidence-kind** inventory,
-source-bound H0/A0 baseline and required lane results are still open;
-H0-02 is not verified. A1 (A1-07) implements
+**178/178** original IDs now have registered original-spec platform/
+capability lanes, conjunctive case/proof inventories and explicit
+runner/formal/review evidence kinds; later A/B/E/C/D rows still remain
+pending. Distinct `macos-vm`, native arm64 Mac/launchd, real registry,
+isolated recipient, formal, fuzz and OS-timing lanes prohibit a Linux
+or generic hosted Mac result from inheriting an unrun capability.
+Source-bound H0 inventory review/runner evidence, stronger checker
+kind/obligation enforcement and all required H0/A0/global lane results
+remain open; H0-02 is not verified. A1 (A1-07) implements
 `scripts/check_delivery.py`: inventory validation, scoped closure
 checking, and the required negative calibration; H0/A0 evidence must
 survive that checker or be repaired, not grandfathered. On 2026-09-24 the
@@ -89,10 +90,12 @@ H0/A0 evidence was reopened because no gate log independently records
 the tested commit or dirty patch identity:
 H0-01/A0-01 are `implemented_unverified`; H0-02 remains `in_progress`.
 At reopening 149 of 178 rows had null inventories; registering the
-29 A2/A2-P/B1/B2/C0/D0 rows and the remaining 120 A/B/E/C/D rows
-reduced that to **zero** on 2026-09-26 without claiming any of their
-native, Mac VM, registry, parser/fuzz or proof cases passed. All prior
-claims remain under `historical_claims` with reason `invalid_evidence`.
+29 A2/A2-P/B1/B2/C0/D0 rows, the remaining 120 A/B/E/C/D rows and the
+four A1 placeholder proof/case lists reduced unregistered inventories
+to **zero** on 2026-09-26. Explicit evidence kinds are now registered
+on every ID too. None of those registrations claims native, VM,
+registry, parser/fuzz or proof execution. Prior invalid claims remain
+under `historical_claims`.
 
 ## E0-02 — OS scheduling qualification (systemd lane)
 
@@ -171,8 +174,8 @@ regression smoke, not a release closure claim.
 | Item | Status |
 |---|---|
 | H0-01 reconciliation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): the work was done and gates were observed, but the claim cited this Markdown document, not a bound runner report; baseline `test`/`ts-test` logs show CACHED layers and no log carries a commit marker. Prior claim preserved in the ledger's `historical_claims` |
-| H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 rows lacked lane/case inventories and explicit evidence kinds. All 178 lane/case/proof inventories were registered from the immutable original specs on 2026-09-26; **zero** null inventories remain. Required per-row evidence-kind inventory, source-bound H0/A0/global evidence, native Mac/VM and future proof execution remain open. No new row verified and H0 not closed |
+| H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 rows lacked lanes/cases and 177 lacked evidence kinds. Original-spec platform/capability lanes, conjunctive case/proof inventories and runner/formal/review evidence kinds are now registered for **all 178/178** IDs, including the four former A1 placeholder rows; zero fields remain unregistered. This data does not verify the source-bound semantic inventory review, runner or global/native/proof acceptance; no new row verified and H0 remains open |
 | A0-01 implementation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): unit + container gates observed green (archived `verification/reports/2026-09-24-a0-*.log`: cargo test executed, gripsack-fetch 61 passed / 0 failed incl. 13 bottle cases; e2e 245 passed; verify 56 verified 0 errors + 4 mutants; ts-test/model CACHED) but the logs lack commit/dirty binding and the evidence was Markdown |
-| A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, 15 calibrated negatives and `check_architecture.py --self-check` (forbidden direct and aliased target-specific crate edges), both wired into protected CI `test`; v3 schema/parser parity is exercised by the existing Rust acceptance corpus. H0-02 lane/case registration is complete but required evidence kinds and verified H0/CI/proof/platform lanes remain open; v4 schema and caller cutover remain open |
+| A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, 15 calibrated negatives and `check_architecture.py --self-check` (forbidden direct and aliased target-specific crate edges), both wired into protected CI `test`; v3 schema/parser parity is exercised by the existing Rust acceptance corpus. H0-02 registration is complete, but a source-bound review and stronger per-kind/proof-obligation enforcement in the checker and verified H0/CI/platform lanes remain open; v4 schema and caller cutover remain open |
 | Milestone closures | **retracted 2026-09-24** — H0 and A0 are NOT closed. The earlier `--close-milestone {H0,A0}` pass rested on Markdown-only evidence and handwritten counts (incl. a G-03 `obligations.checked: 50` that contradicts the runner logs' `56 verified, 0 errors`); the ledger's global-gate attestation records were moved to `historical_claims`. Closure now requires source-bound runner evidence per lane plus passing global gates G-01–G-08 under the hardened checker |
-| Next | assign and enforce per-ID required evidence kinds and proof counts in the delivery checker; capture actual H0/A0/global source-bound runner/review reports and attempt closure only after required global/platform lanes are verified; continue A1 grammar, B0-01 portable evidence and plan/0048 NEXT; native Mac, virtualization-capable Mac, registry and prover cases require independent real evidence |
+| Next | enforce registered per-ID evidence kinds and expected proof obligations in the delivery checker with adversarial calibration; capture source-bound H0 inventory review/runner and H0/A0/global reports before attempting closure; continue A1 grammar, B0-01 portable evidence and plan/0048 NEXT. Native Mac/VM, registry and prover cases require independent real evidence |

@@ -159,9 +159,10 @@ source equivalence, not an exact-commit CI attestation.
 | `2026-09-26-m0-host-precommit-five-gates.log` | `9249ecbb2e1a0a39bb5d0360bd93d90391641c708100a0e89e72e072e281e5ce` | Pre-commit worktree: fresh Rust fmt/clippy/tests, real CLI e2e 304/304, fresh Verus 72/0 with seven named mutants; cached TypeScript/TLC image layers — not protected CI or Mac evidence |
 
 This binds only plan/0048 §1.3's selected Linux behavior. All 178
-original handover lane/case inventories were registered later without
-closing a future row. Required evidence kinds, the other M0–M2 NEXT
-leaves, protected CI, native Mac/VM and public release remain open.
+original handover lane/case/evidence-kind inventories were registered
+later without verifying any new row. H0 source-bound review, checker
+kind/proof enforcement, other NEXT leaves, protected CI, native Mac/VM
+and public release remain open.
 
 ## M0 §1.4 evaluator bounds and adopt trust — local, not release closure
 
@@ -170,6 +171,7 @@ leaves, protected CI, native Mac/VM and public release remain open.
 | `2026-09-26-m0-boundary-0b92905.log` | `2048aa748eb5f867ec0412aa5fea74b3007468711be7062e0b4606ef048dca71` | Exact committed source `0b92905`, clean tracked source roots, fingerprint `a53a49a4d505774fa43f1882515e4ceeb15890c3542c635deaaad1575c862b6b`: two Rust regressions and ten sandboxed real CLI cases, 12/12. Two hostile pinned-runtime stubs exercise only the 16 MiB stdout/stderr supervisor; real Deno covers ordinary probe, host and trusted adopt flows |
 | `2026-09-26-m0-supervision-precommit-five-gates.log` | `b47fcb9a803481d70454119bea308fed210f34ce6241485fdff4d30a84d77192` | Pre-commit dirty worktree: fresh Rust fmt/clippy/tests, real e2e 307/307 and fresh Verus 72/0 with seven named mutants; `ts-test`/`model` passed without fresh RUN output ([INFERENCE] cached), not source-bound protected CI |
 
-The original 178 IDs now have registered lane/case inventories, but
-per-ID evidence kinds, H0/A0 closure, other NEXT leaves, required
-formal campaigns, native Mac/VM and actual release gates remain open.
+The original 178 IDs now have registered lane/case/evidence-kind
+inventories, but source-bound H0 inventory review, stronger proof/kind
+checks, other NEXT leaves, required formal campaigns, native Mac/VM
+and actual release gates remain open.
