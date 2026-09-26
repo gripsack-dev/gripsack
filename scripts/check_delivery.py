@@ -23,6 +23,7 @@ from pathlib import Path
 
 from delivery_evidence import (
     COMMIT_RE,
+    EVIDENCE_KINDS,
     SOURCE_ROOTS,
     STATUS_VALUES,
     Violations,
@@ -31,6 +32,8 @@ from delivery_evidence import (
     history_violations,
     lane_violations,
     repo_root,
+    proof_catalog_violations,
+    proof_row,
     source_binding_violations,
     source_fingerprint,
 )
@@ -115,6 +118,11 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
                 v.add(rid, "registered lanes/cases must be nonempty")
         elif state != "imported_pending_live_registration":
             v.add(rid, f"unknown lane inventory state {state!r}")
+        kinds = req.get("evidence_kinds")
+        if (not isinstance(kinds, list) or not kinds
+                or not all(isinstance(kind, str) and kind in EVIDENCE_KINDS for kind in kinds)
+                or len(set(kinds)) != len(kinds)):
+            v.add(rid, "evidence_kinds must name unique supported runner/formal/review kinds")
         records = req.get("evidence_records", [])
         declared = set(req.get("required_platform_capability_lanes") or [])
         for idx, ev in enumerate(records):
@@ -126,7 +134,7 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
         lane_violations(req, v)
         if req["status"] == "verified":
             if not records:
-                v.add(rid, "verified without runner evidence: a handwritten pass flag is not evidence")
+                v.add(rid, "verified without evidence records: a handwritten pass flag is not evidence")
             coverage_violations(req, records, v, declared)
         history_violations(req, v)
     if by_id.get("H0-02", {}).get("status") == "verified":
@@ -139,6 +147,9 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
         ]
         if unresolved:
             v.add("H0-02", f"complete support/case/proof/evidence-kind inventory missing for {len(unresolved)} rows: {unresolved[:12]}")
+        for req in reqs:
+            if proof_row(req):
+                proof_catalog_violations(req, v)
     return v
 
 

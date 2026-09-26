@@ -80,9 +80,9 @@ or generic hosted Mac result from inheriting an unrun capability.
 A source-bound structural runner at `953724a` now checks 178/178
 unchanged source IDs/fields and eight checksum-covered bundle members;
 it does **not** establish that every paraphrased case is semantically
-complete. A source-bound semantic review, stronger checker kind/proof
-enforcement and H0/A0/global/platform results remain open; H0-02 is
-not verified. A1 (A1-07) implements
+complete. A source-bound semantic review of paraphrased cases,
+explicit proof catalogs for every formal row and H0/A0/global/platform
+results remain open; H0-02 is not verified. A1 (A1-07) implements
 `scripts/check_delivery.py`: inventory validation, scoped closure
 checking, and the required negative calibration; H0/A0 evidence must
 survive that checker or be repaired, not grandfathered. On 2026-09-24 the
@@ -100,16 +100,22 @@ on every ID too. None of those registrations claims native, VM,
 registry, parser/fuzz or proof execution. Prior invalid claims remain
 under `historical_claims`.
 
-The checker currently accepts evidence `kind` values `runner`,
-`review` and `mutant-calibration`, but **not** `formal`. The live
-inventory requires `formal` for **39** rows; its hardcoded
-`PROOF_ROWS` covers only **22** of them (17 omitted), while the
-coverage checker unconditionally requires a runner even for the
-five review-only rows. This makes legitimate H0 closure unrepresentable
-and permits a runner with a self-reported obligation count to stand in
-for the declared formal evidence. H0-02 must reconcile row-level
-kinds, count/named proof obligations and adversarial checker negatives
-before promoting any such row.
+The earlier checker accepted `runner`, `review` and
+`mutant-calibration` evidence but not `formal`. Its hardcoded
+`PROOF_ROWS` named **22** of the **39** rows requiring formal evidence;
+the remaining 17 could inherit a runner's self-reported count. It also
+required a runner for five review-only rows. The current checker
+instead validates registered kinds on every row, requires each kind
+on every claimed lane, accepts a genuine review-only row without
+inventing a runner, and requires formal runner bytes to contain the
+named proof IDs and positive checked/expected count. A declared
+`proof_obligation_inventory` plus positive `proof_expected_minimum`
+is mandatory for verified formal rows and for claiming H0-02 complete.
+The synthetic H0/A0 source-bound fixture still closes; 23 negative
+calibrations and one review-only positive exercise the admission. This
+is a checker hardening packet, **not** a proof: all 39 real formal rows
+still need semantically reviewed named obligations/count floors before
+any H0-02 or milestone closure claim.
 
 ## A3-01 — external TypeScript example CI reveals an unpinned Pixi result
 
@@ -218,8 +224,8 @@ regression smoke, not a release closure claim.
 | Item | Status |
 |---|---|
 | H0-01 reconciliation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): the work was done and gates were observed, but the claim cited this Markdown document, not a bound runner report; baseline `test`/`ts-test` logs show CACHED layers and no log carries a commit marker. Prior claim preserved in the ledger's `historical_claims` |
-| H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 rows lacked lanes/cases and 177 lacked evidence kinds. Original-spec platform/capability lanes, expanded global and A1 conjunctive cases/proofs and runner/formal/review kinds are registered for **178/178** IDs. The exact-source structural report `verification/reports/2026-09-26-h0-inventory-953724a.log` (SHA `320e84504d7ab77f4f4b8d8ccdfc62e435cc878b5207317d9d4ed204d0905b9d`) proves 178 original identity/field comparisons and 8/8 unchanged bundle checksums, not semantic completeness of case paraphrases. Review, stronger checker kind/proof enforcement and global/native/proof acceptance remain open; no new row verified or H0 closure claimed |
+| H0-02 inventory | in_progress — reopened 2026-09-24 (`invalid_evidence`): 149 rows lacked lanes/cases and 177 lacked evidence kinds. Original-spec lanes, conjunctive cases/proofs and runner/formal/review kinds are registered for **178/178** IDs. The exact-source structural report `verification/reports/2026-09-26-h0-inventory-953724a.log` (SHA `320e84504d7ab77f4f4b8d8ccdfc62e435cc878b5207317d9d4ed204d0905b9d`) proves original identity/field comparisons and 8/8 checksums, not semantic completeness. The checker now enforces per-kind lane coverage and predeclared named proof IDs/minima on closure; **all 39** real formal rows still lack semantically reviewed explicit proof catalogs. Original-case review, H0/A0/global reports and native/proof acceptance remain open; no row promoted to verified |
 | A0-01 implementation | implemented_unverified — reopened 2026-09-24 (`invalid_evidence`): unit + container gates observed green (archived `verification/reports/2026-09-24-a0-*.log`: cargo test executed, gripsack-fetch 61 passed / 0 failed incl. 13 bottle cases; e2e 245 passed; verify 56 verified 0 errors + 4 mutants; ts-test/model CACHED) but the logs lack commit/dirty binding and the evidence was Markdown |
-| A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, 15 calibrated negatives and `check_architecture.py --self-check` (forbidden direct and aliased target-specific crate edges), both wired into protected CI `test`; v3 schema/parser parity is exercised by the existing Rust acceptance corpus. H0-02 registration is complete, but a source-bound review and stronger per-kind/proof-obligation enforcement in the checker and verified H0/CI/platform lanes remain open; v4 schema and caller cutover remain open |
-| Milestone closures | **retracted 2026-09-24** — H0 and A0 are NOT closed. The earlier `--close-milestone {H0,A0}` pass rested on Markdown-only evidence and handwritten counts (incl. a G-03 `obligations.checked: 50` that contradicts the runner logs' `56 verified, 0 errors`); the ledger's global-gate attestation records were moved to `historical_claims`. Closure now requires source-bound runner evidence per lane plus passing global gates G-01–G-08 under the hardened checker |
-| Next | enforce per-ID evidence kinds and expected proof obligations in the delivery checker with adversarial calibration; obtain source-bound semantic H0 inventory review and H0/A0/global reports before attempting closure; continue A1 grammar, B0-01 portable evidence and plan/0048 NEXT. Native Mac/VM, registry and prover cases require independent real evidence |
+| A1-07 architecture/gate wiring | partial: edition-5 178-ID fingerprint, required-lane/global-gate closure, exact checkout or documented identical-source reuse, **23** calibrated negatives plus a review-only positive, and `check_architecture.py --self-check` (forbidden direct and aliased target-specific crate edges), wired into required CI `test`. Real `formal` evidence is now distinct from runner; every declared kind is conjunctive per claimed lane, positive proof counts/name/floor must come from repo-local runner bytes and frozen row catalog. The live inventory stays pending for 39 proof catalogs and semantic H0 case review; H0/CI/native/VM lanes, v4 schema and callers remain open |
+| Milestone closures | **retracted 2026-09-24** — H0 and A0 are NOT closed. The earlier `--close-milestone {H0,A0}` pass rested on Markdown-only evidence and handwritten counts (incl. a G-03 `obligations.checked: 50` contradicting the runner logs' `56 verified, 0 errors`); those claims were moved to `historical_claims`. Closure requires source-bound reports for **each declared kind and lane**, named proof catalogs/floors where formal evidence is mandatory, and passing global gates G-01–G-08. Existing checker calibration is synthetic, not a completion report |
+| Next | name and review proof obligations plus count minima for all 39 real formal rows; obtain a source-bound semantic H0 inventory review and H0/A0/global reports before attempting closure; continue A1 grammar, B0-01 portable evidence and plan/0048 NEXT. Native Mac/VM, registry and prover cases require independent real evidence |

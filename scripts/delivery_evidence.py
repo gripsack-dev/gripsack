@@ -16,15 +16,9 @@ STATUS_VALUES = {"pending", "in_progress", "implemented_unverified", "blocked", 
 RESULTS = {"pass", "fail", "skipped", "blocked"}
 EVIDENCE_FIELDS = ("lane", "date", "entry_points", "environment", "command", "result",
                    "report", "report_sha256", "commit", "cases_covered", "kind")
-# Named proof deliveries, not a keyword heuristic: e.g. G-02 discusses
-# obligation counts but is not itself a new theorem. Other new proof
-# families must be added here with the corresponding required row.
-PROOF_ROWS = {
-    "G-03", "A1-04", "A1-11", "A2-02", "A2-06", "A2-P-03",
-    "A3-03", "A4-01", "A5-04", "B1-04", "B2-03", "E1-05",
-    "E1-07", "E3-05", "E5-03", "C1-04", "C1-06", "C2-04",
-    "C4-05", "D1-04", "D4-05", "D6-03",
-}
+# Row-declared required evidence kinds; calibration negatives may be
+# supplemental, never a substitute for a named runner/formal/review.
+EVIDENCE_KINDS = frozenset({"runner", "formal", "review", "mutant-calibration"})
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -89,8 +83,12 @@ def evidence_violations(req: dict, ev: dict, idx: int, v: Violations, root: Path
     if ev.get("result") not in RESULTS:
         v.add(rid, f"{where}: result must be one of {sorted(RESULTS)}")
     kind = ev.get("kind")
-    if kind not in ("runner", "review", "mutant-calibration"):
-        v.add(rid, f"{where}: kind must be runner, review or mutant-calibration")
+    if not isinstance(kind, str) or kind not in EVIDENCE_KINDS:
+        v.add(rid, f"{where}: unknown evidence kind {kind!r}")
+    elif (kind != "mutant-calibration"
+          and isinstance(req.get("evidence_kinds"), list)
+          and kind not in req["evidence_kinds"]):
+        v.add(rid, f"{where}: undeclared evidence kind {kind!r}")
     if kind == "mutant-calibration" and (
         not ev.get("intended_property") or not ev.get("observed_rejection") or ev.get("tool_present") is not True
     ):
@@ -115,7 +113,7 @@ def evidence_violations(req: dict, ev: dict, idx: int, v: Violations, root: Path
     data = report_file.read_bytes()
     if not data or (isinstance(digest, str) and hashlib.sha256(data).hexdigest() != digest):
         v.add(rid, f"{where}: report is empty or its SHA-256 does not match actual bytes")
-    if kind in ("runner", "mutant-calibration"):
+    if kind in ("runner", "formal", "mutant-calibration"):
         if rel.parts[:2] != ("verification", "reports") or rel.suffix not in (".log", ".json"):
             v.add(rid, f"{where}: runner report must be under verification/reports/ as .log or .json, not Markdown")
         if not all(isinstance(ev.get(field), str) and ev[field].strip() for field in ("tool_versions", "inputs")):
@@ -137,46 +135,96 @@ def evidence_violations(req: dict, ev: dict, idx: int, v: Violations, root: Path
             passed = counts.get("passed")
             if isinstance(passed, int) and not re.search(rf"(?<!\d){passed}(?!\d)", marker):
                 v.add(rid, f"{where}: report_marker does not contain its claimed passed count")
-            obligations = ev.get("obligations")
-            if proof_row(req) and isinstance(obligations, dict):
-                checked = obligations.get("checked")
-                if isinstance(checked, int) and not re.search(rf"(?<!\d){checked}(?!\d)", marker):
-                    v.add(rid, f"{where}: report_marker does not contain its claimed proof obligation count")
+            if kind == "formal":
+                obligations = ev.get("obligations")
+                if not valid_obligations(obligations):
+                    v.add(rid, f"{where}: zero executed proof obligations or expected/checked mismatch")
+                else:
+                    if not re.search(rf"(?<!\d){obligations['checked']}(?!\d)", marker):
+                        v.add(rid, f"{where}: report_marker does not contain its claimed proof obligation count")
+                    proof_ids = obligations.get("proof_ids")
+                    if not named_proofs(proof_ids):
+                        v.add(rid, f"{where}: formal evidence needs unique named proof_ids")
+                    else:
+                        for proof_id in proof_ids:
+                            if proof_id.encode() not in data:
+                                v.add(rid, f"{where}: proof {proof_id!r} absent from the actual report")
 
 
 def proof_row(req: dict) -> bool:
-    return req["id"] in PROOF_ROWS
+    kinds = req.get("evidence_kinds")
+    return isinstance(kinds, list) and "formal" in kinds
+
+
+def named_proofs(value: object) -> bool:
+    return (isinstance(value, list) and bool(value)
+            and all(isinstance(name, str) and name.strip() for name in value)
+            and len(set(value)) == len(value))
+
+
+def valid_obligations(value: object) -> bool:
+    return (isinstance(value, dict)
+            and all(isinstance(value.get(k), int) and not isinstance(value[k], bool)
+                    for k in ("expected", "checked", "failed", "skipped"))
+            and value["expected"] > 0
+            and value["checked"] == value["expected"]
+            and value["failed"] == value["skipped"] == 0)
+
+
+def proof_catalog_violations(req: dict, v: Violations) -> None:
+    if not proof_row(req):
+        return
+    names = req.get("proof_obligation_inventory")
+    floor = req.get("proof_expected_minimum")
+    if not named_proofs(names):
+        v.add(req["id"], "missing named proof obligation inventory")
+    if not isinstance(floor, int) or isinstance(floor, bool) or floor <= 0:
+        v.add(req["id"], "missing positive expected proof obligation minimum")
 
 
 def coverage_violations(req: dict, records: list[dict], v: Violations, lanes: set[str]) -> None:
     rid = req["id"]
     inventory = set(req.get("case_and_proof_inventory") or [])
+    declared = req.get("evidence_kinds")
+    if isinstance(declared, list) and all(isinstance(kind, str) for kind in declared):
+        kinds = set(declared)
+    else:
+        kinds = set()
+    proof_catalog_violations(req, v)
     for lane in lanes:
         passing = [
             ev for ev in records
             if ev.get("lane") == lane and ev.get("result") == "pass"
         ]
-        if not any(ev.get("kind") in ("runner", "mutant-calibration") for ev in passing):
-            v.add(rid, f"{lane}: no passing source-bound runner report")
+        for kind in sorted(kinds):
+            if not any(ev.get("kind") == kind for ev in passing):
+                if kind == "runner":
+                    v.add(rid, f"{lane}: no passing source-bound runner report")
+                else:
+                    v.add(rid, f"{lane}: no passing {kind} evidence")
         covered = set()
         for ev in passing:
             covered.update(ev.get("cases_covered") or [])
         if inventory - covered:
             v.add(rid, f"{lane}: conjunctive cases without passing evidence: {sorted(inventory - covered)}")
         if proof_row(req):
-            obligations = [
-                ev.get("obligations") for ev in passing
-                if ev.get("kind") in ("runner", "mutant-calibration")
-            ]
-            if not any(
-                isinstance(o, dict)
-                and all(isinstance(o.get(k), int) and not isinstance(o[k], bool)
-                        for k in ("expected", "checked", "failed", "skipped"))
-                and o["expected"] > 0 and o["checked"] == o["expected"]
-                and o["failed"] == o["skipped"] == 0
-                for o in obligations
-            ):
+            formal = [ev for ev in passing if ev.get("kind") == "formal"]
+            floor = req.get("proof_expected_minimum")
+            if not any(valid_obligations(ev.get("obligations"))
+                       and isinstance(floor, int) and not isinstance(floor, bool)
+                       and ev["obligations"]["checked"] >= floor
+                       for ev in formal):
                 v.add(rid, f"{lane}: zero executed proof obligations or expected/checked mismatch")
+            names = req.get("proof_obligation_inventory")
+            if named_proofs(names):
+                seen = set()
+                for ev in formal:
+                    obligations = ev.get("obligations")
+                    ids = obligations.get("proof_ids") if isinstance(obligations, dict) else None
+                    if named_proofs(ids):
+                        seen.update(ids)
+                if set(names) - seen:
+                    v.add(rid, f"{lane}: named proof obligations without formal evidence: {sorted(set(names) - seen)}")
 
 
 def lane_violations(req: dict, v: Violations) -> None:

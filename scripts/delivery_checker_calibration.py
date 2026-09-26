@@ -20,7 +20,7 @@ CHECKER = REPO / "scripts/check_delivery.py"
 LEDGER = REPO / "verification/delivery.json"
 REVISION = "a" * 40
 REPORT = "verification/reports/calibration.log"
-MARKER = "fixture runner: 1 passed, 0 failed, 0 skipped"
+MARKER = "fixture runner: 1 passed, 0 failed, 0 skipped; proof: ProofFixture"
 
 
 def run(path: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -34,9 +34,9 @@ def row(ledger: dict, identity: str) -> dict:
     return next(entry for entry in ledger["requirements"] if entry["id"] == identity)
 
 
-def record(req: dict, lane: str, milestone: str | None = None) -> dict:
+def record(req: dict, lane: str, milestone: str | None = None, kind: str = "runner") -> dict:
     data = {
-        "kind": "runner",
+        "kind": kind,
         "lane": lane,
         "date": "2026-09-24",
         "entry_points": ["calibration fixture command"],
@@ -54,8 +54,9 @@ def record(req: dict, lane: str, milestone: str | None = None) -> dict:
     }
     if milestone:
         data["milestone"] = milestone
-    if req["id"] == "G-03" or req["id"] == "A1-04":
-        data["obligations"] = {"expected": 1, "checked": 1, "failed": 0, "skipped": 0}
+    if kind == "formal":
+        data["obligations"] = {"expected": 1, "checked": 1, "failed": 0,
+                               "skipped": 0, "proof_ids": ["ProofFixture"]}
     return data
 
 
@@ -96,6 +97,12 @@ def fixture(tmp: Path) -> tuple[dict, Path]:
             req["required_platform_capability_lanes"] = ["pure"]
             req["case_and_proof_inventory"] = [req["required_acceptance_evidence"]]
         req["evidence_kinds"] = ["runner"]
+    # The synthetic H0/A0 closure exercises one complete global proof
+    # catalog. Real future rows retain all 39 independently named scopes.
+    proof = row(ledger, "G-03")
+    proof["evidence_kinds"] = ["runner", "formal", "review"]
+    proof["proof_obligation_inventory"] = ["ProofFixture"]
+    proof["proof_expected_minimum"] = 1
     for identity in ("H0-01", "H0-02", "A0-01"):
         req = row(ledger, identity)
         previous = req["status"]
@@ -109,9 +116,10 @@ def fixture(tmp: Path) -> tuple[dict, Path]:
     for req in ledger["requirements"]:
         if req["id"] in ledger["global_gate_ids"]:
             req["evidence_records"] = [
-                record(req, lane, milestone)
+                record(req, lane, milestone, kind)
                 for milestone in ("H0", "A0")
                 for lane in req["required_platform_capability_lanes"]
+                for kind in req["evidence_kinds"]
             ]
     path = tmp / "verification/delivery.json"
     path.write_text(json.dumps(ledger))
@@ -139,6 +147,28 @@ def main() -> int:
                 raise AssertionError(f"fully evidenced {milestone} fixture failed:\n{outcome.stderr}")
         print("  valid source-bound H0/A0 fixture closes; future rows remain pending")
 
+        # E0-01 is a review-only inventory contract. Its actual source-
+        # bound review may be sufficient without inventing a runner.
+        review_only = copy.deepcopy(original)
+        reviewed = row(review_only, "E0-01")
+        previous = reviewed["status"]
+        reviewed["status"] = "verified"
+        reviewed["evidence_kinds"] = ["review"]
+        reviewed.setdefault("status_history", []).append(
+            {"from": previous, "to": "verified", "date": "2026-09-24"}
+        )
+        reviewed["lane_status"] = {
+            lane: "verified" for lane in reviewed["required_platform_capability_lanes"]
+        }
+        reviewed["evidence_records"] = [
+            record(reviewed, lane, kind="review") for lane in reviewed["lane_status"]
+        ]
+        path.write_text(json.dumps(review_only))
+        accepted = run(path, "--validate")
+        if accepted.returncode:
+            raise AssertionError(f"review-only verified row rejected:\n{accepted.stderr}")
+        print("  review-only source-bound row admits its named cases without a fake runner")
+
         missing = copy.deepcopy(original)
         missing["requirements"] = [r for r in missing["requirements"] if r["id"] != "H0-01"]
         check(path, missing, "missing, duplicated or added requirement rows", "--validate")
@@ -147,6 +177,11 @@ def main() -> int:
         next(m for m in cycle["milestones"] if m["id"] == "H0")["common_prerequisites"].append("A0")
         check(path, cycle, "cyclic milestone prerequisites", "--validate")
         print("  cyclic prerequisite rejected")
+
+        unknown_kind = copy.deepcopy(original)
+        row(unknown_kind, "A0-01")["evidence_kinds"] = ["runner", "not-a-proof"]
+        check(path, unknown_kind, "evidence_kinds must name unique supported", "--validate")
+        print("  undeclared evidence-kind vocabulary rejected")
 
         fake = copy.deepcopy(original)
         row(fake, "A0-01")["evidence_records"] = []
@@ -162,10 +197,64 @@ def main() -> int:
         print("  blocked Mac lane rejected")
 
         zero = copy.deepcopy(original)
-        g03 = row(zero, "G-03")["evidence_records"][0]
+        g03 = next(ev for ev in row(zero, "G-03")["evidence_records"]
+                   if ev["kind"] == "formal" and ev["milestone"] == "H0")
         g03["obligations"]["expected"] = g03["obligations"]["checked"] = 0
         check(path, zero, "zero executed proof obligations", "--close-milestone", "H0", "--release", REVISION)
         print("  zero proof obligations rejected")
+
+        runner_is_not_proof = copy.deepcopy(original)
+        g03 = row(runner_is_not_proof, "G-03")
+        g03["evidence_records"] = [
+            ev for ev in g03["evidence_records"]
+            if not (ev["milestone"] == "H0" and ev["kind"] == "formal")
+        ]
+        check(path, runner_is_not_proof, "no passing formal evidence",
+              "--close-milestone", "H0", "--release", REVISION)
+        print("  proof row with runner and review but no formal evidence rejected")
+
+        proof_kind_swap = copy.deepcopy(original)
+        g03_formal = next(ev for ev in row(proof_kind_swap, "G-03")["evidence_records"]
+                          if ev["milestone"] == "H0" and ev["kind"] == "formal")
+        g03_formal["kind"] = "runner"
+        check(path, proof_kind_swap, "no passing formal evidence",
+              "--close-milestone", "H0", "--release", REVISION)
+        print("  runner carrying self-reported obligations cannot impersonate formal evidence")
+
+        unregistered_proof = copy.deepcopy(original)
+        row(unregistered_proof, "G-03").pop("proof_obligation_inventory")
+        check(path, unregistered_proof, "missing named proof obligation inventory",
+              "--validate")
+        print("  H0-02 cannot close before proof inventories are named")
+
+        wrong_proof = copy.deepcopy(original)
+        row(wrong_proof, "G-03")["proof_obligation_inventory"] = ["GhostProof"]
+        check(path, wrong_proof, "named proof obligations without formal evidence",
+              "--close-milestone", "H0", "--release", REVISION)
+        print("  wrong formal proof name cannot cover a frozen obligation")
+
+        missing_review = copy.deepcopy(original)
+        g03 = row(missing_review, "G-03")
+        g03["evidence_records"] = [
+            ev for ev in g03["evidence_records"]
+            if not (ev["milestone"] == "H0" and ev["kind"] == "review")
+        ]
+        check(path, missing_review, "no passing review evidence",
+              "--close-milestone", "H0", "--release", REVISION)
+        print("  required review kind cannot be replaced by runner plus formal evidence")
+
+        unreported_proof = copy.deepcopy(original)
+        formal = next(ev for ev in row(unreported_proof, "G-03")["evidence_records"]
+                      if ev["milestone"] == "H0" and ev["kind"] == "formal")
+        formal["obligations"]["proof_ids"] = ["GhostProof"]
+        check(path, unreported_proof, "absent from the actual report", "--validate")
+        print("  invented proof ID absent from real report bytes rejected")
+
+        raised_floor = copy.deepcopy(original)
+        row(raised_floor, "G-03")["proof_expected_minimum"] = 2
+        check(path, raised_floor, "zero executed proof obligations",
+              "--close-milestone", "H0", "--release", REVISION)
+        print("  observed proof count below frozen expected minimum rejected")
 
         failed = copy.deepcopy(original)
         ev = row(failed, "A0-01")["evidence_records"][0]
@@ -272,7 +361,7 @@ def main() -> int:
         ).strip()
         check(path, reused, "source trees differ", "--close-milestone", "A0", "--release", changed_revision)
         print("  changed-source reuse rejected despite an unchanged evidence receipt")
-    print("delivery checker calibration: 15 negative cases rejected, valid fixtures accepted")
+    print("delivery checker calibration: 23 negative cases rejected, valid fixtures accepted")
     return 0
 
 if __name__ == "__main__":
