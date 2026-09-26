@@ -108,11 +108,25 @@ with open(sys.argv[1], "rb") as lockfile:
     packages = tomllib.load(lockfile)["package"]
 builder = sorted(
     pkg["name"] for pkg in packages
-    if any(name in pkg["name"].lower()
-           for name in ("buildkit", "moby", "docker", "containerd", "bollard"))
+    if pkg["name"] != "gripsack-buildkit"  # Gripsack's OWN adapter crate (plan/0051):
+                                           # base64/serde/thiserror/sha2 only — its
+                                           # presence must not read as an upstream
+                                           # builder dependency.
+    and any(name in pkg["name"].lower()
+            for name in ("buildkit", "moby", "docker", "containerd", "bollard"))
 )
 if builder:
     sys.exit(f"FAIL: native Rust lock gained builder dependencies: {builder}")
+# The owned adapter itself must stay builder-free: if it ever grows an
+# upstream builder dependency, that is exactly the baseline violation
+# this probe exists to catch.
+adapter = [pkg for pkg in packages if pkg["name"] == "gripsack-buildkit"]
+if adapter:
+    upstream = [dep for dep in adapter[0].get("dependencies", [])
+                if any(name in dep.lower()
+                       for name in ("buildkit", "moby", "docker", "containerd", "bollard"))]
+    if upstream:
+        sys.exit(f"FAIL: gripsack-buildkit gained upstream builder dependencies: {upstream}")
 print("native Rust package graph: no builder dependencies")
 PY
   docker info --format '{{.ServerVersion}} {{.OSType}}/{{.Architecture}}' || return 1
