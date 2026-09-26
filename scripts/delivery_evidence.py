@@ -231,14 +231,19 @@ def proof_catalog_violations(req: dict, v: Violations, milestone: str | None = N
 def coverage_violations(req: dict, records: list[dict], v: Violations,
                         lanes: set[str], milestone: str | None = None) -> None:
     rid = req["id"]
-    inventory = set(req.get("case_and_proof_inventory") or [])
     declared = req.get("evidence_kinds")
     if isinstance(declared, list) and all(isinstance(kind, str) for kind in declared):
         kinds = set(declared)
     else:
         kinds = set()
     proof_catalog_violations(req, v, milestone)
+    default_inventory = set(req.get("case_and_proof_inventory") or [])
+    by_lane = req.get("case_and_proof_inventory_by_lane")
     for lane in lanes:
+        selected = by_lane.get(lane) if isinstance(by_lane, dict) else None
+        # A launchd acceptance case is not a Linux success case. The
+        # validator ensures a lane split neither drops nor invents IDs.
+        inventory = set(selected) if isinstance(selected, list) else default_inventory
         passing = [
             ev for ev in records
             if ev.get("lane") == lane and ev.get("result") == "pass"

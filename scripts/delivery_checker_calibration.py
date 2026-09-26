@@ -213,6 +213,44 @@ def main() -> int:
         check(path, skipped, "missing or unresolved required lanes", "--validate")
         print("  blocked Mac lane rejected")
 
+        missing_case_lane = copy.deepcopy(original)
+        row(missing_case_lane, "E0-02")["case_and_proof_inventory_by_lane"].pop("launchd")
+        check(path, missing_case_lane, "per-lane case inventory must name exactly the declared lanes",
+              "--validate")
+        print("  Mac launchd case lane cannot be silently unregistered")
+
+        dropped_mac_case = copy.deepcopy(original)
+        row(dropped_mac_case, "E0-02")["case_and_proof_inventory_by_lane"]["launchd"].pop()
+        check(path, dropped_mac_case, "per-lane case inventories must account for every registered case",
+              "--validate")
+        print("  named Mac acceptance cannot disappear from all lanes")
+
+        qualified_os_lanes = copy.deepcopy(original)
+        e0 = row(qualified_os_lanes, "E0-02")
+        e0["status_history"].append(
+            {"from": "in_progress", "to": "verified", "date": "2026-09-26"}
+        )
+        e0["status"] = "verified"
+        e0["lane_status"] = {
+            lane: "verified" for lane in e0["required_platform_capability_lanes"]
+        }
+        e0["evidence_records"] = [record(e0, lane) for lane in e0["lane_status"]]
+        for ev in e0["evidence_records"]:
+            ev["cases_covered"] = e0["case_and_proof_inventory_by_lane"][ev["lane"]]
+        path.write_text(json.dumps(qualified_os_lanes))
+        good_os_lanes = run(path, "--validate")
+        if good_os_lanes.returncode:
+            raise AssertionError(f"distinct verified manager lanes should pass:\n{good_os_lanes.stderr}")
+        print("  distinct systemd/launchd source-bound synthetic cases qualify their own lanes")
+
+        borrowed_linux_case = copy.deepcopy(qualified_os_lanes)
+        e0 = row(borrowed_linux_case, "E0-02")
+        launchd = next(ev for ev in e0["evidence_records"] if ev["lane"] == "launchd")
+        launchd["cases_covered"] = e0["case_and_proof_inventory_by_lane"]["systemd-linux"]
+        check(path, borrowed_linux_case, "launchd: conjunctive cases without passing evidence",
+              "--validate")
+        print("  Linux manager report cannot cover native Mac launchd cases")
+
         zero = copy.deepcopy(original)
         g03 = next(ev for ev in row(zero, "G-03")["evidence_records"]
                    if ev["kind"] == "formal" and ev["milestone"] == "H0")
@@ -411,7 +449,7 @@ def main() -> int:
         ).strip()
         check(path, reused, "source trees differ", "--close-milestone", "A0", "--release", changed_revision)
         print("  changed-source reuse rejected despite an unchanged evidence receipt")
-    print("delivery checker calibration: 27 negative cases rejected, valid fixtures accepted")
+    print("delivery checker calibration: 30 negative cases rejected, valid fixtures accepted")
     return 0
 
 if __name__ == "__main__":

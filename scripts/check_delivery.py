@@ -125,6 +125,21 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
             v.add(rid, "evidence_kinds must name unique supported runner/formal/review kinds")
         records = req.get("evidence_records", [])
         declared = set(req.get("required_platform_capability_lanes") or [])
+        by_lane = req.get("case_and_proof_inventory_by_lane")
+        if by_lane is not None:
+            if not isinstance(by_lane, dict) or set(by_lane) != declared:
+                v.add(rid, "per-lane case inventory must name exactly the declared lanes")
+            elif any(
+                not isinstance(cases, list) or not cases
+                or not all(isinstance(case, str) and case.strip() for case in cases)
+                or len(set(cases)) != len(cases)
+                for cases in by_lane.values()
+            ):
+                v.add(rid, "per-lane case inventories must contain unique named cases")
+            elif {case for cases in by_lane.values() for case in cases} != set(
+                req.get("case_and_proof_inventory") or []
+            ):
+                v.add(rid, "per-lane case inventories must account for every registered case")
         for idx, ev in enumerate(records):
             if ev.get("lane") not in declared:
                 v.add(rid, f"evidence[{idx}]: undeclared platform/capability lane {ev.get('lane')!r}")
