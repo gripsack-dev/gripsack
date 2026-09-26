@@ -1,10 +1,10 @@
 #!/bin/sh
-# Build and test the production bridge inside the pinned golang
+# Build, vet and test the production bridge inside the pinned golang
 # container — the host needs no Go toolchain (same contract as the B0
 # qualification harness). The shared protocol conformance corpus is
 # mounted from the repo root so both implementations decode identical
 # wire bytes. Stdlib only for now: go.sum pins arrive with the first
-# upstream BuildKit dependency (client/lower/client, B1-03 transport).
+# upstream BuildKit dependency (client/lower, B1-03 transport).
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
@@ -14,5 +14,5 @@ docker run --rm --network=host \
   -e GOFLAGS=-mod=mod -e GOTOOLCHAIN=local -e GOCACHE=/tmp/gocache \
   "$GOLANG_IMAGE" sh -c \
   'gofmt -l . | grep . && { echo "gofmt needed"; exit 1; } || true;
-   go vet ./... && go test ./...'
-echo "bridge protocol gate passed"
+   go vet ./... && go test ./... && go build -o bridge-bin .'
+echo "bridge gate passed: vet + tests + bridge-bin"
