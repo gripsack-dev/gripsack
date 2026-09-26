@@ -72,8 +72,13 @@ worker_start() {
     fi
     sleep 1
   done
-  docker exec "$WORKER" buildctl --addr tcp://127.0.0.1:12341 debug workers | tee -a "$ENV_OUT"
-  docker exec "$WORKER" buildkitd --version | tee -a "$ENV_OUT" || true
+  # A working daemon without an observed worker list and actual version
+  # is not a qualified worker; plain-sh tee must not hide either failure.
+  run_bridge "$RESULTS/worker-health.log" docker exec "$WORKER" \
+    buildctl --addr tcp://127.0.0.1:12341 debug workers
+  cat "$RESULTS/worker-health.log" >> "$ENV_OUT"
+  run_bridge "$RESULTS/buildkit-version.log" docker exec "$WORKER" buildkitd --version
+  cat "$RESULTS/buildkit-version.log" >> "$ENV_OUT"
 }
 
 worker_destroy() {

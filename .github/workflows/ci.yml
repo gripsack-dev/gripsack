@@ -32,6 +32,14 @@ jobs:
       - name: E2E (flow suite)
         run: docker compose run --build --rm e2e
 
+      # B0's qualification is a real Go client against disposable
+      # digest-pinned BuildKit workers. Keep it in the required test job,
+      # not an optional docs/probe job; any failed verifier/load aborts.
+      - name: B0 Linux BuildKit qualification
+        run: |
+          sh verification/buildkit-qualification/bridge/build.sh
+          sh verification/buildkit-qualification/probes.sh
+
       # the TLA+ spec of the journal protocol, model-checked (0028)
       - name: Transaction model (TLC)
         run: docker compose run --build --rm model

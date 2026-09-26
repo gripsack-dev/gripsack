@@ -61,10 +61,11 @@ sh probes.sh        # from verification/buildkit-qualification
 Requires: docker, python3. The bridge binary is rebuilt via
 `bridge/build.sh` if the Go sources change.
 
-The driver fails closed if the baseline check, independent OCI
-verification, Docker-engine image load or runtime execution fails.
-Plain `sh` has no `pipefail`: probe status is checked **before** a
-passing report is printed, never inferred from `tee`'s exit code.
+The driver fails closed if the baseline check, worker health/version
+observation, independent OCI verification, Docker-engine image load
+or runtime execution fails. Plain `sh` has no `pipefail`: probe
+status is checked **before** a passing report is printed, never
+inferred from `tee`'s exit code.
 `probe4-verify.json` is valid JSON; the independent runtime outcome
 is recorded separately in `probe4-runtime.txt`.
 
