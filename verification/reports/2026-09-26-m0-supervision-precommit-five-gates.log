@@ -1,0 +1,754 @@
+M0_PRECOMMIT_GATES=5; status=pass (not an exact committed-source CI receipt)
+RUNNER_SOURCE=dirty worktree on parent da4e610; changes in crates/gripsack/src/commands/{frontend,probe,adopt} and e2e tests were present during build; no runner-time source-clean/dirty-patch digest was captured. The later 0b92905 exact-source focused receipt is separate.
+RUNNER_COMMANDS=docker compose run --build --rm test && docker compose run --build --rm ts-test && docker compose run --build --rm e2e && docker compose run --build --rm model && docker compose run --build --rm verify
+RUNNER_OBSERVED=Rust fmt/clippy/full tests fresh; TypeScript and TLC returned gate passed with no fresh RUN execution output in the outer log ([INFERENCE] cached); real e2e 307 passed/0 failed; Verus 72 verified/0 errors and seven named semantic mutants fresh. Native Mac/VM, TLAPS and protected PR CI not exercised by this local chain.
+RUNNER_CAPTURE=paginated literal lines from completed tool artifact://1339; nested runner log references in Docker output are not falsely expanded.
+
+ Image gripsack-test Building
+#1 [internal] load local bake definitions
+#1 reading from stdin 530B done
+#2 [internal] load build definition from Dockerfile
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 [internal] load .dockerignore
+#7 [internal] load build context
+#8 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#8 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#7 [internal] load build context
+#9 [builder  9/10] COPY typescript ./typescript
+#10 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#11 [builder  7/10] COPY fuzz ./fuzz
+#12 [builder  4/10] WORKDIR /app
+#13 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#14 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 [builder  6/10] COPY crates ./crates
+#16 [builder  8/10] COPY schema ./schema
+#17 [builder 10/10] COPY scripts ./scripts
+#18 [test 1/2] RUN cargo fmt --check     && cargo clippy --locked --workspace --all-targets -- -D warnings     && cargo test --locked
+#18 1.059     Updating crates.io index
+#18 3.780   Downloaded adler2 v2.0.1
+#18 3.795   Downloaded anstyle-query v1.1.5
+#18 3.798   Downloaded block-buffer v0.12.1
+#18 3.801   Downloaded bit-set v0.8.0
+#18 3.812   Downloaded cfg-if v1.0.4
+#18 3.816   Downloaded bytecount v0.6.9
+#18 3.821   Downloaded heck v0.5.0
+#18 3.823   Downloaded cpufeatures v0.3.0
+#18 3.826   Downloaded errno v0.3.14
+#18 3.829   Downloaded form_urlencoded v1.2.2
+#18 3.831   Downloaded equivalent v1.0.2
+#18 3.834   Downloaded httpdate v1.0.3
+#18 3.838   Downloaded pin-project-lite v0.2.17
+#18 3.851   Downloaded fs-set-times v0.20.3
+#18 3.854   Downloaded colorchoice v1.0.5
+#18 3.855   Downloaded convert_case v0.4.0
+#18 3.857   Downloaded lazy_static v1.5.0
+#18 3.861   Downloaded jsonschema-regex v0.55.0
+#18 3.863   Downloaded autocfg v1.5.1
+#18 3.868   Downloaded anstream v1.0.0
+#18 3.872   Downloaded borrow-or-share v0.2.4
+#18 3.875   Downloaded is_terminal_polyfill v1.70.2
+#18 3.878   Downloaded potential_utf v0.1.6
+#18 3.881   Downloaded idna_adapter v1.2.2
+#18 3.884   Downloaded ambient-authority v0.0.2
+#18 3.886   Downloaded matchers v0.2.0
+#18 3.888   Downloaded num-cmp v0.1.0
+#18 3.890   Downloaded num v0.4.3
+#18 3.892   Downloaded num-iter v0.1.46
+#18 3.894   Downloaded ahash v0.8.12
+#18 3.899   Downloaded anstyle v1.0.14
+#18 3.902   Downloaded ref-cast-impl v1.0.27
+#18 3.904   Downloaded maybe-owned v0.3.4
+#18 3.907   Downloaded ref-cast v1.0.27
+#18 3.914   Downloaded fastrand v2.5.0
+#18 3.917   Downloaded find-msvc-tools v0.1.11
+#18 3.920   Downloaded clap_lex v1.1.0
+#18 3.922   Downloaded displaydoc v0.2.7
+#18 3.926   Downloaded email_address v0.2.9
+#18 3.930   Downloaded filetime v0.2.29
+#18 3.934   Downloaded foldhash v0.2.0
+#18 3.937   Downloaded quote v1.0.47
+#18 3.943   Downloaded openssl-probe v0.2.1
+#18 3.947   Downloaded anstyle-parse v1.0.0
+#18 3.951   Downloaded itoa v1.0.18
+#18 3.955   Downloaded nu-ansi-term v0.50.3
+#18 3.960   Downloaded crypto-common v0.2.2
+#18 3.962   Downloaded ipnet v2.12.1
+#18 3.965   Downloaded io-lifetimes v2.0.4
+#18 3.968   Downloaded bit-vec v0.8.0
+#18 3.972   Downloaded num-integer v0.1.47
+#18 3.975   Downloaded dialoguer v0.12.0
+#18 3.983   Downloaded num-rational v0.4.2
+#18 3.986   Downloaded jobserver v0.1.35
+#18 3.990   Downloaded scopeguard v1.2.0
+#18 3.993   Downloaded bzip2 v0.6.1
+#18 3.998   Downloaded num-complex v0.4.6
+#18 4.001   Downloaded lock_api v0.4.14
+#18 4.004   Downloaded digest v0.11.3
+#18 4.009   Downloaded cap-std v4.0.3
+#18 4.017   Downloaded getrandom v0.2.17
+#18 4.022   Downloaded zmij v1.0.23
+#18 4.027   Downloaded outref v0.5.2
+#18 4.030   Downloaded percent-encoding v2.3.2
+#18 4.032   Downloaded console v0.16.4
+#18 4.035   Downloaded crc32fast v1.5.1
+#18 4.041   Downloaded hybrid-array v0.4.14
+#18 4.046   Downloaded clap_derive v4.6.4
+#18 4.050   Downloaded data-encoding v2.11.1
+#18 4.052   Downloaded io-extras v0.19.0
+#18 4.057   Downloaded io-lifetimes v3.0.1
+#18 4.059   Downloaded litemap v0.8.3
+#18 4.065   Downloaded bitflags v2.13.1
+#18 4.073   Downloaded getrandom v0.3.4
+#18 4.080   Downloaded owo-colors v4.3.0
+#18 4.084   Downloaded getrandom v0.4.3
+#18 4.091   Downloaded zstd-safe v7.2.4
+#18 4.094   Downloaded base64 v0.22.1
+#18 4.105   Downloaded allocator-api2 v0.2.21
+#18 4.110   Downloaded fluent-uri v0.4.1
+#18 4.116   Downloaded once_cell v1.21.4
+#18 4.123   Downloaded micromap v0.3.0
+#18 4.133   Downloaded icu_provider v2.3.1
+#18 4.139   Downloaded clap v4.6.6
+#18 4.156   Downloaded stable_deref_trait v1.2.1
+#18 4.158   Downloaded zstd v0.13.3
+#18 4.167   Downloaded const-oid v0.10.2
+#18 4.172   Downloaded jsonschema-value v0.55.0
+#18 4.177   Downloaded parking_lot v0.12.5
+#18 4.181   Downloaded parking_lot_core v0.9.12
+#18 4.186   Downloaded miniz_oxide v0.8.9
+#18 4.202   Downloaded icu_locale_core v2.3.0
+#18 4.219   Downloaded shell-words v1.1.1
+#18 4.222   Downloaded indicatif v0.18.6
+#18 4.229   Downloaded libbz2-rs-sys v0.2.5
+#18 4.232   Downloaded pkg-config v0.3.34
+[…1036ln elided…]
+#18 84.49
+#18 84.49 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 84.49
+#18 84.50    Doc-tests gripsack_fuzz
+#18 84.54
+#18 84.54 running 0 tests
+#18 84.54
+#18 84.54 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 84.54
+#18 84.55    Doc-tests gripsack_ir
+#18 84.90
+#18 84.90 running 0 tests
+#18 84.90
+#18 84.90 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 84.90
+#18 84.91    Doc-tests gripsack_lint
+#18 84.95
+#18 84.95 running 0 tests
+#18 84.95
+#18 84.95 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 84.95
+#18 84.96    Doc-tests gripsack_policy
+#18 85.09
+#18 85.09 running 0 tests
+#18 85.09
+#18 85.09 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 85.09
+#18 85.09    Doc-tests gripsack_process
+#18 85.13
+#18 85.13 running 0 tests
+#18 85.13
+#18 85.13 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 85.13
+#18 85.14    Doc-tests gripsack_store
+#18 85.25
+#18 85.25 running 0 tests
+#18 85.25
+#18 85.25 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 85.25
+#18 85.25    Doc-tests gripsack_trace
+#18 85.29
+#18 85.29 running 0 tests
+#18 85.29
+#18 85.29 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+#18 85.29
+#19 [test 2/2] RUN apk add --no-cache python3     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs"     && python3 scripts/gen_diagnostic_registry.py --check     && python3 scripts/gen_diagnostic_registry.py --self-check     && python3 scripts/gen_frontend_embed.py --check
+#19 0.753 ( 1/13) Installing libbz2 (1.0.8-r6)
+#19 0.766 ( 2/13) Installing libffi (3.5.2-r1)
+#19 0.776 ( 3/13) Installing gdbm (1.26-r0)
+#19 0.789 ( 4/13) Installing mpdecimal (4.0.1-r0)
+#19 0.807 ( 5/13) Installing ncurses-terminfo-base (6.6_p20260516-r0)
+#19 0.825 ( 6/13) Installing libncursesw (6.6_p20260516-r0)
+#19 0.856 ( 7/13) Installing libpanelw (6.6_p20260516-r0)
+#19 0.865 ( 8/13) Installing readline (8.3.3-r1)
+#19 0.880 ( 9/13) Installing sqlite-libs (3.53.4-r0)
+#19 0.948 (10/13) Installing python3 (3.14.7-r1)
+#19 1.499 (11/13) Installing python3-pycache-pyc0 (3.14.7-r1)
+#19 1.780 (12/13) Installing pyc (3.14.7-r1)
+#19 1.780 (13/13) Installing python3-pyc (3.14.7-r1)
+#19 1.780 Executing busybox-1.37.0-r31.trigger
+#19 1.788 OK: 246.6 MiB in 58 packages
+#19 1.909 diagnostic registry: 37 unique core codes, 5 frontend allocations; generated files fresh
+#19 1.932 calibration: invalid registry version rejected on its named property
+#19 1.932 calibration: duplicate diagnostic code rejected on its named property
+#19 1.932 calibration: duplicate frontend diagnostic name rejected on its named property
+#19 1.932 diagnostic registry calibration: 3 named mutants rejected
+#19 1.959 embedded_frontend.rs: fresh (30 files)
+#20 exporting to image
+#20 exporting layers
+#20 exporting layers 54.6s done
+#20 exporting manifest sha256:b6ef76332c22a5789a8e846cc9846fb591415708be641c6170a17ab06865b2b2 0.0s done
+#20 exporting config sha256:be327fff956642e4267711dc98f2fd869c8de3e66fb7f4fa5bdaf9473d527a6b 0.0s done
+#20 exporting attestation manifest sha256:40c389f36f77e35bf6659939cd2debfaaf8687360f6357af9245e99402f4bead 0.0s done
+#20 exporting manifest list sha256:6bdad56eb2f394ff48b62f04ae1f4061afb75ecae523250721be3957c5ecb42b 0.0s done
+#20 naming to docker.io/library/gripsack-test:latest done
+#20 unpacking to docker.io/library/gripsack-test:latest
+#20 unpacking to docker.io/library/gripsack-test:latest 12.8s done
+#21 resolving provenance for metadata file
+ Image gripsack-test Built
+gate passed: fmt + clippy -D warnings + cargo test
+ Image gripsack-ts-test Building
+#1 [internal] load local bake definitions
+#1 reading from stdin 545B done
+#2 [internal] load build definition from Dockerfile
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#5 [internal] load metadata for docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d
+#6 [internal] load .dockerignore
+#7 [ts-test 1/5] FROM docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d
+#7 resolve docker.io/denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d 0.0s done
+#8 [internal] load build context
+#9 [ts-test 2/5] WORKDIR /app
+#10 [ts-test 3/5] COPY typescript ./typescript
+#11 [ts-test 4/5] COPY examples ./examples
+#12 [ts-test 5/5] RUN cd typescript && deno install && deno task test     && deno run --cached-only --no-remote --allow-all node_modules/typescript/bin/tsc        --project tsconfig.examples.json --noEmit
+#13 exporting to image
+#13 exporting layers done
+#13 exporting manifest sha256:580d47ffbce88339b1fc8828eba59259cb3e2f32ca91dbe96d159f5787fd1e0f done
+#13 exporting config sha256:c817348ab3ff50e9e36bb9c212a35c43ffb95366349bdc029fc994beb4c59499 done
+#13 exporting attestation manifest sha256:24de9d636d8b437d1b2b9e258d3d4826c522c6c097ea25bf29413a711b61d0b5 0.0s done
+#13 exporting manifest list sha256:56368c08858508ba3175d830acf5a14358e88d166af4b3e8ad60cf8536b56c82 0.0s done
+#13 naming to docker.io/library/gripsack-ts-test:latest done
+#13 unpacking to docker.io/library/gripsack-ts-test:latest 0.0s done
+#14 resolving provenance for metadata file
+ Image gripsack-ts-test Built
+gate passed: typescript frontend tests (deno test)
+ Image gripsack-e2e Building
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#2 [internal] load build definition from Dockerfile
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 ...
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#7 [internal] load .dockerignore
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#9 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#10 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#11 [internal] load build context
+#12 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#13 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#14 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 [builder  7/10] COPY fuzz ./fuzz
+#16 [builder  4/10] WORKDIR /app
+#17 [builder  8/10] COPY schema ./schema
+#18 [builder  6/10] COPY crates ./crates
+#19 [builder  9/10] COPY typescript ./typescript
+#20 [builder 10/10] COPY scripts ./scripts
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.276     Updating crates.io index
+#21 3.131   Downloaded anstyle-query v1.1.5
+#21 3.137   Downloaded ambient-authority v0.0.2
+#21 3.141   Downloaded adler2 v2.0.1
+#21 3.148   Downloaded heck v0.5.0
+#21 3.151   Downloaded fs-set-times v0.20.3
+#21 3.156   Downloaded cfg-if v1.0.4
+#21 3.159   Downloaded httpdate v1.0.3
+#21 3.162   Downloaded crypto-common v0.2.2
+#21 3.164   Downloaded convert_case v0.4.0
+#21 3.166   Downloaded equivalent v1.0.2
+#21 3.169   Downloaded idna_adapter v1.2.2
+#21 3.171   Downloaded itoa v1.0.18
+#21 3.175   Downloaded untrusted v0.9.0
+#21 3.179   Downloaded maybe-owned v0.3.4
+#21 3.182   Downloaded clap_lex v1.1.0
+#21 3.184   Downloaded matchers v0.2.0
+#21 3.187   Downloaded form_urlencoded v1.2.2
+#21 3.189   Downloaded potential_utf v0.1.6
+#21 3.191   Downloaded colorchoice v1.0.5
+#21 3.193   Downloaded errno v0.3.14
+#21 3.196   Downloaded lazy_static v1.5.0
+#21 3.200   Downloaded openssl-probe v0.2.1
+#21 3.203   Downloaded tracing-attributes v0.1.31
+#21 3.209   Downloaded is_terminal_polyfill v1.70.2
+#21 3.211   Downloaded sha2 v0.11.0
+#21 3.219   Downloaded serde_spanned v1.1.1
+#21 3.221   Downloaded anstream v1.0.0
+#21 3.224   Downloaded utf8parse v0.2.2
+#21 3.226   Downloaded block-buffer v0.12.1
+#21 3.229   Downloaded digest v0.11.3
+#21 3.234   Downloaded fastrand v2.5.0
+#21 3.237   Downloaded find-msvc-tools v0.1.11
+#21 3.239   Downloaded cpufeatures v0.3.0
+#21 3.242   Downloaded filetime v0.2.29
+#21 3.245   Downloaded pin-project-lite v0.2.17
+#21 3.258   Downloaded owo-colors v4.3.0
+#21 3.261   Downloaded nu-ansi-term v0.50.3
+#21 3.265   Downloaded rustix-linux-procfs v0.1.1
+#21 3.267   Downloaded displaydoc v0.2.7
+#21 3.271   Downloaded anstyle v1.0.14
+#21 3.274   Downloaded dialoguer v0.12.0
+#21 3.282   Downloaded quote v1.0.47
+#21 3.287   Downloaded thread_local v1.1.10
+#21 3.290   Downloaded jobserver v0.1.35
+#21 3.294   Downloaded percent-encoding v2.3.2
+#21 3.296   Downloaded io-lifetimes v3.0.1
+#21 3.298   Downloaded io-lifetimes v2.0.4
+#21 3.301   Downloaded bzip2 v0.6.1
+#21 3.305   Downloaded rustls-native-certs v0.8.4
+#21 3.307   Downloaded ipnet v2.12.1
+#21 3.310   Downloaded pkg-config v0.3.34
+#21 3.314   Downloaded tracing-serde v0.2.0
+#21 3.316   Downloaded cap-std v4.0.3
+#21 3.322   Downloaded crc32fast v1.5.1
+#21 3.327   Downloaded clap_derive v4.6.4
+#21 3.330   Downloaded anstyle-parse v1.0.0
+#21 3.334   Downloaded hybrid-array v0.4.14
+#21 3.338   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 3.339   Downloaded zerofrom v0.1.8
+#21 3.341   Downloaded io-extras v0.19.0
+#21 3.345   Downloaded once_cell v1.21.4
+#21 3.351   Downloaded utf8_iter v1.0.4
+#21 3.352   Downloaded bitflags v2.13.1
+#21 3.359   Downloaded rustls-pki-types v1.15.1
+#21 3.363   Downloaded getrandom v0.2.17
+#21 3.368   Downloaded getrandom v0.4.3
+#21 3.375   Downloaded clap v4.6.6
+#21 3.389   Downloaded log v0.4.34
+#21 3.394   Downloaded console v0.16.4
+#21 3.397   Downloaded serde_yaml v0.9.34+deprecated
+#21 3.403   Downloaded zerofrom-derive v0.1.7
+#21 3.405   Downloaded serde_derive v1.0.229
+#21 3.410   Downloaded ryu v1.0.23
+#21 3.416   Downloaded serde_core v1.0.229
+#21 3.421   Downloaded sharded-slab v0.1.7
+#21 3.428   Downloaded smallvec v1.15.2
+#21 3.430   Downloaded const-oid v0.10.2
+#21 3.434   Downloaded base64 v0.22.1
+#21 3.442   Downloaded indicatif v0.18.6
+#21 3.448   Downloaded libbz2-rs-sys v0.2.5
+#21 3.451   Downloaded icu_normalizer_data v2.3.0
+#21 3.454   Downloaded litemap v0.8.3
+#21 3.459   Downloaded icu_provider v2.3.1
+#21 3.464   Downloaded proc-macro2 v1.0.107
+#21 3.469   Downloaded icu_collections v2.3.0
+#21 3.480   Downloaded icu_locale_core v2.3.0
+#21 3.494   Downloaded rustls-webpki v0.103.15
+#21 3.499   Downloaded yoke-derive v0.8.2
+#21 3.501   Downloaded unit-prefix v0.5.2
+#21 3.504   Downloaded serde v1.0.229
+#21 3.510   Downloaded subtle v2.6.1
+[…249ln elided…]
+#21 23.99    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 24.22    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 27.10    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 27.10    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 27.10    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 28.17    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 28.17    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 29.94    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 29.94    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 33.96    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 39.45     Finished `dev` profile [unoptimized + debuginfo] target(s) in 39.30s
+#22 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#23 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#24 [e2e  2/12] WORKDIR /app
+#25 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.300 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.300 Creating virtual environment at: .venv
+#29 0.309 Resolved 10 packages in 4ms
+#29 0.452  Downloaded pygments
+#29 0.452 Prepared 5 packages in 209ms
+#29 0.468 Installed 5 packages in 15ms
+#29 0.468  + iniconfig==2.3.0
+#29 0.468  + packaging==26.3
+#29 0.468  + pluggy==1.6.0
+#29 0.468  + pygments==2.21.0
+#29 0.468  + pytest==9.1.1
+#30 [e2e 10/12] COPY e2e ./e2e
+#31 [e2e 11/12] COPY examples ./examples
+#32 [e2e 12/12] WORKDIR /app/e2e
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 2.8s done
+#33 exporting manifest sha256:030141352a8f0f2d105a70c70a018db7c00dea2f53fd9d7daee6dd98d89feaac 0.0s done
+#33 exporting config sha256:32a8000d4474f68f343d5d7b8a001bbe3626a25676f1e1fc4cc7f93618383a5f 0.0s done
+#33 exporting attestation manifest sha256:633b5f4053e43021d7d16e45434b6ec6ee95a8bac2c4c2c76e74b00b4cbeb155 0.0s done
+#33 exporting manifest list sha256:5f5c7cc66678bd74cf1de601e6bd262397c5cb7e60274a75bb5fb643f732be75 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.7s done
+#34 resolving provenance for metadata file
+ Image gripsack-e2e Built
+============================= test session starts ==============================
+platform linux -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /app/e2e
+configfile: pyproject.toml
+collected 307 items
+test_activation_lifecycle.py ...........                                 [  3%]
+test_adopt.py .............                                              [  7%]
+test_apply_lifecycle.py .......                                          [ 10%]
+test_build_closures.py .......                                           [ 12%]
+test_complete_pins.py ...........                                        [ 15%]
+test_contract_fidelity.py ....................                           [ 22%]
+test_destination_ownership.py .............                              [ 26%]
+test_eval_gate.py .........................                              [ 34%]
+test_execution_contracts.py ..........                                   [ 38%]
+test_fetchers.py ...........                                             [ 41%]
+test_gc_admission.py ................                                    [ 46%]
+test_generation_history.py .......                                       [ 49%]
+test_golden.py .....                                                     [ 50%]
+test_http_policy.py ........                                             [ 53%]
+test_journey.py .....                                                    [ 55%]
+test_journey_contracts.py ...                                            [ 56%]
+test_linters.py ............                                             [ 59%]
+test_merge_boundaries.py .......                                         [ 62%]
+test_migration_feedback.py .........                                     [ 65%]
+test_ownership_modes.py ................                                 [ 70%]
+test_persistence_matrix.py ......                                        [ 72%]
+test_plan_operations.py ...                                              [ 73%]
+test_self_update.py .....                                                [ 74%]
+test_store_hygiene.py ........                                           [ 77%]
+test_trace_context.py ..                                                 [ 78%]
+test_transaction_recovery.py ..........                                  [ 81%]
+test_update_surveys.py .......                                           [ 83%]
+test_workspace_contract.py .......................                       [ 91%]
+test_workspace_diagnostics.py ...........................                [100%]
+======================= 307 passed in 955.16s (0:15:55) ========================
+ Image gripsack-model Building
+#1 [internal] load local bake definitions
+#1 reading from stdin 535B done
+#2 [internal] load build definition from Dockerfile
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#5 [internal] load metadata for docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#6 [internal] load .dockerignore
+#7 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#8 [internal] load build context
+#9 [model 1/6] FROM docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#9 resolve docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 0.0s done
+#8 [internal] load build context
+#10 [model 4/6] COPY specs ./specs
+#11 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#12 [model 3/6] WORKDIR /work
+#13 [model 5/6] COPY scripts/check_models.sh ./scripts/check_models.sh
+#14 [model 6/6] RUN sh scripts/check_models.sh /tla/tla2tools.jar
+#15 exporting to image
+#15 exporting layers done
+#15 exporting manifest sha256:2b4180e4243bc3bda5bc6ad9926b4510523b4e4ec679d0bffc89d427ad1b7b7c done
+#15 exporting config sha256:4e23e36598c6c7f802e55f0bf681e204b688ec7e88cdcc9ca72639ea70aa6073 done
+#15 exporting attestation manifest sha256:af62c7586af72786609015b71f185fc989e02c851d99d68b530e69a39dc4aebb 0.0s done
+#15 exporting manifest list sha256:d1c6f5007cacddd5ecf7197af1d2ca15c8533c617da52210cd3c216bcaebbc89 0.0s done
+#15 naming to docker.io/library/gripsack-model:latest done
+#15 unpacking to docker.io/library/gripsack-model:latest 0.0s done
+#16 resolving provenance for metadata file
+ Image gripsack-model Built
+gate passed: model checks via scripts/check_models.sh (TLC, positive + calibrated negative configs)
+ Image gripsack-verify Building
+#1 [internal] load local bake definitions
+#1 reading from stdin 540B done
+#2 [internal] load build definition from Dockerfile
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#5 [internal] load metadata for docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+#6 [internal] load .dockerignore
+#7 [verify  1/11] FROM docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+#7 resolve docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 0.0s done
+#8 [verify  2/11] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends     curl ca-certificates unzip build-essential     && rm -rf /var/lib/apt/lists/*
+#8 ...
+#9 [internal] load build context
+#10 [verify  4/11] ADD --checksum=sha256:7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip /tmp/z3.zip
+#11 [verify  3/11] ADD --checksum=sha256:13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16 https://github.com/verus-lang/verus/releases/download/release/0.2026.09.06.8dea4a2/verus-0.2026.09.06.8dea4a2-x86-linux.zip /tmp/verus.zip
+#11 ...
+#8 [verify  2/11] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends     curl ca-certificates unzip build-essential     && rm -rf /var/lib/apt/lists/*
+#8 16.89 debconf: delaying package configuration, since apt-utils is not installed
+#8 16.96 (Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 4381 files and directories currently installed.)
+#8 16.98 Preparing to unpack .../perl-base_5.38.2-3.2ubuntu0.6_amd64.deb ...
+#8 17.00 Unpacking perl-base (5.38.2-3.2ubuntu0.6) over (5.38.2-3.2ubuntu0.4) ...
+#8 18.95 Setting up perl-base (5.38.2-3.2ubuntu0.6) ...
+#8 19.01 (Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 4381 files and directories currently installed.)
+#8 19.01 Preparing to unpack .../libc6_2.39-0ubuntu8.9_amd64.deb ...
+#8 19.08 debconf: unable to initialize frontend: Dialog
+#8 19.08 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#8 19.08 debconf: falling back to frontend: Readline
+#8 19.08 debconf: unable to initialize frontend: Readline
+#8 19.08 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.38.2 /usr/local/share/perl/5.38.2 /usr/lib/x86_64-linux-gnu/perl5/5.38 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.38 /usr/share/perl/5.38 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 8.)
+#8 19.08 debconf: falling back to frontend: Teletype
+#8 19.11 Unpacking libc6:amd64 (2.39-0ubuntu8.9) over (2.39-0ubuntu8.8) ...
+#8 20.03 Setting up libc6:amd64 (2.39-0ubuntu8.9) ...
+#8 20.08 debconf: unable to initialize frontend: Dialog
+#8 20.08 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#8 20.08 debconf: falling back to frontend: Readline
+#8 20.08 debconf: unable to initialize frontend: Readline
+#8 20.08 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.38.2 /usr/local/share/perl/5.38.2 /usr/lib/x86_64-linux-gnu/perl5/5.38 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.38 /usr/share/perl/5.38 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 8.)
+#8 20.08 debconf: falling back to frontend: Teletype
+#8 21.15 (Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 4381 files and directories currently installed.)
+#8 21.15 Preparing to unpack .../libc-bin_2.39-0ubuntu8.9_amd64.deb ...
+#8 21.16 Unpacking libc-bin (2.39-0ubuntu8.9) over (2.39-0ubuntu8.8) ...
+#8 21.31 Setting up libc-bin (2.39-0ubuntu8.9) ...
+#8 21.44 Selecting previously unselected package perl-modules-5.38.
+#8 21.44 (Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 4381 files and directories currently installed.)
+#8 21.44 Preparing to unpack .../00-perl-modules-5.38_5.38.2-3.2ubuntu0.6_all.deb ...
+#8 21.45 Unpacking perl-modules-5.38 (5.38.2-3.2ubuntu0.6) ...
+#8 21.77 Selecting previously unselected package libgdbm6t64:amd64.
+#8 21.77 Preparing to unpack .../01-libgdbm6t64_1.23-5.1build1_amd64.deb ...
+#8 21.78 Unpacking libgdbm6t64:amd64 (1.23-5.1build1) ...
+#8 21.82 Selecting previously unselected package libgdbm-compat4t64:amd64.
+#8 21.82 Preparing to unpack .../02-libgdbm-compat4t64_1.23-5.1build1_amd64.deb ...
+#8 21.83 Unpacking libgdbm-compat4t64:amd64 (1.23-5.1build1) ...
+#8 21.87 Selecting previously unselected package libperl5.38t64:amd64.
+#8 21.87 Preparing to unpack .../03-libperl5.38t64_5.38.2-3.2ubuntu0.6_amd64.deb ...
+#8 21.88 Unpacking libperl5.38t64:amd64 (5.38.2-3.2ubuntu0.6) ...
+#8 22.10 Selecting previously unselected package perl.
+#8 22.11 Preparing to unpack .../04-perl_5.38.2-3.2ubuntu0.6_amd64.deb ...
+#8 22.11 Unpacking perl (5.38.2-3.2ubuntu0.6) ...
+#8 22.16 Selecting previously unselected package openssl.
+#8 22.16 Preparing to unpack .../05-openssl_3.0.13-0ubuntu3.15_amd64.deb ...
+#8 22.17 Unpacking openssl (3.0.13-0ubuntu3.15) ...
+#8 22.24 Selecting previously unselected package ca-certificates.
+#8 22.24 Preparing to unpack .../06-ca-certificates_20260601~24.04.1_all.deb ...
+#8 22.24 Unpacking ca-certificates (20260601~24.04.1) ...
+#8 22.31 Selecting previously unselected package libkrb5support0:amd64.
+#8 22.31 Preparing to unpack .../07-libkrb5support0_1.20.1-6ubuntu2.10_amd64.deb ...
+#8 22.32 Unpacking libkrb5support0:amd64 (1.20.1-6ubuntu2.10) ...
+#8 22.36 Selecting previously unselected package libk5crypto3:amd64.
+#8 22.36 Preparing to unpack .../08-libk5crypto3_1.20.1-6ubuntu2.10_amd64.deb ...
+#8 22.37 Unpacking libk5crypto3:amd64 (1.20.1-6ubuntu2.10) ...
+#8 22.42 Selecting previously unselected package libkeyutils1:amd64.
+#8 22.42 Preparing to unpack .../09-libkeyutils1_1.6.3-3build1_amd64.deb ...
+#8 22.42 Unpacking libkeyutils1:amd64 (1.6.3-3build1) ...
+#8 22.46 Selecting previously unselected package libkrb5-3:amd64.
+#8 22.46 Preparing to unpack .../10-libkrb5-3_1.20.1-6ubuntu2.10_amd64.deb ...
+#8 22.47 Unpacking libkrb5-3:amd64 (1.20.1-6ubuntu2.10) ...
+#8 22.52 Selecting previously unselected package libgssapi-krb5-2:amd64.
+#8 22.52 Preparing to unpack .../11-libgssapi-krb5-2_1.20.1-6ubuntu2.10_amd64.deb ...
+#8 22.53 Unpacking libgssapi-krb5-2:amd64 (1.20.1-6ubuntu2.10) ...
+#8 22.57 Selecting previously unselected package libjansson4:amd64.
+#8 22.58 Preparing to unpack .../12-libjansson4_2.14-2build2_amd64.deb ...
+#8 22.58 Unpacking libjansson4:amd64 (2.14-2build2) ...
+#8 22.63 Selecting previously unselected package libnghttp2-14:amd64.
+#8 22.63 Preparing to unpack .../13-libnghttp2-14_1.59.0-1ubuntu0.4_amd64.deb ...
+#8 22.64 Unpacking libnghttp2-14:amd64 (1.59.0-1ubuntu0.4) ...
+#8 22.69 Selecting previously unselected package libpsl5t64:amd64.
+#8 22.69 Preparing to unpack .../14-libpsl5t64_0.21.2-1.1build1_amd64.deb ...
+#8 22.70 Unpacking libpsl5t64:amd64 (0.21.2-1.1build1) ...
+#8 22.74 Selecting previously unselected package xz-utils.
+#8 22.74 Preparing to unpack .../15-xz-utils_5.6.1+really5.4.5-1ubuntu0.3_amd64.deb ...
+#8 22.74 Unpacking xz-utils (5.6.1+really5.4.5-1ubuntu0.3) ...
+#8 22.79 Selecting previously unselected package binutils-common:amd64.
+#8 22.79 Preparing to unpack .../16-binutils-common_2.42-4ubuntu2.10_amd64.deb ...
+#8 22.80 Unpacking binutils-common:amd64 (2.42-4ubuntu2.10) ...
+#8 22.84 Selecting previously unselected package libsframe1:amd64.
+#8 22.84 Preparing to unpack .../17-libsframe1_2.42-4ubuntu2.10_amd64.deb ...
+#8 22.85 Unpacking libsframe1:amd64 (2.42-4ubuntu2.10) ...
+#8 22.89 Selecting previously unselected package libbinutils:amd64.
+#8 22.89 Preparing to unpack .../18-libbinutils_2.42-4ubuntu2.10_amd64.deb ...
+#8 22.90 Unpacking libbinutils:amd64 (2.42-4ubuntu2.10) ...
+#8 22.95 Selecting previously unselected package libctf-nobfd0:amd64.
+#8 22.95 Preparing to unpack .../19-libctf-nobfd0_2.42-4ubuntu2.10_amd64.deb ...
+#8 22.95 Unpacking libctf-nobfd0:amd64 (2.42-4ubuntu2.10) ...
+#8 22.99 Selecting previously unselected package libctf0:amd64.
+#8 22.99 Preparing to unpack .../20-libctf0_2.42-4ubuntu2.10_amd64.deb ...
+#8 23.00 Unpacking libctf0:amd64 (2.42-4ubuntu2.10) ...
+#8 23.05 Selecting previously unselected package libgprofng0:amd64.
+#8 23.05 Preparing to unpack .../21-libgprofng0_2.42-4ubuntu2.10_amd64.deb ...
+#8 23.06 Unpacking libgprofng0:amd64 (2.42-4ubuntu2.10) ...
+#8 23.11 Selecting previously unselected package binutils-x86-64-linux-gnu.
+#8 23.11 Preparing to unpack .../22-binutils-x86-64-linux-gnu_2.42-4ubuntu2.10_amd64.deb ...
+#8 23.11 Unpacking binutils-x86-64-linux-gnu (2.42-4ubuntu2.10) ...
+#8 23.20 Selecting previously unselected package binutils.
+#8 23.20 Preparing to unpack .../23-binutils_2.42-4ubuntu2.10_amd64.deb ...
+#8 23.21 Unpacking binutils (2.42-4ubuntu2.10) ...
+#8 23.25 Selecting previously unselected package libc-dev-bin.
+#8 23.25 Preparing to unpack .../24-libc-dev-bin_2.39-0ubuntu8.9_amd64.deb ...
+#8 23.26 Unpacking libc-dev-bin (2.39-0ubuntu8.9) ...
+#8 23.30 Selecting previously unselected package linux-libc-dev:amd64.
+[…237ln elided…]
+#8 28.44 Processing triggers for libc-bin (2.39-0ubuntu8.9) ...
+#8 28.46 Processing triggers for ca-certificates (20260601~24.04.1) ...
+#8 28.47 Updating certificates in /etc/ssl/certs...
+#8 28.81 0 added, 0 removed; done.
+#8 28.81 Running hooks in /etc/ca-certificates/update.d...
+#8 28.81 done.
+#11 [verify  3/11] ADD --checksum=sha256:13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16 https://github.com/verus-lang/verus/releases/download/release/0.2026.09.06.8dea4a2/verus-0.2026.09.06.8dea4a2-x86-linux.zip /tmp/verus.zip
+#12 [verify  3/11] ADD --checksum=sha256:13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16 https://github.com/verus-lang/verus/releases/download/release/0.2026.09.06.8dea4a2/verus-0.2026.09.06.8dea4a2-x86-linux.zip /tmp/verus.zip
+#13 [verify  4/11] ADD --checksum=sha256:7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip /tmp/z3.zip
+#14 [verify  5/11] RUN unzip -q /tmp/verus.zip -d /opt && unzip -q /tmp/z3.zip -d /opt     && rm /tmp/verus.zip /tmp/z3.zip     && curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.98.0        --component rustc-dev --component llvm-tools --component rustfmt
+#14 7.553 info: downloading installer
+#14 9.205 info: profile set to default
+#14 9.205 info: default host tuple is x86_64-unknown-linux-gnu
+#14 9.206 info: syncing channel updates for 1.98.0-x86_64-unknown-linux-gnu
+#14 9.380 info: latest update on 2026-08-20 for version 1.98.0 (88d9e12ae 2026-08-18)
+#14 9.380 info: downloading 8 components
+#14 32.33 info: default toolchain set to 1.98.0-x86_64-unknown-linux-gnu
+#14 32.33
+#14 32.36   1.98.0-x86_64-unknown-linux-gnu installed - rustc 1.98.0 (88d9e12ae 2026-08-18)
+#14 32.36 (×2)
+#14 32.36 Rust is installed now. Great!
+#14 32.36
+#14 32.36 To get started you may need to restart your current shell.
+#14 32.36 This would reload your PATH environment variable to include
+#14 32.36 Cargo's bin directory ($HOME/.cargo/bin).
+#14 32.36
+#14 32.36 To configure your current shell, you need to source the
+#14 32.36 corresponding env file under $HOME/.cargo.
+#14 32.36
+#14 32.36 Consider running the right command for your shell (note the leading DOT):
+#14 32.36 . "$HOME/.cargo/env" # For sh/ash/dash/pdksh/bash
+#14 32.36 cargo:rerun-if-env-changed=CC_x86_64-unknown-linux-gnu
+#14 32.36 CC_x86_64-unknown-linux-gnu = None
+#14 32.36 cargo:rerun-if-env-changed=CC_x86_64_unknown_linux_gnu
+#14 32.36 CC_x86_64_unknown_linux_gnu = None
+#14 32.36 cargo:rerun-if-env-changed=HOST_CC
+#14 32.36 HOST_CC = None
+#14 32.36 cargo:rerun-if-env-changed=CC
+#14 32.36 CC = None
+#14 32.36 cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#14 32.38 cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#14 32.38 CRATE_CC_NO_DEFAULTS = None
+#14 32.38 cargo:rerun-if-env-changed=CFLAGS
+#14 32.38 CFLAGS = None
+#14 32.38 cargo:rerun-if-env-changed=HOST_CFLAGS
+#14 32.38 HOST_CFLAGS = None
+#14 32.38 cargo:rerun-if-env-changed=CFLAGS_x86_64_unknown_linux_gnu
+#14 32.38 CFLAGS_x86_64_unknown_linux_gnu = None
+#14 32.38 cargo:rerun-if-env-changed=CFLAGS_x86_64-unknown-linux-gnu
+#14 32.38 CFLAGS_x86_64-unknown-linux-gnu = None
+#15 [verify  6/11] WORKDIR /app
+#16 [verify  7/11] COPY Cargo.toml Cargo.lock ./
+#17 [verify  8/11] COPY crates ./crates
+#18 [verify  9/11] COPY fuzz ./fuzz
+#19 [verify 10/11] COPY scripts/check_verus.sh ./scripts/check_verus.sh
+#20 [verify 11/11] RUN sh scripts/check_verus.sh
+#20 0.178 == positive: cargo verus verify -p gripsack-policy --locked
+#20 29.80 positive: verification results:: 72 verified, 0 errors
+#20 29.80 == calibration: semantic mutants must fail their postconditions
+#20 58.55 calibration: classifier mutant rejected on its contract
+#20 110.2 calibration: merge-splice mutant rejected on its contract
+#20 139.5 calibration: graph-closure mutant rejected on its contract
+#20 168.4 calibration: graph-validation mutant rejected on its contract
+#20 196.2 calibration: graph-name-index mutant rejected on its contract
+#20 222.4 calibration: target-abi mutant rejected on its contract
+#20 248.7 calibration: scheduler-latch mutant rejected on its contract
+#20 248.7 verify gate: OK
+#21 exporting to image
+#21 exporting layers
+#21 exporting layers 85.2s done
+#21 exporting manifest sha256:37ec43005310214cf523847f7a4f974fd95e7e8622352806e93d6c76b142b289 0.0s done
+#21 exporting config sha256:fd80e09f23157e353c0a694e83f526626f5b2c4e1cadd80fe9234bb06529d39c 0.0s done
+#21 exporting attestation manifest sha256:a0ae008ff15589f6038a57edaa63033d764d98f26315f948f6e0abc94db13dde 0.0s done
+#21 exporting manifest list sha256:e4d68a8a1dc36821b188b66f5ccfd53dd5c0c7040125800b8f6c542f0463e460 0.0s done
+#21 naming to docker.io/library/gripsack-verify:latest done
+#21 unpacking to docker.io/library/gripsack-verify:latest
+#21 unpacking to docker.io/library/gripsack-verify:latest 32.0s done
+#22 resolving provenance for metadata file
+ Image gripsack-verify Built
+gate passed: cargo verus verify -p gripsack-policy + seeded-mutant calibration (scripts/check_verus.sh)
+[raw output: artifact://1338]
+
+
+Wall time: 1606.64 seconds

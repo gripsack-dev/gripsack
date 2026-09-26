@@ -2012,27 +2012,46 @@ leaves lacking evidence remain release blockers, not deferred work.
 | Leaf | Class / target | Prerequisite, owner and implementation | State / evidence | Unmet acceptance |
 |---|---|---|---|---|
 | M0-1.3a | NEXT / M0 | None; `gripsack-ir` owns the private `HostName` constructor and E132 allocation, reusing E116 safe-segment grammar. `grip init` and eval share ASCII-safe default sanitization; no IR wire/version or store-hash change. | **Implemented-unverified** at `681e87b`: committed-source Rust host-rule regression 1/1, registry fresh at 37 core IDs and five frontend allocations. | No theorem for arbitrary source/OS path resolution; protected CI and native Mac unrun. |
-| M0-1.3b | NEXT / M0 | M0-1.3a; CLI `eval_repo` admits selected `--host` > `env.toml` default > sanitized name before throttle state, plugin/deno provisioning, build-env injection and frontend/lockfile I/O. `EvalOutcome`, executor `Ctx`, lockfile path/read/write, preview, and linter pin lookup carry `HostName`; lint uses the evaluated selection, not the optional raw flag. No unchecked overload. | **Implemented-unverified** at `681e87b`: original traversal and absolute-host witnesses failed-before; committed-source lockfile roundtrip 1/1 and three real CLI selection/boundary cases passed. | Direct host boundary lacks protected CI/native Mac evidence; §1.4's separate unbounded evaluator output remains open. |
-| M0-1.3c | NEXT / M0 | M0-1.3a; `adopt` validates `--host` before inspection, payload generation and host-file modification, then passes the admitted name through eval and scoped apply without a second string copy. | **Implemented-unverified** at `681e87b`: failing-before fixture wrote repo files and reported a missing `hosts/../modules/evil.ts`; committed-source e2e rejects E132 before generated repo writes. | Protected CI/native Mac unrun; §1.4's separate adopt trust-gate reordering remains open. |
+| M0-1.3b | NEXT / M0 | M0-1.3a; CLI `eval_repo` admits selected `--host` > `env.toml` default > sanitized name before throttle state, plugin/deno provisioning, build-env injection and frontend/lockfile I/O. `EvalOutcome`, executor `Ctx`, lockfile path/read/write, preview, and linter pin lookup carry `HostName`; lint uses the evaluated selection, not the optional raw flag. No unchecked overload. | **Implemented-unverified** at `681e87b`: original traversal and absolute-host witnesses failed-before; committed-source lockfile roundtrip 1/1 and three real CLI selection/boundary cases passed. Host selection re-exercised at `0b92905`. | Direct host boundary lacks protected CI/native Mac evidence. The separate §1.4 output bound is now implemented-unverified at `0b92905`; the R5/M-V7 process/correspondence campaign remains open. |
+| M0-1.3c | NEXT / M0 | M0-1.3a; `adopt` validates `--host` before inspection, payload generation and host-file modification, then passes the admitted name through eval and scoped apply without a second string copy. | **Implemented-unverified** at `681e87b`: failing-before fixture wrote repo files and reported a missing `hosts/../modules/evil.ts`; committed-source e2e rejects E132 before generated repo writes. Host rejection re-exercised at `0b92905`. | Protected CI/native Mac unrun. The separate §1.4 trust-gate reordering is now implemented-unverified at `0b92905`; R1 source-bound approval remains open. |
 | M0-1.3d | NEXT / M0 | M0-1.3a–c; sandboxed offline real CLI cases for `../modules/role`, absolute victim lock, `adopt --host ../…`, valid `role.dev` and default-host version-aware lint. E132 has terminal and `check --json` parity; no native worker/host path is inferred from Linux alone. | **Implemented-unverified** at `681e87b`: SHA-256-checked focused report binds 7/7 distinct checks (`verification/reports/2026-09-26-m0-host-681e87b.log`, SHA `65a710e52fd7d343b96aa3d4c34baa7138b73ed3c15129ff8e585f880680636c`). | Exact-commit protected `test`, native Mac and full M0/M1/M2 release evidence unrun; no waiver. |
 
 ### M0 §1.4 — supervised frontend and adopt trust
 
 Responsibility/dependency map: `gripsack-process` owns process-group
-termination, deadlines and byte/line ceilings; `commands/probe.rs` owns
-frontend JSON reconstruction, diagnostic/error precedence and one
-fixpoint deadline; `commands/adopt/mod.rs` owns trust admission before
-repository inventory/generation. Existing `commands/frontend.rs` builds
-the same sandboxed command, and `commands/mod.rs::trust_gate` remains
-the single trust policy. No IR/wire/schema change or second process
-supervisor.
+termination, deadlines and byte/line ceilings; `commands/frontend.rs`
+owns sandboxed command construction, bounded capture and JSON line
+reconstruction; `commands/probe.rs` owns one fixpoint deadline, parsing
+and diagnostic/error precedence; `commands/adopt/mod.rs` owns trust
+admission before repository inventory/generation. The existing
+`commands/mod.rs::trust_gate` remains the single trust policy. No
+IR/wire/schema change or second process supervisor.
 
 | Leaf | Class / target | Prerequisite, owner and implementation | State / evidence | Unmet acceptance |
 |---|---|---|---|---|
-| M0-1.4a | NEXT / M0 | Existing bounded `gripsack-process::run`; CLI probe fixpoint replaces raw `.output()` with an aggregate timeout and bounded stdout, stderr and JSON line, preserving structured envelopes and bounded traceback reporting. R5/M-V7 own the wider protocol/hostile-descendant campaigns. | **Implementing**; reproduce the former unbounded stdout/stderr path with isolated fake frontend and check both resource-limit failures and ordinary real Deno flow. | Real CLI source-bound negative and positive cases, full gates, required R5 process/proof correspondence, protected CI and native Mac. |
-| M0-1.4b | NEXT / M0 | Existing trust policy; `adopt` calls the gate after repo-shape and typed-host admission, before target inspection, managed-state reads or repo writes. Existing trusted adoption still works. | **Implementing**; reproduce untrusted non-interactive adopt writing generated repo files before a trust failure, then test that no files are written. | Source-bound before/after e2e, full gates, protected CI and native Mac. |
+| M0-1.4a | NEXT / M0 | Existing bounded `gripsack-process::run`; `commands/frontend.rs::run_bounded` uses the supervisor's 16 MiB stdout/stderr, 64 KiB retained tail and full-stdout JSON-line ceiling; `commands/probe.rs::eval_to_fixpoint` gives all probe rounds one ten-minute budget, checks StopReason before parse and retains bounded traceback/structured-envelope semantics. No new wire type. | **Implemented-unverified** at `0b92905`: the previous real CLI consumed 16 MiB+1 stdout/stderr before reporting malformed JSON; the exact committed-source report below exercises both limit failures, the real-Deno two-round probe and the five inherited host paths (12/12 including two Rust cases). Precommit local Rust/e2e/Verus gates passed. | Protected exact-PR-commit Linux/native Mac and required R5/M-V7 identity/FD/grant/descendant/trace/proof campaigns unrun; no filesystem/OS scheduling theorem or release authorization. |
+| M0-1.4b | NEXT / M0 | Existing trust policy; `adopt` calls the gate after repo-shape and typed-host admission, before target inspection, managed-state reads or repo writes. Existing trusted adoption still works; `--yes` does not waive trust. | **Implemented-unverified** at `0b92905`: before the fix, non-interactive untrusted `adopt --yes` changed the host file then returned a trust hint; committed-source e2e now rejects without generated files, preserves original target and passes trusted adopt→rollback. | Protected exact-PR-commit Linux/native Mac unrun; R1 source-bound trust migration remains a separate NEXT blocker. |
 
-The committed source-root fingerprint is
+The exact committed-source report
+`verification/reports/2026-09-26-m0-boundary-0b92905.log`
+(SHA `2048aa748eb5f867ec0412aa5fea74b3007468711be7062e0b4606ef048dca71`)
+binds **12 executed / 12 passed / zero failed or skipped** to
+`0b929052974b63ed7283b086017bff369b9f1a57`, with clean tracked
+source roots and SHA-256 source fingerprint
+`a53a49a4d505774fa43f1882515e4ceeb15890c3542c635deaaad1575c862b6b`.
+It includes two Rust tests, ten sandboxed real CLI cases (two hostile
+frontend outputs use an adversarial fake Deno solely to exercise the
+supervisor; normal probe and adopt paths use real Deno).
+The dirty-worktree five-gate archive
+`verification/reports/2026-09-26-m0-supervision-precommit-five-gates.log`
+(SHA `b47fcb9a803481d70454119bea308fed210f34ce6241485fdff4d30a84d77192`)
+records fresh Rust fmt/clippy/full tests, real e2e **307 passed**, fresh
+Verus **72/0** with seven mutants, and `ts-test`/`model` gate passes
+without fresh RUN output (**[INFERENCE] cached layers**). This is
+*not* exact-commit protected CI, a native Mac/VM result or a required
+R5/M-V7 theorem.
+
+The earlier `681e87b` host-only committed source-root fingerprint is
 `11419c4e1d532fea98b8b2e687f0fed60d964d9388413f4111dfd9a53971968c`.
 The pre-commit worktree five-gate transcript
 `verification/reports/2026-09-26-m0-host-precommit-five-gates.log`

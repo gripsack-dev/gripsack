@@ -553,11 +553,31 @@
      "inputs": "Plan 0048 §1.3 selected Linux-only host-boundary subcase: one typed name grammar, one direct lockfile roundtrip and five real CLI E132/valid-role/default-host-lint cases; parent traversal, absolute victim-lock and adopt witnesses failed-before on the real binary. The broader G-05 no-silent-fallback/privilege/network/build/platform matrix is NOT covered by this report",
      "report_marker": "M0_HOST_BOUNDARY=7",
      "counts": {"executed": 7, "passed": 7, "failed": 0, "skipped": 0}
+    },
+    {
+     "milestone": "A1",
+     "lane": "container-gates",
+     "date": "2026-09-26",
+     "entry_points": ["gripsack::commands::frontend::Frontend::run_bounded", "gripsack::commands::probe::eval_to_fixpoint", "gripsack::commands::adopt::adopt", "gripsack_ir::HostName", "gripsack_exec::lockfile"],
+     "environment": "Linux amd64 Docker Compose v5.5.0; pinned Rust test image; real grip and Deno 2.9.6 with sandboxed HOME; two deliberately adversarial fake Deno transport programs only for output ceiling tests",
+     "command": "docker compose run --build --rm test cargo test --locked -p gripsack-ir host_name::tests; docker compose run --build --rm test cargo test --locked -p gripsack-exec lockfile::tests; docker compose run --build --rm e2e uv run --locked --no-sync pytest -vv test_eval_gate.py test_adopt.py test_linters.py -k 'default_host_path_traversal or absolute_host_cannot or adopt_rejects_invalid or explicit_role_host or default_host_selects_the_same_lockfile or frontend_output_budget or untrusted_adopt_never or adopt_end_to_end_restores_originals or probe_fixpoint_converges'",
+     "result": "pass",
+     "report": "verification/reports/2026-09-26-m0-boundary-0b92905.log",
+     "report_sha256": "2048aa748eb5f867ec0412aa5fea74b3007468711be7062e0b4606ef048dca71",
+     "commit": "0b929052974b63ed7283b086017bff369b9f1a57",
+     "source_reuse_sha256": "a53a49a4d505774fa43f1882515e4ceeb15890c3542c635deaaad1575c862b6b",
+     "source_reuse_reason": "Only evidence/plan/report metadata follows this committed-source 12-case runner; tracked SOURCE_ROOTS are byte-identical until the next code change",
+     "cases_covered": [],
+     "kind": "runner",
+     "tool_versions": "Docker Compose v5.5.0; Rust 1.98.0; Python 3.13.15; pytest 9.1.1; Deno 2.9.6 in the e2e image",
+     "inputs": "Plan 0048 §§1.3–1.4 selected Linux-only controls: one HostName grammar, one direct lockfile roundtrip, five retained host/adopt/default-linter cases, two hostile 16MiB+1 stdout/stderr limit cases, non-interactive untrusted adopt and two normal real-Deno probe/adopt cases. None covers the full global fallback/privilege/network/bootstrap/Mac matrix",
+     "report_marker": "M0_BOUNDARY=12",
+     "counts": {"executed": 12, "passed": 12, "failed": 0, "skipped": 0}
     }
    ],
    "lane_status": {"container-gates": "in_progress", "pure": "in_progress"},
    "status_history": [{"date": "2026-09-26", "from": "pending", "to": "in_progress"}],
-   "implementation_notes": "Typed host-name admission and selected default-host lint pinning are source-bound local controls for plan 0048 §1.3, not a verified G-05 or proof of filesystem containment. No silent host/privileged/network fallback, builder bootstrap and per-platform honest-capability cases are conjunctive and remain open, with protected CI/native Mac missing. Historical Markdown-only H0/A0 claims remain retracted.",
+   "implementation_notes": "Typed host-name admission, selected default-host lint pinning, bounded frontend evaluation and pretrust adoption are committed-source local controls for plan 0048 §§1.3–1.4. Two partial A1 receipts are not a verified G-05 or proof of filesystem/process containment. No silent host/privileged/network fallback, builder bootstrap and per-platform honest-capability cases are conjunctive and remain open, with protected CI/native Mac/VM missing. Historical Markdown-only H0/A0 claims remain retracted.",
    "historical_claims": [
     {
      "lane": "container-gates",
