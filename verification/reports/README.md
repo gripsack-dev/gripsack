@@ -183,11 +183,12 @@ and actual release gates remain open.
 
 | report | sha256 | observed execution |
 |---|---|---|
-| `2026-09-26-m0-archive-links-db1e91b.log` | `d270c6818d86fa21939b727feb1dd2b0a0171e5235c92f09eea00df07e87a6b1` | Exact committed source `db1e91b`: the demonstrated composed-link fixtures (`d/up → ..`, `leak → d/up/../sentinel`) fail `UnsafeArchive` in **both member orders** for TAR and ZIP with no destination created, after failing-before as `Ok(())` on the pre-patch tree; cycles/dangling links reject; valid forward/internal composition, hard-link-before-file and shared `validate_tree`/`copy_tree_filtered` behavior pass. Focused container run 68/68; full six gates (Rust/TS/e2e **320/320**/TLC/Verus **72/0**+7 mutants/fuzz replay incl. both new corpus seeds) ran on the identical pre-commit bytes. Acquisition-side containment only; cap-std root pinning enforced by construction, not machine-checked |
+| `2026-09-26-m0-archive-links-db1e91b.log` | `d270c6818d86fa21939b727feb1dd2b0a0171e5235c92f09eea00df07e87a6b1` | Exact committed source `db1e91b`: the demonstrated composed-link fixtures (`d/up → ..`, `leak → d/up/../sentinel`) fail `UnsafeArchive` in **both member orders** for TAR and ZIP with no destination created, after failing-before as `Ok(())` on the pre-patch tree; cycles/dangling links reject; valid forward/internal composition, hard-link-before-file and shared `validate_tree`/`copy_tree_filtered` behavior pass. Focused container run 68/68; six gates (Rust/TS/e2e **320/320**/TLC/Verus **72/0**+7 mutants/fuzz replay incl. both new corpus seeds) on the identical pre-commit bytes; required PR CI at the evidence head `23d4940` **passed** (run [`36257568636`](https://github.com/gripsack-dev/gripsack/actions/runs/36257568636)). Acquisition-side containment only; cap-std root pinning enforced by construction, not machine-checked |
 
 Acquisition-side containment per plan/0048 §2.1: no deploy-side
-ownership change, no protected-CI attestation at this head, no archive
-containment theorem, and no A2/edition-5 row is verified by this receipt.
+ownership change, no archive containment theorem, and no A2/edition-5
+row is verified by this receipt (the passing required CI covers the
+whole tree at `23d4940`, not a containment-specific proof job).
 
 ## H0 edition-5 inventory — source-bound structure, not semantic closure
 

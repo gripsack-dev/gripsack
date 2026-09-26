@@ -100,7 +100,8 @@ the fetcher registry stay the north star.
   e2e **320/320**, TLC, Verus **72/0**+7 mutants, fuzz replay). Receipt:
   `verification/reports/2026-09-26-m0-archive-links-db1e91b.log`.
   Acquisition-side containment only — no deploy ownership change, no
-  containment theorem, no protected-CI attestation at that head.
+  containment theorem; required PR CI at the evidence head `23d4940`
+  later passed (run 36257568636).
 
 ## Settled rejections (all eras)
 
