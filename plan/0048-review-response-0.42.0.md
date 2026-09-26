@@ -2172,6 +2172,10 @@ then **failed required `test`**: the self-update test rewrote and
 executed a newly created shell script in place; the container returned
 `ETXTBSY` (`Text file busy`) at `payload.rs:127`. The real fixture now
 stages and closes each script inode before renaming it to the executable
-path; this is a test-fixture correction, not a production retry or
-suppressed process error. The result remains a blocking CI failure
-until the new source passes a fresh required test and native Mac job.
+path; this corrects test setup, not production retry/error suppression.
+At committed `70c5502` the local Rust fmt/clippy/tests, focused probe,
+full real e2e **319/319**, TLC and Verus **72/0** with seven mutants pass.
+The old required failure remains a historical result; new manual CI
+run `36231520581` must finish `test` and native arm64 Mac before its
+current-source platform claims are made. It cannot substitute for
+branch-protection enforcement or R5/M-V7 proof.
