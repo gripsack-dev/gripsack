@@ -12,7 +12,7 @@ from verus_evidence import Evidence, EvidenceError, self_check
 
 ROOT = Path(__file__).resolve().parent.parent
 CRATE = ROOT / "crates/gripsack-policy"
-MIN_OBLIGATIONS = 72
+MIN_OBLIGATIONS = 80
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
@@ -25,6 +25,9 @@ FAMILIES = {
     "merge": tuple("merge::" + name for name in (
         "splice_bytes", "lemma_rest_is_gaps", "lemma_splice_canonical", "lemma_splice_identity",
         "lemma_gaps_end_with_tail", "lemma_splice_preserves_edges",
+    )),
+    "merge-scanner": tuple("merge::scanner::" + name for name in (
+        "span_text", "lemma_ascii_successor", "next_line_end", "scan_admits_splice", "scan",
     )),
     "graph": ("graph::build_closure", "graph::build_only_members", "graph::lemma_reachable_visited"),
     "graph-roles": ("graph::roles::project_graph_roles", "graph::roles::GraphRole::is_dependency"),
@@ -55,6 +58,9 @@ MUTANTS = (
     Mutant("ownership-drift", "ownership.rs", "ownership::plan_copy", "Some((written, false)) if live == written => CopyPlan::Update,", "Some((written, true)) if live == written => CopyPlan::Update,"),
     Mutant("gc-roots-in-deletion", "retention.rs", "retention::plan_delete", "if !contains_identity(referenced, c) {", "if contains_identity(referenced, c) {"),
     Mutant("merge-splice", "merge.rs", "merge::splice_bytes", "    out.extend_from_slice(&text[cursor..]);", ""),
+    Mutant("merge-scanner-utf8", "merge/scanner.rs", "merge::scanner::scan",
+           "span: Span { start: active.start, end },",
+           "span: Span { start: active.start + 1, end },"),
     Mutant("graph-closure", "graph.rs", "graph::build_closure", "                    result.push(target);", ""),
     Mutant("graph-validation", "graph/roles.rs", "graph::roles::project_graph_roles", "RoleDecision { build: false, required_validation: true },", "RoleDecision { build: false, required_validation: false },"),
     Mutant("graph-name-index", "graph/name_index.rs", "graph::name_index::bind_output_index", "    let same_name = names[position] == declared;", "    let same_name = true;"),

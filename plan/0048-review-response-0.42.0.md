@@ -2332,13 +2332,31 @@ theorem, whole acquisition-queue/OS timing proof or release approval.
 
 The selected claim is `MERGE-SCAN-001`: accepted scans supply sorted,
 disjoint, in-bounds, UTF-8-aligned spans satisfying the existing splice
-kernel's admission predicate. The intended production owner is
+kernel's admission predicate. The production owner is now
 `gripsack-policy::merge::scanner::{scan, next_line_end, span_text}`.
 The actual line walk, open/close state, legacy-header position and output
-append move there; `gripsack-exec::managed_blocks::parse` retains lexical
-marker recognition and diagnostic rendering. The theorem must hold for
-every classifier result, without assuming that a classifier supplies
-valid ranges. No new marker grammar, second scanner or trusted scanner
-body is authorized. Actual grammar/foreign-byte cases and a named
-range/UTF-8 mutant remain required before this claim is checked.
+append moved there; `gripsack-exec::managed_blocks::parse` retains lexical
+recognition and diagnostic rendering. The theorem holds for every returned
+classification without assuming that a classifier supplies valid ranges.
+The old range-building loop and its duplicate state/type definitions are
+gone. No new marker grammar or trusted scanner body was introduced.
+
+The final local Verus gate reports **80 verified, 0 errors**, including
+five named scanner queries. `scan_admits_splice` bridges the exact span
+projection to the existing kernel predicate. Advancing an emitted start
+by one byte fails only `merge::scanner::scan` at the loop invariant;
+all **11** semantic/unrelated-failure calibrations and ten evidence-gate
+negatives passed. Rust policy/exec tests passed **56/56** and real
+merge/ownership/native-file CLI flows **32/32**. The standalone actual CLI
+also preserved exact two-/three-byte foreign text around four-byte U+10437
+marker prefixes, duplicates, CRLF and a non-newline tail through update/prune.
+
+`verification/reports/2026-09-27-m-v3-local-proof.log` preserves the proof
+and actual CLI output (SHA-256
+`6574e09fb2cc3d37782c01bb2fb9e50ff008db9e42a1e71b127eced2a883cfb9`).
+This is working-tree evidence; final container/source-bound evidence
+remains to be recorded. Lexical accuracy, metadata authenticity and
+OS behavior are explicitly outside this structural proof, not assumed
+away. Existing malformed/ambiguous grammar cases and the defensive
+fallible splice conversion remain in place. No fuzz was run.
 

@@ -22,6 +22,10 @@ User-visible changes per release. Design archaeology lives in
   The `tlaps` Compose service pins the prover/backend bundle and joins the
   required CI job. This does not claim generalized repeated recovery,
   filesystem refinement or completion of plan/0048 M-V6.
+- Managed-block scanning now uses a production state machine proved to emit
+  sorted, disjoint, in-bounds and UTF-8-aligned ranges satisfying the existing
+  splice contract. The marker grammar is unchanged and separately exercised
+  through real update/prune flows; no grammar or filesystem proof is claimed.
 
 ### Fixed
 

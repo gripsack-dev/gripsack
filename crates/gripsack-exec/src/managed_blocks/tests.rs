@@ -105,6 +105,7 @@ fn markers_roundtrip_across_comment_styles_and_legacy_metadata() {
         ("x.html", None, "<!--"),
         ("x.lua", None, "--"),
         ("rc", Some("#!"), "#!"),
+        ("rc", Some("\u{10437}"), "\u{10437}"),
     ] {
         let payload = "echo 'docs say <<< gripsack <<< ends a block'\n";
         let output = ManagedBlockSet::parse("user\n", "shell")
@@ -123,10 +124,25 @@ fn markers_roundtrip_across_comment_styles_and_legacy_metadata() {
 }
 
 #[test]
+fn only_the_first_body_line_can_be_a_legacy_header() {
+    let rendered = block("shell", "body", 0o644);
+    let header = rendered.lines().nth(1).unwrap();
+    let first = ManagedBlockSet::parse(&rendered, "shell").unwrap();
+    assert_eq!(first.blocks()[0].content, "body\n");
+    assert!(!first.blocks()[0].edited());
+
+    // An intervening empty body line makes the same text ordinary content.
+    let later = rendered.replacen(header, &format!("\n{header}"), 1);
+    let later = ManagedBlockSet::parse(&later, "shell").unwrap();
+    assert_eq!(later.blocks()[0].content, format!("\n{header}\nbody\n"));
+    assert!(later.blocks()[0].edited());
+}
+
+#[test]
 fn broken_scanner_utf8_boundary_returns_error_instead_of_panicking() {
-    // The internal scanner contract is deliberately violated without
-    // violating byte-span ordering/bounds: the missing Layer-2 proof must
-    // not let a future scanner regression panic during host mutation.
+    // Deliberately bypass the checked scanner without violating byte-span
+    // ordering/bounds. The defensive wrapper must still classify an internal
+    // caller's invalid UTF-8 span instead of panicking during host mutation.
     let blocks = ManagedBlockSet {
         text: "é",
         blocks: vec![ManagedBlock {

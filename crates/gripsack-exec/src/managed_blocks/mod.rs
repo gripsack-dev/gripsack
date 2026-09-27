@@ -47,7 +47,7 @@ impl<'a> ManagedBlockSet<'a> {
             .into_iter()
             .map(|block| ManagedBlock {
                 content_hash: content_hash(block.content),
-                range: block.range,
+                range: block.span.start..block.span.end,
                 content: block.content,
                 recorded_hash: block.recorded_hash,
                 mode: block.mode,
@@ -137,9 +137,9 @@ impl<'a> ManagedBlockSet<'a> {
     }
 
     fn splice(&self, replacement: &str) -> Result<String, MergeParseError> {
-        // The byte-splice theorem assumes admitted spans. Until the scanner
-        // correspondence is proved, a violated UTF-8 boundary is a classified
-        // error, never a panic that strands an in-flight apply.
+        // The production scanner proves span order, bounds and UTF-8
+        // alignment. Keep the final conversion fallible as a defensive
+        // boundary for callers that bypass that construction.
         let spans: Vec<gripsack_policy::merge::Span> = self
             .blocks
             .iter()

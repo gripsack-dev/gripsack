@@ -353,3 +353,15 @@ The first two reports are pre-commit transcripts; the final focused
 receipt binds its executed source. None is protected CI, an M-V7 theorem
 or release approval. No fuzz or corpus replay ran.
 
+
+## M-V3 structural scanner — local proof and runtime bridge
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-27-m-v3-local-proof.log` | `6574e09fb2cc3d37782c01bb2fb9e50ff008db9e42a1e71b127eced2a883cfb9` | Fresh complete production policy proof: **80 verified/0 errors**, five named scanner queries, **11** calibrations and ten evidence-gate negatives. The one-byte range-start mutation fails only `merge::scanner::scan`'s invariant. Actual CLI output demonstrates update/prune preserving foreign Unicode/CRLF/final-tail bytes around U+10437 marker prefixes and duplicate blocks. |
+
+Working-tree evidence, not exact-source CI or release closure. The theorem
+covers the actual line/state/range implementation and its splice admission;
+it does not prove lexical recognition, metadata authenticity or OS behavior.
+No fuzz or corpus replay was run.
+

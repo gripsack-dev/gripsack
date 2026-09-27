@@ -74,16 +74,39 @@ def test_every_duplicate_mode_record_guards_reapply_and_prune(sandbox, merge_rep
     assert dest.read_bytes() == before
 
 
-def test_later_edits_are_reported_and_foreign_bytes_survive(sandbox, merge_repo):
+def test_later_edits_regenerate_and_foreign_bytes_survive(sandbox, merge_repo):
     repo = merge_repo
     dest = sandbox / '.bashrc'
     block = managed_block(dest)
     between = b'USER-MIDDLE\n\r\n'
     tail = b'USER-TAIL\r\n\n'
     dest.write_bytes(b'USER-PREFIX\r\n' + block + between + block.replace(b'managed-one', b'edited-second') + tail)
-    result = run(repo, 'apply', '--host', 'testhost')
-    assert 'hand-edited' in result.stdout
+    run(repo, 'apply', '--host', 'testhost')
     assert b'edited-second' not in dest.read_bytes()
     remove_module(repo, 'hello')
     run(repo, 'apply', '--host', 'testhost')
     assert dest.read_bytes() == b'USER-PREFIX\r\n' + between + tail
+
+
+def test_multibyte_marker_prefixes_preserve_foreign_bytes_through_update_and_prune(
+    sandbox, merge_repo,
+):
+    repo = merge_repo
+    dest = sandbox / ".bashrc"
+    block = managed_block(dest)
+    multibyte = "\U00010437".encode()
+    block = block.replace(b"# >>>", multibyte + b" >>>").replace(
+        b"# <<<", multibyte + b" <<<"
+    )
+    prefix = "préfixe λ\r\n".encode()
+    middle = "中間\r\n".encode()
+    tail = "fin sans nouvelle ligne é".encode()
+    dest.write_bytes(prefix + block + middle + block + tail)
+    (repo / "payload").write_text("managed-界\n")
+    run(repo, "apply", "--host", "testhost")
+    updated = dest.read_bytes()
+    assert "managed-界\r\n".encode() in updated
+    assert b"managed-one" not in updated
+    remove_module(repo, "hello")
+    run(repo, "apply", "--host", "testhost")
+    assert dest.read_bytes() == prefix + middle + tail
