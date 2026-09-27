@@ -135,8 +135,11 @@ tag; validated rate budgets and one absolute capability/admission/exchange
 deadline replace panic/unbounded-wait paths. Corrupt saved token balances
 and timestamps are admitted without arithmetic panic. Local Rust
 process/fetch **90/90**, real CLI **55/55** and six standalone before/after
-witnesses passed after correction. This does not discharge M-V7 or
-qualify a release; final container/source-bound evidence is being recorded.
+witnesses passed after correction. The same 90 Rust + 55 CLI cases now
+bind exact source `0a960e5` with clean source roots in the report index.
+Final local gates passed, including full CLI **348/348** and Verus
+**72/0** plus ten calibrations. This does not discharge M-V7 or qualify
+a release; protected CI and native-platform evidence remain open.
 
 ## Security maintenance (non-release changes)
 

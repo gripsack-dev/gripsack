@@ -345,7 +345,11 @@ are archived above). No fuzz or workflow dispatch occurred.
 | report | sha256 | observed execution |
 |---|---|---|
 | `2026-09-27-plugin-admission-local-smoke.log` | `de0ec5c7d318724929e72f00df801be51e5a50e39cebbc06b81e96d84b4938e4` | Six actual CLI before/after witnesses: NaN panic, fractional and exhausted-hourly waits, same-tag wrong-origin execution, negative-token Duration overflow and saved-timestamp SystemTime overflow. After correction, invalid rates follow the existing ignored-budget policy, wrong-origin cache execution is refused, and exhausted/corrupt-state budgets fail promptly without panic. Sandboxed HOME/local plugin/real Deno; a refusing loopback proxy isolates provisioning. |
+| `2026-09-27-plugin-admission-local-gates.log` | `96ee817f00ee553a77781eeedcb3ec1ffb023b847400029a2a9fd85207e88745` | All six local Compose gates passed. Fresh Rust/Loom, complete CLI **348/348**, Verus **72/0** with ten calibrations and ten evidence-gate negatives; unchanged TS/TLC/TLAPS build RUNs were cached. Combined pre-commit text transcript, not an exact-source CI receipt. |
+| `2026-09-27-plugin-admission-0a960e5.log` | `b3af836161941d6dca7fa808af052313b96cb12f8f2beb3ed8359a853261c752` | Initial committed-source attempt: fresh Rust **90/90** passed; the CLI version preflight used nonexistent PATH `deno` and exited 127 before any CLI test. **Not a passing combined receipt.** |
+| `2026-09-27-plugin-admission-0a960e5-verified.log` | `34e4c3551483bc61d2003eb98f3cf5d91837b33eddc5dde137e0ce211e0e762b` | Exact source `0a960e5aec26ca8d13789790f01f5589881e348f`, fingerprint `86c17e0dc066c8ffba72e04955785eb7790f2ee8ed7ebfbcc9d3d372ed154e2b`, clean source roots. Retains the successful Rust **90/90** command verbatim and adds a fresh corrected CLI **55/55** execution using configured Deno and uv. Only the failed CLI group was retried; all counted results come from actual commands. |
 
-This report is an uncommitted-tree smoke transcript, not exact-source
-CI, an M-V7 theorem or release approval. No fuzz or corpus replay ran.
+The first two reports are pre-commit transcripts; the final focused
+receipt binds its executed source. None is protected CI, an M-V7 theorem
+or release approval. No fuzz or corpus replay ran.
 

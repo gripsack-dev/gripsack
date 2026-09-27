@@ -2314,7 +2314,31 @@ plugin cases. The six original standalone CLI witnesses now terminate:
 invalid rates no longer panic/park, mismatched origins fail without
 executing/deploying the cached plugin, and exhausted valid/corrupt-state
 budgets fail promptly. The real two-module regression also repairs and
-re-applies successfully after budget failure. Final container and
-committed-source evidence are still required. These are M0 §2.2 runtime
-results, not an M-V7 theorem or whole acquisition-queue/OS timing proof.
+re-applies successfully after budget failure. All six final local Compose
+gates passed: fresh Rust/Loom, **348/348** real CLI and Verus **72/0** plus
+ten calibrations; unchanged TS/TLC/TLAPS RUN layers were cached.
+The committed-source focused receipt at
+`0a960e5aec26ca8d13789790f01f5589881e348f` is
+`verification/reports/2026-09-27-plugin-admission-0a960e5-verified.log`
+(SHA-256 `34e4c3551483bc61d2003eb98f3cf5d91837b33eddc5dde137e0ce211e0e762b`):
+fingerprint `86c17e0dc066c8ffba72e04955785eb7790f2ee8ed7ebfbcc9d3d372ed154e2b`,
+clean source roots, fresh **90 Rust + 55 CLI** cases. Its initial CLI
+version preflight used a missing PATH `deno` and ran no CLI tests; that
+failed log is retained, and only the CLI group was retried with the image's
+configured Deno/uv command. These are M0 §2.2 runtime results, not an M-V7
+theorem, whole acquisition-queue/OS timing proof or release approval.
+
+### M-V3 — production scanner proof boundary
+
+The selected claim is `MERGE-SCAN-001`: accepted scans supply sorted,
+disjoint, in-bounds, UTF-8-aligned spans satisfying the existing splice
+kernel's admission predicate. The intended production owner is
+`gripsack-policy::merge::scanner::{scan, next_line_end, span_text}`.
+The actual line walk, open/close state, legacy-header position and output
+append move there; `gripsack-exec::managed_blocks::parse` retains lexical
+marker recognition and diagnostic rendering. The theorem must hold for
+every classifier result, without assuming that a classifier supplies
+valid ranges. No new marker grammar, second scanner or trusted scanner
+body is authorized. Actual grammar/foreign-byte cases and a named
+range/UTF-8 mutant remain required before this claim is checked.
 
