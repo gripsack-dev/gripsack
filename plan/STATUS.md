@@ -159,8 +159,42 @@ entry rejections, 173 truncated prefixes and 139 real recovery-effect
 rejections. The required test gate now calibrates missing-previous→null
 against the actual recovery oracle. Ten real transaction flows and a
 standalone cold-home missing/null lifecycle passed. This is bounded
-property/refinement evidence, not a serde proof; final source-bound and
-release qualification remain open. No fuzz or corpus replay ran.
+property/refinement evidence, not a serde proof. The preserved receipt now
+binds source `c92e84e` with clean roots: store **69/69**, the seven-property
+campaign/calibration and CLI **10/10**
+(`verification/reports/2026-09-27-m-v4-c92e84e.log`). Release/platform
+qualification remains open. No fuzz or corpus replay ran.
+
+**M-V5 production-root continuation:** the recorded store-root symlink
+failure is corrected: GC pins generation/store/prior directories and
+admits all manifests/candidate/size reads before pruning. Typed generation
+IDs preserve numeric persisted formats; borrowed/owned inventory admission
+and exact oldest-prefix pruning pass the production Verus gate
+(**92/0**, **13** attributed calibrations). Real-collector properties cover
+**7** retained histories, **8** recovery refusals and **1** root-replacement
+interleaving; a dropped production build root fails the independent byte
+oracle. Five standalone CLI smoke cases passed, including retained old
+current, expired history and generation-ID exhaustion. See `plan/0048`
+M-V5.1–4 and the report index for source binding and final gate observations.
+M-V6/M-V7, R2 ownership/receipt work, other NEXT leaves and native/protected-CI
+release qualification remain open; no fuzz or corpus replay is claimed.
+
+Final M-V5 local gates passed: Rust/Loom/journal/GC, real CLI **362/362**
+and Verus **92/0** plus **13** calibrations. Unchanged TS/TLC/TLAPS gate
+layers were cached. The report index binds the dirty candidate and records
+the three pre-existing ignored BuildKit integration cases separately.
+Next ready proof packet is M-V6; this is not a whole-plan or release closure.
+
+**Active release continuation (2026-09-27):** the owner clarified that the
+current assistant must implement and land the handover, then cut qualified
+release(s). The additional agent handles post-release fuzzing and repairs.
+[`verification/release-handoff.md`](../verification/release-handoff.md)
+remains a tracking/runbook artifact, not a transfer of unfinished non-fuzz work.
+`REL-FUZZ-2026-09-27` covers this continuation's feedback releases only; fuzz
+is **not run**, not passed. All other gates remain required. A local explicit
+manual-waiver CI path and fail-closed aggregate now pass 4 positive/64 negative
+cases plus four CLI smokes. Live PR/protection qualification remains open;
+normal PR/main CI still runs fuzz unless skipped deliberately. No release yet.
 
 ## Security maintenance (non-release changes)
 

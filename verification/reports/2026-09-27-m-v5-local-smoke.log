@@ -1,0 +1,246 @@
+BASE_COMMIT=c92e84e60c31f13a544e00f7d2f6f3c8b94ce4cd
+SOURCE_FILES_SHA256=581f470d6761f6e4e6c839f9dbb91a61604c3ef2dd883e10db196ad9e92a63f6
+TRACKED_PATCH_SHA256=87b991bc888af8342823771505a2d30bdadd3526c8cc81b5524967d751d6b5e2
+SOURCE_STATE=working_tree_with_new_sources
+FUZZ=not_run_owner_instruction
+SCOPE=Linux amd64 GC authority, rollback/current lifetime, orphan symlink and exhausted generation ID
+RUNNER_COMMAND=docker compose run --build --rm --volume /tmp/gripsack-mv5-smoke.py:/tmp/gripsack-mv5-smoke.py:ro e2e python3 /tmp/gripsack-mv5-smoke.py
+
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.7s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 0.6s
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.6s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 DONE 0.0s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#10 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.1s done
+#10 DONE 0.1s
+
+#11 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#11 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#11 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.1s done
+#11 DONE 0.2s
+
+#8 [internal] load build context
+#8 transferring context: 1.24MB 0.3s done
+#8 DONE 0.3s
+
+#12 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#12 CACHED
+
+#13 [builder  7/10] COPY fuzz ./fuzz
+#13 CACHED
+
+#14 [builder  9/10] COPY typescript ./typescript
+#14 CACHED
+
+#15 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#15 CACHED
+
+#16 [e2e 11/12] COPY examples ./examples
+#16 CACHED
+
+#17 [builder  4/10] WORKDIR /app
+#17 CACHED
+
+#18 [builder 10/10] COPY scripts ./scripts
+#18 CACHED
+
+#19 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#19 CACHED
+
+#20 [builder  8/10] COPY schema ./schema
+#20 CACHED
+
+#21 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#21 CACHED
+
+#22 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#22 CACHED
+
+#23 [e2e  2/12] WORKDIR /app
+#23 CACHED
+
+#24 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#24 CACHED
+
+#25 [e2e 10/12] COPY e2e ./e2e
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#27 CACHED
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 CACHED
+
+#29 [bin 1/1] RUN cargo build --locked -p gripsack
+#29 CACHED
+
+#30 [e2e  9/12] RUN cd e2e && uv sync --locked
+#30 CACHED
+
+#31 [builder  6/10] COPY crates ./crates
+#31 CACHED
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 CACHED
+
+#33 exporting to image
+#33 exporting layers done
+#33 exporting manifest sha256:bc034f2ee6786a630fbb091926d274c8f0a53469d1693bb9b673bb9815bb56d2 done
+#33 exporting config sha256:37e430f23693c2a7197a669b26694b4cc268548f8f5d85c3ca80cbbfb332202a done
+#33 exporting attestation manifest sha256:9683c01b0944b2d3065ffb9ba28ce50157c8b9dc9ce3802f1d36e57ac658de16 0.1s done
+#33 exporting manifest list sha256:ded7413b8f185bdec20f82b736d67c5c29614d7ecd981d95da80dbe8a9b80d7a
+#33 exporting manifest list sha256:ded7413b8f185bdec20f82b736d67c5c29614d7ecd981d95da80dbe8a9b80d7a 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.0s done
+#33 DONE 0.2s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-b637770fdf7d Creating 
+ Container gripsack-e2e-run-b637770fdf7d Created 
+SMOKE_SOURCE_SHA256=308e6c107b5f26e08413e4ed6d6d8f885e32f8e32a81d98a24ed8d00c8897cc2
+$ grip apply --host testhost
+  demo ✓ linked demo → ~/.owned
+[1m[32mapplied —[39m[0m generation 1 active ([2m0.2s[0m)
+
+$ grip apply --host testhost
+  demo ✓ linked demo → ~/.owned
+[1m[32mapplied —[39m[0m generation 2 active ([2m0.2s[0m)
+
+$ grip gc --dry-run
+error: io: Not a directory (os error 20)
+
+$ grip gc
+error: io: Not a directory (os error 20)
+
+SMOKE_ROOT_REFUSAL=2 external_sentinel_retained=true generation_history_unchanged=true
+$ grip rollback 1
+rolled back to generation 1
+
+$ grip gc --dry-run
+gc (dry run): nothing deleted
+gc: collected /tmp/gripsack-gc-lifecycle-bxiz3a6_/state/store/orphan-link
+
+$ grip gc
+gc: collected /tmp/gripsack-gc-lifecycle-bxiz3a6_/state/store/orphan-link
+
+SMOKE_OLD_CURRENT_PROTECTED=true orphan_link_only_removed=true
+$ grip rollback 2
+rolled back to generation 2
+
+$ grip gc
+gc: pruned generations 1
+gc: collected /tmp/gripsack-gc-lifecycle-bxiz3a6_/state/store/83209dca1d6cc9d7818351c83118c278-demo
+3.0 B freed
+
+SMOKE_EXPIRED_HISTORY_COLLECTED=true current_payload_retained=true
+$ grip apply --host testhost
+error[E201]: io: generation identity exhausted
+
+SMOKE_GENERATION_OVERFLOW_REFUSED=true current_unchanged=true
+SMOKE_RESULT={"executed": 5, "failed": 0, "fuzz": "not_run_owner_instruction", "passed": 5}
+
+
+SMOKE_SCRIPT_BYTES_BEGIN
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+
+print('SMOKE_SOURCE_SHA256=' + hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+with tempfile.TemporaryDirectory(prefix='gripsack-gc-lifecycle-') as directory:
+    root = Path(directory)
+    home = root / 'state'
+    repo = root / 'repo'
+    (repo / 'modules').mkdir(parents=True)
+    (repo / 'hosts').mkdir()
+    (repo / 'env.toml').write_text('[env]\nname="gc-smoke"\n[settings]\nkeep_generations=1\n')
+    (repo / 'modules/demo.ts').write_text('import { module, symlink } from "@gripsack/core";\nexport default module("demo", { install: { payload: symlink("~/.owned") } });\n')
+    (repo / 'hosts/testhost.ts').write_text('import { defineEnv } from "@gripsack/core";\nimport demo from "../modules/demo.ts";\nexport default defineEnv(() => ({ modules: [demo] }));\n')
+    env = dict(os.environ, HOME=str(root), GRIPSACK_HOME=str(home), GRIPSACK_TRUST_ALL='1', NO_COLOR='1', XDG_CONFIG_HOME=str(root / 'config'), XDG_CACHE_HOME=str(root / 'cache'))
+    env.pop('XDG_DATA_HOME', None)
+    def run(*args, success=True):
+        result = subprocess.run(['grip', *args], cwd=repo, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
+        print('$ grip ' + ' '.join(args))
+        print(result.stdout)
+        if (result.returncode == 0) != success:
+            raise RuntimeError(f'unexpected exit {result.returncode}')
+        return result
+    for content in ['one', 'two']:
+        (repo / 'payload').write_text(content)
+        run('apply', '--host', 'testhost')
+    manifests = [(home / f'generations/{n}/manifest.json').read_bytes() for n in [1, 2]]
+    (home / 'store').rename(home / 'saved-store')
+    outside = root / 'outside'
+    (outside / 'foreign-directory').mkdir(parents=True)
+    sentinel = outside / 'foreign-directory/sentinel'
+    sentinel.write_text('foreign fixture')
+    (home / 'store').symlink_to(outside, target_is_directory=True)
+    for dry_run in [True, False]:
+        run('gc', *(['--dry-run'] if dry_run else []), success=False)
+        assert sentinel.read_text() == 'foreign fixture'
+        assert [(home / f'generations/{n}/manifest.json').read_bytes() for n in [1, 2]] == manifests
+    print('SMOKE_ROOT_REFUSAL=2 external_sentinel_retained=true generation_history_unchanged=true')
+    (home / 'store').unlink()
+    (home / 'saved-store').rename(home / 'store')
+    run('rollback', '1')
+    assert (root / '.owned').read_text() == 'one'
+    orphan = home / 'store/orphan-link'
+    orphan.symlink_to(outside, target_is_directory=True)
+    run('gc', '--dry-run')
+    assert orphan.is_symlink()
+    run('gc')
+    assert not orphan.is_symlink() and sentinel.read_text() == 'foreign fixture'
+    assert (home / 'generations/1/manifest.json').exists()
+    assert (home / 'generations/2/manifest.json').exists()
+    print('SMOKE_OLD_CURRENT_PROTECTED=true orphan_link_only_removed=true')
+    run('rollback', '2')
+    run('gc')
+    assert not (home / 'generations/1').exists()
+    assert (root / '.owned').read_text() == 'two'
+    print('SMOKE_EXPIRED_HISTORY_COLLECTED=true current_payload_retained=true')
+    (home / 'generations/high-water').write_text(str(2**64 - 1))
+    (repo / 'payload').write_text('three')
+    run('apply', '--host', 'testhost', success=False)
+    assert (root / '.owned').read_text() == 'two'
+    assert (home / 'current').readlink() == Path('generations/2')
+    print('SMOKE_GENERATION_OVERFLOW_REFUSED=true current_unchanged=true')
+    print('SMOKE_RESULT=' + json.dumps({'executed': 5, 'passed': 5, 'failed': 0, 'fuzz': 'not_run_owner_instruction'}, sort_keys=True))
+
+
+SMOKE_SCRIPT_BYTES_END

@@ -33,6 +33,10 @@ milestones in §9, using the original packets in §§1–8 and additions in
   blocks release unless the owner explicitly changes that requirement.
   Readability, semantic types and cohesive modules/crates are deliverables,
   not optional cleanup. These directives supersede older loose deferrals.
+- **2026-09-27 owner exception:** §15 records `REL-FUZZ-2026-09-27`,
+  waiving fuzz/replay only for the next feedback release. Every other
+  required gate stays in force. The executable missing-gates handoff is
+  [verification/release-handoff.md](../verification/release-handoff.md).
 
 ## Baseline gates (all green at review time)
 
@@ -2403,5 +2407,155 @@ It replaces a wording assertion that could not distinguish parser
 rejection from a later ambiguous classification. The standalone CLI
 observation is `verification/reports/2026-09-27-m-v4-local-smoke.log`
 (SHA-256 `44ff13beb7b7d53c092b99c4b09470ebed08314d16cb34d90a6c89136ec6f9cc`).
-Final container/source-bound evidence remains to be recorded.
+The preserved exact-source receipt is
+`verification/reports/2026-09-27-m-v4-c92e84e.log`, SHA-256
+`229e44142611105a202ef0e21eeb447d13ae6a4a63b075657e5cd5e58cb999c6`.
+It records source `c92e84e60c31f13a544e00f7d2f6f3c8b94ce4cd`,
+fingerprint `e49db03e34552dca3d2ccc074a74bd90578f43ec0e5868313d2a7e6a09b2c5d0`,
+clean source roots before/after, **69/69** store tests, the seven-property
+decoder campaign plus its attributable missing-field mutant, and **10/10**
+real transaction CLI cases. This completes that local receipt, not
+protected CI, native Mac, a serde theorem or release qualification.
+
+### M-V5 — GC authority, retained roots and typed pruning
+
+Continuation baseline: `c92e84e` plus the existing untracked M-V4
+receipt and `2026-09-27-gc-root-before.log`. The latter is an actual
+failing-before CLI observation: a symlink substituted for `store/`
+redirected deletion to an external sandbox fixture and generation 1
+was already pruned. Preserve that evidence; do not rerun the defect
+merely to reconfirm it. No fuzzing or corpus replay is authorized in
+this continuation.
+
+Responsibility map: `gripsack-policy` owns generation identity,
+strict inventory admission and the exact oldest-prefix pruning proof;
+`gripsack-store::generations` owns the compatible persisted boundary
+and generation inventory/publication/current operations;
+`gripsack-exec::gc` owns root projection, capability-pinned inventory
+and deletion under the existing lifecycle session. Deterministic
+history fixtures exercise the real collector and build-closure
+producer against independent expected roots. Existing calibration
+runners remain the evidence owners; no second collector or planner.
+
+| Leaf | Class / target | State | Acceptance and remaining evidence |
+|---|---|---|---|
+| M-V5.1 | NEXT / M1, promoted GC authority defect | Implemented; local smoke/campaign passed, release qualification open | Store/prior/generation roots are pinned before pruning; manifests and full candidate/size inventories are admitted before effects. The standalone real CLI passed both refusal modes without deleting the foreign sentinel/history, orphan-link-only collection, old-current protection, expired-history collection and overflow refusal. `gc::root_model` also replaces an already-pinned root between planning and collection. |
+| M-V5.2 | NEXT / M1, R2.3–4 retention types | Implemented; local proof/runtime passed, release qualification open | `GenerationId` migrates generation/path/journal/activation/CLI/model consumers without raw overloads. Wire IDs remain u64 JSON numbers. Private borrowed/owned inventories enforce strict order once, including a Verus type invariant. Exact oldest-prefix pruning, zero/no-limit/empty/missing-current/integer boundaries and raw-slice compile refusal pass. Whole policy proof **92/0**; newest-prefix and duplicate-admission negatives are attributed to their named functions among **13** calibrations. |
+| M-V5.3 | NEXT / M1, production root correspondence | Implemented; local calibrated histories/CLI passed, release qualification open | Three real-collector properties execute **7** retained histories, **8** recovery refusals and **1** pinned-root replacement. Dropping the actual build-closure insertion fails the named missing-old-compiler byte oracle. `check_gc_roots.py` is mandatory in the existing test container; final real CLI **362/362** includes all **30** GC-admission and **7** build-closure cases, with graph-produced transitive retention and rollback. |
+| M-V5.4 | NEXT / M1, integrated evidence | Local packet complete; native/protected-CI/release qualification open | All six non-fuzz Compose services passed: final Rust/Loom/journal/GC and CLI **362/362**, fresh matching-input Verus **92/0** plus **13** calibrations; unchanged TS/TLC/TLAPS RUN layers cached. Five actual CLI smoke cases passed. Reports bind the base plus dirty source hashes; 898 test-image and 20 proof-image files matched. M-V4's preserved source-bound receipt is indexed above. |
+
+Local proof receipt: `verification/reports/2026-09-27-m-v5-local-proof.log`
+(SHA-256 `4f9da9073a6bee8d9957a0641846252524ad40056c6feb5a5d36e950e8eb6fb2`).
+The executed image's **20** policy/Cargo/runner source files were independently
+hashed and matched the recorded inputs. Only GC test assertions changed after
+that proof; the proof implementation and inputs did not. No trusted-body
+shortcut or policy-algorithm substitute was introduced: vstd `StructuralEq`
+connects derived runtime identity equality to the existing classifier theorem,
+and a concrete adjacent-order witness discharges constructor rejection.
+
+Self-review: generation records/admission remain in `generations.rs` and
+`admission.rs`; enumeration/pinned reads, publication/allocation and current
+pointer operations now have cohesive owners. GC object inventory/size/effects
+share one pinned capability module, while root projection stays in the one
+collector. No new dependency, IR/schema meaning, persisted version, secondary
+planner or unchecked raw-generation entrypoint was added. Existing incidental
+GC wording/nonempty assertions were removed; byte/accounting/state assertions
+remain. Independent review was unavailable; no independent-review claim.
+
+Final evidence is indexed under **M-V5** in `verification/reports/README.md`.
+`2026-09-27-m-v5-local-gates.log` has SHA-256
+`15c29ce02b972893098968075fc9d4d85dd67f0b08564cfabdc2c803b21226fe`;
+its source-file fingerprint is
+`581f470d6761f6e4e6c839f9dbb91a61604c3ef2dd883e10db196ad9e92a63f6`
+over `c92e84e` plus the recorded dirty patch/new files. No commit, workflow
+dispatch, fuzz target, corpus replay or release was performed. The Rust gate
+retains its three pre-existing ignored real-Go/Docker BuildKit integration
+cases; they do not qualify a builder/platform lane. Architecture and delivery
+inventory checks passed without changing the protected 178-ID inventory.
+
+Next ready core continuation: **M-V6**, the arbitrary-finite-destination,
+repeated-recovery theorem and concrete cleanup/identity/publication bridge;
+**M-V7** remains separately required. R2 ownership/receipt work and all other
+unmet NEXT leaves retain their existing scope. Native Mac/VM and protected-CI
+evidence must still bind an eventual committed candidate; this local packet
+does not authorize a public release or close the handover's A–E epics.
+
+## 15. Feedback-release handoff and explicit owner exception
+
+### REL-FUZZ-2026-09-27 — owner-approved feedback-release exception
+
+On 2026-09-27 the owner requested a release for personal use and feedback
+from close friends, then explicitly selected **“Release without fuzz/replay”**
+in response to this release-gate choice:
+
+> Record a scoped exception to the fuzz/replay release requirement. Keep all
+> other implementation, regression, proof, CI and platform gates mandatory.
+
+This amends §7 item 5's fuzz member and §9's inherited fuzz/replay requirement
+for the feedback releases and corresponding core/SDK pairs in this handover
+continuation. Fuzzing and
+saved-corpus replay are **not run / owner-waived**, never passed or verified.
+The risk is missing that input-exploration/corpus evidence; deterministic
+regression, property, concurrency, fault, model, proof, native-platform and
+artifact/installer gates remain mandatory. M-V6/M-V7 and R1–R7 NEXT work are
+not waived. This is not a permanent removal of fuzz infrastructure or an
+exception for unrelated future releases.
+
+The local CI now has an explicit manual feedback-waiver input and a calibrated
+fail-closed aggregator. Normal PR/main-push CI retains fuzz, so candidate
+commits use `[skip ci]` until explicitly dispatched with the approved waiver.
+Actual GitHub execution and live `gate` protection still need qualification;
+local policy tests are not those external observations. Do not mark skipped
+fuzz successful or alter the protected 178-ID inventory. Keep the runners and
+corpora for the post-release agent.
+
+The owner clarified that **this assistant must continue implementation and
+land the handover, then cut qualified release(s)**. The other model is assigned
+post-release fuzzing and repairs, not the remaining implementation or non-fuzz
+release gates. The clarification above extends the feedback exception across
+the releases produced by this requested handover continuation only.
+
+The navigation record remains
+[verification/release-handoff.md](../verification/release-handoff.md), for
+tracking outstanding evidence and the later fuzz assignment. Sections 6/9/10,
+the existing leaf record and `verification/delivery.json` remain authoritative.
+
+## 16. Active release continuation — implementation remains here
+
+Responsibility/dependency map: the CLI/store/process owners retain source
+approval, native authority and activation receipts; the policy crate owns
+effect-free admission and transition kernels; the existing TLC/TLAPS runners
+own generalized recovery evidence. A stable activation-instance contract from
+R3 is a real prerequisite of M-V6's successive-lifecycle composition, not
+permission to prove a ghost identity the persisted state cannot express.
+Independent ready work continues while that prerequisite is implemented.
+
+| Leaf | Class / target | State | Acceptance |
+|---|---|---|---|
+| M2-7.4/5/13 | NEXT / required CI admission | Implemented; local calibration passed, GitHub/protection pending | Read-only CI permissions, cancelling CI concurrency, and exact required-job aggregation are wired. Four positive/64 negative policy cases and four actual command-entry smokes passed; YAML parsed. Only the named manual waiver admits skipped fuzz; all other missing/failed/cancelled/skipped/unknown results fail. Audit's unused Check permission is removed. No actual GitHub run/protection claim yet. |
+| M-V6.1 | NEXT / generalized recovery model | Implementing | Arbitrary finite destinations and unbounded repeated recovery crashes; proof of intent/prior, restore/cleanup, exact identity, publication/current and root safety with attributed mutants. R3 supplies the real persistent activation identity before lifecycle composition is claimed. |
+| M-V6.2 / M-V7.1 | NEXT / concrete restore-to-cleanup bridge | Implemented; local real-CLI/fault evidence, generalized proof pending | Six restore/retry cases failed before: absent restoration omitted parent sync, and an already-visible prior bypassed durability. Three more cases exposed committed-pointer cleanup before root sync and cleanup over missing/malformed current manifests. Recovery now seals observed/restored priors, admits current metadata through the pinned home, and syncs committed current before cleanup. Four standalone CLI journeys passed; the 49-case focused group passed across the initial 48 and corrected one-case retry (cold frontend setup was moved outside fault-ordinal measurement). Actual error/kill cases retain marker, entry and prior bytes. This is software-fault correspondence, not hardware power-loss or completed M-V6/M-V7 evidence. |
+| R3.1–8 | NEXT / durable activation identity and outcomes | Implementing | One persistent activation instance and stable per-intent IDs across crash replay, distinct repeated rollback instances, durable outcomes, legacy migration, inspection and harmless simulations; known failure remains warn/no-retry/no-rollback. Every original R3 acceptance window and model/real-CLI bridge remains required. |
+| M-V6.3 / R3 selection identity | NEXT / actual commit identity | Demonstrated failure; implementing transaction-bound selection | A real same-generation rollback was killed between recreating two missing owned links. Recovery classified the old generation number as committed, retained the partial `[present, absent]` deployment and erased the journal. Receipt: `2026-09-27-same-generation-before.log`. New markers/current selections must carry distinct transaction identity even when generation numbers are equal; legacy state remains readable or explicitly refused if ambiguous. Do not special-case same-generation rollback, fabricate completion or waive this blocker. |
+
+The generalized model must distinguish **process death with dirty kernel-visible
+state** from **power loss restoring stable storage**. Collapsing visible state
+into durable state on every crash would hide the concrete seal-before-cleanup
+defects above. It must also account for independently pending destination
+writes, rather than asserting that the threaded executor has only one pending
+filesystem write globally. Prototype model text is not passing proof evidence.
+
+R3's caller inventory confirms that apply, rollback and recovery all execute
+the saved activation batch **after commitment**, including collected
+`on_remove` intents. Preserve that real timing; do not introduce a fictitious
+pre-commit removal-hook runner from an outdated description. The new stable
+selection/activation identity must distinguish repeated transactions targeting
+the same generation without changing producer/store identity.
+
+The current internal packet's full local CLI gate passed **371/371**; Rust,
+fresh TLAPS **301** pilot obligations and fresh Verus **92/0** with **13**
+calibrations also passed. Unchanged TypeScript/TLC build RUNs were cached.
+`verification/reports/2026-09-27-continuation-local-gates.log` binds source-file
+fingerprint `d47cae6231a71bc49f5ef11b22356db699cc3321b6d424914cdc7338f5f197ce`.
+These are regression/bridge results, not M-V6.3/R3 closure. No fuzz ran.
 

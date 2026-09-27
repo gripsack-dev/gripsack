@@ -31,9 +31,24 @@ User-visible changes per release. Design archaeology lives in
   scalar boundaries. A calibrated missing-field mutant must fail actual
   recovery-effect checks, not just an error-message snapshot. No serde theorem
   or fuzz result is claimed.
+- GC history checks exercise retained payloads, transitive build inputs,
+  adopted priors and unfinished recovery through the real collector.
+  A deliberately omitted build-closure root must fail the filesystem oracle.
 
 ### Fixed
 
+- Recovery seals an absent or already-visible prior before discarding its
+  journal entry. Interrupted retries cannot mistake kernel-visible state for
+  completed durability. Observed committed pointers are synced before cleanup,
+  and missing/corrupt current-generation manifests retain recovery evidence.
+- GC pins its store, prior and generation directories for both inventory and
+  deletion. Substituted directory symlinks and invalid inventories fail before
+  generation pruning; orphan payload symlinks are unlinked without following
+  their targets, including during size accounting.
+- Generation identities and ordered inventories are distinct types. Pruning
+  keeps the existing oldest-excess-prefix rule, excluding current without
+  shifting deletion to newer generations. Exhausted generation IDs fail
+  before activation instead of overflowing.
 - Managed plugin cache hits require both the declared source and tag;
   changing origin cannot reuse an unrelated installed binary. Capability
   probing, rate admission and the fetch exchange share one deadline.
@@ -73,6 +88,9 @@ User-visible changes per release. Design archaeology lives in
   blocks use a disjoint object-shaped ownership value, so older readers
   reject rather than reinterpret them as module-named blocks. Historical
   v4 workspaces remain read-only.
+- Generation, journal-marker and pending-activation IDs remain numeric on disk.
+  Historical zero IDs remain readable; noncanonical or duplicate inventory
+  identities cannot enter pruning policy.
 
 ## [0.42.0] — 2026-09-10
 

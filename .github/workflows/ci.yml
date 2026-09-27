@@ -2,9 +2,24 @@ name: ci
 
 on:
   workflow_dispatch:
+    inputs:
+      fuzz_waiver:
+        description: "Explicit owner-approved feedback waiver; all other gates remain mandatory"
+        type: choice
+        default: none
+        options:
+          - none
+          - REL-FUZZ-2026-09-27
   push:
     branches: [main]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -98,6 +113,9 @@ jobs:
   # fail-closed, no uncontained fallback. Longer coverage-guided runs
   # are scheduled in fuzz.yml, not here.
   fuzz:
+    # Only explicit manual feedback dispatches may omit this lane. Unknown
+    # waiver inputs also omit execution, but the final gate rejects them.
+    if: github.event_name != 'workflow_dispatch' || inputs.fuzz_waiver == 'none'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -154,10 +172,6 @@ jobs:
 
   audit:
     runs-on: ubuntu-latest
-    # rustsec/audit-check publishes its findings as a Check run
-    permissions:
-      contents: read
-      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # prebuilt binary, not a from-source install: cargo-audit's own
@@ -168,3 +182,18 @@ jobs:
         with:
           tool: cargo-audit
       - run: cargo audit
+
+  gate:
+    if: always()
+    needs: [test, e2e-macos, docs, audit, fuzz]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Calibrate required-result admission
+        run: python3 scripts/check_ci_gate.py --self-check
+      - name: Admit every required lane
+        env:
+          GRIPSACK_CI_RESULTS: ${{ toJSON(needs) }}
+          GRIPSACK_CI_EVENT: ${{ github.event_name }}
+          GRIPSACK_FUZZ_WAIVER: ${{ github.event_name == 'workflow_dispatch' && inputs.fuzz_waiver || 'none' }}
+        run: python3 scripts/check_ci_gate.py

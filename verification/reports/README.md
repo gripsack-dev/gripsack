@@ -6,6 +6,10 @@ Unmodified copies of the gate logs captured on 2026-09-24 in `/tmp/gripsack-base
 copy). `2026-09-24-baseline-verify.log` contains carriage-return progress bytes; the
 archive preserves them exactly.
 
+For current missing gates, prerequisites, commands and the scoped owner
+fuzz/replay exception, use [the release handoff](../release-handoff.md).
+Historical passing logs below do not close that outstanding work.
+
 ## Binding statement (honest limits)
 
 - File mtimes (2026-09-24 08:14–08:56 BST = 07:14–07:56 UTC) are consistent with the
@@ -374,9 +378,50 @@ authenticity or OS behavior. No fuzz or corpus replay was run.
 | report | sha256 | observed execution |
 |---|---|---|
 | `2026-09-27-m-v4-local-smoke.log` | `44ff13beb7b7d53c092b99c4b09470ebed08314d16cb34d90a6c89136ec6f9cc` | Real cold-home CLI refuses a missing previous identity while preserving the interrupted link, planned destination absence and marker/intent bytes. An explicit-null marker then permits legitimate recovery, removes the interrupted link and applies the declared configuration. |
+| `2026-09-27-m-v4-c92e84e.log` | `229e44142611105a202ef0e21eeb447d13ae6a4a63b075657e5cd5e58cb999c6` | Preserved source-bound receipt at `c92e84e60c31f13a544e00f7d2f6f3c8b94ce4cd`, source fingerprint `e49db03e34552dca3d2ccc074a74bd90578f43ec0e5868313d2a7e6a09b2c5d0`, clean source roots before/after: **69/69** store tests, all seven admission properties with per-family counts, the named missing-previous recovery-effect mutant, and **10/10** real transaction CLI cases. No native Mac/protected-CI/serde-proof claim. |
 
-Working-tree runtime evidence, not a serde theorem, exact-source CI or
+The first report is working-tree runtime evidence; the second binds its
+executed source. Neither is a serde theorem, protected CI or
 release approval. Deterministic byte/refinement properties and their
 missing-field calibration are separate from fuzzing; no fuzz or saved
 fuzz corpus was executed.
+
+
+## M-V5 GC roots and typed retention — completed local non-fuzz packet
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-27-gc-root-before.log` | `04310c56157e0aa766bf3f2cb9af24dd06af0b4ed888379f8e38670c06b2239e` | Preserved failing-before sandbox CLI witness: substituted store-root symlink redirected deletion into an external fixture and generation 1 was pruned. This pre-existing observation has no exact-source binding; it is not a passing receipt. |
+| `2026-09-27-m-v5-local-smoke.log` | `17768e62cbfcdeca49c2efbb65534905d8975ee7534aca6a565fdcaeff399704` | Five standalone actual CLI cases: both substituted-root refusal modes preserve external bytes/history, orphan-link-only collection with old-current protection, expired-history collection and exhausted-ID refusal before activation. Includes the disposable script's exact bytes and digest; the script was removed after execution. |
+| `2026-09-27-m-v5-local-proof.log` | `4f9da9073a6bee8d9957a0641846252524ad40056c6feb5a5d36e950e8eb6fb2` | Fresh whole production policy proof **92/0**, eight named generation queries, **13** attributed calibrations and ten evidence-parser negatives. Newest-prefix and duplicate-admission mutants fail the intended functions. Twenty actual verified-image policy/Cargo/runner files match recorded hashes; later GC test-assertion cleanup changed none of those inputs. |
+| `2026-09-27-m-v5-local-rust.log` | `ab40a61f6fc583e737072280591c4de02e2d1bbb94e7b118686cb777f27260b5` | Final Rust fmt/clippy/tests plus Loom/journal/GC calibration. Three GC properties execute seven retained histories, eight recovery refusals and one root replacement; omitting the real build-closure root fails the named byte oracle. All **898** relevant source files in the test image match final inputs. Three existing real-Go/Docker BuildKit integration tests remain ignored, not qualified by this gate. |
+| `2026-09-27-m-v5-local-cli.log` | `fe9f9f9fe8ca28aec32252c235b90384d6a682a2c04063f48a6ccfa17a2d82b4` | Final-candidate real binary/Deno flow suite **362/362**, no failures/skips: GC admission **30**, build closures **7**, generation history **10**, transaction recovery **10**, plus the complete existing lifecycle/persistence/workspace suite. |
+| `2026-09-27-m-v5-local-gates.log` | `15c29ce02b972893098968075fc9d4d85dd67f0b08564cfabdc2c803b21226fe` | All six non-fuzz Compose services passed. Archives full final Rust/CLI and matching-input Verus output; unchanged TypeScript/TLC/TLAPS build RUNs were **cached**, not counted as fresh executions. Source roots remained unchanged across final gates. |
+
+Base `c92e84e60c31f13a544e00f7d2f6f3c8b94ce4cd` plus the uncommitted
+tracked patch SHA-256
+`87b991bc888af8342823771505a2d30bdadd3526c8cc81b5524967d751d6b5e2`.
+Final source-file fingerprint, including the new nonignored source files:
+`581f470d6761f6e4e6c839f9dbb91a61604c3ef2dd883e10db196ad9e92a63f6`.
+The logs define its sorted path/file-hash encoding. This is local working-tree
+evidence, not an exact-commit protected-CI or native Mac qualification.
+The numerical persisted formats are unchanged; filesystem inventory/root
+completeness, external-writer CAS and hardware durability are not proved.
+M-V6/M-V7 and the other NEXT release gates remain open.
+No fuzz target, fuzz corpus replay, workflow dispatch, commit or release ran.
+
+## Active continuation — CI admission and recovery barriers
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-27-ci-admission-local.log` | `4120d831596adce4f72d1123763279434b23d077c9e6feb391c727423464c887` | Four positive/64 negative required-result policy cases, four actual command-entry smokes, and actual workflow YAML parsing. No GitHub execution or live protection claim. Only the explicit manual owner waiver may report fuzz skipped/not run. |
+| `2026-09-27-recovery-durability-development.log` | `e79d221568bed63d4ab3b1c638573b25e5d485b9a8136a3067a06ce728a438b1` | Six real failing-before prior/retry cases, first corrected 46-case recovery/transaction/GC run and standalone observation, then three further failing-before committed-pointer/current-manifest cases. Development evidence, not a completed generalized theorem. |
+| `2026-09-27-recovery-durability-smoke.log` | `9b59d356d0fa39b70591528f8b57f0a07538ea9ed09c970d0e1a9c9f6e6560c1` | Four actual isolated CLI journeys: absent-prior durability, failed observed-prior sync with retained evidence/retry, failed observed-current sync with retained evidence/retry, and corrupt-current refusal before cleanup. Exact disposable script bytes included; no physical power-loss claim. |
+| `2026-09-27-continuation-local-gates.log` | `60baf6b17f4794dc26200671b30ca71079763bc3343cf872c58fb0843678d861` | Whole local non-fuzz packet: Rust/Loom/journal/GC, real CLI **371/371**, fresh TLAPS pilot **301** and its calibrations, fresh Verus **92/0** plus **13** calibrations; unchanged TS/TLC RUN layers cached. Source fingerprint and dirty-patch identity recorded. The three existing real-Go/Docker tests remain outside ordinary Rust execution. |
+| `2026-09-27-same-generation-before.log` | `db758eca74148a4a73d3006d6321818574613e36085f5903c71873d0d5ac527a` | **Unfixed failure witness**, not a passing gate: kill a same-generation rollback before recreating its second link; recovery leaves `[present, absent]` and clears the journal because generation equality impersonates transaction commitment. R3/M-V6.3 must replace that ambiguity with actual transaction-bound identity. |
+
+All results here are local working-tree observations over base `c92e84e`;
+they do not close the remaining NEXT requirements or authorize publication.
+Implementation and release work continue with this assistant. The other agent's
+assignment is fuzzing and findings repair after the qualified feedback releases.
 

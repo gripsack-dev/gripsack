@@ -1,0 +1,2500 @@
+BASE_COMMIT=c92e84e60c31f13a544e00f7d2f6f3c8b94ce4cd
+SOURCE_STATE=working_tree; staged recovery correction, not final release source
+FUZZ=not_run_owner_instruction
+SCOPE=software fault/process interruption and actual recovery; not hardware power loss or completed M-V6 theorem
+=== before: missing restore/observed-prior durability (six named failures) ===
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.8s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 0.6s
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.6s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#9 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#9 DONE 0.0s
+
+#10 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#10 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 97.36kB 0.1s done
+#11 DONE 0.1s
+
+#12 [builder  7/10] COPY fuzz ./fuzz
+#12 CACHED
+
+#13 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#13 CACHED
+
+#14 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#14 CACHED
+
+#15 [builder  6/10] COPY crates ./crates
+#15 CACHED
+
+#16 [builder  8/10] COPY schema ./schema
+#16 CACHED
+
+#17 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#17 CACHED
+
+#18 [builder  4/10] WORKDIR /app
+#18 CACHED
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 CACHED
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.0s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.486     Updating crates.io index
+#21 3.173  Downloading crates ...
+#21 3.257   Downloaded fs-set-times v0.20.3
+#21 3.268   Downloaded cfg-if v1.0.4
+#21 3.272   Downloaded errno v0.3.14
+#21 3.275   Downloaded anstyle-query v1.1.5
+#21 3.277   Downloaded convert_case v0.4.0
+#21 3.279   Downloaded adler2 v2.0.1
+#21 3.281   Downloaded ambient-authority v0.0.2
+#21 3.283   Downloaded block-buffer v0.12.1
+#21 3.285   Downloaded clap_lex v1.1.0
+#21 3.295   Downloaded stable_deref_trait v1.2.1
+#21 3.296   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 3.298   Downloaded potential_utf v0.1.6
+#21 3.300   Downloaded itoa v1.0.18
+#21 3.304   Downloaded smallvec v1.15.2
+#21 3.308   Downloaded digest v0.11.3
+#21 3.312   Downloaded thread_local v1.1.10
+#21 3.315   Downloaded maybe-owned v0.3.4
+#21 3.318   Downloaded is_terminal_polyfill v1.70.2
+#21 3.320   Downloaded lazy_static v1.5.0
+#21 3.323   Downloaded io-lifetimes v3.0.1
+#21 3.325   Downloaded anstyle v1.0.14
+#21 3.328   Downloaded find-msvc-tools v0.1.11
+#21 3.330   Downloaded thiserror-impl v2.0.20
+#21 3.332   Downloaded quote v1.0.47
+#21 3.337   Downloaded strsim v0.11.1
+#21 3.340   Downloaded pin-project-lite v0.2.17
+#21 3.351   Downloaded owo-colors v4.3.0
+#21 3.354   Downloaded utf8_iter v1.0.4
+#21 3.356   Downloaded openssl-probe v0.2.1
+#21 3.359   Downloaded console v0.16.4
+#21 3.362   Downloaded hybrid-array v0.4.14
+#21 3.366   Downloaded matchers v0.2.0
+#21 3.368   Downloaded cpufeatures v0.3.0
+#21 3.371   Downloaded anstyle-parse v1.0.0
+#21 3.374   Downloaded untrusted v0.9.0
+#21 3.378   Downloaded tinystr v0.8.4
+#21 3.382   Downloaded serde_spanned v1.1.1
+#21 3.383   Downloaded httpdate v1.0.3
+#21 3.386   Downloaded percent-encoding v2.3.2
+#21 3.388   Downloaded synstructure v0.13.2
+#21 3.390   Downloaded equivalent v1.0.2
+#21 3.392   Downloaded crypto-common v0.2.2
+#21 3.394   Downloaded idna_adapter v1.2.2
+#21 3.396   Downloaded tracing-serde v0.2.0
+#21 3.397   Downloaded shell-words v1.1.1
+#21 3.399   Downloaded form_urlencoded v1.2.2
+#21 3.400   Downloaded heck v0.5.0
+#21 3.403   Downloaded colorchoice v1.0.5
+#21 3.404   Downloaded zeroize v1.9.0
+#21 3.407   Downloaded bzip2 v0.6.1
+#21 3.410   Downloaded zmij v1.0.23
+#21 3.414   Downloaded rustls-pki-types v1.15.1
+#21 3.418   Downloaded fastrand v2.5.0
+#21 3.420   Downloaded displaydoc v0.2.7
+#21 3.424   Downloaded xz2 v0.1.7
+#21 3.427   Downloaded once_cell v1.21.4
+#21 3.432   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 3.436   Downloaded tempfile v3.27.0
+#21 3.441   Downloaded cap-std v4.0.3
+#21 3.447   Downloaded zerofrom v0.1.8
+#21 3.449   Downloaded ipnet v2.12.1
+#21 3.452   Downloaded filetime v0.2.29
+#21 3.455   Downloaded rustix-linux-procfs v0.1.1
+#21 3.457   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 3.459   Downloaded subtle v2.6.1
+#21 3.462   Downloaded anstream v1.0.0
+#21 3.465   Downloaded jobserver v0.1.35
+#21 3.469   Downloaded rustls-native-certs v0.8.4
+#21 3.471   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 3.473   Downloaded io-lifetimes v2.0.4
+#21 3.476   Downloaded clap_derive v4.6.4
+#21 3.479   Downloaded dialoguer v0.12.0
+#21 3.486   Downloaded bitflags v2.13.1
+#21 3.492   Downloaded zerofrom-derive v0.1.7
+#21 3.495   Downloaded xattr v1.6.1
+#21 3.499   Downloaded icu_locale_core v2.3.0
+#21 3.513   Downloaded libbz2-rs-sys v0.2.5
+#21 3.516   Downloaded unit-prefix v0.5.2
+#21 3.519   Downloaded log v0.4.34
+#21 3.524   Downloaded nu-ansi-term v0.50.3
+#21 3.529   Downloaded pkg-config v0.3.34
+#21 3.533   Downloaded yoke-derive v0.8.2
+#21 3.535   Downloaded io-extras v0.19.0
+#21 3.539   Downloaded sha2 v0.11.0
+#21 3.548   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 3.551   Downloaded tracing-attributes v0.1.31
+#21 3.556   Downloaded indicatif v0.18.6
+#21 3.562   Downloaded toml v1.1.4+spec-1.1.0
+#21 3.569   Downloaded toml v0.9.12+spec-1.1.0
+#21 3.576   Downloaded crc32fast v1.5.1
+#21 3.581   Downloaded tracing-log v0.2.0
+#21 3.584   Downloaded getrandom v0.2.17
+#21 3.588   Downloaded serde_yaml v0.9.34+deprecated
+#21 3.594   Downloaded webpki-roots v0.26.11
+#21 3.597   Downloaded serde_derive v1.0.229
+#21 3.602   Downloaded getrandom v0.4.3
+#21 3.608   Downloaded ryu v1.0.23
+#21 3.615   Downloaded utf8parse v0.2.2
+#21 3.617   Downloaded icu_provider v2.3.1
+#21 3.622   Downloaded litemap v0.8.3
+#21 3.626   Downloaded const-oid v0.10.2
+#21 3.630   Downloaded base64 v0.22.1
+#21 3.638   Downloaded sharded-slab v0.1.7
+#21 3.644   Downloaded icu_normalizer_data v2.3.0
+#21 3.647   Downloaded shlex v2.0.1
+#21 3.650   Downloaded serde_core v1.0.229
+#21 3.655   Downloaded miniz_oxide v0.8.9
+#21 3.659   Downloaded writeable v0.6.4
+#21 3.664   Downloaded clap v4.6.6
+#21 3.677   Downloaded proc-macro2 v1.0.107
+#21 3.682   Downloaded bumpalo v3.20.3
+#21 3.686   Downloaded cc v1.4.4
+#21 3.691   Downloaded serde v1.0.229
+#21 3.697   Downloaded icu_collections v2.3.0
+#21 3.708   Downloaded rustls-webpki v0.103.15
+#21 3.714   Downloaded simd-adler32 v0.3.10
+#21 3.717   Downloaded zstd v0.13.3
+#21 3.724   Downloaded cap-primitives v4.0.3
+#21 3.741   Downloaded memchr v2.8.3
+#21 3.752   Downloaded flate2 v1.1.9
+#21 3.760   Downloaded icu_properties v2.3.0
+#21 3.765   Downloaded zstd-safe v7.2.4
+#21 3.767   Downloaded thiserror v2.0.20
+#21 3.777   Downloaded zerovec-derive v0.11.6
+#21 3.781   Downloaded indexmap v2.14.0
+#21 3.789   Downloaded hashbrown v0.17.1
+#21 3.797   Downloaded idna v1.1.0
+#21 3.801   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 3.808   Downloaded serde_json v1.0.151
+#21 3.820   Downloaded yoke v0.8.3
+#21 3.823   Downloaded aho-corasick v1.1.5
+#21 3.831   Downloaded clap_builder v4.6.6
+#21 3.842   Downloaded icu_properties_data v2.3.0
+#21 3.854   Downloaded portable-atomic v1.15.0
+#21 3.867   Downloaded zopfli v0.8.3
+#21 3.871   Downloaded regex-syntax v0.8.11
+#21 3.880   Downloaded rustls v0.23.45
+#21 3.899   Downloaded unsafe-libyaml v0.2.11
+#21 3.906   Downloaded tracing-core v0.1.36
+#21 3.911   Downloaded url v2.5.8
+#21 3.915   Downloaded rustix v1.1.4
+#21 3.969   Downloaded unicode-ident v1.0.24
+#21 3.976   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 3.981   Downloaded tar v0.4.46
+#21 3.987   Downloaded zerotrie v0.2.5
+#21 3.995   Downloaded icu_normalizer v2.3.0
+#21 4.005   Downloaded typed-path v0.12.3
+#21 4.022   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 4.025   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 4.030   Downloaded regex-automata v0.4.18
+#21 4.052   Downloaded lzma-sys v0.1.20
+#21 4.095   Downloaded typenum v1.20.1
+#21 4.100   Downloaded ureq v2.12.1
+#21 4.108   Downloaded libc v0.2.189
+#21 4.214   Downloaded zerovec v0.11.8
+#21 4.224   Downloaded zip v8.6.0
+#21 4.230   Downloaded ring v0.17.14
+#21 4.294   Downloaded winnow v1.0.4
+#21 4.311   Downloaded linux-raw-sys v0.12.1
+#21 4.382   Downloaded winnow v0.7.15
+#21 4.399   Downloaded webpki-roots v1.0.9
+#21 4.404   Downloaded zlib-rs v0.6.7
+#21 4.411   Downloaded tracing-subscriber v0.3.23
+#21 4.425   Downloaded unicode-width v0.2.2
+#21 4.433   Downloaded syn v2.0.119
+#21 4.448   Downloaded syn v3.0.4
+#21 4.463   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 4.478   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 4.493   Downloaded tracing v0.1.44
+#21 4.515   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 4.725    Compiling proc-macro2 v1.0.107
+#21 4.725    Compiling quote v1.0.47
+#21 4.725    Compiling unicode-ident v1.0.24
+#21 4.725    Compiling libc v0.2.189
+#21 4.725    Compiling cfg-if v1.0.4
+#21 4.728    Compiling shlex v2.0.1
+#21 4.731    Compiling find-msvc-tools v0.1.11
+#21 4.731    Compiling serde_core v1.0.229
+#21 4.731    Compiling equivalent v1.0.2
+#21 4.732    Compiling once_cell v1.21.4
+#21 4.734    Compiling hashbrown v0.17.1
+#21 4.742    Compiling stable_deref_trait v1.2.1
+#21 4.744    Compiling rustix v1.1.4
+#21 4.744    Compiling bitflags v2.13.1
+#21 4.745    Compiling linux-raw-sys v0.12.1
+#21 4.747    Compiling pkg-config v0.3.34
+#21 4.752    Compiling serde v1.0.229
+#21 4.755    Compiling zmij v1.0.23
+#21 4.755    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.759    Compiling memchr v2.8.3
+#21 4.762    Compiling serde_json v1.0.151
+#21 4.762    Compiling itoa v1.0.18
+#21 4.763    Compiling zeroize v1.9.0
+#21 4.763    Compiling io-lifetimes v3.0.1
+#21 4.766    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.769    Compiling litemap v0.8.3
+#21 4.773    Compiling io-lifetimes v2.0.4
+#21 4.773    Compiling convert_case v0.4.0
+#21 4.774    Compiling winnow v1.0.4
+#21 4.774    Compiling writeable v0.6.4
+#21 4.774    Compiling io-extras v0.19.0
+#21 4.775    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.809    Compiling smallvec v1.15.2
+#21 4.809    Compiling utf8_iter v1.0.4
+#21 4.849    Compiling log v0.4.34
+#21 4.901    Compiling typenum v1.20.1
+#21 4.959    Compiling icu_normalizer_data v2.3.0
+#21 4.979    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 5.033    Compiling icu_properties_data v2.3.0
+#21 5.067    Compiling thiserror v2.0.20
+#21 5.080    Compiling rustls-pki-types v1.15.1
+#21 5.101    Compiling cap-primitives v4.0.3
+#21 5.110    Compiling getrandom v0.4.3
+#21 5.111    Compiling tracing-core v0.1.36
+#21 5.111    Compiling crc32fast v1.5.1
+#21 5.189    Compiling ipnet v2.12.1
+#21 5.200    Compiling maybe-owned v0.3.4
+#21 5.210    Compiling ambient-authority v0.0.2
+#21 5.211    Compiling cap-std v4.0.3
+#21 5.221    Compiling winnow v0.7.15
+#21 5.241    Compiling const-oid v0.10.2
+#21 5.284    Compiling simd-adler32 v0.3.10
+#21 5.297    Compiling zstd-safe v7.2.4
+#21 5.325    Compiling untrusted v0.9.0
+#21 5.331    Compiling fastrand v2.5.0
+#21 5.363    Compiling percent-encoding v2.3.2
+#21 5.363    Compiling adler2 v2.0.1
+#21 5.389    Compiling rustls v0.23.45
+#21 5.408    Compiling cpufeatures v0.3.0
+#21 5.433    Compiling pin-project-lite v0.2.17
+#21 5.443    Compiling bumpalo v3.20.3
+#21 5.443    Compiling libbz2-rs-sys v0.2.5
+#21 5.458    Compiling subtle v2.6.1
+#21 5.467    Compiling zlib-rs v0.6.7
+#21 5.512    Compiling typed-path v0.12.3
+#21 5.535    Compiling base64 v0.22.1
+#21 5.557    Compiling form_urlencoded v1.2.2
+#21 5.573    Compiling openssl-probe v0.2.1
+#21 5.589    Compiling miniz_oxide v0.8.9
+#21 5.597    Compiling utf8parse v0.2.2
+#21 5.623    Compiling webpki-roots v1.0.9
+#21 5.653    Compiling regex-syntax v0.8.11
+#21 5.661    Compiling anstyle-parse v1.0.0
+#21 5.671    Compiling unsafe-libyaml v0.2.11
+#21 5.678    Compiling anstyle v1.0.14
+#21 5.682    Compiling rustls-native-certs v0.8.4
+#21 5.697    Compiling is_terminal_polyfill v1.70.2
+#21 5.697    Compiling portable-atomic v1.15.0
+#21 5.726    Compiling indexmap v2.14.0
+#21 5.757    Compiling webpki-roots v0.26.11
+#21 5.784    Compiling zopfli v0.8.3
+#21 5.794    Compiling httpdate v1.0.3
+#21 5.802    Compiling lazy_static v1.5.0
+#21 5.816    Compiling ryu v1.0.23
+#21 5.824    Compiling unicode-width v0.2.2
+#21 5.838    Compiling colorchoice v1.0.5
+#21 5.890    Compiling anstyle-query v1.1.5
+#21 5.896    Compiling sharded-slab v0.1.7
+#21 5.903    Compiling tracing-log v0.2.0
+#21 5.905    Compiling thread_local v1.1.10
+#21 5.929    Compiling clap_lex v1.1.0
+#21 5.929    Compiling owo-colors v4.3.0
+#21 5.966    Compiling anstream v1.0.0
+#21 5.990    Compiling strsim v0.11.1
+#21 6.031    Compiling heck v0.5.0
+#21 6.081    Compiling nu-ansi-term v0.50.3
+#21 6.083    Compiling shell-words v1.1.1
+#21 6.165    Compiling unit-prefix v0.5.2
+#21 6.182    Compiling bzip2 v0.6.1
+#21 6.302    Compiling clap_builder v4.6.6
+#21 6.331    Compiling hybrid-array v0.4.14
+#21 6.495    Compiling syn v2.0.119
+#21 6.495    Compiling syn v3.0.4
+#21 6.495    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 6.689    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 6.851    Compiling jobserver v0.1.35
+#21 6.851    Compiling getrandom v0.2.17
+#21 6.851    Compiling filetime v0.2.29
+#21 6.858    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 6.859    Compiling console v0.16.4
+#21 7.047    Compiling block-buffer v0.12.1
+#21 7.047    Compiling crypto-common v0.2.2
+#21 7.089    Compiling cc v1.4.4
+#21 7.342    Compiling regex-automata v0.4.18
+#21 7.404    Compiling indicatif v0.18.6
+#21 8.160    Compiling digest v0.11.3
+#21 8.252    Compiling sha2 v0.11.0
+#21 8.531    Compiling serde_spanned v1.1.1
+#21 8.531    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 8.531    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 8.691    Compiling ring v0.17.14
+#21 8.691    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 8.692    Compiling lzma-sys v0.1.20
+#21 8.751    Compiling toml v0.9.12+spec-1.1.0
+#21 8.758    Compiling toml v1.1.4+spec-1.1.0
+#21 8.758    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 8.996    Compiling flate2 v1.1.9
+#21 9.448    Compiling matchers v0.2.0
+#21 9.780    Compiling rustix-linux-procfs v0.1.1
+#21 9.780    Compiling fs-set-times v0.20.3
+#21 9.780    Compiling tempfile v3.27.0
+#21 9.781    Compiling xattr v1.6.1
+#21 10.13    Compiling tar v0.4.46
+#21 10.14    Compiling dialoguer v0.12.0
+#21 10.64    Compiling xz2 v0.1.7
+#21 11.04    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 11.41    Compiling synstructure v0.13.2
+#21 12.08    Compiling zstd v0.13.3
+#21 12.32    Compiling zip v8.6.0
+#21 12.33    Compiling zerovec-derive v0.11.6
+#21 12.33    Compiling displaydoc v0.2.7
+#21 12.33    Compiling serde_derive v1.0.229
+#21 12.33    Compiling thiserror-impl v2.0.20
+#21 12.33    Compiling clap_derive v4.6.4
+#21 12.69    Compiling zerofrom-derive v0.1.7
+#21 12.69    Compiling yoke-derive v0.8.2
+#21 12.69    Compiling tracing-attributes v0.1.31
+#21 12.92    Compiling rustls-webpki v0.103.15
+#21 14.19    Compiling zerofrom v0.1.8
+#21 14.26    Compiling yoke v0.8.3
+#21 14.36    Compiling tracing v0.1.44
+#21 14.39    Compiling zerovec v0.11.8
+#21 14.39    Compiling zerotrie v0.2.5
+#21 14.46    Compiling clap v4.6.6
+#21 14.64    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 14.64    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 14.90    Compiling tinystr v0.8.4
+#21 14.90    Compiling potential_utf v0.1.6
+#21 14.98    Compiling icu_collections v2.3.0
+#21 15.04    Compiling icu_locale_core v2.3.0
+#21 15.81    Compiling icu_provider v2.3.1
+#21 15.94    Compiling serde_yaml v0.9.34+deprecated
+#21 15.94    Compiling tracing-serde v0.2.0
+#21 16.02    Compiling icu_normalizer v2.3.0
+#21 16.02    Compiling icu_properties v2.3.0
+#21 16.03    Compiling tracing-subscriber v0.3.23
+#21 17.03    Compiling idna_adapter v1.2.2
+#21 17.09    Compiling idna v1.1.0
+#21 17.42    Compiling url v2.5.8
+#21 18.03    Compiling ureq v2.12.1
+#21 22.88    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 23.16    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 25.84    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 25.84    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 25.84    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 27.02    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 27.02    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 28.74    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 28.74    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 32.86    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 38.07     Finished `dev` profile [unoptimized + debuginfo] target(s) in 37.80s
+#21 DONE 38.5s
+
+#22 [e2e  2/12] WORKDIR /app
+#22 CACHED
+
+#23 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#23 CACHED
+
+#24 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#24 CACHED
+
+#25 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#25 CACHED
+
+#26 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#26 CACHED
+
+#27 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#27 CACHED
+
+#28 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#28 CACHED
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 CACHED
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 0.2s done
+#33 exporting manifest sha256:3f6eae722499ca3b7962afe6cbca06192fd9f5a0a26ddb578a7daacb853934db 0.0s done
+#33 exporting config sha256:b1b1b7829718b20c34f935fe0a4826538d652c64f7206627ad81beac974a7fc6 0.0s done
+#33 exporting attestation manifest sha256:751299f374fadf4921d5c5af7884a778266884847f8188ba7ec59e3c1d8c0e24 0.0s done
+#33 exporting manifest list sha256:a8180154c01fa8a0ab4cbc97802118a6a0a8c83a5a87dd6c1ee2ed5b09749076 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.1s done
+#33 DONE 0.4s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-3955faaf6cc6 Creating 
+ Container gripsack-e2e-run-3955faaf6cc6 Created 
+FFFFFF                                                                   [100%]
+=================================== FAILURES ===================================
+______ test_recovery_sync_failure_retains_evidence_on_retry[False-absent] ______
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret0')
+prior_kind = 'absent', already_restored = False
+
+    @pytest.mark.parametrize("prior_kind", ["absent", "file", "symlink"])
+    @pytest.mark.parametrize("already_restored", [False, True])
+    def test_recovery_sync_failure_retains_evidence_on_retry(sandbox, prior_kind, already_restored):
+        repo = make_env_repo(sandbox / "env", '''
+    import { module } from "@gripsack/core";
+    export default module("demo", {});
+    ''')
+        home = sandbox / ".local/share/gripsack"
+        destination = sandbox / "interrupted"
+        trace = sandbox / "recovery-boundaries.tsv"
+        env = dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1")
+    
+        def invoke(extra=None):
+            return subprocess.run(
+                [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+                env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,
+            )
+    
+        # Provision the ordinary frontend/lock paths before introducing interrupted
+        # recovery metadata; no destination or generation is created by this seam.
+        warm = invoke()
+        assert warm.returncode == 0, warm.stdout + warm.stderr
+        journal = home / "journal"
+        journal.mkdir(exist_ok=True, mode=0o700)
+        journal.chmod(0o700)
+        entry_path = journal / "intent.json"
+        marker = journal / "run.json"
+        origin = b"original private bytes\n"
+        blob = home / "prior" / hashlib.sha256(origin).hexdigest()
+        if prior_kind == "file":
+            blob.parent.mkdir(mode=0o700, exist_ok=True)
+            blob.parent.chmod(0o700)
+            blob.write_bytes(origin)
+            blob.chmod(0o600)
+            prior = {"kind": "file", "hash": blob.name, "mode": 0o600}
+        elif prior_kind == "symlink":
+            prior = {"kind": "symlink", "target": "original-link"}
+        else:
+            prior = {"kind": "absent"}
+        entry = json.dumps({
+            "v": 2, "dest": str(destination), "prior": prior, "before": prior,
+            "after": {"kind": "link", "target": "installed"},
+        }).encode()
+        run = b'{"previous_generation":null,"target_generation":1,"op":"apply"}'
+    
+        def set_destination(restored):
+            destination.unlink(missing_ok=True)
+            if not restored:
+                destination.symlink_to("installed")
+            elif prior_kind == "file":
+                destination.write_bytes(origin)
+                destination.chmod(0o600)
+            elif prior_kind == "symlink":
+                destination.symlink_to("original-link")
+    
+        def seed(restored):
+            set_destination(restored)
+            entry_path.write_bytes(entry)
+            entry_path.chmod(0o600)
+            marker.write_bytes(run)
+            # A real permission-admission sync names the marker read boundary in
+            # the existing trace. It separates frontend setup from recovery work.
+            marker.chmod(0o644)
+            trace.unlink(missing_ok=True)
+    
+        def assert_prior():
+            if prior_kind == "file":
+                assert destination.read_bytes() == origin
+                assert destination.stat().st_mode & 0o7777 == 0o600
+                assert blob.read_bytes() == origin
+            elif prior_kind == "symlink":
+                assert destination.readlink() == Path("original-link")
+            else:
+                assert not destination.exists() and not destination.is_symlink()
+    
+        def recovery_sync_cut(restored):
+            seed(restored)
+            result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert_prior()
+            rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+            admitted = next(i for i, row in enumerate(rows)
+                            if row[1:] == ["After", "FileSync", '"run.json"'])
+            cleanup = next(i for i, row in enumerate(rows)
+                           if row[1:] == ["Before", "Unlink", '"intent.json"'])
+            barriers = [row for row in rows[admitted + 1:cleanup]
+                        if row[1:3] == ["Before", "DirSync"]]
+            assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+            assert not entry_path.exists() and not marker.exists()
+            return int(barriers[-1][0])
+    
+        # Independently exercise a restore and a retry that merely OBSERVES the
+        # prior. An earlier attempt may have landed its write but failed its sync.
+>       cut = recovery_sync_cut(already_restored)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_recovery_durability.py:111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+restored = False
+
+    def recovery_sync_cut(restored):
+        seed(restored)
+        result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert_prior()
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        admitted = next(i for i, row in enumerate(rows)
+                        if row[1:] == ["After", "FileSync", '"run.json"'])
+        cleanup = next(i for i, row in enumerate(rows)
+                       if row[1:] == ["Before", "Unlink", '"intent.json"'])
+        barriers = [row for row in rows[admitted + 1:cleanup]
+                    if row[1:3] == ["Before", "DirSync"]]
+>       assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+E       AssertionError: recovery_cleanup_without_durable_prior: absent
+E       assert []
+
+test_recovery_durability.py:105: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790525149-a3da7a.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T16:05:49.944179Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret0/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790525149-a3da7a","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret0/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T16:05:49.985067Z","level":"WARN","fields":{"message":"recovered /tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret0/interrupted: removed (was absent before the interrupted run)"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790525149-a3da7a","name":"run"},"spans":[{"command":"Apply","run_id":"1790525149-a3da7a","name":"run"}]}
+_______ test_recovery_sync_failure_retains_evidence_on_retry[False-file] _______
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret1')
+prior_kind = 'file', already_restored = False
+
+    @pytest.mark.parametrize("prior_kind", ["absent", "file", "symlink"])
+    @pytest.mark.parametrize("already_restored", [False, True])
+    def test_recovery_sync_failure_retains_evidence_on_retry(sandbox, prior_kind, already_restored):
+        repo = make_env_repo(sandbox / "env", '''
+    import { module } from "@gripsack/core";
+    export default module("demo", {});
+    ''')
+        home = sandbox / ".local/share/gripsack"
+        destination = sandbox / "interrupted"
+        trace = sandbox / "recovery-boundaries.tsv"
+        env = dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1")
+    
+        def invoke(extra=None):
+            return subprocess.run(
+                [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+                env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,
+            )
+    
+        # Provision the ordinary frontend/lock paths before introducing interrupted
+        # recovery metadata; no destination or generation is created by this seam.
+        warm = invoke()
+        assert warm.returncode == 0, warm.stdout + warm.stderr
+        journal = home / "journal"
+        journal.mkdir(exist_ok=True, mode=0o700)
+        journal.chmod(0o700)
+        entry_path = journal / "intent.json"
+        marker = journal / "run.json"
+        origin = b"original private bytes\n"
+        blob = home / "prior" / hashlib.sha256(origin).hexdigest()
+        if prior_kind == "file":
+            blob.parent.mkdir(mode=0o700, exist_ok=True)
+            blob.parent.chmod(0o700)
+            blob.write_bytes(origin)
+            blob.chmod(0o600)
+            prior = {"kind": "file", "hash": blob.name, "mode": 0o600}
+        elif prior_kind == "symlink":
+            prior = {"kind": "symlink", "target": "original-link"}
+        else:
+            prior = {"kind": "absent"}
+        entry = json.dumps({
+            "v": 2, "dest": str(destination), "prior": prior, "before": prior,
+            "after": {"kind": "link", "target": "installed"},
+        }).encode()
+        run = b'{"previous_generation":null,"target_generation":1,"op":"apply"}'
+    
+        def set_destination(restored):
+            destination.unlink(missing_ok=True)
+            if not restored:
+                destination.symlink_to("installed")
+            elif prior_kind == "file":
+                destination.write_bytes(origin)
+                destination.chmod(0o600)
+            elif prior_kind == "symlink":
+                destination.symlink_to("original-link")
+    
+        def seed(restored):
+            set_destination(restored)
+            entry_path.write_bytes(entry)
+            entry_path.chmod(0o600)
+            marker.write_bytes(run)
+            # A real permission-admission sync names the marker read boundary in
+            # the existing trace. It separates frontend setup from recovery work.
+            marker.chmod(0o644)
+            trace.unlink(missing_ok=True)
+    
+        def assert_prior():
+            if prior_kind == "file":
+                assert destination.read_bytes() == origin
+                assert destination.stat().st_mode & 0o7777 == 0o600
+                assert blob.read_bytes() == origin
+            elif prior_kind == "symlink":
+                assert destination.readlink() == Path("original-link")
+            else:
+                assert not destination.exists() and not destination.is_symlink()
+    
+        def recovery_sync_cut(restored):
+            seed(restored)
+            result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert_prior()
+            rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+            admitted = next(i for i, row in enumerate(rows)
+                            if row[1:] == ["After", "FileSync", '"run.json"'])
+            cleanup = next(i for i, row in enumerate(rows)
+                           if row[1:] == ["Before", "Unlink", '"intent.json"'])
+            barriers = [row for row in rows[admitted + 1:cleanup]
+                        if row[1:3] == ["Before", "DirSync"]]
+            assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+            assert not entry_path.exists() and not marker.exists()
+            return int(barriers[-1][0])
+    
+        # Independently exercise a restore and a retry that merely OBSERVES the
+        # prior. An earlier attempt may have landed its write but failed its sync.
+        cut = recovery_sync_cut(already_restored)
+>       retry_cut = recovery_sync_cut(True)
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+
+test_recovery_durability.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+restored = True
+
+    def recovery_sync_cut(restored):
+        seed(restored)
+        result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert_prior()
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        admitted = next(i for i, row in enumerate(rows)
+                        if row[1:] == ["After", "FileSync", '"run.json"'])
+        cleanup = next(i for i, row in enumerate(rows)
+                       if row[1:] == ["Before", "Unlink", '"intent.json"'])
+        barriers = [row for row in rows[admitted + 1:cleanup]
+                    if row[1:3] == ["Before", "DirSync"]]
+>       assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+E       AssertionError: recovery_cleanup_without_durable_prior: file
+E       assert []
+
+test_recovery_durability.py:105: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790525150-f088ee.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T16:05:50.347618Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret1/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790525150-f088ee","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret1/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T16:05:50.391087Z","level":"WARN","fields":{"message":"unchanged /tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret1/interrupted: the mutation never landed"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790525150-f088ee","name":"run"},"spans":[{"command":"Apply","run_id":"1790525150-f088ee","name":"run"}]}
+_____ test_recovery_sync_failure_retains_evidence_on_retry[False-symlink] ______
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret2')
+prior_kind = 'symlink', already_restored = False
+
+    @pytest.mark.parametrize("prior_kind", ["absent", "file", "symlink"])
+    @pytest.mark.parametrize("already_restored", [False, True])
+    def test_recovery_sync_failure_retains_evidence_on_retry(sandbox, prior_kind, already_restored):
+        repo = make_env_repo(sandbox / "env", '''
+    import { module } from "@gripsack/core";
+    export default module("demo", {});
+    ''')
+        home = sandbox / ".local/share/gripsack"
+        destination = sandbox / "interrupted"
+        trace = sandbox / "recovery-boundaries.tsv"
+        env = dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1")
+    
+        def invoke(extra=None):
+            return subprocess.run(
+                [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+                env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,
+            )
+    
+        # Provision the ordinary frontend/lock paths before introducing interrupted
+        # recovery metadata; no destination or generation is created by this seam.
+        warm = invoke()
+        assert warm.returncode == 0, warm.stdout + warm.stderr
+        journal = home / "journal"
+        journal.mkdir(exist_ok=True, mode=0o700)
+        journal.chmod(0o700)
+        entry_path = journal / "intent.json"
+        marker = journal / "run.json"
+        origin = b"original private bytes\n"
+        blob = home / "prior" / hashlib.sha256(origin).hexdigest()
+        if prior_kind == "file":
+            blob.parent.mkdir(mode=0o700, exist_ok=True)
+            blob.parent.chmod(0o700)
+            blob.write_bytes(origin)
+            blob.chmod(0o600)
+            prior = {"kind": "file", "hash": blob.name, "mode": 0o600}
+        elif prior_kind == "symlink":
+            prior = {"kind": "symlink", "target": "original-link"}
+        else:
+            prior = {"kind": "absent"}
+        entry = json.dumps({
+            "v": 2, "dest": str(destination), "prior": prior, "before": prior,
+            "after": {"kind": "link", "target": "installed"},
+        }).encode()
+        run = b'{"previous_generation":null,"target_generation":1,"op":"apply"}'
+    
+        def set_destination(restored):
+            destination.unlink(missing_ok=True)
+            if not restored:
+                destination.symlink_to("installed")
+            elif prior_kind == "file":
+                destination.write_bytes(origin)
+                destination.chmod(0o600)
+            elif prior_kind == "symlink":
+                destination.symlink_to("original-link")
+    
+        def seed(restored):
+            set_destination(restored)
+            entry_path.write_bytes(entry)
+            entry_path.chmod(0o600)
+            marker.write_bytes(run)
+            # A real permission-admission sync names the marker read boundary in
+            # the existing trace. It separates frontend setup from recovery work.
+            marker.chmod(0o644)
+            trace.unlink(missing_ok=True)
+    
+        def assert_prior():
+            if prior_kind == "file":
+                assert destination.read_bytes() == origin
+                assert destination.stat().st_mode & 0o7777 == 0o600
+                assert blob.read_bytes() == origin
+            elif prior_kind == "symlink":
+                assert destination.readlink() == Path("original-link")
+            else:
+                assert not destination.exists() and not destination.is_symlink()
+    
+        def recovery_sync_cut(restored):
+            seed(restored)
+            result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert_prior()
+            rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+            admitted = next(i for i, row in enumerate(rows)
+                            if row[1:] == ["After", "FileSync", '"run.json"'])
+            cleanup = next(i for i, row in enumerate(rows)
+                           if row[1:] == ["Before", "Unlink", '"intent.json"'])
+            barriers = [row for row in rows[admitted + 1:cleanup]
+                        if row[1:3] == ["Before", "DirSync"]]
+            assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+            assert not entry_path.exists() and not marker.exists()
+            return int(barriers[-1][0])
+    
+        # Independently exercise a restore and a retry that merely OBSERVES the
+        # prior. An earlier attempt may have landed its write but failed its sync.
+        cut = recovery_sync_cut(already_restored)
+>       retry_cut = recovery_sync_cut(True)
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+
+test_recovery_durability.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+restored = True
+
+    def recovery_sync_cut(restored):
+        seed(restored)
+        result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert_prior()
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        admitted = next(i for i, row in enumerate(rows)
+                        if row[1:] == ["After", "FileSync", '"run.json"'])
+        cleanup = next(i for i, row in enumerate(rows)
+                       if row[1:] == ["Before", "Unlink", '"intent.json"'])
+        barriers = [row for row in rows[admitted + 1:cleanup]
+                    if row[1:3] == ["Before", "DirSync"]]
+>       assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+E       AssertionError: recovery_cleanup_without_durable_prior: symlink
+E       assert []
+
+test_recovery_durability.py:105: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790525150-0d42e4.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T16:05:50.740012Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret2/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790525150-0d42e4","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret2/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T16:05:50.782247Z","level":"WARN","fields":{"message":"unchanged /tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret2/interrupted: the mutation never landed"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790525150-0d42e4","name":"run"},"spans":[{"command":"Apply","run_id":"1790525150-0d42e4","name":"run"}]}
+______ test_recovery_sync_failure_retains_evidence_on_retry[True-absent] _______
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret3')
+prior_kind = 'absent', already_restored = True
+
+    @pytest.mark.parametrize("prior_kind", ["absent", "file", "symlink"])
+    @pytest.mark.parametrize("already_restored", [False, True])
+    def test_recovery_sync_failure_retains_evidence_on_retry(sandbox, prior_kind, already_restored):
+        repo = make_env_repo(sandbox / "env", '''
+    import { module } from "@gripsack/core";
+    export default module("demo", {});
+    ''')
+        home = sandbox / ".local/share/gripsack"
+        destination = sandbox / "interrupted"
+        trace = sandbox / "recovery-boundaries.tsv"
+        env = dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1")
+    
+        def invoke(extra=None):
+            return subprocess.run(
+                [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+                env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,
+            )
+    
+        # Provision the ordinary frontend/lock paths before introducing interrupted
+        # recovery metadata; no destination or generation is created by this seam.
+        warm = invoke()
+        assert warm.returncode == 0, warm.stdout + warm.stderr
+        journal = home / "journal"
+        journal.mkdir(exist_ok=True, mode=0o700)
+        journal.chmod(0o700)
+        entry_path = journal / "intent.json"
+        marker = journal / "run.json"
+        origin = b"original private bytes\n"
+        blob = home / "prior" / hashlib.sha256(origin).hexdigest()
+        if prior_kind == "file":
+            blob.parent.mkdir(mode=0o700, exist_ok=True)
+            blob.parent.chmod(0o700)
+            blob.write_bytes(origin)
+            blob.chmod(0o600)
+            prior = {"kind": "file", "hash": blob.name, "mode": 0o600}
+        elif prior_kind == "symlink":
+            prior = {"kind": "symlink", "target": "original-link"}
+        else:
+            prior = {"kind": "absent"}
+        entry = json.dumps({
+            "v": 2, "dest": str(destination), "prior": prior, "before": prior,
+            "after": {"kind": "link", "target": "installed"},
+        }).encode()
+        run = b'{"previous_generation":null,"target_generation":1,"op":"apply"}'
+    
+        def set_destination(restored):
+            destination.unlink(missing_ok=True)
+            if not restored:
+                destination.symlink_to("installed")
+            elif prior_kind == "file":
+                destination.write_bytes(origin)
+                destination.chmod(0o600)
+            elif prior_kind == "symlink":
+                destination.symlink_to("original-link")
+    
+        def seed(restored):
+            set_destination(restored)
+            entry_path.write_bytes(entry)
+            entry_path.chmod(0o600)
+            marker.write_bytes(run)
+            # A real permission-admission sync names the marker read boundary in
+            # the existing trace. It separates frontend setup from recovery work.
+            marker.chmod(0o644)
+            trace.unlink(missing_ok=True)
+    
+        def assert_prior():
+            if prior_kind == "file":
+                assert destination.read_bytes() == origin
+                assert destination.stat().st_mode & 0o7777 == 0o600
+                assert blob.read_bytes() == origin
+            elif prior_kind == "symlink":
+                assert destination.readlink() == Path("original-link")
+            else:
+                assert not destination.exists() and not destination.is_symlink()
+    
+        def recovery_sync_cut(restored):
+            seed(restored)
+            result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert_prior()
+            rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+            admitted = next(i for i, row in enumerate(rows)
+                            if row[1:] == ["After", "FileSync", '"run.json"'])
+            cleanup = next(i for i, row in enumerate(rows)
+                           if row[1:] == ["Before", "Unlink", '"intent.json"'])
+            barriers = [row for row in rows[admitted + 1:cleanup]
+                        if row[1:3] == ["Before", "DirSync"]]
+            assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+            assert not entry_path.exists() and not marker.exists()
+            return int(barriers[-1][0])
+    
+        # Independently exercise a restore and a retry that merely OBSERVES the
+        # prior. An earlier attempt may have landed its write but failed its sync.
+>       cut = recovery_sync_cut(already_restored)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_recovery_durability.py:111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+restored = True
+
+    def recovery_sync_cut(restored):
+        seed(restored)
+        result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert_prior()
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        admitted = next(i for i, row in enumerate(rows)
+                        if row[1:] == ["After", "FileSync", '"run.json"'])
+        cleanup = next(i for i, row in enumerate(rows)
+                       if row[1:] == ["Before", "Unlink", '"intent.json"'])
+        barriers = [row for row in rows[admitted + 1:cleanup]
+                    if row[1:3] == ["Before", "DirSync"]]
+>       assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+E       AssertionError: recovery_cleanup_without_durable_prior: absent
+E       assert []
+
+test_recovery_durability.py:105: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790525151-8dc486.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T16:05:51.073426Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret3/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790525151-8dc486","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret3/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T16:05:51.120248Z","level":"WARN","fields":{"message":"unchanged /tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret3/interrupted: the mutation never landed"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790525151-8dc486","name":"run"},"spans":[{"command":"Apply","run_id":"1790525151-8dc486","name":"run"}]}
+_______ test_recovery_sync_failure_retains_evidence_on_retry[True-file] ________
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret4')
+prior_kind = 'file', already_restored = True
+
+    @pytest.mark.parametrize("prior_kind", ["absent", "file", "symlink"])
+    @pytest.mark.parametrize("already_restored", [False, True])
+    def test_recovery_sync_failure_retains_evidence_on_retry(sandbox, prior_kind, already_restored):
+        repo = make_env_repo(sandbox / "env", '''
+    import { module } from "@gripsack/core";
+    export default module("demo", {});
+    ''')
+        home = sandbox / ".local/share/gripsack"
+        destination = sandbox / "interrupted"
+        trace = sandbox / "recovery-boundaries.tsv"
+        env = dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1")
+    
+        def invoke(extra=None):
+            return subprocess.run(
+                [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+                env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,
+            )
+    
+        # Provision the ordinary frontend/lock paths before introducing interrupted
+        # recovery metadata; no destination or generation is created by this seam.
+        warm = invoke()
+        assert warm.returncode == 0, warm.stdout + warm.stderr
+        journal = home / "journal"
+        journal.mkdir(exist_ok=True, mode=0o700)
+        journal.chmod(0o700)
+        entry_path = journal / "intent.json"
+        marker = journal / "run.json"
+        origin = b"original private bytes\n"
+        blob = home / "prior" / hashlib.sha256(origin).hexdigest()
+        if prior_kind == "file":
+            blob.parent.mkdir(mode=0o700, exist_ok=True)
+            blob.parent.chmod(0o700)
+            blob.write_bytes(origin)
+            blob.chmod(0o600)
+            prior = {"kind": "file", "hash": blob.name, "mode": 0o600}
+        elif prior_kind == "symlink":
+            prior = {"kind": "symlink", "target": "original-link"}
+        else:
+            prior = {"kind": "absent"}
+        entry = json.dumps({
+            "v": 2, "dest": str(destination), "prior": prior, "before": prior,
+            "after": {"kind": "link", "target": "installed"},
+        }).encode()
+        run = b'{"previous_generation":null,"target_generation":1,"op":"apply"}'
+    
+        def set_destination(restored):
+            destination.unlink(missing_ok=True)
+            if not restored:
+                destination.symlink_to("installed")
+            elif prior_kind == "file":
+                destination.write_bytes(origin)
+                destination.chmod(0o600)
+            elif prior_kind == "symlink":
+                destination.symlink_to("original-link")
+    
+        def seed(restored):
+            set_destination(restored)
+            entry_path.write_bytes(entry)
+            entry_path.chmod(0o600)
+            marker.write_bytes(run)
+            # A real permission-admission sync names the marker read boundary in
+            # the existing trace. It separates frontend setup from recovery work.
+            marker.chmod(0o644)
+            trace.unlink(missing_ok=True)
+    
+        def assert_prior():
+            if prior_kind == "file":
+                assert destination.read_bytes() == origin
+                assert destination.stat().st_mode & 0o7777 == 0o600
+                assert blob.read_bytes() == origin
+            elif prior_kind == "symlink":
+                assert destination.readlink() == Path("original-link")
+            else:
+                assert not destination.exists() and not destination.is_symlink()
+    
+        def recovery_sync_cut(restored):
+            seed(restored)
+            result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert_prior()
+            rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+            admitted = next(i for i, row in enumerate(rows)
+                            if row[1:] == ["After", "FileSync", '"run.json"'])
+            cleanup = next(i for i, row in enumerate(rows)
+                           if row[1:] == ["Before", "Unlink", '"intent.json"'])
+            barriers = [row for row in rows[admitted + 1:cleanup]
+                        if row[1:3] == ["Before", "DirSync"]]
+            assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+            assert not entry_path.exists() and not marker.exists()
+            return int(barriers[-1][0])
+    
+        # Independently exercise a restore and a retry that merely OBSERVES the
+        # prior. An earlier attempt may have landed its write but failed its sync.
+>       cut = recovery_sync_cut(already_restored)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_recovery_durability.py:111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+restored = True
+
+    def recovery_sync_cut(restored):
+        seed(restored)
+        result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert_prior()
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        admitted = next(i for i, row in enumerate(rows)
+                        if row[1:] == ["After", "FileSync", '"run.json"'])
+        cleanup = next(i for i, row in enumerate(rows)
+                       if row[1:] == ["Before", "Unlink", '"intent.json"'])
+        barriers = [row for row in rows[admitted + 1:cleanup]
+                    if row[1:3] == ["Before", "DirSync"]]
+>       assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+E       AssertionError: recovery_cleanup_without_durable_prior: file
+E       assert []
+
+test_recovery_durability.py:105: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790525151-a96d3d.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T16:05:51.415536Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret4/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790525151-a96d3d","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret4/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T16:05:51.456407Z","level":"WARN","fields":{"message":"unchanged /tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret4/interrupted: the mutation never landed"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790525151-a96d3d","name":"run"},"spans":[{"command":"Apply","run_id":"1790525151-a96d3d","name":"run"}]}
+______ test_recovery_sync_failure_retains_evidence_on_retry[True-symlink] ______
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret5')
+prior_kind = 'symlink', already_restored = True
+
+    @pytest.mark.parametrize("prior_kind", ["absent", "file", "symlink"])
+    @pytest.mark.parametrize("already_restored", [False, True])
+    def test_recovery_sync_failure_retains_evidence_on_retry(sandbox, prior_kind, already_restored):
+        repo = make_env_repo(sandbox / "env", '''
+    import { module } from "@gripsack/core";
+    export default module("demo", {});
+    ''')
+        home = sandbox / ".local/share/gripsack"
+        destination = sandbox / "interrupted"
+        trace = sandbox / "recovery-boundaries.tsv"
+        env = dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1")
+    
+        def invoke(extra=None):
+            return subprocess.run(
+                [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+                env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,
+            )
+    
+        # Provision the ordinary frontend/lock paths before introducing interrupted
+        # recovery metadata; no destination or generation is created by this seam.
+        warm = invoke()
+        assert warm.returncode == 0, warm.stdout + warm.stderr
+        journal = home / "journal"
+        journal.mkdir(exist_ok=True, mode=0o700)
+        journal.chmod(0o700)
+        entry_path = journal / "intent.json"
+        marker = journal / "run.json"
+        origin = b"original private bytes\n"
+        blob = home / "prior" / hashlib.sha256(origin).hexdigest()
+        if prior_kind == "file":
+            blob.parent.mkdir(mode=0o700, exist_ok=True)
+            blob.parent.chmod(0o700)
+            blob.write_bytes(origin)
+            blob.chmod(0o600)
+            prior = {"kind": "file", "hash": blob.name, "mode": 0o600}
+        elif prior_kind == "symlink":
+            prior = {"kind": "symlink", "target": "original-link"}
+        else:
+            prior = {"kind": "absent"}
+        entry = json.dumps({
+            "v": 2, "dest": str(destination), "prior": prior, "before": prior,
+            "after": {"kind": "link", "target": "installed"},
+        }).encode()
+        run = b'{"previous_generation":null,"target_generation":1,"op":"apply"}'
+    
+        def set_destination(restored):
+            destination.unlink(missing_ok=True)
+            if not restored:
+                destination.symlink_to("installed")
+            elif prior_kind == "file":
+                destination.write_bytes(origin)
+                destination.chmod(0o600)
+            elif prior_kind == "symlink":
+                destination.symlink_to("original-link")
+    
+        def seed(restored):
+            set_destination(restored)
+            entry_path.write_bytes(entry)
+            entry_path.chmod(0o600)
+            marker.write_bytes(run)
+            # A real permission-admission sync names the marker read boundary in
+            # the existing trace. It separates frontend setup from recovery work.
+            marker.chmod(0o644)
+            trace.unlink(missing_ok=True)
+    
+        def assert_prior():
+            if prior_kind == "file":
+                assert destination.read_bytes() == origin
+                assert destination.stat().st_mode & 0o7777 == 0o600
+                assert blob.read_bytes() == origin
+            elif prior_kind == "symlink":
+                assert destination.readlink() == Path("original-link")
+            else:
+                assert not destination.exists() and not destination.is_symlink()
+    
+        def recovery_sync_cut(restored):
+            seed(restored)
+            result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert_prior()
+            rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+            admitted = next(i for i, row in enumerate(rows)
+                            if row[1:] == ["After", "FileSync", '"run.json"'])
+            cleanup = next(i for i, row in enumerate(rows)
+                           if row[1:] == ["Before", "Unlink", '"intent.json"'])
+            barriers = [row for row in rows[admitted + 1:cleanup]
+                        if row[1:3] == ["Before", "DirSync"]]
+            assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+            assert not entry_path.exists() and not marker.exists()
+            return int(barriers[-1][0])
+    
+        # Independently exercise a restore and a retry that merely OBSERVES the
+        # prior. An earlier attempt may have landed its write but failed its sync.
+>       cut = recovery_sync_cut(already_restored)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_recovery_durability.py:111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+restored = True
+
+    def recovery_sync_cut(restored):
+        seed(restored)
+        result = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert_prior()
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        admitted = next(i for i, row in enumerate(rows)
+                        if row[1:] == ["After", "FileSync", '"run.json"'])
+        cleanup = next(i for i, row in enumerate(rows)
+                       if row[1:] == ["Before", "Unlink", '"intent.json"'])
+        barriers = [row for row in rows[admitted + 1:cleanup]
+                    if row[1:3] == ["Before", "DirSync"]]
+>       assert barriers, "recovery_cleanup_without_durable_prior: " + prior_kind
+E       AssertionError: recovery_cleanup_without_durable_prior: symlink
+E       assert []
+
+test_recovery_durability.py:105: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790525151-f2d8b4.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T16:05:51.734319Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret5/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790525151-f2d8b4","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret5/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T16:05:51.776991Z","level":"WARN","fields":{"message":"unchanged /tmp/pytest-of-root/pytest-0/test_recovery_sync_failure_ret5/interrupted: the mutation never landed"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790525151-f2d8b4","name":"run"},"spans":[{"command":"Apply","run_id":"1790525151-f2d8b4","name":"run"}]}
+=========================== short test summary info ============================
+FAILED test_recovery_durability.py::test_recovery_sync_failure_retains_evidence_on_retry[False-absent]
+FAILED test_recovery_durability.py::test_recovery_sync_failure_retains_evidence_on_retry[False-file]
+FAILED test_recovery_durability.py::test_recovery_sync_failure_retains_evidence_on_retry[False-symlink]
+FAILED test_recovery_durability.py::test_recovery_sync_failure_retains_evidence_on_retry[True-absent]
+FAILED test_recovery_durability.py::test_recovery_sync_failure_retains_evidence_on_retry[True-file]
+FAILED test_recovery_durability.py::test_recovery_sync_failure_retains_evidence_on_retry[True-symlink]
+6 failed in 2.21s
+
+
+=== after first correction: recovery/transaction/GC 46 passed ===
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.0s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 DONE 0.0s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#11 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 97.48kB 0.1s done
+#8 DONE 0.1s
+
+#12 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#12 CACHED
+
+#13 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#13 CACHED
+
+#14 [builder  4/10] WORKDIR /app
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 CACHED
+
+#16 [builder  6/10] COPY crates ./crates
+#16 DONE 0.4s
+
+#17 [builder  7/10] COPY fuzz ./fuzz
+#17 DONE 0.1s
+
+#18 [builder  8/10] COPY schema ./schema
+#18 DONE 0.0s
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 DONE 0.1s
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.0s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.300     Updating crates.io index
+#21 2.432  Downloading crates ...
+#21 2.519   Downloaded block-buffer v0.12.1
+#21 2.523   Downloaded adler2 v2.0.1
+#21 2.526   Downloaded colorchoice v1.0.5
+#21 2.531   Downloaded anstyle-query v1.1.5
+#21 2.533   Downloaded cfg-if v1.0.4
+#21 2.536   Downloaded clap_lex v1.1.0
+#21 2.539   Downloaded ambient-authority v0.0.2
+#21 2.541   Downloaded anstyle-parse v1.0.0
+#21 2.544   Downloaded anstyle v1.0.14
+#21 2.547   Downloaded convert_case v0.4.0
+#21 2.549   Downloaded idna_adapter v1.2.2
+#21 2.551   Downloaded subtle v2.6.1
+#21 2.554   Downloaded cap-std v4.0.3
+#21 2.560   Downloaded bitflags v2.13.1
+#21 2.567   Downloaded bzip2 v0.6.1
+#21 2.571   Downloaded clap_derive v4.6.4
+#21 2.574   Downloaded console v0.16.4
+#21 2.577   Downloaded const-oid v0.10.2
+#21 2.581   Downloaded clap v4.6.6
+#21 2.596   Downloaded getrandom v0.2.17
+#21 2.601   Downloaded zerofrom v0.1.8
+#21 2.603   Downloaded anstream v1.0.0
+#21 2.607   Downloaded smallvec v1.15.2
+#21 2.610   Downloaded cpufeatures v0.3.0
+#21 2.612   Downloaded crypto-common v0.2.2
+#21 2.614   Downloaded matchers v0.2.0
+#21 2.617   Downloaded fs-set-times v0.20.3
+#21 2.620   Downloaded percent-encoding v2.3.2
+#21 2.621   Downloaded errno v0.3.14
+#21 2.625   Downloaded cap-primitives v4.0.3
+#21 2.645   Downloaded bumpalo v3.20.3
+#21 2.648   Downloaded unicode-ident v1.0.24
+#21 2.655   Downloaded heck v0.5.0
+#21 2.657   Downloaded thread_local v1.1.10
+#21 2.660   Downloaded openssl-probe v0.2.1
+#21 2.663   Downloaded strsim v0.11.1
+#21 2.666   Downloaded displaydoc v0.2.7
+#21 2.670   Downloaded base64 v0.22.1
+#21 2.679   Downloaded cc v1.4.4
+#21 2.684   Downloaded memchr v2.8.3
+#21 2.696   Downloaded lazy_static v1.5.0
+#21 2.700   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 2.702   Downloaded is_terminal_polyfill v1.70.2
+#21 2.704   Downloaded serde_spanned v1.1.1
+#21 2.706   Downloaded potential_utf v0.1.6
+#21 2.709   Downloaded nu-ansi-term v0.50.3
+#21 2.714   Downloaded utf8_iter v1.0.4
+#21 2.716   Downloaded io-extras v0.19.0
+#21 2.719   Downloaded io-lifetimes v3.0.1
+#21 2.722   Downloaded pin-project-lite v0.2.17
+#21 2.734   Downloaded filetime v0.2.29
+#21 2.738   Downloaded quote v1.0.47
+#21 2.743   Downloaded jobserver v0.1.35
+#21 2.747   Downloaded utf8parse v0.2.2
+#21 2.749   Downloaded dialoguer v0.12.0
+#21 2.757   Downloaded shell-words v1.1.1
+#21 2.758   Downloaded owo-colors v4.3.0
+#21 2.762   Downloaded icu_normalizer_data v2.3.0
+#21 2.765   Downloaded maybe-owned v0.3.4
+#21 2.767   Downloaded itoa v1.0.18
+#21 2.770   Downloaded once_cell v1.21.4
+#21 2.776   Downloaded rustls-native-certs v0.8.4
+#21 2.779   Downloaded tinystr v0.8.4
+#21 2.784   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 2.786   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 2.789   Downloaded sha2 v0.11.0
+#21 2.797   Downloaded thiserror-impl v2.0.20
+#21 2.799   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 2.804   Downloaded xattr v1.6.1
+#21 2.808   Downloaded unit-prefix v0.5.2
+#21 2.811   Downloaded getrandom v0.4.3
+#21 2.817   Downloaded pkg-config v0.3.34
+#21 2.821   Downloaded libbz2-rs-sys v0.2.5
+#21 2.824   Downloaded fastrand v2.5.0
+#21 2.827   Downloaded serde_yaml v0.9.34+deprecated
+#21 2.833   Downloaded hybrid-array v0.4.14
+#21 2.837   Downloaded serde_derive v1.0.229
+#21 2.842   Downloaded form_urlencoded v1.2.2
+#21 2.843   Downloaded stable_deref_trait v1.2.1
+#21 2.845   Downloaded httpdate v1.0.3
+#21 2.848   Downloaded equivalent v1.0.2
+#21 2.850   Downloaded icu_provider v2.3.1
+#21 2.854   Downloaded webpki-roots v0.26.11
+#21 2.857   Downloaded rustix-linux-procfs v0.1.1
+#21 2.859   Downloaded indicatif v0.18.6
+#21 2.865   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 2.867   Downloaded rustls-webpki v0.103.15
+#21 2.872   Downloaded ipnet v2.12.1
+#21 2.875   Downloaded rustls-pki-types v1.15.1
+#21 2.879   Downloaded proc-macro2 v1.0.107
+#21 2.884   Downloaded crc32fast v1.5.1
+#21 2.889   Downloaded icu_collections v2.3.0
+#21 2.900   Downloaded digest v0.11.3
+#21 2.905   Downloaded find-msvc-tools v0.1.11
+#21 2.908   Downloaded miniz_oxide v0.8.9
+#21 2.912   Downloaded aho-corasick v1.1.5
+#21 2.920   Downloaded serde v1.0.229
+#21 2.926   Downloaded io-lifetimes v2.0.4
+#21 2.929   Downloaded flate2 v1.1.9
+#21 2.938   Downloaded log v0.4.34
+#21 2.943   Downloaded ryu v1.0.23
+#21 2.950   Downloaded serde_core v1.0.229
+#21 2.954   Downloaded untrusted v0.9.0
+#21 2.958   Downloaded clap_builder v4.6.6
+#21 2.968   Downloaded indexmap v2.14.0
+#21 2.975   Downloaded zerofrom-derive v0.1.7
+#21 2.978   Downloaded litemap v0.8.3
+#21 2.982   Downloaded tracing-serde v0.2.0
+#21 2.984   Downloaded shlex v2.0.1
+#21 2.987   Downloaded icu_locale_core v2.3.0
+#21 3.001   Downloaded icu_properties v2.3.0
+#21 3.006   Downloaded idna v1.1.0
+#21 3.011   Downloaded serde_json v1.0.151
+#21 3.023   Downloaded zstd-safe v7.2.4
+#21 3.025   Downloaded hashbrown v0.17.1
+#21 3.033   Downloaded icu_properties_data v2.3.0
+#21 3.044   Downloaded tracing-log v0.2.0
+#21 3.047   Downloaded synstructure v0.13.2
+#21 3.049   Downloaded zmij v1.0.23
+#21 3.053   Downloaded simd-adler32 v0.3.10
+#21 3.057   Downloaded portable-atomic v1.15.0
+#21 3.069   Downloaded yoke-derive v0.8.2
+#21 3.072   Downloaded zstd v0.13.3
+#21 3.078   Downloaded tracing-attributes v0.1.31
+#21 3.084   Downloaded writeable v0.6.4
+#21 3.088   Downloaded thiserror v2.0.20
+#21 3.098   Downloaded xz2 v0.1.7
+#21 3.101   Downloaded zeroize v1.9.0
+#21 3.104   Downloaded regex-syntax v0.8.11
+#21 3.113   Downloaded rustls v0.23.45
+#21 3.130   Downloaded toml v0.9.12+spec-1.1.0
+#21 3.138   Downloaded rustix v1.1.4
+#21 3.191   Downloaded zerovec-derive v0.11.6
+#21 3.194   Downloaded icu_normalizer v2.3.0
+#21 3.205   Downloaded tempfile v3.27.0
+#21 3.210   Downloaded yoke v0.8.3
+#21 3.213   Downloaded regex-automata v0.4.18
+#21 3.234   Downloaded toml v1.1.4+spec-1.1.0
+#21 3.241   Downloaded lzma-sys v0.1.20
+#21 3.287   Downloaded libc v0.2.189
+#21 3.394   Downloaded sharded-slab v0.1.7
+#21 3.400   Downloaded zopfli v0.8.3
+#21 3.404   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 3.410   Downloaded ring v0.17.14
+#21 3.469   Downloaded tar v0.4.46
+#21 3.475   Downloaded tracing-core v0.1.36
+#21 3.479   Downloaded unsafe-libyaml v0.2.11
+#21 3.485   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 3.490   Downloaded zerotrie v0.2.5
+#21 3.497   Downloaded url v2.5.8
+#21 3.500   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 3.504   Downloaded linux-raw-sys v0.12.1
+#21 3.573   Downloaded typenum v1.20.1
+#21 3.577   Downloaded ureq v2.12.1
+#21 3.585   Downloaded typed-path v0.12.3
+#21 3.601   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 3.605   Downloaded zerovec v0.11.8
+#21 3.614   Downloaded zip v8.6.0
+#21 3.620   Downloaded winnow v1.0.4
+#21 3.637   Downloaded winnow v0.7.15
+#21 3.653   Downloaded zlib-rs v0.6.7
+#21 3.661   Downloaded webpki-roots v1.0.9
+#21 3.665   Downloaded tracing-subscriber v0.3.23
+#21 3.678   Downloaded unicode-width v0.2.2
+#21 3.684   Downloaded syn v2.0.119
+#21 3.697   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 3.711   Downloaded syn v3.0.4
+#21 3.724   Downloaded tracing v0.1.44
+#21 3.740   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 3.754   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 3.953    Compiling proc-macro2 v1.0.107
+#21 3.953    Compiling unicode-ident v1.0.24
+#21 3.953    Compiling quote v1.0.47
+#21 3.953    Compiling libc v0.2.189
+#21 3.953    Compiling shlex v2.0.1
+#21 3.953    Compiling cfg-if v1.0.4
+#21 3.954    Compiling serde_core v1.0.229
+#21 3.957    Compiling find-msvc-tools v0.1.11
+#21 3.959    Compiling once_cell v1.21.4
+#21 3.960    Compiling equivalent v1.0.2
+#21 3.962    Compiling hashbrown v0.17.1
+#21 3.964    Compiling stable_deref_trait v1.2.1
+#21 3.965    Compiling rustix v1.1.4
+#21 3.965    Compiling linux-raw-sys v0.12.1
+#21 3.975    Compiling bitflags v2.13.1
+#21 3.975    Compiling serde v1.0.229
+#21 3.977    Compiling pkg-config v0.3.34
+#21 3.978    Compiling zmij v1.0.23
+#21 3.982    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 3.986    Compiling itoa v1.0.18
+#21 3.987    Compiling serde_json v1.0.151
+#21 3.995    Compiling memchr v2.8.3
+#21 4.006    Compiling writeable v0.6.4
+#21 4.009    Compiling zeroize v1.9.0
+#21 4.009    Compiling winnow v1.0.4
+#21 4.009    Compiling convert_case v0.4.0
+#21 4.010    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.015    Compiling litemap v0.8.3
+#21 4.015    Compiling io-lifetimes v3.0.1
+#21 4.015    Compiling io-lifetimes v2.0.4
+#21 4.015    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.016    Compiling icu_normalizer_data v2.3.0
+#21 4.018    Compiling icu_properties_data v2.3.0
+#21 4.020    Compiling thiserror v2.0.20
+#21 4.036    Compiling log v0.4.34
+#21 4.090    Compiling io-extras v0.19.0
+#21 4.161    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 4.200    Compiling smallvec v1.15.2
+#21 4.233    Compiling utf8_iter v1.0.4
+#21 4.272    Compiling typenum v1.20.1
+#21 4.278    Compiling rustls-pki-types v1.15.1
+#21 4.287    Compiling getrandom v0.4.3
+#21 4.315    Compiling cap-primitives v4.0.3
+#21 4.320    Compiling tracing-core v0.1.36
+#21 4.330    Compiling crc32fast v1.5.1
+#21 4.355    Compiling cap-std v4.0.3
+#21 4.355    Compiling ipnet v2.12.1
+#21 4.355    Compiling maybe-owned v0.3.4
+#21 4.389    Compiling ambient-authority v0.0.2
+#21 4.415    Compiling zstd-safe v7.2.4
+#21 4.416    Compiling simd-adler32 v0.3.10
+#21 4.453    Compiling const-oid v0.10.2
+#21 4.471    Compiling fastrand v2.5.0
+#21 4.524    Compiling untrusted v0.9.0
+#21 4.535    Compiling winnow v0.7.15
+#21 4.540    Compiling cpufeatures v0.3.0
+#21 4.544    Compiling rustls v0.23.45
+#21 4.545    Compiling pin-project-lite v0.2.17
+#21 4.555    Compiling adler2 v2.0.1
+#21 4.606    Compiling percent-encoding v2.3.2
+#21 4.628    Compiling libbz2-rs-sys v0.2.5
+#21 4.639    Compiling bumpalo v3.20.3
+#21 4.650    Compiling subtle v2.6.1
+#21 4.656    Compiling zlib-rs v0.6.7
+#21 4.663    Compiling utf8parse v0.2.2
+#21 4.663    Compiling base64 v0.22.1
+#21 4.674    Compiling regex-syntax v0.8.11
+#21 4.699    Compiling miniz_oxide v0.8.9
+#21 4.705    Compiling typed-path v0.12.3
+#21 4.753    Compiling openssl-probe v0.2.1
+#21 4.770    Compiling anstyle-parse v1.0.0
+#21 4.819    Compiling form_urlencoded v1.2.2
+#21 4.829    Compiling webpki-roots v1.0.9
+#21 4.832    Compiling ryu v1.0.23
+#21 4.839    Compiling lazy_static v1.5.0
+#21 4.876    Compiling indexmap v2.14.0
+#21 4.883    Compiling anstyle-query v1.1.5
+#21 4.892    Compiling rustls-native-certs v0.8.4
+#21 4.908    Compiling portable-atomic v1.15.0
+#21 4.938    Compiling webpki-roots v0.26.11
+#21 4.945    Compiling zopfli v0.8.3
+#21 4.952    Compiling unsafe-libyaml v0.2.11
+#21 4.992    Compiling colorchoice v1.0.5
+#21 4.999    Compiling is_terminal_polyfill v1.70.2
+#21 5.008    Compiling unicode-width v0.2.2
+#21 5.012    Compiling anstyle v1.0.14
+#21 5.040    Compiling httpdate v1.0.3
+#21 5.051    Compiling tracing-log v0.2.0
+#21 5.066    Compiling sharded-slab v0.1.7
+#21 5.066    Compiling thread_local v1.1.10
+#21 5.076    Compiling nu-ansi-term v0.50.3
+#21 5.083    Compiling owo-colors v4.3.0
+#21 5.099    Compiling clap_lex v1.1.0
+#21 5.120    Compiling heck v0.5.0
+#21 5.120    Compiling strsim v0.11.1
+#21 5.175    Compiling unit-prefix v0.5.2
+#21 5.294    Compiling shell-words v1.1.1
+#21 5.356    Compiling anstream v1.0.0
+#21 5.416    Compiling bzip2 v0.6.1
+#21 5.656    Compiling syn v2.0.119
+#21 5.656    Compiling syn v3.0.4
+#21 5.656    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 5.680    Compiling clap_builder v4.6.6
+#21 5.732    Compiling hybrid-array v0.4.14
+#21 5.928    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 5.935    Compiling jobserver v0.1.35
+#21 5.935    Compiling getrandom v0.2.17
+#21 5.936    Compiling filetime v0.2.29
+#21 5.936    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 5.937    Compiling console v0.16.4
+#21 6.221    Compiling cc v1.4.4
+#21 6.427    Compiling block-buffer v0.12.1
+#21 6.427    Compiling crypto-common v0.2.2
+#21 6.435    Compiling regex-automata v0.4.18
+#21 6.435    Compiling indicatif v0.18.6
+#21 7.312    Compiling digest v0.11.3
+#21 7.428    Compiling sha2 v0.11.0
+#21 7.794    Compiling serde_spanned v1.1.1
+#21 7.794    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 7.794    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 7.858    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 7.858    Compiling ring v0.17.14
+#21 7.858    Compiling lzma-sys v0.1.20
+#21 8.016    Compiling toml v0.9.12+spec-1.1.0
+#21 8.030    Compiling toml v1.1.4+spec-1.1.0
+#21 8.030    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 8.255    Compiling flate2 v1.1.9
+#21 8.648    Compiling matchers v0.2.0
+#21 8.742    Compiling rustix-linux-procfs v0.1.1
+#21 8.765    Compiling fs-set-times v0.20.3
+#21 8.771    Compiling tempfile v3.27.0
+#21 8.771    Compiling xattr v1.6.1
+#21 8.912    Compiling tar v0.4.46
+#21 9.072    Compiling xz2 v0.1.7
+#21 9.100    Compiling dialoguer v0.12.0
+#21 10.12    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 10.54    Compiling synstructure v0.13.2
+#21 11.25    Compiling zerovec-derive v0.11.6
+#21 11.25    Compiling displaydoc v0.2.7
+#21 11.25    Compiling serde_derive v1.0.229
+#21 11.25    Compiling thiserror-impl v2.0.20
+#21 11.25    Compiling clap_derive v4.6.4
+#21 11.58    Compiling rustls-webpki v0.103.15
+#21 11.73    Compiling zstd v0.13.3
+#21 11.87    Compiling zerofrom-derive v0.1.7
+#21 11.87    Compiling yoke-derive v0.8.2
+#21 11.87    Compiling tracing-attributes v0.1.31
+#21 11.97    Compiling zip v8.6.0
+#21 13.28    Compiling clap v4.6.6
+#21 13.37    Compiling zerofrom v0.1.8
+#21 13.44    Compiling yoke v0.8.3
+#21 13.48    Compiling tracing v0.1.44
+#21 13.58    Compiling zerovec v0.11.8
+#21 13.58    Compiling zerotrie v0.2.5
+#21 13.93    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 13.93    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 14.08    Compiling tinystr v0.8.4
+#21 14.08    Compiling potential_utf v0.1.6
+#21 14.15    Compiling icu_collections v2.3.0
+#21 14.20    Compiling icu_locale_core v2.3.0
+#21 14.90    Compiling tracing-serde v0.2.0
+#21 14.90    Compiling serde_yaml v0.9.34+deprecated
+#21 14.97    Compiling icu_provider v2.3.1
+#21 14.99    Compiling tracing-subscriber v0.3.23
+#21 15.18    Compiling icu_normalizer v2.3.0
+#21 15.18    Compiling icu_properties v2.3.0
+#21 16.19    Compiling idna_adapter v1.2.2
+#21 16.25    Compiling idna v1.1.0
+#21 16.57    Compiling url v2.5.8
+#21 17.09    Compiling ureq v2.12.1
+#21 22.04    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 22.29    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 24.96    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 24.96    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 24.96    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 26.07    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 26.07    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 27.76    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 27.76    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 31.81    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 37.03     Finished `dev` profile [unoptimized + debuginfo] target(s) in 36.82s
+#21 DONE 37.5s
+
+#22 [e2e  2/12] WORKDIR /app
+#22 CACHED
+
+#23 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#23 CACHED
+
+#24 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#24 CACHED
+
+#25 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#27 DONE 0.1s
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 DONE 0.1s
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.302 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.302 Creating virtual environment at: .venv
+#29 0.309 Resolved 10 packages in 4ms
+#29 0.401 Downloading pygments (1.2MiB)
+#29 0.525  Downloaded pygments
+#29 0.525 Prepared 5 packages in 215ms
+#29 0.541 Installed 5 packages in 15ms
+#29 0.541  + iniconfig==2.3.0
+#29 0.541  + packaging==26.3
+#29 0.541  + pluggy==1.6.0
+#29 0.541  + pygments==2.21.0
+#29 0.541  + pytest==9.1.1
+#29 DONE 0.6s
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 2.8s done
+#33 exporting manifest sha256:1bad19def198e7e1da53c90e01079c6f0c00646d89a38a7873ac7e058a520973 0.0s done
+#33 exporting config sha256:b1ede0d2f092d0e9ddd27d8a8587c40cee37ccbdb901074aac0414da9f61fe4b 0.0s done
+#33 exporting attestation manifest sha256:e5f96209c2e134f160ed522045513fc22c464a41a7749e0ce36b54eb875a3a88 0.0s done
+#33 exporting manifest list sha256:fbdca7538faf66caee8efe091a6f337fa49e5e7d60e533febeb612735e93ec79 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.8s done
+#33 DONE 3.7s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-04b48e7f9041 Creating 
+ Container gripsack-e2e-run-04b48e7f9041 Created 
+..............................................                           [100%]
+46 passed in 21.80s
+
+=== standalone actual CLI smoke after first correction ===
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.7s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 ...
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 1.5s
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 1.5s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#9 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#9 DONE 0.0s
+
+#10 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#10 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 97.62kB 0.1s done
+#11 DONE 0.1s
+
+#12 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#12 CACHED
+
+#13 [builder  4/10] WORKDIR /app
+#13 CACHED
+
+#14 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 CACHED
+
+#16 [builder  6/10] COPY crates ./crates
+#16 DONE 0.4s
+
+#17 [builder  7/10] COPY fuzz ./fuzz
+#17 DONE 0.1s
+
+#18 [builder  8/10] COPY schema ./schema
+#18 DONE 0.1s
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 DONE 0.1s
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.1s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.310     Updating crates.io index
+#21 2.510  Downloading crates ...
+#21 2.618   Downloaded aho-corasick v1.1.5
+#21 2.631   Downloaded shell-words v1.1.1
+#21 2.633   Downloaded strsim v0.11.1
+#21 2.637   Downloaded serde_derive v1.0.229
+#21 2.643   Downloaded adler2 v2.0.1
+#21 2.645   Downloaded hybrid-array v0.4.14
+#21 2.651   Downloaded fs-set-times v0.20.3
+#21 2.653   Downloaded is_terminal_polyfill v1.70.2
+#21 2.656   Downloaded idna_adapter v1.2.2
+#21 2.658   Downloaded maybe-owned v0.3.4
+#21 2.661   Downloaded cfg-if v1.0.4
+#21 2.664   Downloaded equivalent v1.0.2
+#21 2.667   Downloaded matchers v0.2.0
+#21 2.670   Downloaded webpki-roots v0.26.11
+#21 2.673   Downloaded colorchoice v1.0.5
+#21 2.681   Downloaded anstyle v1.0.14
+#21 2.685   Downloaded getrandom v0.2.17
+#21 2.691   Downloaded untrusted v0.9.0
+#21 2.695   Downloaded itoa v1.0.18
+#21 2.714   Downloaded fastrand v2.5.0
+#21 2.719   Downloaded crc32fast v1.5.1
+#21 2.724   Downloaded xattr v1.6.1
+#21 2.729   Downloaded bzip2 v0.6.1
+#21 2.738   Downloaded block-buffer v0.12.1
+#21 2.760   Downloaded errno v0.3.14
+#21 2.772   Downloaded yoke-derive v0.8.2
+#21 2.774   Downloaded form_urlencoded v1.2.2
+#21 2.777   Downloaded utf8_iter v1.0.4
+#21 2.780   Downloaded clap_lex v1.1.0
+#21 2.792   Downloaded anstyle-query v1.1.5
+#21 2.804   Downloaded convert_case v0.4.0
+#21 2.840   Downloaded anstream v1.0.0
+#21 2.876   Downloaded openssl-probe v0.2.1
+#21 2.882   Downloaded httpdate v1.0.3
+#21 2.885   Downloaded lazy_static v1.5.0
+#21 2.891   Downloaded ambient-authority v0.0.2
+#21 2.913   Downloaded utf8parse v0.2.2
+#21 2.937   Downloaded percent-encoding v2.3.2
+#21 2.939   Downloaded unit-prefix v0.5.2
+#21 2.944   Downloaded subtle v2.6.1
+#21 2.947   Downloaded serde_spanned v1.1.1
+#21 2.950   Downloaded cpufeatures v0.3.0
+#21 2.953   Downloaded crypto-common v0.2.2
+#21 2.956   Downloaded io-extras v0.19.0
+#21 2.960   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 2.976   Downloaded find-msvc-tools v0.1.11
+#21 3.003   Downloaded zerofrom v0.1.8
+#21 3.005   Downloaded stable_deref_trait v1.2.1
+#21 3.010   Downloaded thread_local v1.1.10
+#21 3.013   Downloaded heck v0.5.0
+#21 3.016   Downloaded potential_utf v0.1.6
+#21 3.034   Downloaded rustls-native-certs v0.8.4
+#21 3.042   Downloaded rustix-linux-procfs v0.1.1
+#21 3.044   Downloaded anstyle-parse v1.0.0
+#21 3.056   Downloaded pin-project-lite v0.2.17
+#21 3.069   Downloaded ipnet v2.12.1
+#21 3.072   Downloaded tinystr v0.8.4
+#21 3.077   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 3.079   Downloaded jobserver v0.1.35
+#21 3.083   Downloaded io-lifetimes v3.0.1
+#21 3.086   Downloaded sha2 v0.11.0
+#21 3.095   Downloaded synstructure v0.13.2
+#21 3.097   Downloaded pkg-config v0.3.34
+#21 3.101   Downloaded io-lifetimes v2.0.4
+#21 3.104   Downloaded displaydoc v0.2.7
+#21 3.109   Downloaded base64 v0.22.1
+#21 3.117   Downloaded once_cell v1.21.4
+#21 3.122   Downloaded thiserror v2.0.20
+#21 3.136   Downloaded digest v0.11.3
+#21 3.142   Downloaded quote v1.0.47
+#21 3.147   Downloaded thiserror-impl v2.0.20
+#21 3.150   Downloaded tracing-log v0.2.0
+#21 3.153   Downloaded clap_derive v4.6.4
+#21 3.157   Downloaded rustls-pki-types v1.15.1
+#21 3.162   Downloaded console v0.16.4
+#21 3.166   Downloaded simd-adler32 v0.3.10
+#21 3.170   Downloaded dialoguer v0.12.0
+#21 3.179   Downloaded xz2 v0.1.7
+#21 3.184   Downloaded litemap v0.8.3
+#21 3.190   Downloaded nu-ansi-term v0.50.3
+#21 3.198   Downloaded shlex v2.0.1
+#21 3.202   Downloaded tracing-serde v0.2.0
+#21 3.205   Downloaded indicatif v0.18.6
+#21 3.212   Downloaded clap v4.6.6
+#21 3.231   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 3.233   Downloaded icu_locale_core v2.3.0
+#21 3.250   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 3.253   Downloaded zerovec-derive v0.11.6
+#21 3.256   Downloaded cap-std v4.0.3
+#21 3.263   Downloaded ryu v1.0.23
+#21 3.271   Downloaded const-oid v0.10.2
+#21 3.275   Downloaded filetime v0.2.29
+#21 3.279   Downloaded owo-colors v4.3.0
+#21 3.283   Downloaded proc-macro2 v1.0.107
+#21 3.289   Downloaded zeroize v1.9.0
+#21 3.292   Downloaded serde_yaml v0.9.34+deprecated
+#21 3.298   Downloaded getrandom v0.4.3
+#21 3.304   Downloaded zmij v1.0.23
+#21 3.309   Downloaded zstd-safe v7.2.4
+#21 3.311   Downloaded writeable v0.6.4
+#21 3.316   Downloaded zstd v0.13.3
+#21 3.323   Downloaded icu_provider v2.3.1
+#21 3.329   Downloaded log v0.4.34
+#21 3.335   Downloaded serde_core v1.0.229
+#21 3.340   Downloaded zerofrom-derive v0.1.7
+#21 3.343   Downloaded libbz2-rs-sys v0.2.5
+#21 3.347   Downloaded miniz_oxide v0.8.9
+#21 3.352   Downloaded icu_properties v2.3.0
+#21 3.358   Downloaded bitflags v2.13.1
+#21 3.365   Downloaded icu_normalizer_data v2.3.0
+#21 3.368   Downloaded tempfile v3.27.0
+#21 3.374   Downloaded serde v1.0.229
+#21 3.380   Downloaded icu_collections v2.3.0
+#21 3.391   Downloaded yoke v0.8.3
+#21 3.394   Downloaded rustls-webpki v0.103.15
+#21 3.399   Downloaded tracing-attributes v0.1.31
+#21 3.404   Downloaded cap-primitives v4.0.3
+#21 3.422   Downloaded bumpalo v3.20.3
+#21 3.426   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 3.431   Downloaded cc v1.4.4
+#21 3.435   Downloaded indexmap v2.14.0
+#21 3.443   Downloaded smallvec v1.15.2
+#21 3.446   Downloaded flate2 v1.1.9
+#21 3.454   Downloaded memchr v2.8.3
+#21 3.466   Downloaded toml v0.9.12+spec-1.1.0
+#21 3.475   Downloaded serde_json v1.0.151
+#21 3.490   Downloaded toml v1.1.4+spec-1.1.0
+#21 3.501   Downloaded idna v1.1.0
+#21 3.507   Downloaded unicode-ident v1.0.24
+#21 3.515   Downloaded unsafe-libyaml v0.2.11
+#21 3.522   Downloaded icu_properties_data v2.3.0
+#21 3.537   Downloaded hashbrown v0.17.1
+#21 3.547   Downloaded clap_builder v4.6.6
+#21 3.558   Downloaded zopfli v0.8.3
+#21 3.562   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 3.568   Downloaded portable-atomic v1.15.0
+#21 3.580   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 3.586   Downloaded tar v0.4.46
+#21 3.592   Downloaded tracing-core v0.1.36
+#21 3.597   Downloaded sharded-slab v0.1.7
+#21 3.604   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 3.609   Downloaded url v2.5.8
+#21 3.613   Downloaded zerotrie v0.2.5
+#21 3.621   Downloaded typenum v1.20.1
+#21 3.626   Downloaded rustls v0.23.45
+#21 3.646   Downloaded regex-syntax v0.8.11
+#21 3.654   Downloaded typed-path v0.12.3
+#21 3.673   Downloaded ureq v2.12.1
+#21 3.682   Downloaded rustix v1.1.4
+#21 3.744   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 3.752   Downloaded icu_normalizer v2.3.0
+#21 3.765   Downloaded regex-automata v0.4.18
+#21 3.788   Downloaded zerovec v0.11.8
+#21 3.799   Downloaded zip v8.6.0
+#21 3.805   Downloaded lzma-sys v0.1.20
+#21 3.861   Downloaded winnow v1.0.4
+#21 3.881   Downloaded libc v0.2.189
+#21 3.999   Downloaded winnow v0.7.15
+#21 4.018   Downloaded tracing-subscriber v0.3.23
+#21 4.032   Downloaded webpki-roots v1.0.9
+#21 4.037   Downloaded zlib-rs v0.6.7
+#21 4.046   Downloaded unicode-width v0.2.2
+#21 4.052   Downloaded ring v0.17.14
+#21 4.116   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 4.130   Downloaded syn v2.0.119
+#21 4.144   Downloaded syn v3.0.4
+#21 4.158   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 4.173   Downloaded tracing v0.1.44
+#21 4.190   Downloaded linux-raw-sys v0.12.1
+#21 4.257   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 4.471    Compiling proc-macro2 v1.0.107
+#21 4.471    Compiling unicode-ident v1.0.24
+#21 4.471    Compiling quote v1.0.47
+#21 4.471    Compiling libc v0.2.189
+#21 4.471    Compiling find-msvc-tools v0.1.11
+#21 4.471    Compiling serde_core v1.0.229
+#21 4.471    Compiling shlex v2.0.1
+#21 4.475    Compiling cfg-if v1.0.4
+#21 4.478    Compiling once_cell v1.21.4
+#21 4.478    Compiling hashbrown v0.17.1
+#21 4.479    Compiling equivalent v1.0.2
+#21 4.482    Compiling stable_deref_trait v1.2.1
+#21 4.482    Compiling rustix v1.1.4
+#21 4.483    Compiling linux-raw-sys v0.12.1
+#21 4.491    Compiling bitflags v2.13.1
+#21 4.499    Compiling pkg-config v0.3.34
+#21 4.500    Compiling serde v1.0.229
+#21 4.500    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.503    Compiling zmij v1.0.23
+#21 4.508    Compiling serde_json v1.0.151
+#21 4.508    Compiling itoa v1.0.18
+#21 4.508    Compiling memchr v2.8.3
+#21 4.513    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.513    Compiling io-lifetimes v2.0.4
+#21 4.514    Compiling writeable v0.6.4
+#21 4.522    Compiling convert_case v0.4.0
+#21 4.525    Compiling winnow v1.0.4
+#21 4.526    Compiling io-lifetimes v3.0.1
+#21 4.526    Compiling litemap v0.8.3
+#21 4.529    Compiling zeroize v1.9.0
+#21 4.529    Compiling io-extras v0.19.0
+#21 4.530    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.534    Compiling icu_properties_data v2.3.0
+#21 4.551    Compiling log v0.4.34
+#21 4.618    Compiling thiserror v2.0.20
+#21 4.623    Compiling icu_normalizer_data v2.3.0
+#21 4.701    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 4.822    Compiling smallvec v1.15.2
+#21 4.822    Compiling typenum v1.20.1
+#21 4.830    Compiling utf8_iter v1.0.4
+#21 4.845    Compiling rustls-pki-types v1.15.1
+#21 4.850    Compiling getrandom v0.4.3
+#21 4.852    Compiling cap-primitives v4.0.3
+#21 4.881    Compiling tracing-core v0.1.36
+#21 4.898    Compiling ipnet v2.12.1
+#21 4.902    Compiling maybe-owned v0.3.4
+#21 4.931    Compiling crc32fast v1.5.1
+#21 4.974    Compiling cap-std v4.0.3
+#21 4.990    Compiling ambient-authority v0.0.2
+#21 5.006    Compiling untrusted v0.9.0
+#21 5.042    Compiling simd-adler32 v0.3.10
+#21 5.059    Compiling fastrand v2.5.0
+#21 5.075    Compiling const-oid v0.10.2
+#21 5.075    Compiling winnow v0.7.15
+#21 5.075    Compiling zstd-safe v7.2.4
+#21 5.111    Compiling adler2 v2.0.1
+#21 5.132    Compiling cpufeatures v0.3.0
+#21 5.149    Compiling percent-encoding v2.3.2
+#21 5.177    Compiling pin-project-lite v0.2.17
+#21 5.214    Compiling rustls v0.23.45
+#21 5.229    Compiling subtle v2.6.1
+#21 5.234    Compiling zlib-rs v0.6.7
+#21 5.242    Compiling libbz2-rs-sys v0.2.5
+#21 5.251    Compiling bumpalo v3.20.3
+#21 5.251    Compiling openssl-probe v0.2.1
+#21 5.264    Compiling base64 v0.22.1
+#21 5.285    Compiling utf8parse v0.2.2
+#21 5.302    Compiling regex-syntax v0.8.11
+#21 5.314    Compiling miniz_oxide v0.8.9
+#21 5.406    Compiling form_urlencoded v1.2.2
+#21 5.407    Compiling typed-path v0.12.3
+#21 5.407    Compiling anstyle-parse v1.0.0
+#21 5.408    Compiling lazy_static v1.5.0
+#21 5.441    Compiling webpki-roots v1.0.9
+#21 5.462    Compiling rustls-native-certs v0.8.4
+#21 5.491    Compiling indexmap v2.14.0
+#21 5.495    Compiling colorchoice v1.0.5
+#21 5.527    Compiling is_terminal_polyfill v1.70.2
+#21 5.536    Compiling ryu v1.0.23
+#21 5.558    Compiling httpdate v1.0.3
+#21 5.587    Compiling webpki-roots v0.26.11
+#21 5.605    Compiling anstyle-query v1.1.5
+#21 5.618    Compiling unsafe-libyaml v0.2.11
+#21 5.633    Compiling unicode-width v0.2.2
+#21 5.702    Compiling anstyle v1.0.14
+#21 5.713    Compiling portable-atomic v1.15.0
+#21 5.724    Compiling tracing-log v0.2.0
+#21 5.738    Compiling sharded-slab v0.1.7
+#21 5.763    Compiling thread_local v1.1.10
+#21 5.792    Compiling strsim v0.11.1
+#21 5.858    Compiling zopfli v0.8.3
+#21 5.876    Compiling owo-colors v4.3.0
+#21 5.912    Compiling clap_lex v1.1.0
+#21 5.936    Compiling heck v0.5.0
+#21 5.953    Compiling nu-ansi-term v0.50.3
+#21 5.991    Compiling unit-prefix v0.5.2
+#21 6.093    Compiling anstream v1.0.0
+#21 6.111    Compiling shell-words v1.1.1
+#21 6.129    Compiling bzip2 v0.6.1
+#21 6.485    Compiling hybrid-array v0.4.14
+#21 6.517    Compiling clap_builder v4.6.6
+#21 6.522    Compiling syn v3.0.4
+#21 6.523    Compiling syn v2.0.119
+#21 6.524    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 6.783    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 6.815    Compiling jobserver v0.1.35
+#21 6.815    Compiling getrandom v0.2.17
+#21 6.816    Compiling filetime v0.2.29
+#21 6.816    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 6.822    Compiling console v0.16.4
+#21 7.089    Compiling cc v1.4.4
+#21 7.242    Compiling block-buffer v0.12.1
+#21 7.242    Compiling crypto-common v0.2.2
+#21 7.422    Compiling indicatif v0.18.6
+#21 7.436    Compiling regex-automata v0.4.18
+#21 8.412    Compiling digest v0.11.3
+#21 8.613    Compiling sha2 v0.11.0
+#21 9.051    Compiling serde_spanned v1.1.1
+#21 9.051    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 9.051    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 9.154    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 9.154    Compiling ring v0.17.14
+#21 9.154    Compiling lzma-sys v0.1.20
+#21 9.244    Compiling flate2 v1.1.9
+#21 9.285    Compiling toml v0.9.12+spec-1.1.0
+#21 9.306    Compiling toml v1.1.4+spec-1.1.0
+#21 9.306    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 9.999    Compiling matchers v0.2.0
+#21 10.21    Compiling rustix-linux-procfs v0.1.1
+#21 10.21    Compiling fs-set-times v0.20.3
+#21 10.22    Compiling tempfile v3.27.0
+#21 10.22    Compiling xattr v1.6.1
+#21 10.42    Compiling tar v0.4.46
+#21 10.57    Compiling dialoguer v0.12.0
+#21 11.21    Compiling xz2 v0.1.7
+#21 11.55    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 12.14    Compiling synstructure v0.13.2
+#21 12.42    Compiling zstd v0.13.3
+#21 12.67    Compiling zip v8.6.0
+#21 12.72    Compiling zerovec-derive v0.11.6
+#21 12.72    Compiling displaydoc v0.2.7
+#21 12.72    Compiling serde_derive v1.0.229
+#21 12.72    Compiling thiserror-impl v2.0.20
+#21 12.73    Compiling clap_derive v4.6.4
+#21 13.49    Compiling zerofrom-derive v0.1.7
+#21 13.49    Compiling yoke-derive v0.8.2
+#21 13.49    Compiling tracing-attributes v0.1.31
+#21 13.51    Compiling rustls-webpki v0.103.15
+#21 14.88    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 14.88    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 15.02    Compiling clap v4.6.6
+#21 15.06    Compiling zerofrom v0.1.8
+#21 15.09    Compiling tracing v0.1.44
+#21 15.13    Compiling yoke v0.8.3
+#21 15.28    Compiling zerovec v0.11.8
+#21 15.28    Compiling zerotrie v0.2.5
+#21 15.79    Compiling tinystr v0.8.4
+#21 15.79    Compiling potential_utf v0.1.6
+#21 15.85    Compiling icu_collections v2.3.0
+#21 15.91    Compiling icu_locale_core v2.3.0
+#21 16.47    Compiling serde_yaml v0.9.34+deprecated
+#21 16.47    Compiling tracing-serde v0.2.0
+#21 16.57    Compiling tracing-subscriber v0.3.23
+#21 16.69    Compiling icu_provider v2.3.1
+#21 16.89    Compiling icu_properties v2.3.0
+#21 16.89    Compiling icu_normalizer v2.3.0
+#21 17.95    Compiling idna_adapter v1.2.2
+#21 18.00    Compiling idna v1.1.0
+#21 18.38    Compiling url v2.5.8
+#21 18.92    Compiling ureq v2.12.1
+#21 23.29    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 23.55    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 26.29    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 26.29    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 26.29    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 27.42    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 27.42    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 29.14    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 29.14    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 33.23    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 38.55     Finished `dev` profile [unoptimized + debuginfo] target(s) in 38.34s
+#21 DONE 39.0s
+
+#22 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#22 CACHED
+
+#23 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#23 CACHED
+
+#24 [e2e  2/12] WORKDIR /app
+#24 CACHED
+
+#25 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#27 DONE 0.1s
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 DONE 0.1s
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.292 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.292 Creating virtual environment at: .venv
+#29 0.300 Resolved 10 packages in 3ms
+#29 0.374 Downloading pygments (1.2MiB)
+#29 0.546  Downloaded pygments
+#29 0.546 Prepared 5 packages in 245ms
+#29 0.561 Installed 5 packages in 15ms
+#29 0.561  + iniconfig==2.3.0
+#29 0.561  + packaging==26.3
+#29 0.561  + pluggy==1.6.0
+#29 0.561  + pygments==2.21.0
+#29 0.561  + pytest==9.1.1
+#29 DONE 0.6s
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 2.7s done
+#33 exporting manifest sha256:25e36cb4c74ca1cf74f1537977f2c07088087154da6c6e12069497933315e26d 0.0s done
+#33 exporting config sha256:cc22a9c3d2c4c91d8f95c3d8f276f8269129c614c1955977112b0c9f1e38887e 0.0s done
+#33 exporting attestation manifest sha256:528303a309dc53726e0ca4df1f00d17678c4a84941d8b3fa965ad84634054bf6 0.0s done
+#33 exporting manifest list sha256:1cdb03a2d6d6e86d23a9057675fe57567b939be439b9a6363cf094622b1e0093 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.8s done
+#33 DONE 3.6s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.1s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-9df5021a0222 Creating 
+ Container gripsack-e2e-run-9df5021a0222 Created 
+$ grip apply --host testhost [recovery only]
+[1m[32malready satisfied[39m[0m (generation —, [2m0.0s[0m)
+
+$ grip apply --host testhost [recovery only]
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation —, [2m0.0s[0m)
+2026-09-27T16:26:19.484816Z  WARN gripsack_exec::apply: recovered /tmp/gripsack-recovery-durability-5an4x8lh/interrupted: removed (was absent before the interrupted run)
+
+ABSENT_RESTORE_DURABLE_BEFORE_CLEANUP=true barrier=24
+$ grip apply --host testhost [recovery only]
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation —, [2m0.0s[0m)
+2026-09-27T16:26:19.553427Z  WARN gripsack_exec::apply: unchanged /tmp/gripsack-recovery-durability-5an4x8lh/interrupted: prior state is durable
+
+$ grip apply --host testhost [recovery only]
+error[E201]: io: injected Before DirSync
+
+OBSERVED_PRIOR_SYNC_FAILURE_RETAINS_EVIDENCE=true
+$ grip apply --host testhost [recovery only]
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation —, [2m0.0s[0m)
+2026-09-27T16:26:19.666468Z  WARN gripsack_exec::apply: unchanged /tmp/gripsack-recovery-durability-5an4x8lh/interrupted: prior state is durable
+
+RECOVERY_SMOKE_RESULT={"journeys":2,"passed":2,"failed":0,"power_loss_claim":false,"fuzz":"not_run"}
+
+=== before second correction: commit barrier/current metadata (three named failures) ===
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.0s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 DONE 0.0s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#11 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 94.93kB 0.1s done
+#8 DONE 0.1s
+
+#12 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#12 CACHED
+
+#13 [bin 1/1] RUN cargo build --locked -p gripsack
+#13 CACHED
+
+#14 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#14 CACHED
+
+#15 [builder  8/10] COPY schema ./schema
+#15 CACHED
+
+#16 [builder  7/10] COPY fuzz ./fuzz
+#16 CACHED
+
+#17 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#17 CACHED
+
+#18 [builder  4/10] WORKDIR /app
+#18 CACHED
+
+#19 [builder 10/10] COPY scripts ./scripts
+#19 CACHED
+
+#20 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#20 CACHED
+
+#21 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#21 CACHED
+
+#22 [e2e  2/12] WORKDIR /app
+#22 CACHED
+
+#23 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#23 CACHED
+
+#24 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#24 CACHED
+
+#25 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#25 CACHED
+
+#26 [builder  9/10] COPY typescript ./typescript
+#26 CACHED
+
+#27 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#27 CACHED
+
+#28 [builder  6/10] COPY crates ./crates
+#28 CACHED
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 CACHED
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.0s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.2s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 0.2s done
+#33 exporting manifest sha256:aecab2cfff97f9e83a12d56ce2a5138e41d88ec321128627d7ade5f104e09153 0.0s done
+#33 exporting config sha256:6ebe17b7e0e2bf9eaacfac913b4f6358851eccea5591fa995a40bfef81d160ed 0.0s done
+#33 exporting attestation manifest sha256:0a558533e4bdb52bec415c6c5831609ff686a6b3a3a74f49a3139fe4cfea8991 0.0s done
+#33 exporting manifest list sha256:33aa04a0f8983ffa18646514267cfa21d065260b1b616218aa6be019b3dcadca 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.1s done
+#33 DONE 0.4s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-5f87f015c1b2 Creating 
+ Container gripsack-e2e-run-5f87f015c1b2 Created 
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+____________ test_observed_commit_is_synced_before_recovery_cleanup ____________
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_observed_commit_is_synced0')
+
+    def test_observed_commit_is_synced_before_recovery_cleanup(sandbox):
+        repo, home, destination, marker, entry, _ = committed_fixture(sandbox)
+        trace = sandbox / "committed-boundaries.tsv"
+        env = dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1", GRIPSACK_FS_TRACE=str(trace))
+    
+        def invoke(extra=None):
+            return subprocess.run(
+                [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+                env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,
+            )
+    
+        marker_bytes, entry_bytes = marker.read_bytes(), entry.read_bytes()
+        observed = invoke()
+        assert observed.returncode == 0, observed.stdout + observed.stderr
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        admitted = next(i for i, row in enumerate(rows)
+                        if row[1:] == ["After", "FileSync", '"run.json"'])
+        cleanup = next(i for i, row in enumerate(rows)
+                       if row[1:] == ["Before", "Unlink", '"intent.json"'])
+        seals = [row for row in rows[admitted + 1:cleanup]
+                 if row[1:3] == ["Before", "DirSync"]]
+>       assert seals, "committed_cleanup_without_durable_current"
+E       AssertionError: committed_cleanup_without_durable_current
+E       assert []
+
+test_recovery_durability.py:191: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790526864-cd5696.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T16:34:25.168207Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_observed_commit_is_synced0/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790526864-cd5696","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_observed_commit_is_synced0/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T16:34:25.268164Z","level":"WARN","fields":{"message":"interrupted run's generation had already activated — journal cleared, deployed state stands"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790526864-cd5696","name":"run"},"spans":[{"command":"Apply","run_id":"1790526864-cd5696","name":"run"}]}
+______ test_corrupt_current_generation_retains_recovery_evidence[missing] ______
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_corrupt_current_generatio0')
+corruption = 'missing'
+
+    @pytest.mark.parametrize("corruption", ["missing", "malformed"])
+    def test_corrupt_current_generation_retains_recovery_evidence(sandbox, corruption):
+        repo, _, destination, marker, entry, manifest = committed_fixture(sandbox)
+        marker_bytes, entry_bytes = marker.read_bytes(), entry.read_bytes()
+        if corruption == "missing":
+            manifest.unlink()
+        else:
+            manifest.write_bytes(b"{torn")
+        result = subprocess.run(
+            [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+            env=dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1"),
+            capture_output=True, text=True, timeout=30,
+        )
+>       assert result.returncode != 0, "corrupt current gained commit authority"
+E       AssertionError: corrupt current gained commit authority
+E       assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/usr/local/bin/grip', 'apply', '--host', 'testhost'], returncode=0, stdout='  * ⚠ recovered 1 ...N gripsack_exec::apply: interrupted run's generation had already activated — journal cleared, deployed state stands\n").returncode
+
+test_recovery_durability.py:222: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790526865-0cd8e9.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T16:34:25.454161Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_corrupt_current_generatio0/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790526865-0cd8e9","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_corrupt_current_generatio0/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T16:34:25.552063Z","level":"WARN","fields":{"message":"interrupted run's generation had already activated — journal cleared, deployed state stands"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790526865-0cd8e9","name":"run"},"spans":[{"command":"Apply","run_id":"1790526865-0cd8e9","name":"run"}]}
+_____ test_corrupt_current_generation_retains_recovery_evidence[malformed] _____
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_corrupt_current_generatio1')
+corruption = 'malformed'
+
+    @pytest.mark.parametrize("corruption", ["missing", "malformed"])
+    def test_corrupt_current_generation_retains_recovery_evidence(sandbox, corruption):
+        repo, _, destination, marker, entry, manifest = committed_fixture(sandbox)
+        marker_bytes, entry_bytes = marker.read_bytes(), entry.read_bytes()
+        if corruption == "missing":
+            manifest.unlink()
+        else:
+            manifest.write_bytes(b"{torn")
+        result = subprocess.run(
+            [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+            env=dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1"),
+            capture_output=True, text=True, timeout=30,
+        )
+>       assert result.returncode != 0, "corrupt current gained commit authority"
+E       AssertionError: corrupt current gained commit authority
+E       assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/usr/local/bin/grip', 'apply', '--host', 'testhost'], returncode=0, stdout='  * ⚠ recovered 1 ...N gripsack_exec::apply: interrupted run's generation had already activated — journal cleared, deployed state stands\n").returncode
+
+test_recovery_durability.py:222: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790526865-71773f.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T16:34:25.730209Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_corrupt_current_generatio1/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790526865-71773f","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_corrupt_current_generatio1/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T16:34:25.831717Z","level":"WARN","fields":{"message":"interrupted run's generation had already activated — journal cleared, deployed state stands"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790526865-71773f","name":"run"},"spans":[{"command":"Apply","run_id":"1790526865-71773f","name":"run"}]}
+=========================== short test summary info ============================
+FAILED test_recovery_durability.py::test_observed_commit_is_synced_before_recovery_cleanup
+FAILED test_recovery_durability.py::test_corrupt_current_generation_retains_recovery_evidence[missing]
+FAILED test_recovery_durability.py::test_corrupt_current_generation_retains_recovery_evidence[malformed]
+3 failed, 6 deselected in 0.88s
+
+
+
+Wall time: 4.13 seconds
+
+Command exited with code 1
