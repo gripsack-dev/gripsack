@@ -3,6 +3,7 @@
 #   docker compose run --build --rm ts-test   # deno test on the frontend
 #   docker compose run --build --rm e2e       # flow tests (offline)
 #   docker compose run --build --rm model     # TLC model gate via scripts/check_models.sh
+#   docker compose run --build --rm tlaps     # transaction induction + semantic calibration (amd64)
 #   docker compose run --build --rm verify    # Verus proofs + mutant calibration (amd64 only)
 #   docker compose run --build --rm -e VERSION=x.y.z release   # tarball → ./dist/
 #   scripts/check_reproducible.sh             # two clean release builds, compared (0042 F)
@@ -34,6 +35,14 @@ services:
       target: model
     # TLC runs at image-build time; the image existing IS the gate.
     command: 'echo "gate passed: model checks via scripts/check_models.sh (TLC, positive + calibrated negative configs)"'
+
+  tlaps:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: tlaps
+    command: 'echo "gate passed: transaction induction and calibrated TLAPS/TLC failures"'
 
   # amd64-only: Verus ships x86-linux/x86-macos/arm64-macos prebuilts.
   verify:

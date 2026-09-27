@@ -25,11 +25,13 @@
 //! through them.
 
 mod directories;
+mod scoped;
 mod streamed;
 pub use streamed::{atomic_copy_with_mode, publication_occurred};
 pub mod fault;
 pub use directories::{create_dir_all, open_or_create, remove_file, rename};
 use fault::{Boundary, operation};
+pub use scoped::{open_dir_nofollow, open_file_nofollow};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};

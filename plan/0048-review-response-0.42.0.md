@@ -2225,9 +2225,10 @@ handover slices, not a waiver of B1/B2, M-V1–M-V7 or platform gates.
 | M1-3.2 | NEXT / complete update comparison | Implemented, focused evidence | Check/Publish compare complete lock entries, including metadata-only changes. A real local acquisition regression passes; unchanged CLI updates preserve exact existing lock bytes. |
 | M1-3.3 | NEXT / resource fidelity | Implemented, focused evidence | Verify/Intent resource declarations reject source-labelled E134 in terminal and JSON before effects; producer resources remain supported. The full update-survey plus new resource flow group passed 10 cases. |
 | M1-6.1 | NEXT / fallible merge boundary | Implemented, focused evidence | ManagedBlockSet remove/upsert and all consumers propagate invalid UTF-8 instead of assuming parser perfection; six managed-block tests include a deliberately invalid byte span. This is not the complete M-V3 parser/range refinement proof. |
-| M1-6.5 | NEXT / faithful transaction model | Implemented, fresh model gate passed | Transaction Classify uses exact identities, not numeric apply/rollback direction, and assumes PREV differs from TARGET. The same fresh gate passed the separate repeated-write journal positive, two named loss mutants and reachable-two-writes witness. Generalized M-V1/M-V6 TLAPS evidence remains open. |
+| M1-6.5 | NEXT / faithful transaction model | Implemented, fresh model gate passed | Transaction Classify uses exact identities, not numeric apply/rollback direction, and assumes PREV differs from TARGET. The same fresh gate passed the separate repeated-write journal positive, two named loss mutants and reachable-two-writes witness. The M-V1 pilot is separately recorded below; generalized M-V6 remains open. |
 | M1-5a/b | NEXT / Verify-action and stepped-source admission | Implemented, focused evidence | Four real CLI regressions failed before: absolute/parent Verify-action paths and missing config/install-step repo files each passed check. After: E109/E115/E110 carry declaration spans and stop before producers/destinations; the combined contract/ownership/workspace group passed 76 cases. The standalone JSON probe also changed all three admitted `ok:true` cases into source-labelled errors. |
 | M0-4.4 | NEXT / private authoritative journal | Implemented, focused evidence; integrated release evidence pending | Fresh crashed and legacy-quarantined metadata both exposed 0755 journal directories before the fix. Pinned journal/quarantine directories now use 0700, records 0600, and permission changes use the existing fault boundary. Prior IO shares the same no-follow helper. The final focused run passed 118 Rust / 45 real CLI cases, including retained-record recovery after the recorded permission-sync IO failure; exact-source integrated verification remains required. |
+| M-V1 | NEXT / transaction inductive-safety pilot | Local proof/calibration passed; exact-source release evidence pending | `TransactionProofs.tla` discharges **301/301** obligations, including Init⇒Inv, Inv∧Next⇒Inv′ and Inv⇒Oracle∧CleanRunCommits. The checksum-pinned TLAPS 1.6 bundle at source `7824dab55e0c346e913404d59d0bbdeebce73cc1` is wired into Compose and the required CI test job. The omitted cleanup barrier has a separate **13/13** violating-transition proof and a reachable TLC `Oracle` counterexample; unrelated-failure and empty-target controls also passed. Protected CI was not dispatched because the owner forbids fuzz this round. This pilot is not M-V6. |
 
 E110 must distinguish repository-only inputs from produced payloads:
 the shipped `test_store_verify_detects_built_copy_source_exec_tampering`
@@ -2243,6 +2244,30 @@ quarantined a valid record, preventing ordinary subsequent recovery.
 The real recorded-cut regression reproduced that outcome. Read IO errors
 now propagate with the record retained; only successful reads followed
 by wire-admission rejection are quarantined.
+
+The final architecture gate rejected the temporary store→libc dependency.
+The correction moved no-follow directory/file opens into `gripsack-fs`,
+removed both store-side implementations and the dependency, and migrated
+prior/journal callers. The allowlist was not widened. Architecture
+self-calibration, **132 Rust** cases and **45 real CLI** recovery/history/GC
+cases passed after this layering correction.
+
+M-V1's domain is explicit: one destination, one crash and atomic recovery;
+previous/target are distinct natural generation identities; option tags
+are disjoint from their saved records; the modeled foreign edit differs
+from the owned/absent identities. `RecoveryClass` and `RecoveredDisk`
+are shared projections of the existing transition, not a second protocol.
+The proof assumes the model's rename/sync behavior; it proves neither the
+Rust adapter nor real filesystem durability, fresh-state `None`, repeated
+recovery, arbitrary destination sets or hook/GC composition.
+
+The first barrier-mutant proof search timed out. That is **not**
+calibration evidence. The final runner instead proves the actual mutated
+step violates completed-step durability in `TransactionBarrierWitness`;
+that module imports only `Transaction`, never the now-false induction
+theorem. TLC separately reaches the observable `Oracle` violation.
+Toolbox events must be fresh, complete, nonempty and lie within the named
+theorem; a timeout, unrelated failing lemma or empty target cannot qualify.
 
 Fuzz testing remains disabled for this round at the owner's request;
 that decision is not recorded as successful fuzz evidence.

@@ -44,6 +44,9 @@ jobs:
       - name: Transaction model (TLC)
         run: docker compose run --build --rm model
 
+      - name: Transaction induction (TLAPS, calibrated)
+        run: docker compose run --build --rm tlaps
+
       # the policy kernels, machine-proven + mutant-calibrated (0046);
       # part of the REQUIRED gate so proofs cannot fail optionally
       - name: Policy kernels (Verus)

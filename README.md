@@ -187,10 +187,14 @@ with the core verifying every byte against the lockfile.
 docker compose run --build --rm test     # fmt + clippy -D warnings + cargo test
 docker compose run --build --rm ts-test  # typescript frontend tests (deno)
 docker compose run --build --rm e2e      # flow tests (offline, fixture env repos)
+docker compose run --build --rm model    # finite protocol models and counterexamples
+docker compose run --build --rm tlaps    # transaction induction pilot (amd64)
+docker compose run --build --rm verify   # production Verus kernels and mutants (amd64)
 ```
 
-CI runs all three gates on every push. See [AGENTS.md](AGENTS.md) for
-working agreements (docker-first, rustls-only, IR changes touch all
-three sides).
+The required CI `test` job runs these gates for pull requests and pushes
+to `main`. The TLAPS pilot has one destination and one recovery; it is
+not the required generalized transaction theorem. See [AGENTS.md](AGENTS.md)
+for working agreements (docker-first, rustls-only, coordinated IR changes).
 
 MIT licensed.

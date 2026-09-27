@@ -115,6 +115,19 @@ record. These are working-tree observations; exact-source release
 evidence and all remaining implementation/proofs/platform lanes stay
 open. Fuzz remains unrun this round by owner instruction.
 
+**M-V1 local induction continuation:** `TransactionProofs.tla` now proves
+the corrected one-destination/one-recovery transaction pilot:
+**301/301** fresh TLAPS obligations, plus a **13/13** checked bad-barrier
+transition and a reachable TLC `Oracle` failure. The runner rejects
+unrelated-failure and empty-target evidence and never counts timeout
+as semantic calibration. A byte-pinned `tlaps` Compose service joins
+the required CI `test` job; no CI workflow was dispatched this round.
+Six local non-fuzz gates passed, including real CLI **342/342**.
+Receipt: `verification/reports/2026-09-27-m-v1-local-gate.log`.
+M-V6 generalization, other NEXT work and release qualification remain
+open; the pilot makes no fresh-None, repeated-recovery, multi-destination,
+Rust/OS refinement, liveness or hardware claim.
+
 ## Security maintenance (non-release changes)
 
 - 2026-09-26: The protected `audit` check exposed

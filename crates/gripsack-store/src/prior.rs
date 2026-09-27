@@ -86,14 +86,14 @@ pub enum Prior {
 /// Pin the prior directory itself. A planted directory symlink is not authority
 /// to restore, chmod or collect its target, even inside the Gripsack home.
 pub fn directory(home: &Dir) -> io::Result<Dir> {
-    crate::private_state::directory(home, Path::new("prior"))
+    gripsack_fs::open_dir_nofollow(home, Path::new("prior"))
 }
 
 /// Read only the named admitted blob through a pinned capability and verify its
 /// bytes before allowing either a restore intent or a destination mutation.
 pub fn read_blob(home: &Dir, identity: &PriorBlobId) -> io::Result<Vec<u8>> {
     let directory = directory(home)?;
-    let mut file = crate::private_state::regular_file(&directory, Path::new(identity.as_str()))?;
+    let mut file = gripsack_fs::open_file_nofollow(&directory, Path::new(identity.as_str()))?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
     if !crate::hash::hex_sha256(&bytes).eq_ignore_ascii_case(identity.as_str()) {
@@ -110,7 +110,7 @@ pub fn read_blob(home: &Dir, identity: &PriorBlobId) -> io::Result<Vec<u8>> {
 pub fn store_blob(home: &Dir, bytes: &[u8]) -> io::Result<PriorBlobId> {
     let identity = PriorBlobId(crate::hash::hex_sha256(bytes));
     let directory = crate::private_state::ensure_directory(home, Path::new("prior"))?;
-    match crate::private_state::regular_file(&directory, Path::new(identity.as_str())) {
+    match gripsack_fs::open_file_nofollow(&directory, Path::new(identity.as_str())) {
         Ok(mut file) => {
             let mut existing = Vec::new();
             file.read_to_end(&mut existing)?;

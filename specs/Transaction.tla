@@ -171,35 +171,31 @@ Decide(live, intended, prior) ==
             IF prior /= ABSENT THEN "restore" ELSE "unchanged"
       [] OTHER -> "keep"
 
+\* Pure recovery projections shared by the action and its induction proof.
+\* Empty journals and ambiguous identities leave the visible disk unchanged.
+RecoveryClass(disk) ==
+    IF disk.marker = NoMarker /\ disk.entry = NoEntry THEN "none"
+    ELSE IF disk.marker = NoMarker THEN "uncommitted"
+    ELSE Classify(disk.marker.prev, disk.marker.target, OP, disk.current)
+
+RecoveredDisk(disk) ==
+    LET c == RecoveryClass(disk)
+    IN CASE c = "committed" ->
+              [dest |-> disk.dest, current |-> disk.current,
+               entry |-> NoEntry, marker |-> NoMarker]
+         [] c = "uncommitted" ->
+              LET e == disk.entry
+              IN [dest |-> IF e = NoEntry THEN disk.dest
+                           ELSE IF Decide(disk.dest, e.intended, e.prior) = "restore"
+                                THEN e.prior ELSE disk.dest,
+                  current |-> disk.current,
+                  entry |-> NoEntry, marker |-> NoMarker]
+         [] OTHER -> disk
+
 Recover ==
     /\ phase = "recovering"
-    /\ IF visible.marker = NoMarker /\ visible.entry = NoEntry
-       THEN
-         \* empty journal: recovery is a no-op
-         /\ klass' = "none"
-         /\ UNCHANGED visible
-       ELSE
-         LET m == visible.marker
-             c == IF m = NoMarker
-                  THEN "uncommitted"   \* entries without a marker
-                  ELSE Classify(m.prev, m.target, OP, visible.current)
-         IN
-         /\ klass' = c
-         /\ CASE c = "committed" ->
-                  \* content stands; cleanup only
-                  visible' = [visible EXCEPT !.entry = NoEntry, !.marker = NoMarker]
-              [] c = "uncommitted" ->
-                  \* entries restore per Decide; the journal ALWAYS
-                  \* drains (zero-entry runs included — the marker is
-                  \* stale by then)
-                  LET e == visible.entry
-                  IN
-                  visible' = [visible EXCEPT
-                      !.dest = IF e /= NoEntry /\ Decide(visible.dest, e.intended, e.prior) = "restore"
-                               THEN e.prior ELSE @,
-                      !.entry = NoEntry,
-                      !.marker = NoMarker]
-              [] OTHER -> UNCHANGED visible  \* ambiguous: change NOTHING
+    /\ klass' = RecoveryClass(visible)
+    /\ visible' = RecoveredDisk(visible)
     /\ phase' = "done"
     /\ UNCHANGED <<volatile, durable, step, edited, beforeRecover>>
 

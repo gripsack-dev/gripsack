@@ -6,27 +6,9 @@ use gripsack_fs::{
 };
 use std::{io, path::Path};
 
-pub(crate) fn directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
-    let mut options = cap_std::fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use cap_std::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW);
-    }
-    let file = parent.open_with(name, &options)?;
-    if !file.metadata()?.is_dir() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "metadata root is not a directory",
-        ));
-    }
-    Ok(Dir::from_std_file(file.into_std()))
-}
-
 pub(crate) fn ensure_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
     gripsack_fs::create_dir_all(parent, name)?;
-    let directory = directory(parent, name)?;
+    let directory = gripsack_fs::open_dir_nofollow(parent, name)?;
     restrict_directory(&directory, name)?;
     Ok(directory)
 }
@@ -45,24 +27,6 @@ pub(crate) fn restrict_directory(directory: &Dir, label: &Path) -> io::Result<()
     #[cfg(not(unix))]
     let _ = (directory, label);
     Ok(())
-}
-
-pub(crate) fn regular_file(directory: &Dir, name: &Path) -> io::Result<cap_std::fs::File> {
-    let mut options = cap_std::fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use cap_std::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-    }
-    let file = directory.open_with(name, &options)?;
-    if !file.metadata()?.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "metadata record is not a regular file",
-        ));
-    }
-    Ok(file)
 }
 
 pub(crate) fn restrict_file(file: &cap_std::fs::File, label: &Path) -> io::Result<()> {

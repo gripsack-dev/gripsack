@@ -15,7 +15,7 @@ pub(super) struct Journal {
 impl Journal {
     /// Read-only opening; GC admission must not chmod or create metadata.
     pub(super) fn open(home: &Dir) -> io::Result<Option<Self>> {
-        match private_state::directory(home, Path::new("journal")) {
+        match gripsack_fs::open_dir_nofollow(home, Path::new("journal")) {
             Ok(directory) => Ok(Some(Self { directory })),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(error),
@@ -33,7 +33,7 @@ impl Journal {
     }
 
     pub(super) fn read(&self, name: &Path) -> io::Result<Vec<u8>> {
-        let mut file = private_state::regular_file(&self.directory, name)?;
+        let mut file = gripsack_fs::open_file_nofollow(&self.directory, name)?;
         private_state::restrict_file(&file, name)?;
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
@@ -45,7 +45,7 @@ impl Journal {
     }
 
     pub(super) fn quarantine_directory(&self) -> io::Result<Option<Dir>> {
-        match private_state::directory(&self.directory, Path::new("quarantine")) {
+        match gripsack_fs::open_dir_nofollow(&self.directory, Path::new("quarantine")) {
             Ok(directory) => Ok(Some(directory)),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(error),
@@ -63,7 +63,7 @@ impl Journal {
         for entry in directory.read_dir(".")? {
             let name = PathBuf::from(entry?.file_name());
             if directory.symlink_metadata(&name)?.is_file() {
-                let file = private_state::regular_file(&directory, &name)?;
+                let file = gripsack_fs::open_file_nofollow(&directory, &name)?;
                 private_state::restrict_file(&file, &name)?;
             }
             count += 1;

@@ -322,3 +322,18 @@ runner executions to the committed source and clean roots.
 Fuzz and corpus replay were not run by owner instruction. No native Mac,
 VM/launchd, generalized TLAPS theorem or public release is qualified.
 
+
+## M-V1 transaction induction — local calibrated pilot
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-27-m-v1-local-gate.log` | `2181ec3410876f6debc9451c6ceec5d8b0a8319a740e572b3ccf4c8c8202197c` | Fresh pinned TLAPS **301/301** obligations for the full pilot; an independently checked **13/13** violating-transition witness under the omitted cleanup barrier; reachable TLC `Oracle` counterexample; unrelated false-lemma and strict empty-target refusals. Actual Toolbox events and the counterexample are preserved. |
+
+The scope is one destination, one crash and atomic recovery under the
+declared `Parameters`, not generalized M-V6 or a Rust/OS refinement.
+This is a pre-commit working-tree transcript, not protected CI evidence.
+All six local non-fuzz Compose gates passed on the implementation:
+fresh Rust/Loom, real e2e **342/342**, Verus **72/0** and TLAPS; unchanged
+TypeScript and model RUN layers were cached (their governing fresh runs
+are archived above). No fuzz or workflow dispatch occurred.
+

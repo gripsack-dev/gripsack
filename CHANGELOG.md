@@ -17,6 +17,11 @@ User-visible changes per release. Design archaeology lives in
   `why-owns` reports every owner; partial selection cannot hide a physical
   destination collision. Package/artifact realization, environments, tasks,
   schedules and workers still require their unavailable executor capabilities.
+- An inductive transaction safety pilot checks the existing single-destination,
+  one-recovery protocol under explicit domain and durability assumptions.
+  The `tlaps` Compose service pins the prover/backend bundle and joins the
+  required CI job. This does not claim generalized repeated recovery,
+  filesystem refinement or completion of plan/0048 M-V6.
 
 ### Fixed
 

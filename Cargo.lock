@@ -749,7 +749,6 @@ dependencies = [
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-policy",
- "libc",
  "serde",
  "serde_json",
  "sha2",

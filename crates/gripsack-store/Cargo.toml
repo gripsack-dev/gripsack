@@ -15,4 +15,3 @@ gripsack-ir.workspace = true
 toml.workspace = true
 sha2.workspace = true
 tempfile = "3"
-libc = "0.2"

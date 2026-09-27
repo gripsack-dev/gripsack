@@ -81,6 +81,21 @@ COPY specs ./specs
 COPY scripts/check_models.sh ./scripts/check_models.sh
 RUN sh scripts/check_models.sh /tla/tla2tools.jar
 
+# M-V1's inductive pilot uses the same transaction source and pinned TLC.
+# The rolling upstream asset is byte-pinned: replacement fails the checksum,
+# never silently upgrades the prover or its bundled Isabelle/Z3/LS4 backends.
+FROM model AS tlaps
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+    python3 libgmp10 \
+    && rm -rf /var/lib/apt/lists/*
+ARG TLAPS_SHA256=a2860384bc89c4c5b2c73ec367e29f44d829e4d4a2698ab295139f829219331c
+ADD --checksum=sha256:${TLAPS_SHA256} https://github.com/tlaplus/tlapm/releases/download/1.6.0-pre/tlapm-1.6.0-pre-x86_64-linux-gnu.tar.gz /tmp/tlapm.tar.gz
+RUN mkdir -p /opt/tlapm && tar -xzf /tmp/tlapm.tar.gz -C /opt/tlapm --strip-components=1 \
+    && rm /tmp/tlapm.tar.gz
+ENV PATH="/opt/tlapm/bin:$PATH"
+COPY scripts/check_tlaps.py scripts/tlaps_evidence.py ./scripts/
+RUN python3 scripts/check_tlaps.py
+
 # The verification gate (plan/0046): cargo-verus over the policy
 # kernels, positive proof + seeded-mutant calibration, via the
 # canonical runner scripts/check_verus.sh. Verus ships no musl or

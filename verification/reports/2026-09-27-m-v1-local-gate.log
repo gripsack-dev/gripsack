@@ -1,0 +1,5715 @@
+Gripsack M-V1: local transaction induction and semantic calibration
+Date: 2026-09-27
+Source binding: pre-commit working tree; this is not an exact-commit CI receipt.
+Scope: one destination, one crash, atomic recovery, declared Parameters.
+No generalized M-V6, Rust/OS refinement, native Mac or release claim.
+Fuzz: NOT RUN, owner instruction.
+
+ Image gripsack-tlaps Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 587B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 11.00kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 DONE 0.0s
+
+#8 [tlaps 2/5] ADD --checksum=sha256:a2860384bc89c4c5b2c73ec367e29f44d829e4d4a2698ab295139f829219331c https://github.com/tlaplus/tlapm/releases/download/1.6.0-pre/tlapm-1.6.0-pre-x86_64-linux-gnu.tar.gz /tmp/tlapm.tar.gz
+#8 DONE 0.0s
+
+#9 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#9 DONE 0.0s
+
+#10 [model 1/6] FROM docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#10 resolve docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 0.0s done
+#10 DONE 0.0s
+
+#11 [model 6/6] RUN sh scripts/check_models.sh /tla/tla2tools.jar
+#11 CACHED
+
+#7 [internal] load build context
+#7 transferring context: 133.73kB 0.0s done
+#7 DONE 0.0s
+
+#12 [model 3/6] WORKDIR /work
+#12 CACHED
+
+#13 [model 4/6] COPY specs ./specs
+#13 CACHED
+
+#14 [model 6/6] RUN sh scripts/check_models.sh /tla/tla2tools.jar
+#14 CACHED
+
+#15 [tlaps 2/5] ADD --checksum=sha256:a2860384bc89c4c5b2c73ec367e29f44d829e4d4a2698ab295139f829219331c https://github.com/tlaplus/tlapm/releases/download/1.6.0-pre/tlapm-1.6.0-pre-x86_64-linux-gnu.tar.gz /tmp/tlapm.tar.gz
+#15 CACHED
+
+#16 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#16 CACHED
+
+#17 [model 5/6] COPY scripts/check_models.sh ./scripts/check_models.sh
+#17 CACHED
+
+#18 [tlaps 1/5] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends     python3 libgmp10     && rm -rf /var/lib/apt/lists/*
+#18 CACHED
+
+#19 [tlaps 3/5] RUN mkdir -p /opt/tlapm && tar -xzf /tmp/tlapm.tar.gz -C /opt/tlapm --strip-components=1     && rm /tmp/tlapm.tar.gz
+#19 CACHED
+
+#20 [tlaps 4/5] COPY scripts/check_tlaps.py scripts/tlaps_evidence.py ./scripts/
+#20 DONE 0.1s
+
+#21 [tlaps 5/5] RUN python3 scripts/check_tlaps.py
+#21 0.501 TLAPS_REVISION=7824dab
+#21 0.504 RUNNER_COMMAND=tlapm --strict --prefer-stdlib --nofp --toolbox 1 282 --threads 2 --cache-dir /tmp/gripsack-tlaps-wlympgcu/positive-cache TransactionProofs.tla
+#21 78.00 
+#21 78.00 \* TLAPM version 7824dab
+#21 78.00 \* launched at 2026-09-27 08:32:12 with command line:
+#21 78.00 \* tlapm --strict --prefer-stdlib --nofp --toolbox 1 282 --threads 2 --cache-dir /tmp/gripsack-tlaps-wlympgcu/positive-cache TransactionProofs.tla
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:1
+#21 78.00 @!!loc:34:3:34:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:2
+#21 78.00 @!!loc:34:6:34:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:3
+#21 78.00 @!!loc:37:3:37:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:4
+#21 78.00 @!!loc:37:6:37:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:5
+#21 78.00 @!!loc:42:3:42:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:6
+#21 78.00 @!!loc:42:6:42:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:7
+#21 78.00 @!!loc:66:3:66:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:8
+#21 78.00 @!!loc:66:6:66:14
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:9
+#21 78.00 @!!loc:71:3:71:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:10
+#21 78.00 @!!loc:71:6:71:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:11
+#21 78.00 @!!loc:117:3:117:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:12
+#21 78.00 @!!loc:117:6:117:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:13
+#21 78.00 @!!loc:117:11:117:15
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:14
+#21 78.00 @!!loc:117:17:117:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:15
+#21 78.00 @!!loc:117:23:117:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:16
+#21 78.00 @!!loc:117:29:117:33
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:17
+#21 78.00 @!!loc:117:35:117:39
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:18
+#21 78.00 @!!loc:117:41:117:45
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:19
+#21 78.00 @!!loc:117:47:117:51
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:20
+#21 78.00 @!!loc:77:1:77:43
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:21
+#21 78.00 @!!loc:77:1:77:43
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:22
+#21 78.00 @!!loc:83:3:83:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:23
+#21 78.00 @!!loc:83:6:83:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:24
+#21 78.00 @!!loc:83:11:83:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:25
+#21 78.00 @!!loc:83:23:83:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:26
+#21 78.00 @!!loc:85:3:85:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:27
+#21 78.00 @!!loc:85:6:85:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:28
+#21 78.00 @!!loc:85:11:85:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:29
+#21 78.00 @!!loc:85:23:85:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:30
+#21 78.00 @!!loc:87:3:87:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:31
+#21 78.00 @!!loc:87:6:87:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:32
+#21 78.00 @!!loc:87:11:87:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:33
+#21 78.00 @!!loc:87:23:87:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:34
+#21 78.00 @!!loc:109:5:109:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:35
+#21 78.00 @!!loc:109:8:109:12
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:36
+#21 78.00 @!!loc:109:14:109:18
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:37
+#21 78.00 @!!loc:90:5:90:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:38
+#21 78.00 @!!loc:90:8:90:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:39
+#21 78.00 @!!loc:90:13:90:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:40
+#21 78.00 @!!loc:90:25:90:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:41
+#21 78.00 @!!loc:90:31:90:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:42
+#21 78.00 @!!loc:107:7:107:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:43
+#21 78.00 @!!loc:107:10:107:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:44
+#21 78.00 @!!loc:107:15:107:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:45
+#21 78.00 @!!loc:107:27:107:31
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:46
+#21 78.00 @!!loc:107:33:107:37
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:47
+#21 78.00 @!!loc:107:39:107:43
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:48
+#21 78.00 @!!loc:107:45:107:49
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:49
+#21 78.00 @!!loc:107:51:107:55
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:50
+#21 78.00 @!!loc:107:57:107:69
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:51
+#21 78.00 @!!loc:95:7:95:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:52
+#21 78.00 @!!loc:95:10:95:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:53
+#21 78.00 @!!loc:95:15:95:19
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:54
+#21 78.00 @!!loc:95:21:95:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:55
+#21 78.00 @!!loc:97:7:97:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:56
+#21 78.00 @!!loc:97:10:97:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:57
+#21 78.00 @!!loc:97:15:97:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:58
+#21 78.00 @!!loc:97:27:97:31
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:59
+#21 78.00 @!!loc:97:33:97:37
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:60
+#21 78.00 @!!loc:104:9:104:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:61
+#21 78.00 @!!loc:104:17:104:20
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:62
+#21 78.00 @!!loc:104:22:104:32
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:63
+#21 78.00 @!!loc:104:34:104:49
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:64
+#21 78.00 @!!loc:104:51:104:55
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:65
+#21 78.00 @!!loc:111:3:111:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:66
+#21 78.00 @!!loc:111:6:111:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:67
+#21 78.00 @!!loc:111:11:111:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:68
+#21 78.00 @!!loc:111:23:111:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:69
+#21 78.00 @!!loc:113:3:113:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:70
+#21 78.00 @!!loc:113:6:113:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:71
+#21 78.00 @!!loc:113:11:113:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:72
+#21 78.00 @!!loc:113:23:113:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:73
+#21 78.00 @!!loc:115:3:115:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:74
+#21 78.00 @!!loc:115:6:115:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:75
+#21 78.00 @!!loc:115:11:115:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:76
+#21 78.00 @!!loc:115:23:115:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:77
+#21 78.00 @!!loc:145:3:145:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:78
+#21 78.00 @!!loc:145:6:145:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:79
+#21 78.00 @!!loc:145:11:145:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:80
+#21 78.00 @!!loc:270:3:270:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:81
+#21 78.00 @!!loc:270:6:270:10
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:82
+#21 78.00 @!!loc:270:12:270:16
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:83
+#21 78.00 @!!loc:270:18:270:22
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:84
+#21 78.00 @!!loc:270:24:270:28
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:85
+#21 78.00 @!!loc:270:30:270:34
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:86
+#21 78.00 @!!loc:270:36:270:40
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:87
+#21 78.00 @!!loc:270:42:270:46
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:88
+#21 78.00 @!!loc:270:48:270:52
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:89
+#21 78.00 @!!loc:152:3:152:10
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:90
+#21 78.00 @!!loc:153:9:153:18
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:91
+#21 78.00 @!!loc:153:20:153:31
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:92
+#21 78.00 @!!loc:198:5:198:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:93
+#21 78.00 @!!loc:198:8:198:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:94
+#21 78.00 @!!loc:198:13:198:17
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:95
+#21 78.00 @!!loc:198:19:198:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:96
+#21 78.00 @!!loc:198:25:198:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:97
+#21 78.00 @!!loc:198:31:198:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:98
+#21 78.00 @!!loc:198:37:198:41
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:99
+#21 78.00 @!!loc:198:43:198:47
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:100
+#21 78.00 @!!loc:198:49:198:53
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:101
+#21 78.00 @!!loc:161:5:161:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:102
+#21 78.00 @!!loc:161:8:161:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:103
+#21 78.00 @!!loc:161:13:161:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:104
+#21 78.00 @!!loc:161:25:161:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:105
+#21 78.00 @!!loc:161:31:161:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:106
+#21 78.00 @!!loc:188:7:188:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:107
+#21 78.00 @!!loc:188:10:188:14
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:108
+#21 78.00 @!!loc:188:16:188:20
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:109
+#21 78.00 @!!loc:188:22:188:26
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:110
+#21 78.00 @!!loc:188:28:188:32
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:111
+#21 78.00 @!!loc:188:34:188:38
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:112
+#21 78.00 @!!loc:164:7:164:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:113
+#21 78.00 @!!loc:164:10:164:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:114
+#21 78.00 @!!loc:164:15:164:19
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:115
+#21 78.00 @!!loc:164:21:164:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:116
+#21 78.00 @!!loc:170:9:170:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:117
+#21 78.00 @!!loc:170:17:170:20
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:118
+#21 78.00 @!!loc:170:22:170:26
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:119
+#21 78.00 @!!loc:170:28:170:32
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:120
+#21 78.00 @!!loc:170:34:170:38
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:121
+#21 78.00 @!!loc:170:40:170:51
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:122
+#21 78.00 @!!loc:172:7:172:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:123
+#21 78.00 @!!loc:172:10:172:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:124
+#21 78.00 @!!loc:172:15:172:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:125
+#21 78.00 @!!loc:172:27:172:31
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:126
+#21 78.00 @!!loc:172:33:172:37
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:127
+#21 78.00 @!!loc:172:39:172:43
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:128
+#21 78.00 @!!loc:174:7:174:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:129
+#21 78.00 @!!loc:174:10:174:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:130
+#21 78.00 @!!loc:174:15:174:19
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:131
+#21 78.00 @!!loc:176:7:176:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:132
+#21 78.00 @!!loc:176:10:176:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:133
+#21 78.00 @!!loc:176:15:176:19
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:134
+#21 78.00 @!!loc:184:7:184:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:135
+#21 78.00 @!!loc:184:10:184:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:136
+#21 78.00 @!!loc:184:15:184:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:137
+#21 78.00 @!!loc:184:27:184:31
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:138
+#21 78.00 @!!loc:184:33:184:37
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:139
+#21 78.00 @!!loc:186:7:186:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:140
+#21 78.00 @!!loc:186:10:186:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:141
+#21 78.00 @!!loc:186:15:186:19
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:142
+#21 78.00 @!!loc:190:5:190:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:143
+#21 78.00 @!!loc:190:8:190:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:144
+#21 78.00 @!!loc:190:13:190:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:145
+#21 78.00 @!!loc:190:25:190:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:146
+#21 78.00 @!!loc:190:31:190:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:147
+#21 78.00 @!!loc:192:5:192:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:148
+#21 78.00 @!!loc:192:8:192:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:149
+#21 78.00 @!!loc:192:13:192:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:150
+#21 78.00 @!!loc:192:25:192:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:151
+#21 78.00 @!!loc:192:31:192:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:152
+#21 78.00 @!!loc:194:5:194:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:153
+#21 78.00 @!!loc:194:8:194:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:154
+#21 78.00 @!!loc:194:13:194:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:155
+#21 78.00 @!!loc:194:25:194:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:156
+#21 78.00 @!!loc:194:31:194:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:157
+#21 78.00 @!!loc:196:5:196:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:158
+#21 78.00 @!!loc:196:8:196:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:159
+#21 78.00 @!!loc:196:13:196:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:160
+#21 78.00 @!!loc:196:25:196:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:161
+#21 78.00 @!!loc:196:31:196:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:162
+#21 78.00 @!!loc:200:3:200:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:163
+#21 78.00 @!!loc:200:6:200:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:164
+#21 78.00 @!!loc:200:11:200:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:165
+#21 78.00 @!!loc:200:23:200:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:166
+#21 78.00 @!!loc:224:5:224:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:167
+#21 78.00 @!!loc:224:8:224:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:168
+#21 78.00 @!!loc:224:13:224:17
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:169
+#21 78.00 @!!loc:224:19:224:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:170
+#21 78.00 @!!loc:224:25:224:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:171
+#21 78.00 @!!loc:224:31:224:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:172
+#21 78.00 @!!loc:224:37:224:41
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:173
+#21 78.00 @!!loc:224:43:224:47
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:174
+#21 78.00 @!!loc:224:49:224:53
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:175
+#21 78.00 @!!loc:204:5:204:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:176
+#21 78.00 @!!loc:204:8:204:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:177
+#21 78.00 @!!loc:204:13:204:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:178
+#21 78.00 @!!loc:204:25:204:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:179
+#21 78.00 @!!loc:204:31:204:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:180
+#21 78.00 @!!loc:214:7:214:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:181
+#21 78.00 @!!loc:214:10:214:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:182
+#21 78.00 @!!loc:214:15:214:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:183
+#21 78.00 @!!loc:214:27:214:31
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:184
+#21 78.00 @!!loc:214:33:214:37
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:185
+#21 78.00 @!!loc:214:39:214:43
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:186
+#21 78.00 @!!loc:207:7:207:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:187
+#21 78.00 @!!loc:207:10:207:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:188
+#21 78.00 @!!loc:207:15:207:19
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:189
+#21 78.00 @!!loc:207:21:207:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:190
+#21 78.00 @!!loc:211:9:211:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:191
+#21 78.00 @!!loc:211:17:211:20
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:192
+#21 78.00 @!!loc:211:22:211:26
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:193
+#21 78.00 @!!loc:211:28:211:32
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:194
+#21 78.00 @!!loc:211:34:211:45
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:195
+#21 78.00 @!!loc:216:5:216:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:196
+#21 78.00 @!!loc:216:8:216:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:197
+#21 78.00 @!!loc:216:13:216:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:198
+#21 78.00 @!!loc:216:25:216:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:199
+#21 78.00 @!!loc:216:31:216:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:200
+#21 78.00 @!!loc:218:5:218:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:201
+#21 78.00 @!!loc:218:8:218:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:202
+#21 78.00 @!!loc:218:13:218:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:203
+#21 78.00 @!!loc:218:25:218:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:204
+#21 78.00 @!!loc:218:31:218:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:205
+#21 78.00 @!!loc:220:5:220:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:206
+#21 78.00 @!!loc:220:8:220:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:207
+#21 78.00 @!!loc:220:13:220:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:208
+#21 78.00 @!!loc:220:25:220:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:209
+#21 78.00 @!!loc:220:31:220:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:210
+#21 78.00 @!!loc:222:5:222:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:211
+#21 78.00 @!!loc:222:8:222:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:212
+#21 78.00 @!!loc:222:13:222:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:213
+#21 78.00 @!!loc:222:25:222:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:214
+#21 78.00 @!!loc:222:31:222:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:215
+#21 78.00 @!!loc:226:3:226:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:216
+#21 78.00 @!!loc:226:6:226:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:217
+#21 78.00 @!!loc:226:11:226:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:218
+#21 78.00 @!!loc:226:23:226:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:219
+#21 78.00 @!!loc:250:5:250:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:220
+#21 78.00 @!!loc:250:8:250:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:221
+#21 78.00 @!!loc:250:13:250:17
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:222
+#21 78.00 @!!loc:250:19:250:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:223
+#21 78.00 @!!loc:250:25:250:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:224
+#21 78.00 @!!loc:250:31:250:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:225
+#21 78.00 @!!loc:250:37:250:41
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:226
+#21 78.00 @!!loc:250:43:250:47
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:227
+#21 78.00 @!!loc:250:49:250:53
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:228
+#21 78.00 @!!loc:230:5:230:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:229
+#21 78.00 @!!loc:230:8:230:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:230
+#21 78.00 @!!loc:230:13:230:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:231
+#21 78.00 @!!loc:230:25:230:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:232
+#21 78.00 @!!loc:230:31:230:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:233
+#21 78.00 @!!loc:240:7:240:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:234
+#21 78.00 @!!loc:240:10:240:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:235
+#21 78.00 @!!loc:240:15:240:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:236
+#21 78.00 @!!loc:240:27:240:31
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:237
+#21 78.00 @!!loc:240:33:240:37
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:238
+#21 78.00 @!!loc:240:39:240:43
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:239
+#21 78.00 @!!loc:233:7:233:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:240
+#21 78.00 @!!loc:233:10:233:13
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:241
+#21 78.00 @!!loc:233:15:233:19
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:242
+#21 78.00 @!!loc:233:21:233:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:243
+#21 78.00 @!!loc:237:9:237:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:244
+#21 78.00 @!!loc:237:17:237:20
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:245
+#21 78.00 @!!loc:237:22:237:26
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:246
+#21 78.00 @!!loc:237:28:237:32
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:247
+#21 78.00 @!!loc:237:34:237:45
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:248
+#21 78.00 @!!loc:242:5:242:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:249
+#21 78.00 @!!loc:242:8:242:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:250
+#21 78.00 @!!loc:242:13:242:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:251
+#21 78.00 @!!loc:242:25:242:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:252
+#21 78.00 @!!loc:242:31:242:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:253
+#21 78.00 @!!loc:244:5:244:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:254
+#21 78.00 @!!loc:244:8:244:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:255
+#21 78.00 @!!loc:244:13:244:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:256
+#21 78.00 @!!loc:244:25:244:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:257
+#21 78.00 @!!loc:244:31:244:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:258
+#21 78.00 @!!loc:246:5:246:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:259
+#21 78.00 @!!loc:246:8:246:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:260
+#21 78.00 @!!loc:246:13:246:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:261
+#21 78.00 @!!loc:246:25:246:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:262
+#21 78.00 @!!loc:246:31:246:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:263
+#21 78.00 @!!loc:248:5:248:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:264
+#21 78.00 @!!loc:248:8:248:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:265
+#21 78.00 @!!loc:248:13:248:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:266
+#21 78.00 @!!loc:248:25:248:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:267
+#21 78.00 @!!loc:248:31:248:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:268
+#21 78.00 @!!loc:252:3:252:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:269
+#21 78.00 @!!loc:252:6:252:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:270
+#21 78.00 @!!loc:252:11:252:21
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:271
+#21 78.00 @!!loc:252:23:252:27
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:272
+#21 78.00 @!!loc:265:5:265:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:273
+#21 78.00 @!!loc:265:8:265:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:274
+#21 78.00 @!!loc:265:13:265:23
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:275
+#21 78.00 @!!loc:265:25:265:29
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:276
+#21 78.00 @!!loc:265:31:265:35
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:277
+#21 78.00 @!!loc:265:37:265:41
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:278
+#21 78.00 @!!loc:265:43:265:47
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:279
+#21 78.00 @!!loc:255:5:255:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:280
+#21 78.00 @!!loc:255:8:255:11
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:281
+#21 78.00 @!!loc:255:13:255:17
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:283
+#21 78.00 @!!loc:257:5:257:7
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:284
+#21 78.00 @!!loc:263:7:263:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:285
+#21 78.00 @!!loc:263:15:263:18
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:286
+#21 78.00 @!!loc:263:20:263:24
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:287
+#21 78.00 @!!loc:263:26:263:30
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:288
+#21 78.00 @!!loc:263:32:263:36
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:289
+#21 78.00 @!!loc:263:38:263:56
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:290
+#21 78.00 @!!loc:268:3:268:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:291
+#21 78.00 @!!loc:268:6:268:10
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:292
+#21 78.00 @!!loc:273:3:273:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:293
+#21 78.00 @!!loc:281:3:281:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:294
+#21 78.00 @!!loc:281:6:281:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:295
+#21 78.00 @!!loc:281:11:281:15
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:296
+#21 78.00 @!!loc:281:17:281:33
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:297
+#21 78.00 @!!loc:277:3:277:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:298
+#21 78.00 @!!loc:279:3:279:5
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:299
+#21 78.00 @!!loc:279:6:279:9
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:300
+#21 78.00 @!!loc:279:11:279:25
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:301
+#21 78.00 @!!loc:279:27:279:40
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:302
+#21 78.00 @!!loc:279:42:279:46
+#21 78.00 @!!status:to be proved
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligationsnumber
+#21 78.00 @!!count:301
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:2
+#21 78.00 @!!loc:34:6:34:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:1
+#21 78.00 @!!loc:34:3:34:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.3 (5%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:4
+#21 78.00 @!!loc:37:6:37:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:3
+#21 78.00 @!!loc:37:3:37:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:6
+#21 78.00 @!!loc:42:6:42:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:5
+#21 78.00 @!!loc:42:3:42:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:8
+#21 78.00 @!!loc:66:6:66:14
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:9
+#21 78.00 @!!loc:71:3:71:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:10
+#21 78.00 @!!loc:71:6:71:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:7
+#21 78.00 @!!loc:66:3:66:5
+#21 78.00 @!!status:being proved
+#21 78.00 @!!prover:isabelle
+#21 78.00 @!!meth:auto; time-limit: 60
+#21 78.00 @!!obl:
+#21 78.00 ASSUME NEW CONSTANT PREV,
+#21 78.00        NEW CONSTANT TARGET,
+#21 78.00        NEW CONSTANT OP,
+#21 78.00        NEW CONSTANT KIND,
+#21 78.00        NEW CONSTANT CPRIOR,
+#21 78.00        NEW CONSTANT CDEPLOYED,
+#21 78.00        NEW CONSTANT CEDITED,
+#21 78.00        NEW CONSTANT NONE,
+#21 78.00        NEW VARIABLE volatile,
+#21 78.00        NEW VARIABLE durable,
+#21 78.00        NEW VARIABLE visible,
+#21 78.00        NEW VARIABLE phase,
+#21 78.00        NEW VARIABLE step,
+#21 78.00        NEW VARIABLE edited,
+#21 78.00        NEW VARIABLE klass,
+#21 78.00        NEW VARIABLE beforeRecover,
+#21 78.00        TRUE 
+#21 78.00 PROVE  \A live, prior, intended :
+#21 78.00           (/\ NONE # [prior |-> prior, intended |-> intended]
+#21 78.00            /\ NONE # [prev |-> PREV, target |-> TARGET]
+#21 78.00            /\ PREV # TARGET)
+#21 78.00           => (CASE (IF
+#21 78.00                       [dest |-> live, current |-> PREV,
+#21 78.00                        entry |-> [prior |-> prior, intended |-> intended],
+#21 78.00                        marker |-> [prev |-> PREV, target |-> TARGET]].marker
+#21 78.00                       = NONE
+#21 78.00                       /\ [dest |-> live, current |-> PREV,
+#21 78.00                           entry |-> [prior |-> prior, intended |-> intended],
+#21 78.00                           marker |-> [prev |-> PREV, target |-> TARGET]].entry
+#21 78.00                          = NONE
+#21 78.00                       THEN "none"
+#21 78.00                       ELSE IF
+#21 78.00                              [dest |-> live, current |-> PREV,
+#21 78.00                               entry |-> [prior |-> prior,
+#21 78.00                                          intended |-> intended],
+#21 78.00                               marker |-> [prev |-> PREV, target |-> TARGET]].marker
+#21 78.00                              = NONE
+#21 78.00                              THEN "uncommitted"
+#21 78.00                              ELSE CASE [dest |-> live, current |-> PREV,
+#21 78.00                                         entry |-> [prior |-> prior,
+#21 78.00                                                    intended |-> intended],
+#21 78.00                                         marker |-> [prev |-> PREV,
+#21 78.00                                                     target |-> TARGET]].current
+#21 78.00                                        = [dest |-> live, current |-> PREV,
+#21 78.00                                           entry |-> [prior |-> prior,
+#21 78.00                                                      intended |-> intended],
+#21 78.00                                           marker |-> [prev |-> PREV,
+#21 78.00                                                       target |-> TARGET]].marker.target ->
+#21 78.00                                          "committed"
+#21 78.00                                     [] [dest |-> live, current |-> PREV,
+#21 78.00                                         entry |-> [prior |-> prior,
+#21 78.00                                                    intended |-> intended],
+#21 78.00                                         marker |-> [prev |-> PREV,
+#21 78.00                                                     target |-> TARGET]].current
+#21 78.00                                        = [dest |-> live, current |-> PREV,
+#21 78.00                                           entry |-> [prior |-> prior,
+#21 78.00                                                      intended |-> intended],
+#21 78.00                                           marker |-> [prev |-> PREV,
+#21 78.00                                                       target |-> TARGET]].marker.prev ->
+#21 78.00                                          "uncommitted"
+#21 78.00                                     [] OTHER -> "ambiguous")
+#21 78.00                    = "committed" ->
+#21 78.00                      [dest |-> [dest |-> live, current |-> PREV,
+#21 78.00                                 entry |-> [prior |-> prior,
+#21 78.00                                            intended |-> intended],
+#21 78.00                                 marker |-> [prev |-> PREV, target |-> TARGET]].dest,
+#21 78.00                       current |-> [dest |-> live, current |-> PREV,
+#21 78.00                                    entry |-> [prior |-> prior,
+#21 78.00                                               intended |-> intended],
+#21 78.00                                    marker |-> [prev |-> PREV,
+#21 78.00                                                target |-> TARGET]].current,
+#21 78.00                       entry |-> NONE, marker |-> NONE]
+#21 78.00                 [] (IF
+#21 78.00                       [dest |-> live, current |-> PREV,
+#21 78.00                        entry |-> [prior |-> prior, intended |-> intended],
+#21 78.00                        marker |-> [prev |-> PREV, target |-> TARGET]].marker
+#21 78.00                       = NONE
+#21 78.00                       /\ [dest |-> live, current |-> PREV,
+#21 78.00                           entry |-> [prior |-> prior, intended |-> intended],
+#21 78.00                           marker |-> [prev |-> PREV, target |-> TARGET]].entry
+#21 78.00                          = NONE
+#21 78.00                       THEN "none"
+#21 78.00                       ELSE IF
+#21 78.00                              [dest |-> live, current |-> PREV,
+#21 78.00                               entry |-> [prior |-> prior,
+#21 78.00                                          intended |-> intended],
+#21 78.00                               marker |-> [prev |-> PREV, target |-> TARGET]].marker
+#21 78.00                              = NONE
+#21 78.00                              THEN "uncommitted"
+#21 78.00                              ELSE CASE [dest |-> live, current |-> PREV,
+#21 78.00                                         entry |-> [prior |-> prior,
+#21 78.00                                                    intended |-> intended],
+#21 78.00                                         marker |-> [prev |-> PREV,
+#21 78.00                                                     target |-> TARGET]].current
+#21 78.00                                        = [dest |-> live, current |-> PREV,
+#21 78.00                                           entry |-> [prior |-> prior,
+#21 78.00                                                      intended |-> intended],
+#21 78.00                                           marker |-> [prev |-> PREV,
+#21 78.00                                                       target |-> TARGET]].marker.target ->
+#21 78.00                                          "committed"
+#21 78.00                                     [] [dest |-> live, current |-> PREV,
+#21 78.00                                         entry |-> [prior |-> prior,
+#21 78.00                                                    intended |-> intended],
+#21 78.00                                         marker |-> [prev |-> PREV,
+#21 78.00                                                     target |-> TARGET]].current
+#21 78.00                                        = [dest |-> live, current |-> PREV,
+#21 78.00                                           entry |-> [prior |-> prior,
+#21 78.00                                                      intended |-> intended],
+#21 78.00                                           marker |-> [prev |-> PREV,
+#21 78.00                                                       target |-> TARGET]].marker.prev ->
+#21 78.00                                          "uncommitted"
+#21 78.00                                     [] OTHER -> "ambiguous")
+#21 78.00                    = "uncommitted" ->
+#21 78.00                      [dest |-> IF
+#21 78.00                                  [dest |-> live, current |-> PREV,
+#21 78.00                                   entry |-> [prior |-> prior,
+#21 78.00                                              intended |-> intended],
+#21 78.00                                   marker |-> [prev |-> PREV,
+#21 78.00                                               target |-> TARGET]].entry
+#21 78.00                                  = NONE
+#21 78.00                                  THEN [dest |-> live, current |-> PREV,
+#21 78.00                                        entry |-> [prior |-> prior,
+#21 78.00                                                   intended |-> intended],
+#21 78.00                                        marker |-> [prev |-> PREV,
+#21 78.00                                                    target |-> TARGET]].dest
+#21 78.00                                  ELSE IF
+#21 78.00                                         Decide([dest |-> live,
+#21 78.00                                                 current |-> PREV,
+#21 78.00                                                 entry |-> [prior |-> prior,
+#21 78.00                                                            intended |-> intended],
+#21 78.00                                                 marker |-> [prev |-> PREV,
+#21 78.00                                                             target |-> TARGET]].dest,
+#21 78.00                                                [dest |-> live,
+#21 78.00                                                 current |-> PREV,
+#21 78.00                                                 entry |-> [prior |-> prior,
+#21 78.00                                                            intended |-> intended],
+#21 78.00                                                 marker |-> [prev |-> PREV,
+#21 78.00                                                             target |-> TARGET]].entry.intended,
+#21 78.00                                                [dest |-> live,
+#21 78.00                                                 current |-> PREV,
+#21 78.00                                                 entry |-> [prior |-> prior,
+#21 78.00                                                            intended |-> intended],
+#21 78.00                                                 marker |-> [prev |-> PREV,
+#21 78.00                                                             target |-> TARGET]].entry.prior)
+#21 78.00                                         = "restore"
+#21 78.00                                         THEN [dest |-> live,
+#21 78.00                                               current |-> PREV,
+#21 78.00                                               entry |-> [prior |-> prior,
+#21 78.00                                                          intended |-> intended],
+#21 78.00                                               marker |-> [prev |-> PREV,
+#21 78.00                                                           target |-> TARGET]].entry.prior
+#21 78.00                                         ELSE [dest |-> live,
+#21 78.00                                               current |-> PREV,
+#21 78.00                                               entry |-> [prior |-> prior,
+#21 78.00                                                          intended |-> intended],
+#21 78.00                                               marker |-> [prev |-> PREV,
+#21 78.00                                                           target |-> TARGET]].dest,
+#21 78.00                       current |-> [dest |-> live, current |-> PREV,
+#21 78.00                                    entry |-> [prior |-> prior,
+#21 78.00                                               intended |-> intended],
+#21 78.00                                    marker |-> [prev |-> PREV,
+#21 78.00                                                target |-> TARGET]].current,
+#21 78.00                       entry |-> NONE, marker |-> NONE]
+#21 78.00                 [] OTHER ->
+#21 78.00                      [dest |-> live, current |-> PREV,
+#21 78.00                       entry |-> [prior |-> prior, intended |-> intended],
+#21 78.00                       marker |-> [prev |-> PREV, target |-> TARGET]])
+#21 78.00              = [dest |-> IF Decide(live, intended, prior) = "restore"
+#21 78.00                            THEN prior
+#21 78.00                            ELSE live,
+#21 78.00                 current |-> PREV, entry |-> NONE, marker |-> NONE]
+#21 78.00 
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:11
+#21 78.00 @!!loc:117:3:117:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:12
+#21 78.00 @!!loc:117:6:117:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:13
+#21 78.00 @!!loc:117:11:117:15
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:14
+#21 78.00 @!!loc:117:17:117:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:15
+#21 78.00 @!!loc:117:23:117:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:16
+#21 78.00 @!!loc:117:29:117:33
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:17
+#21 78.00 @!!loc:117:35:117:39
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:18
+#21 78.00 @!!loc:117:41:117:45
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:19
+#21 78.00 @!!loc:117:47:117:51
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:20
+#21 78.00 @!!loc:77:1:77:43
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:21
+#21 78.00 @!!loc:77:1:77:43
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:22
+#21 78.00 @!!loc:83:3:83:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:23
+#21 78.00 @!!loc:83:6:83:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:24
+#21 78.00 @!!loc:83:11:83:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:25
+#21 78.00 @!!loc:83:23:83:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:26
+#21 78.00 @!!loc:85:3:85:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:27
+#21 78.00 @!!loc:85:6:85:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:28
+#21 78.00 @!!loc:85:11:85:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:29
+#21 78.00 @!!loc:85:23:85:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:30
+#21 78.00 @!!loc:87:3:87:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:31
+#21 78.00 @!!loc:87:6:87:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:32
+#21 78.00 @!!loc:87:11:87:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:33
+#21 78.00 @!!loc:87:23:87:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:34
+#21 78.00 @!!loc:109:5:109:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:35
+#21 78.00 @!!loc:109:8:109:12
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:36
+#21 78.00 @!!loc:109:14:109:18
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:37
+#21 78.00 @!!loc:90:5:90:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:38
+#21 78.00 @!!loc:90:8:90:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:39
+#21 78.00 @!!loc:90:13:90:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:40
+#21 78.00 @!!loc:90:25:90:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:41
+#21 78.00 @!!loc:90:31:90:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:42
+#21 78.00 @!!loc:107:7:107:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:43
+#21 78.00 @!!loc:107:10:107:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:44
+#21 78.00 @!!loc:107:15:107:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:45
+#21 78.00 @!!loc:107:27:107:31
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:46
+#21 78.00 @!!loc:107:33:107:37
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:47
+#21 78.00 @!!loc:107:39:107:43
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:48
+#21 78.00 @!!loc:107:45:107:49
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:49
+#21 78.00 @!!loc:107:51:107:55
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:50
+#21 78.00 @!!loc:107:57:107:69
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:51
+#21 78.00 @!!loc:95:7:95:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:52
+#21 78.00 @!!loc:95:10:95:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:53
+#21 78.00 @!!loc:95:15:95:19
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:54
+#21 78.00 @!!loc:95:21:95:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:55
+#21 78.00 @!!loc:97:7:97:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:56
+#21 78.00 @!!loc:97:10:97:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:57
+#21 78.00 @!!loc:97:15:97:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:58
+#21 78.00 @!!loc:97:27:97:31
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:59
+#21 78.00 @!!loc:97:33:97:37
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:60
+#21 78.00 @!!loc:104:9:104:11
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:61
+#21 78.00 @!!loc:104:17:104:20
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:62
+#21 78.00 @!!loc:104:22:104:32
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:63
+#21 78.00 @!!loc:104:34:104:49
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:64
+#21 78.00 @!!loc:104:51:104:55
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:65
+#21 78.00 @!!loc:111:3:111:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:66
+#21 78.00 @!!loc:111:6:111:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:67
+#21 78.00 @!!loc:111:11:111:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:68
+#21 78.00 @!!loc:111:23:111:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:69
+#21 78.00 @!!loc:113:3:113:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:70
+#21 78.00 @!!loc:113:6:113:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:71
+#21 78.00 @!!loc:113:11:113:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:72
+#21 78.00 @!!loc:113:23:113:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:73
+#21 78.00 @!!loc:115:3:115:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:74
+#21 78.00 @!!loc:115:6:115:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:75
+#21 78.00 @!!loc:115:11:115:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:76
+#21 78.00 @!!loc:115:23:115:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:77
+#21 78.00 @!!loc:145:3:145:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:78
+#21 78.00 @!!loc:145:6:145:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:79
+#21 78.00 @!!loc:145:11:145:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:80
+#21 78.00 @!!loc:270:3:270:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:81
+#21 78.00 @!!loc:270:6:270:10
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:82
+#21 78.00 @!!loc:270:12:270:16
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:83
+#21 78.00 @!!loc:270:18:270:22
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:84
+#21 78.00 @!!loc:270:24:270:28
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:85
+#21 78.00 @!!loc:270:30:270:34
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:86
+#21 78.00 @!!loc:270:36:270:40
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:87
+#21 78.00 @!!loc:270:42:270:46
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:88
+#21 78.00 @!!loc:270:48:270:52
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:89
+#21 78.00 @!!loc:152:3:152:10
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:90
+#21 78.00 @!!loc:153:9:153:18
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:91
+#21 78.00 @!!loc:153:20:153:31
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:92
+#21 78.00 @!!loc:198:5:198:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.1 (2%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:93
+#21 78.00 @!!loc:198:8:198:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:94
+#21 78.00 @!!loc:198:13:198:17
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:95
+#21 78.00 @!!loc:198:19:198:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:96
+#21 78.00 @!!loc:198:25:198:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:97
+#21 78.00 @!!loc:198:31:198:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:98
+#21 78.00 @!!loc:198:37:198:41
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:99
+#21 78.00 @!!loc:198:43:198:47
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:100
+#21 78.00 @!!loc:198:49:198:53
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:101
+#21 78.00 @!!loc:161:5:161:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:102
+#21 78.00 @!!loc:161:8:161:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:103
+#21 78.00 @!!loc:161:13:161:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:104
+#21 78.00 @!!loc:161:25:161:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:105
+#21 78.00 @!!loc:161:31:161:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:106
+#21 78.00 @!!loc:188:7:188:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:107
+#21 78.00 @!!loc:188:10:188:14
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:108
+#21 78.00 @!!loc:188:16:188:20
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:109
+#21 78.00 @!!loc:188:22:188:26
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:110
+#21 78.00 @!!loc:188:28:188:32
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:111
+#21 78.00 @!!loc:188:34:188:38
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:112
+#21 78.00 @!!loc:164:7:164:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:113
+#21 78.00 @!!loc:164:10:164:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:114
+#21 78.00 @!!loc:164:15:164:19
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:115
+#21 78.00 @!!loc:164:21:164:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:116
+#21 78.00 @!!loc:170:9:170:11
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:117
+#21 78.00 @!!loc:170:17:170:20
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:118
+#21 78.00 @!!loc:170:22:170:26
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:119
+#21 78.00 @!!loc:170:28:170:32
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:120
+#21 78.00 @!!loc:170:34:170:38
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:121
+#21 78.00 @!!loc:170:40:170:51
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:122
+#21 78.00 @!!loc:172:7:172:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:123
+#21 78.00 @!!loc:172:10:172:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:124
+#21 78.00 @!!loc:172:15:172:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:125
+#21 78.00 @!!loc:172:27:172:31
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:126
+#21 78.00 @!!loc:172:33:172:37
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:127
+#21 78.00 @!!loc:172:39:172:43
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:128
+#21 78.00 @!!loc:174:7:174:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:129
+#21 78.00 @!!loc:174:10:174:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:130
+#21 78.00 @!!loc:174:15:174:19
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:131
+#21 78.00 @!!loc:176:7:176:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:132
+#21 78.00 @!!loc:176:10:176:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:133
+#21 78.00 @!!loc:176:15:176:19
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:7
+#21 78.00 @!!loc:66:3:66:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:isabelle
+#21 78.00 @!!meth:auto; time-limit: 60; time-used: 39.1 (65%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:135
+#21 78.00 @!!loc:184:10:184:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:136
+#21 78.00 @!!loc:184:15:184:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:137
+#21 78.00 @!!loc:184:27:184:31
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:138
+#21 78.00 @!!loc:184:33:184:37
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:134
+#21 78.00 @!!loc:184:7:184:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.9 (19%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:140
+#21 78.00 @!!loc:186:10:186:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:141
+#21 78.00 @!!loc:186:15:186:19
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:139
+#21 78.00 @!!loc:186:7:186:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.3 (26%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:143
+#21 78.00 @!!loc:190:8:190:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:144
+#21 78.00 @!!loc:190:13:190:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:145
+#21 78.00 @!!loc:190:25:190:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:146
+#21 78.00 @!!loc:190:31:190:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:142
+#21 78.00 @!!loc:190:5:190:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.8 (17%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:148
+#21 78.00 @!!loc:192:8:192:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:149
+#21 78.00 @!!loc:192:13:192:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:150
+#21 78.00 @!!loc:192:25:192:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:151
+#21 78.00 @!!loc:192:31:192:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:147
+#21 78.00 @!!loc:192:5:192:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.9 (18%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:153
+#21 78.00 @!!loc:194:8:194:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:154
+#21 78.00 @!!loc:194:13:194:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:155
+#21 78.00 @!!loc:194:25:194:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:156
+#21 78.00 @!!loc:194:31:194:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:152
+#21 78.00 @!!loc:194:5:194:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.9 (18%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:158
+#21 78.00 @!!loc:196:8:196:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:159
+#21 78.00 @!!loc:196:13:196:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:160
+#21 78.00 @!!loc:196:25:196:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:161
+#21 78.00 @!!loc:196:31:196:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:157
+#21 78.00 @!!loc:196:5:196:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.4 (9%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:163
+#21 78.00 @!!loc:200:6:200:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:164
+#21 78.00 @!!loc:200:11:200:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:165
+#21 78.00 @!!loc:200:23:200:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:162
+#21 78.00 @!!loc:200:3:200:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.7 (35%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:167
+#21 78.00 @!!loc:224:8:224:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:168
+#21 78.00 @!!loc:224:13:224:17
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:169
+#21 78.00 @!!loc:224:19:224:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:170
+#21 78.00 @!!loc:224:25:224:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:171
+#21 78.00 @!!loc:224:31:224:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:172
+#21 78.00 @!!loc:224:37:224:41
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:173
+#21 78.00 @!!loc:224:43:224:47
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:174
+#21 78.00 @!!loc:224:49:224:53
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:166
+#21 78.00 @!!loc:224:5:224:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.7 (14%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:176
+#21 78.00 @!!loc:204:8:204:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:177
+#21 78.00 @!!loc:204:13:204:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:178
+#21 78.00 @!!loc:204:25:204:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:179
+#21 78.00 @!!loc:204:31:204:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:175
+#21 78.00 @!!loc:204:5:204:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.6 (12%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:181
+#21 78.00 @!!loc:214:10:214:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:182
+#21 78.00 @!!loc:214:15:214:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:183
+#21 78.00 @!!loc:214:27:214:31
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:184
+#21 78.00 @!!loc:214:33:214:37
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:185
+#21 78.00 @!!loc:214:39:214:43
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:180
+#21 78.00 @!!loc:214:7:214:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.6 (12%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:187
+#21 78.00 @!!loc:207:10:207:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:188
+#21 78.00 @!!loc:207:15:207:19
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:189
+#21 78.00 @!!loc:207:21:207:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:186
+#21 78.00 @!!loc:207:7:207:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:191
+#21 78.00 @!!loc:211:17:211:20
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:192
+#21 78.00 @!!loc:211:22:211:26
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:193
+#21 78.00 @!!loc:211:28:211:32
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:194
+#21 78.00 @!!loc:211:34:211:45
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:190
+#21 78.00 @!!loc:211:9:211:11
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.8 (17%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:196
+#21 78.00 @!!loc:216:8:216:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:197
+#21 78.00 @!!loc:216:13:216:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:198
+#21 78.00 @!!loc:216:25:216:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:199
+#21 78.00 @!!loc:216:31:216:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:195
+#21 78.00 @!!loc:216:5:216:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.9 (18%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:201
+#21 78.00 @!!loc:218:8:218:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:202
+#21 78.00 @!!loc:218:13:218:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:203
+#21 78.00 @!!loc:218:25:218:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:204
+#21 78.00 @!!loc:218:31:218:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:200
+#21 78.00 @!!loc:218:5:218:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.5 (30%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:206
+#21 78.00 @!!loc:220:8:220:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:207
+#21 78.00 @!!loc:220:13:220:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:208
+#21 78.00 @!!loc:220:25:220:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:209
+#21 78.00 @!!loc:220:31:220:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:205
+#21 78.00 @!!loc:220:5:220:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.6 (32%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:211
+#21 78.00 @!!loc:222:8:222:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:212
+#21 78.00 @!!loc:222:13:222:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:213
+#21 78.00 @!!loc:222:25:222:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:214
+#21 78.00 @!!loc:222:31:222:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:210
+#21 78.00 @!!loc:222:5:222:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.7 (13%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:216
+#21 78.00 @!!loc:226:6:226:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:217
+#21 78.00 @!!loc:226:11:226:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:218
+#21 78.00 @!!loc:226:23:226:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:215
+#21 78.00 @!!loc:226:3:226:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 2.3 (47%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:220
+#21 78.00 @!!loc:250:8:250:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:221
+#21 78.00 @!!loc:250:13:250:17
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:222
+#21 78.00 @!!loc:250:19:250:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:223
+#21 78.00 @!!loc:250:25:250:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:224
+#21 78.00 @!!loc:250:31:250:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:225
+#21 78.00 @!!loc:250:37:250:41
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:226
+#21 78.00 @!!loc:250:43:250:47
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:227
+#21 78.00 @!!loc:250:49:250:53
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:219
+#21 78.00 @!!loc:250:5:250:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.8 (36%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:229
+#21 78.00 @!!loc:230:8:230:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:230
+#21 78.00 @!!loc:230:13:230:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:231
+#21 78.00 @!!loc:230:25:230:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:232
+#21 78.00 @!!loc:230:31:230:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:228
+#21 78.00 @!!loc:230:5:230:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.6 (31%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:234
+#21 78.00 @!!loc:240:10:240:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:235
+#21 78.00 @!!loc:240:15:240:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:236
+#21 78.00 @!!loc:240:27:240:31
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:237
+#21 78.00 @!!loc:240:33:240:37
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:238
+#21 78.00 @!!loc:240:39:240:43
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:233
+#21 78.00 @!!loc:240:7:240:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.8 (36%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:240
+#21 78.00 @!!loc:233:10:233:13
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:241
+#21 78.00 @!!loc:233:15:233:19
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:242
+#21 78.00 @!!loc:233:21:233:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:239
+#21 78.00 @!!loc:233:7:233:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.1 (2%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:244
+#21 78.00 @!!loc:237:17:237:20
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:245
+#21 78.00 @!!loc:237:22:237:26
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:246
+#21 78.00 @!!loc:237:28:237:32
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:247
+#21 78.00 @!!loc:237:34:237:45
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:243
+#21 78.00 @!!loc:237:9:237:11
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 2.5 (50%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:249
+#21 78.00 @!!loc:242:8:242:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:250
+#21 78.00 @!!loc:242:13:242:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:251
+#21 78.00 @!!loc:242:25:242:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:252
+#21 78.00 @!!loc:242:31:242:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:248
+#21 78.00 @!!loc:242:5:242:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 2.7 (55%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:254
+#21 78.00 @!!loc:244:8:244:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:255
+#21 78.00 @!!loc:244:13:244:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:256
+#21 78.00 @!!loc:244:25:244:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:257
+#21 78.00 @!!loc:244:31:244:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:253
+#21 78.00 @!!loc:244:5:244:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 2.6 (53%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:259
+#21 78.00 @!!loc:246:8:246:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:260
+#21 78.00 @!!loc:246:13:246:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:261
+#21 78.00 @!!loc:246:25:246:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:262
+#21 78.00 @!!loc:246:31:246:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:258
+#21 78.00 @!!loc:246:5:246:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 2.1 (42%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:264
+#21 78.00 @!!loc:248:8:248:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:265
+#21 78.00 @!!loc:248:13:248:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:266
+#21 78.00 @!!loc:248:25:248:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:267
+#21 78.00 @!!loc:248:31:248:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:263
+#21 78.00 @!!loc:248:5:248:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.3 (26%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:269
+#21 78.00 @!!loc:252:6:252:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:270
+#21 78.00 @!!loc:252:11:252:21
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:271
+#21 78.00 @!!loc:252:23:252:27
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:268
+#21 78.00 @!!loc:252:3:252:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.4 (29%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:273
+#21 78.00 @!!loc:265:8:265:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:274
+#21 78.00 @!!loc:265:13:265:23
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:275
+#21 78.00 @!!loc:265:25:265:29
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:276
+#21 78.00 @!!loc:265:31:265:35
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:277
+#21 78.00 @!!loc:265:37:265:41
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:278
+#21 78.00 @!!loc:265:43:265:47
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:272
+#21 78.00 @!!loc:265:5:265:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.9 (18%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:280
+#21 78.00 @!!loc:255:8:255:11
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:281
+#21 78.00 @!!loc:255:13:255:17
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:279
+#21 78.00 @!!loc:255:5:255:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.9 (18%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:283
+#21 78.00 @!!loc:257:5:257:7
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:285
+#21 78.00 @!!loc:263:15:263:18
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:286
+#21 78.00 @!!loc:263:20:263:24
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:287
+#21 78.00 @!!loc:263:26:263:30
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:288
+#21 78.00 @!!loc:263:32:263:36
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:289
+#21 78.00 @!!loc:263:38:263:56
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:284
+#21 78.00 @!!loc:263:7:263:9
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 1.2 (24%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:291
+#21 78.00 @!!loc:268:6:268:10
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:290
+#21 78.00 @!!loc:268:3:268:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:292
+#21 78.00 @!!loc:273:3:273:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:294
+#21 78.00 @!!loc:281:6:281:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:295
+#21 78.00 @!!loc:281:11:281:15
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:296
+#21 78.00 @!!loc:281:17:281:33
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:293
+#21 78.00 @!!loc:281:3:281:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:ls4
+#21 78.00 @!!meth:time-limit: 10; time-used: 0.1 (1%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:297
+#21 78.00 @!!loc:277:3:277:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:smt
+#21 78.00 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:299
+#21 78.00 @!!loc:279:6:279:9
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:300
+#21 78.00 @!!loc:279:11:279:25
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:301
+#21 78.00 @!!loc:279:27:279:40
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:302
+#21 78.00 @!!loc:279:42:279:46
+#21 78.00 @!!status:trivial
+#21 78.00 @!!prover:tlapm
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 @!!BEGIN
+#21 78.00 @!!type:obligation
+#21 78.00 @!!id:298
+#21 78.00 @!!loc:279:3:279:5
+#21 78.00 @!!status:proved
+#21 78.00 @!!prover:ls4
+#21 78.00 @!!meth:time-limit: 10; time-used: 0.0 (0%)
+#21 78.00 @!!already:false
+#21 78.00 @!!END
+#21 78.00 
+#21 78.00 (* created new "/tmp/gripsack-tlaps-wlympgcu/positive-cache/TransactionProofs.tlaps/TransactionProofs.thy" *)
+#21 78.00 (* fingerprints written in "/tmp/gripsack-tlaps-wlympgcu/positive-cache/TransactionProofs.tlaps/fingerprints" *)
+#21 78.00 File "./TransactionProofs.tla", line 1, character 1 to line 282, character 77:
+#21 78.00 [INFO]: All 301 obligations proved.
+#21 78.00 
+#21 78.01 TLAPS_PILOT_OBLIGATIONS=301
+#21 78.01 TLAPS_THEOREM=EntryType
+#21 78.01 TLAPS_THEOREM=RecordImage
+#21 78.01 TLAPS_THEOREM=CompletedStepDurability
+#21 78.01 TLAPS_THEOREM=RecoveryOfEntry
+#21 78.01 TLAPS_THEOREM=UndoIntended
+#21 78.01 TLAPS_THEOREM=RecoveryProjection
+#21 78.01 TLAPS_THEOREM=InitImpliesInv
+#21 78.01 TLAPS_THEOREM=InductiveStep
+#21 78.01 TLAPS_THEOREM=InvImpliesSafety
+#21 78.01 TLAPS_THEOREM=TransactionSafety
+#21 78.02 RUNNER_COMMAND=tlapm --strict --prefer-stdlib --nofp --toolbox 1 48 --threads 2 --cache-dir /tmp/gripsack-tlaps-wlympgcu/barrier-cache TransactionBarrierWitness.tla
+#21 78.52 
+#21 78.52 \* TLAPM version 7824dab
+#21 78.52 \* launched at 2026-09-27 08:33:29 with command line:
+#21 78.52 \* tlapm --strict --prefer-stdlib --nofp --toolbox 1 48 --threads 2 --cache-dir /tmp/gripsack-tlaps-wlympgcu/barrier-cache TransactionBarrierWitness.tla
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:1
+#21 78.52 @!!loc:47:3:47:5
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:2
+#21 78.52 @!!loc:47:6:47:10
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:3
+#21 78.52 @!!loc:47:12:47:16
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:4
+#21 78.52 @!!loc:37:3:37:10
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:5
+#21 78.52 @!!loc:39:3:39:5
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:6
+#21 78.52 @!!loc:39:6:39:9
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:7
+#21 78.52 @!!loc:43:5:43:7
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:8
+#21 78.52 @!!loc:43:13:43:16
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:9
+#21 78.52 @!!loc:43:18:43:38
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:10
+#21 78.52 @!!loc:43:40:43:44
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:11
+#21 78.52 @!!loc:45:3:45:5
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:12
+#21 78.52 @!!loc:45:6:45:9
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:13
+#21 78.52 @!!loc:45:11:45:24
+#21 78.52 @!!status:to be proved
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligationsnumber
+#21 78.52 @!!count:13
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:2
+#21 78.52 @!!loc:47:6:47:10
+#21 78.52 @!!status:trivial
+#21 78.52 @!!prover:tlapm
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:3
+#21 78.52 @!!loc:47:12:47:16
+#21 78.52 @!!status:trivial
+#21 78.52 @!!prover:tlapm
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:1
+#21 78.52 @!!loc:47:3:47:5
+#21 78.52 @!!status:proved
+#21 78.52 @!!prover:smt
+#21 78.52 @!!meth:time-limit: 5; time-used: 0.3 (6%)
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:4
+#21 78.52 @!!loc:37:3:37:10
+#21 78.52 @!!status:proved
+#21 78.52 @!!prover:smt
+#21 78.52 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:6
+#21 78.52 @!!loc:39:6:39:9
+#21 78.52 @!!status:trivial
+#21 78.52 @!!prover:tlapm
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:5
+#21 78.52 @!!loc:39:3:39:5
+#21 78.52 @!!status:proved
+#21 78.52 @!!prover:smt
+#21 78.52 @!!meth:time-limit: 5; time-used: 0.0 (1%)
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:8
+#21 78.52 @!!loc:43:13:43:16
+#21 78.52 @!!status:trivial
+#21 78.52 @!!prover:tlapm
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:9
+#21 78.52 @!!loc:43:18:43:38
+#21 78.52 @!!status:trivial
+#21 78.52 @!!prover:tlapm
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:10
+#21 78.52 @!!loc:43:40:43:44
+#21 78.52 @!!status:trivial
+#21 78.52 @!!prover:tlapm
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:7
+#21 78.52 @!!loc:43:5:43:7
+#21 78.52 @!!status:proved
+#21 78.52 @!!prover:smt
+#21 78.52 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:12
+#21 78.52 @!!loc:45:6:45:9
+#21 78.52 @!!status:trivial
+#21 78.52 @!!prover:tlapm
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:13
+#21 78.52 @!!loc:45:11:45:24
+#21 78.52 @!!status:trivial
+#21 78.52 @!!prover:tlapm
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 @!!BEGIN
+#21 78.52 @!!type:obligation
+#21 78.52 @!!id:11
+#21 78.52 @!!loc:45:3:45:5
+#21 78.52 @!!status:proved
+#21 78.52 @!!prover:smt
+#21 78.52 @!!meth:time-limit: 5; time-used: 0.0 (0%)
+#21 78.52 @!!already:false
+#21 78.52 @!!END
+#21 78.52 
+#21 78.52 (* created new "/tmp/gripsack-tlaps-wlympgcu/barrier-cache/TransactionBarrierWitness.tlaps/TransactionBarrierWitness.thy" *)
+#21 78.52 (* fingerprints written in "/tmp/gripsack-tlaps-wlympgcu/barrier-cache/TransactionBarrierWitness.tlaps/fingerprints" *)
+#21 78.52 File "./TransactionBarrierWitness.tla", line 1, character 1 to line 48, character 77:
+#21 78.52 [INFO]: All 13 obligations proved.
+#21 78.52 
+#21 78.52 TLAPS_BARRIER_WITNESS=13
+#21 78.52 RUNNER_COMMAND=java -Xmx1g -cp /tla/tla2tools.jar tlc2.TLC -cleanup -workers 1 -metadir /tmp/gripsack-tlaps-wlympgcu/tlc-states -config counterexample.cfg Transaction.tla
+#21 79.77 TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+#21 79.77 Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+#21 79.77 (Use the -nowarning option to disable this warning.)
+#21 79.77 Running breadth-first search Model-Checking with fp 46 and seed 2516468467566234224 with 1 worker on 32 cores with 1024MB heap and 64MB offheap memory [pid: 453] (Linux 6.18.33.2-microsoft-standard-WSL2 amd64, Eclipse Adoptium 21.0.12 x86_64, MSBDiskFPSet, DiskStateQueue).
+#21 79.77 Parsing file /tmp/gripsack-tlaps-wlympgcu/missing-entry-barrier/Transaction.tla
+#21 79.77 Parsing file /tmp/Integers.tla
+#21 79.77 Parsing file /tmp/FiniteSets.tla
+#21 79.77 Parsing file /tmp/Naturals.tla
+#21 79.77 Parsing file /tmp/Sequences.tla
+#21 79.77 Semantic processing of module Naturals
+#21 79.77 Semantic processing of module Integers
+#21 79.77 Semantic processing of module Sequences
+#21 79.77 Semantic processing of module FiniteSets
+#21 79.77 Semantic processing of module Transaction
+#21 79.77 Starting... (2026-09-27 08:33:30)
+#21 79.77 Computing initial states...
+#21 79.77 Finished computing initial states: 1 distinct state generated at 2026-09-27 08:33:30.
+#21 79.77 Error: Invariant Oracle is violated.
+#21 79.77 Error: The behavior up to this point is:
+#21 79.77 State 1: <Initial predicate>
+#21 79.77 /\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ volatile = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ step = 0
+#21 79.77 /\ phase = "running"
+#21 79.77 /\ durable = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ klass = "none"
+#21 79.77 /\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ edited = FALSE
+#21 79.77 
+#21 79.77 State 2: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+#21 79.77 /\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ volatile = [ dest |-> "prior",
+#21 79.77   current |-> 1,
+#21 79.77   entry |-> NONE,
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ step = 1
+#21 79.77 /\ phase = "running"
+#21 79.77 /\ durable = [ dest |-> "prior",
+#21 79.77   current |-> 1,
+#21 79.77   entry |-> NONE,
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ klass = "none"
+#21 79.77 /\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ edited = FALSE
+#21 79.77 
+#21 79.77 State 3: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+#21 79.77 /\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ volatile = [ dest |-> "prior",
+#21 79.77   current |-> 1,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ step = 2
+#21 79.77 /\ phase = "running"
+#21 79.77 /\ durable = [ dest |-> "prior",
+#21 79.77   current |-> 1,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ klass = "none"
+#21 79.77 /\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ edited = FALSE
+#21 79.77 
+#21 79.77 State 4: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+#21 79.77 /\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ volatile = [ dest |-> "deployed",
+#21 79.77   current |-> 1,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ step = 3
+#21 79.77 /\ phase = "running"
+#21 79.77 /\ durable = [ dest |-> "deployed",
+#21 79.77   current |-> 1,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ klass = "none"
+#21 79.77 /\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ edited = FALSE
+#21 79.77 
+#21 79.77 State 5: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+#21 79.77 /\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ volatile = [ dest |-> "deployed",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ step = 4
+#21 79.77 /\ phase = "running"
+#21 79.77 /\ durable = [ dest |-> "deployed",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ klass = "none"
+#21 79.77 /\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ edited = FALSE
+#21 79.77 
+#21 79.77 State 6: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+#21 79.77 /\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ volatile = [ dest |-> "deployed",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> NONE,
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ step = 5
+#21 79.77 /\ phase = "running"
+#21 79.77 /\ durable = [ dest |-> "deployed",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ klass = "none"
+#21 79.77 /\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ edited = FALSE
+#21 79.77 
+#21 79.77 State 7: <CrashMidStepPower line 134, col 5 to line 147, col 49 of module Transaction>
+#21 79.77 /\ beforeRecover = [ dest |-> "deployed",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> NONE ]
+#21 79.77 /\ volatile = [dest |-> "deployed", current |-> 2, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ step = 5
+#21 79.77 /\ phase = "crashed"
+#21 79.77 /\ durable = [ dest |-> "deployed",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ klass = "none"
+#21 79.77 /\ visible = [ dest |-> "deployed",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> NONE ]
+#21 79.77 /\ edited = FALSE
+#21 79.77 
+#21 79.77 State 8: <MaybeUserEdit line 151, col 5 to line 157, col 51 of module Transaction>
+#21 79.77 /\ beforeRecover = [ dest |-> "edited",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> NONE ]
+#21 79.77 /\ volatile = [dest |-> "deployed", current |-> 2, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ step = 5
+#21 79.77 /\ phase = "recovering"
+#21 79.77 /\ durable = [ dest |-> "deployed",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ klass = "none"
+#21 79.77 /\ visible = [ dest |-> "edited",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> NONE ]
+#21 79.77 /\ edited = TRUE
+#21 79.77 
+#21 79.77 State 9: <Recover line 196, col 5 to line 200, col 67 of module Transaction>
+#21 79.77 /\ beforeRecover = [ dest |-> "edited",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> NONE ]
+#21 79.77 /\ volatile = [dest |-> "deployed", current |-> 2, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ step = 5
+#21 79.77 /\ phase = "done"
+#21 79.77 /\ durable = [ dest |-> "deployed",
+#21 79.77   current |-> 2,
+#21 79.77   entry |-> [prior |-> "prior", intended |-> "deployed"],
+#21 79.77   marker |-> [prev |-> 1, target |-> 2] ]
+#21 79.77 /\ klass = "uncommitted"
+#21 79.77 /\ visible = [dest |-> "edited", current |-> 2, entry |-> NONE, marker |-> NONE]
+#21 79.77 /\ edited = TRUE
+#21 79.77 
+#21 79.77 142 states generated, 105 distinct states found, 17 states left on queue.
+#21 79.77 The depth of the complete state graph search is 9.
+#21 79.77 The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 7 and the 95th percentile is 4).
+#21 79.77 Finished in 00s at (2026-09-27 08:33:31)
+#21 79.77 
+#21 79.77 calibration: missing entry-cleanup barrier has a proved violating step and an Oracle counterexample
+#21 79.77 RUNNER_COMMAND=tlapm --strict --prefer-stdlib --nofp --toolbox 282 285 --threads 2 --cache-dir /tmp/gripsack-tlaps-wlympgcu/unrelated-cache TransactionProofs.tla
+#21 80.09 
+#21 80.09 \* TLAPM version 7824dab
+#21 80.09 \* launched at 2026-09-27 08:33:31 with command line:
+#21 80.09 \* tlapm --strict --prefer-stdlib --nofp --toolbox 282 285 --threads 2 --cache-dir /tmp/gripsack-tlaps-wlympgcu/unrelated-cache TransactionProofs.tla
+#21 80.09 
+#21 80.09 @!!BEGIN
+#21 80.09 @!!type:obligation
+#21 80.09 @!!id:1
+#21 80.09 @!!loc:283:3:283:5
+#21 80.09 @!!status:to be proved
+#21 80.09 @!!END
+#21 80.09 
+#21 80.09 @!!BEGIN
+#21 80.09 @!!type:obligation
+#21 80.09 @!!id:2
+#21 80.09 @!!loc:283:6:283:9
+#21 80.09 @!!status:to be proved
+#21 80.09 @!!END
+#21 80.09 
+#21 80.09 @!!BEGIN
+#21 80.09 @!!type:obligationsnumber
+#21 80.09 @!!count:2
+#21 80.09 @!!END
+#21 80.09 
+#21 80.09 @!!BEGIN
+#21 80.09 @!!type:obligation
+#21 80.09 @!!id:2
+#21 80.09 @!!loc:283:6:283:9
+#21 80.09 @!!status:trivial
+#21 80.09 @!!prover:tlapm
+#21 80.09 @!!already:false
+#21 80.09 @!!END
+#21 80.09 
+#21 80.09 @!!BEGIN
+#21 80.09 @!!type:obligation
+#21 80.09 @!!id:1
+#21 80.09 @!!loc:283:3:283:5
+#21 80.09 @!!status:failed
+#21 80.09 @!!prover:smt
+#21 80.09 @!!meth:time-limit: 5; time-used: 0.2 (4%)
+#21 80.09 @!!reason:false
+#21 80.09 @!!already:false
+#21 80.09 @!!obl:
+#21 80.09 (* SMT failed with status = sat
+#21 80.09  *)
+#21 80.09 ASSUME NEW CONSTANT PREV,
+#21 80.09        NEW CONSTANT TARGET,
+#21 80.09        NEW CONSTANT OP,
+#21 80.09        NEW CONSTANT KIND,
+#21 80.09        NEW CONSTANT CPRIOR,
+#21 80.09        NEW CONSTANT CDEPLOYED,
+#21 80.09        NEW CONSTANT CEDITED,
+#21 80.09        NEW CONSTANT NONE,
+#21 80.09        NEW VARIABLE volatile,
+#21 80.09        NEW VARIABLE durable,
+#21 80.09        NEW VARIABLE visible,
+#21 80.09        NEW VARIABLE phase,
+#21 80.09        NEW VARIABLE step,
+#21 80.09        NEW VARIABLE edited,
+#21 80.09        NEW VARIABLE klass,
+#21 80.09        NEW VARIABLE beforeRecover,
+#21 80.09        TRUE 
+#21 80.09 PROVE  FALSE
+#21 80.09 
+#21 80.09 @!!END
+#21 80.09 
+#21 80.09 (* created new "/tmp/gripsack-tlaps-wlympgcu/unrelated-cache/TransactionProofs.tlaps/TransactionProofs.thy" *)
+#21 80.09 (* fingerprints written in "/tmp/gripsack-tlaps-wlympgcu/unrelated-cache/TransactionProofs.tlaps/fingerprints" *)
+#21 80.09 File "./TransactionProofs.tla", line 283, characters 3-4:
+#21 80.09 [ERROR]: Could not prove or check:
+#21 80.09            ASSUME NEW CONSTANT PREV,
+#21 80.09                   NEW CONSTANT TARGET,
+#21 80.09                   NEW CONSTANT OP,
+#21 80.09                   NEW CONSTANT KIND,
+#21 80.09                   NEW CONSTANT CPRIOR,
+#21 80.09                   NEW CONSTANT CDEPLOYED,
+#21 80.09                   NEW CONSTANT CEDITED,
+#21 80.09                   NEW CONSTANT NONE,
+#21 80.09                   NEW VARIABLE volatile,
+#21 80.09                   NEW VARIABLE durable,
+#21 80.09                   NEW VARIABLE visible,
+#21 80.09                   NEW VARIABLE phase,
+#21 80.09                   NEW VARIABLE step,
+#21 80.09                   NEW VARIABLE edited,
+#21 80.09                   NEW VARIABLE klass,
+#21 80.09                   NEW VARIABLE beforeRecover,
+#21 80.09                   Parameters ==
+#21 80.09                     /\ PREV \in Nat
+#21 80.09                     /\ TARGET \in Nat
+#21 80.09                     /\ PREV # TARGET
+#21 80.09                     /\ NONE \notin Nat
+#21 80.09                     /\ NONE # SavedMarker
+#21 80.09                     /\ NONE # SavedEntry
+#21 80.09                     /\ KIND \in {"deploy", "prune"}
+#21 80.09                     /\ CEDITED
+#21 80.09                        \notin {StartContent, AfterMutate, Intended, ABSENT},
+#21 80.09                   SMT 
+#21 80.09            PROVE  FALSE
+#21 80.09 File "./TransactionProofs.tla", line 1, character 1 to line 285, character 77:
+#21 80.09 [ERROR]: 1/2 obligations failed.
+#21 80.09 There were backend errors processing module `"TransactionProofs"`.
+#21 80.09 
+#21 80.09 calibration: unrelated theorem as barrier evidence refused
+#21 80.09 RUNNER_COMMAND=tlapm --strict --prefer-stdlib --nofp --toolbox 1 3 --threads 2 --cache-dir /tmp/gripsack-tlaps-wlympgcu/empty-cache TransactionProofs.tla
+#21 80.17 
+#21 80.17 \* TLAPM version 7824dab
+#21 80.17 \* launched at 2026-09-27 08:33:31 with command line:
+#21 80.17 \* tlapm --strict --prefer-stdlib --nofp --toolbox 1 3 --threads 2 --cache-dir /tmp/gripsack-tlaps-wlympgcu/empty-cache TransactionProofs.tla
+#21 80.17 
+#21 80.17 @!!BEGIN
+#21 80.17 @!!type:obligationsnumber
+#21 80.17 @!!count:0
+#21 80.17 @!!END
+#21 80.17 
+#21 80.17 File "./TransactionProofs.tla", line 1, character 1 to line 3, character 4:
+#21 80.17 [ERROR]: No proof obligation found for the selected target.
+#21 80.17 (* created new "/tmp/gripsack-tlaps-wlympgcu/empty-cache/TransactionProofs.tlaps/TransactionProofs.thy" *)
+#21 80.17 (* fingerprints written in "/tmp/gripsack-tlaps-wlympgcu/empty-cache/TransactionProofs.tlaps/fingerprints" *)
+#21 80.17 File "./TransactionProofs.tla", line 1, character 1 to line 3, character 4:
+#21 80.17 [INFO]: All 0 obligation proved.
+#21 80.17 
+#21 80.17 calibration: empty proof as positive evidence refused
+#21 80.17 TLAPS_PILOT_CALIBRATIONS=3
+#21 80.17 tlaps gate: OK
+#21 DONE 80.3s
+
+#22 exporting to image
+#22 exporting layers 0.1s done
+#22 exporting manifest sha256:751b48ab8bd371d69569653e3ed4bc0320a985d142164ae67bb719aa56e4e752 0.0s done
+#22 exporting config sha256:38279ba7055c1791a64483247fc0e88f5a1605a9e68162b820d9bb2f5b49edc4 0.0s done
+#22 exporting attestation manifest sha256:101071ebbd8a5132ab79fb320c0e9b717eb5be86093ea66bbbe5c3af45b531b5 0.0s done
+#22 exporting manifest list sha256:872d04d2209b4ff01db20825114705057afc1b79046767115c2ce8aec4377dd7 0.0s done
+#22 naming to docker.io/library/gripsack-tlaps:latest
+#22 naming to docker.io/library/gripsack-tlaps:latest done
+#22 unpacking to docker.io/library/gripsack-tlaps:latest 0.1s done
+#22 DONE 0.4s
+
+#23 resolving provenance for metadata file
+#23 DONE 0.1s
+ Image gripsack-tlaps Built 
+ Container gripsack-tlaps-run-2de877b75764 Creating 
+ Container gripsack-tlaps-run-2de877b75764 Created 
+gate passed: transaction induction and calibrated TLAPS/TLC failures
