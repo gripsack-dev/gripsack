@@ -77,7 +77,7 @@ impl PluginStore {
     }
 
     /// Provision `<kind>-<name>` from `owner/repo[@tag]`: satisfied when
-    /// the receipt already records this tag. Returns the binary path.
+    /// the receipt records the same source and tag. Returns the binary path.
     pub fn ensure(
         &self,
         context: &crate::FetchContext,
@@ -94,6 +94,7 @@ impl PluginStore {
         })?;
         if let Some(receipt) = self.receipt(&exe)
             && tag.as_deref() == Some(receipt.tag.as_str())
+            && receipt.source == repo
             && let Some(bin) = self.current_binary(&exe)
         {
             return Ok(bin); // satisfied — the receipt is the record

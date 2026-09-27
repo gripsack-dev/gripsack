@@ -2292,3 +2292,29 @@ from reaching the network. These observations are failures, not successful
 negative tests. The implementation and regressions remain in progress;
 the M-V7 resource/protocol theorem is a separate required obligation.
 
+Implementation and local verification: source/tag cache admission is now
+complete; private `RateBudget` construction rejects nonfinite and
+sub-token capacities. The existing unparseable-budget behavior is
+preserved. `ThrottleAdmission` distinguishes a granted token from an
+expired operation. `Limits::operation_deadline` cannot extend an
+exchange's own cap and includes its cleanup reserve; frontend fixpoint
+rounds now pass their existing absolute deadline rather than restarting
+a remaining-duration clock. Both explicit full-budget constructors
+(macOS version detection and self-update validation) were migrated.
+
+The token-state boundary exposed two additional real panics: a negative
+persisted balance overflowed Duration conversion, and `u64::MAX` as the
+saved timestamp overflowed SystemTime addition. Admission now bounds the
+balance and uses checked timestamp construction. A sub-nanosecond wait
+cannot round down into permission to debit a token that is not present.
+
+Local Rust process/fetch tests passed **90/90**; actual fetcher,
+self-update and evaluator CLI flows passed **55/55**, including six new
+plugin cases. The six original standalone CLI witnesses now terminate:
+invalid rates no longer panic/park, mismatched origins fail without
+executing/deploying the cached plugin, and exhausted valid/corrupt-state
+budgets fail promptly. The real two-module regression also repairs and
+re-applies successfully after budget failure. Final container and
+committed-source evidence are still required. These are M0 §2.2 runtime
+results, not an M-V7 theorem or whole acquisition-queue/OS timing proof.
+

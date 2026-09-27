@@ -1,8 +1,8 @@
 //! Bounded, single-threaded Unix process supervision (Linux and macOS).
 //!
-//! `timeout` includes cleanup: the final min(timeout / 4, 2 seconds) is
-//! reserved for termination, draining and reaping. Thus Deadline can be
-//! selected before the total budget expires. The clock starts before spawn.
+//! The effective budget ends at the earlier of `timeout` and the caller's
+//! absolute `operation_deadline`. Its final min(remaining / 4, 2 seconds) is
+//! reserved for termination, draining and reaping. The clock starts before spawn.
 //! Spawn/exec, synchronous callbacks, allocation and kernel scheduling cannot
 //! be preempted here. Callbacks must return promptly. Timely SIGKILL delivery
 //! and scheduler progress are required to reap within the budget; otherwise
@@ -28,6 +28,8 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+const MAX_CLEANUP_RESERVE: Duration = Duration::from_secs(2);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
     Continue,
@@ -38,6 +40,8 @@ pub enum Control {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
     pub timeout: Duration,
+    /// A shared operation budget may shorten, never extend, this exchange.
+    pub operation_deadline: Option<Instant>,
     pub input_bytes: usize,
     /// Content bytes, excluding LF. CR is ordinary content.
     pub line_bytes: usize,
@@ -51,6 +55,7 @@ impl Default for Limits {
     fn default() -> Self {
         Self {
             timeout: Duration::from_secs(600),
+            operation_deadline: None,
             input_bytes: 4 * 1024 * 1024,
             line_bytes: 1024 * 1024,
             stdout_bytes: 16 * 1024 * 1024,
@@ -100,7 +105,7 @@ pub struct Outcome {
 /// Response only suppresses callbacks; input is still sent and closed normally.
 /// EPIPE means the peer declined further input, not a supervisor I/O failure.
 ///
-/// Oversized input and zero timeout do not spawn. Err is reserved for spawn
+/// Oversized input and expired budgets do not spawn. Err is reserved for spawn
 /// failure or a timeout unrepresentable by Instant. Post-spawn failures are
 /// Outcomes. The command is mutated; callers supply any arguments/environment.
 /// On leader exit, kill the remaining owned group immediately, even if its
@@ -124,10 +129,14 @@ pub fn run(
     let end = start.checked_add(limits.timeout).ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "timeout exceeds Instant range")
     })?;
-    if limits.timeout.is_zero() {
+    let end = limits
+        .operation_deadline
+        .map_or(end, |deadline| deadline.min(end));
+    let remaining = end.saturating_duration_since(start);
+    if remaining.is_zero() {
         return Ok(empty(StopReason::Deadline));
     }
-    let reserve = (limits.timeout / 4).min(Duration::from_secs(2));
+    let reserve = (remaining / 4).min(MAX_CLEANUP_RESERVE);
     let active_end = end - reserve;
     command
         .stdin(Stdio::piped())

@@ -7,7 +7,6 @@ use gripsack_ir::diagnostic::codes;
 use gripsack_process::{self, Control, Limits, Outcome};
 use std::io;
 use std::path::Path;
-use std::time::Duration;
 
 /// One frontend eval's fixed coordinates: the deno binary, the env
 /// repo being evaluated, the driver script, the materialized
@@ -112,10 +111,10 @@ impl<'a> Frontend<'a> {
     pub(super) fn run_bounded(
         &self,
         inputs: &Path,
-        timeout: Duration,
+        deadline: std::time::Instant,
     ) -> Result<FrontendExecution, FrontendRunError> {
         let mut limits = Limits {
-            timeout,
+            operation_deadline: Some(deadline),
             ..Limits::default()
         };
         limits.line_bytes = limits.stdout_bytes.try_into().map_err(|_| {

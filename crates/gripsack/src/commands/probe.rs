@@ -125,8 +125,7 @@ pub(super) fn eval_to_fixpoint(
             settings: &empty_settings,
         })?;
         tracing::info!(round, probes_bound = bound.len(), "frontend eval");
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        let execution = match frontend.run_bounded(&inputs.path, remaining) {
+        let execution = match frontend.run_bounded(&inputs.path, deadline) {
             Ok(execution) => execution,
             Err(FrontendRunError::Grant(diagnostic)) => {
                 sink.report(&[diagnostic]);

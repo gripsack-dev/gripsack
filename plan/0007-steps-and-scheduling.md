@@ -155,9 +155,16 @@ Concurrency caps (resources) don't solve rate. Throttle domains do:
 - Token-bucket domains in the core; conservative built-in budget for
   `api.github.com`; primitives auto-attach to their domain. Custom
   domains in `env.toml`: `[throttle] "api.corp.com" = "5/s"`.
+  A rate is finite and its bucket capacity is at least one token; `NaN`,
+  infinity and capacities below one are invalid. Invalid declarations
+  follow the existing unparseable-budget policy (ignored; operator
+  overrides warn), not an unfillable or unbounded numeric bucket.
 - 429 handling honors `Retry-After` (bounded) within the step's retry
   budget before failing.
 - Fetcher plugins declare their budget in `capabilities` (0002 §4).
+  Declared-domain waits consume the same absolute deadline as capability
+  negotiation and the fetch exchange. If the next token cannot arrive
+  within it, admission fails without launching that fetch.
 - Built-in resolution ("latest release") happens **in the core at
   lock/update time** (0002 §7) so built-in API traffic stays inside the
   throttle; eval-time resolvers are outside it by nature.

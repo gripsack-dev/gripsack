@@ -48,6 +48,7 @@ pub(super) fn version(executable: &Path) -> Result<String, String> {
     command.arg("--version");
     let limits = Limits {
         timeout: Duration::from_secs(10),
+        operation_deadline: None,
         input_bytes: 0,
         line_bytes: 1024,
         stdout_bytes: 4096,

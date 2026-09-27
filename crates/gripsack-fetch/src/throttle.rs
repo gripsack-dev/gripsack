@@ -21,11 +21,18 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("formulae.brew.sh", "60/min"),
 ];
 
-/// "N/unit" → (capacity, refill per second). Units: s, min, hr.
-pub fn parse_budget(s: &str) -> Option<(f64, f64)> {
+/// A bucket can hold at least one token and refills at a finite positive rate.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RateBudget {
+    capacity: f64,
+    per_second: f64,
+}
+
+/// Admit "N/unit" once; units are seconds, minutes or hours.
+fn parse_budget(s: &str) -> Option<RateBudget> {
     let (n, unit) = s.trim().split_once('/')?;
     let n: f64 = n.trim().parse().ok()?;
-    if n <= 0.0 {
+    if !n.is_finite() || n < 1.0 {
         return None;
     }
     let secs = match unit.trim() {
@@ -34,22 +41,23 @@ pub fn parse_budget(s: &str) -> Option<(f64, f64)> {
         "h" | "hr" | "hour" => 3600.0,
         _ => return None,
     };
-    Some((n, n / secs))
+    Some(RateBudget {
+        capacity: n,
+        per_second: n / secs,
+    })
 }
 
 struct Bucket {
     tokens: f64,
-    capacity: f64,
-    per_sec: f64,
+    budget: RateBudget,
     updated: SystemTime,
 }
 
 impl Bucket {
-    fn new(capacity: f64, per_sec: f64) -> Self {
+    fn new(budget: RateBudget) -> Self {
         Bucket {
-            tokens: capacity,
-            capacity,
-            per_sec,
+            tokens: budget.capacity,
+            budget,
             updated: SystemTime::now(),
         }
     }
@@ -61,14 +69,22 @@ impl Bucket {
             .duration_since(self.updated)
             .unwrap_or_default()
             .as_secs_f64();
-        self.tokens = (self.tokens + elapsed * self.per_sec).min(self.capacity);
+        self.tokens = (self.tokens + elapsed * self.budget.per_second).min(self.budget.capacity);
         self.updated = now;
         if self.tokens >= 1.0 {
             Duration::ZERO
         } else {
-            Duration::from_secs_f64((1.0 - self.tokens) / self.per_sec)
+            // Rounding a sub-nanosecond wait to zero must not mint a token.
+            Duration::from_secs_f64((1.0 - self.tokens) / self.budget.per_second)
+                .max(Duration::from_nanos(1))
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ThrottleAdmission {
+    Granted,
+    DeadlineExpired,
 }
 
 pub struct Throttle {
@@ -83,16 +99,16 @@ impl Throttle {
     pub fn new(overrides: &BTreeMap<String, String>, persist: Option<PathBuf>) -> Self {
         let mut buckets = BTreeMap::new();
         for (domain, budget) in DEFAULTS {
-            if let Some((cap, rate)) = parse_budget(budget) {
-                buckets.insert(domain.to_string(), Bucket::new(cap, rate));
+            if let Some(budget) = parse_budget(budget) {
+                buckets.insert(domain.to_string(), Bucket::new(budget));
             }
         }
         let mut user_declared = BTreeSet::new();
         for (domain, budget) in overrides {
             match parse_budget(budget) {
-                Some((cap, rate)) => {
+                Some(budget) => {
                     user_declared.insert(domain.clone());
-                    buckets.insert(domain.clone(), Bucket::new(cap, rate));
+                    buckets.insert(domain.clone(), Bucket::new(budget));
                 }
                 None => {
                     tracing::warn!("ignoring unparseable [throttle] budget {domain} = {budget:?}")
@@ -115,17 +131,17 @@ impl Throttle {
         if self.user_declared.contains(domain) {
             return;
         }
-        if let Some((cap, rate)) = parse_budget(budget) {
-            self.buckets
-                .lock()
-                .expect("throttle mutex")
-                .entry(domain.to_string())
-                .and_modify(|b| {
-                    b.capacity = cap;
-                    b.per_sec = rate;
-                    b.tokens = b.tokens.min(cap);
-                })
-                .or_insert_with(|| Bucket::new(cap, rate));
+        if let Some(budget) = parse_budget(budget) {
+            let mut buckets = self.buckets.lock().expect("throttle mutex");
+            match buckets.get_mut(domain) {
+                Some(bucket) => {
+                    bucket.budget = budget;
+                    bucket.tokens = bucket.tokens.min(budget.capacity);
+                }
+                None => {
+                    buckets.insert(domain.to_owned(), Bucket::new(budget));
+                }
+            }
         }
     }
 
@@ -135,20 +151,20 @@ impl Throttle {
         self.acquire_before(domain, None);
     }
 
-    fn acquire_before(&self, domain: &str, deadline: Option<Instant>) -> bool {
+    fn acquire_before(&self, domain: &str, deadline: Option<Instant>) -> ThrottleAdmission {
         loop {
             if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-                return false;
+                return ThrottleAdmission::DeadlineExpired;
             }
             let wait = {
                 let mut buckets = self.buckets.lock().expect("throttle mutex");
                 match buckets.get_mut(domain) {
-                    None => return true,
+                    None => return ThrottleAdmission::Granted,
                     Some(bucket) => {
                         let wait = bucket.refill();
                         if wait.is_zero() {
                             bucket.tokens -= 1.0;
-                            return true;
+                            return ThrottleAdmission::Granted;
                         }
                         wait
                     }
@@ -157,7 +173,7 @@ impl Throttle {
             if deadline
                 .is_some_and(|deadline| wait >= deadline.saturating_duration_since(Instant::now()))
             {
-                return false;
+                return ThrottleAdmission::DeadlineExpired;
             }
             std::thread::sleep(wait);
         }
@@ -184,20 +200,13 @@ impl Throttle {
                 bucket.tokens = state
                     .get("tokens")
                     .and_then(|t| t.as_f64())
-                    .unwrap_or(bucket.capacity)
-                    .min(bucket.capacity);
-                bucket.updated = UNIX_EPOCH
-                    + Duration::from_secs(
-                        state
-                            .get("updated")
-                            .and_then(|t| t.as_u64())
-                            .unwrap_or_else(|| {
-                                SystemTime::now()
-                                    .duration_since(UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs()
-                            }),
-                    );
+                    .unwrap_or(bucket.budget.capacity)
+                    .clamp(0.0, bucket.budget.capacity);
+                bucket.updated = state
+                    .get("updated")
+                    .and_then(|time| time.as_u64())
+                    .and_then(|seconds| UNIX_EPOCH.checked_add(Duration::from_secs(seconds)))
+                    .unwrap_or_else(SystemTime::now);
             }
         }
     }
@@ -260,13 +269,13 @@ pub fn acquire_url(url: &str) {
     }
 }
 
-pub(crate) fn acquire_url_until(url: &str, deadline: Instant) -> bool {
+pub(crate) fn acquire_url_until(url: &str, deadline: Instant) -> ThrottleAdmission {
     if Instant::now() >= deadline {
-        return false;
+        return ThrottleAdmission::DeadlineExpired;
     }
     match (global(), url_host(url)) {
         (Some(throttle), Some(host)) => throttle.acquire_before(&host, Some(deadline)),
-        _ => true,
+        _ => ThrottleAdmission::Granted,
     }
 }
 
@@ -277,12 +286,22 @@ pub fn save_global() {
     }
 }
 
-/// A fetcher-declared budget (capabilities op): register, then take
-/// a token for the invocation.
-pub fn acquire_declared(domain: &str, budget: &str) {
-    if let Some(t) = global() {
-        t.register(domain, budget);
-        t.acquire(domain);
+/// Register a fetcher-declared budget, then admit one invocation within the
+/// caller's existing operation deadline, including when no throttle is installed.
+pub(crate) fn acquire_declared_until(
+    domain: &str,
+    budget: &str,
+    deadline: Instant,
+) -> ThrottleAdmission {
+    if Instant::now() >= deadline {
+        return ThrottleAdmission::DeadlineExpired;
+    }
+    match global() {
+        Some(throttle) => {
+            throttle.register(domain, budget);
+            throttle.acquire_before(domain, Some(deadline))
+        }
+        None => ThrottleAdmission::Granted,
     }
 }
 
@@ -292,12 +311,94 @@ mod tests {
 
     #[test]
     fn parses_budget_syntax() {
-        assert_eq!(parse_budget("2/s"), Some((2.0, 2.0)));
-        assert_eq!(parse_budget("60/min"), Some((60.0, 1.0)));
-        assert_eq!(parse_budget("5000/hr"), Some((5000.0, 5000.0 / 3600.0)));
+        assert_eq!(
+            parse_budget("2/s"),
+            Some(RateBudget {
+                capacity: 2.0,
+                per_second: 2.0
+            })
+        );
+        assert_eq!(
+            parse_budget("60/min"),
+            Some(RateBudget {
+                capacity: 60.0,
+                per_second: 1.0
+            })
+        );
+        assert_eq!(
+            parse_budget("5000/hr"),
+            Some(RateBudget {
+                capacity: 5000.0,
+                per_second: 5000.0 / 3600.0
+            })
+        );
         assert_eq!(parse_budget("nope"), None);
         assert_eq!(parse_budget("0/s"), None);
         assert_eq!(parse_budget("1/fortnight"), None);
+    }
+
+    #[test]
+    fn rate_admission_rejects_nonfinite_and_unfillable_buckets() {
+        for rate in ["NaN/s", "inf/min", "-inf/hr", "0.5/s", "-2/s", "1e309/s"] {
+            assert_eq!(parse_budget(rate), None, "{rate}");
+        }
+        assert_eq!(
+            parse_budget("1/hr"),
+            Some(RateBudget {
+                capacity: 1.0,
+                per_second: 1.0 / 3600.0
+            })
+        );
+    }
+
+    #[test]
+    fn token_wait_cannot_outlive_or_reset_an_operation_deadline() {
+        let throttle = Throttle::new(&BTreeMap::new(), None);
+        throttle.register("slow.example", "1/hr");
+        let deadline = Instant::now() + Duration::from_secs(60);
+        assert_eq!(
+            throttle.acquire_before("slow.example", Some(deadline)),
+            ThrottleAdmission::Granted
+        );
+        assert_eq!(
+            throttle.acquire_before("slow.example", Some(deadline)),
+            ThrottleAdmission::DeadlineExpired
+        );
+        assert_eq!(
+            throttle.acquire_before("unknown.example", Some(Instant::now())),
+            ThrottleAdmission::DeadlineExpired
+        );
+    }
+
+    #[test]
+    fn persisted_token_and_time_bounds_cannot_panic_or_mint_extra_tokens() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("throttle.json");
+        let overrides = BTreeMap::from([("bounded.example".into(), "1/hr".into())]);
+        for tokens in [-1e308, 1e308] {
+            std::fs::write(
+                &path,
+                serde_json::json!({
+                    "bounded.example": {"tokens": tokens, "updated": u64::MAX}
+                })
+                .to_string(),
+            )
+            .unwrap();
+            let throttle = Throttle::new(&overrides, Some(path.clone()));
+            let deadline = Instant::now() + Duration::from_secs(60);
+            assert_eq!(
+                throttle.acquire_before("bounded.example", Some(deadline)),
+                if tokens < 0.0 {
+                    ThrottleAdmission::DeadlineExpired
+                } else {
+                    ThrottleAdmission::Granted
+                }
+            );
+            assert_eq!(
+                throttle.acquire_before("bounded.example", Some(deadline)),
+                ThrottleAdmission::DeadlineExpired
+            );
+        }
     }
 
     #[test]
@@ -307,7 +408,7 @@ mod tests {
         let t = Throttle::new(&overrides, None);
         t.register("api.github.com", "5000/hr");
         let buckets = t.buckets.lock().expect("mutex");
-        assert_eq!(buckets["api.github.com"].capacity, 2.0);
+        assert_eq!(buckets["api.github.com"].budget.capacity, 2.0);
     }
 
     #[test]
@@ -315,7 +416,7 @@ mod tests {
         let t = Throttle::new(&BTreeMap::new(), None);
         t.register("api.github.com", "10/s");
         let buckets = t.buckets.lock().expect("mutex");
-        assert_eq!(buckets["api.github.com"].capacity, 10.0);
+        assert_eq!(buckets["api.github.com"].budget.capacity, 10.0);
     }
 
     #[test]
@@ -328,12 +429,6 @@ mod tests {
         }
         // 20 tokens burst-free; the 21st waits ~50ms, 25th ~250ms
         assert!(start.elapsed() >= Duration::from_millis(200));
-    }
-
-    #[test]
-    fn unknown_domains_pass_through() {
-        let t = Throttle::new(&BTreeMap::new(), None);
-        t.acquire("anything.example"); // must not block or panic
     }
 
     #[test]

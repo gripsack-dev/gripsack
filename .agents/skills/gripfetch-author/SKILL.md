@@ -23,7 +23,7 @@ hash-verifies every byte you staged before it enters the store.
 {"op": "fetch", "args": {...}, "dest_dir": "/abs/staging", "locked": {"url": "...", "version": "...", "sha256": "..."}}
 ```
 
-- `args` is opaque to the core — your module's `plugin_fetch("<name>", args)`
+- `args` is opaque to the core — your module's `pluginFetch("<name>", args)`
   verbatim. Version it yourself; the store-path hash covers name + args.
 - `dest_dir` is your staging area. Write the payload tree under it. Nothing
   else on disk is yours to touch.
@@ -51,30 +51,34 @@ hash-verifies every byte you staged before it enters the store.
 - **`provenance` is the valuable half of the response** — which registry,
   which mirror, which credential identity served the bytes. It lands in
   the run log (0009 §2 rule 7). Emit it every time you know it.
-- `sha256` in the response is advisory and ignored: **the core recomputes
-  identity from the staged tree**. Never spend effort making your hash
-  match anything; spend it making the tree right.
+- `sha256` in the response is optional. If supplied, it must match the
+  canonical staged-tree hash **independently recomputed by the core**;
+  a disagreement fails. Omit it unless your canonical-tree implementation
+  matches the core's contract. It is not the downloaded archive's digest.
 
 ## 2. The invariants you must hold
 
-1. **Never the plugin's word.** Your output is untrusted by design. If you
-   are wrong or malicious, the worst outcome is a failed apply, never a
-   poisoned store — the core hash-checks against the lockfile before
-   anything enters it. Don't optimize around this; lean on it.
+1. **Never the plugin's word.** The core checks staged bytes against the
+   lockfile before publication. This is integrity checking, not confinement:
+   plugins are native executables with operator privileges, unlike the
+   sandboxed frontend. Do not execute an untrusted plugin.
 2. **Reproducibility: same pin → same tree hash, on any machine.** This is
    the one most fetchers break. Absolute paths embedded in the payload
    (pixi's conda-meta was the canonical bug), timestamps, ordering —
    anything environment-derived poisons the hash. Exclude bookkeeping
    metadata or normalize it before you stage.
 3. **Death is not silent.** If you cannot produce a response, exit nonzero
-   with a useful stderr tail — the core synthesizes `gripfetch-<name>/E02`
-   with that tail attached. Better: emit an error diagnostic and a
-   response, then exit nonzero anyway.
-4. **No unbounded waits.** The exchange has a 600s deadline; a stuck
-   plugin is killed and reported as a failure. Long downloads are fine —
-   emit `progress` to stay visibly alive.
-5. **stderr is a log, not a channel.** The core drains it concurrently
-   (any volume is safe) and shows its tail only on protocol death.
+   with useful stderr — the host reports a bounded tail. Prefer an error
+   diagnostic with a source label. A response never overrides a nonzero
+   exit, budget violation or cleanup failure.
+4. **One bounded invocation.** Capability negotiation (itself capped at
+   30s), declared-domain token waits and the fetch exchange share a 600s
+   deadline including cleanup. Progress does not extend it. Declare finite
+   `N/s`, `N/min` or `N/hr` rates with capacity `N >= 1`; operator
+   `[throttle]` overrides take precedence.
+5. **stderr is a log, not a channel.** Both output streams are drained with
+   independent 16 MiB totals; stderr retains at most 64 KiB. NDJSON lines
+   are capped at 1 MiB and input at 4 MiB. Exceeding a cap fails the exchange.
 
 ## 3. The pinning story, per ecosystem
 
@@ -110,7 +114,7 @@ tree hashes across two runs, >64KB stderr without a hang, and
 death-without-response behavior. A conformance failure is a bug in the
 plugin, not an opinion.
 
-Also dogfood it for real: a module with `plugin_fetch("<name>", ...)` and
+Also dogfood it for real: a module with `pluginFetch("<name>", ...)` and
 a `path =` registration in `env.toml`, `grip apply` twice — second apply
 must say "already satisfied" with one store path (0008 §3; finding C
 proved this bites plugin fetchers).

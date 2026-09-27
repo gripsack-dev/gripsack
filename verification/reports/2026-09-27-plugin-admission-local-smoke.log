@@ -1,0 +1,29 @@
+Gripsack M0 section 2.2: real plugin admission witnesses
+Date: 2026-09-27
+Source: pre-commit working tree; not a source-bound CI/release receipt
+Fixtures: sandboxed HOME, seeded local plugin, real Deno/CLI; wrong origin uses a refusing loopback HTTPS proxy
+Fuzz: NOT RUN, owner instruction
+
+BEFORE: invalid rates and wrong origin
+{"case": "NaN/s", "status": 1, "seconds": 0.43, "deployed": false, "output": "\nthread '<unnamed>' (4011440) panicked at /home/tarek/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/time.rs:962:23:\ncannot convert float seconds to Duration: value is either too big or NaN\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror[E301]: worker panicked while executing a; the apply was not committed\n  --> /tmp/gripsack-plugin-before-sugxqk6m/repo/modules/a.ts:4:16\n   |\n   4 | export default module(\"a\", {\n   |                ^ raised here\n"}
+{"case": "0.5/s", "status": "timeout", "seconds": 8.01, "deployed": false, "output": ""}
+{"case": "wrong-origin", "status": 0, "seconds": 0.4, "deployed": true, "output": "  a \u2713 fetched plugin gripfetch-demo\n  a \u2713 linked a \u2192 ~/.local/bin/demo-a\n\u001b[1m\u001b[32mapplied \u2014\u001b[39m\u001b[0m generation 1 active (\u001b[2m0.1s\u001b[0m)\n"}
+
+BEFORE: valid but exhausted hourly bucket
+{"case": "1/hr", "status": "timeout", "seconds": 8.01, "deployed": true, "output": ""}
+
+BEFORE: corrupted persisted token state
+{"case": "negative-state", "status": 1, "seconds": 0.31, "deployed": false, "output": "\nthread '<unnamed>' (4022837) panicked at /home/tarek/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/time.rs:962:23:\ncannot convert float seconds to Duration: value is either too big or NaN\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror[E301]: worker panicked while executing a; the apply was not committed\n  --> /tmp/gripsack-plugin-before-phgg517p/repo/modules/a.ts:4:16\n   |\n   4 | export default module(\"a\", {\n   |                ^ raised here\n"}
+{"case": "overflow-time", "status": 101, "seconds": 0.01, "deployed": false, "output": "\nthread 'main' (4022870) panicked at crates/gripsack-fetch/src/throttle.rs:189:34:\noverflow when adding duration to `SystemTime`\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"}
+
+AFTER: admission
+{"case": "NaN/s", "status": 0, "seconds": 0.34, "deployed": true, "output": "  a \u2713 fetched plugin gripfetch-demo\n  a \u2713 linked a \u2192 ~/.local/bin/demo-a\n\u001b[1m\u001b[32mapplied \u2014\u001b[39m\u001b[0m generation 1 active (\u001b[2m0.1s\u001b[0m)\n"}
+{"case": "0.5/s", "status": 0, "seconds": 0.33, "deployed": true, "output": "  a \u2713 fetched plugin gripfetch-demo\n  a \u2713 linked a \u2192 ~/.local/bin/demo-a\n\u001b[1m\u001b[32mapplied \u2014\u001b[39m\u001b[0m generation 1 active (\u001b[2m0.1s\u001b[0m)\n"}
+{"case": "wrong-origin", "status": 1, "seconds": 3.03, "deployed": false, "output": "2026-09-27T09:24:46.979776Z  WARN gripsack_fetch::http::request: retrying HTTP policy attempt attempt=1 failure=transient connection failure wait_ms=1000\n2026-09-27T09:24:47.980509Z  WARN gripsack_fetch::http::request: retrying HTTP policy attempt attempt=2 failure=transient connection failure wait_ms=2000\n2026-09-27T09:24:49.981544Z  WARN gripsack_fetch::http::request: HTTP operation failed attempts=3 failure=transient connection failure stop=attempt limit reached\ngrip: cannot provision gripfetch-demo from different/gripfetch-demo@1.0: http error fetching https://api.github.com/repos/different/gripfetch-demo/releases/tags/1.0: transient connection failure; policy attempts 3; stop: attempt limit reached; elapsed 3.018s, retry wait 3.000s\n"}
+
+AFTER: bounded-wait
+{"case": "1/hr", "status": 1, "seconds": 0.32, "deployed": false, "output": "error[E301]: step fetch failed in b: fetch failed: source error fetching demo: gripfetch-demo cannot acquire a demo.local token within its operation deadline\n  --> /tmp/gripsack-plugin-before-dsdnqqfl/repo/modules/b.ts:4:16\n   |\n   4 | export default module(\"b\", {\n   |                ^ raised here\n"}
+
+AFTER: persisted-state
+{"case": "negative-state", "status": 1, "seconds": 0.28, "deployed": false, "output": "error[E301]: step fetch failed in a: fetch failed: source error fetching demo: gripfetch-demo cannot acquire a demo.local token within its operation deadline\n  --> /tmp/gripsack-plugin-before-_nrvhudv/repo/modules/a.ts:4:16\n   |\n   4 | export default module(\"a\", {\n   |                ^ raised here\n"}
+{"case": "overflow-time", "status": 1, "seconds": 0.27, "deployed": false, "output": "error[E301]: step fetch failed in a: fetch failed: source error fetching demo: gripfetch-demo cannot acquire a demo.local token within its operation deadline\n  --> /tmp/gripsack-plugin-before-20ziwwaz/repo/modules/a.ts:4:16\n   |\n   4 | export default module(\"a\", {\n   |                ^ raised here\n"}

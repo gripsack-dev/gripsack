@@ -130,6 +130,7 @@ impl HostPlatform {
             &[],
             Limits {
                 timeout: Duration::from_secs(3),
+                operation_deadline: None,
                 input_bytes: 0,
                 line_bytes: 64,
                 stdout_bytes: 128,

@@ -25,6 +25,13 @@ User-visible changes per release. Design archaeology lives in
 
 ### Fixed
 
+- Managed plugin cache hits require both the declared source and tag;
+  changing origin cannot reuse an unrelated installed binary. Capability
+  probing, rate admission and the fetch exchange share one deadline.
+- Rate budgets reject nonfinite or sub-token capacities instead of
+  panicking or waiting forever. Persisted token balances and timestamps
+  are bounded before use. Expired operation deadlines cannot be reset by
+  request serialization or a later frontend/protocol exchange.
 - A panicking module completes the scheduler failure transition and wakes
   idle workers instead of hanging a parallel apply. Loom now exercises the
   production mutex/condition-variable coordinator with calibrated

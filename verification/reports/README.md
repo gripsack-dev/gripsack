@@ -339,3 +339,13 @@ fresh Rust/Loom, real e2e **342/342**, Verus **72/0** and TLAPS; unchanged
 TypeScript and model RUN layers were cached (their governing fresh runs
 are archived above). No fuzz or workflow dispatch occurred.
 
+
+## M0 §2.2 plugin admission — local witnesses
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-27-plugin-admission-local-smoke.log` | `de0ec5c7d318724929e72f00df801be51e5a50e39cebbc06b81e96d84b4938e4` | Six actual CLI before/after witnesses: NaN panic, fractional and exhausted-hourly waits, same-tag wrong-origin execution, negative-token Duration overflow and saved-timestamp SystemTime overflow. After correction, invalid rates follow the existing ignored-budget policy, wrong-origin cache execution is refused, and exhausted/corrupt-state budgets fail promptly without panic. Sandboxed HOME/local plugin/real Deno; a refusing loopback proxy isolates provisioning. |
+
+This report is an uncommitted-tree smoke transcript, not exact-source
+CI, an M-V7 theorem or release approval. No fuzz or corpus replay ran.
+

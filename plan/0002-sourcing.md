@@ -73,18 +73,20 @@ tentacles.
     (`{url, version, sha256}`) when one exists — a plugin can tell
     first-fetch (resolve, TOFU) from pinned re-fetch (reproduce
     exactly); for internal registries those are different code paths.
-    The response's `sha256` is advisory only — the core recomputes
-    identity from the staged bytes (invariant: never the plugin's
-    word). `provenance` (which registry, which mirror, which
+    A response `sha256`, when supplied, must equal the canonical staged-tree
+    hash independently recomputed by the core; disagreement fails the fetch.
+    It never replaces the lockfile's pin. `provenance` (which registry, which mirror, which
     credential identity) is recorded into the run log (0009 §2 rule 7).
-  - `capabilities` → declared feature set (for `plan`/doctor output)
-    **including its rate budget** — the fetcher knows its backend's
-    limits better than the core does (0007 §throttling). *Specified,
-    not yet implemented — lands with throttling.*
-- Robustness, decided by review: the host drains stderr concurrently
-  (a chatty plugin deadlocks a 64KB pipe otherwise) and the whole
-  exchange has a deadline — a stuck plugin is a failure, never an
-  unbounded wait.
+  - `capabilities` → declared rate budgets — the fetcher knows its
+    backend's limits better than the core does (0007 §throttling).
+    Negotiation is optional and capped at 30s. Its time, declared-domain
+    token admission and the fetch exchange share one 600s deadline,
+    including process cleanup; progress does not reset it.
+- The host drains both output streams, with independent 16 MiB totals,
+  a 1 MiB NDJSON line ceiling and a retained 64 KiB stderr tail. A response
+  does not override output, deadline, exit or cleanup failure.
+- Managed-plugin cache admission requires the requested source **and** tag
+  to match the receipt; the same alias/tag from another origin is not a hit.
 - IR node: `{"kind": "plugin", "name": "<name>", "args": {...}}` — opaque
   to the core; the store-path hash covers name + args.
 - **The core verifies.** Returned bytes are hashed and checked against the

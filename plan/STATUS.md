@@ -130,6 +130,14 @@ M-V6 generalization, other NEXT work and release qualification remain
 open; the pilot makes no fresh-None, repeated-recovery, multi-destination,
 Rust/OS refinement, liveness or hardware claim.
 
+**M0 §2.2 continuation:** plugin cache admission now compares source and
+tag; validated rate budgets and one absolute capability/admission/exchange
+deadline replace panic/unbounded-wait paths. Corrupt saved token balances
+and timestamps are admitted without arithmetic panic. Local Rust
+process/fetch **90/90**, real CLI **55/55** and six standalone before/after
+witnesses passed after correction. This does not discharge M-V7 or
+qualify a release; final container/source-bound evidence is being recorded.
+
 ## Security maintenance (non-release changes)
 
 - 2026-09-26: The protected `audit` check exposed

@@ -207,7 +207,9 @@ impl Client {
             }
         }
         loop {
-            if !crate::throttle::acquire_url_until(selected, budget.deadline) {
+            if crate::throttle::acquire_url_until(selected, budget.deadline)
+                == crate::throttle::ThrottleAdmission::DeadlineExpired
+            {
                 return Err(
                     failure(HttpFailureKind::Timeout, &budget, RetryStopReason::Deadline).into(),
                 );

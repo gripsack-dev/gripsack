@@ -7,8 +7,12 @@ fixture repos come from conftest."""
 import os
 import sys
 import subprocess
+import socket
+
+import pytest
 
 from conftest import (
+    GRIP,
     _seed_plugin_store,
     grip,
     make_env_repo,
@@ -178,6 +182,49 @@ def test_throttle_user_override_beats_plugin_budget(sandbox, monkeypatch):
     )
 
 
+@pytest.mark.parametrize("budget", ["NaN/s", "0.5/s"])
+@pytest.mark.parametrize("override", [False, True])
+def test_invalid_rate_cannot_panic_or_park_a_plugin(sandbox, budget, override):
+    fixture = FETCH_FIXTURE if override else FETCH_FIXTURE.replace("1/s", budget)
+    _seed_plugin_store(sandbox, "gripfetch-demo", fixture)
+    repo = make_env_repo(sandbox / "myenv", {"a": PLUGIN_MODULES["a"]})
+    with (repo / "env.toml").open("a") as config:
+        config.write('\n[fetchers.demo]\npackage = "acme/gripfetch-demo@1.0"\n')
+        if override:
+            config.write(f'\n[throttle]\n"demo.local" = "{budget}"\n')
+    out = subprocess.run(
+        [str(GRIP.resolve()), "apply", "--host", "testhost"],
+        cwd=repo, capture_output=True, text=True, timeout=20,
+    )
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert (sandbox / ".local/bin/demo-a").read_text() == "#!/bin/sh\necho demo\n"
+
+
+def test_plugin_token_wait_is_bounded_and_failed_apply_remains_recoverable(sandbox):
+    invocations = sandbox / "fetch-invocations"
+    fixture = FETCH_FIXTURE.replace("1/s", "1/hr").replace(
+        'elif req["op"] == "fetch":\n',
+        'elif req["op"] == "fetch":\n'
+        f'    with open({str(invocations)!r}, "a") as record: record.write("fetch\\n")\n',
+    )
+    _seed_plugin_store(sandbox, "gripfetch-demo", fixture)
+    repo = make_env_repo(sandbox / "myenv", PLUGIN_MODULES)
+    with (repo / "env.toml").open("a") as config:
+        config.write('\n[fetchers.demo]\npackage = "acme/gripfetch-demo@1.0"\n')
+    out = subprocess.run(
+        [str(GRIP.resolve()), "apply", "--host", "testhost"],
+        cwd=repo, capture_output=True, text=True, timeout=20,
+    )
+    assert out.returncode == 1, out.stdout + out.stderr
+    assert invocations.read_text() == "fetch\n"
+    with (repo / "env.toml").open("a") as config:
+        config.write('\n[throttle]\n"demo.local" = "100/s"\n')
+    recovered = grip("apply", "--host", "testhost", cwd=repo)
+    assert recovered.returncode == 0, recovered.stdout + recovered.stderr
+    for name in ("a", "b"):
+        assert (sandbox / f".local/bin/demo-{name}").read_text() == "#!/bin/sh\necho demo\n"
+
+
 def test_fetcher_package_ref_resolves_from_the_plugin_store(sandbox):
     """0012 move 2: [fetchers.x] package = "owner/repo@tag" — with the
     receipt already recording the tag, provisioning is a satisfied
@@ -199,6 +246,35 @@ export default module("a", {
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert (sandbox / ".local/bin/demo-a").is_symlink()
+
+
+def test_plugin_cache_never_substitutes_a_same_tag_from_another_origin(sandbox, monkeypatch):
+    invoked = sandbox / "wrong-origin-executed"
+    fixture = FETCH_FIXTURE.replace(
+        "req = json.loads(sys.stdin.readline())",
+        f'open({str(invoked)!r}, "w").write("executed")\n'
+        "req = json.loads(sys.stdin.readline())",
+    )
+    _seed_plugin_store(sandbox, "gripfetch-demo", fixture)
+    receipt = sandbox / ".local/share/gripsack/plugins/receipts/gripfetch-demo.toml"
+    original_receipt = receipt.read_bytes()
+    repo = make_env_repo(sandbox / "myenv", {"a": PLUGIN_MODULES["a"]})
+    with (repo / "env.toml").open("a") as config:
+        config.write('\n[fetchers.demo]\npackage = "different/gripfetch-demo@1.0"\n')
+    # A bound, non-listening loopback port refuses provisioning offline. The
+    # matching-origin control above must not need provisioning at all.
+    with socket.socket() as refusal:
+        refusal.bind(("127.0.0.1", 0))
+        proxy = f"http://127.0.0.1:{refusal.getsockname()[1]}"
+        for name in ("HTTPS_PROXY", "https_proxy"):
+            monkeypatch.setenv(name, proxy)
+        for name in ("NO_PROXY", "no_proxy"):
+            monkeypatch.setenv(name, "")
+        out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 1, out.stdout + out.stderr
+    assert not invoked.exists()
+    assert not (sandbox / ".local/bin/demo-a").exists()
+    assert receipt.read_bytes() == original_receipt
 
 
 def test_fetcher_path_registers_an_offline_executable(sandbox):
