@@ -2359,7 +2359,7 @@
      "to": "in_progress"
     }
    ],
-   "implementation_notes": "v5 files compose origin (repo_file/artifact_file), content (identity/literal/template) and destination (symlink/tracked_copy/managed_block) with mandatory file spans; only literal content may omit a source, and artifact-file selectors share the normalized-selector admission. Destination paths require the module grammar's absolute-or-~/ shape with selector-style normalized segments on BOTH surfaces (TypeScript throws at authoring; decoded IR fails structured E102 at the file's declaration span before any E124 — a decoded ~/../../etc/passwd previously admitted). One path now has one owner: case-folded duplicate destinations across profile files (within a profile, across profiles, across policies) reject with E111 labeling every declaration before any executor — previously a silently admitted two-owner race — while equal relative filenames with distinct destinations coexist; managed blocks now fold per case-folded MARKER: distinct markers over one host path coexist as distinct per-block owners while the same marker (case-variant) or any whole-file policy over that path still rejects E111 labeling every declaration (b0861eb, receipt 2026-09-26-a1-block-markers-b0861eb.log); the merge/deploy side stays A2. At 17513d2 focused runners pass 6 Rust + 10 real CLI destination/owner/coordinate cases plus the same-source Deno gate layer (81 checks); at d8711b2 3 Rust + 2 real CLI collision cases pass (5 checks) after fresh full-chain Rust fmt/clippy/tests and e2e 297/297 at each tree. The tree origin (bounded include/exclude expansion with per-entry collision/containment diagnostics), admission-time rendered-result binding, ownership proof targets, protected CI and native Mac remain open; no closure or release."
+   "implementation_notes": "v5 separates repository/artifact origins, identity/literal/template content and symlink/tracked-copy/managed-block policy with mandatory spans. Both frontends reject source/destination escapes; treeFiles captures a bounded sorted repository inventory into explicit file declarations with symlink and collision admission. Whole-file owners conflict by case-folded destination; blocks additionally fold by marker, so distinct blocks share a hosting file without granting whole-file ownership. Historical admission receipts remain below the A1-11 evidence record. At 83b5e84 native repo/literal/template profiles execute through the existing ownership/journal/generation lifecycle, retaining captured source, variables and rendered bytes; A2-06 registers the source-bound composition runner. Artifact-backed execution/tree inventories, raw/rendered/deployed check mapping, required normalization/ownership correspondence proofs, protected CI and native Mac lanes remain open. Neither A1-11 nor A2 is closed."
   },
   {
    "id": "A1-12",
@@ -2559,7 +2559,41 @@
     "runner",
     "formal"
    ],
-   "evidence_records": []
+   "evidence_records": [
+    {
+     "lane": "container-gates",
+     "date": "2026-09-27",
+     "entry_points": [
+      "gripsack-exec::workspace::NativeProfiles",
+      "grip check/plan/apply/rollback",
+      "gripsack-store::journal"
+     ],
+     "environment": "Linux amd64 Docker Compose; pinned Rust/Deno/Python images; real compiled CLI with sandboxed HOME and offline fixtures",
+     "command": "docker compose run --build --rm test cargo test --locked -p gripsack-store -p gripsack-exec -p gripsack-ir -p gripsack; docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_workspace_files.py test_contract_fidelity.py test_generation_history.py test_gc_admission.py test_update_surveys.py test_apply_lifecycle.py test_transaction_recovery.py test_workspace_diagnostics.py test_workspace_contract.py",
+     "result": "pass",
+     "report": "verification/reports/2026-09-27-native-boundaries-83b5e84.log",
+     "report_sha256": "506943e1dcbed74933f2aba893585cb5f0a6b40b35fa6d86a6d98e483e5ae104",
+     "commit": "83b5e8497fd22a683020b768a0268fff80459592",
+     "source_reuse_sha256": "321cc613592c4f938aac1c01378a3b68f6399b370ed1fc53057e1aa5cfec6a19",
+     "source_reuse_reason": "Reuse only across evidence-only commits with identical SOURCE_ROOTS",
+     "cases_covered": [
+      "the same admitted template/rendered content composes with symlink, tracked copy and managed block without becoming an ownership mode"
+     ],
+     "kind": "runner",
+     "tool_versions": "Rust 1.98.0 and Deno 2.9.6; Docker-pinned Python/pytest environment",
+     "inputs": "222 Rust cases and 140 real CLI cases passed at the recorded revision, with clean tracked SOURCE_ROOTS before and after. Eight native-file journeys include all three destination policies, retained-byte rollback, warm reuse, scoped selection, independent blocks, take-over, failed preparation, private journal recovery and recorded permission-sync IO failure. Artifact-file origins, staged check subjects, native Mac and required correspondence theorems remain open; this record claims only the named composition case.",
+     "report_marker": "NATIVE_BOUNDARY_CLI=140",
+     "counts": { "executed": 140, "passed": 140, "failed": 0, "skipped": 0 }
+    }
+   ],
+   "status_history": [
+    {
+     "date": "2026-09-27",
+     "from": "pending",
+     "to": "in_progress"
+    }
+   ],
+   "implementation_notes": "Native repo/literal/template files execute through the existing lifecycle, with per-block ownership, retained-byte rollback, private v2 journals and guarded repeated-write recovery. Source-bound 83b5e84 evidence registers only the first named composition case. Artifact-backed origins, raw/rendered/deployed check staging, remaining tree/retention correspondence, required proofs and native Mac lanes remain mandatory; this is not A2 or release closure."
   },
   {
    "id": "A2-07",

@@ -312,12 +312,13 @@ a release.
 | report | sha256 | observed execution |
 |---|---|---|
 | `2026-09-27-native-files-local-gates.log` | `5f44594aaa19b944c1bc34d2d1fe957e5030580273d3ec37ada594edb0cf0f55` | Fresh Docker Rust fmt/clippy/tests plus three production-coordinator Loom cases and two deadlock mutants; TypeScript 67/67 plus strict examples; complete real CLI 342/342, including all six persistence-matrix cases; fresh TLC positives/calibrations including repeated destination writes; fresh Verus 72/0, nine named semantic mutants, unrelated-lemma refusal and ten evidence-parser negatives. Actual documented dotfile example check/plan/apply/ownership output is included. |
+| `2026-09-27-native-boundaries-83b5e84.log` | `506943e1dcbed74933f2aba893585cb5f0a6b40b35fa6d86a6d98e483e5ae104` | Exact source `83b5e8497fd22a683020b768a0268fff80459592`, fingerprint `321cc613592c4f938aac1c01378a3b68f6399b370ed1fc53057e1aa5cfec6a19`, clean tracked source roots before/after. Fresh direct container commands ran 222 Rust and 140 real CLI cases, including eight native-file journeys and the panic/prior/privacy/path/resource/update regressions. No fuzz, native Mac or generalized proof claim. |
 
-These are **pre-commit working-tree** transcripts, not exact-commit
-protected CI receipts. The final TLC run includes the later scope-comment
-correction; behavioral Rust/TS/e2e sources were unchanged afterward.
-Source equivalence to the implementation checkpoint is **[INFERENCE]**
-until a source-bound runner records its revision and clean roots.
+The five-gate archive is a **pre-commit working-tree** transcript, not
+an exact-commit protected CI receipt. Its final TLC run includes the
+later scope-comment correction; behavioral Rust/TS/e2e sources were
+unchanged afterward. The separate focused receipt binds its actual
+runner executions to the committed source and clean roots.
 Fuzz and corpus replay were not run by owner instruction. No native Mac,
 VM/launchd, generalized TLAPS theorem or public release is qualified.
 

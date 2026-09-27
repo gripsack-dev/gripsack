@@ -1687,7 +1687,13 @@ an isolated HOME with exact rendered-content assertions. Archive:
 `verification/reports/2026-09-27-native-files-local-gates.log`
 (SHA-256 `5f44594aaa19b944c1bc34d2d1fe957e5030580273d3ec37ada594edb0cf0f55`).
 
-These are pre-commit working-tree observations, not exact-commit release
-evidence. Source-bound receipts, remaining NEXT proof families, native
-platform lanes and the rest of A2 remain required. Fuzz was not run.
+The separate source-bound report
+`verification/reports/2026-09-27-native-boundaries-83b5e84.log` records
+**222 Rust + 140 real CLI** passing cases at
+`83b5e8497fd22a683020b768a0268fff80459592`, with clean source roots
+before/after and fingerprint
+`321cc613592c4f938aac1c01378a3b68f6399b370ed1fc53057e1aa5cfec6a19`.
+A2-06 claims only its first named composition case from that runner;
+artifact origins/check staging, remaining proof families, native
+platform lanes and the rest of A2 stay open. Fuzz was not run.
 

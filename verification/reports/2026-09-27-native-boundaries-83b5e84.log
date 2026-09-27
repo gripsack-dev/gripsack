@@ -1,0 +1,512 @@
+COMMIT=83b5e8497fd22a683020b768a0268fff80459592
+SOURCE_FINGERPRINT=321cc613592c4f938aac1c01378a3b68f6399b370ed1fc53057e1aa5cfec6a19
+SOURCE_CLEAN_BEFORE=true
+FUZZ=not_run_owner_instruction
+SCOPE=local Linux amd64; no Mac/VM or release closure
+
+RUNNER_COMMAND=docker compose run --build --rm test cargo test --locked -p gripsack-store -p gripsack-exec -p gripsack-ir -p gripsack
+ Image gripsack-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 530B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.13kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.4s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#7 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 3.00MB 0.3s done
+#8 DONE 0.3s
+
+#9 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#9 CACHED
+
+#10 [builder  8/10] COPY schema ./schema
+#10 CACHED
+
+#11 [builder  4/10] WORKDIR /app
+#11 CACHED
+
+#12 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#12 CACHED
+
+#13 [builder  6/10] COPY crates ./crates
+#13 CACHED
+
+#14 [builder  7/10] COPY fuzz ./fuzz
+#14 CACHED
+
+#15 [builder  9/10] COPY typescript ./typescript
+#15 CACHED
+
+#16 [builder 10/10] COPY scripts ./scripts
+#16 CACHED
+
+#17 [test 1/2] RUN cargo fmt --check     && cargo clippy --locked --workspace --all-targets -- -D warnings     && cargo test --locked
+#17 CACHED
+
+#18 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#18 CACHED
+
+#19 [test 2/2] RUN apk add --no-cache python3     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs"     && python3 scripts/gen_diagnostic_registry.py --check     && python3 scripts/gen_diagnostic_registry.py --self-check     && python3 scripts/gen_frontend_embed.py --check     && python3 scripts/check_scheduler_loom.py
+#19 CACHED
+
+#20 exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:daf81bd8ed3aada338fab767bd5b893e690df77be85368ef4769709204c52598 done
+#20 exporting config sha256:b312741e9e18c9c2b8887172fe68d796c0cc3380dc215005747f5a2ef4e5afa0 done
+#20 exporting attestation manifest sha256:8f385403b4a22ad5a89d7fe0c210ef0d61eaa762aa27388867f8e515b54e1a27 0.0s done
+#20 exporting manifest list sha256:07630f0b1bcdfc6411d421920df481b0af227430d2eac640b045e35d9b423f15 0.0s done
+#20 naming to docker.io/library/gripsack-test:latest done
+#20 unpacking to docker.io/library/gripsack-test:latest 0.0s done
+#20 DONE 0.2s
+
+#21 resolving provenance for metadata file
+#21 DONE 0.0s
+ Image gripsack-test Built 
+ Container gripsack-test-run-9db45d631b4b Creating 
+ Container gripsack-test-run-9db45d631b4b Created 
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.59s
+     Running unittests src/main.rs (target/debug/deps/grip-166ca72ad3da3972)
+
+running 22 tests
+test commands::adopt::generate::tests::module_source_escapes_hostile_strings ... ok
+test commands::adopt::generate::tests::ident_is_always_a_valid_ts_identifier ... ok
+test commands::adopt::generate::tests::module_source_shapes ... ok
+test commands::adopt::generate::tests::names_and_idents ... ok
+test commands::adopt::generate::tests::update_host_bails_on_unexpected_shape ... ok
+test commands::adopt::generate::tests::update_host_ignores_the_template_header_comment ... ok
+test commands::adopt::generate::tests::update_host_single_line_arrays ... ok
+test commands::adopt::generate::tests::update_host_multiline_array ... ok
+test render::tests::missing_file_degrades_gracefully ... ok
+test render::tests::renders_header_and_help_without_color ... ok
+test commands::self_update::payload::tests::root_and_nested_candidates_are_ambiguous ... ok
+test render::tests::invalid_diagnostic_coordinates_never_read_a_source_snippet ... ok
+test render::tests::renders_snippet_when_file_exists ... ok
+test commands::frontend::tests::every_builtin_read_grant_rejects_a_comma_before_deno_spawn ... ok
+test commands::self_update::installation::tests::deleted_suffix_is_only_stripped_for_a_missing_original ... ok
+test commands::self_update::installation::tests::replacement_invalidates_installed_version_evidence ... ok
+test commands::self_update::installation::tests::parent_drift_does_not_redirect_publication ... ok
+test commands::self_update::payload::tests::probe_requires_success_and_a_single_grip_version ... ok
+test render::tests::source_snippets_cannot_escape_the_repo_capability ... ok
+test commands::self_update::payload::tests::symlink_files_and_symlink_directories_are_not_candidates ... ok
+test commands::self_update::installation::tests::symlink_install_keeps_target_semantics ... ok
+test commands::self_update::payload::tests::flooding_version_peer_is_rejected ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (target/debug/deps/gripsack_exec-3fb30e1e37be02ef)
+
+running 51 tests
+test facts::tests::facts_match_the_running_host ... ok
+test facts::tests::glibc_version_parses_both_ldd_wordings ... ok
+test frontend::tests::path_deno_version_gate_matches_major ... ok
+test lineage_model::preserved_drift_never_authorizes_an_update ... ok
+test lineage_model::a_mid_apply_external_write_is_aborted_never_clobbered ... ok
+test lineage_model::chmod_only_drift_is_preserved_never_silently_reverted ... ok
+test managed_blocks::tests::broken_scanner_utf8_boundary_returns_error_instead_of_panicking ... ok
+test managed_blocks::tests::foreign_bytes_survive_reconcile_and_removal ... ok
+test resolve::identity_tests::provenance_differences_hash_identically ... ok
+test managed_blocks::tests::malformed_markers_never_grant_splice_ranges ... ok
+test managed_blocks::tests::markers_roundtrip_across_comment_styles_and_legacy_metadata ... ok
+test managed_blocks::tests::later_hand_edits_are_classified_and_other_modules_stay_untouched ... ok
+test report::update_model::every_survey_order_preserves_error_over_change_precedence ... ok
+test template::tests::template_substitutes_and_escapes ... ok
+test template::tests::template_unbalanced_braces_error ... ok
+test template::tests::template_undefined_variable_is_a_loud_error ... ok
+test tests::build_edges_constrain_order_too ... ok
+test tests::cycles_are_named ... ok
+test tests::dependencies_come_first ... ok
+test tests::diamond_is_deterministic ... ok
+test tests::waves_levelize_the_dag ... ok
+test managed_blocks::tests::every_mode_record_participates_independently_of_order ... ok
+test source::overlay::tests::leaf_link_is_replaced_without_writing_its_target ... ok
+test ops::model::tests::a_build_only_dep_plans_zero_destination_ops ... ok
+test deploy::tests::symlinked_ancestor_into_repo_is_detected ... ok
+test deploy::tests::restore_never_writes_a_dangling_owned_link ... ok
+test lineage_model::ownership_lineage_holds_over_every_sequence ... ok
+test source::overlay::tests::top_level_links_have_the_same_preview_and_staged_identity ... ok
+test env::tests::renders_set_prepend_append_with_store_resolution ... ok
+test ops::model::tests::a_spelling_change_plans_no_op ... ok
+test env::tests::duplicate_contributions_render_once ... ok
+test source::overlay::tests::overlay_pin_and_bytes_belong_to_the_same_snapshot ... ok
+test source::overlay::tests::fetched_link_ancestor_cannot_redirect_an_overlay ... ok
+test deploy::tests::journaled_mutation_must_reach_its_intended_state ... ok
+test lockfile::tests::roundtrip ... ok
+test env::tests::empty_contributions_remove_the_file ... ok
+test gc::tests::keep_generations_prunes_oldest_and_their_paths ... ok
+test update::tests::check_and_publish_agree_on_metadata_only_pin_changes ... ok
+test gc::tests::why_owns_finds_the_owner ... ok
+test gc::tests::collects_only_unreferenced_store_paths ... ok
+test gc::tests::never_prunes_the_current_generation ... ok
+test gc::tests::unfinished_recovery_blocks_collection ... ok
+test mode_model::links_carry_the_payload_mode_without_normalizing_it ... ok
+test gc::tests::quarantined_entries_block_collection ... ok
+test gc::tests::a_session_for_another_home_authorizes_nothing_here ... ok
+test gc::tests::reconciled_journal_unblocks_collection ... ok
+test frontend::tests::embed_materializes_tree_and_marker ... ok
+test mode_model::merge_host_modes_are_planned_and_drift_never_authorizes_prune ... ok
+test frontend::tests::materialize_flips_the_stable_current_link ... ok
+test ops::model::tests::the_planned_op_matches_the_algebra_and_executes_to_its_intent ... ok
+test mode_model::whole_file_modes_survive_update_restore_drift_and_prune ... ok
+
+test result: ok. 51 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.95s
+
+     Running tests/workspace_execution_gate.rs (target/debug/deps/workspace_execution_gate-5660ec0011ab2b18)
+
+running 1 test
+test every_direct_executor_entry_rejects_before_home_mutation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/gripsack_ir-3b19633ffcb5d796)
+
+running 68 tests
+test host_name::tests::rejects_path_shaped_hosts_before_they_can_name_files ... ok
+test sema::destinations::case_tests::case_variant_destinations_fold_on_every_host ... ok
+test sema::destinations::tests::step_entries_obey_destination_rules ... ok
+test sema::contract_tests::unknown_fields_are_parse_errors_now ... ok
+test sema::steps::tests::single_fetch_step_pins_multiple_refused ... ok
+test sema::tests::malformed_json_is_e000 ... ok
+test sema::tests::declared_and_builtin_resources_pass ... ok
+test sema::tests::dotfiles_only_module_needs_no_source ... ok
+test sema::tests::legacy_ir_is_rejected_before_decoding_renamed_fields ... ok
+test sema::tests::destination_shaped_verify_path_is_e109 ... ok
+test sema::resources::tests::resources_require_an_action_that_actually_acquires_them ... ok
+test sema::placeholders::tests::the_known_set_passes_clean ... ok
+test sema::placeholders::tests::a_typo_is_an_error_with_a_span_and_a_suggestion ... ok
+test sema::tests::explicit_steps_validate ... ok
+test sema::tests::merge_and_template_modes_pass_sema_with_vars_and_marker ... ok
+test sema::tests::spanless_nodes_still_render ... ok
+test sema::tests::cross_module_ref_into_declarative_module ... ok
+test sema::tests::duplicate_and_reserved_step_ids_are_e106 ... ok
+test sema::tests::rejects_wrong_version ... ok
+test sema::tests::run_action_parses_with_outputs ... ok
+test sema::tests::unknown_edge_kind_is_span_labeled_e122 ... ok
+test sema::tests::collects_multiple_diagnostics ... ok
+test sema::tests::undeclared_resource_is_e107 ... ok
+test sema::tests::steps_plus_declarative_fields_is_e103 ... ok
+test sema::tests::external_done_barrier_is_valid_but_self_barrier_is_rejected ... ok
+test sema::tests::parses_and_validates_example ... ok
+test sema::workspace::destinations::tests::duplicate_profile_destinations_label_every_declaration ... ok
+test sema::tests::unknown_dependency_carries_span_and_code ... ok
+test sema::workspace::cycles::tests::task_dependency_cycles_are_rejected ... ok
+test sema::workspace::cycles::tests::production_cycles_label_every_member ... ok
+test sema::workspace::destinations::tests::mixed_policies_over_one_path_still_collide ... ok
+test sema::workspace::cycles::tests::validation_edges_never_close_a_cycle ... ok
+test sema::workspace::names::tests::duplicate_output_names_label_both_spans ... ok
+test sema::workspace::policy::tests::omitted_required_validation_and_producer_fail_closed_with_both_sites ... ok
+test sema::workspace::policy::tests::omitted_build_input_and_runtime_edges_fail_admission ... ok
+test sema::workspace::destinations::tests::distinct_markers_over_one_host_file_coexist_but_one_marker_is_one_owner ... ok
+test sema::workspace::policy::tests::adjacent_local_steps_lower_to_ordering_not_build_edges ... ok
+test sema::workspace::destinations::tests::same_destination_across_profiles_rejects_and_equal_names_coexist ... ok
+test sema::paths::tests::path_shape_rules ... ok
+test sema::workspace::refs::tests::selection_target_mismatch_labels_both_sites ... ok
+test sema::workspace::policy::tests::production_closure_excludes_runtime_and_preserves_validation ... ok
+test sema::workspace::policy::tests::projected_kind_or_binding_reclassification_fails_closed ... ok
+test sema::workspace::refs::tests::check_subject_must_resolve_to_an_output ... ok
+test sema::workspace::policy::tests::catalog_index_corruption_rejects_before_closure ... ok
+test sema::workspace::span_value::tests::decoded_bash_interpolation_rejects_at_original_script_line ... ok
+test sema::workspace::tests::envelope_shape_is_version_dispatched ... ok
+test sema::workspace::refs::tests::producer_target_mismatch_labels_both_sites ... ok
+test sema::workspace::tests::package_and_recipe_workspace_admits ... ok
+test sema::workspace::tests::profile_with_literal_file_needs_no_synthetic_package ... ok
+test workspace::platform::tests::target_floor_and_abi_admit_only_compatible_consumers ... ok
+test sema::workspace::span_value::tests::incompatible_abi_and_unsafe_prefix_label_the_declaration ... ok
+test sema::workspace::span_value::tests::degenerate_spans_and_values_are_rejected ... ok
+test sema::workspace::tests::unknown_workspace_fields_label_the_declaring_span ... ok
+test sema::workspace::refs::tests::invalid_references_are_rejected ... ok
+test sema::workspace::refs::tests::artifact_references_reject_non_artifact_kinds ... ok
+test sema::workspace::span_value::tests::decoded_repo_file_origin_rejects_paths_outside_the_captured_repository ... ok
+test sema::workspace::span_value::tests::file_content_requires_source_unless_literal ... ok
+test sema::workspace::span_value::tests::invalid_nested_command_coordinates_remain_source_labeled ... ok
+test sema::workspace::tests::provider_backed_package_needs_no_recipe_output ... ok
+test sema::workspace::policy::tests::projected_reference_site_substitution_fails_closed ... ok
+test sema::workspace::context::tests::command_references_and_contexts_are_admitted ... ok
+test sema::workspace::tests::provider_fetch_fields_never_drop_silently ... ok
+test sema::workspace::refs::tests::fixed_prefix_packages_cannot_be_selected_without_prefix ... ok
+test sema::workspace::span_value::tests::escaping_profile_file_destinations_reject_at_the_declaration ... ok
+test sema::workspace::tests::unknown_workspace_fields_never_drop_silently ... ok
+test sema::workspace::policy::tests::substituted_graph_references_fail_closed_at_declaration ... ok
+test sema::workspace::refs::tests::task_schedule_profile_image_refs_are_typed ... ok
+test sema::workspace::refs::tests::artifact_selectors_must_be_normalized_relative_paths ... ok
+
+test result: ok. 68 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/schema_acceptance.rs (target/debug/deps/schema_acceptance-1a169573e71c6ca0)
+
+running 3 tests
+test schema_pattern_assertions_execute ... ok
+test valid_documents_are_admitted_by_both_sides ... ok
+test rejected_documents_fail_both_sides ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/workspace_admission.rs (target/debug/deps/workspace_admission-69161928380216ad)
+
+running 3 tests
+test provider_backed_package_lists_as_single_output ... ok
+test admitted_workspace_exposes_named_outputs ... ok
+test serialization_preserves_each_version_envelope ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/workspace_v4_compat.rs (target/debug/deps/workspace_v4_compat-b35fac2a52f57c5d)
+
+running 3 tests
+test versions_reject_each_others_fields_and_bad_refs ... ok
+test historical_recipe_execution_and_fixed_layout_never_gain_new_policy ... ok
+test historical_schema_and_reader_preserve_opaque_platform_strings ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/workspace_v5_acceptance.rs (target/debug/deps/workspace_v5_acceptance-33fcbef4cdc72330)
+
+running 5 tests
+test version_dispatch_asymmetry ... ok
+test schema_authored_constraints_execute ... ok
+test valid_documents_are_admitted_by_both_sides ... ok
+test rejected_documents_fail_both_sides ... ok
+test each_output_kind_rejects_undeclared_authority_with_its_own_span ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running unittests src/lib.rs (target/debug/deps/gripsack_store-2c19b3b534a85ffe)
+
+running 66 tests
+test hash::tests::the_two_identity_domains_never_collide ... ok
+test journal::marker::repeated_model::ambiguous_current_retains_partial_journal_without_touching_destinations ... ok
+test journal::marker::repeated_model::partial_restore_then_second_crash_keeps_new_edit_and_restores_other_dest ... ok
+test journal::tests::cross_variant_identities_never_compare_equal ... ok
+test journal::tests::marker_round_trips_through_the_wire ... ok
+test journal::tests::marker_null_previous_generation_is_a_fresh_machine ... ok
+test journal::tests::marker_missing_previous_generation_is_rejected ... ok
+test journal::tests::marker_rejects_duplicates_wrong_types_and_overflow ... ok
+test journal::model::tests::every_schedule_satisfies_the_oracle ... ok
+test activation::tests::a_corrupt_record_fails_closed ... ok
+test hash::reference_vector::pinned_tree_vector ... ok
+test hash::tests::canonical_hash_ignores_mtime_but_not_exec_bit ... ok
+test hash::tests::overlay_hash_of_dir_source_matches_staged_tree ... ok
+test hash::tests::tree_hash_is_deterministic_and_content_sensitive ... ok
+test hash::tests::canonical_hash_covers_symlink_target ... ok
+test ownership::tests::workspace_markers_cannot_be_reinterpreted_as_legacy_module_names ... ok
+test journal::tests::wire_admission_rejects_legacy_versions_and_malformed ... ok
+test paths::tests::canonical_dest_refuses_parent_traversal ... ok
+test hash::tests::overlay_hash_matches_materialized_staging ... ok
+test paths::tests::generation_layout ... ok
+test paths::tests::hash_is_stable_and_input_sensitive ... ok
+test paths::tests::home_resolution ... ok
+test paths::tests::store_path_format ... ok
+test journal::tests::non_utf8_link_targets_are_refused_not_lossy_compared ... ok
+test prior::tests::historical_prior_wire_admits_only_hashes_and_permission_bits ... ok
+test journal::marker::repeated_model::numeric_commit_mutant_fails_the_identical_oracle ... ok
+test trust::tests::canonical_key_falls_back_to_absolute ... ok
+test activation::tests::pending_record_round_trips_and_clears ... ok
+test trust::tests::only_an_explicit_y_trusts ... ok
+test trust::tests::prompt_values_with_control_chars_are_escaped ... ok
+test journal::tests::unsafe_metadata_symlinks_never_read_or_chmod_their_referents ... ok
+test trust::tests::rfc3339_known_instants ... ok
+test trust::tests::sandbox_summary_survives_wrapping_intact ... ok
+test journal::tests::recovery_cleanup_keeps_the_pinned_journal_after_a_directory_replacement ... ok
+test journal::tests::non_utf8_destinations_are_refused_at_record ... ok
+test paths::tests::canonical_dest_collapses_spelling_aliases ... ok
+test paths::tests::canonical_dest_resolves_a_symlinked_ancestor ... ok
+test generations::tests::manifests_are_strictly_validated ... ok
+test trust::tests::gate_blocks_untrusted_repos_without_a_tty ... ok
+test generations::tests::manifest_roundtrip_and_listing ... ok
+test journal::tests::absent_prior_and_symlink_prior_recover ... ok
+test trust::tests::trust_is_keyed_on_canonical_path ... ok
+test journal::tests::malformed_entries_fail_closed_into_quarantine ... ok
+test journal::tests::crash_between_record_and_write_restores_prior ... ok
+test trust::tests::remove_forgets_the_repo ... ok
+test journal::tests::legacy_untagged_entries_fail_closed_with_evidence_kept ... ok
+test generations::tests::flip_and_current ... ok
+test prior::tests::captured_blob_is_private_and_corrupt_bytes_cannot_restore ... ok
+test trust::tests::trust_toml_round_trip ... ok
+test trust::tests::concurrent_adds_keep_both_entries ... ok
+test journal::tests::post_crash_edit_beats_the_landed_mutation ... ok
+test journal::tests::tagged_entries_round_trip_through_the_wire ... ok
+test journal::tests::commit_run_clears_the_window ... ok
+test journal::tests::recovery_restores_the_exact_mode ... ok
+test journal::tests::user_edit_after_crash_wins ... ok
+test journal::tests::post_crash_sentinel_symlink_is_kept ... ok
+test journal::tests::crash_after_write_restores_prior_bytes ... ok
+test journal::tests::crash_before_flip_restores ... ok
+test journal::tests::a_retained_v1_entry_recovers_without_inventing_an_intermediate_state ... ok
+test journal::tests::an_intervening_foreign_edit_cannot_extend_a_journaled_chain ... ok
+test journal::tests::crash_after_flip_but_before_cleanup_reads_committed ... ok
+test journal::tests::completed_rollback_reads_committed ... ok
+test generations::tests::publish_is_atomic_and_allocation_monotonic ... ok
+test journal::tests::crashed_rollback_restores_priors ... ok
+test journal::marker::repeated_model::exhaustive_independent_destinations_and_two_crashes ... ok
+test journal::tests::repeated_destination_mutations_restore_the_run_original_at_both_crash_windows ... ok
+
+test result: ok. 66 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+   Doc-tests gripsack_exec
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests gripsack_ir
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests gripsack_store
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+EXIT_STATUS=0
+
+RUNNER_COMMAND=docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_workspace_files.py test_contract_fidelity.py test_generation_history.py test_gc_admission.py test_update_surveys.py test_apply_lifecycle.py test_transaction_recovery.py test_workspace_diagnostics.py test_workspace_contract.py
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.13kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.3s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.7s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#9 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 615.26kB 0.1s done
+#11 DONE 0.1s
+
+#12 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#12 CACHED
+
+#13 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#13 CACHED
+
+#14 [bin 1/1] RUN cargo build --locked -p gripsack
+#14 CACHED
+
+#15 [builder 10/10] COPY scripts ./scripts
+#15 CACHED
+
+#16 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#16 CACHED
+
+#17 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#17 CACHED
+
+#18 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#18 CACHED
+
+#19 [e2e 11/12] COPY examples ./examples
+#19 CACHED
+
+#20 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#20 CACHED
+
+#21 [builder  7/10] COPY fuzz ./fuzz
+#21 CACHED
+
+#22 [builder  9/10] COPY typescript ./typescript
+#22 CACHED
+
+#23 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#23 CACHED
+
+#24 [e2e  2/12] WORKDIR /app
+#24 CACHED
+
+#25 [builder  6/10] COPY crates ./crates
+#25 CACHED
+
+#26 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#26 CACHED
+
+#27 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#27 CACHED
+
+#28 [builder  4/10] WORKDIR /app
+#28 CACHED
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 CACHED
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 CACHED
+
+#31 [builder  8/10] COPY schema ./schema
+#31 CACHED
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 CACHED
+
+#33 exporting to image
+#33 exporting layers done
+#33 exporting manifest sha256:8329c82c7314bd9d84f6bf30367609c6c1aba2bba15b56cea56ea94406fe084c done
+#33 exporting config sha256:50befb0e2caccfc0b8959e97824087491a481adb4f63a02552b8db011e3193db done
+#33 exporting attestation manifest sha256:dc8ef655fcab26678585487a4494df5bb97cc168ca0b7458cab013bc86073a89 0.0s done
+#33 exporting manifest list sha256:cf5b8d6546acbb700206cfe2b3bb98f62bb6cf91019ee3b25c5f11e90368cd74 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.0s done
+#33 DONE 0.1s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-2f8f132a32b0 Creating 
+ Container gripsack-e2e-run-2f8f132a32b0 Created 
+........................................................................ [ 51%]
+....................................................................     [100%]
+140 passed in 49.60s
+EXIT_STATUS=0
+
+SOURCE_CLEAN_AFTER=true
+NATIVE_BOUNDARY_RUST=222
+NATIVE_BOUNDARY_CLI=140
