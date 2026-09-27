@@ -146,9 +146,12 @@ state machine now live in `gripsack-policy::merge::scanner`; five named
 queries prove structural/UTF-8 admission and its splice-predicate bridge.
 The local gate passed **80/0** with **11** calibrations, including the
 attributed one-byte range-start mutant. Policy/exec **56/56**, real CLI
-**32/32** and a standalone Unicode/CRLF update/prune smoke passed. Lexical
-recognition and OS behavior remain separate; exact-source release evidence
-is still being recorded. This closes no other NEXT obligation.
+**32/32** and a standalone Unicode/CRLF update/prune smoke passed. Fresh
+proof and runtime evidence now bind `221c6cf` with clean source roots;
+all six final local gates passed, including full CLI **349/349**.
+See `verification/reports/2026-09-27-m-v3-221c6cf.log` and the report index.
+Lexical recognition, OS behavior, protected CI/native-platform qualification
+and other NEXT obligations remain distinct; no release is authorized.
 
 ## Security maintenance (non-release changes)
 

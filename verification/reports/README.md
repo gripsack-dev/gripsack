@@ -359,9 +359,12 @@ or release approval. No fuzz or corpus replay ran.
 | report | sha256 | observed execution |
 |---|---|---|
 | `2026-09-27-m-v3-local-proof.log` | `6574e09fb2cc3d37782c01bb2fb9e50ff008db9e42a1e71b127eced2a883cfb9` | Fresh complete production policy proof: **80 verified/0 errors**, five named scanner queries, **11** calibrations and ten evidence-gate negatives. The one-byte range-start mutation fails only `merge::scanner::scan`'s invariant. Actual CLI output demonstrates update/prune preserving foreign Unicode/CRLF/final-tail bytes around U+10437 marker prefixes and duplicate blocks. |
+| `2026-09-27-m-v3-local-gates.log` | `6f051d8a5f680be93b5de6032d7db63b90ee9629517b1df7b290ae948fe3b72b` | Final six local Compose gates passed after replacing the linted manual Option map and re-proving it. Fresh Rust/Loom, complete CLI **349/349**, Verus **80/0** plus **11** calibrations; unchanged TS/TLC/TLAPS RUN layers cached. Combined text transcript, not protected CI. |
+| `2026-09-27-m-v3-221c6cf.log` | `63c6da37f7d755770a6609c291fe73cf177cbba388ec16781cf1896f1a69f054` | Exact source `221c6cf948548e8cb4a0feffb43780093571011b`, fingerprint `117c45a2c55d0ec21cd313e9f285a0b321ef35d3ab822887ab551fd2d6fea2ec`, clean source roots before/after. Fresh direct container commands executed **56 Rust + 32 CLI** cases and the full **80/0** production proof / **11** calibration gate with all five named scanner queries. |
 
-Working-tree evidence, not exact-source CI or release closure. The theorem
-covers the actual line/state/range implementation and its splice admission;
-it does not prove lexical recognition, metadata authenticity or OS behavior.
-No fuzz or corpus replay was run.
+The first two reports are local working-tree transcripts; the third binds
+fresh proof/runtime execution to committed source. None is protected CI
+or release closure. The theorem covers the actual line/state/range
+implementation and splice admission, not lexical recognition, metadata
+authenticity or OS behavior. No fuzz or corpus replay was run.
 

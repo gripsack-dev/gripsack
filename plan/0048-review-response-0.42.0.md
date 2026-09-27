@@ -2354,9 +2354,34 @@ marker prefixes, duplicates, CRLF and a non-newline tail through update/prune.
 `verification/reports/2026-09-27-m-v3-local-proof.log` preserves the proof
 and actual CLI output (SHA-256
 `6574e09fb2cc3d37782c01bb2fb9e50ff008db9e42a1e71b127eced2a883cfb9`).
-This is working-tree evidence; final container/source-bound evidence
-remains to be recorded. Lexical accuracy, metadata authenticity and
-OS behavior are explicitly outside this structural proof, not assumed
-away. Existing malformed/ambiguous grammar cases and the defensive
-fallible splice conversion remain in place. No fuzz was run.
+That first report is working-tree evidence. The committed-source receipt
+`verification/reports/2026-09-27-m-v3-221c6cf.log` binds fresh
+**56 Rust + 32 CLI** cases and the full **80/0 + 11-calibration** proof gate
+to `221c6cf948548e8cb4a0feffb43780093571011b`, with clean source roots and
+fingerprint `117c45a2c55d0ec21cd313e9f285a0b321ef35d3ab822887ab551fd2d6fea2ec`
+(report SHA-256 `63c6da37f7d755770a6609c291fe73cf177cbba388ec16781cf1896f1a69f054`).
+All six final local Compose gates passed; full CLI was **349/349**.
+The initial Rust gate found a manual Option map, corrected without a lint
+suppression and re-proved before the final gates. Lexical accuracy,
+metadata authenticity and OS behavior remain explicitly outside the
+structural proof. Malformed/ambiguous grammar cases and the defensive
+fallible conversion remain. Protected CI/native-platform/release gates
+are still open. No fuzz was run.
+
+### M-V4 — deterministic byte admission and recovery effects
+
+The next boundary uses the existing production `RunMarker` decoder,
+`marker::run_marker`, `Entry::from_wire` and `recover::reconcile`.
+`journal::admission_tests` will own deterministic raw-byte properties:
+required/nullable fields, wrong types, duplicates, v1/v2 compatibility,
+unsupported entry versions, truncation, integer/hash/mode boundaries and
+stable semantic round-trips. The current marker is unversioned; no new
+format or reinterpretation of retained state is introduced by this work.
+Actual recovery fixtures must retain destination bytes/links on rejected
+metadata, not merely observe a serde error. A missing-previous-field
+default-to-null mutation must fail the named admission/effect oracle.
+The test-container gate owns calibration of that production decoder;
+compiler failures, timeouts and unrelated test failures cannot qualify it.
+This is deterministic parser/refinement testing, not a serde theorem,
+random fuzzing or replay of a fuzz corpus.
 
