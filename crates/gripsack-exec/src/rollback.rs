@@ -37,12 +37,12 @@ pub fn rollback_generation(
     // pending record naming the current generation re-runs its
     // intents; anything else is discarded, never run
     // same fail-closed rule as apply (0035 F5)
-    let resumed = crate::activate::resume_pending(&home, current.map(|g| g.number)).map_err(|e| {
+    let resumed = crate::activate::resume_activation(session).map_err(|e| {
         ExecError::Step {
             module: "*".into(),
             step: "activate".into(),
             detail: format!(
-                "the activation record is unreadable ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
+                "activation recovery is blocked ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
             ),
         }
     })?;
@@ -54,8 +54,9 @@ pub fn rollback_generation(
         },
         message: format!("{}: {}", r.module, r.summary),
     }));
-    store::journal::begin_run(
+    let selection = store::journal::begin_run(
         &home,
+        home_path,
         current.map(|g| g.number),
         target.number,
         RunOp::Rollback,
@@ -71,22 +72,14 @@ pub fn rollback_generation(
         // 0037): a failure here compensates like any other; a crash
         // after the flip leaves the record for the next run's resume
         let intents = rollback_intents(current, target);
-        if !intents.is_empty() {
-            store::activation::write_pending(
-                &home,
-                &store::activation::PendingActivation {
-                    generation: target.number,
-                    intents,
-                },
-            )?;
-        }
+        let activation = store::activation::prepare(&home, &selection, intents)?;
         // test-only kill switch: the restore→flip crash window's e2e
         crate::util::crash_hook("after-rollback-restore");
-        store::flip(&home, home_path, target.number)?;
-        Ok(())
+        store::flip(&home, home_path, &selection)?;
+        Ok(activation)
     })();
     match result {
-        Ok(()) => {
+        Ok(activation) => {
             // the flip already committed — a cleanup failure is
             // cleanup-pending, not a failed rollback (0030 §13); the
             // next reconcile finishes it
@@ -102,24 +95,26 @@ pub fn rollback_generation(
             // activate the TARGET generation as recorded (0037): the
             // pending record is the source (it also carries the
             // removal hooks of modules this rollback undeclared)
-            if let Some(pending) = store::activation::read_pending(&home)? {
-                for report in crate::activate::run(&pending.intents) {
-                    notes.push(store::journal::RecoveryNote {
-                        severity: if report.kind == crate::report::ReportKind::Warned {
-                            store::journal::NoteSeverity::Warn
-                        } else {
-                            store::journal::NoteSeverity::Info
-                        },
-                        message: format!("{}: {}", report.module, report.summary),
-                    });
-                }
-                if let Err(e) = store::activation::clear_pending(&home) {
-                    notes.push(store::journal::RecoveryNote {
+            if let Some(batch) = activation {
+                match crate::activate::run(batch, &home, home_path) {
+                    Ok(reports) => {
+                        for report in reports {
+                            notes.push(store::journal::RecoveryNote {
+                                severity: if report.kind == crate::report::ReportKind::Warned {
+                                    store::journal::NoteSeverity::Warn
+                                } else {
+                                    store::journal::NoteSeverity::Info
+                                },
+                                message: format!("{}: {}", report.module, report.summary),
+                            });
+                        }
+                    }
+                    Err(error) => notes.push(store::journal::RecoveryNote {
                         severity: store::journal::NoteSeverity::Warn,
                         message: format!(
-                            "activation record cleanup pending ({e}) — the next run finishes it"
+                            "activation evidence retained ({error}) — inspect hooks before retrying"
                         ),
-                    });
+                    }),
                 }
             }
             Ok(notes)

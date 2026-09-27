@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 
 use crate::paths::gripsack_home;
 use gripsack_fs::atomic_write_at as atomic_write;
+use gripsack_process::terminal::tame;
 
 /// The exact capability set eval gets (0013 D2/D7) — shown at the
 /// prompt so the trust decision is informed. Wording is contract.
@@ -223,18 +224,6 @@ fn prompt_tty(key: &Path, remote: &Option<String>, commit: &Option<String>) -> i
     Ok(answer.trim().eq_ignore_ascii_case("y"))
 }
 
-/// A security prompt prints what it is asked about verbatim — a repo
-/// path (or git remote) carrying newlines or ANSI escapes could forge
-/// prompt lines, including a second "trust this repo? [y/N]". Values
-/// with control characters are shown escaped instead.
-fn tame(value: String) -> String {
-    if value.chars().any(|c| c.is_control()) {
-        format!("{value:?}")
-    } else {
-        value
-    }
-}
-
 fn stdin_and_stdout_are_tty() -> bool {
     io::stdin().is_terminal() && io::stdout().is_terminal()
 }
@@ -333,12 +322,6 @@ mod tests {
         let p = home.join(name);
         std::fs::create_dir_all(&p).expect("mkdir");
         p
-    }
-    #[test]
-    fn prompt_values_with_control_chars_are_escaped() {
-        // a path forging a second prompt line must not print raw
-        assert!(tame("/tmp/x\n  trust this repo? [y/N] ".into()).contains("\\n"));
-        assert_eq!(tame("/tmp/plain".into()), "/tmp/plain");
     }
 
     #[test]

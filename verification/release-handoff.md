@@ -27,21 +27,23 @@ Update plan 0048's leaf record and the owning delivery rows as work progresses.
 All acceptance subcases in the cited sections remain conjunctive; the concise
 rows below do not replace or narrow them.
 
-Observed checkout and remote state:
+Observed before the next R3/selection packet push:
 
-- Branch: `handover/h0-bundle-import`; local HEAD
-  `c92e84e60c31f13a544e00f7d2f6f3c8b94ce4cd`.
-- M-V5 implementation, tests, proofs and reports remain **uncommitted**. The
-  earlier M-V4 source-bound report and GC failing-before witness were already
-  untracked when the continuation started. Preserve both.
-- [PR #164](https://github.com/gripsack-dev/gripsack/pull/164) is draft,
-  `BLOCKED`, at remote head `b70dd5b4a17ef63dd44f794042d8334873d8e6e7`.
-  The live `statusCheckRollup` was empty; it does not qualify local `c92e84e`
-  or the newer working tree. Older green runs cannot do so either.
-- Live `main` protection requires `test`, with strict up-to-date checks.
-  `enforce_admins=false`; required approving reviews = 0. Plan 0048's stronger
-  all-required-lanes aggregator is not yet implemented/required. Do not use
-  admin bypass as evidence that a missing gate passed.
+- Branch: `handover/h0-bundle-import`; pushed base
+  `24c1f6c84f859bb759237b5f66a98bbd69058c37`. M-V5 and the initial concrete
+  recovery-barrier repair are committed; the new transaction/activation packet
+  has complete local gate evidence indexed below.
+- [PR #164](https://github.com/gripsack-dev/gripsack/pull/164) remains draft,
+  `BLOCKED`, with that remote head and no qualifying check rollup.
+- Explicit-waiver run
+  [36337128792](https://github.com/gripsack-dev/gripsack/actions/runs/36337128792)
+  skipped only fuzz and correctly failed its aggregate on native filename
+  fixtures and a TLAPS case-combination timeout. Both repairs are in the new
+  packet; corrected native/current-commit execution remains required.
+- Last observed `main` protection requires `test`, with strict up-to-date
+  checks, `enforce_admins=false` and zero required approvals. The fail-closed
+  `gate` is now implemented, but its live protection requirement is not yet
+  observed. Admin bypass cannot qualify a missing gate.
 - The delivery ledger contains **178** rows: 157 pending, 14 in progress,
   5 implemented-unverified, 1 verified, 1 blocked. `B0-01` is the verified
   historical Linux/container qualification, not a qualified current builder.
@@ -66,10 +68,11 @@ gate remains mandatory.
 - Keep the runners/corpora intact for a separately delegated fuzz assignment.
 - The waiver does not cover ordinary deterministic regression/property tests,
   Loom, TLC, TLAPS, Verus, semantic-mutant calibration or persistence cases.
-- The local CI policy now supports the explicit manual-dispatch input
+- CI supports the explicit manual-dispatch input
   `fuzz_waiver=REL-FUZZ-2026-09-27` and fail-closed result aggregation.
   Local calibration passed 4 positive/64 negative cases and four executable
-  entrypoint smokes; actual GitHub execution/protection remains unqualified.
+  entrypoint smokes. Real run `36337128792` correctly failed on non-fuzz
+  failures; a positive current-candidate run and protection remain pending.
   Release assurance must still bind the exception into the candidate tuple.
   `delivery.json` has no `waived` status: do not invent one there or label a
   skipped fuzz job `verified`.
@@ -106,8 +109,14 @@ it and claim complete Rust/Go conformance.
 
 ## 3. Evidence already available: reuse with source matching
 
-The latest packet is M-V5, not the whole release. The
-[report index](reports/README.md) records exact commands, hashes and exclusions:
+The latest local packet is R3/transaction identity, not the whole release.
+All six Compose gates passed, including **401/401** CLI, Verus **111/0** plus
+**17** calibrations, TypeScript **67**, the **301**-obligation TLAPS pilot and
+the complete TLC gate. See `reports/2026-09-27-activation-local-gates.log`
+(SHA-256 `2b023ff85b3d0e96170ccf51a3541ca585d9f96c97da348e580c342328548311`)
+for exact image/source/binary binding and the retained initial failures.
+This is not generalized M-V6, native macOS or candidate-release closure.
+The [report index](reports/README.md) also preserves historical M-V5 evidence:
 
 | Evidence | Observed result | What it does not establish |
 |---|---|---|
@@ -139,7 +148,7 @@ reports. Preserve their named obligations/calibrations when extending them.
 | M-V7 — §6 items 1–5 | No completed production-connected journal/process/update/acquisition transition-proof packet is recorded | Constrain actual effect authority by typed/verified durable predecessor states; prove distinct frame/byte/work counters and budget arithmetic, one operation deadline, terminal-failure precedence, complete update accounting and shared check/publish decision. Extend actual observers/executors/error/receipt oracles and dropped-sync persistence calibration. Register every external-effect assumption; no ghost-only clone or opaque trusted write wrapper. |
 | R1 — all §13 R1 changes/acceptance | `trust.rs` still keys approval by path and accepts `GRIPSACK_TRUST_ALL=1` | Implement captured immutable `PreparedEvaluation`, complete bounded admitted read set, source/grant/runtime-bound approval, all-round bundle reuse, versioned trust migration and private receipts. Migrate every eval caller, fixture/demo bypass and diagnostic path. Run every named worktree/import/symlink/submodule/pin/grant/pause/IO case through real Deno. |
 | R2 — remaining §13 R2 plus §10 | M-V5 supplies generation types/inventory/exact pruning, **not** ownership role types, complete independent seam oracles or policy receipts | Finish zero-copy desired/live/prior roles, takeover and lineage authority types; migrate every caller/model/proof without raw overloads. Extend real filesystem oracles and attributable role/authority/observation/effect/receipt mutants; implement the versioned durable policy receipt. Required compile-fail and Verus contracts remain part of acceptance. |
-| R3 — all §13 R3 | Pending activation still has generation plus intent list; no completed stable per-intent identity/outcome packet is recorded | Implement versioned activation instances and intent IDs, explicit attempt/env policy, durable outcomes, legacy migration and inspection. Exercise actual crash windows, repeated rollback activations, supersession, failure-without-rollback/retry and harmless duplicate/dedup simulations. Extend `Activation.tla`; no exactly-once claim. |
+| R3 — all §13 R3 | Stable selection/intent IDs, private outcomes/archives, settled failure/supersession, legacy migration, inspection and fixture-only simulations are implemented with final local gates | Qualify native macOS/current-commit CI; preserve the 43-case focused crash/activation bridge, full 401-case CLI result, real simulation/example smokes and six bounded model mutants. Compose the persisted identity with generalized M-V6; no exactly-once claim. |
 | R5 — NEXT portion from §9 | Scoped process supervision/plugin fixes exist; full required identity/env/FD/receipt/escaping campaign is not closed | Inventory and migrate every caller touched by NEXT work; bind launched executable/interpreter/script identity with honest OS assumptions, role env/grants and FD handling. Add private bounded receipts/required trace controls and actual lifecycle/pressure/canary/terminal-output cases. Current process tests live at `crates/gripsack-process/src/tests/`, not the older plan's `tests/` spelling. Additional full-tree containment is claim-gated, never silently inferred from process groups. |
 | R6 — NEXT applicability/identity and software-fault cases | Existing persistence tests do not close the complete named applicability/campaign contract | Record actual metadata/alias/filesystem limits, resolve dangling guarantee IDs, add the machine-readable applicability matrix and applicable ENOSPC/EDQUOT/EIO/ESTALE/EXDEV/lock/parent-replacement/readonly cases across real publication/recovery/receipts. Qualified VM power-cut evidence is separately claim-gated/M5: do not invent a hardware claim or run destructive experiments on user disks. |
 | R4 — all §13 R4 | No `schema/release/` or `schema/verification/` contracts found; `install.sh` currently installs after same-origin checksum verification | Implement generated assurance/release manifests, exact-source/evidence/artifact/compatible-SDK binding, identity/ref/workflow-constrained attestation verification, fail-closed installer/self-update, revocation and interrupted-publication recovery. Run the complete non-publishing valid/tampered/wrong-identity/missing-evidence/mismatched-SDK/revoked cases; old binary stays usable on every failure. |
@@ -159,8 +168,8 @@ new release blocker, or defer a prerequisite exposed by a required failure.
 | §7.1 | Core publish loop still places `gripsack-ir` before `gripsack-policy`. Derive/validate topological order from Cargo metadata, including every publishable current workspace crate; calibrate a dependency-order violation without publishing. |
 | §7.2 | Homebrew bump precedes GitHub release creation. Finalize/verify the complete release tuple before tap/site/channel advancement; registry publication remains before announcement. |
 | §7.3 | Post-download handoff checks count four tarballs but do not verify the exact expected subject set/digests before attestation. Add recomputation at every handoff and test missing/extra/mismatched subjects and checksum root resolution. |
-| §7.4 | `ci.yml` lacks top-level read-only permissions and cancel-in-progress concurrency. Add them for CI/examples, not canceling release publication. |
-| §7.5 | No fail-closed all-required-lanes `gate`; live protection requires only `test`. Implement aggregation and owner-approved fuzz exception handling, then require the gate in live protection and update repository instructions. Observe the actual setting/check result. |
+| §7.4 | CI read-only permissions and cancel-in-progress concurrency are implemented. Preserve non-canceling release publication. |
+| §7.5 | Fail-closed `gate` and explicit fuzz-waiver admission are implemented and their real failed-run behavior observed. Live protection still needs the aggregate; qualify corrected current-source CI before relying on it. |
 | §7.6 | SDK workflow has no `id-token: write`, npm `--provenance` or non-canceling publication concurrency. Implement and verify the selected registry identity/auth policy; trusted-publishing/token retirement remains an explicit external action if chosen. |
 | §7.7 | Scheduled audit grants unused `issues: write`. Remove it or implement real idempotent failure reporting; record the yanked/unsound advisory policy deliberately. |
 | §7.8 | Scheduled fuzz workflow lacks crash-out mount/upload. Preserve this repair requirement for the delegated lane; archive failures with 90-day retention when that lane runs. Current feedback waiver does not fabricate a passing fuzz result. |
@@ -168,10 +177,11 @@ new release blocker, or defer a prerequisite exposed by a required failure.
 | §7.10 | Verus image still downloads an unchecksummed rustup installer. Pin `rustup-init` bytes and validate the installer pin. |
 | §7.11 | Dependabot lists Cargo/GitHub Actions only. Add npm for `/typescript`; Docker pins remain owned by `check_pins.py`. |
 | §7.12 | Installer selects matching core tags without a stable-only semantic filter and verifies checksums only. Complete R4's fail-closed verified path and prerelease/withdrawal policy; test old-binary preservation before executing candidate bytes. |
-| §7.13 | CI audit job grants unused `checks: write` while running plain `cargo audit`. Remove the permission and stale explanation. |
+| §7.13 | CI audit's unused `checks: write` permission and stale explanation are removed in the committed CI policy. |
 
-No workflow, branch protection, registry, tag, release, domain or private-reporting
-setting was changed while writing this handoff.
+Workflow source and explicit-waiver CI dispatch changed during continuation.
+No branch protection, registry, tag, release, domain or private-reporting
+setting has been changed by this packet.
 
 ## 6. Missing executions and real-platform gates
 

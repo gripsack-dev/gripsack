@@ -229,3 +229,65 @@ def test_corrupt_current_generation_retains_recovery_evidence(sandbox, corruptio
     assert result.returncode != 0, "corrupt current gained commit authority"
     assert marker.read_bytes() == marker_bytes and entry.read_bytes() == entry_bytes
     assert destination.readlink() == Path("installed")
+
+
+@pytest.mark.parametrize("cut_phase", ["before-second-restore", "after-current-rename"])
+def test_repeated_generation_rollback_uses_transaction_commit_identity(sandbox, cut_phase):
+    repo = make_env_repo(sandbox / "env", '''
+import { module, symlink } from "@gripsack/core";
+export default module("demo", {config: {a: symlink("~/.a"), b: symlink("~/.b")}});
+''')
+    (repo / "a").write_text("a")
+    (repo / "b").write_text("b")
+    home = sandbox / ".local/share/gripsack"
+    links = [sandbox / ".a", sandbox / ".b"]
+    trace = sandbox / "same-generation-boundaries.tsv"
+
+    def invoke(args, extra=None):
+        return subprocess.run(
+            [str(GRIP), *args], cwd=repo, env={**os.environ, **(extra or {})},
+            capture_output=True, text=True, timeout=30,
+        )
+
+    applied = invoke(["apply", "--host", "testhost"])
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    for link in links:
+        link.unlink()
+    observed = invoke(["rollback", "1"], {"GRIPSACK_FS_TRACE": str(trace)})
+    assert observed.returncode == 0, observed.stdout + observed.stderr
+    rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+    boundary = (["Before", "Symlink", '".b"'] if cut_phase == "before-second-restore"
+                else ["After", "FilePublish", '"current"'])
+    cut = next(int(row[0]) for row in rows if row[1:] == boundary)
+    previous = (home / "current").readlink()
+    for link in links:
+        link.unlink()
+    interrupted = invoke(["rollback", "1"], {
+        "GRIPSACK_FS_CUT": str(cut), "GRIPSACK_FS_FAULT": "kill",
+    })
+    assert interrupted.returncode == -signal.SIGKILL, interrupted.stdout + interrupted.stderr
+    committed = cut_phase == "after-current-rename"
+    assert [link.is_symlink() for link in links] == [True, committed]
+    marker = home / "journal/run.json"
+    assert marker.is_file()
+    recovered = invoke(["apply", "--host", "testhost"], {"GRIPSACK_FS_RECOVER_ONLY": "1"})
+    assert recovered.returncode == 0, recovered.stdout + recovered.stderr
+    assert [link.is_symlink() for link in links] == [committed, committed]
+    assert ((home / "current").readlink() != previous) == committed
+    assert (home / "current").resolve() == home / "generations/1"
+    assert not list((home / "journal").glob("*.json"))
+
+
+def test_legacy_same_generation_marker_remains_ambiguous(sandbox):
+    repo, home, destination, marker, entry, _ = committed_fixture(sandbox)
+    marker.write_text('{"previous_generation":1,"target_generation":1,"op":"rollback"}')
+    marker_bytes, entry_bytes = marker.read_bytes(), entry.read_bytes()
+    result = subprocess.run(
+        [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+        env=dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1"),
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode != 0, "ambiguous historical marker gained commit authority"
+    assert marker.read_bytes() == marker_bytes and entry.read_bytes() == entry_bytes
+    assert destination.readlink() == Path("installed")
+    assert (home / "current").readlink() == Path("generations/1")

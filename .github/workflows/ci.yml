@@ -89,7 +89,10 @@ jobs:
           python-version: "3.12"
 
       - name: Build grip (debug — the suite's contract)
-        run: cargo build
+        run: cargo build --locked
+
+      - name: Native process authority and lifecycle
+        run: cargo test --locked -p gripsack-process
 
       - name: Prefetch the pinned Deno
         # GRIPSACK_DENO points the suite at one shared runtime, the

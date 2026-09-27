@@ -40,7 +40,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         )
         .unwrap();
     }
-    gripsack_store::flip(s.cap(), s.home(), GenerationId::new(3)).unwrap();
+    std::os::unix::fs::symlink("generations/3", s.home().join("current")).unwrap();
     let keep = input.first().map(|n| u32::from(*n % 5));
     let session = gripsack_exec::LifecycleSession::acquire(s.home()).unwrap();
     let report = gripsack_exec::gc(&session, keep, true).unwrap();

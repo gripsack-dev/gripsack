@@ -319,10 +319,15 @@ impl<'a> ModuleRun<'a> {
                     }
                 }
                 StepAction::Intent { action, .. } => {
-                    // step-form intents run through the activation
-                    // adapters after the flip (routed by kind —
-                    // activate.rs step_intents)
-                    info!(?action, "intent declared (runs via activation adapters)");
+                    // Action/script identity belongs in the private activation
+                    // receipt, not raw script or argument fields in trace logs.
+                    let kind = match action.as_ref() {
+                        gripsack_ir::Action::Fonts => "fonts",
+                        gripsack_ir::Action::DesktopEntry => "desktop_entry",
+                        gripsack_ir::Action::Service { .. } => "service",
+                        gripsack_ir::Action::CustomShell { .. } => "custom_shell",
+                    };
+                    info!(kind, "intent declared (runs via activation adapters)");
                 }
                 _ => {}
             }

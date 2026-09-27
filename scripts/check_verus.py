@@ -12,11 +12,20 @@ from verus_evidence import Evidence, EvidenceError, self_check
 
 ROOT = Path(__file__).resolve().parent.parent
 CRATE = ROOT / "crates/gripsack-policy"
-MIN_OBLIGATIONS = 88
+MIN_OBLIGATIONS = 111
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
-    "recovery": ("classify",),
+    "recovery": tuple("selection::" + name for name in (
+        "TransactionId::from_bytes", "TransactionId::as_bytes",
+        "SelectionIdentity::legacy", "SelectionIdentity::transaction",
+        "SelectionIdentity::generation", "SelectionIdentity::transaction_id", "classify",
+    )),
+    "activation": tuple("activation::" + name for name in (
+        "AttemptNumber::admit", "AttemptNumber::first", "AttemptNumber::value",
+        "AttemptNumber::checked_next", "IntentState::attempt",
+        "next_attempt", "finish_attempt", "supersede",
+    )),
     "ownership": ("ownership::plan_copy", "ownership::plan_link"),
     "retention": tuple("retention::" + name for name in (
         "admit_gc", "contains_generation", "contains_identity", "plan_prune", "plan_delete",
@@ -59,7 +68,17 @@ class Mutant:
 
 
 MUTANTS = (
-    Mutant("classifier", "lib.rs", "classify", "(Some(_), _) => Classification::Ambiguous,", "(Some(_), _) => Classification::Committed,"),
+    Mutant("classifier", "selection.rs", "selection::classify", "(Some(_), _) => Classification::Ambiguous,", "(Some(_), _) => Classification::Committed,"),
+    Mutant("classifier-transaction-identity", "selection.rs", "selection::classify",
+           "(Some(_), Some(current)) if current == facts.target =>",
+           "(Some(_), Some(current)) if current.generation() == facts.target.generation() =>"),
+    Mutant("activation-interrupted-attempt", "activation.rs", "activation::next_attempt",
+           "match attempt.checked_next() {", "match Some(*attempt) {"),
+    Mutant("activation-stale-outcome", "activation.rs", "activation::finish_attempt",
+           "if *active == attempt =>", "if *active != attempt =>"),
+    Mutant("activation-supersession", "activation.rs", "activation::supersede",
+           "IntentState::Started { attempt } => IntentState::Superseded { last_attempt: Some(*attempt) },",
+           "IntentState::Started { attempt } => IntentState::Started { attempt: *attempt },"),
     Mutant("ownership-drift", "ownership.rs", "ownership::plan_copy", "Some((written, false)) if live == written => CopyPlan::Update,", "Some((written, true)) if live == written => CopyPlan::Update,"),
     Mutant("gc-roots-in-deletion", "retention.rs", "retention::plan_delete", "if !contains_identity(referenced, c) {", "if contains_identity(referenced, c) {"),
     Mutant("gc-newest-prefix", "retention.rs", "retention::plan_prune",
@@ -136,14 +155,14 @@ def main() -> None:
         # A real unrelated failing lemma in the same source file cannot
         # impersonate the classifier mutant's named production failure.
         crate = copy_crate(temporary / "unrelated-lemma")
-        path = crate / "src/lib.rs"
+        path = crate / "src/selection.rs"
         source = path.read_text()
         prefix, suffix = source.rsplit("}", 1)
         path.write_text(prefix + "pub proof fn unrelated_calibration_failure() ensures false {}\n}" + suffix)
         status, evidence = verify(crate, temporary / "unrelated-target")
-        evidence.mutant(status, path, "unrelated_calibration_failure", crate.parent.parent)
+        evidence.mutant(status, path, "selection::unrelated_calibration_failure", crate.parent.parent)
         try:
-            evidence.mutant(status, path, "classify", crate.parent.parent)
+            evidence.mutant(status, path, "selection::classify", crate.parent.parent)
         except EvidenceError:
             print("calibration: unrelated lemma refused as classifier evidence", flush=True)
         else:

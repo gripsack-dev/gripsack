@@ -23,12 +23,13 @@
 //!    interpretation; v2 adds an explicit immediate pre-state.
 
 pub mod marker;
+mod marker_wire;
 pub(crate) mod recover;
 mod storage;
 mod wire;
 pub use wire::{Entry, IntendedSerde, PriorSerde, WireRejection};
 
-pub use marker::{RunOp, begin_run, commit_run, end_run};
+pub use marker::{PendingSelection, RunOp, begin_run, commit_run, end_run};
 pub use recover::{NoteSeverity, RecoveryNote, reconcile};
 
 use gripsack_fs::Dir;

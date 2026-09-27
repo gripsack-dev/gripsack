@@ -27,8 +27,8 @@ ALLOWED: dict[str, frozenset[str]] = {
     "gripsack-policy": frozenset({"vstd"}),
     "gripsack-ir": frozenset({"gripsack-policy", "serde", "serde_json", "thiserror", "jsonschema"}),
     "gripsack-store": frozenset({
-        "gripsack-fs", "gripsack-ir", "gripsack-policy", "serde", "serde_json",
-        "toml", "sha2", "tempfile",
+        "gripsack-fs", "gripsack-ir", "gripsack-policy", "gripsack-process", "serde", "serde_json",
+        "toml", "sha2", "tempfile", "getrandom",
     }),
 }
 FORBIDDEN_TLS = frozenset({"openssl", "openssl-sys", "native-tls"})

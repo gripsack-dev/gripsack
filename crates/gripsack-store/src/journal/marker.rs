@@ -3,127 +3,29 @@
 //! recovery classifies the interrupted run by EXACT transaction
 //! identity.
 
-use crate::GenerationId;
+use crate::{GenerationId, generations::SelectionReservation};
 use gripsack_fs::Dir;
+use gripsack_policy::selection::SelectionIdentity;
 use std::io;
 use std::path::{Path, PathBuf};
 
+pub(crate) use super::marker_wire::RunMarker;
 use super::storage::{Journal, RUN_MARKER};
 
-/// The run marker: which generation this journal's entries belong to.
-/// Written before the first mutation; the flip makes it true.
-#[derive(Debug, serde::Serialize)]
-pub(crate) struct RunMarker {
-    /// The generation current pointed at when the run began (0026 §4):
-    /// reconcile decides by EXACT equality — current == target is
-    /// committed, current == previous is uncommitted, anything else is
-    /// ambiguous and blocks. Numeric inequalities misclassify a
-    /// crashed roll-FORWARD (current < target before the flip).
-    /// Null is a fresh machine's first run. The KEY is required on
-    /// the wire (0045 F2): serde would silently read a missing key as
-    /// `None`, so deserialization is manual below — a marker missing
-    /// it is torn or corrupt and fails closed, never mistaken for a
-    /// fresh run.
-    #[serde(serialize_with = "crate::generation_wire::serialize_optional")]
-    pub(crate) previous_generation: Option<GenerationId>,
-    #[serde(with = "crate::generation_wire")]
-    pub(crate) target_generation: GenerationId,
-    /// Informational operation kind. Classification uses exact generation
-    /// identities; neither numeric ordering nor direction grants commit.
-    pub(crate) op: RunOp,
+/// A transaction-specific selection whose run marker is durably published.
+/// New flips require this handle; generation equality alone is not authority.
+#[derive(Debug)]
+pub struct PendingSelection {
+    reservation: SelectionReservation,
 }
 
-// Manual `Deserialize` (0045 F2): the derived impl cannot express
-// "key must be present, value may be null" — serde fills a missing
-// `Option` field with `None`, which would read a torn marker as a
-// fresh machine's first run and misclassify recovery. Unknown keys
-// stay tolerated (a newer grip's marker is inspected, not executed,
-// by an older one); duplicates, wrong types and oversized numbers are
-// rejected.
-impl<'de> serde::Deserialize<'de> for RunMarker {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::{Error, IgnoredAny, MapAccess, Visitor};
+impl PendingSelection {
+    pub fn identity(&self) -> &SelectionIdentity {
+        self.reservation.identity()
+    }
 
-        enum Field {
-            PreviousGeneration,
-            TargetGeneration,
-            Op,
-            Unknown,
-        }
-
-        impl<'de> serde::Deserialize<'de> for Field {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                Ok(match <&str>::deserialize(deserializer)? {
-                    "previous_generation" => Field::PreviousGeneration,
-                    "target_generation" => Field::TargetGeneration,
-                    "op" => Field::Op,
-                    _ => Field::Unknown,
-                })
-            }
-        }
-
-        struct MarkerVisitor;
-
-        impl<'de> Visitor<'de> for MarkerVisitor {
-            type Value = RunMarker;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("a run marker with previous_generation, target_generation and op")
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<RunMarker, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                // None = key not seen; Some(None) = seen, null (fresh
-                // machine); Some(Some(n)) = seen, a generation.
-                let mut previous: Option<Option<u64>> = None;
-                let mut target: Option<u64> = None;
-                let mut op: Option<RunOp> = None;
-                while let Some(field) = map.next_key()? {
-                    match field {
-                        Field::PreviousGeneration => {
-                            if previous.is_some() {
-                                return Err(A::Error::duplicate_field("previous_generation"));
-                            }
-                            previous = Some(map.next_value()?);
-                        }
-                        Field::TargetGeneration => {
-                            if target.is_some() {
-                                return Err(A::Error::duplicate_field("target_generation"));
-                            }
-                            target = Some(map.next_value()?);
-                        }
-                        Field::Op => {
-                            if op.is_some() {
-                                return Err(A::Error::duplicate_field("op"));
-                            }
-                            op = Some(map.next_value()?);
-                        }
-                        Field::Unknown => {
-                            let _ = map.next_value::<IgnoredAny>()?;
-                        }
-                    }
-                }
-                Ok(RunMarker {
-                    previous_generation: previous
-                        .ok_or_else(|| A::Error::missing_field("previous_generation"))?
-                        .map(GenerationId::new),
-                    target_generation: GenerationId::new(
-                        target.ok_or_else(|| A::Error::missing_field("target_generation"))?,
-                    ),
-                    op: op.ok_or_else(|| A::Error::missing_field("op"))?,
-                })
-            }
-        }
-
-        deserializer.deserialize_map(MarkerVisitor)
+    pub(crate) fn target(&self) -> &Path {
+        self.reservation.target()
     }
 }
 
@@ -137,27 +39,36 @@ pub enum RunOp {
     Rollback,
 }
 
-/// Declare the generation this run is building, BEFORE any mutation:
-/// recovery compares it against `current` — a crash between the flip
-/// and journal cleanup must NOT restore priors the committed
-/// generation now owns (the post-commit window, review finding 5.1).
+/// Declare the transaction before any destination mutation. The observed
+/// predecessor must still select the caller's admitted generation; the newly
+/// reserved target distinguishes even a same-generation rollback.
 pub fn begin_run(
     home: &Dir,
+    home_path: &Path,
     previous_generation: Option<GenerationId>,
     target_generation: GenerationId,
     op: RunOp,
-) -> io::Result<()> {
-    let marker = RunMarker {
-        previous_generation,
-        target_generation,
-        op,
-    };
+) -> io::Result<PendingSelection> {
+    if super::pending_recovery(home)?.is_some() {
+        return Err(io::Error::other(
+            "unfinished journal must be reconciled before a new transaction",
+        ));
+    }
+    let previous = crate::generations::current_selection_in(home_path, home)?;
+    if previous.as_ref().map(SelectionIdentity::generation) != previous_generation {
+        return Err(io::Error::other(
+            "current selection changed before transaction admission",
+        ));
+    }
+    let reservation = crate::generations::reserve_selection(home, target_generation)?;
+    let marker = RunMarker::transaction(previous, *reservation.identity(), op)?;
     Journal::prepare(home)?.write(
         Path::new(RUN_MARKER),
         serde_json::to_string(&marker)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
             .as_bytes(),
-    )
+    )?;
+    Ok(PendingSelection { reservation })
 }
 
 /// The run completed and the generation flipped: nothing left to
@@ -235,14 +146,11 @@ pub(super) fn run_marker(journal: &Journal) -> io::Result<Option<RunMarker>> {
     }
 }
 
-/// The commit classifier is the production kernel in
-/// `gripsack-policy` (0046) — ONE implementation serves this
-/// recovery path, the Rust explorers, and the verifier
-/// (`cargo verus verify -p gripsack-policy` proves the exact
-/// classification table). A marker without `previous_generation`
-/// never reaches it — the field is required on the wire and a torn
-/// marker fails closed at parse.
-pub(crate) use gripsack_policy::{Classification, RecoveryFacts, classify};
+/// One exact-selection kernel serves recovery, concrete models and Verus.
+pub(crate) use gripsack_policy::{
+    Classification,
+    selection::{RecoveryFacts, classify},
+};
 
 #[cfg(test)]
 #[path = "repeated_model.rs"]

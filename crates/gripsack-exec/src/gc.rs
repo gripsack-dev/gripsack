@@ -44,6 +44,7 @@ pub fn gc(
     // fails the same way (pending_recovery errors).
     let home_cap = gripsack_fs::open_or_create(home)?;
     let pending = store::journal::pending_recovery(&home_cap)?;
+    let activation_pending = store::activation::has_pending(&home_cap)?;
     let generation_directory = store::generations::GenerationDirectory::open(&home_cap)?;
     let generations = generation_directory.inventory();
     let current = store::generations::current_in(home, &home_cap)?;
@@ -51,7 +52,11 @@ pub fn gc(
     // Admission as a total function (0045 F3, 0046): the kernel's
     // biconditionals mean a forgotten check is a type-level impossibility.
     use gripsack_policy::retention::GcAdmission;
-    match gripsack_policy::retention::admit_gc(pending.is_some(), current, generations) {
+    match gripsack_policy::retention::admit_gc(
+        pending.is_some() || activation_pending,
+        current,
+        generations,
+    ) {
         // recovery state is load-bearing: a journaled prior blob may
         // be referenced by NO retained manifest, so collecting before
         // reconcile would destroy the bytes recovery needs. Refused
@@ -62,9 +67,9 @@ pub fn gc(
                 module: "*".into(),
                 step: "gc".into(),
                 detail: format!(
-                    "recovery state is pending ({}) — run `grip apply` or \
+                    "recovery state is pending (journal={}, activation={activation_pending}) — run `grip apply` or \
                      `grip rollback` to reconcile before collecting; nothing was deleted",
-                    pending.expect("RecoveryPending implies pending state")
+                    pending.is_some()
                 ),
             });
         }
@@ -252,12 +257,7 @@ mod tests {
         let orphan = home.join("store").join("zzz-orphan");
         fs::create_dir_all(&orphan).unwrap();
         fs::write(orphan.join("payload"), b"old").unwrap();
-        store::flip(
-            &gripsack_fs::open_or_create(home).unwrap(),
-            home,
-            GenerationId::new(3),
-        )
-        .unwrap();
+        std::os::unix::fs::symlink("generations/3", home.join("current")).unwrap();
         dir
     }
 
@@ -325,6 +325,7 @@ mod tests {
         // a run declared its target and journaled one destination
         store::journal::begin_run(
             &cap,
+            home,
             Some(GenerationId::new(3)),
             GenerationId::new(4),
             store::journal::RunOp::Apply,

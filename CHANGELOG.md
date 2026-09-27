@@ -7,6 +7,18 @@ User-visible changes per release. Design archaeology lives in
 
 ### Added
 
+- Hook activation now has stable per-intent IDs, increasing interrupted-attempt
+  counters and durable success/failure/supersession outcomes. Cache coalescing
+  preserves contributing modules; identical custom declarations stay distinct.
+  `grip hooks list --json` inspects private pending and archived evidence.
+- `grip hooks test`, `--duplicate` and `--crash-after-start` run fixed harmless
+  actions in isolated state, including a loopback receiver that commits token
+  and effect together. They never select live hooks. Runnable local/remote
+  idempotency examples are in `examples/hooks/`.
+- Hook children use bounded native supervision, explicit environments and
+  descriptor hygiene. Receipts retain executable/script digests and structured
+  failures without argv or environment values. Diagnostic controls are escaped.
+  The native enforcement/byte-binding tier stays explicit, not a sandbox claim.
 - Current v5 workspace file profiles execute through the existing store,
   ownership planner, journal, generations and rollback. Repository sources
   are captured once per command; literal and rendered content compose with
@@ -37,6 +49,14 @@ User-visible changes per release. Design archaeology lives in
 
 ### Fixed
 
+- Resumed hook reports no longer manufacture a new generation in an otherwise
+  satisfied apply. Resuming prior work does not create fresh IDs and deliver the
+  same hooks again as if a new deployment had occurred.
+- Repeated rollback to the already-current generation now has a distinct
+  transaction identity. Interrupted rollback restores its priors instead of
+  treating the unchanged generation number as a completed commit. New markers
+  and current pointers bind that identity; ambiguous same-generation legacy
+  journals are retained and refused rather than guessed.
 - Recovery seals an absent or already-visible prior before discarding its
   journal entry. Interrupted retries cannot mistake kernel-visible state for
   completed durability. Observed committed pointers are synced before cleanup,

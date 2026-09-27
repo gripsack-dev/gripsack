@@ -113,8 +113,9 @@ THEOREM RecoveryProjection ==
   BY SMT, Parameters, <1>6
 <1>7. CASE i = 6
   BY SMT, Parameters, <1>7
+<1> HIDE DEF RecoveryClass, RecoveredDisk, Observed, ClassAt, ExpectedRecovery
 <1>8. QED
-  BY SMT, <1>1, <1>2, <1>3, <1>4, <1>5, <1>6, <1>7
+  BY ONLY SMT, <1>1, <1>2, <1>3, <1>4, <1>5, <1>6, <1>7
 
 Inv ==
     /\ TypeOK

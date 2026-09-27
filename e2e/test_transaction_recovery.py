@@ -72,6 +72,8 @@ export default module("aaa", {
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert (sandbox / ".out/a.conf").read_text() == "v1\n"
+    current = sandbox / ".local/share/gripsack/current"
+    previous_selection = current.readlink()
 
     # v2 of aaa + a module that fails at deploy (payload lacks the
     # entry — a deploy-time failure E110 can't catch)
@@ -90,12 +92,8 @@ export default module("bbb", {{
     refresh_host(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
-    # the flip never happened…
-    generations = sandbox / ".local/share/gripsack/generations"
-    # generations/ also holds the durable high-water mark (0027 §9) —
-    # filter to actual generation directories
-    assert [p.name for p in generations.iterdir() if p.is_dir()] == ["1"]
-    # …and this run's deployments are rolled back exactly
+    assert current.readlink() == previous_selection, "failed apply must not select another transaction"
+    # This run's deployments are rolled back exactly.
     assert (sandbox / ".out/a.conf").read_text() == "v1\n"
     assert not (sandbox / ".out/b").exists()
 

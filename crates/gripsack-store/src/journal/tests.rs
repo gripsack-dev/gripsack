@@ -245,7 +245,14 @@ fn crash_after_flip_but_before_cleanup_reads_committed() {
     let dest = home.path().join("config");
     std::fs::write(&dest, b"old\n").unwrap();
 
-    begin_run(&cap(&home), None, crate::GenerationId::new(1), RunOp::Apply).unwrap();
+    let selection = begin_run(
+        &cap(&home),
+        home.path(),
+        None,
+        crate::GenerationId::new(1),
+        RunOp::Apply,
+    )
+    .unwrap();
     let prior = capture_at(&dest, &cap(&home));
     record(
         &cap(&home),
@@ -269,15 +276,10 @@ fn crash_after_flip_but_before_cleanup_reads_committed() {
         modules: Default::default(),
     };
     crate::generations::write_manifest(&cap(&home), &manifest).unwrap();
-    crate::generations::flip(&cap(&home), home.path(), crate::GenerationId::new(1)).unwrap();
+    crate::generations::flip(&cap(&home), home.path(), &selection).unwrap();
 
-    let lines = reconcile(&cap(&home), home.path()).unwrap();
-    assert!(
-        lines
-            .iter()
-            .any(|l| l.message.contains("already activated")),
-        "{lines:?}"
-    );
+    reconcile(&cap(&home), home.path()).unwrap();
+    assert!(pending_recovery(&cap(&home)).unwrap().is_none());
     // the committed generation's content is NOT rolled back
     assert_eq!(std::fs::read(&dest).unwrap(), b"deployed\n");
 }
@@ -289,7 +291,14 @@ fn crash_before_flip_restores() {
     let home = home();
     let dest = home.path().join("config");
     std::fs::write(&dest, b"old\n").unwrap();
-    begin_run(&cap(&home), None, crate::GenerationId::new(1), RunOp::Apply).unwrap();
+    begin_run(
+        &cap(&home),
+        home.path(),
+        None,
+        crate::GenerationId::new(1),
+        RunOp::Apply,
+    )
+    .unwrap();
     let prior = capture_at(&dest, &cap(&home));
     record(
         &cap(&home),
@@ -428,11 +437,12 @@ fn crashed_rollback_restores_priors() {
     std::fs::write(&dest, b"new\n").unwrap();
     crate::generations::write_manifest(&cap(&home), &manifest(2)).unwrap();
     crate::generations::write_manifest(&cap(&home), &manifest(3)).unwrap();
-    crate::generations::flip(&cap(&home), home.path(), crate::GenerationId::new(3)).unwrap();
+    std::os::unix::fs::symlink("generations/3", home.path().join("current")).unwrap();
 
     // rolling back 3 → 2: the restore lands, the flip never does
     begin_run(
         &cap(&home),
+        home.path(),
         Some(crate::GenerationId::new(3)),
         crate::GenerationId::new(2),
         RunOp::Rollback,
@@ -471,10 +481,11 @@ fn completed_rollback_reads_committed() {
     std::fs::write(&dest, b"new\n").unwrap();
     crate::generations::write_manifest(&cap(&home), &manifest(2)).unwrap();
     crate::generations::write_manifest(&cap(&home), &manifest(3)).unwrap();
-    crate::generations::flip(&cap(&home), home.path(), crate::GenerationId::new(3)).unwrap();
+    std::os::unix::fs::symlink("generations/3", home.path().join("current")).unwrap();
 
-    begin_run(
+    let selection = begin_run(
         &cap(&home),
+        home.path(),
         Some(crate::GenerationId::new(3)),
         crate::GenerationId::new(2),
         RunOp::Rollback,
@@ -497,16 +508,11 @@ fn completed_rollback_reads_committed() {
     )
     .unwrap();
     std::fs::write(&dest, b"old\n").unwrap();
-    crate::generations::flip(&cap(&home), home.path(), crate::GenerationId::new(2)).unwrap();
+    crate::generations::flip(&cap(&home), home.path(), &selection).unwrap();
     // crash between the flip and commit_run
 
-    let lines = reconcile(&cap(&home), home.path()).unwrap();
-    assert!(
-        lines
-            .iter()
-            .any(|l| l.message.contains("already activated")),
-        "{lines:?}"
-    );
+    reconcile(&cap(&home), home.path()).unwrap();
+    assert!(pending_recovery(&cap(&home)).unwrap().is_none());
     assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
 }
 
@@ -677,7 +683,14 @@ fn unsafe_metadata_symlinks_never_read_or_chmod_their_referents() {
     let target = temporary.path().join("private-canary");
     std::fs::write(&target, b"foreign data").unwrap();
     std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
-    begin_run(&capability, None, crate::GenerationId::new(1), RunOp::Apply).unwrap();
+    begin_run(
+        &capability,
+        temporary.path(),
+        None,
+        crate::GenerationId::new(1),
+        RunOp::Apply,
+    )
+    .unwrap();
     symlink("../private-canary", dir(temporary.path()).join("bad.json")).unwrap();
     assert!(reconcile(&capability, temporary.path()).is_err());
     assert_eq!(std::fs::read(&target).unwrap(), b"foreign data");
@@ -694,7 +707,14 @@ fn recovery_cleanup_keeps_the_pinned_journal_after_a_directory_replacement() {
     let temporary = home();
     let capability = cap(&temporary);
     let dest = temporary.path().join("destination");
-    begin_run(&capability, None, crate::GenerationId::new(1), RunOp::Apply).unwrap();
+    begin_run(
+        &capability,
+        temporary.path(),
+        None,
+        crate::GenerationId::new(1),
+        RunOp::Apply,
+    )
+    .unwrap();
     record(&capability, &dest, &Prior::Absent, &Intended::Removed).unwrap();
     let journal = Journal::open(&capability).unwrap().unwrap();
     let retained = temporary.path().join("retained-journal");

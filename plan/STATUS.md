@@ -196,6 +196,20 @@ manual-waiver CI path and fail-closed aggregate now pass 4 positive/64 negative
 cases plus four CLI smokes. Live PR/protection qualification remains open;
 normal PR/main CI still runs fuzz unless skipped deliberately. No release yet.
 
+**Transaction-bound activation continuation (2026-09-27):** new current
+selections and markers distinguish repeated rollback transactions from their
+generation numbers. Private plans, per-intent Started/terminal outcomes and
+archived receipts drive the real apply/rollback/removal runner; `hooks list`
+and fixture-only `hooks test` are implemented. A false new-generation delivery
+after replay was exposed and fixed. The 43-case focused CLI group, three actual
+simulation modes, runnable idempotency examples and the extended calibrated TLC
+gate passed locally. Process death and physical power loss remain distinct;
+the model is not the generalized M-V6 theorem. Native byte/FD admission caught
+and removed `execvp`'s implicit shell fallback; syscall-capability faults and
+closed-stdio cases use the actual executor. See the R3 leaf record and
+`verification/reports/` for precise evidence/limits. Full candidate/native CI,
+M-V6/M-V7 and the remaining handover implementation are still required.
+
 ## Security maintenance (non-release changes)
 
 - 2026-09-26: The protected `audit` check exposed

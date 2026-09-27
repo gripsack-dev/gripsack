@@ -1,5 +1,5 @@
 use super::lifecycle::Guard;
-use super::{Control, Limits, StopReason, sys};
+use super::{Control, Limits, OutputMode, StopReason, sys};
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
@@ -15,6 +15,7 @@ pub(super) struct Exchange<'a> {
     input: &'a [u8],
     sent: usize,
     limits: Limits,
+    output: OutputMode,
     line: Vec<u8>,
     line_len: usize,
     responded: bool,
@@ -24,7 +25,7 @@ pub(super) struct Exchange<'a> {
 }
 
 impl<'a> Exchange<'a> {
-    pub fn new(child: &mut Child, input: &'a [u8], limits: Limits) -> Self {
+    pub fn new(child: &mut Child, input: &'a [u8], limits: Limits, output: OutputMode) -> Self {
         Self {
             stdin: child.stdin.take(),
             stdout: child.stdout.take(),
@@ -32,6 +33,7 @@ impl<'a> Exchange<'a> {
             input,
             sent: 0,
             limits,
+            output,
             line: Vec::new(),
             line_len: 0,
             responded: false,
@@ -59,8 +61,9 @@ impl<'a> Exchange<'a> {
     pub fn close_input(&mut self) {
         self.stdin = None;
     }
-    pub fn into_tail(self) -> Vec<u8> {
-        self.tail.into_iter().collect()
+    pub fn into_tail(self) -> (Vec<u8>, bool) {
+        let truncated = self.err_total > self.limits.retained_stderr_bytes as u64;
+        (self.tail.into_iter().collect(), truncated)
     }
 
     pub fn drive(
@@ -169,6 +172,12 @@ impl<'a> Exchange<'a> {
         }
         count(&mut self.out_total, n, self.limits.stdout_bytes)
             .map_err(|()| StopReason::StdoutLimit)?;
+        if matches!(self.output, OutputMode::Raw) {
+            if !self.responded {
+                self.responded = callback(&buf[..n]) == Control::Response;
+            }
+            return Ok(());
+        }
         for &byte in &buf[..n] {
             if byte == b'\n' {
                 if !self.responded {

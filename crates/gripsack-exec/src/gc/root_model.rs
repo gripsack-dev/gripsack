@@ -157,9 +157,9 @@ fn retained_histories_protect_complete_roots() {
     {
         let (temporary, prior) = history();
         let home = temporary.path();
-        let cap = gripsack_fs::open(home).unwrap();
         if let Some(current) = current {
-            store::flip(&cap, home, current).unwrap();
+            std::os::unix::fs::symlink(format!("generations/{current}"), home.join("current"))
+                .unwrap();
         }
         let session = LifecycleSession::acquire(home).unwrap();
         let preview = gc(&session, keep, true).unwrap();
@@ -199,7 +199,7 @@ fn unfinished_recovery_preserves_every_history_object() {
         let (temporary, prior) = history();
         let home = temporary.path();
         let cap = gripsack_fs::open(home).unwrap();
-        store::flip(&cap, home, GenerationId::new(3)).unwrap();
+        std::os::unix::fs::symlink("generations/3", home.join("current")).unwrap();
         let journal_blob = store::prior::store_blob(&cap, b"journal-only bytes")
             .unwrap()
             .path_in(home);
@@ -208,6 +208,7 @@ fn unfinished_recovery_preserves_every_history_object() {
             "marker" => {
                 store::journal::begin_run(
                     &cap,
+                    home,
                     Some(GenerationId::new(3)),
                     GenerationId::new(4),
                     store::journal::RunOp::Apply,

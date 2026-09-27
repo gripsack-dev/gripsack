@@ -146,6 +146,11 @@ enum Command {
     },
     /// Check the frontend environment (deno + the embedded frontend)
     Doctor,
+    /// Inspect durable hook identities, attempts and outcomes
+    Hooks {
+        #[command(subcommand)]
+        command: commands::HooksCommand,
+    },
     /// Manage the repo trust list — the gate before any eval (0013 D7).
     /// The first eval of an untrusted repo prompts; `GRIPSACK_TRUST_ALL=1`
     /// is the CI bypass.
@@ -167,16 +172,35 @@ fn main() -> ExitCode {
         }
         return ExitCode::SUCCESS;
     }
-    let cli = Cli::parse();
-    let command_name = format!("{:?}", cli.command)
-        .split([' ', '('])
-        .next()
-        .unwrap_or("unknown")
-        .to_string();
+    let command = match Cli::parse().command {
+        // Fixture simulations must not even create a diagnostic run in the
+        // user's real home; their workers also start before any tracing thread.
+        Command::Hooks { command } if command.fixture_only() => {
+            return commands::hooks(command, palette);
+        }
+        command => command,
+    };
+    let command_name = match &command {
+        Command::Adopt { .. } => "Adopt",
+        Command::Apply { .. } => "Apply",
+        Command::Check { .. } => "Check",
+        Command::Plan { .. } => "Plan",
+        Command::Rollback { .. } => "Rollback",
+        Command::SelfUpdate { .. } => "SelfUpdate",
+        Command::Update { .. } => "Update",
+        Command::Generations => "Generations",
+        Command::Gc { .. } => "Gc",
+        Command::WhyOwns { .. } => "WhyOwns",
+        Command::StoreVerify { .. } => "StoreVerify",
+        Command::Init { .. } => "Init",
+        Command::Doctor => "Doctor",
+        Command::Trust { .. } => "Trust",
+        Command::Hooks { .. } => "Hooks",
+    };
     let home = gripsack_store::gripsack_home();
     let run = gripsack_trace::init(&home).ok();
     let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());
-    match cli.command {
+    match command {
         Command::Doctor => commands::doctor(palette),
         Command::Adopt {
             path,
@@ -248,6 +272,7 @@ fn main() -> ExitCode {
         },
         Command::Rollback { generation } => commands::rollback(generation, palette),
         Command::Trust { command } => commands::trust(command, palette),
+        Command::Hooks { command } => commands::hooks(command, palette),
         Command::Plan {
             ir: Some(path),
             modules,

@@ -53,6 +53,14 @@ fn marker_value() -> Value {
     json!({"previous_generation": null, "target_generation": 1, "op": "apply"})
 }
 
+fn transaction_marker_value() -> Value {
+    json!({
+        "version": 1, "previous_selection": null,
+        "target_selection": {"kind": "transaction", "generation": 1, "transaction": "a".repeat(64)},
+        "op": "apply",
+    })
+}
+
 fn rejected_markers() -> Vec<ByteCase> {
     let base = marker_value();
     let mut cases = Vec::new();
@@ -108,6 +116,62 @@ fn rejected_markers() -> Vec<ByteCase> {
             bytes: raw_member(&base, key, b"18446744073709551616"),
         });
     }
+    let transaction = transaction_marker_value();
+    for key in ["version", "previous_selection", "target_selection", "op"] {
+        let mut missing = transaction.clone();
+        missing.as_object_mut().unwrap().remove(key);
+        cases.push(ByteCase::json(
+            format!("transaction_missing_{key}"),
+            &missing,
+        ));
+        cases.push(ByteCase {
+            name: format!("transaction_duplicate_{key}"),
+            bytes: duplicate_member(&transaction, key, &transaction[key]),
+        });
+    }
+    for version in [Value::Null, json!(0), json!(2), json!("1"), json!(1.5)] {
+        let mut value = transaction.clone();
+        value["version"] = version;
+        cases.push(ByteCase::json("unsupported_transaction_version", &value));
+    }
+    for key in ["previous_generation", "target_generation"] {
+        let mut value = transaction.clone();
+        value[key] = json!(1);
+        cases.push(ByteCase::json(format!("mixed_transaction_{key}"), &value));
+    }
+    for field in ["previous_selection", "target_selection"] {
+        for invalid in [
+            json!(1),
+            json!([]),
+            json!({}),
+            json!({"kind": "unknown", "generation": 1}),
+            json!({"kind": "transaction", "generation": 1}),
+            json!({"kind": "transaction", "transaction": "a".repeat(64)}),
+            json!({"kind": "transaction", "generation": "1", "transaction": "a".repeat(64)}),
+            json!({"kind": "transaction", "generation": 1, "transaction": "A".repeat(64)}),
+            json!({"kind": "transaction", "generation": 1, "transaction": "a".repeat(63)}),
+            json!({"kind": "transaction", "generation": 1, "transaction": "g".repeat(64)}),
+            json!({"kind": "legacy", "generation": 1, "transaction": "a".repeat(64)}),
+        ] {
+            let mut value = transaction.clone();
+            value[field] = invalid;
+            cases.push(ByteCase::json(
+                format!("invalid_transaction_{field}"),
+                &value,
+            ));
+        }
+    }
+    for target in [Value::Null, json!({"kind": "legacy", "generation": 1})] {
+        let mut value = transaction.clone();
+        value["target_selection"] = target;
+        cases.push(ByteCase::json(
+            "transaction_target_without_identity",
+            &value,
+        ));
+    }
+    let mut reused = transaction.clone();
+    reused["previous_selection"] = reused["target_selection"].clone();
+    cases.push(ByteCase::json("transaction_reused_identity", &reused));
     cases
 }
 
@@ -280,8 +344,8 @@ fn rejected_entries(destination: &str) -> Vec<ByteCase> {
 fn required_marker_fields_never_default_to_fresh_state() {
     let base = marker_value();
     let fresh: RunMarker = serde_json::from_slice(&serde_json::to_vec(&base).unwrap()).unwrap();
-    assert_eq!(fresh.previous_generation, None);
-    assert_eq!(fresh.target_generation, crate::GenerationId::new(1));
+    assert_eq!(fresh.previous, None);
+    assert_eq!(fresh.target.generation(), crate::GenerationId::new(1));
     assert_eq!(fresh.op, RunOp::Apply);
     for key in ["previous_generation", "target_generation", "op"] {
         let mut value = base.clone();
@@ -300,19 +364,43 @@ fn marker_scalar_boundaries_roundtrip_without_identity_loss() {
     for previous in [None, Some(0), Some(1), Some(u64::MAX)] {
         for target in [0, 1, u64::MAX] {
             for op in [RunOp::Apply, RunOp::Rollback] {
-                let value = RunMarker {
-                    previous_generation: previous.map(crate::GenerationId::new),
-                    target_generation: crate::GenerationId::new(target),
-                    op,
-                };
+                let value: RunMarker = serde_json::from_value(json!({
+                    "previous_generation": previous,
+                    "target_generation": target,
+                    "op": op,
+                }))
+                .unwrap();
                 let encoded = serde_json::to_vec(&value).unwrap();
                 let decoded: RunMarker = serde_json::from_slice(&encoded).unwrap();
                 assert_eq!(
-                    decoded.previous_generation,
+                    decoded
+                        .previous
+                        .as_ref()
+                        .map(|selection| selection.generation()),
                     previous.map(crate::GenerationId::new)
                 );
-                assert_eq!(decoded.target_generation, crate::GenerationId::new(target));
+                assert_eq!(
+                    decoded.target.generation(),
+                    crate::GenerationId::new(target)
+                );
                 assert_eq!(decoded.op, op);
+                count += 1;
+            }
+        }
+    }
+    for previous in [
+        Value::Null,
+        json!({"kind": "legacy", "generation": 1}),
+        json!({"kind": "transaction", "generation": 1, "transaction": "b".repeat(64)}),
+    ] {
+        for target in [0, 1, u64::MAX] {
+            for op in [RunOp::Apply, RunOp::Rollback] {
+                let mut wire = transaction_marker_value();
+                wire["previous_selection"] = previous.clone();
+                wire["target_selection"]["generation"] = json!(target);
+                wire["op"] = json!(op);
+                let decoded: RunMarker = serde_json::from_value(wire.clone()).unwrap();
+                assert_eq!(serde_json::to_value(decoded).unwrap(), wire);
                 count += 1;
             }
         }
@@ -439,7 +527,14 @@ impl RecoveryFixture {
         let journal = temporary.path().join("journal");
         let marker_path = journal.join("run.json");
         let entry_path = journal.join(entry_name(&destination));
-        begin_run(&home, None, crate::GenerationId::new(1), RunOp::Apply).unwrap();
+        begin_run(
+            &home,
+            temporary.path(),
+            None,
+            crate::GenerationId::new(1),
+            RunOp::Apply,
+        )
+        .unwrap();
         record(
             &home,
             &destination,

@@ -10,6 +10,7 @@ pub mod eval;
 pub mod frontend;
 pub mod gc;
 pub mod generations;
+pub mod hooks;
 pub mod init;
 pub mod plan;
 pub mod probe;
@@ -31,6 +32,7 @@ pub use eval::{
 };
 pub use gc::gc;
 pub use generations::generations;
+pub use hooks::{HooksCommand, hooks};
 pub use init::init;
 pub use plan::{plan_ir, plan_module};
 pub use repo::resolve as resolve_repo;

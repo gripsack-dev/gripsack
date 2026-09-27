@@ -19,6 +19,8 @@
 //! No concurrent edits occur under the lifecycle lock. A new edit can occur
 //! after EACH crash, including after one destination has been recovered.
 
+use gripsack_policy::selection::SelectionIdentity;
+
 use super::{Classification, RecoveryFacts, classify};
 use crate::journal::recover::{RecoveryDecision, decide_from};
 use crate::journal::{Intended, ObjectIdentity};
@@ -120,10 +122,13 @@ fn classification(d: Disk, s: Scenario, policy: Policy) -> Classification {
     if !d.marker {
         return Classification::Uncommitted;
     }
+    let previous = s.previous.map(SelectionIdentity::legacy);
+    let target = SelectionIdentity::legacy(s.target);
+    let current = d.current.map(SelectionIdentity::legacy);
     let facts = RecoveryFacts {
-        previous: s.previous,
-        target: s.target,
-        current: d.current,
+        previous: previous.as_ref(),
+        target: &target,
+        current: current.as_ref(),
     };
     let shipped = classify(&facts);
     match policy {

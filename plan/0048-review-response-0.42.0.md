@@ -2532,11 +2532,32 @@ Independent ready work continues while that prerequisite is implemented.
 
 | Leaf | Class / target | State | Acceptance |
 |---|---|---|---|
-| M2-7.4/5/13 | NEXT / required CI admission | Implemented; local calibration passed, GitHub/protection pending | Read-only CI permissions, cancelling CI concurrency, and exact required-job aggregation are wired. Four positive/64 negative policy cases and four actual command-entry smokes passed; YAML parsed. Only the named manual waiver admits skipped fuzz; all other missing/failed/cancelled/skipped/unknown results fail. Audit's unused Check permission is removed. No actual GitHub run/protection claim yet. |
+| M2-7.4/5/13 | NEXT / required CI admission | Implemented; real negative admission observed, positive qualification/protection pending | Four positive/64 negative local cases and four command-entry smokes passed. Actual manual run `36337128792` at `24c1f6c84f859bb759237b5f66a98bbd69058c37` skipped fuzz only under the named waiver; audit/docs passed, native macOS had two unconstructible non-UTF-8 filename fixtures, and TLAPS timed out on RecoveryProjection's final case combination. The aggregate correctly failed on both lanes. Repairs preserve the full proof and record filesystem applicability; corrected native CI and protection remain pending. |
 | M-V6.1 | NEXT / generalized recovery model | Implementing | Arbitrary finite destinations and unbounded repeated recovery crashes; proof of intent/prior, restore/cleanup, exact identity, publication/current and root safety with attributed mutants. R3 supplies the real persistent activation identity before lifecycle composition is claimed. |
 | M-V6.2 / M-V7.1 | NEXT / concrete restore-to-cleanup bridge | Implemented; local real-CLI/fault evidence, generalized proof pending | Six restore/retry cases failed before: absent restoration omitted parent sync, and an already-visible prior bypassed durability. Three more cases exposed committed-pointer cleanup before root sync and cleanup over missing/malformed current manifests. Recovery now seals observed/restored priors, admits current metadata through the pinned home, and syncs committed current before cleanup. Four standalone CLI journeys passed; the 49-case focused group passed across the initial 48 and corrected one-case retry (cold frontend setup was moved outside fault-ordinal measurement). Actual error/kill cases retain marker, entry and prior bytes. This is software-fault correspondence, not hardware power-loss or completed M-V6/M-V7 evidence. |
-| R3.1–8 | NEXT / durable activation identity and outcomes | Implementing | One persistent activation instance and stable per-intent IDs across crash replay, distinct repeated rollback instances, durable outcomes, legacy migration, inspection and harmless simulations; known failure remains warn/no-retry/no-rollback. Every original R3 acceptance window and model/real-CLI bridge remains required. |
-| M-V6.3 / R3 selection identity | NEXT / actual commit identity | Demonstrated failure; implementing transaction-bound selection | A real same-generation rollback was killed between recreating two missing owned links. Recovery classified the old generation number as committed, retained the partial `[present, absent]` deployment and erased the journal. Receipt: `2026-09-27-same-generation-before.log`. New markers/current selections must carry distinct transaction identity even when generation numbers are equal; legacy state remains readable or explicitly refused if ambiguous. Do not special-case same-generation rollback, fabricate completion or waive this blocker. |
+| R3.1 | NEXT / durable identity and effective ordering | Implemented; local evidence, platform/candidate qualification pending | Immutable versioned plans bind full selections, instance IDs, action/occurrence digests and contributing modules. Initial Pending records are durable before pointer publication. Identical custom hooks and repeated rollback remain distinct. |
+| R3.2 | NEXT / reserved child identity and native receipts | Implemented; local evidence, native Mac pending | All activation/removal/cache/service/rollback paths use the same supervised runner. Reserved ID/attempt values override ambient input. Receipts bind selected image/script bytes and retain bounded error metadata, not raw arguments or environment values. |
+| R3.3 | NEXT / per-intent durability | Implemented; local evidence, final qualification pending | Private non-cloneable permits follow durable Started writes. Matching results, observed-terminal sealing and archived outcomes precede cleanup. Actual CLI cuts cover before launch, during execution, after effects, result-directory sync, between hooks and archive-before-pointer removal. |
+| R3.4 | NEXT / settled failure and supersession policy | Implemented; local evidence, final qualification pending | Durable known failures warn without rollback/automatic retry; mismatched selections supersede rather than execute. Recovery reports are excluded from new-deployment no-op admission, fixing an observed duplicate new-generation delivery. |
+| R3.5 | NEXT / inspection and legacy migration | Implemented; local evidence, final qualification pending | Read-only `hooks list --json`, mandatory private outcome files, archived receipts independent of trace retention, and persisted `legacy_identity_unavailable` migration. Missing/corrupt authority is retained/refused rather than defaulted to a fresh attempt. |
+| R3.6 | NEXT / fixture-only simulations | Implemented; actual CLI smokes passed | Clean, duplicate and crash-after-start modes use generated private roots, first-party helpers and loopback effects, bypassing live tracing/state. Duplicate produces two append effects and one receiver effect, including receiver restart; both intents complete attempt 2. |
+| R3.7 | NEXT / runnable idempotency examples | Implemented; container smoke passed | Atomic replacement; SQLite token+counter transaction; one bounded notification with an atomic receiver. Duplicate/distinct tokens, conflicting-payload refusal and receiver restart were observed. No generic external exactly-once/compensation claim. |
+| R3.8 | NEXT / model and concrete correspondence | Implemented; local bounded model/CLI evidence, generalized M-V6 still open | All 43 focused real CLI cases passed. Current `Activation.tla` separates visible/durable state and unbounded crash transitions over explicit finite transaction/intent/attempt domains. Six named mutants fail their intended properties; a shared-transition finite-crash wrapper preserves conditional completion checks. This does not substitute for M-V6's generalized induction or native/candidate gates. |
+| M-V6.3 / R3 selection identity | NEXT / actual commit identity | Concrete recovery bridge repaired; broader R3/generalized proof pending | Versioned full-selection markers, collision-refusing durable transaction reservations and typed pending-selection flips replace generation-only commit authority. Legacy ambiguous same-generation journals remain retained/refused. The real failing-before witness now returns `[absent, absent]` after recovery instead of retaining `[present, absent]`; both before-flip and after-flip same-generation crash cases pass. Twelve focused CLI cases and 36 journal regressions passed. `2026-09-27-transaction-identity-development.log` binds the exercised sources and standalone smoke; it is not candidate release qualification. |
+
+The R3/selection packet's final local gates passed: complete real CLI
+**401/401**, Rust fmt/clippy/tests plus calibration, fresh TypeScript **67**,
+Verus **111/0** with **17** calibrations, TLAPS pilot **301** plus its barrier
+witness/calibrations, and the complete TLC gate. Two stale full-suite fixtures
+were repaired without narrowing behavioral acceptance: legacy recovery now
+actually seeds legacy current state; failed apply asserts unchanged current
+identity rather than counting internal namespace directories. The initial
+**399 passed / 2 failed** and the corrected two-case smoke remain archived.
+`verification/reports/2026-09-27-activation-local-gates.log` binds the actual
+image sources, binary digest and 1123-file fingerprint
+`1b48ae4b93b748a8778339f44359c23766d10e531c5d444f27fe676f224039d3`.
+Native Mac/current-commit CI and generalized M-V6/M-V7 remain unqualified;
+the three existing ignored real-Go/Docker tests remain outside Rust evidence.
 
 The generalized model must distinguish **process death with dirty kernel-visible
 state** from **power loss restoring stable storage**. Collapsing visible state
@@ -2558,4 +2579,62 @@ calibrations also passed. Unchanged TypeScript/TLC build RUNs were cached.
 `verification/reports/2026-09-27-continuation-local-gates.log` binds source-file
 fingerprint `d47cae6231a71bc49f5ef11b22356db699cc3321b6d424914cdc7338f5f197ce`.
 These are regression/bridge results, not M-V6.3/R3 closure. No fuzz ran.
+
+### R3 / M-V6.3 concrete identity cutover contract
+
+The current-pointer target encodes
+`generations/.selections/<transaction-id>/<generation>`, with the final
+generation-named link resolving to the retained generation tree. Generation
+numbers remain CLI/history identities; a separate admitted 32-byte transaction
+identity distinguishes repeated activations of the same generation. Selection
+namespace creation, marker publication and current flip stay capability-rooted
+and durable. Keep the generation-only historical reader, not an unchecked
+generation-only path for new flips.
+
+New run markers use an explicit version and full previous/target selections.
+Their shape must make old binaries refuse unfinished new transactions rather
+than silently ignore the identity field. Valid legacy markers remain readable;
+a legacy marker whose previous and target generation are identical cannot
+prove commitment and must retain its evidence with an explicit ambiguity
+diagnostic. No old generation, prior or journal is deleted to ease migration.
+
+The pending selection returned after durable marker publication is the typed
+input to new flips. Apply, rollback, recovery, all fixture/model callers and
+the classifier migrate together. R3's effective intents then bind to that
+selection, retain stable intent IDs across interrupted attempts, increment
+attempt numbers without overflow, and keep durable terminal outcomes terminal.
+Prototype policy bodies have preliminary Verus evidence only; they do not
+count as production-connected R3/M-V7 evidence until wired and calibrated.
+
+### Next proof/effect ownership contracts
+
+The R3 prerequisite now exists in persisted state; generalized M-V6 remains
+required. Its proof model must compose independently dirty destination cells,
+not copy `MultiDestination`'s one-write/crash simplification. The model admits
+an arbitrary finite destination set (including empty), repeated journal-v2
+updates preserving the first prior, visible/stable storage separately, and
+unbounded recovery crashes. Publication/high-water/current and recovery-root
+retention compose through explicit transition interfaces. External-writer CAS,
+the durability of arbitrary external writes, parser authenticity and physical
+storage behavior remain named assumptions/exclusions, not inferred theorems.
+
+M-V7 targets are registered here **before their implementation-proof cutover**:
+
+| Claim ID | Actual source targets | Required implementation boundary |
+|---|---|---|
+| JOURNAL-AUTHORITY-001 | `gripsack-store::journal::{capture,record}`, `journal::marker::{begin_run,cleanup}`, `journal::recover::{reconcile,restore,seal_observed_prior}` and their executor mutation callers | Checked predecessor transitions must constrain real mutation, restoration and cleanup permits. Separate file/parent sync events and preserve legacy admission; no opaque durable-write assumption equal to the target theorem. |
+| PROCESS-BOUNDS-001 | `gripsack-process::input::InputBuffer::write`, `exchange::{Exchange::read_stdout,Exchange::read_stderr,count}`, `supervise` and `lifecycle::Guard` transitions | Distinct input/frame/stdout/stderr/outstanding-work domains; checked arithmetic and terminal/error precedence constrain actual callback/spawn/cleanup paths. Syscalls, clocks and scheduling stay external assumptions with real campaigns. |
+| OPERATION-BUDGET-001 | `gripsack-fetch::throttle::{RateBudget,Bucket::refill,Throttle::acquire_before,acquire_declared_until}` and frontend/plugin deadline callers | Admission and retry consume one admitted budget; no extension/reset/overflow into authority. Existing legitimate declared rates and environment/credential scope must remain explicit. |
+| UPDATE-SURVEY-001 | `gripsack-exec::report::UpdateSummary::{from_reports,outcome}`, update survey/check/publish callers and source-layout evidence | Every selected module is accounted for; failure dominates changes; check/publish share one decision without claiming native recipes/hooks/verifiers ran. |
+
+The transition kernels, their complete caller migration, concrete observation
+oracles and attributable effect-seam mutants are one deliverable. A theorem for
+an unused helper or a tested adapter is not silently promoted to a formal
+model-to-Rust refinement result.
+
+The activation packet deliberately adds only `getrandom` identity allocation
+and the shared process receipt/digest/terminal types to the store dependency
+boundary. Store code does not launch native processes; `gripsack-exec` owns
+effect execution. Native process policy remains in the process crate, not
+duplicated into activation or a backend.
 

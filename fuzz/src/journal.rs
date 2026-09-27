@@ -57,9 +57,9 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
     }
     match entry_bytes.first().copied().unwrap_or(0) % 4 {
         0 => {}
-        1 => gripsack_store::flip(s.cap(), s.home(), gripsack_store::GenerationId::new(1)).unwrap(),
-        2 => gripsack_store::flip(s.cap(), s.home(), gripsack_store::GenerationId::new(2)).unwrap(),
-        _ => gripsack_store::flip(s.cap(), s.home(), gripsack_store::GenerationId::new(3)).unwrap(),
+        1 => std::os::unix::fs::symlink("generations/1", s.home().join("current")).unwrap(),
+        2 => std::os::unix::fs::symlink("generations/2", s.home().join("current")).unwrap(),
+        _ => std::os::unix::fs::symlink("generations/3", s.home().join("current")).unwrap(),
     }
     let _ = gripsack_store::reconcile(s.cap(), s.home());
     // The symlink referent is never a deployment destination.

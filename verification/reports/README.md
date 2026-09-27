@@ -418,10 +418,41 @@ No fuzz target, fuzz corpus replay, workflow dispatch, commit or release ran.
 | `2026-09-27-recovery-durability-development.log` | `e79d221568bed63d4ab3b1c638573b25e5d485b9a8136a3067a06ce728a438b1` | Six real failing-before prior/retry cases, first corrected 46-case recovery/transaction/GC run and standalone observation, then three further failing-before committed-pointer/current-manifest cases. Development evidence, not a completed generalized theorem. |
 | `2026-09-27-recovery-durability-smoke.log` | `9b59d356d0fa39b70591528f8b57f0a07538ea9ed09c970d0e1a9c9f6e6560c1` | Four actual isolated CLI journeys: absent-prior durability, failed observed-prior sync with retained evidence/retry, failed observed-current sync with retained evidence/retry, and corrupt-current refusal before cleanup. Exact disposable script bytes included; no physical power-loss claim. |
 | `2026-09-27-continuation-local-gates.log` | `60baf6b17f4794dc26200671b30ca71079763bc3343cf872c58fb0843678d861` | Whole local non-fuzz packet: Rust/Loom/journal/GC, real CLI **371/371**, fresh TLAPS pilot **301** and its calibrations, fresh Verus **92/0** plus **13** calibrations; unchanged TS/TLC RUN layers cached. Source fingerprint and dirty-patch identity recorded. The three existing real-Go/Docker tests remain outside ordinary Rust execution. |
-| `2026-09-27-same-generation-before.log` | `db758eca74148a4a73d3006d6321818574613e36085f5903c71873d0d5ac527a` | **Unfixed failure witness**, not a passing gate: kill a same-generation rollback before recreating its second link; recovery leaves `[present, absent]` and clears the journal because generation equality impersonates transaction commitment. R3/M-V6.3 must replace that ambiguity with actual transaction-bound identity. |
+| `2026-09-27-same-generation-before.log` | `db758eca74148a4a73d3006d6321818574613e36085f5903c71873d0d5ac527a` | **Failing-before witness**, not a passing gate: killing same-generation rollback before its second link left `[present, absent]` and cleared the journal. The later transaction-identity development receipt records the repaired actual CLI outcome. |
 
 All results here are local working-tree observations over base `c92e84e`;
 they do not close the remaining NEXT requirements or authorize publication.
 Implementation and release work continue with this assistant. The other agent's
 assignment is fuzzing and findings repair after the qualified feedback releases.
+
+## Transaction-bound selection — development bridge
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-27-transaction-identity-development.log` | `2d0cb2b3e5cfa5e21ba231342ac8c413eaba2a9c84bf1a0f43a80259920dd5f3` | Working tree over `24c1f6c84f859bb759237b5f66a98bbd69058c37`: 36 journal regressions and 12 real recovery CLI cases. The standalone failing-before journey now restores `[absent, absent]`, preserving the prior state rather than the partial deployment. After-flip repeated-generation recovery retains committed links; ambiguous historical markers refuse cleanup. Exact exercised source hashes and disposable script bytes are included. |
+
+This is concrete recovery correspondence, not generalized M-V6, completed R3,
+whole-candidate CI or physical power-loss qualification. Native CI of the
+earlier pushed source exposed two unsupported filename fixtures and one TLAPS
+case-combination timeout; the aggregate failed rather than hiding them.
+
+## Durable activation — runtime, model and example observations
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-27-activation-runtime-development.log` | `9c5a575c4c8c27f2a6b6b734a8133d637f8199f5052e238ea0165c787c6ad135` | Preserved development failures and corrected 37-case CLI group; actual clean/duplicate/crash-after-start commands demonstrate stable attempt identity, two append effects versus one receiver effect, and no selection of live hook state. Includes the separate failing-before native `execvp`/`ENOEXEC` receipt witness, not a claim that failure was qualified. |
+| `2026-09-27-activation-crash-windows.log` | `3e42ab54b412200ba1f06b82ac03022ba2b403475b5b6d9a7fedefc557b650c5` | **43/43** focused real CLI cases: process death during a bounded hook, outcome-directory error/kill, archive-before-clear, saved-action replay, all earlier recovery/activation cases and private records under permissive umask. This is software-fault/process correspondence, not native Mac or physical power-loss evidence. |
+| `2026-09-27-activation-model-development.log` | `424a08bb7139df5c00e25764d9f4e00777ca36c067f67dd249c712ff70c6bd69` | Complete fresh TLC gate passed. Source-bound current activation model has two transactions/generations/intents/attempts and unbounded crash transitions; conditional completion separately uses three transactions, one intent, three attempts, two crashes and weak fairness. Six new mutants plus pending-loss calibration reject their named properties. The initial underspecified TLA assignment is retained as a rejected development error, never semantic calibration. |
+| `2026-09-27-hook-examples-smoke.log` | `3446edb916021236e569467cde2742a87b29e25262ba8b6038b802e69ab5a148` | Actual Python example commands in the Docker environment: repeated atomic replace; duplicate/distinct keyed SQLite operations; conflicting-payload refusal; private modes; one receiver effect across process kill/restart. Exact source hashes and disposable driver are retained; the driver was removed. |
+| `2026-09-27-activation-local-gates.log` | `2b023ff85b3d0e96170ccf51a3541ca585d9f96c97da348e580c342328548311` | All six final local non-fuzz Compose gates passed: fmt/clippy/Rust plus admission/calibration; **401/401** real CLI; fresh TypeScript **67**, Verus **111/0** with **17** calibrations, TLAPS pilot **301** plus barrier evidence, and the complete TLC gate. The initial full CLI **399 passed / 2 stale-fixture failures** and corrected two-case smoke are retained. Actual gate-image source matching covers Rust **928**, Verus **856**, TLAPS **93**, model **91**, TypeScript **56** and CLI/example **79** files; binary and source fingerprints are included. Three ignored real-Go/Docker tests are not qualified by ordinary Rust execution. |
+
+The final local packet binds **1123** behavior-bearing files, including new
+files, to fingerprint
+`1b48ae4b93b748a8778339f44359c23766d10e531c5d444f27fe676f224039d3`.
+Its actual CLI binary SHA-256 is
+`acb0d3b21b907707e55902e0eea16d30914975e02221346a53e6913d7a1108a6`.
+These remain working-tree observations over `24c1f6c`, not protected
+exact-final-commit CI, native macOS or release qualification. Generalized
+M-V6 and the remaining NEXT work are not replaced by these bounded models.
+No fuzz target or saved fuzz corpus was executed.
 

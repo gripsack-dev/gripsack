@@ -69,7 +69,6 @@ export default module("daemon", {
     (repo / "configs" / "daemon" / "a").write_text("a\n")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "my-daemon.service" in out.stdout
 
 
 def test_crash_before_adapters_resumes_next_run(sandbox, monkeypatch):
@@ -105,7 +104,6 @@ export default module("demo", {{
     monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "resumed activation" in out.stdout, out.stdout
     assert marker.exists(), "the resumed hook ran"
     assert not pending.exists(), "the record drained"
 

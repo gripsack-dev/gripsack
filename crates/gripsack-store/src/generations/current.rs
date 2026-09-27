@@ -1,4 +1,6 @@
 //! Current generation pointer admission and activation.
+use gripsack_policy::selection::SelectionIdentity;
+
 use crate::GenerationId;
 use std::{io, path::Path};
 /// The generation `current` points at, if any. Fail closed
@@ -17,11 +19,23 @@ pub fn current(home: &Path) -> io::Result<Option<GenerationId>> {
 
 /// Read the pointer through an already pinned home, as used by GC.
 pub fn current_in(home: &Path, directory: &gripsack_fs::Dir) -> io::Result<Option<GenerationId>> {
+    Ok(current_selection_in(home, directory)?.map(|selection| selection.generation()))
+}
+
+/// The exact selection observed through the same pinned home as recovery.
+/// Reserved transaction names cannot be reinterpreted as legacy generations.
+pub fn current_selection_in(
+    home: &Path,
+    directory: &gripsack_fs::Dir,
+) -> io::Result<Option<SelectionIdentity>> {
     match directory.read_link("current") {
         Ok(target) => {
+            if let Some(selection) = super::parse_selection(directory, &target)? {
+                return Ok(Some(selection));
+            }
             // the relative canonical form skips canonicalize entirely
             if let Some(n) = parse_current_relative(&target) {
-                return Ok(Some(n));
+                return Ok(Some(SelectionIdentity::legacy(n)));
             }
             let n: GenerationId = target
                 .file_name()
@@ -52,16 +66,15 @@ pub fn current_in(home: &Path, directory: &gripsack_fs::Dir) -> io::Result<Optio
                     ),
                 ));
             }
-            Ok(Some(n))
+            Ok(Some(SelectionIdentity::legacy(n)))
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
 }
 
-/// Parse the canonical relative `generations/<N>` target (0030 §H10).
-/// The ONE shape flip writes; both current readers accept it without
-/// ambient canonicalization.
+/// Read the historical relative `generations/<N>` spelling without ambient
+/// canonicalization. New writes always carry transaction identity instead.
 fn parse_current_relative(target: &Path) -> Option<GenerationId> {
     let mut parts = target.components();
     match (parts.next(), parts.next(), parts.next()) {
@@ -74,29 +87,21 @@ fn parse_current_relative(target: &Path) -> Option<GenerationId> {
     }
 }
 
-/// Flip `current` to a generation — the single indivisible activation
-/// operation (0001 §9.2), pinned to the home capability (plan/0021).
-/// `home_path` exists only to compose the link TARGET: `current`
-/// records the absolute generation dir so readers resolve it from
-/// any cwd. The target must exist first: a `current` pointing at
-/// nothing reads as "no generations" everywhere downstream
-/// (list/current swallow that as None) while looking deployed to
-/// anything that inspects the link.
-pub fn flip(home: &gripsack_fs::Dir, home_path: &Path, generation: GenerationId) -> io::Result<()> {
-    let rel = Path::new(crate::paths::GENERATIONS_DIR).join(generation.to_string());
-    let dir = home_path.join(&rel);
-    if !home.metadata(&rel).is_ok_and(|m| m.is_dir()) {
+/// Activate exactly the target whose transaction marker was durably recorded.
+/// Both the generation and the reserved selection path are admitted before
+/// the single current-pointer rename; no generation-only write path remains.
+pub fn flip(
+    home: &gripsack_fs::Dir,
+    home_path: &Path,
+    pending: &crate::journal::PendingSelection,
+) -> io::Result<()> {
+    let generation = pending.identity().generation();
+    super::read_manifest_at(home, home_path, generation)?;
+    if super::parse_selection(home, pending.target())?.as_ref() != Some(pending.identity()) {
         return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!(
-                "cannot activate generation {generation}: {} is missing",
-                dir.display()
-            ),
+            io::ErrorKind::InvalidData,
+            "reserved selection identity changed before activation",
         ));
     }
-    // the link target is the RELATIVE canonical form (0030 §H10): one
-    // lexical shape means both readers validate without ambient
-    // canonicalization. Pre-0.26 absolute targets still validate via
-    // canonicalize in the reader.
-    gripsack_fs::symlink_replace(home, Path::new("current"), &rel)
+    gripsack_fs::symlink_replace(home, Path::new("current"), pending.target())
 }

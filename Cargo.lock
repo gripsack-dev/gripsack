@@ -591,6 +591,7 @@ dependencies = [
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-lint",
+ "gripsack-policy",
  "gripsack-process",
  "gripsack-store",
  "gripsack-trace",
@@ -634,6 +635,7 @@ dependencies = [
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-policy",
+ "gripsack-process",
  "gripsack-store",
  "libc",
  "loom",
@@ -740,15 +742,20 @@ name = "gripsack-process"
 version = "0.42.0"
 dependencies = [
  "libc",
+ "serde",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]
 name = "gripsack-store"
 version = "0.42.0"
 dependencies = [
+ "getrandom 0.4.3",
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-policy",
+ "gripsack-process",
  "serde",
  "serde_json",
  "sha2",

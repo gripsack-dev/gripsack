@@ -20,7 +20,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     {
         return Err(ExecError::Gate(diagnostic));
     }
-    let _session = crate::util::LifecycleSession::acquire(&ctx.home)?;
+    let session = crate::util::LifecycleSession::acquire(&ctx.home)?;
     // crash recovery (0019): a previous run killed between a deploy
     // mutation and the flip left uncommitted journal entries — the
     // filesystem sits between generations. Restore the priors before
@@ -73,12 +73,12 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // invalid pending metadata BLOCKS the run (0035 F5): mutating
     // over an unreadable activation record would strand the pending
     // generation's intents — same rule as the journal's quarantine
-    let resumed = crate::activate::resume_pending(ctx.home_dir()?, current_gen).map_err(|e| {
+    let resumed = crate::activate::resume_activation(&session).map_err(|e| {
         ExecError::Step {
             module: "*".into(),
             step: "activate".into(),
             detail: format!(
-                "the activation record is unreadable ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
+                "activation recovery is blocked ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
             ),
         }
     })?;
@@ -171,8 +171,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // recovery compares the marker against `current` — a crash after
     // the flip but before journal cleanup must read as COMMITTED,
     // never restore priors the new generation owns (review 5.1)
-    store::journal::begin_run(
+    let selection = store::journal::begin_run(
         ctx.home_dir()?,
+        &ctx.home,
         current_gen,
         next_gen,
         store::journal::RunOp::Apply,
@@ -207,6 +208,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         compensate(ctx);
         return Err(error);
     }
+    // Recovery reports describe an earlier committed selection. They remain
+    // visible, but cannot manufacture a fresh deployment or hook instance.
+    let deployment_reports_start = reports.len();
     for (name, module_reports) in outcome.reports {
         let span = info_span!("module", name = name.as_str());
         let _entered = span.enter();
@@ -235,7 +239,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         &modules,
         next,
         lock_dirty.then_some(&lock),
-        &reports,
+        &reports[deployment_reports_start..],
     ) {
         Ok(Some(_generation)) => {}
         // vacuous run: nothing journaled, nothing flipped — the
@@ -286,22 +290,15 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             }
         }
     }
-    if !intents.is_empty()
-        && let Err(e) = store::activation::write_pending(
-            ctx.home_dir()?,
-            &store::activation::PendingActivation {
-                generation: next,
-                intents: intents.clone(),
-            },
-        )
-    {
-        // inside the transaction boundary (0035 F5): a fallible write
-        // between the first mutation and the flip compensates like
-        // any other
-        compensate(ctx);
-        return Err(e.into());
-    }
-    if let Err(e) = store::flip(ctx.home_dir()?, &ctx.home, next) {
+    let activation = match store::activation::prepare(ctx.home_dir()?, &selection, intents) {
+        Ok(activation) => activation,
+        Err(error) => {
+            // The immutable plan/pointer is still inside the transaction.
+            compensate(ctx);
+            return Err(error.into());
+        }
+    };
+    if let Err(e) = store::flip(ctx.home_dir()?, &ctx.home, &selection) {
         compensate(ctx);
         return Err(e.into());
     }
@@ -321,14 +318,15 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             kind: crate::report::ReportKind::Warned,
         });
     }
-    reports.extend(crate::activate::run(&intents));
-    // the record's work is done — clear it (a clear failure is
-    // cleanup-pending: the next run discards or re-runs harmlessly,
-    // the intents being idempotent)
-    if !intents.is_empty()
-        && let Err(e) = store::activation::clear_pending(ctx.home_dir()?)
-    {
-        tracing::warn!("activation record cleanup pending ({e}) — the next run finishes it");
+    if let Some(batch) = activation {
+        match crate::activate::run(batch, ctx.home_dir()?, &ctx.home) {
+            Ok(outcomes) => reports.extend(outcomes),
+            Err(error) => reports.push(crate::report::StepReport {
+                module: "*".into(),
+                summary: format!("generation {next} active; activation evidence retained ({error}) — inspect hooks before retrying"),
+                kind: crate::report::ReportKind::Warned,
+            }),
+        }
     }
     info!(generation = %next, "activated");
     Ok(ApplyResult {
@@ -434,7 +432,7 @@ fn pre_flip(
     modules: &BTreeMap<String, store::ModuleState>,
     next: store::GenerationId,
     lock: Option<&crate::lockfile::Lockfile>,
-    reports: &[crate::report::StepReport],
+    deployment_reports: &[crate::report::StepReport],
 ) -> Result<Option<store::Generation>, ExecError> {
     // pins are fetch outcomes — they must land before anything can
     // short-circuit later (the satisfied early-return used to skip
@@ -463,7 +461,7 @@ fn pre_flip(
     // filesystem" must never both be true of one run (migration
     // report 0.18.1: a repaired symlink cut no generation, so
     // rollback could not undo it).
-    let touched_disk = reports.iter().any(|r| {
+    let touched_disk = deployment_reports.iter().any(|r| {
         matches!(
             r.kind,
             crate::report::ReportKind::Installed | crate::report::ReportKind::Configured

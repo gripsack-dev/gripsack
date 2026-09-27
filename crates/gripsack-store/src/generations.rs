@@ -13,10 +13,14 @@ mod admission;
 mod current;
 mod inventory;
 mod publication;
-pub use current::{current, current_in, flip};
+mod selection;
+pub use current::{current, current_in, current_selection_in, flip};
 pub(crate) use inventory::read_manifest_at;
 pub use inventory::{GenerationDirectory, list, read_manifest};
 pub use publication::{allocate, publish_generation, write_manifest};
+pub(crate) use selection::{
+    SelectionReservation, parse as parse_selection, reserve as reserve_selection,
+};
 
 use crate::GenerationId;
 use crate::prior::Prior;
@@ -227,9 +231,27 @@ mod tests {
         write_manifest(&cap, &mk_gen(home, 1)).unwrap();
         write_manifest(&cap, &mk_gen(home, 2)).unwrap();
         assert_eq!(current(home).unwrap(), None);
-        flip(&cap, home, GenerationId::new(1)).unwrap();
+        let first = crate::journal::begin_run(
+            &cap,
+            home,
+            None,
+            GenerationId::new(1),
+            crate::journal::RunOp::Apply,
+        )
+        .unwrap();
+        flip(&cap, home, &first).unwrap();
+        crate::journal::commit_run(&cap).unwrap();
         assert_eq!(current(home).unwrap(), Some(GenerationId::new(1)));
-        flip(&cap, home, GenerationId::new(2)).unwrap();
+        let second = crate::journal::begin_run(
+            &cap,
+            home,
+            Some(GenerationId::new(1)),
+            GenerationId::new(2),
+            crate::journal::RunOp::Apply,
+        )
+        .unwrap();
+        flip(&cap, home, &second).unwrap();
+        crate::journal::commit_run(&cap).unwrap();
         assert_eq!(current(home).unwrap(), Some(GenerationId::new(2)));
     }
 

@@ -2,6 +2,7 @@ use super::*;
 use std::os::unix::process::ExitStatusExt;
 
 mod lifecycle;
+mod native;
 mod pressure;
 
 fn command(body: &str) -> Command {

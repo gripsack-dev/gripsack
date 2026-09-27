@@ -69,29 +69,30 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
     // corrupt, never mistaken for a fresh-machine run.
     let committed = match run_marker(&journal)? {
         Some(marker) => {
+            marker.admit_recovery()?;
             // the ONE current-pointer reader (0030 §H10): recovery
             // never uses weaker commit evidence than normal commands
-            let current = crate::generations::current_in(home_path, home)?;
-            if let Some(number) = current {
+            let current = crate::generations::current_selection_in(home_path, home)?;
+            if let Some(selection) = &current {
                 // A matching pointer is not authority over a corrupt or
                 // missing generation. Admit the same pinned state before
                 // either restoration or committed cleanup can have effects.
-                crate::generations::read_manifest_at(home, home_path, number)?;
+                crate::generations::read_manifest_at(home, home_path, selection.generation())?;
             }
             match classify(&RecoveryFacts {
-                previous: marker.previous_generation,
-                target: marker.target_generation,
-                current,
+                previous: marker.previous.as_ref(),
+                target: &marker.target,
+                current: current.as_ref(),
             }) {
                 Classification::Committed => true,
                 Classification::Uncommitted => false,
                 Classification::Ambiguous => {
                     return Err(io::Error::other(format!(
-                        "journal run marker ({:?}→{}) matches neither current \
-                         ({current:?}) nor its previous generation — the \
+                        "journal selections ({:?} → {:?}) match neither current \
+                         ({current:?}) nor the recorded predecessor — the \
                          journal is retained; inspect $GRIPSACK_HOME/journal \
                          before running again",
-                        marker.previous_generation, marker.target_generation
+                        marker.previous, marker.target
                     )));
                 }
             }

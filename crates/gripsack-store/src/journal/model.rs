@@ -50,6 +50,8 @@
 //! matches neither the marker's previous nor its target, recovery
 //! changes NOTHING and keeps the journal intact (fail closed).
 
+use gripsack_policy::selection::SelectionIdentity;
+
 use super::marker::{Classification, RecoveryFacts, classify};
 use super::recover::{RecoveryDecision, decide_from};
 use super::{Intended, ObjectIdentity};
@@ -240,11 +242,14 @@ fn recover(
         return (disk, None);
     }
     let (prev, target) = disk.marker.unwrap_or((Some(run_prev), run_target));
+    let previous = prev.map(SelectionIdentity::legacy);
+    let target = SelectionIdentity::legacy(target);
+    let current = disk.current.map(SelectionIdentity::legacy);
     let class = match disk.marker {
         Some(_) => Some(classifier(&RecoveryFacts {
-            previous: prev,
-            target,
-            current: disk.current,
+            previous: previous.as_ref(),
+            target: &target,
+            current: current.as_ref(),
         })),
         // entries without a marker: the real rule — uncommitted
         None => Some(Classification::Uncommitted),

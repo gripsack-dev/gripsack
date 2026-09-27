@@ -60,6 +60,12 @@ for mode in apply-deploy apply-prune rollback-deploy rollback-prune; do
     check MultiDestination.tla "cfg/repeated-$mode.cfg"
 done
 check Activation.tla cfg/activation.cfg
+check Activation.tla cfg/activation-unsealed-start.cfg PermitAfterDurableStart
+check Activation.tla cfg/activation-early-success.cfg OutcomeAfterReturn
+check Activation.tla cfg/activation-retry-failure.cfg TerminalNoReplay
+check Activation.tla cfg/activation-generation-commit.cfg EffectsBindFullSelection
+check Activation.tla cfg/activation-early-clear.cfg ArchiveBeforeClear
+check Activation.tla cfg/activation-generation-token.cfg DistinctIntentIdentity
 check RepeatedActivation.tla cfg/repeated-activation.cfg
 check RepeatedActivation.tla cfg/repeated-activation-repeated-generation.cfg
 check MultiDestination.tla cfg/repeated-transaction-premature-cleanup.cfg RestoreBeforeCleanup

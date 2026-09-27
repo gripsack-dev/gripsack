@@ -34,6 +34,7 @@ pub mod ownership;
 pub mod paths;
 pub mod prior;
 mod private_state;
+mod selection_wire;
 pub mod trust;
 
 pub use generations::{

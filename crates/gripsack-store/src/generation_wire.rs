@@ -14,10 +14,3 @@ pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
 ) -> Result<GenerationId, D::Error> {
     u64::deserialize(deserializer).map(GenerationId::new)
 }
-
-pub(crate) fn serialize_optional<S: Serializer>(
-    id: &Option<GenerationId>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    id.map(GenerationId::value).serialize(serializer)
-}

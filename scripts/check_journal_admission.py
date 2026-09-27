@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-MARKER = Path('crates/gripsack-store/src/journal/marker.rs')
+MARKER = Path('crates/gripsack-store/src/journal/marker_wire.rs')
 PREFIX = 'journal::admission_tests::'
 EFFECT = PREFIX + 'rejected_metadata_cannot_reach_destination_effects'
 EXPECTED = (
@@ -28,12 +28,12 @@ EXPECTED = (
 # Growing a family is allowed; shrinking one requires a deliberate review.
 MINIMUMS = {
     'JOURNAL_REQUIRED_MARKER_FIELDS': 3,
-    'JOURNAL_MARKER_ROUNDTRIPS': 24,
-    'JOURNAL_MARKER_REJECTIONS': 29,
+    'JOURNAL_MARKER_ROUNDTRIPS': 42,
+    'JOURNAL_MARKER_REJECTIONS': 69,
     'JOURNAL_ENTRY_ROUNDTRIPS': 20,
     'JOURNAL_ENTRY_REJECTIONS': 110,
     'JOURNAL_TRUNCATED_PREFIXES': 173,
-    'JOURNAL_EFFECT_REJECTIONS': 139,
+    'JOURNAL_EFFECT_REJECTIONS': 179,
 }
 
 

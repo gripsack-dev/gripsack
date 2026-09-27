@@ -15,8 +15,22 @@
 //! that deliberately leave the group cannot be killed by this mechanism;
 //! their inherited pipes are closed at the deadline instead.
 
+mod digest;
 mod exchange;
+pub use digest::Sha256Digest;
+mod error;
+pub use error::{NativeIoError, NativeIoKind};
+mod receipt;
+pub use receipt::{ByteBinding, Enforcement, ProcessDisposition, ProcessReceipt};
+mod environment;
+pub use environment::{OperatorEnvironment, ProcessRole};
+mod descriptors;
+mod exec_payload;
+mod image;
+mod invocation;
+pub use invocation::{ActivationEnvironment, Invocation, NativeInput, NativeOutcome};
 mod input;
+pub mod terminal;
 pub use input::InputBuffer;
 mod lifecycle;
 mod sys;
@@ -97,6 +111,7 @@ pub struct Outcome {
     pub reason: StopReason,
     /// Last retained_stderr_bytes bytes actually read, including a cap-crossing read.
     pub stderr: Vec<u8>,
+    pub stderr_truncated: bool,
 }
 
 /// Force piped stdio and a new child process group, incrementally send input,
@@ -115,12 +130,41 @@ pub fn run(
     command: &mut Command,
     input: &[u8],
     limits: Limits,
+    on_line: impl FnMut(&[u8]) -> Control,
+) -> io::Result<Outcome> {
+    supervise(command, input, limits, OutputMode::Lines, on_line)
+}
+
+/// Supervise an arbitrary byte stream without line framing or a line buffer.
+/// `line_bytes` is inapplicable; the total stdout/stderr caps, deadline,
+/// callback suppression and process-group cleanup are identical to `run`.
+pub fn run_raw(
+    command: &mut Command,
+    input: &[u8],
+    limits: Limits,
+    on_bytes: impl FnMut(&[u8]) -> Control,
+) -> io::Result<Outcome> {
+    supervise(command, input, limits, OutputMode::Raw, on_bytes)
+}
+
+#[derive(Clone, Copy)]
+enum OutputMode {
+    Lines,
+    Raw,
+}
+
+fn supervise(
+    command: &mut Command,
+    input: &[u8],
+    limits: Limits,
+    output: OutputMode,
     mut on_line: impl FnMut(&[u8]) -> Control,
 ) -> io::Result<Outcome> {
     let empty = |reason| Outcome {
         status: None,
         reason,
         stderr: Vec::new(),
+        stderr_truncated: false,
     };
     if input.len() > limits.input_bytes {
         return Ok(empty(StopReason::InputLimit));
@@ -146,7 +190,7 @@ pub fn run(
     let mut child = command.spawn()?;
     // Install before any post-spawn fallible operation. Child::drop does not wait.
     let mut guard = lifecycle::Guard::new(child.id(), end);
-    let mut exchange = exchange::Exchange::new(&mut child, input, limits);
+    let mut exchange = exchange::Exchange::new(&mut child, input, limits, output);
     let reason = match exchange.configure() {
         Ok(()) => exchange.drive(&mut guard, active_end, &mut on_line),
         Err(error) => StopReason::Io(error),
@@ -160,9 +204,11 @@ pub fn run(
         },
         None => reason,
     };
+    let (stderr, stderr_truncated) = exchange.into_tail();
     Ok(Outcome {
         status,
         reason,
-        stderr: exchange.into_tail(),
+        stderr,
+        stderr_truncated,
     })
 }
