@@ -10,14 +10,20 @@
 //! ```
 
 mod admission;
-use admission::validate;
+mod current;
+mod inventory;
+mod publication;
+pub use current::{current, current_in, flip};
+pub(crate) use inventory::read_manifest_at;
+pub use inventory::{GenerationDirectory, list, read_manifest};
+pub use publication::{allocate, publish_generation, write_manifest};
 
+use crate::GenerationId;
 use crate::prior::Prior;
 use gripsack_ir::{EnvVar, Ownership};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// One deployed file: where it went, how, and its canonical hash at
 /// deploy time (drift detection compares against this — 0008 §3).
@@ -153,272 +159,15 @@ pub struct ModuleState {
 /// A generation: an immutable record of one profile state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Generation {
-    pub number: u64,
+    #[serde(with = "crate::generation_wire")]
+    pub number: GenerationId,
     pub modules: BTreeMap<String, ModuleState>,
-}
-
-fn manifest_path(home: &Path, generation: u64) -> PathBuf {
-    crate::paths::generation_dir(home, generation).join("manifest.json")
-}
-
-/// Write a generation's manifest atomically, relative to the home
-/// capability (plan/0021): `generations/<N>/manifest.json` can never
-/// be redirected by a swapped path component.
-pub fn write_manifest(home: &gripsack_fs::Dir, generation: &Generation) -> io::Result<()> {
-    // generations are immutable history (0026 §3): an existing
-    // generation number is a hard invariant failure, never an
-    // overwrite target (the pre-0.23 current+1 allocator could reuse
-    // one after a rollback)
-    let gen_rel = Path::new(crate::paths::GENERATIONS_DIR).join(generation.number.to_string());
-    if home.symlink_metadata(&gen_rel).is_ok() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            format!(
-                "generation {} already exists — generations are immutable",
-                generation.number
-            ),
-        ));
-    }
-    let json = serde_json::to_string_pretty(generation)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    gripsack_fs::atomic_write(
-        home,
-        &Path::new(crate::paths::GENERATIONS_DIR)
-            .join(generation.number.to_string())
-            .join("manifest.json"),
-        json.as_bytes(),
-    )
-}
-
-/// Read a generation's manifest — the ONE strict boundary for
-/// persisted generations (0027 §4). A generation is long-lived input
-/// (disk faults, interrupted older releases, hand edits): parse is
-/// not enough. Rejects: embedded number ≠ directory id, duplicate
-/// destinations (case-folded — the E111 rule applies to history too),
-/// malformed content hashes, store paths outside `$GRIPSACK_HOME/
-/// store`. Prior blobs stay lazily read — restore-time errors already
-/// abort the transaction.
-pub fn read_manifest(home: &Path, generation: u64) -> io::Result<Generation> {
-    let raw = std::fs::read(manifest_path(home, generation))?;
-    let manifest: Generation =
-        serde_json::from_slice(&raw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    validate(&manifest, generation, home)?;
-    Ok(manifest)
-}
-
-/// All generation numbers on disk, ascending. Fail closed
-/// (0027 §2): only a MISSING generations directory means "none" —
-/// an enumeration or entry error is real (gc builds its deletion
-/// set from this list; an empty list on error would collect the
-/// active generation's store objects).
-pub fn list(home: &Path) -> io::Result<Vec<u64>> {
-    let dir = home.join(crate::paths::GENERATIONS_DIR);
-    let entries = match std::fs::read_dir(&dir) {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(e),
-    };
-    let mut numbers = Vec::new();
-    for entry in entries {
-        let entry = entry?;
-        if let Ok(n) = entry.file_name().to_string_lossy().parse() {
-            numbers.push(n);
-        }
-    }
-    numbers.sort_unstable();
-    Ok(numbers)
-}
-
-/// The generation `current` points at, if any. Fail closed
-/// (0026 §8): only NotFound means "no generations" — a permission
-/// error, I/O failure, or a `current` link that parses to no
-/// generation number are real errors, not absence (apply allocates
-/// from this, gc protects it; misreading either is corruption).
-pub fn current(home: &Path) -> io::Result<Option<u64>> {
-    match std::fs::read_link(crate::paths::current_link(home)) {
-        Ok(target) => {
-            // the relative canonical form skips canonicalize entirely
-            if let Some(n) = parse_current_relative(&target) {
-                return Ok(Some(n));
-            }
-            let n: u64 = target
-                .file_name()
-                .and_then(|n| n.to_string_lossy().parse().ok())
-                .ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!(
-                            "{} does not point at a generation",
-                            crate::paths::current_link(home).display()
-                        ),
-                    )
-                })?;
-            // the control plane and data plane must agree (0029 §10):
-            // the link resolves to THIS home's generations/<n> — a
-            // `current -> /tmp/42` is corruption, not generation 42
-            let resolved = std::fs::canonicalize(crate::paths::current_link(home))?;
-            let home_canon = std::fs::canonicalize(home)?;
-            let expected = home_canon
-                .join(crate::paths::GENERATIONS_DIR)
-                .join(n.to_string());
-            if resolved != expected {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "current resolves to {} — outside $GRIPSACK_HOME/generations",
-                        resolved.display()
-                    ),
-                ));
-            }
-            Ok(Some(n))
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e),
-    }
-}
-
-/// Durable high-water mark: `generations/high-water` holds the highest
-/// generation number ever allocated (0027 §9). Without it, gc of the
-/// tip moves the on-disk maximum backward and IDs get reused — logs
-/// and journal remnants would then name two different states "2".
-pub fn allocate(home_path: &Path, home: &gripsack_fs::Dir) -> io::Result<u64> {
-    let high_water = match home.read("generations/high-water") {
-        Ok(bytes) => {
-            let text = String::from_utf8_lossy(&bytes);
-            let n = text.trim().parse::<u64>().map_err(|_| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "generations/high-water is corrupt — refusing to allocate",
-                )
-            })?;
-            Some(n)
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => return Err(e),
-    };
-    let next = [
-        current(home_path)?,
-        list(home_path)?.into_iter().max(),
-        high_water,
-    ]
-    .into_iter()
-    .flatten()
-    .max()
-    .unwrap_or(0)
-        + 1;
-    Ok(next)
-}
-
-/// Publish a complete generation as ONE object (0027 §8): manifest and
-/// profile are staged under `generations/.staging-<N>` and renamed
-/// into place with a no-clobber check — a failed apply never leaves a
-/// half-populated `generations/N` visible to listings, allocation, or
-/// rollback. A leftover staging dir from a crashed apply is not a
-/// generation and is cleared first.
-pub fn publish_generation(
-    home: &gripsack_fs::Dir,
-    generation: &Generation,
-    profile: Option<&str>,
-    home_path: &Path,
-) -> io::Result<()> {
-    // construction and load share the ONE validator (0029 §7): we
-    // never publish what read_manifest would reject
-    validate(generation, generation.number, home_path)?;
-    // pid-tagged (0030 §18): a staging dir from a crashed apply is
-    // cleared only when it's ours to clear
-    let staging = Path::new(crate::paths::GENERATIONS_DIR).join(format!(
-        ".staging-{}-{}",
-        generation.number,
-        std::process::id()
-    ));
-    let final_dir = Path::new(crate::paths::GENERATIONS_DIR).join(generation.number.to_string());
-    if home.symlink_metadata(&final_dir).is_ok() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            format!(
-                "generation {} already exists — generations are immutable",
-                generation.number
-            ),
-        ));
-    }
-    match home.remove_dir_all(&staging) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
-    }
-    let json = serde_json::to_string_pretty(generation)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    gripsack_fs::atomic_write(home, &staging.join("manifest.json"), json.as_bytes())?;
-    if let Some(profile) = profile {
-        gripsack_fs::atomic_write(
-            home,
-            &staging.join("env").join("profile.sh"),
-            profile.as_bytes(),
-        )?;
-    }
-    // the high-water mark moves BEFORE the rename (0029 §9 ordering):
-    // a failure after the rename must never leave a visible generation
-    // the allocator doesn't know about
-    gripsack_fs::atomic_write(
-        home,
-        Path::new("generations/high-water"),
-        generation.number.to_string().as_bytes(),
-    )?;
-    gripsack_fs::fsync_dir(home, &staging)?;
-    gripsack_fs::rename(home, &staging, home, &final_dir).map_err(|e| {
-        io::Error::new(
-            e.kind(),
-            format!("publish generation {}: {e}", generation.number),
-        )
-    })?;
-    gripsack_fs::fsync_dir(home, Path::new(crate::paths::GENERATIONS_DIR))
-}
-
-/// Parse the canonical relative `generations/<N>` target (0030 §H10).
-/// The ONE shape flip writes; both current readers accept it without
-/// ambient canonicalization.
-fn parse_current_relative(target: &Path) -> Option<u64> {
-    let mut parts = target.components();
-    match (parts.next(), parts.next(), parts.next()) {
-        (Some(std::path::Component::Normal(head)), Some(std::path::Component::Normal(n)), None)
-            if head == crate::paths::GENERATIONS_DIR =>
-        {
-            n.to_string_lossy().parse().ok()
-        }
-        _ => None,
-    }
-}
-
-/// Flip `current` to a generation — the single indivisible activation
-/// operation (0001 §9.2), pinned to the home capability (plan/0021).
-/// `home_path` exists only to compose the link TARGET: `current`
-/// records the absolute generation dir so readers resolve it from
-/// any cwd. The target must exist first: a `current` pointing at
-/// nothing reads as "no generations" everywhere downstream
-/// (list/current swallow that as None) while looking deployed to
-/// anything that inspects the link.
-pub fn flip(home: &gripsack_fs::Dir, home_path: &Path, generation: u64) -> io::Result<()> {
-    let rel = Path::new(crate::paths::GENERATIONS_DIR).join(generation.to_string());
-    let dir = home_path.join(&rel);
-    if !home.metadata(&rel).is_ok_and(|m| m.is_dir()) {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!(
-                "cannot activate generation {generation}: {} is missing",
-                dir.display()
-            ),
-        ));
-    }
-    // the link target is the RELATIVE canonical form (0030 §H10): one
-    // lexical shape means both readers validate without ambient
-    // canonicalization. Pre-0.26 absolute targets still validate via
-    // canonicalize in the reader.
-    gripsack_fs::symlink_replace(home, Path::new("current"), &rel)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{io, path::Path};
 
     fn mk_gen(home: &Path, n: u64) -> Generation {
         let mut modules = BTreeMap::new();
@@ -446,7 +195,10 @@ mod tests {
                 build_closure: vec![],
             },
         );
-        Generation { number: n, modules }
+        Generation {
+            number: GenerationId::new(n),
+            modules,
+        }
     }
 
     #[test]
@@ -456,8 +208,11 @@ mod tests {
         let cap = gripsack_fs::open_or_create(home).unwrap();
         write_manifest(&cap, &mk_gen(home, 1)).unwrap();
         write_manifest(&cap, &mk_gen(home, 2)).unwrap();
-        assert_eq!(list(home).unwrap(), vec![1, 2]);
-        let read = read_manifest(home, 1).unwrap();
+        assert_eq!(
+            &*list(home).unwrap(),
+            &[GenerationId::new(1), GenerationId::new(2)]
+        );
+        let read = read_manifest(home, GenerationId::new(1)).unwrap();
         assert_eq!(
             read.modules["helix"].entries[0].hash.as_str(),
             "d".repeat(64)
@@ -472,10 +227,10 @@ mod tests {
         write_manifest(&cap, &mk_gen(home, 1)).unwrap();
         write_manifest(&cap, &mk_gen(home, 2)).unwrap();
         assert_eq!(current(home).unwrap(), None);
-        flip(&cap, home, 1).unwrap();
-        assert_eq!(current(home).unwrap(), Some(1));
-        flip(&cap, home, 2).unwrap();
-        assert_eq!(current(home).unwrap(), Some(2));
+        flip(&cap, home, GenerationId::new(1)).unwrap();
+        assert_eq!(current(home).unwrap(), Some(GenerationId::new(1)));
+        flip(&cap, home, GenerationId::new(2)).unwrap();
+        assert_eq!(current(home).unwrap(), Some(GenerationId::new(2)));
     }
 
     /// 0027 §4: the persisted-generation boundary rejects identity
@@ -499,7 +254,7 @@ mod tests {
             serde_json::to_string_pretty(&wrong).unwrap(),
         )
         .unwrap();
-        let err = read_manifest(home, 7).unwrap_err();
+        let err = read_manifest(home, GenerationId::new(7)).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
         // duplicate destinations (case-folded)
@@ -520,7 +275,7 @@ mod tests {
             serde_json::to_string_pretty(&dup).unwrap(),
         )
         .unwrap();
-        let err = read_manifest(home, 3).unwrap_err();
+        let err = read_manifest(home, GenerationId::new(3)).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
         // store path outside the store
@@ -533,7 +288,7 @@ mod tests {
             serde_json::to_string_pretty(&outside).unwrap(),
         )
         .unwrap();
-        let err = read_manifest(home, 4).unwrap_err();
+        let err = read_manifest(home, GenerationId::new(4)).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 
@@ -557,6 +312,6 @@ mod tests {
         publish_generation(&cap, &mk_gen(home, 3), None, home).unwrap();
         std::fs::remove_dir_all(home.join("generations/2")).unwrap();
         std::fs::remove_dir_all(home.join("generations/3")).unwrap();
-        assert_eq!(allocate(home, &cap).unwrap(), 4);
+        assert_eq!(allocate(home, &cap).unwrap(), GenerationId::new(4));
     }
 }

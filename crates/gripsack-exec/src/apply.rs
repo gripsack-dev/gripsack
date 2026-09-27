@@ -330,7 +330,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     {
         tracing::warn!("activation record cleanup pending ({e}) — the next run finishes it");
     }
-    info!(generation = next, "activated");
+    info!(generation = %next, "activated");
     Ok(ApplyResult {
         outcome: Outcome::Applied { generation: next },
         reports,
@@ -432,7 +432,7 @@ fn pre_flip(
     ctx: &Ctx,
     prev_manifest: &Option<store::Generation>,
     modules: &BTreeMap<String, store::ModuleState>,
-    next: u64,
+    next: store::GenerationId,
     lock: Option<&crate::lockfile::Lockfile>,
     reports: &[crate::report::StepReport],
 ) -> Result<Option<store::Generation>, ExecError> {

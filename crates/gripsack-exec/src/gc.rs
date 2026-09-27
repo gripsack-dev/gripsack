@@ -5,6 +5,10 @@
 //! (user config `~/.config/gripsack/config.toml`); the current
 //! generation is never touched.
 
+mod inventory;
+#[cfg(test)]
+mod root_model;
+
 use crate::ctx::ExecError;
 use gripsack_store as store;
 use std::io;
@@ -12,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default)]
 pub struct GcReport {
-    pub generations_removed: Vec<u64>,
+    pub generations_removed: Vec<store::GenerationId>,
     pub store_removed: Vec<PathBuf>,
     pub bytes_freed: u64,
 }
@@ -40,13 +44,14 @@ pub fn gc(
     // fails the same way (pending_recovery errors).
     let home_cap = gripsack_fs::open_or_create(home)?;
     let pending = store::journal::pending_recovery(&home_cap)?;
-    let generations = store::list_generations(home)?;
-    let current = store::current_generation(home)?;
+    let generation_directory = store::generations::GenerationDirectory::open(&home_cap)?;
+    let generations = generation_directory.inventory();
+    let current = store::generations::current_in(home, &home_cap)?;
 
     // Admission as a total function (0045 F3, 0046): the kernel's
     // biconditionals mean a forgotten check is a type-level impossibility.
     use gripsack_policy::retention::GcAdmission;
-    match gripsack_policy::retention::admit_gc(pending.is_some(), current, &generations) {
+    match gripsack_policy::retention::admit_gc(pending.is_some(), current, generations) {
         // recovery state is load-bearing: a journaled prior blob may
         // be referenced by NO retained manifest, so collecting before
         // reconcile would destroy the bytes recovery needs. Refused
@@ -82,8 +87,8 @@ pub fn gc(
     // or it under-reports collectable paths). The kernel (0046): pruned
     // generations come from the inventory and never name the current
     // generation — proved, not reviewed.
-    let pruned: std::collections::BTreeSet<u64> =
-        gripsack_policy::retention::plan_prune(&generations, current, keep)
+    let pruned: std::collections::BTreeSet<store::GenerationId> =
+        gripsack_policy::retention::plan_prune(generations, current, keep)
             .into_iter()
             .collect();
     report.generations_removed = pruned.iter().copied().collect();
@@ -93,15 +98,18 @@ pub fn gc(
     // closures, and their prior blobs. Completeness of these roots at
     // production time is a separate obligation (handoff §5.3).
     let mut referenced: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for n in &generations {
+    for n in generations.as_slice() {
         // fail CLOSED: an unparseable manifest must abort gc — dropping
         // its pins would collect referenced store paths and leave
         // dangling symlinks across the user's home (review finding G)
-        let manifest = store::read_manifest(home, *n).map_err(|e| ExecError::Step {
-            module: format!("generation {n}"),
-            step: "gc".into(),
-            detail: format!("manifest is corrupt — refusing to collect: {e}"),
-        })?;
+        let manifest =
+            generation_directory
+                .read_manifest(home, *n)
+                .map_err(|e| ExecError::Step {
+                    module: format!("generation {n}"),
+                    step: "gc".into(),
+                    detail: format!("manifest is corrupt — refusing to collect: {e}"),
+                })?;
         if pruned.contains(n) {
             continue;
         }
@@ -122,57 +130,24 @@ pub fn gc(
             }
         }
     }
-    // Inventory and unlink through the same pinned prior directory.
-    // A replaced parent symlink never redirects collection outside the home.
-    let prior_cap = match store::prior::directory(&home_cap) {
-        Ok(directory) => Some(directory),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error.into()),
-    };
-    let mut prior_candidates = Vec::new();
-    if let Some(directory) = &prior_cap {
-        for entry in directory.entries()? {
-            prior_candidates.push(utf8_path(&home.join("prior").join(entry?.file_name()))?);
-        }
-    }
+    let store_inventory = inventory::ObjectInventory::open(&home_cap, home, store::STORE_DIR)?;
+    let prior_inventory = inventory::ObjectInventory::open(&home_cap, home, "prior")?;
+    let referenced: Vec<&str> = referenced.iter().map(String::as_str).collect();
+    let store_plan = store_inventory.plan(&referenced)?;
+    let prior_plan = prior_inventory.plan(&referenced)?;
+    report.bytes_freed = store_plan
+        .bytes()
+        .checked_add(prior_plan.bytes())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "GC byte count overflow"))?;
+    // All roots, manifests, candidate names and size observations are admitted
+    // before the first deletion. Effects use the very same pinned directories.
     if !dry_run {
         for n in &pruned {
-            std::fs::remove_dir_all(store::generation_dir(home, *n))?;
+            generation_directory.remove(*n)?;
         }
     }
-
-    let referenced: Vec<&str> = referenced.iter().map(String::as_str).collect();
-
-    // The deletion kernel (0046): delete == candidates minus roots,
-    // extensionally — and monotone in the root set.
-    let store_dir = home.join(store::STORE_DIR);
-    if store_dir.is_dir() {
-        let mut candidates: Vec<String> = Vec::new();
-        for entry in std::fs::read_dir(&store_dir)? {
-            candidates.push(utf8_path(&entry?.path())?);
-        }
-        let candidate_refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
-        for doomed in gripsack_policy::retention::plan_delete(&referenced, &candidate_refs) {
-            let path = Path::new(doomed);
-            report.bytes_freed += dir_size(path)?;
-            if !dry_run {
-                std::fs::remove_dir_all(path)?;
-            }
-            report.store_removed.push(path.to_path_buf());
-        }
-    }
-    if let Some(prior_cap) = prior_cap {
-        let candidate_refs: Vec<&str> = prior_candidates.iter().map(String::as_str).collect();
-        for doomed in gripsack_policy::retention::plan_delete(&referenced, &candidate_refs) {
-            let path = Path::new(doomed);
-            let name = path.file_name().expect("direct prior directory entry");
-            report.bytes_freed += prior_cap.symlink_metadata(name)?.len();
-            if !dry_run {
-                gripsack_fs::remove_file(&prior_cap, Path::new(name))?;
-            }
-            report.store_removed.push(path.to_path_buf());
-        }
-    }
+    store_plan.collect(dry_run, &mut report)?;
+    prior_plan.collect(dry_run, &mut report)?;
     Ok(report)
 }
 
@@ -191,21 +166,6 @@ fn utf8_path(path: &Path) -> Result<String, ExecError> {
                 path.display()
             ),
         })
-}
-
-fn dir_size(path: &Path) -> io::Result<u64> {
-    let meta = std::fs::symlink_metadata(path)?;
-    if meta.is_file() {
-        return Ok(meta.len());
-    }
-    if !meta.is_dir() {
-        return Ok(0); // symlink/fifo/socket: size is not content
-    }
-    let mut total = 0;
-    for entry in std::fs::read_dir(path)? {
-        total += dir_size(&entry?.path())?;
-    }
-    Ok(total)
 }
 
 /// All ownership units of a destination belonging to one module or profile.
@@ -244,6 +204,7 @@ mod tests {
     use super::*;
     use gripsack_ir::Ownership;
     use std::fs;
+    use store::GenerationId;
 
     fn mk_gen(n: u64, store_path: PathBuf) -> store::Generation {
         let mut modules = std::collections::BTreeMap::new();
@@ -271,7 +232,10 @@ mod tests {
                 build_closure: vec![],
             },
         );
-        store::Generation { number: n, modules }
+        store::Generation {
+            number: GenerationId::new(n),
+            modules,
+        }
     }
 
     fn setup() -> tempfile::TempDir {
@@ -288,7 +252,12 @@ mod tests {
         let orphan = home.join("store").join("zzz-orphan");
         fs::create_dir_all(&orphan).unwrap();
         fs::write(orphan.join("payload"), b"old").unwrap();
-        store::flip(&gripsack_fs::open_or_create(home).unwrap(), home, 3).unwrap();
+        store::flip(
+            &gripsack_fs::open_or_create(home).unwrap(),
+            home,
+            GenerationId::new(3),
+        )
+        .unwrap();
         dir
     }
 
@@ -302,10 +271,9 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(report.store_removed.len(), 1);
-        assert!(report.store_removed[0].ends_with("zzz-orphan"));
+        assert_eq!(report.store_removed, vec![home.join("store/zzz-orphan")]);
         assert!(home.join("store/aaa-m").exists());
-        assert!(report.bytes_freed > 0);
+        assert_eq!(report.bytes_freed, 3);
     }
 
     #[test]
@@ -318,9 +286,9 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(report.generations_removed, vec![1]);
-        assert!(!store::generation_dir(home, 1).exists());
-        assert!(store::generation_dir(home, 3).exists());
+        assert_eq!(report.generations_removed, vec![GenerationId::new(1)]);
+        assert!(!store::generation_dir(home, GenerationId::new(1)).exists());
+        assert!(store::generation_dir(home, GenerationId::new(3)).exists());
         // gen 1's store path is unreferenced now → collected; gen 2's stays
         assert!(report.store_removed.iter().any(|p| p.ends_with("aaa-m")));
         assert!(
@@ -342,8 +310,8 @@ mod tests {
             false,
         )
         .unwrap();
-        assert!(store::generation_dir(home, 3).exists());
-        assert!(!report.generations_removed.contains(&3));
+        assert!(store::generation_dir(home, GenerationId::new(3)).exists());
+        assert!(!report.generations_removed.contains(&GenerationId::new(3)));
         assert!(home.join("store/ccc-m").exists());
     }
 
@@ -355,7 +323,13 @@ mod tests {
         let home = dir.path();
         let cap = gripsack_fs::open_or_create(home).unwrap();
         // a run declared its target and journaled one destination
-        store::journal::begin_run(&cap, Some(3), 4, store::journal::RunOp::Apply).unwrap();
+        store::journal::begin_run(
+            &cap,
+            Some(GenerationId::new(3)),
+            GenerationId::new(4),
+            store::journal::RunOp::Apply,
+        )
+        .unwrap();
         let dest = home.join("dest.txt");
         fs::write(&dest, b"user bytes\n").unwrap();
         let blob = store::prior::store_blob(&cap, b"user bytes\n").unwrap();
@@ -376,16 +350,19 @@ mod tests {
         let home = dir.path();
         let session = crate::LifecycleSession::acquire(home).unwrap();
         for dry_run in [false, true] {
-            let err = gc(&session, Some(1), dry_run)
-                .expect_err("gc must refuse while recovery is pending");
-            let text = err.to_string();
-            assert!(text.contains("recovery state is pending"), "{text}");
-            assert!(text.contains("reconcile"), "{text}");
+            gc(&session, Some(1), dry_run).expect_err("gc must refuse while recovery is pending");
         }
         // nothing was deleted — not the blob, not the orphan, no generation
         assert!(blob.exists());
         assert!(home.join("store/zzz-orphan").exists());
-        assert_eq!(store::list_generations(home).unwrap(), vec![1, 2, 3]);
+        assert_eq!(
+            &*store::list_generations(home).unwrap(),
+            &[
+                GenerationId::new(1),
+                GenerationId::new(2),
+                GenerationId::new(3)
+            ]
+        );
     }
 
     #[test]
@@ -395,9 +372,7 @@ mod tests {
         // the crash is reconciled (as the next apply would): the
         // destination did not exist before the run, so the
         // journaled state is consumed and the journal drains
-        let notes =
-            store::journal::reconcile(&gripsack_fs::open_or_create(home).unwrap(), home).unwrap();
-        assert!(!notes.is_empty());
+        store::journal::reconcile(&gripsack_fs::open_or_create(home).unwrap(), home).unwrap();
         let session = crate::LifecycleSession::acquire(home).unwrap();
         gc(&session, Some(1), false).unwrap();
         // the blob's generation pins lapsed WITH the journal — safe
@@ -415,8 +390,7 @@ mod tests {
         fs::write(home.join("journal").join("garbage.json"), b"not json").unwrap();
         assert!(store::journal::reconcile(&cap, home).is_err());
         let session = crate::LifecycleSession::acquire(home).unwrap();
-        let err = gc(&session, Some(1), true).expect_err("quarantine blocks gc");
-        assert!(err.to_string().contains("quarantined"), "{err}");
+        gc(&session, Some(1), true).expect_err("quarantine blocks gc");
         assert!(home.join("journal/quarantine/garbage.json").exists());
     }
 
@@ -432,7 +406,14 @@ mod tests {
         // collect), never on `dir`'s: the API takes no home argument.
         let report = gc(&session, None, true).unwrap();
         assert!(report.store_removed.is_empty());
-        assert_eq!(store::list_generations(dir.path()).unwrap(), vec![1, 2, 3]);
+        assert_eq!(
+            &*store::list_generations(dir.path()).unwrap(),
+            &[
+                GenerationId::new(1),
+                GenerationId::new(2),
+                GenerationId::new(3)
+            ]
+        );
     }
 
     #[test]

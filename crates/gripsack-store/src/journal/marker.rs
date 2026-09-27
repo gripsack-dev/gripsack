@@ -3,6 +3,7 @@
 //! recovery classifies the interrupted run by EXACT transaction
 //! identity.
 
+use crate::GenerationId;
 use gripsack_fs::Dir;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -23,8 +24,10 @@ pub(crate) struct RunMarker {
     /// `None`, so deserialization is manual below — a marker missing
     /// it is torn or corrupt and fails closed, never mistaken for a
     /// fresh run.
-    pub(crate) previous_generation: Option<u64>,
-    pub(crate) target_generation: u64,
+    #[serde(serialize_with = "crate::generation_wire::serialize_optional")]
+    pub(crate) previous_generation: Option<GenerationId>,
+    #[serde(with = "crate::generation_wire")]
+    pub(crate) target_generation: GenerationId,
     /// Informational operation kind. Classification uses exact generation
     /// identities; neither numeric ordering nor direction grants commit.
     pub(crate) op: RunOp,
@@ -110,9 +113,11 @@ impl<'de> serde::Deserialize<'de> for RunMarker {
                 }
                 Ok(RunMarker {
                     previous_generation: previous
-                        .ok_or_else(|| A::Error::missing_field("previous_generation"))?,
-                    target_generation: target
-                        .ok_or_else(|| A::Error::missing_field("target_generation"))?,
+                        .ok_or_else(|| A::Error::missing_field("previous_generation"))?
+                        .map(GenerationId::new),
+                    target_generation: GenerationId::new(
+                        target.ok_or_else(|| A::Error::missing_field("target_generation"))?,
+                    ),
                     op: op.ok_or_else(|| A::Error::missing_field("op"))?,
                 })
             }
@@ -138,8 +143,8 @@ pub enum RunOp {
 /// generation now owns (the post-commit window, review finding 5.1).
 pub fn begin_run(
     home: &Dir,
-    previous_generation: Option<u64>,
-    target_generation: u64,
+    previous_generation: Option<GenerationId>,
+    target_generation: GenerationId,
     op: RunOp,
 ) -> io::Result<()> {
     let marker = RunMarker {

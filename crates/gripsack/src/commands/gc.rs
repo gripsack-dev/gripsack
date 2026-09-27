@@ -42,7 +42,7 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
                         report
                             .generations_removed
                             .iter()
-                            .map(u64::to_string)
+                            .map(ToString::to_string)
                             .collect::<Vec<_>>()
                             .join(", ")
                     );

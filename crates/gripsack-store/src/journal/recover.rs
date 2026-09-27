@@ -45,8 +45,8 @@ pub(crate) enum Recovery {
     Restore(String),
     /// The destination drifted after the crash — the user's now.
     Keep(String),
-    /// Live state IS the prior: the mutation never landed (crash
-    /// between record and write) — nothing to restore.
+    /// Live state equals the prior, either never mutated or restored by an
+    /// earlier recovery. Durability must still be sealed before cleanup.
     Unchanged,
 }
 
@@ -71,7 +71,13 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
         Some(marker) => {
             // the ONE current-pointer reader (0030 §H10): recovery
             // never uses weaker commit evidence than normal commands
-            let current = crate::generations::current(home_path)?;
+            let current = crate::generations::current_in(home_path, home)?;
+            if let Some(number) = current {
+                // A matching pointer is not authority over a corrupt or
+                // missing generation. Admit the same pinned state before
+                // either restoration or committed cleanup can have effects.
+                crate::generations::read_manifest_at(home, home_path, number)?;
+            }
             match classify(&RecoveryFacts {
                 previous: marker.previous_generation,
                 target: marker.target_generation,
@@ -94,6 +100,10 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
     };
     let mut lines = Vec::new();
     if committed {
+        // A process can die after current's rename but before its directory
+        // barrier. A later reader sees the new pointer in the kernel cache;
+        // seal that observation before durable cleanup destroys the journal.
+        gripsack_fs::fsync_dir(home, Path::new("."))?;
         cleanup(
             &journal,
             &entries.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
@@ -133,9 +143,13 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
                 });
             }
             Recovery::Unchanged => {
+                // A previous recovery may have made the prior visible and
+                // then failed its durability barrier. Observation alone is
+                // not authority to discard the still-needed journal entry.
+                seal_observed_prior(&dest_dir, &dest_name, &entry.prior)?;
                 lines.push(RecoveryNote {
                     severity: NoteSeverity::Info,
-                    message: format!("unchanged {}: the mutation never landed", entry.dest),
+                    message: format!("unchanged {}: prior state is durable", entry.dest),
                 });
             }
             Recovery::Keep(why) => {
@@ -207,7 +221,7 @@ pub(crate) enum RecoveryDecision {
     Restore,
     /// The destination drifted after the crash — the user's now.
     Keep,
-    /// Live state IS the prior: the mutation never landed.
+    /// Live state equals the prior; the caller still seals it before cleanup.
     Unchanged,
 }
 
@@ -226,7 +240,8 @@ pub(crate) fn decide_from(
     match live {
         // the mutation landed intact
         Some(l) if intended.satisfied_by(l) => RecoveryDecision::Restore,
-        // live IS the prior: the mutation never landed
+        // The prior is visible: the original mutation or an earlier restore
+        // may explain it. Visibility alone does not establish durability.
         Some(l) if Some(l) == prior_id => RecoveryDecision::Unchanged,
         // A later mutation's durable record may exist before its write.
         // Its admitted predecessor is still ours, never a foreign edit.
@@ -251,6 +266,7 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {}
                 Err(e) => return Err(e),
             }
+            gripsack_fs::fsync_dir(dest_dir, Path::new("."))?;
         }
         PriorSerde::File { hash, mode } => {
             let bytes = crate::prior::read_blob(home, hash)?;
@@ -264,4 +280,17 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
         }
     }
     Ok(())
+}
+
+/// Seal an observed prior before cleanup, including a partially completed
+/// restoration from an earlier process. Regular bytes need their own barrier;
+/// absence/link identity needs the pinned parent-directory barrier.
+fn seal_observed_prior(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde) -> io::Result<()> {
+    if matches!(prior, PriorSerde::File { .. }) {
+        let file = gripsack_fs::open_file_nofollow(dest_dir, dest_name)?;
+        gripsack_fs::fault::operation(gripsack_fs::fault::Boundary::FileSync, dest_name, || {
+            file.sync_all()
+        })?;
+    }
+    gripsack_fs::fsync_dir(dest_dir, Path::new("."))
 }

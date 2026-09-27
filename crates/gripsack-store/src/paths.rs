@@ -105,7 +105,7 @@ pub fn current_link(home: &Path) -> PathBuf {
 }
 
 /// Directory of one generation's profile tree.
-pub fn generation_dir(home: &Path, generation: u64) -> PathBuf {
+pub fn generation_dir(home: &Path, generation: crate::GenerationId) -> PathBuf {
     home.join(GENERATIONS_DIR).join(generation.to_string())
 }
 
@@ -205,7 +205,10 @@ mod tests {
     fn generation_layout() {
         let home = Path::new("/gs");
         assert_eq!(current_link(home), Path::new("/gs/current"));
-        assert_eq!(generation_dir(home, 42), Path::new("/gs/generations/42"));
+        assert_eq!(
+            generation_dir(home, crate::GenerationId::new(42)),
+            Path::new("/gs/generations/42")
+        );
     }
 
     #[test]

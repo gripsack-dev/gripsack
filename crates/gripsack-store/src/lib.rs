@@ -25,7 +25,9 @@
 //! activation is a single indivisible rename.
 
 pub mod activation;
+mod generation_wire;
 pub mod generations;
+pub use gripsack_policy::{GenerationId, GenerationInventory, GenerationList};
 pub mod hash;
 pub mod journal;
 pub mod ownership;

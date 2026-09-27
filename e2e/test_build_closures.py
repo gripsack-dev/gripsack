@@ -203,6 +203,16 @@ export default module("consumer", {
     run(repo, "update", "--host", "testhost")
     apply(repo)
     assert built.read_bytes().endswith(b"sdk-v2\n"), "transitive pin updates must rebuild the consumer"
+    # Both retained generations keep the exact SDK/compiler closures produced
+    # by the real graph adapter, even though neither tool deploys a destination.
+    new_closure = manifest(sandbox)["modules"]["consumer"]["build_closure"]
+    run(repo, "gc")
+    for root in closure + new_closure:
+        assert (Path(root) / "bin/cc").is_file()
+    assert (Path(closure[0]) / "bin/cc").read_bytes().endswith(b"sdk-v1\n")
+    assert (Path(new_closure[0]) / "bin/cc").read_bytes().endswith(b"sdk-v2\n")
+    run(repo, "rollback", "1")
+    assert built.read_bytes().endswith(b"sdk-v1\n")
 
 
 def test_runtime_role_transitions_and_subset_retention(sandbox):

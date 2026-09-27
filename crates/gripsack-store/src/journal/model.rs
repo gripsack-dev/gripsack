@@ -99,7 +99,7 @@ impl Intent {
 struct Disk {
     /// None = the destination is absent (removal runs exercise this).
     dest: Option<u8>,
-    current: Option<u64>,
+    current: Option<crate::GenerationId>,
     /// One journal entry: (prior content, intended state). The
     /// intended of a removal run is `Intent::Remove` (the typed
     /// removal marker, 0045 F1 — no sentinel string).
@@ -107,7 +107,7 @@ struct Disk {
     /// The run marker: (previous, target). Legacy (pre-0.23) markers
     /// carry `None` for previous and classify by the 0.22 direction
     /// rule — kept so the counterexample test can express them.
-    marker: Option<(Option<u64>, u64)>,
+    marker: Option<(Option<crate::GenerationId>, crate::GenerationId)>,
 }
 
 /// Which transaction the model runs. Deploy covers apply and rollback
@@ -143,7 +143,7 @@ struct Node {
 }
 
 impl Node {
-    fn initial(prev_gen: u64, kind: RunKind) -> Node {
+    fn initial(prev_gen: crate::GenerationId, kind: RunKind) -> Node {
         let dest = match kind {
             RunKind::Deploy => Some(PRIOR),
             RunKind::Prune => Some(DEPLOYED),
@@ -170,7 +170,13 @@ impl Node {
 }
 
 /// Execute step `i`'s effect on the volatile copy (no flush).
-fn step_effect(disk: &mut Disk, i: usize, prev: u64, target: u64, kind: RunKind) {
+fn step_effect(
+    disk: &mut Disk,
+    i: usize,
+    prev: crate::GenerationId,
+    target: crate::GenerationId,
+    kind: RunKind,
+) {
     match i {
         0 => disk.marker = Some((Some(prev), target)),
         1 => {
@@ -222,8 +228,8 @@ fn crash_disks(node: &Node) -> Vec<(Disk, &'static str)> {
 /// functions and the oracle is checked by the caller.
 fn recover(
     mut disk: Disk,
-    run_prev: u64,
-    run_target: u64,
+    run_prev: crate::GenerationId,
+    run_target: crate::GenerationId,
     classifier: &dyn Fn(&RecoveryFacts) -> Classification,
 ) -> (Disk, Option<Classification>) {
     // an empty journal — never started, or cleanup finished — means
@@ -279,8 +285,8 @@ fn check_oracle(
     class: Option<Classification>,
     kind: RunKind,
     user_edited: bool,
-    prev: u64,
-    target: u64,
+    prev: crate::GenerationId,
+    target: crate::GenerationId,
 ) -> Result<(), String> {
     let bad = |why: &str| -> String {
         format!("{why}\n  crashed at: {crashed_disk:?}\n  after recovery: {disk:?}")
@@ -339,8 +345,8 @@ fn check_oracle(
 /// Walk every reachable state of one run kind and direction. Returns
 /// (states explored, violations).
 fn explore(
-    prev: u64,
-    target: u64,
+    prev: crate::GenerationId,
+    target: crate::GenerationId,
     kind: RunKind,
     classifier: &dyn Fn(&RecoveryFacts) -> Classification,
 ) -> (usize, Vec<String>) {
@@ -443,7 +449,12 @@ mod tests {
         let mut total = 0;
         for (prev, target) in [(1, 2), (2, 1)] {
             for kind in [RunKind::Deploy, RunKind::Prune] {
-                let (explored, violations) = explore(prev, target, kind, &classify);
+                let (explored, violations) = explore(
+                    crate::GenerationId::new(prev),
+                    crate::GenerationId::new(target),
+                    kind,
+                    &classify,
+                );
                 total += explored;
                 assert!(
                     violations.is_empty(),

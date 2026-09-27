@@ -13,7 +13,11 @@ enum DestinationClaim<'a> {
     },
 }
 
-pub(super) fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<()> {
+pub(super) fn validate(
+    manifest: &Generation,
+    generation: crate::GenerationId,
+    home: &Path,
+) -> io::Result<()> {
     let invalid = |why: String| io::Error::new(io::ErrorKind::InvalidData, why);
     if manifest.number != generation {
         return Err(invalid(format!(

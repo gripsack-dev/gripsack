@@ -8,7 +8,7 @@ use tracing::info;
 /// (plan/0025 §A): a crash mid-rollback is recovered by the next
 /// run's reconcile, and an ordinary failure restores the pre-rollback
 /// state before returning.
-pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
+pub fn rollback(generation: Option<store::GenerationId>, palette: Palette) -> ExitCode {
     let home = store::gripsack_home();
     // rollback rewrites deployments and flips — the session IS the
     // lifecycle-lock contract (0045 F4), not a caller convention.
@@ -26,11 +26,15 @@ pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let target = match (generation, current) {
-        (Some(n), _) => n,
-        // generation 0 exists only as adopt's empty baseline (0015 §4)
-        (None, Some(c)) if c >= 1 && store::read_manifest(&home, c - 1).is_ok() => c - 1,
-        (None, _) => {
+    let target = generation.or_else(|| {
+        // Generation zero is adopt's historical empty baseline.
+        current
+            .and_then(store::GenerationId::checked_previous)
+            .filter(|id| store::read_manifest(&home, *id).is_ok())
+    });
+    let target = match target {
+        Some(target) => target,
+        None => {
             eprintln!("grip: nothing to roll back to");
             return ExitCode::FAILURE;
         }
@@ -60,7 +64,7 @@ pub fn rollback(generation: Option<u64>, palette: Palette) -> ExitCode {
             for note in notes {
                 println!("  {note}");
             }
-            info!(generation = target, "rolled back");
+            info!(generation = %target, "rolled back");
             println!("{} generation {}", palette.good("rolled back to"), target);
             ExitCode::SUCCESS
         }

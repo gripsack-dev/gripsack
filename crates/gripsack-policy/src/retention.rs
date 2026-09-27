@@ -15,6 +15,7 @@
 //! - growing the root set cannot grow the deletion set
 //!   (`lemma_delete_monotone`).
 
+use crate::{GenerationId, GenerationInventory};
 use vstd::prelude::*;
 // plain-cargo shim builds see no use of the seq lemmas; the
 // `broadcast use` below (erased outside verification) needs them
@@ -44,16 +45,17 @@ pub enum GcAdmission {
 /// Admit or refuse destructive collection. Recovery state wins over
 /// inventory shape: while recovery is pending, even a sound inventory
 /// proves nothing about journal-only blobs.
-pub fn admit_gc(recovery_pending: bool, current: Option<u64>, generations: &[u64]) -> (result: GcAdmission)
+pub fn admit_gc(recovery_pending: bool, current: Option<GenerationId>, inventory: GenerationInventory<'_>) -> (result: GcAdmission)
     ensures
         (result == GcAdmission::RecoveryPending) <==> recovery_pending,
         (result == GcAdmission::CorruptCurrent) <==>
             (!recovery_pending && current.is_some()
-            && !generations@.contains(current.unwrap())),
+            && !inventory.view().contains(current.unwrap())),
         (result == GcAdmission::Admitted) <==>
             (!recovery_pending && (current.is_none()
-            || generations@.contains(current.unwrap()))),
+            || inventory.view().contains(current.unwrap()))),
 {
+    let generations = inventory.as_slice();
     if recovery_pending {
         return GcAdmission::RecoveryPending;
     }
@@ -65,7 +67,7 @@ pub fn admit_gc(recovery_pending: bool, current: Option<u64>, generations: &[u64
 
 /// Membership over generation numbers (vstd does not specify
 /// `slice::contains`; this loop carries its own contract).
-pub fn contains_generation(haystack: &[u64], needle: u64) -> (result: bool)
+pub fn contains_generation(haystack: &[GenerationId], needle: GenerationId) -> (result: bool)
     ensures
         result == exists|j: int| 0 <= j < haystack.len() && haystack@[j] == needle,
 {
@@ -107,43 +109,54 @@ pub fn contains_identity(haystack: &[&str], needle: &str) -> (result: bool)
     false
 }
 
-/// Generation pruning: with `keep` set and more generations on disk
-/// than it allows, the oldest `excess` go — EXCEPT the current one,
-/// which is never pruned (one extra is kept instead). The inventory
-/// arrives sorted ascending (`generations::list`).
-pub fn plan_prune(generations: &[u64], current: Option<u64>, keep: Option<u32>) -> (result: Vec<u64>)
+/// Prune exactly the oldest excess prefix except current. Current protection
+/// can retain one extra generation; it never shifts deletion to a newer one.
+/// Inventory construction has already checked strict ascending order.
+pub fn plan_prune(inventory: GenerationInventory<'_>, current: Option<GenerationId>, keep: Option<u32>) -> (result: Vec<GenerationId>)
     ensures
-        // every pruned generation came from the inventory
-        forall|g: u64| result@.contains(g) ==> generations@.contains(g),
-        // the active generation is never in the deletion set
+        result@ == spec_prune_prefix(inventory.view(), current,
+            match keep { None => 0, Some(k) => if inventory.view().len() > k {
+                inventory.view().len() - k } else { 0 } }),
+        forall|g: GenerationId| result@.contains(g) ==> inventory.view().contains(g),
         current.is_some() ==> !result@.contains(current.unwrap()),
 {
-    let mut pruned: Vec<u64> = Vec::new();
-    if let Some(keep) = keep {
-        let n = generations.len();
-        let keep = keep as usize;
-        if n > keep {
-            let excess = n - keep;
-            let mut i = 0;
-            while i < excess
-                invariant
-                    i <= excess,
-                    excess <= n == generations@.len(),
-                    forall|g: u64| pruned@.contains(g) ==>
-                        generations@.contains(g)
-                        && (current.is_some() ==> g != current.unwrap()),
-                decreases excess - i,
-            {
-                let g = generations[i];
-                assert(generations@[i as int] == g);
-                if Some(g) != current {
-                    pruned.push(g);
-                }
-                i += 1;
-            }
+    let generations = inventory.as_slice();
+    let mut pruned: Vec<GenerationId> = Vec::new();
+    let excess = match keep {
+        Some(keep) if generations.len() > keep as usize => generations.len() - keep as usize,
+        _ => 0,
+    };
+    let mut i = 0;
+    while i < excess
+        invariant
+            i <= excess <= generations.len(),
+            generations@ == inventory.view(),
+            pruned@ == spec_prune_prefix(generations@, current, i as int),
+            forall|g: GenerationId| pruned@.contains(g) ==>
+                generations@.contains(g) && (current.is_some() ==> g != current.unwrap()),
+        decreases excess - i,
+    {
+        let g = generations[i];
+        if Some(g) != current {
+            pruned.push(g);
         }
+        i += 1;
     }
     pruned
+}
+
+pub open spec fn spec_prune_prefix(
+    generations: Seq<GenerationId>, current: Option<GenerationId>, count: int,
+) -> Seq<GenerationId>
+    decreases count,
+{
+    if count <= 0 {
+        Seq::empty()
+    } else {
+        let prefix = spec_prune_prefix(generations, current, count - 1);
+        let id = generations[count - 1];
+        if Some(id) == current { prefix } else { prefix.push(id) }
+    }
 }
 
 /// The deletion set: candidates minus roots, order-preserving.

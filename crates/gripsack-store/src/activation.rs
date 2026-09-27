@@ -28,7 +28,8 @@ pub struct PendingIntent {
 /// The intents awaiting execution for a committed generation.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PendingActivation {
-    pub generation: u64,
+    #[serde(with = "crate::generation_wire")]
+    pub generation: crate::GenerationId,
     pub intents: Vec<PendingIntent>,
 }
 
@@ -78,7 +79,7 @@ mod tests {
         let home = gripsack_fs::open_or_create(dir.path()).unwrap();
         assert!(read_pending(&home).unwrap().is_none());
         let pending = PendingActivation {
-            generation: 3,
+            generation: crate::GenerationId::new(3),
             intents: vec![PendingIntent {
                 module: "demo".into(),
                 action: gripsack_ir::Action::Fonts,

@@ -52,7 +52,7 @@ FROM builder AS test
 RUN cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
-# Published artifacts and the real coordinator/journal admission boundaries
+# Published artifacts and coordinator/journal/GC admission boundaries
 # are checked and mutation-calibrated. Tool/build failures never qualify as
 # successful semantic negatives.
 RUN apk add --no-cache python3 \
@@ -61,7 +61,8 @@ RUN apk add --no-cache python3 \
     && python3 scripts/gen_diagnostic_registry.py --self-check \
     && python3 scripts/gen_frontend_embed.py --check \
     && python3 scripts/check_scheduler_loom.py \
-    && python3 scripts/check_journal_admission.py
+    && python3 scripts/check_journal_admission.py \
+    && python3 scripts/check_gc_roots.py
 
 # The debug binary for stages that need a runnable grip (e2e).
 FROM builder AS bin

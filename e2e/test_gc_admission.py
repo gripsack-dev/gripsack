@@ -145,3 +145,67 @@ def test_unfinished_recovery_blocks_gc_then_recovers(sandbox):
     assert out.returncode == 0, out.stderr
     # the orphaned blob is collectable only NOW that recovery is done
     assert not (home / 'prior' / blob).exists()
+
+
+@pytest.mark.parametrize("root_name", ["store", "generations", "prior"])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_substituted_collection_root_preserves_foreign_bytes_and_history(
+    sandbox, root_name, dry_run
+):
+    repo, home = setup(sandbox)
+    (repo / "env.toml").write_text("[env]\nname='fixture'\n[settings]\nkeep_generations=1\n")
+    root = home / root_name
+    root.mkdir(exist_ok=True)
+    original = home / (root_name + "-retained")
+    manifests = [(home / f"generations/{n}/manifest.json").read_bytes() for n in (1, 2)]
+    store_names = {entry.name for entry in (home / "store").iterdir()}
+    root.rename(original)
+    outside = sandbox / "foreign"
+    (outside / "foreign-directory").mkdir(parents=True)
+    sentinel = outside / "foreign-directory/sentinel"
+    sentinel.write_bytes(b"unowned fixture bytes")
+    root.symlink_to(outside, target_is_directory=True)
+    out = grip("gc", *(["--dry-run"] if dry_run else []), cwd=repo)
+    assert out.returncode != 0, out.stdout
+    assert sentinel.read_bytes() == b"unowned fixture bytes"
+    root.unlink()
+    original.rename(root)
+    assert [(home / f"generations/{n}/manifest.json").read_bytes() for n in (1, 2)] == manifests
+    assert {entry.name for entry in (home / "store").iterdir()} == store_names
+
+
+@pytest.mark.parametrize("shape", ["file", "broken-link", "non-utf8-child"])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_invalid_store_inventory_precedes_generation_pruning(sandbox, shape, dry_run):
+    import os
+
+    repo, home = setup(sandbox)
+    (repo / "env.toml").write_text("[env]\nname='fixture'\n[settings]\nkeep_generations=1\n")
+    before = [(home / f"generations/{n}/manifest.json").read_bytes() for n in (1, 2)]
+    store = home / "store"
+    if shape == "non-utf8-child":
+        os.mkdir(os.fsencode(store) + b"/invalid-\xff")
+    else:
+        store.rename(home / "retained-store")
+        if shape == "file":
+            store.write_bytes(b"not a collection directory")
+        else:
+            store.symlink_to(sandbox / "absent")
+    out = grip("gc", *(["--dry-run"] if dry_run else []), cwd=repo)
+    assert out.returncode != 0, out.stdout
+    assert [(home / f"generations/{n}/manifest.json").read_bytes() for n in (1, 2)] == before
+
+
+def test_collecting_orphan_symlink_never_traverses_its_payload(sandbox):
+    repo, home = setup(sandbox)
+    outside = sandbox / "foreign"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    sentinel.write_bytes(b"foreign payload")
+    orphan = home / "store/orphan-link"
+    orphan.symlink_to(outside, target_is_directory=True)
+    out = grip("gc", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert not orphan.is_symlink()
+    assert sentinel.read_bytes() == b"foreign payload"
+    assert (sandbox / ".owned").read_text() == "two"

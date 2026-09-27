@@ -13,6 +13,8 @@
 //! rendering stays out of the kernels.
 use vstd::prelude::*;
 
+pub mod generation;
+pub use generation::{GenerationId, GenerationInventory, GenerationList};
 pub mod graph;
 pub mod merge;
 pub mod ownership;
@@ -46,11 +48,11 @@ pub enum Classification {
 pub struct RecoveryFacts {
     /// The generation the run started from — None is a fresh
     /// machine's first run.
-    pub previous: Option<u64>,
+    pub previous: Option<GenerationId>,
     /// The generation the run was building toward.
-    pub target: u64,
+    pub target: GenerationId,
     /// `current` on disk when recovery ran.
-    pub current: Option<u64>,
+    pub current: Option<GenerationId>,
 }
 
 /// The commit classifier as a pure function (0028), exact equality

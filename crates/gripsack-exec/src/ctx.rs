@@ -67,9 +67,13 @@ impl Ctx {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
     /// Nothing changed; no generation created.
-    Satisfied { generation: Option<u64> },
+    Satisfied {
+        generation: Option<gripsack_store::GenerationId>,
+    },
     /// A new generation was deployed and activated.
-    Applied { generation: u64 },
+    Applied {
+        generation: gripsack_store::GenerationId,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -139,7 +139,7 @@ pub(crate) fn collect_from_manifest(
 /// rolled-back generation — discarded, never run.
 pub(crate) fn resume_pending(
     home: &gripsack_fs::Dir,
-    current: Option<u64>,
+    current: Option<store::GenerationId>,
 ) -> std::io::Result<Vec<StepReport>> {
     let Some(pending) = store::activation::read_pending(home)? else {
         return Ok(Vec::new());

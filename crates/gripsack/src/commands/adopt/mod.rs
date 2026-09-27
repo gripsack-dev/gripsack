@@ -291,7 +291,7 @@ pub fn adopt(
             store::write_manifest(
                 &cap,
                 &store::Generation {
-                    number: 0,
+                    number: store::GenerationId::new(0),
                     modules: Default::default(),
                 },
             )

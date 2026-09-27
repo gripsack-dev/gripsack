@@ -12,7 +12,7 @@ from verus_evidence import Evidence, EvidenceError, self_check
 
 ROOT = Path(__file__).resolve().parent.parent
 CRATE = ROOT / "crates/gripsack-policy"
-MIN_OBLIGATIONS = 80
+MIN_OBLIGATIONS = 88
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
@@ -21,6 +21,11 @@ FAMILIES = {
     "retention": tuple("retention::" + name for name in (
         "admit_gc", "contains_generation", "contains_identity", "plan_prune", "plan_delete",
         "lemma_delete_monotone", "lemma_delete_monotone_prefix",
+    )),
+    "generation-inventory": tuple("generation::" + name for name in (
+        "GenerationId::new", "GenerationId::value", "GenerationId::checked_next",
+        "GenerationId::checked_previous", "GenerationInventory::new",
+        "GenerationInventory::as_slice", "GenerationList::new", "GenerationList::inventory",
     )),
     "merge": tuple("merge::" + name for name in (
         "splice_bytes", "lemma_rest_is_gaps", "lemma_splice_canonical", "lemma_splice_identity",
@@ -57,6 +62,10 @@ MUTANTS = (
     Mutant("classifier", "lib.rs", "classify", "(Some(_), _) => Classification::Ambiguous,", "(Some(_), _) => Classification::Committed,"),
     Mutant("ownership-drift", "ownership.rs", "ownership::plan_copy", "Some((written, false)) if live == written => CopyPlan::Update,", "Some((written, true)) if live == written => CopyPlan::Update,"),
     Mutant("gc-roots-in-deletion", "retention.rs", "retention::plan_delete", "if !contains_identity(referenced, c) {", "if contains_identity(referenced, c) {"),
+    Mutant("gc-newest-prefix", "retention.rs", "retention::plan_prune",
+           "let g = generations[i];", "let g = generations[generations.len() - 1 - i];"),
+    Mutant("generation-duplicate", "generation.rs", "generation::GenerationInventory::new",
+           "if ids[i - 1].number >= ids[i].number {", "if ids[i - 1].number > ids[i].number {"),
     Mutant("merge-splice", "merge.rs", "merge::splice_bytes", "    out.extend_from_slice(&text[cursor..]);", ""),
     Mutant("merge-scanner-utf8", "merge/scanner.rs", "merge::scanner::scan",
            "span: Span { start: active.start, end },",
@@ -83,7 +92,7 @@ def verify(crate: Path, target: Path) -> tuple[int, Evidence]:
     try:
         evidence = Evidence.parse(result.stdout)
     except EvidenceError:
-        print(result.stdout[-12000:], flush=True)
+        print(result.stdout, flush=True)
         raise
     print("VERUS_RESULT=" + json.dumps(evidence.results, sort_keys=True), flush=True)
     for diagnostic in evidence.diagnostics:

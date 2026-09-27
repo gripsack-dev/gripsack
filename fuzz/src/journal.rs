@@ -49,7 +49,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         gripsack_store::write_manifest(
             s.cap(),
             &gripsack_store::Generation {
-                number: n,
+                number: gripsack_store::GenerationId::new(n),
                 modules: Default::default(),
             },
         )
@@ -57,9 +57,9 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
     }
     match entry_bytes.first().copied().unwrap_or(0) % 4 {
         0 => {}
-        1 => gripsack_store::flip(s.cap(), s.home(), 1).unwrap(),
-        2 => gripsack_store::flip(s.cap(), s.home(), 2).unwrap(),
-        _ => gripsack_store::flip(s.cap(), s.home(), 3).unwrap(),
+        1 => gripsack_store::flip(s.cap(), s.home(), gripsack_store::GenerationId::new(1)).unwrap(),
+        2 => gripsack_store::flip(s.cap(), s.home(), gripsack_store::GenerationId::new(2)).unwrap(),
+        _ => gripsack_store::flip(s.cap(), s.home(), gripsack_store::GenerationId::new(3)).unwrap(),
     }
     let _ = gripsack_store::reconcile(s.cap(), s.home());
     // The symlink referent is never a deployment destination.

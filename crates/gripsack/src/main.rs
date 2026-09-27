@@ -102,7 +102,7 @@ enum Command {
     /// Flip `current` back to a previous generation
     Rollback {
         /// Generation number (default: the previous one)
-        generation: Option<u64>,
+        generation: Option<gripsack_store::GenerationId>,
     },
     /// Update grip itself: tarball installs self-update in place;
     /// brew/cargo/mise installs get their manager's command
