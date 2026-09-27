@@ -16,6 +16,25 @@ export default module('demo', { install: { payload: symlink('~/.owned') } });'''
     return repo, home
 
 
+def test_prior_directory_symlink_blocks_gc_before_any_deletion(sandbox):
+    repo, home = setup(sandbox)
+    outside = sandbox / "outside-priors"
+    outside.mkdir()
+    sentinel = outside / ("ab" * 32)
+    sentinel.write_bytes(b"not owned by the prior store")
+    (home / "prior").symlink_to(outside, target_is_directory=True)
+    orphan = home / "store" / "orphan-candidate"
+    orphan.mkdir()
+    (orphan / "content").write_text("unreferenced")
+    before = {entry.name for entry in (home / "store").iterdir()}
+    for args in (["gc", "--dry-run"], ["gc"]):
+        result = grip(*args, cwd=repo)
+        assert result.returncode != 0
+        assert sentinel.read_bytes() == b"not owned by the prior store"
+        assert {entry.name for entry in (home / "store").iterdir()} == before
+        assert (home / "generations/1").is_dir()
+
+
 @pytest.mark.parametrize('bad', ['root', 'nested', 'traversal', 'relative', 'outside'])
 @pytest.mark.parametrize('field', ['store_path', 'build_closure'])
 def test_invalid_roots_block_collection_without_deleting(sandbox, bad, field):

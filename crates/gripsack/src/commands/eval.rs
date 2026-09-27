@@ -246,12 +246,11 @@ pub fn check_ir(json: &str, sink: &mut DiagnosticSink) -> Result<Ir, ExitCode> {
     })
 }
 
-/// Read-only workspace admission is available before the A2/E/B
-/// executors. No module executor may mistake an admitted catalog for
-/// an empty personal profile and silently report success.
+/// Native file profiles execute; unsupported catalog capabilities must never
+/// fall through to an empty legacy apply or an alternate fallback executor.
 pub fn reject_workspace_execution(
     ir: &Ir,
-    operation: &str,
+    operation: gripsack_ir::workspace::WorkspaceOperation,
     sink: &mut DiagnosticSink,
 ) -> Result<(), ExitCode> {
     let Some(diagnostic) = ir.workspace_execution_error(operation) else {
@@ -261,31 +260,31 @@ pub fn reject_workspace_execution(
     Err(ExitCode::FAILURE)
 }
 
-/// E110: a fetch-less module can only deploy repo files — a missing
-/// source is statically knowable and must fail at eval/check time,
-/// not mid-deploy (review finding E2). Modules with a payload (fetch
-/// or a fetch step) legitimately reference into it.
+/// E110: entries sourced only from the repo must exist at check time.
+/// Fetches and producer recipes supply a staged payload instead; a fetch-less
+/// shell/run build may legitimately create files that do not exist yet.
 pub fn validate_sources(ir: &Ir, repo: &Path, sink: &mut DiagnosticSink) -> Result<(), ExitCode> {
     let mut diagnostics = Vec::new();
     for (name, module) in &ir.modules {
-        let has_payload = module.fetch.is_some()
-            || module.steps.as_ref().is_some_and(|steps| {
-                steps
-                    .iter()
-                    .any(|s| matches!(s.action, gripsack_ir::StepAction::Fetch { .. }))
-            });
-        if has_payload {
+        let prepared = match gripsack_ir::prepared::PreparedModule::new(module) {
+            Ok(prepared) => prepared,
+            Err(diagnostic) => {
+                diagnostics.push(diagnostic);
+                continue;
+            }
+        };
+        if prepared.fetch().is_some() || prepared.has_recipe() {
             continue;
         }
-        for entry in module.install.iter().chain(module.config.iter()) {
+        for entry in prepared.entries() {
             if !repo.join(&entry.from).exists() {
                 diagnostics.push(
                     gripsack_ir::Diagnostic::error(
                         gripsack_ir::codes::MISSING_SOURCE,
                         format!("module {name:?}: no payload or repo file at {}", entry.from),
                     )
-                    .with_label(module.span.clone(), "module declared here")
-                    .with_help("fix the path, or add a fetch if the source is a payload"),
+                    .with_label(entry.span.clone().or_else(|| module.span.clone()), "source declared here")
+                    .with_help("fix the repository path, or declare the producer that supplies this payload"),
                 );
             }
         }

@@ -2537,7 +2537,7 @@
    "mandatory_deliverable": "Real composable file deployment through existing ownership machinery",
    "required_acceptance_evidence": "Rendered content linked/copied/merged; typed repo/artifact origin counterexample; raw/rendered/deployed validation timing; tree additions/removals/escapes/collisions; drift/adopt/remove/foreign-byte preservation; failed preparation and crash/rollback/GC fixtures; actual policy/model/TLAPS correspondence and calibrated mutants",
    "named_cases_are_conjunctive": true,
-   "status": "pending",
+   "status": "in_progress",
    "required_platform_capability_lanes": [
     "container-gates",
     "linux-amd64",
@@ -7318,7 +7318,7 @@
     "A2-07"
    ],
    "global_gates_apply": true,
-   "status": "pending"
+   "status": "in_progress"
   },
   {
    "id": "A2-P",

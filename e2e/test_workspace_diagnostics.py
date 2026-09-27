@@ -561,8 +561,9 @@ def test_unavailable_capability_names_first_declared_output_and_owner(
             {
                 "kind": "profile", "name": "dotfiles",
                 "span": {"file": "outputs.ts", "line": 7},
+                "environment": "development",
             },
-            "A2", "profile deployment", id="profile-before-image",
+            "A2", "profile deployment", id="profile-environment-before-image",
         ),
         pytest.param(
             {
@@ -587,13 +588,18 @@ def test_first_declared_unavailable_output_preserves_its_distinct_owner(
         "kind": "image", "name": "later", "span": {"file": "outputs.ts", "line": 12},
         "packages": [], "target": {"os": "linux", "arch": "x86_64"},
     }
+    later_environment = {
+        "kind": "environment", "name": "development",
+        "span": {"file": "outputs.ts", "line": 17},
+        "packages": [], "target": {"os": "linux", "arch": "x86_64"},
+    }
     path = repo / "workspace.ir.json"
     path.write_text(json.dumps({
         "ir_version": 5,
         "host": {"os": "linux", "arch": "x86_64"},
         "workspace": {
             "span": {"file": "outputs.ts", "line": 1},
-            "outputs": [first, later_image],
+            "outputs": [first, later_image, later_environment],
         },
     }))
     planned = grip("plan", "--ir", str(path), cwd=repo)
@@ -698,6 +704,8 @@ def test_distinct_managed_block_markers_coexist_over_one_host_file(sandbox):
     (case-variant) is E111 labeling both declarations."""
     repo = sandbox / "managed-blocks"
     repo.mkdir()
+    (repo / "cfg").mkdir()
+    (repo / "cfg/snippet").write_text("export DEMO=1\n")
 
     def block(line, marker):
         return {
@@ -720,12 +728,10 @@ def test_distinct_managed_block_markers_coexist_over_one_host_file(sandbox):
         }))
         return path
 
-    # Failing-before: any two blocks over one path were E111.
     distinct = document([block(3, "gripsack:tools"), block(7, "gripsack:editor")])
     result = grip("plan", "--ir", str(distinct), cwd=repo)
-    assert result.returncode != 0
-    assert "E111" not in result.stderr, result.stderr
-    assert "E124" in result.stderr, "distinct markers pass ownership; the executor refusal follows"
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (sandbox / ".shellrc").exists()
 
     duplicate = document([block(3, "gripsack:tools"), block(9, "GRIPSACK:TOOLS")])
     result = grip("plan", "--ir", str(duplicate), cwd=repo)

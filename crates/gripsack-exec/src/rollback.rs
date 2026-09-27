@@ -62,8 +62,7 @@ pub fn rollback_generation(
     )?;
 
     let result = (|| {
-        let (ops, mut planned_notes) = plan(home_path, current, target)?;
-        execute(&home, home_path, &ops)?;
+        let mut planned_notes = restore_destinations(&home, home_path, current, target)?;
         notes.append(&mut planned_notes);
         // The env profile renders INTO the generation before the flip
         // (0025 §C): activation and profile become one indivisible step.
@@ -142,18 +141,18 @@ pub fn rollback_generation(
     }
 }
 
-/// `(module, entry, store_path)` per CANONICAL destination (0035 F1).
-type DestMap<'m> = BTreeMap<std::path::PathBuf, (&'m str, &'m store::DeployedEntry, &'m Path)>;
+/// Entries are keyed by physical destination AND managed-block identity.
+/// Whole-file ownership still transfers across owner renames.
+type DestMap<'m> = BTreeMap<store::OwnershipKey, (&'m str, &'m store::DeployedEntry, &'m Path)>;
 
 fn by_destination(generation: &store::Generation) -> DestMap<'_> {
-    // E111 guarantees one deployer per destination within a
-    // generation; first-wins is defensive against hand-edited
-    // manifests
     let mut map = DestMap::new();
     for (name, state) in &generation.modules {
         for entry in &state.entries {
-            map.entry(entry.key())
-                .or_insert((name.as_str(), entry, &state.store_path));
+            map.insert(
+                entry.ownership_key(name),
+                (name.as_str(), entry, &state.store_path),
+            );
         }
     }
     map
@@ -186,27 +185,25 @@ fn rollback_intents(
     intents
 }
 
-/// Plan one op per destination, with drift policy and preflight
-/// (0026 §1, §9). The decisions are the SAME planner apply and the
-/// CLI preview share (0034): rollback is plan_entry_op with the
-/// target generation's manifest as the desired state — plan_copy's
-/// three-way IS the rollback drift rule (live == target → nothing;
-/// live == current's record → restore; else → keep, drift preserved).
-fn plan(
+/// Preflight every retained target before effects. Plan and execute each
+/// ownership unit in order: the next block in a shared file must observe the
+/// previous block's actual result, not reuse a stale whole-file observation.
+/// The one planner and journal retain their drift and recovery authority.
+fn restore_destinations(
+    home: &gripsack_fs::Dir,
     home_path: &Path,
     current: Option<&store::Generation>,
     target: &store::Generation,
-) -> Result<(Vec<crate::ops::Op>, Vec<store::journal::RecoveryNote>), ExecError> {
+) -> Result<Vec<store::journal::RecoveryNote>, ExecError> {
     use store::journal::{NoteSeverity, RecoveryNote};
     preflight(target)?;
     let current_by_dest = current.map(by_destination).unwrap_or_default();
     let target_by_dest = by_destination(target);
-    let dests: BTreeSet<std::path::PathBuf> = current_by_dest
+    let dests: BTreeSet<store::OwnershipKey> = current_by_dest
         .keys()
         .chain(target_by_dest.keys())
         .cloned()
         .collect();
-    let mut ops = Vec::new();
     let mut notes = Vec::new();
     for dest in dests {
         match (current_by_dest.get(&dest), target_by_dest.get(&dest)) {
@@ -217,7 +214,7 @@ fn plan(
                 if entry.preserved_drift {
                     continue;
                 }
-                match crate::ops::plan_remove_op(name, entry, sp, home_path)? {
+                match crate::ops::plan_remove_op(name, entry, sp, home)? {
                     None => {} // already gone
                     Some(op) if matches!(op.kind(), crate::ops::OpKind::Preserved) => {
                         notes.push(RecoveryNote {
@@ -228,7 +225,9 @@ fn plan(
                             ),
                         });
                     }
-                    Some(op) => ops.push(op),
+                    Some(op) => {
+                        crate::ops::execute_op(home, op.as_executable()?)?;
+                    }
                 }
             }
             // only the target deploys it: restore, unless foreign
@@ -242,7 +241,7 @@ fn plan(
                         severity: NoteSeverity::Warn,
                         message: format!(
                             "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
-                            dest.display()
+                            dest.destination().display()
                         ),
                     }),
                     Some(op) => match op.kind() {
@@ -254,7 +253,7 @@ fn plan(
                                 op.dest().display()
                             ),
                         }),
-                        _ => ops.push(op),
+                        _ => { crate::ops::execute_op(home, op.as_executable()?)?; }
                     },
                 }
             }
@@ -274,7 +273,7 @@ fn plan(
                         severity: NoteSeverity::Warn,
                         message: format!(
                             "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
-                            dest.display()
+                            dest.destination().display()
                         ),
                     }),
                     Some(op) => match op.kind() {
@@ -286,14 +285,14 @@ fn plan(
                                 op.dest().display()
                             ),
                         }),
-                        _ => ops.push(op),
+                        _ => { crate::ops::execute_op(home, op.as_executable()?)?; }
                     },
                 }
             }
             (None, None) => {} // unreachable, union of keys
         }
     }
-    Ok((ops, notes))
+    Ok(notes)
 }
 
 /// 0026 §9: never discover an incomplete target mid-mutation — every
@@ -351,19 +350,6 @@ fn preflight(target: &store::Generation) -> Result<(), ExecError> {
                 });
             }
         }
-    }
-    Ok(())
-}
-
-/// Execute the plan: every mutation journaled, one transition per
-/// destination.
-fn execute(
-    home: &gripsack_fs::Dir,
-    home_path: &Path,
-    ops: &[crate::ops::Op],
-) -> Result<(), ExecError> {
-    for op in ops {
-        crate::ops::execute_op(home, home_path, op.as_executable()?)?;
     }
     Ok(())
 }

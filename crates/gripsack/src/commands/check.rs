@@ -5,8 +5,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 /// grip check: eval + IR sema + linters, then stop (0011 §9). Zero
-/// side effects — no lockfile writes, no store, no staging. The CI
-/// gate for env repos and the config-editing loop: exit code = validity.
+/// retained side effects — no lockfile, store or destination mutation.
+/// Native files may be captured into private temporary snapshots for validation.
 /// `--json` emits one versioned document on stdout carrying the same
 /// facts the terminal renders (0052 A1-06); operational failures
 /// (trust gate, missing deno) keep their stderr text in both modes.
@@ -22,6 +22,22 @@ pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> Exi
         Ok(ir) => ir,
         Err(code) => return sink.finish_failure(code),
     };
+    if ir.workspace.is_some()
+        && ir
+            .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
+            .is_none()
+        && let Err(error) =
+            gripsack_exec::inspect_known_layouts(&ir, repo, &outcome.host, outcome.fetch.limits())
+    {
+        let diagnostic = match error {
+            gripsack_exec::ExecError::Gate(diagnostic) => diagnostic,
+            other => {
+                gripsack_ir::Diagnostic::error(gripsack_ir::codes::EXEC_STEP, other.to_string())
+            }
+        };
+        sink.report(&[diagnostic]);
+        return sink.finish_failure(ExitCode::FAILURE);
+    }
     match workspace_outputs(&ir) {
         Some(outputs) => check_workspace(&ir, outputs, sink),
         None => check_legacy(&ir, &outcome, repo, sink),
@@ -102,13 +118,15 @@ fn check_legacy(
             return sink.finish_failure(ExitCode::FAILURE);
         }
     }
-    let layouts = match gripsack_exec::inspect_known_layouts(ir, repo, &outcome.host) {
-        Ok(layouts) => layouts,
-        Err(error) => {
-            eprintln!("grip: {error}");
-            return sink.finish_failure(ExitCode::FAILURE);
-        }
-    };
+    let layouts =
+        match gripsack_exec::inspect_known_layouts(ir, repo, &outcome.host, outcome.fetch.limits())
+        {
+            Ok(layouts) => layouts,
+            Err(error) => {
+                eprintln!("grip: {error}");
+                return sink.finish_failure(ExitCode::FAILURE);
+            }
+        };
     if sink.is_json() {
         let mut report = CheckReport::success(sink.into_collected());
         report.host = Some(CheckHostReport {

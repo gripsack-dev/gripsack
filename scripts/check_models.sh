@@ -64,6 +64,12 @@ check RepeatedActivation.tla cfg/repeated-activation.cfg
 check RepeatedActivation.tla cfg/repeated-activation-repeated-generation.cfg
 check MultiDestination.tla cfg/repeated-transaction-premature-cleanup.cfg RestoreBeforeCleanup
 check RepeatedActivation.tla cfg/repeated-activation-lost-pending.cfg NoSilentSkip
+# Journal v2: repeated writes to one destination retain the original prior and
+# recognize a durable intermediate state before the next write lands.
+check DestinationWrites.tla cfg/destination-writes.cfg
+check DestinationWrites.tla cfg/destination-writes-lost-prior.cfg OriginalPriorPreserved
+check DestinationWrites.tla cfg/destination-writes-lost-before.cfg NoPartialRecovery
+check DestinationWrites.tla cfg/destination-writes-witness.cfg NeverTwoWrites
 check ProcessSupervision.tla ProcessSupervision.cfg
 check ProcessSupervision.tla ProcessSupervision.ignore-deadline.cfg temporal:Terminates
 check ProcessSupervision.tla ProcessSupervision.inherited-pipe.cfg temporal:Terminates

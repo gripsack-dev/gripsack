@@ -121,17 +121,7 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
                 }
             }
         }
-        let mut verifies: Vec<&Verify> = module.verify.as_ref().into_iter().collect();
-        if let Some(steps) = &module.steps {
-            verifies.extend(steps.iter().flat_map(|step| {
-                let action = match &step.action {
-                    StepAction::Verify { verify } => Some(verify),
-                    _ => None,
-                };
-                action.into_iter().chain(step.verify.iter())
-            }));
-        }
-        for verify in verifies {
+        for verify in super::verify_paths::declarations(module) {
             match verify {
                 Verify::BinaryRuns { path, .. } | Verify::FileExists { path } => {
                     strings.push((path, module_span))

@@ -122,14 +122,7 @@ pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
         }
         // verify paths are payload-relative too — same rules as `from`
         // (a `../` there reads outside the store path)
-        let mut verify_paths: Vec<&Verify> = Vec::new();
-        if let Some(v) = &module.verify {
-            verify_paths.push(v);
-        }
-        if let Some(steps) = &module.steps {
-            verify_paths.extend(steps.iter().filter_map(|s| s.verify.as_ref()));
-        }
-        for verify in verify_paths {
+        for verify in super::verify_paths::declarations(module) {
             let path = match verify {
                 Verify::BinaryRuns { path, .. } | Verify::FileExists { path } => Some(path),
                 _ => None,

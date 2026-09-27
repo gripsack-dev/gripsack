@@ -13,7 +13,7 @@ mod produce;
 mod verify;
 
 use crate::ctx::{Ctx, ExecError};
-use crate::deploy::deploy_entry;
+use crate::deploy::{DeploymentInput, deploy_entry};
 use crate::lockfile;
 use crate::report::{ReportKind, StepReport};
 use crate::util::{fresh_staging, progress};
@@ -42,7 +42,7 @@ struct ModuleRun<'a> {
     recipes: &'a crate::resolve::RecipeGraph,
     plan: &'a PreparedModule,
     ctx: &'a Ctx,
-    prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
+    prev_map: &'a std::collections::BTreeMap<store::OwnershipKey, &'a store::DeployedEntry>,
     /// The previous generation's record for THIS module — the
     /// verification receipt lives there (0035 F2)
     prev_module: Option<&'a store::ModuleState>,
@@ -100,7 +100,7 @@ pub(crate) struct ModuleInputs<'a> {
     pub module: &'a gripsack_ir::Module,
     pub recipes: &'a crate::resolve::RecipeGraph,
     pub plan: &'a PreparedModule,
-    pub prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
+    pub prev_map: &'a std::collections::BTreeMap<store::OwnershipKey, &'a store::DeployedEntry>,
     pub prev_module: Option<&'a store::ModuleState>,
     pub locked: Option<&'a lockfile::LockEntry>,
     pub lock: &'a lockfile::Lockfile,
@@ -301,12 +301,15 @@ impl<'a> ModuleRun<'a> {
                     for entry in entries {
                         let (summary, kind) = deploy_entry(
                             &mut self.deployed,
-                            self.name,
-                            &self.store_path,
-                            entry,
                             self.ctx,
-                            self.prev_map,
-                            self.version.as_deref(),
+                            DeploymentInput {
+                                owner: self.name,
+                                store_path: &self.store_path,
+                                entry,
+                                previous: self.prev_map,
+                                version: self.version.as_deref(),
+                                block_id: None,
+                            },
                         )?;
                         self.reports.push(StepReport {
                             module: self.name.to_string(),

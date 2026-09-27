@@ -33,10 +33,13 @@ pub fn plan_ir(path: &Path, palette: Palette) -> ExitCode {
     };
     if let Err(code) = crate::commands::reject_workspace_execution(
         &ir,
-        "grip plan",
+        gripsack_ir::workspace::WorkspaceOperation::Plan,
         &mut crate::render::DiagnosticSink::terminal(palette, ir_source_root(path)),
     ) {
         return code;
+    }
+    if ir.workspace.is_some() {
+        return native_preview(&ir, ir_source_root(path), &[], palette);
     }
     tracing::info!(modules = ir.modules.len(), "ir parsed and validated");
     let host = &ir.host;
@@ -91,10 +94,13 @@ pub fn plan_module(path: &Path, name: &str, palette: Palette) -> ExitCode {
     };
     if let Err(code) = crate::commands::reject_workspace_execution(
         &ir,
-        "grip plan",
+        gripsack_ir::workspace::WorkspaceOperation::Plan,
         &mut crate::render::DiagnosticSink::terminal(palette, ir_source_root(path)),
     ) {
         return code;
+    }
+    if ir.workspace.is_some() {
+        return native_preview(&ir, ir_source_root(path), &[name.to_owned()], palette);
     }
     if !ir.modules.contains_key(name) {
         eprintln!(
@@ -106,4 +112,38 @@ pub fn plan_module(path: &Path, name: &str, palette: Palette) -> ExitCode {
     let waves = gripsack_exec::waves(&ir).unwrap_or_default();
     println!("{}", render::render_module(&ir, name, &waves, palette));
     ExitCode::SUCCESS
+}
+
+fn native_preview(
+    ir: &gripsack_ir::Ir,
+    repo: &Path,
+    selected: &[String],
+    palette: Palette,
+) -> ExitCode {
+    let host = gripsack_ir::HostName::parse("workspace").expect("constant host identifier");
+    match render::diff_section(
+        ir,
+        repo,
+        &host,
+        &Default::default(),
+        palette,
+        selected,
+        Default::default(),
+    ) {
+        Ok(section) => {
+            println!("{section}");
+            ExitCode::SUCCESS
+        }
+        Err(gripsack_exec::ExecError::Gate(diagnostic)) => {
+            eprintln!(
+                "{}",
+                render::render_diagnostics_bounded(&[diagnostic], palette, repo)
+            );
+            ExitCode::FAILURE
+        }
+        Err(error) => {
+            eprintln!("grip: cannot compute the preview: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }

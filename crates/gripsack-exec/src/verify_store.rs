@@ -61,7 +61,7 @@ pub fn verify_store(
                 if current == Some(n)
                     && let Some(expected) = entry.file_mode
                     && matches!(
-                        entry.mode,
+                        entry.ownership.policy(),
                         gripsack_ir::Ownership::Template | gripsack_ir::Ownership::Merge
                     )
                     && let Ok(Some(crate::deploy::Observation::File { mode, .. })) =
@@ -99,7 +99,7 @@ pub fn verify_store(
                     false
                 };
                 let source_exec_changed = matches!(
-                    entry.mode,
+                    entry.ownership.policy(),
                     gripsack_ir::Ownership::TrackedCopy | gripsack_ir::Ownership::Template
                 ) && entry
                     .source_executable
@@ -108,7 +108,7 @@ pub fn verify_store(
                 // (0043): merge blocks are bytes-only; whole-file outputs
                 // include permissions. Historical receipts retain their domain.
                 // owned links record the payload's store identity
-                let actual = match entry.mode {
+                let actual = match entry.ownership.policy() {
                     gripsack_ir::Ownership::Merge => std::fs::read(&src).ok().map(|b| {
                         let text = String::from_utf8_lossy(&b);
                         let legacy = gripsack_store::canonical_bytes_hash(

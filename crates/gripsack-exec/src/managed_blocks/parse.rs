@@ -94,7 +94,7 @@ fn valid_tail<'a>(words: &mut impl Iterator<Item = &'a str>) -> bool {
     }
 }
 
-pub(super) fn validate_payload(payload: &str) -> Result<(), MergeParseError> {
+pub(crate) fn validate_payload(payload: &str) -> Result<(), MergeParseError> {
     for (index, line) in payload.lines().enumerate() {
         if marker(line, index + 1)?.is_some() {
             return Err(MergeParseError {

@@ -59,7 +59,7 @@ impl<'a> ModuleRun<'a> {
                     // produced state, just as it is for deploying modules.
                     a.from == b.from
                         && a.to == b.to
-                        && a.mode == b.mode
+                        && a.ownership == b.ownership
                         && a.hash == b.hash
                         && a.file_mode == b.file_mode
                         && a.preserved_drift == b.preserved_drift

@@ -59,7 +59,8 @@ RUN apk add --no-cache python3 \
     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \
     && python3 scripts/gen_diagnostic_registry.py --check \
     && python3 scripts/gen_diagnostic_registry.py --self-check \
-    && python3 scripts/gen_frontend_embed.py --check
+    && python3 scripts/gen_frontend_embed.py --check \
+    && python3 scripts/check_scheduler_loom.py
 
 # The debug binary for stages that need a runnable grip (e2e).
 FROM builder AS bin
@@ -90,7 +91,7 @@ RUN sh scripts/check_models.sh /tla/tla2tools.jar
 # repo's pinned toolchain.
 FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 AS verify
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-    curl ca-certificates unzip build-essential \
+    curl ca-certificates unzip build-essential python3 \
     && rm -rf /var/lib/apt/lists/*
 ARG VERUS_RELEASE=0.2026.09.06.8dea4a2
 ARG VERUS_SHA256=13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16
@@ -110,7 +111,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY fuzz ./fuzz
-COPY scripts/check_verus.sh ./scripts/check_verus.sh
+COPY scripts/check_verus.sh scripts/check_verus.py scripts/verus_evidence.py ./scripts/
 RUN sh scripts/check_verus.sh
 
 # TypeScript frontend tests and strict type checking of the four

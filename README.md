@@ -122,6 +122,15 @@ host-derived file access. `grip init` sanitizes the detected machine
 hostname to this spelling; role-named hosts such as `work.dev` remain
 valid.
 
+The **unreleased v5 workspace path** also accepts a root `gripsack.ts`
+without a host shim. Native file-only profiles can be checked, planned,
+applied and rolled back with the matching development core/SDK; see the
+[dotfile workspace](examples/workspaces/01-dotfiles/gripsack.ts) and
+[current capability limits](typescript/README.md#a-workspace-is-a-function-unreleased-ir-v5).
+The published 0.42.0 pair predates this API. Package, project-command and
+worker integration remains tracked in the handover, not implied by
+native file deployment.
+
 Evaluation runs in Deno, spawned deny-by-default: no env vars,
 network, or subprocesses. Reads are limited to the repo, injected
 inputs, embedded frontend, and an explicitly detected

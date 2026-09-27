@@ -1,12 +1,11 @@
 ---- MODULE Transaction ----
 (***************************************************************************)
-(* The gripsack transaction protocol as a TLA+ specification (plan/0028).  *)
-(*                                                                         *)
-(* This is the LEARNING artifact and the independent second opinion: the   *)
-(* CI-enforced proof lives in the Rust explorer (crates/gripsack-store/src *)
-(* /journal/model.rs), which drives the shipped classify/decide functions. *)
-(* This spec re-expresses the protocol in TLA+'s declarative style — if    *)
-(* the two ever disagree, the disagreement is itself a finding.            *)
+(* Independent declarative model of the transaction protocol (plan/0028).   *)
+(* TLC explores its finite configurations; the Rust explorer exercises     *)
+(* shipped classify/decide functions. Neither is a generalized inductive   *)
+(* proof or a proof of the filesystem adapter. Plan/0048 M-V1 and M-V6      *)
+(* separately require the bounded pilot and generalized safety theorem.   *)
+(* A disagreement between the model and implementation is a finding.      *)
 (*                                                                         *)
 (* Reading guide:                                                          *)
 (*   - VARIABLES are the machine's state. `volatile` is what the running   *)
@@ -23,10 +22,11 @@ CONSTANTS PREV,       \* generation current points at when the run starts
           TARGET,     \* the generation this run builds (apply) or returns to
           OP,         \* "apply" | "rollback"
           KIND        \* "deploy" | "prune"
+ASSUME PREV # TARGET
 
 
-\* Abstract contents. One destination is enough — destinations are
-\* journaled independently; the shared state is what we check.
+\* This pilot has one destination and one recovery. Independence of
+\* destinations and repeated crashes require the separate M-V6 composition.
 CONSTANTS CPRIOR, CDEPLOYED, CEDITED
 CONSTANT NONE               \* a model value: compares cleanly with records
 ABSENT == "absent"          \* the destination does not exist
@@ -156,18 +156,13 @@ MaybeUserEdit ==
     /\ phase' = "recovering"
     /\ UNCHANGED <<volatile, durable, step, klass>>
 
-\* The decision logic, mirrored declaratively. The Rust explorer calls
-\* the shipped functions; this spec re-expresses them — any divergence
-\* between the two is a finding, not a tie-break.
+\* Exact generation identity, independent of apply/rollback labels and numeric
+\* ordering, matches the shipped classifier. The fresh-state NONE value is a
+\* real identity: unknown current state is ambiguous, never presumed committed.
 Classify(prev, target, op, current) ==
-    CASE prev /= NONE ->
-            CASE current = target -> "committed"
-              [] current = prev -> "uncommitted"
-              [] OTHER -> "ambiguous"
-      [] current = NoCurrent -> "uncommitted"
-      [] op = "apply" /\ current >= target -> "committed"
-      [] op = "rollback" /\ current <= target -> "committed"
-      [] OTHER -> "uncommitted"
+    CASE current = target -> "committed"
+      [] current = prev -> "uncommitted"
+      [] OTHER -> "ambiguous"
 
 Decide(live, intended, prior) ==
     CASE live = intended -> "restore"

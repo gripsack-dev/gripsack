@@ -69,6 +69,8 @@ pub const REQUIRED_WORKSPACE_EDGE_MISSING: &str = "E131";
 pub const INVALID_HOST_NAME: &str = "E132";
 /// Comma in an evaluator read-grant path.
 pub const UNSAFE_EVAL_READ_GRANT: &str = "E133";
+/// Resources on a verify or intent action that never acquires them.
+pub const UNSUPPORTED_STEP_RESOURCES: &str = "E134";
 /// Fetch or source resolution failed.
 pub const EXEC_FETCH: &str = "E201";
 /// Execution step failed.

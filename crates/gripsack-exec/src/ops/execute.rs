@@ -17,7 +17,6 @@ fn dest_capability(dest: &Path) -> std::io::Result<(gripsack_fs::Dir, PathBuf)> 
 /// take-over's captured prior (the entry assembly merges it).
 pub(crate) fn execute_op(
     home_dir: &gripsack_fs::Dir,
-    home: &Path,
     op: ExecutableOp<'_>,
 ) -> Result<(OpReport, Option<store::Prior>), ExecError> {
     let op = op.0;
@@ -131,10 +130,14 @@ pub(crate) fn execute_op(
             ))
         }
         OpKind::MergeUpsert {
+            block_id,
             payload,
             marker,
             mode,
         } => {
+            let owner = block_id
+                .as_ref()
+                .map_or(op.module(), store::ManagedBlockId::as_str);
             let (dest_dir, dest_name) = dest_capability(op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
             crate::deploy::journaled(
@@ -153,12 +156,11 @@ pub(crate) fn execute_op(
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
                         Err(e) => return Err(e),
                     };
-                    let blocks =
-                        crate::managed_blocks::ManagedBlockSet::parse(&latest, op.module())
-                            .map_err(std::io::Error::other)?;
+                    let blocks = crate::managed_blocks::ManagedBlockSet::parse(&latest, owner)
+                        .map_err(std::io::Error::other)?;
                     let new = blocks
                         .upsert(
-                            op.module(),
+                            owner,
                             op.dest(),
                             marker.as_deref(),
                             &String::from_utf8_lossy(payload),
@@ -187,13 +189,8 @@ pub(crate) fn execute_op(
         OpKind::Remove(target) => {
             // the variant CARRIES the removal authority (0046) — no
             // expect, no invalid state
-            let entry = target.entry.clone();
-            let store_path = target.store_path.clone();
             let (dest_dir, dest_name) = dest_capability(op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
-            let entry_cloned = entry.clone();
-            let home_path = home.to_path_buf();
-            let module_name = op.module.clone();
             crate::deploy::journaled(
                 home_dir,
                 &dest_dir,
@@ -205,10 +202,10 @@ pub(crate) fn execute_op(
                     crate::deploy::remove_or_restore_prior(
                         &dest_dir,
                         &dest_name,
-                        &entry_cloned,
-                        &module_name,
-                        &home_path,
-                        &store_path,
+                        &target.entry,
+                        op.module(),
+                        home_dir,
+                        &target.store_path,
                     )
                     .map(|_| ())
                 },

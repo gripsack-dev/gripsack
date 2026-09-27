@@ -31,7 +31,13 @@ pub fn update(
         Ok(ir) => ir,
         Err(_) => return failed,
     };
-    if crate::commands::reject_workspace_execution(&ir, "grip update", &mut sink).is_err() {
+    if crate::commands::reject_workspace_execution(
+        &ir,
+        gripsack_ir::workspace::WorkspaceOperation::Update,
+        &mut sink,
+    )
+    .is_err()
+    {
         return failed;
     }
     let ctx = Ctx {

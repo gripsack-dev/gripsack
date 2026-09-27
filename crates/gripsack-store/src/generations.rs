@@ -9,27 +9,15 @@
 //! current -> generations/2
 //! ```
 
+mod admission;
+use admission::validate;
+
+use crate::prior::Prior;
 use gripsack_ir::{EnvVar, Ownership};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
-
-/// What a destination was before gripsack took it over (0015 §4) —
-/// recorded on every take-over, restored by rollback and prune instead
-/// Pre-take-over state of a destination, riding the whole ownership
-/// epoch in the manifest (0015 §4, 0029 §1). The enum keeps the facts
-/// per variant — no `content: Option` that means hash-or-target.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Prior {
-    /// A regular file: bytes in the prior blob store under `hash`,
-    /// restored at exactly `mode` (0027 §6 — a restore is faithful
-    /// or it isn't one).
-    File { hash: String, mode: u32 },
-    /// A symlink; restored pointing at `target`.
-    Symlink { target: String },
-}
 
 /// One deployed file: where it went, how, and its canonical hash at
 /// deploy time (drift detection compares against this — 0008 §3).
@@ -46,7 +34,8 @@ pub struct DeployedEntry {
     /// read-time upgrade canonicalizes from the spelling.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<std::path::PathBuf>,
-    pub mode: Ownership,
+    #[serde(rename = "mode")]
+    pub ownership: crate::ownership::StoredOwnership,
     /// Template vars at deploy time — rollback re-renders with these.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub vars: std::collections::BTreeMap<String, String>,
@@ -94,13 +83,26 @@ impl DeployedEntry {
         }
     }
 
+    pub fn merge_owner<'a>(&'a self, module: &'a str) -> &'a str {
+        self.ownership
+            .block_id()
+            .map_or(module, crate::ownership::ManagedBlockId::as_str)
+    }
+
+    pub fn ownership_key(&self, module: &str) -> crate::ownership::OwnershipKey {
+        crate::ownership::OwnershipKey::new(
+            self.key(),
+            (self.ownership.policy() == Ownership::Merge).then(|| self.merge_owner(module)),
+        )
+    }
+
     /// Compare a whole-file receipt, including pre-0043 template receipts.
     /// Legacy bytes-only hashes authorize nothing without a matching recorded
     /// mode. New writes always record the full file identity.
     pub fn matches_file(&self, bytes: &[u8], mode: u32) -> bool {
         !self.preserved_drift
             && (crate::canonical_bytes_identity(bytes, mode).as_str() == self.hash.as_str()
-                || (self.mode == Ownership::Template
+                || (self.ownership.policy() == Ownership::Template
                     && self.file_mode == Some(mode)
                     && crate::canonical_bytes_hash(bytes).as_str() == self.hash.as_str()))
     }
@@ -202,73 +204,6 @@ pub fn read_manifest(home: &Path, generation: u64) -> io::Result<Generation> {
         serde_json::from_slice(&raw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     validate(&manifest, generation, home)?;
     Ok(manifest)
-}
-
-fn validate(manifest: &Generation, generation: u64, home: &Path) -> io::Result<()> {
-    let invalid = |why: String| io::Error::new(io::ErrorKind::InvalidData, why);
-    if manifest.number != generation {
-        return Err(invalid(format!(
-            "generation {generation}'s manifest claims number {} — directory and              identity disagree",
-            manifest.number
-        )));
-    }
-    let mut seen_dests = std::collections::BTreeSet::new();
-    for (name, state) in &manifest.modules {
-        if state.build_only
-            && (!state.entries.is_empty() || !state.intents.is_empty() || !state.env.is_empty())
-        {
-            return Err(invalid(format!(
-                "module {name:?}: build-only state contains deployment effects"
-            )));
-        }
-        crate::paths::validate_store_root(home, &state.store_path)
-            .map_err(|e| invalid(format!("module {name:?}: {e}")))?;
-        for path in &state.build_closure {
-            crate::paths::validate_store_root(home, path)
-                .map_err(|e| invalid(format!("module {name:?} build closure: {e}")))?;
-        }
-        for entry in &state.entries {
-            // 0030 §H9: `from` joins the store path — an absolute or
-            // parent-traversing one escapes it (Path::join DISCARDS
-            // the base on absolute). Normal components only.
-            if std::path::Path::new(&entry.from)
-                .components()
-                .any(|c| !matches!(c, std::path::Component::Normal(_)))
-            {
-                return Err(invalid(format!(
-                    "module {name:?}: source {:?} is not a plain relative path",
-                    entry.from
-                )));
-            }
-            // one owner per destination across ALL modes (0030 §H6):
-            // the 0029 merge exemption made the validator disagree
-            // with sema and rollback. Multi-module blocks in one file
-            // return when aggregation lands (roadmap) — concurrent
-            // whole-file writes are unsound before that
-            let key = entry.to.to_lowercase();
-            if !seen_dests.insert(key) {
-                return Err(invalid(format!(
-                    "destination {:?} appears twice in generation {generation}",
-                    entry.to
-                )));
-            }
-            if entry.file_mode.is_some_and(|m| m > 0o7777) {
-                return Err(invalid(format!(
-                    "module {name:?}: destination {:?} records an impossible mode",
-                    entry.to
-                )));
-            }
-            if entry.hash.as_str().len() != 64
-                || !entry.hash.as_str().chars().all(|c| c.is_ascii_hexdigit())
-            {
-                return Err(invalid(format!(
-                    "module {name:?}: destination {:?} has a malformed content hash",
-                    entry.to
-                )));
-            }
-        }
-    }
-    Ok(())
 }
 
 /// All generation numbers on disk, ascending. Fail closed
@@ -498,7 +433,7 @@ mod tests {
                     from: "config.toml".into(),
                     to: "~/.config/helix/config.toml".into(),
                     key: None,
-                    mode: Ownership::TrackedCopy,
+                    ownership: crate::StoredOwnership::Legacy(Ownership::TrackedCopy),
                     vars: Default::default(),
                     hash: crate::hash::ManifestHash::from_raw("d".repeat(64)),
                     file_mode: None,

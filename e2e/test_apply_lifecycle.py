@@ -3,7 +3,34 @@
 import os
 import shutil
 import subprocess
-from conftest import grip, make_env_repo, make_tarball
+from conftest import GRIP, grip, make_env_repo, make_tarball
+
+
+def test_panicking_worker_completes_and_releases_the_apply_lock(sandbox, monkeypatch):
+    repo = make_env_repo(
+        sandbox / "panic-env",
+        {
+            "panic": 'import { module } from "@gripsack/core";\n'
+            'export default module("panic", {});\n',
+            "sibling": 'import { module } from "@gripsack/core";\n'
+            'export default module("sibling", {});\n',
+        },
+    )
+    monkeypatch.setenv("GRIPSACK_PANIC_MODULE", "panic")
+    failed = subprocess.run(
+        [str(GRIP), "apply", "--host", "testhost", "--jobs", "2"],
+        cwd=repo, capture_output=True, text=True, timeout=15,
+    )
+    assert failed.returncode != 0
+    assert "worker panicked" in failed.stderr, failed.stderr
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+    # The failed process drained, compensated and released the lifecycle
+    # lock: a normal invocation can use the same home immediately.
+    monkeypatch.delenv("GRIPSACK_PANIC_MODULE")
+    recovered = grip("apply", "--host", "testhost", "--jobs", "2", cwd=repo)
+    assert recovered.returncode == 0, recovered.stderr
+    assert (sandbox / ".local/share/gripsack/current").exists()
 
 
 def test_apply_creates_generation_and_symlinks(sandbox):

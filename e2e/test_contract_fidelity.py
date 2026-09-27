@@ -15,6 +15,84 @@ def current(sandbox):
     return json.loads((sandbox / '.local/share/gripsack/current/manifest.json').read_text())
 
 
+@pytest.mark.parametrize("kind", ["verify", "intent"])
+def test_resources_on_non_acquiring_steps_fail_before_effects(sandbox, kind):
+    marker = sandbox / "unlocked-effect"
+    action = (
+        {"kind": "verify", "verify": {"kind": "shell", "script": f"touch {marker}"}}
+        if kind == "verify"
+        else {"kind": "intent", "action": {"kind": "custom_shell", "script": f"touch {marker}"}}
+    )
+    repo = make_env_repo(
+        sandbox / "resource-env",
+        {
+            name: 'import { module } from "@gripsack/core";\n'
+            f'export default module("{name}", {{ steps: [{{ id: "effect", '
+            f'action: {json.dumps(action)}, resources: ["network"] }}] }});\n'
+            for name in ("alpha", "beta")
+        },
+    )
+    terminal = grip("check", "--host", "testhost", cwd=repo)
+    structured = grip("check", "--json", "--host", "testhost", cwd=repo)
+    assert terminal.returncode != 0
+    assert structured.returncode != 0
+    diagnostics = json.loads(structured.stdout)["diagnostics"]
+    rejected = [item for item in diagnostics if item["code"] == "E134"]
+    assert len(rejected) == 2, diagnostics
+    assert all(item["labels"] for item in rejected)
+    assert "E134" in terminal.stderr
+    applied = grip("apply", "--host", "testhost", cwd=repo)
+    assert applied.returncode != 0
+    assert not marker.exists()
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+@pytest.mark.parametrize("shape,code", [("absolute", "E109"), ("parent", "E115")])
+def test_verify_actions_admit_payload_paths_before_any_producer_runs(sandbox, shape, code):
+    outside = sandbox / "outside"
+    outside.write_text("not part of the payload")
+    path = str(outside) if shape == "absolute" else "../outside"
+    marker = sandbox / "producer-ran"
+    steps = [
+        {"id": "produce", "action": {"kind": "custom_shell", "script": f"touch {marker}"}},
+        {"id": "verify", "needs": ["produce"], "action": {
+            "kind": "verify", "verify": {"kind": "file_exists", "path": path},
+        }},
+    ]
+    repo = make_env_repo(
+        sandbox / "verify-env",
+        'import { module } from "@gripsack/core";\n'
+        f'export default module("demo", {{ steps: {json.dumps(steps)} }});\n',
+    )
+    checked = grip("check", "--json", "--host", "testhost", cwd=repo)
+    assert checked.returncode != 0
+    diagnostics = json.loads(checked.stdout)["diagnostics"]
+    rejected = [item for item in diagnostics if item["code"] == code]
+    assert rejected and rejected[0]["labels"][0]["span"]["line"] == 2
+    applied = grip("apply", "--host", "testhost", cwd=repo)
+    assert applied.returncode != 0 and code in applied.stderr
+    assert not marker.exists()
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
+@pytest.mark.parametrize("step", ["configStep", "installStep"])
+def test_stepped_repository_sources_fail_check_before_deployment(sandbox, step):
+    repo = make_env_repo(
+        sandbox / "missing-source-env",
+        f'import {{ module, {step}, trackedCopy }} from "@gripsack/core";\n'
+        f'export default module("demo", {{ steps: [{step}({{ "typo.conf": trackedCopy("~/.must-not-land") }})] }});\n',
+    )
+    checked = grip("check", "--json", "--host", "testhost", cwd=repo)
+    assert checked.returncode != 0
+    diagnostics = json.loads(checked.stdout)["diagnostics"]
+    missing = [item for item in diagnostics if item["code"] == "E110"]
+    assert missing and missing[0]["labels"][0]["span"]["line"] == 2
+    applied = grip("apply", "--host", "testhost", cwd=repo)
+    assert applied.returncode != 0 and "E110" in applied.stderr
+    assert not (sandbox / ".must-not-land").exists()
+    assert not (sandbox / ".local/share/gripsack/current").exists()
+
+
 @pytest.mark.parametrize('explicit', [False, True])
 def test_module_verification_is_always_preflip(sandbox, explicit):
     shape = 'steps: [shellStep("echo artifact > payload", "produce")],' if explicit else 'build: { kind: "custom_shell", script: "echo artifact > payload" },'

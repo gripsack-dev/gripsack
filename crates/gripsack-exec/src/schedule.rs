@@ -11,18 +11,20 @@
 //! `$GRIPSACK_HOME/locks/` — in-process parallelism and two concurrent
 //! `grip` runs both respect them. The generation flip stays the single
 //! global barrier: it happens in apply, after everything finishes.
+mod coordination;
+
+use coordination::{Completion, Coordinator};
 
 use crate::ctx::{Ctx, ExecError};
 use crate::lockfile::{LockEntry, Lockfile};
 use crate::module::{ModuleOutcome, run_module};
 use crate::report::StepReport;
 use gripsack_ir::{Ir, Module};
-use gripsack_policy::schedule::PureScheduler;
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::Arc;
 
 /// What the scheduler produced: the new manifest state, the reports
 /// (grouped per module, completion-ordered), and lockfile entries.
@@ -36,11 +38,6 @@ pub(crate) struct ScheduleOutcome {
 }
 
 struct State {
-    /// The decision kernel (0047 §3): readiness, dependent release,
-    /// the failure latch — all proved. Indices name-sort, so its FIFO
-    /// order matches the pre-kernel name-sorted readiness exactly.
-    kernel: PureScheduler,
-    running: BTreeSet<usize>,
     error: Option<(String, ExecError, store::ModuleState)>,
     modules: BTreeMap<String, store::ModuleState>,
     /// Ready consumers see dependency pins resolved in this run, not merely
@@ -64,7 +61,7 @@ pub(crate) fn run_all(
         steps_by_module,
         order.iter().map(String::as_str),
     )?;
-    let lineage = prev_by_dest(prev);
+    let lineage = previous_ownership(prev);
     let run_span = tracing::Span::current();
     let dispatcher = tracing::dispatcher::get_default(Clone::clone);
     // The kernel's input view (0047 §3): name-sorted indices (so the
@@ -101,16 +98,16 @@ pub(crate) fn run_all(
         })
         .collect();
 
-    let state = Mutex::new(State {
-        kernel: PureScheduler::new(&deps),
-        running: BTreeSet::new(),
-        error: None,
-        modules: BTreeMap::new(),
-        lock: Arc::new(lock.clone()),
-        reports: Vec::new(),
-        lock_entries: BTreeMap::new(),
-    });
-    let condvar = Condvar::new();
+    let coordinator = Coordinator::new(
+        &deps,
+        State {
+            error: None,
+            modules: BTreeMap::new(),
+            lock: Arc::new(lock.clone()),
+            reports: Vec::new(),
+            lock_entries: BTreeMap::new(),
+        },
+    );
     let names = &names;
 
     let workers = ctx.jobs.unwrap_or_else(|| {
@@ -124,124 +121,103 @@ pub(crate) fn run_all(
             scope.spawn(|| {
                 let _dispatch = tracing::dispatcher::set_default(&dispatcher);
                 let _run = run_span.enter();
-                loop {
-                    // Readiness guarantees all dependencies have published:
-                    // the kernel starts a module only when every dependency
-                    // finished OK (proved, 0047 §3). Copy only the closure
-                    // paths and share an immutable pin snapshot; completion
-                    // updates it before releasing readers.
-                    let next = {
-                        let mut st = state.lock().expect("scheduler state");
-                        loop {
-                            if st.error.is_some() {
-                                // stop picking new work; drain what's
-                                // running — and WAIT like the success
-                                // path does, or every idle worker
-                                // busy-spins until the drain (N1)
-                                if st.running.is_empty() {
-                                    return;
-                                }
-                                st = condvar.wait(st).expect("scheduler state");
-                                continue;
-                            }
-                            if let Some(idx) = st.kernel.start_next() {
-                                st.running.insert(idx);
-                                let name = names[idx];
-                                let build_env =
-                                    crate::closure::BuildEnv::compose(&closures[name], &st.modules);
-                                break Some((
-                                    idx,
-                                    name.to_string(),
-                                    build_env,
-                                    Arc::clone(&st.lock),
-                                ));
-                            }
-                            if st.running.is_empty() {
-                                return; // queue drained, nothing in flight
-                            }
-                            st = condvar.wait(st).expect("scheduler state");
-                        }
-                    };
-                    let Some((idx, name, build_env, current_lock)) = next else {
-                        continue;
-                    };
-                    let _module_span = tracing::info_span!("module", module = %name).entered();
-                    let result = build_env.and_then(|build_env| {
-                        run_one(
-                            &name,
-                            ir,
-                            steps_by_module,
-                            ctx,
-                            prev,
-                            &current_lock,
-                            Scheduled {
-                                build_env,
-                                build_only: build_only.contains(&name),
-                                recipes: &recipes,
-                                lineage: &lineage,
-                            },
+                while coordinator.run_next(
+                    |index, state| {
+                        let name = names[index];
+                        (
+                            crate::closure::BuildEnv::compose(&closures[name], &state.modules),
+                            Arc::clone(&state.lock),
                         )
-                    });
-                    drop(current_lock);
-                    let mut st = state.lock().expect("scheduler state");
-                    st.running.remove(&idx);
-                    match result {
-                        Ok(outcome) if outcome.error.is_none() => {
-                            st.reports.push((name.clone(), outcome.reports));
-                            // Store-only states keep payload receipts, but
-                            // carry no destination or activation effects.
-                            st.modules.insert(name.clone(), outcome.state);
-                            if let Some(entry) = outcome.lock_entry {
-                                if st.lock.modules.get(&name) != Some(&entry) {
-                                    Arc::make_mut(&mut st.lock)
-                                        .modules
-                                        .insert(name.clone(), entry.clone());
-                                    recipes.invalidate(&name);
+                    },
+                    |index, (build_env, current_lock)| {
+                        let name = names[index];
+                        let _module_span = tracing::info_span!("module", module = %name).entered();
+                        #[cfg(debug_assertions)]
+                        if std::env::var("GRIPSACK_PANIC_MODULE").as_deref() == Ok(name) {
+                            panic!("injected module worker panic");
+                        }
+                        let result = build_env.and_then(|build_env| {
+                            run_one(
+                                name,
+                                ir,
+                                steps_by_module,
+                                ctx,
+                                prev,
+                                &current_lock,
+                                Scheduled {
+                                    build_env,
+                                    build_only: build_only.contains(name),
+                                    recipes: &recipes,
+                                    lineage: &lineage,
+                                },
+                            )
+                        });
+                        if result.as_ref().is_ok_and(|outcome| outcome.error.is_none()) {
+                            Completion::Success(result)
+                        } else {
+                            Completion::Failed(result)
+                        }
+                    },
+                    |index, completion, state| {
+                        let name = names[index];
+                        let result = match completion {
+                            Completion::Success(result) | Completion::Failed(result) => result,
+                            Completion::Panicked => Err(ExecError::WorkerPanicked {
+                                module: name.to_owned(),
+                            }),
+                        };
+                        match result {
+                            Ok(outcome) if outcome.error.is_none() => {
+                                state.reports.push((name.to_owned(), outcome.reports));
+                                state.modules.insert(name.to_owned(), outcome.state);
+                                if let Some(entry) = outcome.lock_entry {
+                                    if state.lock.modules.get(name) != Some(&entry) {
+                                        Arc::make_mut(&mut state.lock)
+                                            .modules
+                                            .insert(name.to_owned(), entry.clone());
+                                        recipes.invalidate(name);
+                                    }
+                                    state.lock_entries.insert(name.to_owned(), entry);
                                 }
-                                st.lock_entries.insert(name.clone(), entry);
                             }
-                            // the kernel releases exactly the dependents
-                            // whose last dependency this was (proved)
-                            st.kernel.finish_ok(idx);
-                        }
-                        Ok(outcome) => {
-                            // a phase failed mid-module: keep the
-                            // partial state for the run-rollback; the
-                            // kernel latch means nothing further starts
-                            st.kernel.finish_fail(idx);
-                            if st.error.is_none() {
-                                let e = outcome.error.expect("marked by the guard");
-                                st.error = Some((name.clone(), e, outcome.state));
+                            Ok(outcome) => {
+                                // Keep partial deployment state; apply compensates
+                                // through the same durable journal as crash recovery.
+                                if state.error.is_none() {
+                                    state.error = Some((
+                                        name.to_owned(),
+                                        outcome.error.expect("failed module outcome"),
+                                        outcome.state,
+                                    ));
+                                }
+                                state.reports.push((name.to_owned(), outcome.reports));
                             }
-                            st.reports.push((name.clone(), outcome.reports));
-                        }
-                        Err(e) => {
-                            st.kernel.finish_fail(idx);
-                            if st.error.is_none() {
-                                st.error = Some((
-                                    name.clone(),
-                                    e,
-                                    store::ModuleState {
-                                        store_path: PathBuf::new(),
-                                        build_only: false,
-                                        intents: vec![],
-                                        verified: None,
-                                        entries: vec![],
-                                        env: vec![],
-                                        tree256: None,
-                                        build_closure: vec![],
-                                    },
-                                ));
+                            Err(error) => {
+                                if state.error.is_none() {
+                                    state.error = Some((
+                                        name.to_owned(),
+                                        error,
+                                        store::ModuleState {
+                                            store_path: PathBuf::new(),
+                                            build_only: false,
+                                            intents: vec![],
+                                            verified: None,
+                                            entries: vec![],
+                                            env: vec![],
+                                            tree256: None,
+                                            build_closure: vec![],
+                                        },
+                                    ));
+                                }
                             }
                         }
-                    }
-                    condvar.notify_all();
-                }
+                    },
+                ) {}
             });
         }
     });
 
-    let st = state.into_inner().expect("scheduler state");
+    let st = coordinator.into_inner();
     Ok(ScheduleOutcome {
         modules: st.modules,
         reports: st.reports,
@@ -255,17 +231,13 @@ pub(crate) fn run_all(
 /// Lineage is destination-GLOBAL (0030 §H4): the previous generation's
 /// entry for each canonical destination, whichever module owned it —
 /// a rename keeps full authority (update, not preserve-as-foreign).
-pub(crate) fn prev_by_dest(
+pub(crate) fn previous_ownership(
     prev: &BTreeMap<String, store::ModuleState>,
-) -> BTreeMap<std::path::PathBuf, &store::DeployedEntry> {
+) -> BTreeMap<store::OwnershipKey, &store::DeployedEntry> {
     let mut map = BTreeMap::new();
-    for state in prev.values() {
+    for (name, state) in prev {
         for entry in &state.entries {
-            // the canonical key deploy computes; first-wins is fine
-            // (physical uniqueness is enforced pre-schedule)
-            if let Ok(key) = store::canonical_dest(&entry.to) {
-                map.entry(key).or_insert(entry);
-            }
+            map.insert(entry.ownership_key(name), entry);
         }
     }
     map
@@ -278,7 +250,7 @@ struct Scheduled<'a> {
     build_env: crate::closure::BuildEnv,
     build_only: bool,
     recipes: &'a crate::resolve::RecipeGraph,
-    lineage: &'a BTreeMap<PathBuf, &'a store::DeployedEntry>,
+    lineage: &'a BTreeMap<store::OwnershipKey, &'a store::DeployedEntry>,
 }
 
 fn run_one(

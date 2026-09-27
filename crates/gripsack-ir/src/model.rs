@@ -32,11 +32,11 @@ impl Ir {
         self.workspace.is_some() || self.workspace_v4.is_some()
     }
 
-    /// No workspace version has an executor yet. One output-specific
-    /// E124 decision serves the CLI and direct executor entrypoints.
+    /// Native file profiles use the existing lifecycle. Unsupported workspace
+    /// capabilities are refused before CLI or direct executor effects.
     pub fn workspace_execution_error(
         &self,
-        operation: &str,
+        operation: crate::workspace::WorkspaceOperation,
     ) -> Option<crate::diagnostic::Diagnostic> {
         crate::workspace::execution_gate::execution_error(self, operation)
     }

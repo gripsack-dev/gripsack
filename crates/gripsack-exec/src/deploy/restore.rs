@@ -40,7 +40,7 @@ pub(crate) fn capture_prior(
         }))
     } else if meta.is_file() {
         let bytes = dest_dir.read(dest_name)?;
-        let hash = store::journal::store_prior_blob_in(home, &bytes)?;
+        let hash = store::prior::store_blob(home, &bytes)?;
         #[cfg(unix)]
         let mode = {
             use gripsack_fs::cap_std::fs::MetadataExt;
@@ -48,7 +48,10 @@ pub(crate) fn capture_prior(
         };
         #[cfg(not(unix))]
         let mode = 0o644;
-        Ok(Some(store::Prior::File { hash, mode }))
+        Ok(Some(store::Prior::File {
+            hash,
+            mode: store::prior::FileMode::try_from(mode)?,
+        }))
     } else {
         Ok(None)
     }
@@ -63,13 +66,13 @@ pub(crate) fn restore_prior(
     dest_dir: &gripsack_fs::Dir,
     dest_name: &Path,
     prior: &store::Prior,
-    home: &Path,
+    home: &gripsack_fs::Dir,
 ) -> std::io::Result<()> {
     match prior {
         store::Prior::File { hash, mode } => {
-            let bytes = std::fs::read(store::prior_blob_path(home, hash))?;
+            let bytes = store::prior::read_blob(home, hash)?;
             #[cfg(unix)]
-            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, *mode)?;
+            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, mode.bits())?;
             #[cfg(not(unix))]
             gripsack_fs::atomic_write(dest_dir, dest_name, &bytes)?;
             Ok(())
@@ -94,7 +97,7 @@ pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, store_path: &P
     if entry.preserved_drift {
         return false;
     }
-    match entry.mode {
+    match entry.ownership.policy() {
         Ownership::Owned => std::fs::read_link(dest)
             .map(|t| t == store_path.join(&entry.from))
             .unwrap_or(false),
@@ -112,16 +115,16 @@ pub fn intact_deployed(dest: &Path, entry: &store::DeployedEntry, store_path: &P
 /// never observed afterward.
 pub fn prune_intent(
     entry: &store::DeployedEntry,
-    home: &Path,
+    home: &gripsack_fs::Dir,
 ) -> std::io::Result<store::journal::Intended> {
     use store::journal::{Intended, ObjectIdentity};
     match &entry.prior {
         // restoring the prior: the intended identity is the prior's
         // own — mode-aware for files (0031), verbatim for links
         Some(store::Prior::File { hash, mode }) => {
-            let bytes = std::fs::read(store::prior_blob_path(home, hash))?;
+            let bytes = store::prior::read_blob(home, hash)?;
             Ok(Intended::Object(ObjectIdentity::File(
-                store::canonical_bytes_identity(&bytes, *mode),
+                store::canonical_bytes_identity(&bytes, mode.bits()),
             )))
         }
         Some(store::Prior::Symlink { target }) => {

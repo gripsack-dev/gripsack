@@ -56,7 +56,7 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// Fetch, build and deploy legacy modules; workspace effects require A2
+    /// Deploy native workspace file profiles or fetch/build/deploy legacy modules
     Apply {
         /// Legacy host entrypoint (workspace uses gripsack.ts instead)
         #[arg(long)]
@@ -64,7 +64,7 @@ enum Command {
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
-        /// Restrict to these modules (default: the whole graph)
+        /// Restrict to these profiles or modules (default: the whole graph)
         modules: Vec<String>,
         /// Overwrite foreign/drifted tracked_copy destinations
         #[arg(long)]
@@ -87,7 +87,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Inspect legacy module operations; workspace execution is not yet available
+    /// Prepare native files or legacy module operations without deployment
     Plan {
         #[arg(long)]
         host: Option<String>,
@@ -111,7 +111,7 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
-    /// Re-resolve legacy module pins; workspace locks are not yet executable
+    /// Re-resolve legacy pins or validate native file profiles
     Update {
         #[arg(long)]
         host: Option<String>,
@@ -280,7 +280,11 @@ fn main() -> ExitCode {
                 Ok(ir) => ir,
                 Err(code) => return code,
             };
-            if let Err(code) = commands::reject_workspace_execution(&ir, "grip plan", &mut sink) {
+            if let Err(code) = commands::reject_workspace_execution(
+                &ir,
+                gripsack_ir::workspace::WorkspaceOperation::Plan,
+                &mut sink,
+            ) {
                 return code;
             }
             {
@@ -301,17 +305,24 @@ fn main() -> ExitCode {
                     }
                 }
             }
-            match gripsack_exec::inspect_known_layouts(&ir, &repo, &outcome.host) {
-                Ok(layouts) => {
-                    for (module, evidence) in layouts {
-                        if let Some(summary) = evidence.summary() {
-                            println!("  {module}: {summary}");
+            if !ir.has_workspace() {
+                match gripsack_exec::inspect_known_layouts(
+                    &ir,
+                    &repo,
+                    &outcome.host,
+                    outcome.fetch.limits(),
+                ) {
+                    Ok(layouts) => {
+                        for (module, evidence) in layouts {
+                            if let Some(summary) = evidence.summary() {
+                                println!("  {module}: {summary}");
+                            }
                         }
                     }
-                }
-                Err(error) => {
-                    eprintln!("grip: {error}");
-                    return ExitCode::FAILURE;
+                    Err(error) => {
+                        eprintln!("grip: {error}");
+                        return ExitCode::FAILURE;
+                    }
                 }
             }
             // host-inputs header (0013 D6): the facts that went in and
@@ -322,28 +333,48 @@ fn main() -> ExitCode {
                 palette.dim(&commands::render_host_inputs(&outcome.host_inputs))
             );
             let waves = gripsack_exec::waves(&ir).unwrap_or_default();
-            if modules.is_empty() {
-                match render::diff_section(&ir, &repo, &outcome.host, &Default::default(), palette)
-                {
+            if modules.is_empty() || ir.workspace.is_some() {
+                match render::diff_section(
+                    &ir,
+                    &repo,
+                    &outcome.host,
+                    &Default::default(),
+                    palette,
+                    &modules,
+                    outcome.fetch.limits(),
+                ) {
                     Ok(section) => println!("{section}"),
+                    Err(gripsack_exec::ExecError::Gate(diagnostic)) => {
+                        sink.report(&[diagnostic]);
+                        return ExitCode::FAILURE;
+                    }
                     Err(error) => {
                         eprintln!("grip: cannot compute the preview: {error}");
                         return ExitCode::FAILURE;
                     }
                 }
             }
-            match modules.first() {
-                Some(name) => {
-                    println!("{}", render::render_module(&ir, name, &waves, palette))
+            if let Some(workspace) = &ir.workspace {
+                let selected = workspace.outputs.iter().filter(|output| {
+                    modules.is_empty() || modules.iter().any(|name| name == output.name())
+                });
+                for output in selected {
+                    println!("  {:?} ({})", output.name(), output.kind());
                 }
-                None => {
-                    println!("{} {} modules", palette.good("plan:"), ir.modules.len());
-                    for (i, wave) in waves.iter().enumerate() {
-                        println!(
-                            "  {} {}",
-                            palette.badge(&format!("wave {i}")),
-                            wave.join(", ")
-                        );
+            } else {
+                match modules.first() {
+                    Some(name) => {
+                        println!("{}", render::render_module(&ir, name, &waves, palette))
+                    }
+                    None => {
+                        println!("{} {} modules", palette.good("plan:"), ir.modules.len());
+                        for (i, wave) in waves.iter().enumerate() {
+                            println!(
+                                "  {} {}",
+                                palette.badge(&format!("wave {i}")),
+                                wave.join(", ")
+                            );
+                        }
                     }
                 }
             }

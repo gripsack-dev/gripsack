@@ -138,7 +138,7 @@ mod tests {
                 from: "a".into(),
                 to: "~/.a".into(),
                 key: None,
-                mode: Ownership::Owned,
+                ownership: store::StoredOwnership::Legacy(Ownership::Owned),
                 vars: Default::default(),
                 hash: gripsack_store::hash::ManifestHash::from_raw("h".into()),
                 file_mode: None,

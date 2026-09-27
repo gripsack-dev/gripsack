@@ -22,6 +22,25 @@ def store_snapshot(sandbox):
             for path in root.rglob('*') if path.is_file() and not path.is_symlink()}
 
 
+def test_unchanged_update_preserves_exact_lock_bytes(sandbox):
+    archive = make_tarball(sandbox / "stable.tar.gz", {"payload": b"stable"})
+    repo = make_env_repo(
+        sandbox / "stable-env",
+        f'import {{ module, fileFetch }} from "@gripsack/core";\n'
+        f'export default module("stable", {{ fetch: fileFetch("{archive}") }});\n',
+    )
+    run(repo, "update", "--host", "testhost")
+    lock = repo / "locks/testhost.lock"
+    # Formatting is not source identity. A current lock must not be
+    # replaced merely because update knows a different JSON indentation.
+    lock.write_text(json.dumps(json.loads(lock.read_text()), indent=7) + "\n")
+    before = lock.read_bytes()
+    checked = grip("update", "--check", "--host", "testhost", cwd=repo)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    run(repo, "update", "--host", "testhost")
+    assert lock.read_bytes() == before
+
+
 @pytest.mark.parametrize('failed_position', [0, 1, 2])
 def test_survey_keeps_all_results_and_error_dominates_changes(sandbox, failed_position):
     names = ['alpha', 'middle', 'omega']

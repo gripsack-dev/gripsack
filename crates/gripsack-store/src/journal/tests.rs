@@ -30,6 +30,91 @@ fn capture_at(dest: &Path, home: &Dir) -> Prior {
 }
 
 #[test]
+fn repeated_destination_mutations_restore_the_run_original_at_both_crash_windows() {
+    for second_write_landed in [false, true] {
+        let temporary = home();
+        let home = cap(&temporary);
+        let dest = temporary.path().join("shared-rc");
+        gripsack_fs::atomic_write_with_mode(&home, Path::new("shared-rc"), b"original\n", 0o600)
+            .unwrap();
+        let original = capture_at(&dest, &home);
+        record(
+            &home,
+            &dest,
+            &original,
+            &file_intent(crate::canonical_bytes_identity(b"first block\n", 0o600)),
+        )
+        .unwrap();
+        gripsack_fs::atomic_write_with_mode(&home, Path::new("shared-rc"), b"first block\n", 0o600)
+            .unwrap();
+        let intermediate = capture_at(&dest, &home);
+        record(
+            &home,
+            &dest,
+            &intermediate,
+            &file_intent(crate::canonical_bytes_identity(b"two blocks\n", 0o600)),
+        )
+        .unwrap();
+        if second_write_landed {
+            gripsack_fs::atomic_write_with_mode(
+                &home,
+                Path::new("shared-rc"),
+                b"two blocks\n",
+                0o600,
+            )
+            .unwrap();
+        }
+        reconcile(&home, temporary.path()).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"original\n");
+        assert!(pending_recovery(&home).unwrap().is_none());
+    }
+}
+
+#[test]
+fn an_intervening_foreign_edit_cannot_extend_a_journaled_chain() {
+    let temporary = home();
+    let home = cap(&temporary);
+    let dest = temporary.path().join("shared-rc");
+    gripsack_fs::atomic_write_with_mode(&home, Path::new("shared-rc"), b"original\n", 0o600)
+        .unwrap();
+    let prior = capture_at(&dest, &home);
+    record(
+        &home,
+        &dest,
+        &prior,
+        &file_intent(crate::canonical_bytes_identity(b"first\n", 0o600)),
+    )
+    .unwrap();
+    gripsack_fs::atomic_write_with_mode(&home, Path::new("shared-rc"), b"foreign edit\n", 0o600)
+        .unwrap();
+    let changed = capture_at(&dest, &home);
+    assert!(record(&home, &dest, &changed, &Intended::Removed).is_err());
+    reconcile(&home, temporary.path()).unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), b"foreign edit\n");
+}
+
+#[test]
+fn a_retained_v1_entry_recovers_without_inventing_an_intermediate_state() {
+    let temporary = home();
+    let home = cap(&temporary);
+    let dest = temporary.path().join("legacy");
+    gripsack_fs::atomic_write_with_mode(&home, Path::new("legacy"), b"old\n", 0o600).unwrap();
+    let prior = capture_at(&dest, &home);
+    let after = file_intent(crate::canonical_bytes_identity(b"new\n", 0o600));
+    let bytes = serde_json::to_vec(&serde_json::json!({
+        "v": 1, "dest": dest, "prior": PriorSerde::from(&prior), "after": after.to_serde()
+    }))
+    .unwrap();
+    let entry = Entry::from_wire(&bytes).unwrap();
+    assert!(entry.before.is_none());
+    gripsack_fs::atomic_write(&home, &Path::new("journal").join(entry_name(&dest)), &bytes)
+        .unwrap();
+    gripsack_fs::atomic_write_with_mode(&home, Path::new("legacy"), b"new\n", 0o600).unwrap();
+    reconcile(&home, temporary.path()).unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), b"old\n");
+}
+
+#[test]
 fn crash_between_record_and_write_restores_prior() {
     let home = home();
     let dest = home.path().join("rc/.bashrc");
@@ -496,10 +581,7 @@ fn tagged_entries_round_trip_through_the_wire() {
     let after = file_intent(crate::hash::canonical_bytes_identity(b"new\n", 0o644));
     record(&cap(&home), &dest, &prior, &after).unwrap();
 
-    let bytes = std::fs::read(home.path().join(entry_rel(&dest))).unwrap();
-    let text = String::from_utf8(bytes.clone()).unwrap();
-    assert!(text.contains(r#""v":1"#), "versioned wire: {text}");
-    assert!(text.contains(r#""kind":"file""#), "tagged intent: {text}");
+    let bytes = std::fs::read(dir(home.path()).join(entry_name(&dest))).unwrap();
 
     let entry = Entry::from_wire(&bytes).expect("own writes decode");
     assert_eq!(entry.dest, dest.to_str().unwrap());
@@ -516,14 +598,18 @@ fn wire_admission_rejects_legacy_versions_and_malformed() {
     );
     assert_eq!(
         Entry::from_wire(
-            br#"{"v":2,"dest":"/x","prior":{"kind":"absent"},"after":{"kind":"removed"}}"#
+            br#"{"v":255,"dest":"/x","prior":{"kind":"absent"},"after":{"kind":"removed"}}"#
         ),
-        Err(WireRejection::UnsupportedVersion(2))
+        Err(WireRejection::UnsupportedVersion(255))
     );
     for malformed in [
         &br#"{"dest":"/x","prior":{"kind":"absent"},"after":{"kind":"removed"}}"#[..], // no v
         br#"{"v":1,"dest":"/x","prior":{"kind":"absent"},"after":{"kind":"dir"}}"#, // unknown kind
         br#"{"v":1,"prior":{"kind":"absent"},"after":{"kind":"removed"}}"#,         // no dest
+        br#"{"v":2,"dest":"/x","prior":{"kind":"absent"},"after":{"kind":"removed"}}"#, // v2 requires before
+        br#"{"v":2,"dest":"/x","prior":{"kind":"absent"},"before":null,"after":{"kind":"removed"}}"#,
+        br#"{"v":1,"v":1,"dest":"/x","prior":{"kind":"absent"},"after":{"kind":"removed"}}"#,
+        br#"{"v":1,"dest":"/x","dest":"/y","prior":{"kind":"absent"},"after":{"kind":"removed"}}"#,
         b"not json",
     ] {
         assert!(
@@ -546,13 +632,18 @@ fn cross_variant_identities_never_compare_equal() {
     let link_spelling_file = ObjectIdentity::Link(file_id.to_string());
     let file_intended = Intended::Object(ObjectIdentity::File(file_id));
     assert_eq!(
-        decide_from(Some(&link_spelling_file), &file_intended, None),
+        decide_from(Some(&link_spelling_file), &file_intended, None, None),
         RecoveryDecision::Keep,
         "a link spelling the intended file identity is a foreign edit"
     );
     let link_spelling_sentinel = ObjectIdentity::Link("gripsack:removed".to_string());
     assert_eq!(
-        decide_from(Some(&link_spelling_sentinel), &Intended::Removed, None),
+        decide_from(
+            Some(&link_spelling_sentinel),
+            &Intended::Removed,
+            None,
+            None
+        ),
         RecoveryDecision::Keep,
         "a link spelling the old removal sentinel is a user object, never a landed removal"
     );
@@ -591,7 +682,7 @@ fn legacy_untagged_entries_fail_closed_with_evidence_kept() {
         dest.display(),
         "ab".repeat(32)
     );
-    std::fs::write(home.path().join(entry_rel(&dest)), legacy).unwrap();
+    std::fs::write(dir(home.path()).join(entry_name(&dest)), legacy).unwrap();
 
     let err = reconcile(&cap(&home), home.path())
         .expect_err("legacy entries block recovery instead of being guessed");
@@ -633,4 +724,44 @@ fn non_utf8_destinations_are_refused_at_record() {
         pending_recovery(&cap(&home)).unwrap().is_none(),
         "no journal state was created"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn unsafe_metadata_symlinks_never_read_or_chmod_their_referents() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let temporary = home();
+    let capability = cap(&temporary);
+    let target = temporary.path().join("private-canary");
+    std::fs::write(&target, b"foreign data").unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+    begin_run(&capability, None, 1, RunOp::Apply).unwrap();
+    symlink("../private-canary", dir(temporary.path()).join("bad.json")).unwrap();
+    assert!(reconcile(&capability, temporary.path()).is_err());
+    assert_eq!(std::fs::read(&target).unwrap(), b"foreign data");
+    assert_eq!(
+        std::fs::metadata(&target).unwrap().permissions().mode() & 0o7777,
+        0o640
+    );
+    assert!(dir(temporary.path()).join("bad.json").is_symlink());
+    assert_eq!(pending_recovery(&capability).unwrap().unwrap().entries, 1);
+}
+
+#[test]
+fn recovery_cleanup_keeps_the_pinned_journal_after_a_directory_replacement() {
+    let temporary = home();
+    let capability = cap(&temporary);
+    let dest = temporary.path().join("destination");
+    begin_run(&capability, None, 1, RunOp::Apply).unwrap();
+    record(&capability, &dest, &Prior::Absent, &Intended::Removed).unwrap();
+    let journal = Journal::open(&capability).unwrap().unwrap();
+    let retained = temporary.path().join("retained-journal");
+    std::fs::rename(dir(temporary.path()), &retained).unwrap();
+    std::fs::create_dir(dir(temporary.path())).unwrap();
+    let decoy = dir(temporary.path()).join("run.json");
+    std::fs::write(&decoy, b"not this transaction").unwrap();
+    cleanup(&journal, &[entry_name(&dest)]).unwrap();
+    assert_eq!(std::fs::read(decoy).unwrap(), b"not this transaction");
+    assert!(!retained.join("run.json").exists());
+    assert!(!retained.join(entry_name(&dest)).exists());
 }

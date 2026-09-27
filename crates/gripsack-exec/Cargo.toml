@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+loom-tests = []
+
 [dependencies]
 gripsack-config.workspace = true
 gripsack-fs.workspace = true
@@ -19,4 +22,8 @@ thiserror.workspace = true
 tracing = "0.1"
 libc = "0.2"
 tempfile = "3"
+
+[dev-dependencies]
+loom = "0.7.2"
+
 

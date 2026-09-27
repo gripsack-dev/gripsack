@@ -4,10 +4,27 @@
 //! Label the first declared unavailable output rather than an invented
 //! host fallback or an undifferentiated workspace root.
 
-use super::{RecipeExecution, WorkspaceOutput};
+use super::{RecipeExecution, WorkspaceOutput, WorkspaceSource};
 use crate::diagnostic::{Diagnostic, codes};
 use crate::model::Ir;
 use crate::span::Span;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceOperation {
+    Apply,
+    Plan,
+    Update,
+}
+
+impl std::fmt::Display for WorkspaceOperation {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str(match self {
+            Self::Apply => "apply",
+            Self::Plan => "plan",
+            Self::Update => "update",
+        })
+    }
+}
 
 /// The executor milestone that owns one declared capability. This is
 /// diagnostic classification only: it never authorizes an effect.
@@ -72,7 +89,14 @@ struct DeclaredCapability<'a> {
 
 fn current_output<'a>(ir: &'a Ir) -> Option<DeclaredCapability<'a>> {
     let workspace = ir.workspace.as_ref()?;
-    let Some(output) = workspace.outputs.first() else {
+    let Some(output) = workspace
+        .outputs
+        .iter()
+        .find(|output| !native_profile(output))
+    else {
+        if !workspace.outputs.is_empty() {
+            return None;
+        }
         return Some(DeclaredCapability {
             capability: UnavailableCapability::EmptyCatalog,
             name: "workspace",
@@ -105,6 +129,12 @@ fn current_output<'a>(ir: &'a Ir) -> Option<DeclaredCapability<'a>> {
     })
 }
 
+fn native_profile(output: &WorkspaceOutput) -> bool {
+    matches!(output, WorkspaceOutput::Profile(profile)
+        if profile.environment.is_none() && profile.hooks.is_empty() && profile.schedules.is_empty()
+        && profile.files.iter().all(|file| !matches!(file.source, Some(WorkspaceSource::ArtifactFile { .. }))))
+}
+
 fn historical_output<'a>(ir: &'a Ir) -> Option<DeclaredCapability<'a>> {
     let workspace = ir.workspace_v4.as_ref()?;
     let Some(output) = workspace.outputs.first() else {
@@ -123,7 +153,7 @@ fn historical_output<'a>(ir: &'a Ir) -> Option<DeclaredCapability<'a>> {
     })
 }
 
-pub(crate) fn execution_error(ir: &Ir, operation: &str) -> Option<Diagnostic> {
+pub(crate) fn execution_error(ir: &Ir, operation: WorkspaceOperation) -> Option<Diagnostic> {
     let declaration = current_output(ir).or_else(|| historical_output(ir))?;
     let capability = declaration.capability;
     let help = match capability {
@@ -131,14 +161,14 @@ pub(crate) fn execution_error(ir: &Ir, operation: &str) -> Option<Diagnostic> {
             "historical v4 workspaces stay read-only; migrate authoring to the current v5 wire. grip check still validates the saved workspace"
         }
         _ => {
-            "grip check validates named outputs without starting a builder or scheduler; workspace execution remains unavailable in this binary"
+            "native profiles support captured repository/literal/template files; this output still requires its named executor capability"
         }
     };
     Some(
         Diagnostic::error(
             codes::WORKSPACE_EXEC_UNAVAILABLE,
             format!(
-                "{operation} cannot execute output `{}`: {} belongs to {}; no workspace executor is available",
+                "{operation} cannot execute output `{}`: {} belongs to {}; its executor capability is unavailable",
                 declaration.name,
                 capability.description(),
                 capability.owner(),

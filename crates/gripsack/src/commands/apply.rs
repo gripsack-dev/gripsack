@@ -73,7 +73,11 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
         Ok(ir) => ir,
         Err(code) => return code,
     };
-    if let Err(code) = crate::commands::reject_workspace_execution(&ir, "grip apply", &mut sink) {
+    if let Err(code) = crate::commands::reject_workspace_execution(
+        &ir,
+        gripsack_ir::workspace::WorkspaceOperation::Apply,
+        &mut sink,
+    ) {
         return code;
     }
     let spinner = if palette.enabled {
@@ -162,7 +166,8 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
             // sema errors (0004 §3): step/verify errors name a module,
             // and the module's span is in the IR
             let (code, module) = match &e {
-                gripsack_exec::ExecError::Step { module, .. } => {
+                gripsack_exec::ExecError::Step { module, .. }
+                | gripsack_exec::ExecError::WorkerPanicked { module } => {
                     (gripsack_ir::codes::EXEC_STEP, Some(module.as_str()))
                 }
                 gripsack_exec::ExecError::Verify { module, .. } => {

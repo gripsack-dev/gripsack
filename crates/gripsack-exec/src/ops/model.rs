@@ -102,7 +102,7 @@ mod tests {
             from: "payload".into(),
             to: String::new(),
             key: None,
-            mode: Ownership::TrackedCopy,
+            ownership: store::StoredOwnership::Legacy(Ownership::TrackedCopy),
             vars: Default::default(),
             file_mode: None,
             source_executable: None,
@@ -228,12 +228,8 @@ mod tests {
         // nothing
         let before = store::journal::live_identity(&dest_dir, &dest_name).unwrap();
         let ctx = model_ctx(home);
-        let (_report, _prior) = execute_op(
-            ctx.home_dir().unwrap(),
-            &ctx.home,
-            op.as_executable().unwrap(),
-        )
-        .unwrap();
+        let (_report, _prior) =
+            execute_op(ctx.home_dir().unwrap(), op.as_executable().unwrap()).unwrap();
         let after = store::journal::live_identity(&dest_dir, &dest_name).unwrap();
         match op.kind() {
             OpKind::Write { .. } | OpKind::Link { .. } | OpKind::MergeUpsert { .. } => {
@@ -300,12 +296,7 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(op.kind(), OpKind::Write { .. }));
-        let _ = execute_op(
-            ctx.home_dir().unwrap(),
-            &ctx.home,
-            op.as_executable().unwrap(),
-        )
-        .unwrap();
+        let _ = execute_op(ctx.home_dir().unwrap(), op.as_executable().unwrap()).unwrap();
         let produced = op.produces().expect("a write produces an entry");
 
         // the same file declared by its absolute spelling: prev's key
@@ -320,7 +311,7 @@ mod tests {
             // declares the same file differently
             to: "~/dest".into(),
             key: None, // pre-0.32 shape: the read path canonicalizes
-            mode: Ownership::TrackedCopy,
+            ownership: store::StoredOwnership::Legacy(Ownership::TrackedCopy),
             vars: Default::default(),
             file_mode: produced.file_mode,
             source_executable: produced.source_executable,
@@ -397,7 +388,8 @@ mod tests {
             };
             let lock = crate::lockfile::Lockfile::default();
             let adopting = Default::default();
-            let runtime = preview_ops(&ir, repo, None, &adopting, &lock).unwrap();
+            let runtime =
+                preview_ops(&ir, repo, None, &adopting, &lock, Default::default(), &[]).unwrap();
             ir.modules
                 .get_mut("consumer")
                 .unwrap()
@@ -407,7 +399,8 @@ mod tests {
                     edge: gripsack_ir::EdgeKind::Build,
                     span: None,
                 });
-            let build = preview_ops(&ir, repo, None, &adopting, &lock).unwrap();
+            let build =
+                preview_ops(&ir, repo, None, &adopting, &lock, Default::default(), &[]).unwrap();
             let compiler: Vec<_> = build.iter().filter(|o| o.module == "compiler").collect();
             assert_eq!(
                 compiler.len(),

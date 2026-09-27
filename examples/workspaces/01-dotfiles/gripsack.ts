@@ -17,5 +17,5 @@ const dotfiles = profile("dotfiles", {
   ],
 });
 
-// A1 admits the file contract; A2 owns rendering and deployment.
+// Native files: check/plan prepare without deployment; apply uses generations.
 export default defineWorkspace(() => workspace({ outputs: [dotfiles] }));

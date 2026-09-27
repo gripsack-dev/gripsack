@@ -41,12 +41,13 @@ pub mod update;
 pub mod util;
 pub mod verify;
 pub mod verify_store;
+mod workspace;
 
 pub use apply::apply;
 pub use ctx::{Ctx, ExecError, Outcome, ProgressCallback};
 pub use env::render_env_file;
 pub use frontend::{ensure_deno, ensure_ts_frontend};
-pub use gc::{GcReport, gc, why_owns};
+pub use gc::{GcReport, PathOwner, gc, why_owns};
 pub use report::{
     ApplyResult, ReportKind, StepReport, UpdateCheckOutcome, UpdateReport, UpdateStatus,
     UpdateSummary,
@@ -74,8 +75,19 @@ pub enum PlanError {
 /// Module names in dependency-first order. Deterministic: among modules
 /// with equal priority, alphabetical — plans are diffable and stable.
 pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
-    if let Some(diagnostic) = ir.workspace_execution_error("plan") {
+    if let Some(diagnostic) =
+        ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
+    {
         return Err(PlanError::WorkspaceUnavailable(diagnostic));
+    }
+    if let Some(workspace) = &ir.workspace {
+        let mut names: Vec<String> = workspace
+            .outputs
+            .iter()
+            .map(|output| output.name().to_owned())
+            .collect();
+        names.sort();
+        return Ok(names);
     }
     // Kahn's algorithm with ordered sets for determinism.
     let mut indegree: BTreeMap<&str, usize> = ir.modules.keys().map(|k| (k.as_str(), 0)).collect();
@@ -127,6 +139,9 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
 /// dependencies, wave k = everything whose deps finished in waves < k.
 pub fn waves(ir: &Ir) -> Result<Vec<Vec<String>>, PlanError> {
     let order = build_order(ir)?;
+    if ir.workspace.is_some() {
+        return Ok(vec![order]);
+    }
     let mut level: BTreeMap<&str, usize> = BTreeMap::new();
     for name in &order {
         let module = &ir.modules[name.as_str()];

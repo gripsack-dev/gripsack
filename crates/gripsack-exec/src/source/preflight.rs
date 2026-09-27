@@ -158,7 +158,25 @@ pub fn inspect_known(
     ir: &gripsack_ir::Ir,
     repo: &Path,
     host: &HostName,
+    limits: gripsack_fetch::FetchLimits,
 ) -> Result<Vec<(String, LayoutEvidence)>, ExecError> {
+    if let Some(workspace) = &ir.workspace {
+        if ir
+            .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
+            .is_none()
+        {
+            return crate::workspace::NativeProfiles::prepare(
+                workspace,
+                repo,
+                &gripsack_store::gripsack_home(),
+                &[],
+                limits,
+            )
+            .map(|native| native.layout_evidence());
+        }
+        // Read-only catalog admission never realizes unsupported packages/tasks.
+        return Ok(Vec::new());
+    }
     let lock = match crate::lockfile::read(repo, host) {
         crate::lockfile::LockRead::Parsed(lock) => lock,
         crate::lockfile::LockRead::Missing => Default::default(),

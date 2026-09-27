@@ -1,7 +1,7 @@
 //! Per-module preparation is shared; only the publishing driver may commit sources.
 mod prepare;
 use crate::ctx::{Ctx, ExecError};
-use crate::lockfile::{LockRead, Resolved};
+use crate::lockfile::LockRead;
 use crate::report::{UpdateReport, UpdateStatus};
 use gripsack_ir::{Ir, prepared::PreparedModule};
 
@@ -12,8 +12,20 @@ pub enum UpdateMode {
 }
 
 pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>, ExecError> {
-    if let Some(diagnostic) = ir.workspace_execution_error("update") {
+    if let Some(diagnostic) =
+        ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Update)
+    {
         return Err(ExecError::Gate(diagnostic));
+    }
+    if let Some(workspace) = &ir.workspace {
+        let native = crate::workspace::NativeProfiles::prepare(
+            workspace,
+            &ctx.repo,
+            &ctx.home,
+            &ctx.only,
+            ctx.fetch.limits(),
+        )?;
+        return Ok(native.update_reports());
     }
     let _session = crate::util::LifecycleSession::acquire(&ctx.home)?;
     let (order, missing) = crate::apply::scoped_order(ir, &ctx.only)?;
@@ -55,6 +67,7 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>,
             });
         }
     };
+    let mut lock_changed = false;
     for name in order {
         let _module = tracing::info_span!("module", module = %name).entered();
         let plan = PreparedModule::new(&ir.modules[&name]).map_err(ExecError::Gate)?;
@@ -89,11 +102,9 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>,
             .expect("acquisition creates a pin");
         let old_entry = lock.modules.get(&name);
         let old = old_entry.and_then(|entry| entry.resolved.as_ref());
-        let unchanged = if mode == UpdateMode::Check {
-            old_entry == Some(&prepared.entry)
-        } else {
-            old.is_some_and(|old| same_source(old, pin))
-        };
+        // Check predicts the exact publication decision, including source
+        // metadata and spec changes — not a weaker hash/version projection.
+        let unchanged = old_entry == Some(&prepared.entry);
         let status = if unchanged {
             UpdateStatus::Unchanged
         } else {
@@ -109,24 +120,21 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>,
         if mode == UpdateMode::Publish {
             prepared.publish(ctx, &name)?;
         }
-        lock.modules.insert(name.clone(), prepared.entry);
+        if !unchanged {
+            lock.modules.insert(name.clone(), prepared.entry);
+            lock_changed = true;
+        }
         reports.push(UpdateReport {
             module: name,
             status,
             layout: prepared.layout,
         });
     }
-    if mode == UpdateMode::Publish {
+    if mode == UpdateMode::Publish && lock_changed {
         crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
     }
     Ok(reports)
 }
 
-fn same_source(old: &Resolved, new: &Resolved) -> bool {
-    old.sha256 == new.sha256
-        && old.repo256 == new.repo256
-        && match (&old.version, &new.version) {
-            (Some(old), Some(new)) => old == new,
-            _ => true,
-        }
-}
+#[cfg(test)]
+mod tests;

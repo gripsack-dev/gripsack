@@ -97,6 +97,24 @@ new protected Docker28 CI exists. Fuzz was not run per owner request;
 the existing pull-request CI would replay fuzz, so no public release
 or website/config adoption claim is authorized by this packet.
 
+**2026-09-27 working-tree continuation:** native v5 file profiles now use
+the existing preparation/store/ownership/journal/generation lifecycle.
+Real CLI flows exercised all three destination policies, retained-byte
+rollback, scoped selection, two-block pruning and crash recovery.
+Journal v2 preserves the run-original prior plus the immediate-before
+state; the fresh TLC gate passed both loss mutants and the two-write
+non-vacuity witness. Scheduler panic completion, typed/capability-backed
+priors, private capability-backed journals, complete update-pin
+comparison, E109/E110/E115/E134 admission and named Verus attribution
+are implemented. All five local non-fuzz gates passed: Rust plus Loom
+calibration, TypeScript **67/67**, real CLI **342/342**, fresh TLC and
+Verus **72/0** plus nine semantic mutants/unrelated-failure refusal.
+`verification/reports/2026-09-27-native-files-local-gates.log` archives
+the actual outputs. `plan/0048` and `plan/0052` retain the leaf/scope
+record. These are working-tree observations; exact-source release
+evidence and all remaining implementation/proofs/platform lanes stay
+open. Fuzz remains unrun this round by owner instruction.
+
 ## Security maintenance (non-release changes)
 
 - 2026-09-26: The protected `audit` check exposed

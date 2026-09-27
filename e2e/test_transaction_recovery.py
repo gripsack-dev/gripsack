@@ -496,12 +496,19 @@ export default module("a", {{
         "prior": {"kind": "file", "hash": prior_sha, "mode": 420},
         "after": canonical_sha(b"v=newer\n"),
     }
-    (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
-        json.dumps(legacy)
-    )
+    rejected = journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")
+    rejected.write_text(json.dumps(legacy))
+    rejected.chmod(0o666)
+    journal.chmod(0o755)
 
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, "legacy entries block, never guessed"
     assert "pre-0.40" in out.stderr, out.stderr
     assert len(list((journal / "quarantine").glob("*.json"))) == 1
     assert conf.read_text() == "v=new\n", "the destination is untouched"
+    quarantine = journal / "quarantine"
+    assert journal.stat().st_mode & 0o7777 == 0o700
+    assert quarantine.stat().st_mode & 0o7777 == 0o700
+    saved = quarantine / rejected.name
+    assert saved.stat().st_mode & 0o7777 == 0o600
+    assert json.loads(saved.read_text()) == legacy

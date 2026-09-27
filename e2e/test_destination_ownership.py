@@ -67,11 +67,11 @@ export default module("two", {{
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "E119" in out.stderr, out.stderr
-    assert "resolve to the same path" in out.stderr, out.stderr
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "E119" in out.stderr
-    assert "resolve to the same path" in out.stderr
+    assert not alias.exists()
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
     # and a symlinked ancestor: ~/config-link -> ~/.config
     (home / "config-link").symlink_to(home / ".config")
@@ -100,13 +100,12 @@ export default module("two", {
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "E119" in out.stderr
-    assert "resolve to the same path" in out.stderr, out.stderr
+    assert not alias.exists()
 
 
 def test_same_module_duplicate_destination_is_e111(sandbox):
-    """0030 §P0-1: E111's same-module suppression is gone — two
-    declarations of one destination in ONE module would double-journal
-    it, the second entry overwriting the first's true prior."""
+    """Legacy modules retain one ownership unit per physical destination;
+    sharing requires explicit workspace block identities."""
     confdir = sandbox / "myenv" / "configs" / "x"
     confdir.mkdir(parents=True)
     (confdir / "a.conf").write_text("a\n")

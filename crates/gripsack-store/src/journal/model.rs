@@ -257,7 +257,7 @@ fn recover(
             if let Some((prior, intended)) = disk.entry {
                 let live = disk.dest.map(|c| ident(symbol(c)));
                 let prior_id = prior.map(|c| ident(symbol(c)));
-                match decide_from(live.as_ref(), &intended.to_typed(), prior_id.as_ref()) {
+                match decide_from(live.as_ref(), &intended.to_typed(), prior_id.as_ref(), None) {
                     RecoveryDecision::Restore => disk.dest = prior,
                     RecoveryDecision::Unchanged | RecoveryDecision::Keep => {}
                 }

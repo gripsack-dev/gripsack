@@ -1,7 +1,47 @@
 """Generation history, rollback, allocation and concurrent commits."""
 
+import json
 import subprocess
-from conftest import GRIP, grip, make_env_repo, make_tarball, refresh_host
+import pytest
+from conftest import GRIP, grip, make_env_repo, make_tarball, refresh_host, remove_module
+
+
+@pytest.mark.parametrize("tamper", ["hash", "mode", "blob-symlink"])
+def test_invalid_prior_never_restores_unadmitted_bytes(sandbox, tamper):
+    repo = make_env_repo(
+        sandbox / "prior-env",
+        'import { module, trackedCopy } from "@gripsack/core";\n'
+        'export default module("demo", {\n'
+        '  config: { "config.txt": trackedCopy("~/.prior-target") },\n'
+        '});\n',
+    )
+    (repo / "config.txt").write_text("managed\\n")
+    destination = sandbox / ".prior-target"
+    destination.write_text("original\\n")
+    applied = grip("apply", "--host", "testhost", "--take-over", cwd=repo)
+    assert applied.returncode == 0, applied.stderr
+    home = sandbox / ".local/share/gripsack"
+    current = (home / "current").readlink()
+    manifest_file = home / current / "manifest.json"
+    manifest = json.loads(manifest_file.read_text())
+    prior = manifest["modules"]["demo"]["entries"][0]["prior"]
+    if tamper == "hash":
+        (home / "planted").write_text("unadmitted\\n")
+        prior["hash"] = "../planted"
+    elif tamper == "mode":
+        prior["mode"] = 0o100000
+    else:
+        blob = home / "prior" / prior["hash"]
+        outside = sandbox / "outside-prior"
+        outside.write_bytes(blob.read_bytes())
+        blob.unlink()
+        blob.symlink_to(outside)
+    manifest_file.write_text(json.dumps(manifest))
+    remove_module(repo, "hello")
+    result = grip("apply", "--host", "testhost", cwd=repo)
+    assert result.returncode != 0, "an invalid prior must not authorize restoration"
+    assert destination.read_text() == "managed\\n"
+    assert (home / "current").readlink() == current
 
 
 def test_current_link_must_resolve_under_home(sandbox):

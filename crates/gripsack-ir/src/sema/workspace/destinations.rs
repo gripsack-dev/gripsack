@@ -57,9 +57,6 @@ pub(super) fn check(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
                 .or_default()
                 .push(span);
         }
-        for (marker, group) in &by_marker {
-            eprintln!("KEYTRACE {marker:?} n={}", group.len());
-        }
         for (marker, group) in by_marker {
             if group.len() > 1 {
                 reject(&folded, Some(&marker), &group, diagnostics);

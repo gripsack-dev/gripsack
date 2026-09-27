@@ -2203,3 +2203,46 @@ Scope honesty (unchanged from §2.1): the original probe demonstrated a
 payload-tree containment failure, not an arbitrary-write primitive; this
 fix closes acquisition-side containment. Deployment consumers still read
 through links by design where ownership modes permit.
+
+### 2026-09-27 continuation — production boundary owners
+
+The next integrated changes keep one owner per invariant:
+`gripsack-exec::schedule` owns module completion and the actual
+mutex/condvar coordination exercised by Loom; `gripsack-store`
+owns persisted-prior admission and capability-backed blob access,
+with restore/GC consuming admitted values; the Verus gate owns
+diagnostic attribution and named-family obligation coverage.
+Native workspace preparation must feed the existing publication,
+ownership planner and journal, not a second store or transaction
+implementation. These changes are prerequisites to usable native
+handover slices, not a waiver of B1/B2, M-V1–M-V7 or platform gates.
+
+| Leaf | Class / target | State | Required evidence |
+|---|---|---|---|
+| M0-3.1 / M-V2 | NEXT / scheduler panic completion | Implemented, focused evidence; release closure pending | The original real two-worker panic exceeded its 15s deadline. The shared production coordinator now catches execution panics, completes failure/drain and wakes waiters; the real CLI exits and a subsequent apply succeeds. Three Loom cases passed at two preemptions; dropped completion and notification each produced an attributable Loom deadlock, not a timeout/compile failure. |
+| M0-4.1 | NEXT / persisted priors | Implemented, focused evidence; release closure pending | Before: traversal and symlink priors restored planted bytes; invalid modes changed the target before error. After: all three reject before effects, prior-directory symlink blocks GC, and valid adoption restores. Typed hashes/modes, capability-backed blob IO and raw-byte digest checks now cover journal/generation restoration and GC; retained v1 journal recovery passes. |
+| M1-6.2–4 | NEXT / proof evidence integrity | Implemented, fresh local verify gate passed; release closure pending | Verus reported 72 obligations, zero errors; 37 named queries cover nine families. Nine semantic mutants include ownership drift and GC roots in deletion. An unrelated failing lemma in the same source file is refused as classifier evidence; ten total calibrations passed. |
+| M1-3.2 | NEXT / complete update comparison | Implemented, focused evidence | Check/Publish compare complete lock entries, including metadata-only changes. A real local acquisition regression passes; unchanged CLI updates preserve exact existing lock bytes. |
+| M1-3.3 | NEXT / resource fidelity | Implemented, focused evidence | Verify/Intent resource declarations reject source-labelled E134 in terminal and JSON before effects; producer resources remain supported. The full update-survey plus new resource flow group passed 10 cases. |
+| M1-6.1 | NEXT / fallible merge boundary | Implemented, focused evidence | ManagedBlockSet remove/upsert and all consumers propagate invalid UTF-8 instead of assuming parser perfection; six managed-block tests include a deliberately invalid byte span. This is not the complete M-V3 parser/range refinement proof. |
+| M1-6.5 | NEXT / faithful transaction model | Implemented, fresh model gate passed | Transaction Classify uses exact identities, not numeric apply/rollback direction, and assumes PREV differs from TARGET. The same fresh gate passed the separate repeated-write journal positive, two named loss mutants and reachable-two-writes witness. Generalized M-V1/M-V6 TLAPS evidence remains open. |
+| M1-5a/b | NEXT / Verify-action and stepped-source admission | Implemented, focused evidence | Four real CLI regressions failed before: absolute/parent Verify-action paths and missing config/install-step repo files each passed check. After: E109/E115/E110 carry declaration spans and stop before producers/destinations; the combined contract/ownership/workspace group passed 76 cases. The standalone JSON probe also changed all three admitted `ok:true` cases into source-labelled errors. |
+| M0-4.4 | NEXT / private authoritative journal | Implemented, focused evidence; integrated release evidence pending | Fresh crashed and legacy-quarantined metadata both exposed 0755 journal directories before the fix. Pinned journal/quarantine directories now use 0700, records 0600, and permission changes use the existing fault boundary. Prior IO shares the same no-follow helper. The final focused run passed 118 Rust / 45 real CLI cases, including retained-record recovery after the recorded permission-sync IO failure; exact-source integrated verification remains required. |
+
+E110 must distinguish repository-only inputs from produced payloads:
+the shipped `test_store_verify_detects_built_copy_source_exec_tampering`
+creates its install payload in a fetch-less shell recipe. Prepared
+modules with a fetch **or producer recipe** therefore have a staged
+payload; only repo-only entries require a current repository file.
+Rejecting every missing file without a fetch would break that existing
+consumer rather than enforce source provenance.
+
+The private-state change exposed a separate recovery error classification:
+an injected permission-sync failure was treated as malformed bytes and
+quarantined a valid record, preventing ordinary subsequent recovery.
+The real recorded-cut regression reproduced that outcome. Read IO errors
+now propagate with the record retained; only successful reads followed
+by wire-admission rejection are quarantined.
+
+Fuzz testing remains disabled for this round at the owner's request;
+that decision is not recorded as successful fuzz evidence.

@@ -29,7 +29,10 @@ export default defineEnv((ctx) => ({
 registered by import side effect — the function *returns* the
 environment, so `Inputs → Environment` is testable and cacheable.
 
-## A workspace is a function (IR v5)
+## A workspace is a function (unreleased IR v5)
+
+This workspace API requires the matching development core and SDK in
+this checkout; the published 0.42.0 pair predates it.
 
 A root `gripsack.ts` — preferred over `hosts/<name>.ts` when present —
 default-exports `defineWorkspace` and returns a `workspace({ outputs })`
@@ -72,8 +75,8 @@ cycles show the causal path. `runBash` bodies are literal text (`${…}`
 interpolation is rejected; dynamic values enter through typed
 `env`/`argv` refs) and require a declared `packageCommand` interpreter,
 never ambient Bash. The reference identifies a package command; its
-bytes are pinned only when core resolves the lockfile. The read-only
-v5 wire has no resolved Bash digest or strict-options field yet.
+bytes are pinned only when core resolves the lockfile. The current
+command wire has no resolved Bash digest or strict-options field yet.
 
 Object and immutable fluent command forms lower to the same command
 IR, aside from their declaration spans:
@@ -101,7 +104,8 @@ strings without an original body location are rejected rather than
 given a false `line_map`. JavaScript evaluates template expressions
 before calling a tag: do not put `${…}` expressions in `bashBody`.
 The frontend rejects them when invoked, but this is **not** a static
-pre-evaluation check. No workspace command executes before A2.
+pre-evaluation check. Workspace command execution remains unavailable;
+the native file-profile path below does not execute those commands.
 
 Recipe execution is explicit: `{ kind: "host", access: "unconfined" }`
 declares host filesystem/kernel/network access, or
@@ -113,14 +117,22 @@ and `minimum_os: { major, minor, patch? }`. Fixed-prefix packages use
 `{ kind: "fixed_prefix", prefix: "/opt/tool" }`; selecting one into an
 environment requires that environment's matching `prefix`.
 
-This A1 authoring surface remains **read-only**. `grip check` evaluates and admits
-the workspace without a host file or `env.toml` and lists named outputs.
-`grip plan`, `apply` and `update` reject workspace execution with E124
-before host effects. The diagnostic names the first unavailable output,
-its declaration span and owning milestone: isolated Linux recipes
-need B2, schedule registration E2/E3, task prerequisites E1, and
-historical v4 declarations remain read-only pending A5 migration.
-`grip check` never bootstraps BuildKit or a scheduler.
+`grip check` evaluates and admits the workspace without a host file or
+`env.toml` and lists named outputs. Native **file-only profiles** now
+execute: repository files are captured once, literal/template content
+is prepared before deployment, and the same content can be linked,
+copied or merged as a managed block. `check` and `plan` prepare without
+deploying; `apply` uses the existing generations, ownership and journal;
+`rollback` restores retained bytes without rerendering current inputs.
+File-only `update` validates these inputs without writing a host lock.
+
+Package/artifact realization, environments, commands and schedules
+still reject execution with E124, naming the first unavailable output,
+its declaration span and owning milestone. Historical v4 workspaces
+remain read-only pending A5 migration. `check` never bootstraps BuildKit
+or a scheduler. `adopt` does not edit workspace TypeScript automatically:
+declare the file policy and use explicit `apply --take-over` when
+reversible adoption of a foreign tracked-copy destination is intended.
 
 Four [graduated workspaces](../examples/workspaces/) use the real SDK
 without a hostname shim or a synthetic package: [dotfiles only](../examples/workspaces/01-dotfiles/gripsack.ts),
@@ -128,9 +140,9 @@ without a hostname shim or a synthetic package: [dotfiles only](../examples/work
 [a source recipe with alternate producer and typed command consumer](../examples/workspaces/03-source-built/gripsack.ts),
 and [manual plus scheduled tasks](../examples/workspaces/04-scheduled-task/gripsack.ts).
 The `ts-test` gate strictly type-checks their source, and `e2e` admits
-each through the shipped `grip check`. Archives under these examples
-are tiny executable offline fixtures, not claims that A1 realizes a
-package or registers a schedule; `plan` refuses E124 before effects.
+each through the real `grip check`. The dotfile example can be planned
+and applied natively. The other archives are executable offline
+fixtures, not claims that package or scheduler execution is available.
 
 The legacy `hosts/<name>.ts` path emits a v5 modules-compatibility
 envelope until the A5 migration; the core keeps v3 and historical v4

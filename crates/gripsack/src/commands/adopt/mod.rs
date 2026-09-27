@@ -33,7 +33,7 @@ pub fn adopt(
             gripsack_ir::codes::WORKSPACE_EXEC_UNAVAILABLE,
             "grip adopt cannot modify a workspace profile yet",
         )
-        .with_help("A2 owns workspace file deployment; use grip check to validate gripsack.ts without host effects");
+        .with_help("declare profile files in gripsack.ts and use grip apply --take-over for reversible adoption; automatic workspace authoring edits are not available");
         eprintln!(
             "{}",
             render::render_diagnostics_bounded(&[diagnostic], palette, &repo)
@@ -246,7 +246,15 @@ pub fn adopt(
     } else {
         std::iter::once(generate::tilde(&dest)).collect()
     };
-    match render::diff_section(&ir, &repo, &outcome.host, &adopting, palette) {
+    match render::diff_section(
+        &ir,
+        &repo,
+        &outcome.host,
+        &adopting,
+        palette,
+        &[],
+        outcome.fetch.limits(),
+    ) {
         Ok(section) => println!("{section}"),
         Err(error) => {
             eprintln!("grip: cannot compute the preview: {error}");

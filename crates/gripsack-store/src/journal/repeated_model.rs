@@ -221,6 +221,7 @@ fn successors(n: Node, s: Scenario, policy: Policy) -> Vec<Node> {
                         d.dest[i].map(ident).as_ref(),
                         &intended,
                         entry.prior.map(ident).as_ref(),
+                        None,
                     ) {
                         RecoveryDecision::Restore => next.dest[i] = entry.prior,
                         RecoveryDecision::Keep | RecoveryDecision::Unchanged => {}

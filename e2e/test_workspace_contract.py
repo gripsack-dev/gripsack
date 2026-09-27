@@ -1,8 +1,8 @@
-"""Versioned workspace admission through the shipped grip binary (A1).
+"""Versioned workspace admission and native file execution through grip.
 
-Direct --ir cases exercise the core alongside the real v5 TypeScript
-frontend; read-only workspace values cannot become an empty legacy
-module profile or cause effects before an A2 executor exists.
+Direct --ir cases exercise the core alongside the real v5 frontend.
+Unsupported capabilities and historical v4 workspaces must still refuse
+before effects; admitted native files must never become an empty apply.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ def run_plan_ir(sandbox, doc):
     return grip("plan", "--ir", str(path))
 
 
-def test_project_workspace_check_is_read_only_and_consumers_fail(sandbox):
+def test_project_native_files_plan_without_effects_and_apply(sandbox):
     repo = sandbox / "project"
     repo.mkdir()
     (repo / "gripsack.ts").write_text(
@@ -67,18 +67,20 @@ def test_project_workspace_check_is_read_only_and_consumers_fail(sandbox):
     checked = grip("check", cwd=repo)
     assert checked.returncode == 0, checked.stdout + checked.stderr
     assert "dotfiles (profile)" in checked.stdout
-    for command in [
-        ("plan",),
-        ("update", "--check"),
-        ("adopt", "~/.config/demo/settings.conf"),
-        ("apply",),
-    ]:
+    for command in [("plan",), ("update", "--check")]:
         result = grip(*command, cwd=repo)
-        assert result.returncode != 0
-        assert "E124" in result.stderr, (command, result.stderr)
+        assert result.returncode == 0, result.stdout + result.stderr
         assert not (sandbox / ".config/demo/settings.conf").exists()
         assert not (sandbox / ".local/share/gripsack/current").exists()
-
+    # Authoring edits are a separate adoption capability; refusing the code
+    # generator must not imply the declared file profile cannot execute.
+    refused = grip("adopt", "~/.config/demo/settings.conf", cwd=repo)
+    assert refused.returncode != 0 and "E124" in refused.stderr
+    assert not (repo / "env.toml").exists()
+    applied = grip("apply", cwd=repo)
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    assert (sandbox / ".config/demo/settings.conf").read_text() == "setting=1\n"
+    assert (sandbox / ".local/share/gripsack/current").exists()
 
 def test_all_nine_output_kinds_admit_from_one_offline_workspace(sandbox):
     fixture = Path(__file__).parent / "fixtures" / "envs" / "all-output-kinds"
@@ -121,7 +123,7 @@ def test_all_nine_output_kinds_admit_from_one_offline_workspace(sandbox):
         ),
     ],
 )
-def test_graduated_examples_admit_without_an_executor(sandbox, example, outputs):
+def test_graduated_examples_validate_and_gate_only_unavailable_capabilities(sandbox, example, outputs):
     source = Path(__file__).parent.parent / "examples" / "workspaces" / example
     repo = sandbox / example
     shutil.copytree(source, repo)
@@ -130,9 +132,13 @@ def test_graduated_examples_admit_without_an_executor(sandbox, example, outputs)
     document = json.loads(checked.stdout)
     assert document["ok"] is True
     assert [(output["name"], output["kind"]) for output in document["outputs"]] == outputs
-    refused = grip("plan", cwd=repo)
-    assert refused.returncode != 0
-    assert "E124" in refused.stderr and outputs[0][0] in refused.stderr
+    planned = grip("plan", cwd=repo)
+    if example == "01-dotfiles":
+        assert planned.returncode == 0, planned.stdout + planned.stderr
+        assert not (sandbox / ".config/editor/config.toml").exists()
+    else:
+        assert planned.returncode != 0
+        assert "E124" in planned.stderr and outputs[0][0] in planned.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
@@ -200,10 +206,9 @@ def test_bash_interpolation_rejected_by_frontend_and_decoded_ir(sandbox):
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
-def test_workspace_plan_refuses_instead_of_planning_empty_legacy_profile(sandbox):
+def test_raw_workspace_plan_prepares_native_files_without_deploying(sandbox):
     result = run_plan_ir(sandbox, workspace_ir(dotfile_profile()))
-    assert result.returncode != 0
-    assert "E124" in result.stderr and "gripsack.ts" in result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
     assert not (sandbox / ".config/demo/settings.conf").exists()
 

@@ -23,7 +23,7 @@ fn foreign_bytes_survive_reconcile_and_removal() {
         assert_eq!(again.blocks().len(), 1);
         assert!(again.satisfied(&content_hash("desired"), 0o600));
         assert_eq!(
-            again.remove().unwrap(),
+            again.remove().unwrap().unwrap(),
             format!(
                 "foreign-prefix{newline}foreign-between{newline}foreign-tail{newline}{newline}"
             )
@@ -90,6 +90,7 @@ fn later_hand_edits_are_classified_and_other_modules_stay_untouched() {
         ManagedBlockSet::parse(&output, "shell")
             .unwrap()
             .remove()
+            .unwrap()
             .unwrap(),
         other
     );
@@ -113,10 +114,33 @@ fn markers_roundtrip_across_comment_styles_and_legacy_metadata() {
         assert!(output.contains(&format!("{prefix} >>> gripsack module=shell")));
         let parsed = ManagedBlockSet::parse(&output, "shell").unwrap();
         assert!(parsed.satisfied(&content_hash(payload), 0o755));
-        assert_eq!(parsed.remove().unwrap(), "user\n");
+        assert_eq!(parsed.remove().unwrap().unwrap(), "user\n");
         let legacy = output.replace(" mode=0755", "");
         let legacy = ManagedBlockSet::parse(&legacy, "shell").unwrap();
         assert!(!legacy.satisfied(&content_hash(payload), 0o755));
         assert!(!legacy.mode_conflicts(0o755, None));
     }
+}
+
+#[test]
+fn broken_scanner_utf8_boundary_returns_error_instead_of_panicking() {
+    // The internal scanner contract is deliberately violated without
+    // violating byte-span ordering/bounds: the missing Layer-2 proof must
+    // not let a future scanner regression panic during host mutation.
+    let blocks = ManagedBlockSet {
+        text: "é",
+        blocks: vec![ManagedBlock {
+            range: 1..2,
+            content: "",
+            recorded_hash: "",
+            mode: None,
+            content_hash: content_hash(""),
+        }],
+    };
+    assert!(blocks.remove().is_err());
+    assert!(
+        blocks
+            .upsert("m", Path::new("rc"), None, "new", 0o644)
+            .is_err()
+    );
 }

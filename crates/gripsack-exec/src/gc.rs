@@ -117,9 +117,22 @@ pub fn gc(
         for state in manifest.modules.values() {
             for entry in &state.entries {
                 if let Some(store::Prior::File { hash, .. }) = &entry.prior {
-                    referenced.insert(utf8_path(&store::prior_blob_path(home, hash))?);
+                    referenced.insert(utf8_path(&hash.path_in(home))?);
                 }
             }
+        }
+    }
+    // Inventory and unlink through the same pinned prior directory.
+    // A replaced parent symlink never redirects collection outside the home.
+    let prior_cap = match store::prior::directory(&home_cap) {
+        Ok(directory) => Some(directory),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    let mut prior_candidates = Vec::new();
+    if let Some(directory) = &prior_cap {
+        for entry in directory.entries()? {
+            prior_candidates.push(utf8_path(&home.join("prior").join(entry?.file_name()))?);
         }
     }
     if !dry_run {
@@ -148,19 +161,14 @@ pub fn gc(
             report.store_removed.push(path.to_path_buf());
         }
     }
-    // prior blobs (0015 §4): same reachability rule, flat dir of files
-    let prior_dir = home.join("prior");
-    if prior_dir.is_dir() {
-        let mut candidates: Vec<String> = Vec::new();
-        for entry in std::fs::read_dir(&prior_dir)? {
-            candidates.push(utf8_path(&entry?.path())?);
-        }
-        let candidate_refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+    if let Some(prior_cap) = prior_cap {
+        let candidate_refs: Vec<&str> = prior_candidates.iter().map(String::as_str).collect();
         for doomed in gripsack_policy::retention::plan_delete(&referenced, &candidate_refs) {
             let path = Path::new(doomed);
-            report.bytes_freed += dir_size(path)?;
+            let name = path.file_name().expect("direct prior directory entry");
+            report.bytes_freed += prior_cap.symlink_metadata(name)?.len();
             if !dry_run {
-                std::fs::remove_file(path)?;
+                gripsack_fs::remove_file(&prior_cap, Path::new(name))?;
             }
             report.store_removed.push(path.to_path_buf());
         }
@@ -200,29 +208,35 @@ fn dir_size(path: &Path) -> io::Result<u64> {
     Ok(total)
 }
 
-/// Which module owns a deployed path, per the current generation's
-/// manifest. Matches the declared `to` or its absolute expansion.
-pub fn why_owns(
-    home: &Path,
-    path: &str,
-) -> Result<Option<(String, store::DeployedEntry)>, ExecError> {
+/// All ownership units of a destination belonging to one module or profile.
+#[derive(Debug)]
+pub struct PathOwner {
+    pub name: String,
+    pub entries: Vec<store::DeployedEntry>,
+}
+
+/// Owners of a deployed path in the current generation. A managed-block
+/// destination may have several owners; never hide all but the first.
+pub fn why_owns(home: &Path, path: &str) -> Result<Vec<PathOwner>, ExecError> {
     let Some(n) = store::current_generation(home)? else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
+    let query = gripsack_store::canonical_dest(path)
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_owned());
     let manifest = store::read_manifest(home, n)?;
-    for (name, state) in &manifest.modules {
-        for entry in &state.entries {
-            // the query canonicalizes like any declaration (0035 F1):
-            // spelling never decides ownership
-            let query = gripsack_store::canonical_dest(path)
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| path.to_string());
-            if entry.key() == query {
-                return Ok(Some((name.clone(), entry.clone())));
-            }
+    let mut owners = Vec::new();
+    for (name, state) in manifest.modules {
+        let entries: Vec<_> = state
+            .entries
+            .into_iter()
+            .filter(|entry| entry.key() == query)
+            .collect();
+        if !entries.is_empty() {
+            owners.push(PathOwner { name, entries });
         }
     }
-    Ok(None)
+    Ok(owners)
 }
 
 #[cfg(test)]
@@ -244,7 +258,7 @@ mod tests {
                     from: "a".into(),
                     to: "~/.config/m/a".into(),
                     key: None,
-                    mode: Ownership::TrackedCopy,
+                    ownership: store::StoredOwnership::Legacy(Ownership::TrackedCopy),
                     vars: Default::default(),
                     hash: gripsack_store::hash::ManifestHash::from_raw("a".repeat(64)),
                     file_mode: None,
@@ -344,14 +358,14 @@ mod tests {
         store::journal::begin_run(&cap, Some(3), 4, store::journal::RunOp::Apply).unwrap();
         let dest = home.join("dest.txt");
         fs::write(&dest, b"user bytes\n").unwrap();
-        let blob = store::journal::store_prior_blob_in(&cap, b"user bytes\n").unwrap();
+        let blob = store::prior::store_blob(&cap, b"user bytes\n").unwrap();
         let prior = store::journal::Prior::File {
             hash: blob.clone(),
-            mode: 0o644,
+            mode: store::prior::FileMode::try_from(0o644).unwrap(),
         };
         store::journal::record(&cap, &dest, &prior, &store::journal::Intended::Removed).unwrap();
         // sanity: the blob exists and no manifest references it
-        let blob_path = home.join("prior").join(&blob);
+        let blob_path = blob.path_in(home);
         assert!(blob_path.exists());
         (dir, blob_path)
     }
@@ -425,15 +439,17 @@ mod tests {
     fn why_owns_finds_the_owner() {
         let dir = setup();
         let home = dir.path();
-        let (name, entry) = why_owns(home, "~/.config/m/a").unwrap().unwrap();
-        assert_eq!(name, "m");
-        assert_eq!(entry.mode, Ownership::TrackedCopy);
-        let absolute = gripsack_store::expand_home("~/.config/m/a");
-        assert!(
-            why_owns(home, &absolute.to_string_lossy())
-                .unwrap()
-                .is_some()
+        let owners = why_owns(home, "~/.config/m/a").unwrap();
+        assert_eq!(owners[0].name, "m");
+        assert_eq!(
+            owners[0].entries[0].ownership.policy(),
+            Ownership::TrackedCopy
         );
-        assert!(why_owns(home, "/nope").unwrap().is_none());
+        let absolute = gripsack_store::expand_home("~/.config/m/a");
+        assert_eq!(
+            why_owns(home, &absolute.to_string_lossy()).unwrap()[0].name,
+            "m"
+        );
+        assert!(why_owns(home, "/nope").unwrap().is_empty());
     }
 }

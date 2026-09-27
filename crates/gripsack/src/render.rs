@@ -475,6 +475,8 @@ pub fn diff_section(
     host: &HostName,
     adopting: &std::collections::BTreeSet<String>,
     palette: Palette,
+    selected: &[String],
+    limits: gripsack_fetch::FetchLimits,
 ) -> Result<String, gripsack_exec::ExecError> {
     let home = gripsack_store::gripsack_home();
     let current = gripsack_store::current_generation(&home)?
@@ -504,18 +506,30 @@ pub fn diff_section(
     // the lockfile resolves warm fetched payloads to their store
     // paths (0035 F7) — a deployed module previews satisfied, not
     // deferred; a cold or unpinned one stays deferred
-    let lock = match gripsack_exec::lockfile::read(repo, host) {
-        gripsack_exec::lockfile::LockRead::Parsed(lock) => lock,
-        gripsack_exec::lockfile::LockRead::Missing => Default::default(),
-        gripsack_exec::lockfile::LockRead::Corrupt(detail) => {
-            return Err(gripsack_exec::ExecError::Step {
-                module: "*".into(),
-                step: "lockfile".into(),
-                detail,
-            });
+    let lock = if ir.workspace.is_some() {
+        gripsack_exec::lockfile::Lockfile::default()
+    } else {
+        match gripsack_exec::lockfile::read(repo, host) {
+            gripsack_exec::lockfile::LockRead::Parsed(lock) => lock,
+            gripsack_exec::lockfile::LockRead::Missing => Default::default(),
+            gripsack_exec::lockfile::LockRead::Corrupt(detail) => {
+                return Err(gripsack_exec::ExecError::Step {
+                    module: "*".into(),
+                    step: "lockfile".into(),
+                    detail,
+                });
+            }
         }
     };
-    let ops = gripsack_exec::ops::preview_ops(ir, repo, current.as_ref(), adopting, &lock)?;
+    let ops = gripsack_exec::ops::preview_ops(
+        ir,
+        repo,
+        current.as_ref(),
+        adopting,
+        &lock,
+        limits,
+        selected,
+    )?;
     let mut by_module: std::collections::BTreeMap<&str, Vec<String>> =
         std::collections::BTreeMap::new();
     for op in &ops {

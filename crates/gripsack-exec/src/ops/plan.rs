@@ -85,6 +85,7 @@ pub enum ModeInput<'a> {
     },
     /// Merge payload and permissions; hosting text is the view's one observation.
     Merge {
+        block_id: Option<&'a store::ManagedBlockId>,
         payload: &'a str,
         permissions: WritePermissions,
     },
@@ -105,9 +106,10 @@ pub(crate) fn plan_entry_op(view: &DestView, input: ModeInput) -> Result<Op, Exe
             permissions,
         } => Ok(plan_write(view, content, permissions)),
         ModeInput::Merge {
+            block_id,
             payload,
             permissions,
-        } => plan_merge(view, payload, permissions),
+        } => plan_merge(view, payload, permissions, block_id),
     }
 }
 
@@ -133,8 +135,10 @@ impl WritePermissions {
             }
         };
         let Some(prev) = view.prev.filter(|entry| {
-            matches!(entry.mode, Ownership::TrackedCopy | Ownership::Template)
-                && !entry.preserved_drift
+            matches!(
+                entry.ownership.policy(),
+                Ownership::TrackedCopy | Ownership::Template
+            ) && !entry.preserved_drift
         }) else {
             return if executable { 0o755 } else { 0o644 };
         };
@@ -319,6 +323,7 @@ fn plan_merge(
     view: &DestView,
     payload: &str,
     permissions: WritePermissions,
+    block_id: Option<&store::ManagedBlockId>,
 ) -> Result<Op, ExecError> {
     let fail = |detail: String| ExecError::Step {
         module: view.module.to_string(),
@@ -335,7 +340,8 @@ fn plan_merge(
             ));
         }
     };
-    let blocks = crate::managed_blocks::ManagedBlockSet::parse(existing, view.module)
+    let owner = block_id.map_or(view.module, store::ManagedBlockId::as_str);
+    let blocks = crate::managed_blocks::ManagedBlockSet::parse(existing, owner)
         .map_err(|e| fail(e.to_string()))?;
     let mode = permissions.resolve(view);
     if let Some(crate::deploy::Observation::File {
@@ -371,7 +377,7 @@ fn plan_merge(
     }
     let spliced = blocks
         .upsert(
-            view.module,
+            owner,
             &view.dest,
             view.entry.marker.as_deref(),
             payload,
@@ -381,6 +387,7 @@ fn plan_merge(
     let op = view
         .base(
             OpKind::MergeUpsert {
+                block_id: block_id.cloned(),
                 payload: payload.as_bytes().to_vec(),
                 marker: view.entry.marker.clone(),
                 mode,
@@ -405,7 +412,7 @@ pub(crate) fn plan_remove_op(
     module: &str,
     entry: &store::DeployedEntry,
     store_path: &Path,
-    home: &Path,
+    home: &gripsack_fs::Dir,
 ) -> Result<Option<Op>, ExecError> {
     let fail = |detail: String| ExecError::Step {
         module: module.to_string(),
@@ -428,7 +435,7 @@ pub(crate) fn plan_remove_op(
             module.to_string(),
             dest.clone(),
             entry.to.clone(),
-            entry.mode.clone(),
+            entry.ownership.policy().clone(),
             OpKind::Preserved,
             None,
             observed.clone(),
@@ -440,7 +447,7 @@ pub(crate) fn plan_remove_op(
             None,
         )))
     };
-    if entry.mode == Ownership::Merge {
+    if entry.ownership.policy() == Ownership::Merge {
         // the file is foreign — prune removes only our block, and only
         // if the block is still what we deployed
         let existing = match crate::deploy::observe(&dest_dir, &dest_name)? {
@@ -450,12 +457,16 @@ pub(crate) fn plan_remove_op(
         };
         let (bytes, splice_mode) = existing;
         let existing = String::from_utf8(bytes).map_err(|e| fail(e.to_string()))?;
-        let blocks = crate::managed_blocks::ManagedBlockSet::parse(&existing, module)
-            .map_err(|e| fail(e.to_string()))?;
+        let blocks =
+            crate::managed_blocks::ManagedBlockSet::parse(&existing, entry.merge_owner(module))
+                .map_err(|e| fail(e.to_string()))?;
         match blocks.blocks() {
             [] => return Ok(None),
             _ if blocks.intact(entry, splice_mode) => {
-                let new = blocks.remove().expect("intact implies a block");
+                let new = blocks
+                    .remove()
+                    .map_err(|error| fail(error.to_string()))?
+                    .expect("intact implies a block");
                 let intended = if new.is_empty() {
                     Intended::Removed
                 } else {
@@ -468,7 +479,7 @@ pub(crate) fn plan_remove_op(
                     module.to_string(),
                     dest,
                     entry.to.clone(),
-                    entry.mode.clone(),
+                    entry.ownership.policy().clone(),
                     OpKind::Remove(RemoveTarget {
                         entry: entry.clone(),
                         store_path: store_path.to_path_buf(),
@@ -502,7 +513,7 @@ pub(crate) fn plan_remove_op(
         module.to_string(),
         dest,
         entry.to.clone(),
-        entry.mode.clone(),
+        entry.ownership.policy().clone(),
         OpKind::Remove(RemoveTarget {
             entry: entry.clone(),
             store_path: store_path.to_path_buf(),
@@ -537,7 +548,7 @@ pub(crate) fn plan_restore_op(
     let ir_entry = Entry {
         from: entry.from.to_string_lossy().into_owned(),
         to: entry.to.clone(),
-        mode: entry.mode.clone(),
+        mode: entry.ownership.policy().clone(),
         vars: entry.vars.clone(),
         marker: None,
         span: None,
@@ -558,7 +569,7 @@ pub(crate) fn plan_restore_op(
         prev,
         take_over: false, // rollback never absorbs
     };
-    let mut op = match entry.mode {
+    let mut op = match entry.ownership.policy() {
         Ownership::Owned => {
             if !source.exists() {
                 return Ok(None);
@@ -584,7 +595,7 @@ pub(crate) fn plan_restore_op(
                 Err(e) => return Err(fail(format!("{e}"))),
             };
             let rendered;
-            let content: &[u8] = match entry.mode {
+            let content: &[u8] = match entry.ownership.policy() {
                 Ownership::Template => {
                     rendered = crate::template::render_template(
                         &bytes,
@@ -633,6 +644,7 @@ pub(crate) fn plan_restore_op(
             plan_entry_op(
                 &view,
                 ModeInput::Merge {
+                    block_id: entry.ownership.block_id(),
                     payload: &payload,
                     permissions: entry
                         .file_mode

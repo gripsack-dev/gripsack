@@ -49,16 +49,17 @@ it is **breaking even for a tolerant reader** and must bump the version.
 
 | Artifact | Impact | Required handling |
 |---|---|---|
-| `Ir` literals in Rust (`model::Ir` constructions and inline IR JSON in tests) | A1-01 added v4; A1-02 retained a separately typed historical v4 reader alongside current v5 | Migrate every literal to an explicit version; v3/v4 fixtures exercise their own retained readers, and direct executor APIs refuse both workspace versions before effects |
+| `Ir` literals in Rust (`model::Ir` constructions and inline IR JSON in tests) | A1-01 added v4; A1-02 retained a separately typed historical v4 reader alongside current v5 | Migrate every literal to an explicit version; v3/v4 fixtures exercise their retained readers. Historical v4 and unavailable v5 capabilities refuse before effects; §32 executes native file profiles |
 | Golden corpus `e2e/fixtures/golden/` | The emitted envelope changes to v5; old v4 bytes remain historical input | Regenerate under the current writer, review version/layout diff, and retain dedicated v4 schema/parser/round-trip fixtures; four graduated examples remain A1-10 |
 | Embedded frontend `crates/gripsack-exec/src/embedded_frontend.rs` | Vendored generated copy of the TS sources (0035 F6) embeds the old emitter | Regenerate via the existing generation script; the CI freshness check must cover it; crates.io packaged-install smoke remains the gate |
-| `grip check` vs `plan`/`apply`/`update` | All parse/admit versioned workspaces, but no A1 workspace executor exists | `check` lists named outputs without builder bootstrap; CLI and direct executor APIs reject historical v4/current v5 with E124 before home/store effects |
+| `grip check` vs `plan`/`apply`/`update` | All parse/admit versioned workspaces; §32 adds native v5 file preparation/deployment | `check` and `plan` prepare native files without activation or builder bootstrap; `apply` uses the existing lifecycle. Historical v4 and unavailable v5 capabilities retain E124 before effects |
 | Persisted state (generations, `manifest.json`, journal priors, store receipts, ownership records, lint registrations) | IR is transient but plan-derived fields are durable independently | Audit retained readers/writers and historical fixtures before any no-migration claim; preserve ownership/hash wire meanings and test inspect/rollback/update/GC |
 | Old pinned `@gripsack/core` frontends | Emit v3 module maps or v4 workspaces | Read with the corresponding strict versioned reader; `grip doctor` continues reporting mismatched pins |
 | Future saved plans (Epic C) | A new persisted full-plan snapshot, unlike existing generation and lock records that already store IR-derived fields | Out of A1 scope; when C lands, saved plans bind `ir_version` at capture and replay through the matching versioned reader |
 
-**Confirmed durable coupling to v3 IR types:** `crates/gripsack-store/src/generations.rs`
-serializes `gripsack_ir::Ownership` in each `DeployedEntry`,
+**Durable coupling:** `crates/gripsack-store/src/generations.rs`
+serializes `StoredOwnership` in each `DeployedEntry` (historical IR
+ownership strings plus the disjoint workspace-block object in §32),
 `gripsack_ir::{Action, Trigger}` in `IntentRecord`, and
 `gripsack_ir::EnvVar` in `ModuleState`. `crates/gripsack-exec/src/lockfile.rs`
 serializes `FetchSpec` in `LockEntry`. These are not full `Ir` envelopes,
@@ -79,9 +80,9 @@ historical output values and round-trips them without promoting
 `native` to host execution or inventing an install prefix. Shared
 read-only graph admission uses a temporary validation projection that
 is discarded; v4 target strings retain exact-match admission. Both
-CLI and direct executor entrypoints reject either workspace version
+CLI and direct executor entrypoints reject historical v4 execution
 with E124 before mutation. This is a versioned reader, not a second
-live execution path.
+live execution path. Native current-v5 files are described in §32.
 
 ## 2. Current v5 contract and retained workspace readers
 
@@ -1561,12 +1562,11 @@ e2e **321/321** (new authored case included), TLC gate, Verus
 `verification/reports/2026-09-26-a1-treefiles-d9ce200.log`, SHA-256
 `59fe59887a8a908c3ff5ecf82822a25c5fc8afb5af1023af1ab088959dbf586b`.
 
-Still open in A1-11: template content over tree entries with
+At `d9ce200`, A1-11 still lacked template content over tree entries with
 admission-time rendered-result binding, artifact-side tree inventories
-(A2), live file deployment/drift/prune through the existing planner,
-lint/check subject+stage mapping, and the named ownership proof
-targets. No workspace execution exists; `plan`/`apply` still refuse
-E124.
+(A2), live file deployment/drift/prune, lint/check subject+stage mapping
+and the named ownership proof targets. §32 adds native file execution;
+it does not close the remaining artifact, subject-mapping or proof work.
 
 ### 30.3 Managed blocks are per-marker owners (partial A1-11)
 
@@ -1594,10 +1594,10 @@ case, TLC, Verus **72/0**+7 mutants). Receipt:
 `verification/reports/2026-09-26-a1-block-markers-b0861eb.log`,
 SHA-256 `5ccba66a9b7eedb4bee6b8b3119f69d9de1fcca5be046b39a9805d46055f53a1`.
 
-Admission grammar only: the managed-block **merge** against the
+At the recorded admission-only source, managed-block merge against the
 observed destination, foreign-byte preservation and journal policy
-remain A2; a deployment-side runtime with distinct markers has never
-executed.
+remained A2 work. §32 records the subsequent native runtime and its
+separate observed evidence.
 
 ## 31. Honesty register
 
@@ -1611,3 +1611,83 @@ executed.
 - Where older plan 0003/skill unknown-field tolerance conflicted with
   strict v3/v4 readers, this plan and their amended rules record the
   versioned v5 writer boundary (§1).
+
+## 32. Native file profiles through the existing lifecycle
+
+The current v5 executor admits profiles whose files have literal or
+captured repository sources, identity/literal/template content and
+symlink/tracked-copy/managed-block destinations. It refuses unsupported
+artifact, environment, hook and schedule dependencies through the same
+source-labelled E124 capability gate. This is executable file behavior,
+not package/worker or complete A2 coverage.
+
+`gripsack-exec::workspace` prepares every selected file before any
+destination write. Repository sources are opened relative to the repo
+capability, must be regular files and obey the configured acquisition
+byte limit. Each source is captured once; explicit template variables,
+source identity and rendered bytes are retained under the content root.
+The content recipe excludes profile, destination, marker and span.
+Changing only a destination reuses the immutable source/content root.
+Physical destination admission considers every declared profile, even
+for a scoped apply.
+
+Publication, entry planning, take-over, prior capture, prune, generation
+flip, rollback, recovery and GC remain the existing owners. Native files
+do not start a builder or write a legacy host lock. `check`, `plan` and
+`update --check` prepare/validate but do not deploy; a file-only update
+has no external pins to publish.
+
+### 32.1 Durable ownership and repeated destination writes
+
+Workspace block identity is `w1-` plus the SHA-256 of the case-folded
+author marker. The physical destination and block identity form the
+ownership key. Independent markers may share a file; whole-file owners,
+duplicate markers and conflicting hosting-file modes may not.
+`why-owns` returns every module/profile ownership unit at the path.
+
+Historical `DeployedEntry.mode` string values retain their meanings.
+New workspace blocks encode `mode: {managed_block: \"w1-…\"}` through
+`StoredOwnership`: an older string-only decoder rejects, rather than
+silently ignoring a sidecar and assigning the legacy module marker.
+No existing generation is rewritten during admission.
+
+Multiple block writes expose a journal requirement that one-write
+transactions did not: retain the **run-original** prior while admitting
+the most recent **immediate-before** state. Journal v2 requires both.
+Extending a record first checks that the observed object equals the
+previous intended result, refusing intervening foreign edits. Recovery
+can then restore the run-original object whether the next write landed
+or the process stopped after recording it. Strict v1 remains readable;
+missing/null v2 `before`, duplicate fields and unknown versions reject.
+Downgrading with an unfinished v2 journal is not supported.
+
+### 32.2 Observed verification and remaining obligations
+
+Real compiled CLI flows exercised captured/rendered content under all
+three ownership policies, warm reuse, destination-only identity reuse,
+content changes, rollback from retained bytes, pruning, scoped profile
+selection, two blocks over one foreign hosting file, crash recovery,
+store verification and physical alias rejection. Actual journal
+filesystem cases cover both sides of the second write, foreign-edit
+refusal and retained v1 recovery.
+
+`DestinationWrites.tla` checks the two-write crash seam. The compose
+model gate passed its positive, original-prior-loss mutant,
+immediate-before-loss mutant and reachable-two-writes witness. This is
+a finite model plus real-code filesystem evidence, **not** the required
+generalized M-V6 theorem. The transaction classifier model now uses
+exact identities and assumes distinct previous/target generations.
+
+The local five Compose gates passed: fresh Rust/clippy/tests plus the
+shared Loom coordinator, TypeScript **67/67**, real CLI **342/342**
+(including six recorded-cut persistence-matrix cases), fresh TLC and
+Verus **72/0** plus nine semantic mutants and unrelated-failure refusal.
+The documented dotfile example also ran check/plan/apply/why-owns under
+an isolated HOME with exact rendered-content assertions. Archive:
+`verification/reports/2026-09-27-native-files-local-gates.log`
+(SHA-256 `5f44594aaa19b944c1bc34d2d1fe957e5030580273d3ec37ada594edb0cf0f55`).
+
+These are pre-commit working-tree observations, not exact-commit release
+evidence. Source-bound receipts, remaining NEXT proof families, native
+platform lanes and the rest of A2 remain required. Fuzz was not run.
+

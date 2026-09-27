@@ -31,7 +31,7 @@ pub(crate) fn exercise(input: &[u8]) {
             cursor = block.range.end;
         }
         foreign.push_str(&existing[cursor..]);
-        if let Some(removed) = blocks.remove() {
+        if let Some(removed) = blocks.remove().expect("admitted scanner spans") {
             assert_eq!(removed, foreign)
         }
         for dest in ["config.sh", "config.html", "config.jsonc", ".vimrc"] {
@@ -39,7 +39,7 @@ pub(crate) fn exercise(input: &[u8]) {
                 let output_blocks = ManagedBlockSet::parse(&output, module).unwrap();
                 assert_eq!(output_blocks.blocks().len(), 1);
                 if !blocks.is_empty() {
-                    assert_eq!(output_blocks.remove().unwrap(), foreign)
+                    assert_eq!(output_blocks.remove().unwrap().unwrap(), foreign)
                 }
             }
         }
@@ -58,7 +58,7 @@ pub(crate) fn exercise(input: &[u8]) {
         .unwrap();
     let duplicated = first.repeat(copies);
     let parsed = ManagedBlockSet::parse(&duplicated, "m").unwrap();
-    assert_eq!(parsed.remove().unwrap(), foreign.repeat(copies));
+    assert_eq!(parsed.remove().unwrap().unwrap(), foreign.repeat(copies));
     let repaired = parsed
         .upsert("m", Path::new("config.sh"), None, &digest, 0o644)
         .unwrap();

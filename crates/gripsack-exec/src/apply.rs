@@ -15,7 +15,9 @@ use tracing::{info, info_span};
 /// locks/apply.flock` (finding A): two concurrent applies serialize,
 /// never lose a manifest update.
 pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
-    if let Some(diagnostic) = ir.workspace_execution_error("apply") {
+    if let Some(diagnostic) =
+        ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Apply)
+    {
         return Err(ExecError::Gate(diagnostic));
     }
     let _session = crate::util::LifecycleSession::acquire(&ctx.home)?;
@@ -38,21 +40,25 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             tracing::warn!("{line}");
         }
     }
-    let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
-        crate::lockfile::LockRead::Parsed(lock) => lock,
-        crate::lockfile::LockRead::Missing => Default::default(),
-        crate::lockfile::LockRead::Corrupt(why) => {
-            // never silently re-pin from a corrupt lock: the file is
-            // the tamper signal (lockfile.rs header). deleting it is
-            // the user's deliberate re-pin.
-            return Err(ExecError::Step {
-                module: "*".into(),
-                step: "lockfile".into(),
-                detail: format!(
-                    "{} is corrupt ({why}) — delete it to re-pin from scratch",
-                    crate::lockfile::path(&ctx.repo, &ctx.host).display()
-                ),
-            });
+    let mut lock = if ir.workspace.is_some() {
+        crate::lockfile::Lockfile::default()
+    } else {
+        match crate::lockfile::read(&ctx.repo, &ctx.host) {
+            crate::lockfile::LockRead::Parsed(lock) => lock,
+            crate::lockfile::LockRead::Missing => Default::default(),
+            crate::lockfile::LockRead::Corrupt(why) => {
+                // never silently re-pin from a corrupt lock: the file is
+                // the tamper signal (lockfile.rs header). deleting it is
+                // the user's deliberate re-pin.
+                return Err(ExecError::Step {
+                    module: "*".into(),
+                    step: "lockfile".into(),
+                    detail: format!(
+                        "{} is corrupt ({why}) — delete it to re-pin from scratch",
+                        crate::lockfile::path(&ctx.repo, &ctx.host).display()
+                    ),
+                });
+            }
         }
     };
     let mut lock_dirty = false;
@@ -88,6 +94,19 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             reports,
         });
     }
+    let native = ir
+        .workspace
+        .as_ref()
+        .map(|workspace| {
+            crate::workspace::NativeProfiles::prepare(
+                workspace,
+                &ctx.repo,
+                &ctx.home,
+                &ctx.only,
+                ctx.fetch.limits(),
+            )
+        })
+        .transpose()?;
     // the allocator is NOT current+1 (0026 §3): after a rollback,
     // current is lower than the highest generation on disk, and
     // reusing a number would rewrite immutable history. Allocate
@@ -127,7 +146,11 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // The ready-queue scheduler (0007 §5): modules run as their
     // dependencies finish, N = cores, resources via flock. The flip
     // below stays the single barrier.
-    let (order, missing) = scoped_order(ir, &ctx.only)?;
+    let (order, missing) = if native.is_some() {
+        (Vec::new(), Vec::new())
+    } else {
+        scoped_order(ir, &ctx.only)?
+    };
     if !missing.is_empty() {
         // a typo'd or host-gated name must not vanish — an apply that
         // "succeeded" while ignoring part of the request lies
@@ -154,8 +177,18 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         next_gen,
         store::journal::RunOp::Apply,
     )?;
-    let outcome =
-        crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)?;
+    let execution = if let Some(native) = &native {
+        native.deploy(ctx, &prev_modules)
+    } else {
+        crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)
+    };
+    let outcome = match execution {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            compensate(ctx);
+            return Err(error);
+        }
+    };
     // An empty result set must be a deliberate empty declaration,
     // never a scheduling artifact — prune can't tell them apart (B).
     if outcome.modules.is_empty() && !ir.modules.is_empty() && outcome.failed.is_none() {
@@ -416,7 +449,7 @@ fn pre_flip(
     // the recorded hash (user edits are never deleted). Every prune
     // mutation is journaled like a deploy (0025 §B).
     if let Some(prev) = prev_manifest {
-        prune_undeclared(prev, modules, &ctx.home, ctx.home_dir()?)?;
+        prune_undeclared(prev, modules, ctx.home_dir()?)?;
     }
     // test-only kill switch: the prune→flip crash window's e2e (0025)
     crate::util::crash_hook("after-prune");
@@ -462,7 +495,6 @@ fn pre_flip(
 fn prune_undeclared(
     prev: &store::Generation,
     modules: &BTreeMap<String, store::ModuleState>,
-    home: &std::path::Path,
     home_dir: &gripsack_fs::Dir,
 ) -> Result<(), ExecError> {
     let declared: BTreeSet<std::path::PathBuf> = modules
@@ -474,14 +506,13 @@ fn prune_undeclared(
     // its block behind as an unowned ghost (0026 §2). Non-merge
     // destinations are unique by E111, so a rename keeps the dest
     // deployed under the new module without a remove/redeploy churn.
-    let declared_merge: BTreeSet<(&str, std::path::PathBuf)> = modules
+    let declared_merge: BTreeSet<store::OwnershipKey> = modules
         .iter()
         .flat_map(|(name, m)| {
             m.entries
                 .iter()
-                .filter(|e| e.mode == gripsack_ir::Ownership::Merge)
-                .map(|e| (name.as_str(), e.key()))
-                .collect::<Vec<_>>()
+                .filter(|e| e.ownership.policy() == gripsack_ir::Ownership::Merge)
+                .map(move |entry| entry.ownership_key(name))
         })
         .collect();
     for (name, state) in &prev.modules {
@@ -493,8 +524,8 @@ fn prune_undeclared(
             if entry.preserved_drift {
                 continue;
             }
-            let declared_elsewhere = if entry.mode == gripsack_ir::Ownership::Merge {
-                declared_merge.contains(&(name.as_str(), entry.key()))
+            let declared_elsewhere = if entry.ownership.policy() == gripsack_ir::Ownership::Merge {
+                declared_merge.contains(&entry.ownership_key(name))
             } else {
                 declared.contains(&entry.key())
             };
@@ -504,13 +535,14 @@ fn prune_undeclared(
             // the ONE remove planner (0034): merge block-intactness,
             // the drift guard, and the journaled intent all live in
             // ops::plan — apply executes the same op rollback would
-            let Some(op) = crate::ops::plan_remove_op(name, entry, &state.store_path, home)? else {
+            let Some(op) = crate::ops::plan_remove_op(name, entry, &state.store_path, home_dir)?
+            else {
                 continue;
             };
             if matches!(op.kind(), crate::ops::OpKind::Preserved) {
                 continue; // plan_remove_op already warned
             }
-            crate::ops::execute_op(home_dir, home, op.as_executable()?)?;
+            crate::ops::execute_op(home_dir, op.as_executable()?)?;
             info!(
                 "{} {}",
                 if entry.prior.is_some() {

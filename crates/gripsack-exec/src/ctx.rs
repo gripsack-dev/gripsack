@@ -92,6 +92,8 @@ pub enum ExecError {
         step: String,
         detail: String,
     },
+    #[error("worker panicked while executing {module}; the apply was not committed")]
+    WorkerPanicked { module: String },
     #[error("scheduling: {0}")]
     Plan(#[from] crate::PlanError),
     /// A pre-mutation validity gate failed (physical destination

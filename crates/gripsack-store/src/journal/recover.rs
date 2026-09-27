@@ -32,9 +32,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::marker::{Classification, RecoveryFacts, classify, cleanup, run_marker};
+use super::storage::Journal;
 use super::{
-    Entry, Intended, ObjectIdentity, PriorSerde, dest_capability, live_identity, prior_blob_rel,
-    prior_identity, read_uncommitted,
+    Entry, Intended, ObjectIdentity, PriorSerde, dest_capability, live_identity, prior_identity,
+    read_uncommitted,
 };
 
 /// What an uncommitted entry asks for, once resolved against the
@@ -55,9 +56,10 @@ pub(crate) enum Recovery {
 /// human line per decision for the apply report. Must run under the
 /// lifecycle lock.
 pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> {
-    let Some(entries) = read_uncommitted(home)? else {
+    let Some(journal) = Journal::open(home)? else {
         return Ok(Vec::new());
     };
+    let entries = read_uncommitted(&journal)?;
     // the commit decision by EXACT transaction identity (0026 §4):
     // current == target committed, current == previous uncommitted,
     // anything else is ambiguous and BLOCKS (fail closed — the
@@ -65,7 +67,7 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
     // corruption or tampering, never a branch to guess). A marker
     // missing `previous_generation` fails closed at parse — torn or
     // corrupt, never mistaken for a fresh-machine run.
-    let committed = match run_marker(home)? {
+    let committed = match run_marker(&journal)? {
         Some(marker) => {
             // the ONE current-pointer reader (0030 §H10): recovery
             // never uses weaker commit evidence than normal commands
@@ -93,7 +95,7 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
     let mut lines = Vec::new();
     if committed {
         cleanup(
-            home,
+            &journal,
             &entries.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
         )?;
         lines.push(RecoveryNote {
@@ -148,22 +150,35 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
         }
         entry_paths.push(path);
     }
-    cleanup(home, &entry_paths)?;
+    cleanup(&journal, &entry_paths)?;
     Ok(lines)
 }
 
-/// Three-way, intent-based (0026 §6): the entry recorded the intended
-/// post-state BEFORE the mutation, so a post-crash edit is
-/// distinguishable from the mutation itself. Identities arrive
-/// DECODED (0045 F1): `Entry::from_wire` validated the persisted
-/// intent at admission; the kernel compares typed values, never
-/// strings.
+/// Intent-based recovery (0026 §6), extended by v2's immediate pre-state
+/// for repeated writes. The original prior remains the restore point.
+/// Entry admission supplies typed identities; the decision compares those
+/// values rather than reparsing strings or inferring an operation direction.
 fn decide(dest_dir: &Dir, dest_name: &Path, entry: &Entry, home: &Dir) -> io::Result<Recovery> {
     let live = live_identity(dest_dir, dest_name)?;
     let prior_id = prior_identity(&entry.prior, home)?;
+    let before_id = if entry.before.as_ref() == Some(&entry.prior) {
+        None
+    } else {
+        entry
+            .before
+            .as_ref()
+            .map(|before| prior_identity(before, home))
+            .transpose()?
+            .flatten()
+    };
     let intended = Intended::from_wire(&entry.after);
     Ok(
-        match decide_from(live.as_ref(), &intended, prior_id.as_ref()) {
+        match decide_from(
+            live.as_ref(),
+            &intended,
+            prior_id.as_ref(),
+            before_id.as_ref(),
+        ) {
             RecoveryDecision::Restore => Recovery::Restore(describe_prior(&entry.prior)),
             RecoveryDecision::Keep => {
                 Recovery::Keep("changed since the interrupted run — your edit stands".into())
@@ -206,12 +221,16 @@ pub(crate) fn decide_from(
     live: Option<&ObjectIdentity>,
     intended: &Intended,
     prior_id: Option<&ObjectIdentity>,
+    before_id: Option<&ObjectIdentity>,
 ) -> RecoveryDecision {
     match live {
         // the mutation landed intact
         Some(l) if intended.satisfied_by(l) => RecoveryDecision::Restore,
         // live IS the prior: the mutation never landed
         Some(l) if Some(l) == prior_id => RecoveryDecision::Unchanged,
+        // A later mutation's durable record may exist before its write.
+        // Its admitted predecessor is still ours, never a foreign edit.
+        Some(l) if Some(l) == before_id => RecoveryDecision::Restore,
         Some(_) => RecoveryDecision::Keep,
         // absent now: a landed removal or a never-landed creation —
         // either way the prior comes back
@@ -234,11 +253,11 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
             }
         }
         PriorSerde::File { hash, mode } => {
-            let bytes = home.read(prior_blob_rel(hash))?;
+            let bytes = crate::prior::read_blob(home, hash)?;
             // the mode rides the write (0027 §6): temp → exact mode →
             // fsync → rename, so a restored 0600 secret never exists
             // at a wider mode, not even for the rename's instant
-            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, *mode)?
+            gripsack_fs::atomic_write_with_mode(dest_dir, dest_name, &bytes, mode.bits())?
         }
         PriorSerde::Symlink { target } => {
             gripsack_fs::symlink_replace(dest_dir, dest_name, Path::new(target))?;

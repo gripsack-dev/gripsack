@@ -60,6 +60,7 @@ fn plan(
     let observed = crate::deploy::observe_readonly(dest).unwrap();
     let input = if entry.mode == Ownership::Merge {
         ModeInput::Merge {
+            block_id: None,
             payload: std::str::from_utf8(content).unwrap(),
             permissions: policy,
         }
@@ -85,18 +86,13 @@ fn plan(
 }
 
 fn execute(ctx: &Ctx, op: &Op) -> store::DeployedEntry {
-    execute_op(
-        ctx.home_dir().unwrap(),
-        &ctx.home,
-        op.as_executable().unwrap(),
-    )
-    .unwrap();
+    execute_op(ctx.home_dir().unwrap(), op.as_executable().unwrap()).unwrap();
     let p = op.produces().unwrap();
     store::DeployedEntry {
         from: p.from.clone(),
         to: op.declared_to().to_string(),
         key: Some(op.dest().to_path_buf()),
-        mode: p.mode.clone(),
+        ownership: store::StoredOwnership::Legacy(p.mode.clone()),
         vars: p.vars.clone(),
         hash: p.hash.clone(),
         file_mode: p.file_mode,
@@ -188,19 +184,14 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
                     );
                     prev = execute(&ctx, &drift);
                     assert_eq!(permissions(dest), changed_mode);
-                    let prune = plan_remove_op("m", &prev, &payload_dir, &ctx.home)
+                    let prune = plan_remove_op("m", &prev, &payload_dir, ctx.home_dir().unwrap())
                         .unwrap()
                         .unwrap();
                     assert!(
                         matches!(prune.kind(), OpKind::Preserved),
                         "observation became delete authority"
                     );
-                    execute_op(
-                        ctx.home_dir().unwrap(),
-                        &ctx.home,
-                        prune.as_executable().unwrap(),
-                    )
-                    .unwrap();
+                    execute_op(ctx.home_dir().unwrap(), prune.as_executable().unwrap()).unwrap();
                     assert_eq!(std::fs::read(dest).unwrap(), b"one");
                 }
                 cases += 1;
@@ -270,16 +261,11 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
             );
             assert!(matches!(drift.kind(), OpKind::Preserved));
             prev = execute(&ctx, &drift);
-            let prune = plan_remove_op("m", &prev, dir.path(), &ctx.home)
+            let prune = plan_remove_op("m", &prev, dir.path(), ctx.home_dir().unwrap())
                 .unwrap()
                 .unwrap();
             assert!(matches!(prune.kind(), OpKind::Preserved));
-            execute_op(
-                ctx.home_dir().unwrap(),
-                &ctx.home,
-                prune.as_executable().unwrap(),
-            )
-            .unwrap();
+            execute_op(ctx.home_dir().unwrap(), prune.as_executable().unwrap()).unwrap();
             assert_eq!(std::fs::read(dest).unwrap(), original);
             assert_eq!(permissions(dest), drift_mode);
         }
@@ -295,15 +281,10 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
                 false,
             ),
         );
-        let prune = plan_remove_op("m", &converged, dir.path(), &ctx.home)
+        let prune = plan_remove_op("m", &converged, dir.path(), ctx.home_dir().unwrap())
             .unwrap()
             .unwrap();
-        execute_op(
-            ctx.home_dir().unwrap(),
-            &ctx.home,
-            prune.as_executable().unwrap(),
-        )
-        .unwrap();
+        execute_op(ctx.home_dir().unwrap(), prune.as_executable().unwrap()).unwrap();
         if initial.is_some() {
             assert_eq!(std::fs::read(dest).unwrap(), b"foreign\n");
             assert_eq!(permissions(dest), expected);
@@ -339,12 +320,7 @@ fn links_carry_the_payload_mode_without_normalizing_it() {
             },
         )
         .unwrap();
-        execute_op(
-            ctx.home_dir().unwrap(),
-            &ctx.home,
-            op.as_executable().unwrap(),
-        )
-        .unwrap();
+        execute_op(ctx.home_dir().unwrap(), op.as_executable().unwrap()).unwrap();
         assert_eq!(std::fs::read_link(&entry.to).unwrap(), source);
         assert_eq!(permissions(Path::new(&entry.to)), mode);
     }

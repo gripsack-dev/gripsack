@@ -3,6 +3,56 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [Unreleased]
+
+### Added
+
+- Current v5 workspace file profiles execute through the existing store,
+  ownership planner, journal, generations and rollback. Repository sources
+  are captured once per command; literal and rendered content compose with
+  symlink, tracked-copy and managed-block destinations. Content identity
+  excludes destination and owner; retained source/recipe/output bytes make
+  rollback independent of today's repository and template variables.
+- Distinct managed blocks can share a hosting file across profiles.
+  `why-owns` reports every owner; partial selection cannot hide a physical
+  destination collision. Package/artifact realization, environments, tasks,
+  schedules and workers still require their unavailable executor capabilities.
+
+### Fixed
+
+- A panicking module completes the scheduler failure transition and wakes
+  idle workers instead of hanging a parallel apply. Loom now exercises the
+  production mutex/condition-variable coordinator with calibrated
+  notification and completion-loss mutants.
+- Persisted prior hashes and Unix modes are admitted before use. Restore
+  and GC pin the private prior directory; traversal identities, planted
+  symlinks and corrupted backup bytes cannot redirect restoration.
+- Journal/quarantine directories and records are owner-only (0700/0600),
+  including retained metadata encountered during recovery. Reads, moves and
+  cleanup use pinned directory capabilities. IO failures retain the record
+  for recovery; only decoded malformed records go to quarantine.
+- `update --check` and publishing updates compare complete lock entries.
+  An unchanged update preserves the existing lockfile bytes.
+- Verify/intent steps reject ignored resource declarations with E134;
+  place protected work on a producer step.
+- Verify actions receive the same E109/E115 path checks as other
+  verification declarations. E110 now checks normalized stepped repo
+  sources; real fetch/build producers may still create their payload later.
+- Invalid merge-splice UTF-8 propagates as an error instead of panicking.
+  The Verus gate requires named proof-family coverage and attributes each
+  negative to its intended function, diagnostic and source span.
+
+### Persisted-state compatibility
+
+- Journal v2 retains the run's original prior across repeated writes to one
+  destination and records the immediate pre-write state. Strict v1 entries
+  remain readable; v2 requires its new field. Do not downgrade across an
+  unfinished v2 transaction.
+- Existing generation ownership strings retain their meaning. Workspace
+  blocks use a disjoint object-shaped ownership value, so older readers
+  reject rather than reinterpret them as module-named blocks. Historical
+  v4 workspaces remain read-only.
+
 ## [0.42.0] — 2026-09-10
 
 Verified merge, build-closure and scheduling foundations (0047): the

@@ -22,7 +22,7 @@ pub fn remove_entry_deployed(
     if entry.preserved_drift {
         return Ok(false);
     }
-    match entry.mode {
+    match entry.ownership.policy() {
         Ownership::Owned => {
             // removal authority is the EXACT expected target (0030
             // §15): a user-repointed link to another gripsack object
@@ -44,10 +44,14 @@ pub fn remove_entry_deployed(
             };
             let existing = String::from_utf8(bytes)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-            let blocks = crate::managed_blocks::ManagedBlockSet::parse(&existing, module)
-                .map_err(std::io::Error::other)?;
+            let blocks =
+                crate::managed_blocks::ManagedBlockSet::parse(&existing, entry.merge_owner(module))
+                    .map_err(std::io::Error::other)?;
             if blocks.intact(entry, mode) {
-                let new = blocks.remove().expect("intact implies a block");
+                let new = blocks
+                    .remove()
+                    .map_err(std::io::Error::other)?
+                    .expect("intact implies a block");
                 if new.is_empty() {
                     remove_if_present(dest_dir, dest_name)?;
                 } else {
@@ -94,7 +98,7 @@ pub fn remove_or_restore_prior(
     dest_name: &Path,
     entry: &store::DeployedEntry,
     module: &str,
-    home: &Path,
+    home: &gripsack_fs::Dir,
     store_path: &Path,
 ) -> std::io::Result<bool> {
     if let Some(prior) = &entry.prior {

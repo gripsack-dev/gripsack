@@ -1,4 +1,4 @@
-# verification/reports — archived runner logs (2026-09-24–26)
+# verification/reports — archived runner logs (2026-09-24–27)
 
 Unmodified copies of the gate logs captured on 2026-09-24 in `/tmp/gripsack-baseline/`
 (pristine-worktree baseline runs) and `/tmp/gripsack-a0/` (A0-tree runs), archived
@@ -306,3 +306,18 @@ checker-source `56b1581` differs and needs its own CI; dispatch
 does not enforce branch protection or qualify Mac-VM. The receipt is
 a selected plan/0048 control, not H0/G-05 verification, M-V7 proof or
 a release.
+
+## Native file execution and recovery boundaries — local non-fuzz gates
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-27-native-files-local-gates.log` | `5f44594aaa19b944c1bc34d2d1fe957e5030580273d3ec37ada594edb0cf0f55` | Fresh Docker Rust fmt/clippy/tests plus three production-coordinator Loom cases and two deadlock mutants; TypeScript 67/67 plus strict examples; complete real CLI 342/342, including all six persistence-matrix cases; fresh TLC positives/calibrations including repeated destination writes; fresh Verus 72/0, nine named semantic mutants, unrelated-lemma refusal and ten evidence-parser negatives. Actual documented dotfile example check/plan/apply/ownership output is included. |
+
+These are **pre-commit working-tree** transcripts, not exact-commit
+protected CI receipts. The final TLC run includes the later scope-comment
+correction; behavioral Rust/TS/e2e sources were unchanged afterward.
+Source equivalence to the implementation checkpoint is **[INFERENCE]**
+until a source-bound runner records its revision and clean roots.
+Fuzz and corpus replay were not run by owner instruction. No native Mac,
+VM/launchd, generalized TLAPS theorem or public release is qualified.
+

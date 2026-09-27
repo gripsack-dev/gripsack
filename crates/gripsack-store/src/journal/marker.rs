@@ -7,7 +7,7 @@ use gripsack_fs::Dir;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::run_marker_rel;
+use super::storage::{Journal, RUN_MARKER};
 
 /// The run marker: which generation this journal's entries belong to.
 /// Written before the first mutation; the flip makes it true.
@@ -25,10 +25,8 @@ pub(crate) struct RunMarker {
     /// fresh run.
     pub(crate) previous_generation: Option<u64>,
     pub(crate) target_generation: u64,
-    /// Apply builds a NEWER generation (committed once `current`
-    /// reaches the target); rollback returns to an OLDER one, so its
-    /// commit condition inverts (committed once `current` comes back
-    /// DOWN to the target) — 0025 §A.
+    /// Informational operation kind. Classification uses exact generation
+    /// identities; neither numeric ordering nor direction grants commit.
     pub(crate) op: RunOp,
 }
 
@@ -124,8 +122,7 @@ impl<'de> serde::Deserialize<'de> for RunMarker {
     }
 }
 
-/// What the run is doing — the reconcile commit decision differs by
-/// direction (see RunMarker).
+/// What the run is doing, retained for inspection rather than classification.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunOp {
@@ -150,9 +147,8 @@ pub fn begin_run(
         target_generation,
         op,
     };
-    gripsack_fs::atomic_write(
-        home,
-        &run_marker_rel(),
+    Journal::prepare(home)?.write(
+        Path::new(RUN_MARKER),
         serde_json::to_string(&marker)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
             .as_bytes(),
@@ -162,21 +158,21 @@ pub fn begin_run(
 /// The run completed and the generation flipped: nothing left to
 /// recover. Entries, stragglers, and the run marker are gone.
 pub fn commit_run(home: &Dir) -> io::Result<()> {
-    let entries = match home.read_dir("journal") {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(e),
+    let Some(journal) = Journal::open(home)? else {
+        return Ok(());
     };
+    journal.restrict()?;
+    let entries = journal.directory.read_dir(".")?;
     let mut entry_paths = Vec::new();
     for entry in entries {
         let name = entry?.file_name();
-        let rel = Path::new("journal").join(&name);
+        let rel = PathBuf::from(&name);
         // the marker is NOT deleted here — cleanup deletes it last
-        if name != "run.json" && rel.extension().is_some_and(|e| e == "json") {
+        if name != RUN_MARKER && rel.extension().is_some_and(|e| e == "json") {
             entry_paths.push(rel);
         }
     }
-    cleanup(home, &entry_paths)
+    cleanup(&journal, &entry_paths)
 }
 
 /// Two durability barriers (0026 §5): entries deleted and fsync'd
@@ -186,19 +182,19 @@ pub fn commit_run(home: &Dir) -> io::Result<()> {
 /// with no marker read as an uncommitted run and would restore a
 /// committed generation's priors (the 0.19.1 bug class, one level
 /// down).
-pub(crate) fn cleanup(home: &Dir, entry_paths: &[PathBuf]) -> io::Result<()> {
+pub(super) fn cleanup(journal: &Journal, entry_paths: &[PathBuf]) -> io::Result<()> {
     for path in entry_paths {
-        gripsack_fs::remove_file(home, path)?;
+        gripsack_fs::remove_file(&journal.directory, path)?;
     }
-    gripsack_fs::fsync_dir(home, Path::new("journal"))?;
+    gripsack_fs::fsync_dir(&journal.directory, Path::new("."))?;
     // a run that never mutated has no marker (end_run already
     // removed it) — absent is fine, anything else is real
-    match gripsack_fs::remove_file(home, &run_marker_rel()) {
+    match gripsack_fs::remove_file(&journal.directory, Path::new(RUN_MARKER)) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),
     }
-    gripsack_fs::fsync_dir(home, Path::new("journal"))
+    gripsack_fs::fsync_dir(&journal.directory, Path::new("."))
 }
 
 /// The run ended without mutating anything (satisfied, empty graph):
@@ -207,18 +203,22 @@ pub(crate) fn cleanup(home: &Dir, entry_paths: &[PathBuf]) -> io::Result<()> {
 /// target generation is later than `current` would misread the NEXT
 /// crash window.
 pub fn end_run(home: &Dir) -> io::Result<()> {
+    let Some(journal) = Journal::open(home)? else {
+        return Ok(());
+    };
+    journal.restrict()?;
     // a stale marker misleads the NEXT crash window — its deletion is
     // a durability operation, never `let _ =` (0030 §12)
-    match gripsack_fs::remove_file(home, &run_marker_rel()) {
+    match gripsack_fs::remove_file(&journal.directory, Path::new(RUN_MARKER)) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),
     }
-    gripsack_fs::fsync_dir(home, Path::new("journal"))
+    gripsack_fs::fsync_dir(&journal.directory, Path::new("."))
 }
 
-pub(crate) fn run_marker(home: &Dir) -> io::Result<Option<RunMarker>> {
-    match home.read(run_marker_rel()) {
+pub(super) fn run_marker(journal: &Journal) -> io::Result<Option<RunMarker>> {
+    match journal.read(Path::new(RUN_MARKER)) {
         Ok(bytes) => serde_json::from_slice::<RunMarker>(&bytes)
             .map(Some)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),

@@ -4,10 +4,10 @@
 //! closed by the pass-1.5 tagged-field walk (`tagged.rs`), plain structs
 //! by `deny_unknown_fields` — no field is ever silently dropped.
 //!
-//! Admission judges structure only. The shared execution gate
-//! (`execution_gate.rs`) labels an unavailable output with E124
-//! before CLI or direct executor entrypoints can open a home, lockfile,
-//! worker or scheduler. It never authorizes execution or a fallback.
+//! Structural admission is separate from execution support. The shared gate
+//! (`execution_gate.rs`) admits native file profiles and labels unavailable
+//! outputs with E124 before CLI or direct executor entrypoints open a home,
+//! lockfile, worker or scheduler. It never substitutes a fallback executor.
 //!
 //! One type family per child module, re-exported flat:
 //! `catalog` owns the envelope and nine outputs, `command` the
@@ -23,6 +23,7 @@ mod platform;
 
 pub use catalog::*;
 pub use command::*;
+pub use execution_gate::WorkspaceOperation;
 pub use file::*;
 pub use layout::*;
 pub use platform::*;

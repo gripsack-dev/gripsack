@@ -38,7 +38,7 @@ fn every_direct_executor_entry_rejects_before_home_mutation() {
         let ir = check(&workspace_ir(version)).expect("versioned workspace admitted");
         assert!(ir.has_workspace());
         let diagnostic = ir
-            .workspace_execution_error("plan")
+            .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
             .expect("workspace E124");
         assert_eq!(diagnostic.labels[0].span.as_ref().unwrap().line, 3);
         assert_eq!(diagnostic.labels[1].span.as_ref().unwrap().line, 1);
@@ -81,6 +81,8 @@ fn every_direct_executor_entry_rejects_before_home_mutation() {
             None,
             &Default::default(),
             &gripsack_exec::lockfile::Lockfile::default(),
+            Default::default(),
+            &[],
         );
         assert!(
             matches!(&ops, Err(ExecError::Gate(d)) if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE)
