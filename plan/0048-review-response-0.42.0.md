@@ -2370,18 +2370,38 @@ are still open. No fuzz was run.
 
 ### M-V4 — deterministic byte admission and recovery effects
 
-The next boundary uses the existing production `RunMarker` decoder,
+This boundary reuses the production `RunMarker` decoder,
 `marker::run_marker`, `Entry::from_wire` and `recover::reconcile`.
-`journal::admission_tests` will own deterministic raw-byte properties:
+`journal::admission_tests` now owns deterministic raw-byte properties:
 required/nullable fields, wrong types, duplicates, v1/v2 compatibility,
 unsupported entry versions, truncation, integer/hash/mode boundaries and
 stable semantic round-trips. The current marker is unversioned; no new
 format or reinterpretation of retained state is introduced by this work.
-Actual recovery fixtures must retain destination bytes/links on rejected
-metadata, not merely observe a serde error. A missing-previous-field
-default-to-null mutation must fail the named admission/effect oracle.
+Actual recovery fixtures retain destination links and valid/invalid evidence
+on rejected metadata, rather than merely observing a serde error. A
+missing-previous-field default-to-null mutation fails the named real
+recovery-effect oracle.
 The test-container gate owns calibration of that production decoder;
 compiler failures, timeouts and unrelated test failures cannot qualify it.
 This is deterministic parser/refinement testing, not a serde theorem,
 random fuzzing or replay of a fuzz corpus.
+
+Local execution passed all **seven** properties: **24** marker and **20**
+entry semantic round-trips; **29** marker and **110** entry rejection
+cases, including nested duplicate hash/mode/target/identity fields; **173**
+proper-prefix truncations plus invalid framing; and **139** real
+recovery-effect/evidence-retention checks. `check_journal_admission.py`
+enforces the named set and per-family floors. Its only source mutation
+changes the actual previous-field constructor to `unwrap_or(None)`;
+the named recovery oracle fails for `missing_previous_generation`,
+not compilation, a timeout or an unrelated panic.
+
+The ten real transaction CLI cases passed. The cold-home torn-marker
+case now proves no destination effect and retained marker/intent bytes,
+then proves explicit-null recovery and a successful ordinary apply.
+It replaces a wording assertion that could not distinguish parser
+rejection from a later ambiguous classification. The standalone CLI
+observation is `verification/reports/2026-09-27-m-v4-local-smoke.log`
+(SHA-256 `44ff13beb7b7d53c092b99c4b09470ebed08314d16cb34d90a6c89136ec6f9cc`).
+Final container/source-bound evidence remains to be recorded.
 

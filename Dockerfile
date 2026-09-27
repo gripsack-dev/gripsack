@@ -52,15 +52,16 @@ FROM builder AS test
 RUN cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
-# Fresh generated registry codes and embedded frontend are required in
-# the published crates. The registry's two named negative calibrations
-# reject duplicate allocations rather than a missing tool.
+# Published artifacts and the real coordinator/journal admission boundaries
+# are checked and mutation-calibrated. Tool/build failures never qualify as
+# successful semantic negatives.
 RUN apk add --no-cache python3 \
     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \
     && python3 scripts/gen_diagnostic_registry.py --check \
     && python3 scripts/gen_diagnostic_registry.py --self-check \
     && python3 scripts/gen_frontend_embed.py --check \
-    && python3 scripts/check_scheduler_loom.py
+    && python3 scripts/check_scheduler_loom.py \
+    && python3 scripts/check_journal_admission.py
 
 # The debug binary for stages that need a runnable grip (e2e).
 FROM builder AS bin

@@ -26,6 +26,11 @@ User-visible changes per release. Design archaeology lives in
   sorted, disjoint, in-bounds and UTF-8-aligned ranges satisfying the existing
   splice contract. The marker grammar is unchanged and separately exercised
   through real update/prune flows; no grammar or filesystem proof is claimed.
+- Deterministic journal-admission verification covers required versus nullable
+  fields, duplicate identities, retained v1/current v2 entries, truncation and
+  scalar boundaries. A calibrated missing-field mutant must fail actual
+  recovery-effect checks, not just an error-message snapshot. No serde theorem
+  or fuzz result is claimed.
 
 ### Fixed
 

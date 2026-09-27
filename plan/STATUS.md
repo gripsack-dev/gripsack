@@ -153,6 +153,15 @@ See `verification/reports/2026-09-27-m-v3-221c6cf.log` and the report index.
 Lexical recognition, OS behavior, protected CI/native-platform qualification
 and other NEXT obligations remain distinct; no release is authorized.
 
+**M-V4 byte-admission continuation:** seven deterministic production-parser
+and recovery properties cover 24 marker/20 entry round-trips, 29 marker/110
+entry rejections, 173 truncated prefixes and 139 real recovery-effect
+rejections. The required test gate now calibrates missing-previous→null
+against the actual recovery oracle. Ten real transaction flows and a
+standalone cold-home missing/null lifecycle passed. This is bounded
+property/refinement evidence, not a serde proof; final source-bound and
+release qualification remain open. No fuzz or corpus replay ran.
+
 ## Security maintenance (non-release changes)
 
 - 2026-09-26: The protected `audit` check exposed

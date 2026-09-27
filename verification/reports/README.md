@@ -368,3 +368,15 @@ or release closure. The theorem covers the actual line/state/range
 implementation and splice admission, not lexical recognition, metadata
 authenticity or OS behavior. No fuzz or corpus replay was run.
 
+
+## M-V4 journal byte admission — local runtime observation
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-27-m-v4-local-smoke.log` | `44ff13beb7b7d53c092b99c4b09470ebed08314d16cb34d90a6c89136ec6f9cc` | Real cold-home CLI refuses a missing previous identity while preserving the interrupted link, planned destination absence and marker/intent bytes. An explicit-null marker then permits legitimate recovery, removes the interrupted link and applies the declared configuration. |
+
+Working-tree runtime evidence, not a serde theorem, exact-source CI or
+release approval. Deterministic byte/refinement properties and their
+missing-field calibration are separate from fuzzing; no fuzz or saved
+fuzz corpus was executed.
+

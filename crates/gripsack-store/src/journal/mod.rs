@@ -498,6 +498,9 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<ObjectIde
 }
 
 #[cfg(test)]
+mod admission_tests;
+
+#[cfg(test)]
 mod tests;
 
 /// The exhaustive state-machine model of this protocol
