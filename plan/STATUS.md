@@ -123,7 +123,9 @@ unrelated-failure and empty-target evidence and never counts timeout
 as semantic calibration. A byte-pinned `tlaps` Compose service joins
 the required CI `test` job; no CI workflow was dispatched this round.
 Six local non-fuzz gates passed, including real CLI **342/342**.
-Receipt: `verification/reports/2026-09-27-m-v1-local-gate.log`.
+Fresh committed-source receipt:
+`verification/reports/2026-09-27-m-v1-e92f5ad.log` at `e92f5ad`,
+with clean source roots before/after (SHA-256 in the report index).
 M-V6 generalization, other NEXT work and release qualification remain
 open; the pilot makes no fresh-None, repeated-recovery, multi-destination,
 Rust/OS refinement, liveness or hardware claim.

@@ -2228,7 +2228,7 @@ handover slices, not a waiver of B1/B2, M-V1–M-V7 or platform gates.
 | M1-6.5 | NEXT / faithful transaction model | Implemented, fresh model gate passed | Transaction Classify uses exact identities, not numeric apply/rollback direction, and assumes PREV differs from TARGET. The same fresh gate passed the separate repeated-write journal positive, two named loss mutants and reachable-two-writes witness. The M-V1 pilot is separately recorded below; generalized M-V6 remains open. |
 | M1-5a/b | NEXT / Verify-action and stepped-source admission | Implemented, focused evidence | Four real CLI regressions failed before: absolute/parent Verify-action paths and missing config/install-step repo files each passed check. After: E109/E115/E110 carry declaration spans and stop before producers/destinations; the combined contract/ownership/workspace group passed 76 cases. The standalone JSON probe also changed all three admitted `ok:true` cases into source-labelled errors. |
 | M0-4.4 | NEXT / private authoritative journal | Implemented, focused evidence; integrated release evidence pending | Fresh crashed and legacy-quarantined metadata both exposed 0755 journal directories before the fix. Pinned journal/quarantine directories now use 0700, records 0600, and permission changes use the existing fault boundary. Prior IO shares the same no-follow helper. The final focused run passed 118 Rust / 45 real CLI cases, including retained-record recovery after the recorded permission-sync IO failure; exact-source integrated verification remains required. |
-| M-V1 | NEXT / transaction inductive-safety pilot | Local proof/calibration passed; exact-source release evidence pending | `TransactionProofs.tla` discharges **301/301** obligations, including Init⇒Inv, Inv∧Next⇒Inv′ and Inv⇒Oracle∧CleanRunCommits. The checksum-pinned TLAPS 1.6 bundle at source `7824dab55e0c346e913404d59d0bbdeebce73cc1` is wired into Compose and the required CI test job. The omitted cleanup barrier has a separate **13/13** violating-transition proof and a reachable TLC `Oracle` counterexample; unrelated-failure and empty-target controls also passed. Protected CI was not dispatched because the owner forbids fuzz this round. This pilot is not M-V6. |
+| M-V1 | NEXT / transaction inductive-safety pilot | Committed-source proof/calibration passed; protected CI and release closure pending | `TransactionProofs.tla` discharges **301/301** obligations, including Init⇒Inv, Inv∧Next⇒Inv′ and Inv⇒Oracle∧CleanRunCommits. The checksum-pinned TLAPS 1.6 bundle at source `7824dab55e0c346e913404d59d0bbdeebce73cc1` is wired into Compose and the required CI test job. The omitted cleanup barrier has a separate **13/13** violating-transition proof and a reachable TLC `Oracle` counterexample; unrelated-failure and empty-target controls also passed. Fresh direct container execution binds source `e92f5ad5eb64646faa6695d9ffdc0b5c67354988` in `verification/reports/2026-09-27-m-v1-e92f5ad.log` (SHA-256 `2d9c1bba0647a332169671ea69e46f58246012ba77667c87e502b4b2a595b736`), with clean source roots before/after. Protected CI was not dispatched because the owner forbids fuzz this round. This pilot is not M-V6. |
 
 E110 must distinguish repository-only inputs from produced payloads:
 the shipped `test_store_verify_detects_built_copy_source_exec_tampering`
@@ -2271,3 +2271,24 @@ theorem; a timeout, unrelated failing lemma or empty target cannot qualify.
 
 Fuzz testing remains disabled for this round at the owner's request;
 that decision is not recorded as successful fuzz evidence.
+
+### M0 §2.2 — plugin identity and bounded admission
+
+Responsibility map before implementation: `gripsack-fetch::plugins`
+owns receipt source/tag cache admission; `throttle` owns validated rate
+budgets and token waits; the existing plugin adapter owns one operation
+deadline spanning capability negotiation, declared-budget admission and
+the fetch exchange. `gripsack-process::Limits` / `run` enforce the earlier
+of that absolute deadline and the local exchange cap, including cleanup.
+No second process runner or transport is introduced.
+
+The real offline CLI witnesses at `e92f5ad`'s implementation predecessor
+reproduced all three defects: `NaN/s` panicked inside Duration conversion
+(the repaired scheduler returned E301), `0.5/s` exceeded the 8s witness
+deadline without producing a payload, and a different source with the
+same alias/tag executed the cached binary and deployed its payload.
+The refusing loopback proxy prevented an accidental provisioning request
+from reaching the network. These observations are failures, not successful
+negative tests. The implementation and regressions remain in progress;
+the M-V7 resource/protocol theorem is a separate required obligation.
+

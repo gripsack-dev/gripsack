@@ -328,10 +328,12 @@ VM/launchd, generalized TLAPS theorem or public release is qualified.
 | report | sha256 | observed execution |
 |---|---|---|
 | `2026-09-27-m-v1-local-gate.log` | `2181ec3410876f6debc9451c6ceec5d8b0a8319a740e572b3ccf4c8c8202197c` | Fresh pinned TLAPS **301/301** obligations for the full pilot; an independently checked **13/13** violating-transition witness under the omitted cleanup barrier; reachable TLC `Oracle` counterexample; unrelated false-lemma and strict empty-target refusals. Actual Toolbox events and the counterexample are preserved. |
+| `2026-09-27-m-v1-e92f5ad.log` | `2d9c1bba0647a332169671ea69e46f58246012ba77667c87e502b4b2a595b736` | Fresh direct container execution at exact source `e92f5ad5eb64646faa6695d9ffdc0b5c67354988`, fingerprint `933b11eaae5e43342e60378e325560ee21ab08d9fa272ca86267bd4ad14727e9`, clean source roots before/after. The same 301 positive obligations, 13 bad-barrier witness obligations, reachable Oracle failure and three calibrations passed; no cached proof result was substituted for this command. |
 
 The scope is one destination, one crash and atomic recovery under the
 declared `Parameters`, not generalized M-V6 or a Rust/OS refinement.
-This is a pre-commit working-tree transcript, not protected CI evidence.
+The first report is a pre-commit working-tree transcript; the second binds
+fresh proof execution to committed source. Neither is protected CI evidence.
 All six local non-fuzz Compose gates passed on the implementation:
 fresh Rust/Loom, real e2e **342/342**, Verus **72/0** and TLAPS; unchanged
 TypeScript and model RUN layers were cached (their governing fresh runs
