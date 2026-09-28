@@ -233,9 +233,9 @@ separates read-only inspection from effect admission. Apply, rollback, current
 flip, recovery, activation and GC use the latter. The focused recovery campaign
 passes **19/19**, including five file/directory error/kill boundaries; a separate
 real rollback smoke preserves destination/current on failure and succeeds on
-clean retry. Native/final-candidate qualification and the complete generalized
-theorem remain open; this working-tree repair is not covered by the earlier
-`e3738d7` CI receipt.
+clean retry. The complete generalized theorem remains open; the later
+`ae77f52` CI receipt below qualifies these repairs rather than reusing the
+earlier `e3738d7` result.
 
 The same bridge found a legacy allocation-floor loss: collecting generation 20
 without a high-water counter allowed the next apply to allocate 11. Publication
@@ -250,8 +250,14 @@ The final no-deadline CLI run passed **416/416** with every persistence case.
 All six local non-fuzz gates passed; the source/image-bound receipt is
 `verification/reports/2026-09-28-generation-authority-local.log` (SHA-256
 `7c2e3fd0e1650bcdd926211364e43f8c9c90160ecdf68ae02886e9028d87830a`).
-It binds 1123 registered inputs and the actual exercised CLI binary. Native
-candidate CI and the generalized theorem remain separate, still-open gates.
+It binds 1123 registered inputs and the actual exercised CLI binary.
+Exact source `ae77f524bace1e46b738832fe99f133feb51ed51` then passed CI run
+`36468870180`: Linux CLI **416/416**, native Mac CLI **414 passed / 2 skips**,
+native process **25/25**, docs, audit and aggregate. The complete archived
+receipt is `2026-09-28-ci-ae77f52.log` (SHA-256
+`644af54a4bebccbc5b86e0be5bde4cbc781668af29c83e92a35f83147dc3f144`).
+Only fuzz/replay was owner-waived/not run. Generalized M-V6/M-V7, live aggregate
+protection and the remaining handover/release work remain open.
 
 ## Security maintenance (non-release changes)
 

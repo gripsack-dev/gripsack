@@ -130,10 +130,13 @@ has SHA-256
 `7c2e3fd0e1650bcdd926211364e43f8c9c90160ecdf68ae02886e9028d87830a`.
 Its source fingerprint is
 `5abd7717ff346b74cb25042d96bd0e27f76f26e112c599b619b617cc67a265e7`;
-native/final-commit qualification is still required for those new changes.
-Private proof development now includes checked journal and activation/lifecycle
-inductions, but preparation durability and GC composition are not yet complete
-or integrated into the shipped proof runner. This is not M-V6 closure.
+exact source `ae77f524bace1e46b738832fe99f133feb51ed51` then passed CI run
+`36468870180`, including Linux **416/416**, native Mac **414 passed / 2 skips**
+and native process **25/25**. `reports/2026-09-28-ci-ae77f52.log` has SHA-256
+`644af54a4bebccbc5b86e0be5bde4cbc781668af29c83e92a35f83147dc3f144`.
+Private proof development now includes checked journal, activation/lifecycle
+and granular preparation components. Complete GC composition and integration
+into the shipped proof runner remain required; this is not M-V6 closure.
 
 The [report index](reports/README.md) also preserves historical M-V5 evidence:
 

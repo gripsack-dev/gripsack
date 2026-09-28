@@ -517,3 +517,13 @@ driver bytes are retained; the drivers were removed. The full CLI run used no
 shell deadline and preserved every persistence case. This is working-tree
 evidence over `010657f`, not native/final-commit CI, generalized M-V6/M-V7,
 live branch protection or release artifact qualification. No fuzz ran.
+
+## Generation authority and allocation floors — exact candidate CI
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-28-ci-ae77f52.log` | `644af54a4bebccbc5b86e0be5bde4cbc781668af29c83e92a35f83147dc3f144` | Complete metadata and job logs for successful run `36468870180` at `ae77f524bace1e46b738832fe99f133feb51ed51`. Linux CLI **416/416**, native macOS arm64 CLI **414 passed / 2 skips**, native process **25/25**, Rust/TypeScript/BuildKit/model/proof gates, docs, audit and aggregate passed. Verus **111/0** plus **17** calibrations; TLAPS remains the **301**-obligation pilot. Fuzz/replay alone was owner-waived/not run. |
+
+This qualifies the committed runtime repairs. Generalized M-V6/M-V7, live
+aggregate protection, the remaining handover and release artifacts/installation
+remain separate gates. No private prototype proof is promoted by this receipt.
