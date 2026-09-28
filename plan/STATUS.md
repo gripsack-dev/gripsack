@@ -226,6 +226,33 @@ fuzz/replay alone was owner-waived/not run. Live `gate` protection is separate.
 Generalized lifecycle/activation composition, M-V7 and the remaining handover
 implementation/release requirements remain open.
 
+**Observed-generation authority (2026-09-28):** the M-V6 publication bridge
+exposed a further concrete gap: a retained manifest could authorize committed
+cleanup without sealing its artifact/name durability. The shared validator now
+separates read-only inspection from effect admission. Apply, rollback, current
+flip, recovery, activation and GC use the latter. The focused recovery campaign
+passes **19/19**, including five file/directory error/kill boundaries; a separate
+real rollback smoke preserves destination/current on failure and succeeds on
+clean retry. Native/final-candidate qualification and the complete generalized
+theorem remain open; this working-tree repair is not covered by the earlier
+`e3738d7` CI receipt.
+
+The same bridge found a legacy allocation-floor loss: collecting generation 20
+without a high-water counter allowed the next apply to allocate 11. Publication
+and pruning now preserve/seal the admitted floor before discarding names. The
+standalone replay allocates 21; the combined GC/history/recovery group passes
+**67/67**, including stale/higher/exhausted counters and counter-barrier failures.
+The earlier whole-CLI attempt timed out during the exhaustive persistence
+matrix and also exposed two stale fault-location selectors; those selectors now
+target the final post-prune barrier, with the original payload/current oracle
+unchanged. Its incomplete run is not passing evidence.
+The final no-deadline CLI run passed **416/416** with every persistence case.
+All six local non-fuzz gates passed; the source/image-bound receipt is
+`verification/reports/2026-09-28-generation-authority-local.log` (SHA-256
+`7c2e3fd0e1650bcdd926211364e43f8c9c90160ecdf68ae02886e9028d87830a`).
+It binds 1123 registered inputs and the actual exercised CLI binary. Native
+candidate CI and the generalized theorem remain separate, still-open gates.
+
 ## Security maintenance (non-release changes)
 
 - 2026-09-26: The protected `audit` check exposed

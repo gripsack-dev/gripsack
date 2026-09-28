@@ -39,10 +39,10 @@ pub fn rollback(generation: Option<store::GenerationId>, palette: Palette) -> Ex
             return ExitCode::FAILURE;
         }
     };
-    let manifest = match store::read_manifest(&home, target) {
+    let manifest = match store::generations::admit_manifest(&home, target) {
         Ok(m) => m,
-        Err(_) => {
-            eprintln!("grip: no generation {target}");
+        Err(e) => {
+            eprintln!("grip: cannot admit generation {target}: {e}");
             return ExitCode::FAILURE;
         }
     };
@@ -50,7 +50,7 @@ pub fn rollback(generation: Option<store::GenerationId>, palette: Palette) -> Ex
     // the rollback — the transition map would be built without the
     // authoritative live state
     let current_manifest = match current {
-        Some(c) => match store::read_manifest(&home, c) {
+        Some(c) => match store::generations::admit_manifest(&home, c) {
             Ok(m) => Some(m),
             Err(e) => {
                 eprintln!("grip: current generation {c}'s manifest is unreadable: {e}");

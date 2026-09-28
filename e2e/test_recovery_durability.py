@@ -418,3 +418,54 @@ def test_retained_prior_seal_failure_prevents_recovery_mutation(sandbox):
             assert completed.returncode == 0, completed.stdout + completed.stderr
             assert destination.read_bytes() == original
             assert not marker.exists() and not entry.exists()
+
+
+@pytest.mark.parametrize("boundary,relative", [
+    ("FileSync", "manifest.json"),
+    ("FileSync", "env/profile.sh"),
+    ("DirSync", "env"),
+    ("DirSync", "1"),
+    ("DirSync", "generations"),
+])
+def test_observed_generation_seal_failure_retains_recovery_authority(sandbox, boundary, relative):
+    repo, home, destination, marker, entry, manifest = committed_fixture(sandbox)
+    profile = manifest.parent / "env/profile.sh"
+    profile.parent.mkdir()
+    profile.write_text("export RECOVERED_GENERATION=1\n")
+    manifest_bytes, profile_bytes = manifest.read_bytes(), profile.read_bytes()
+    marker_bytes, entry_bytes = marker.read_bytes(), entry.read_bytes()
+    trace = sandbox / "observed-generation-boundaries.tsv"
+
+    def invoke(extra=None):
+        return subprocess.run(
+            [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+            env={**os.environ, "GRIPSACK_FS_RECOVER_ONLY": "1", **(extra or {})},
+            capture_output=True, text=True, timeout=30,
+        )
+
+    observed = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+    assert observed.returncode == 0, observed.stdout + observed.stderr
+    rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+    cleanup = next(i for i, row in enumerate(rows)
+                   if row[1:] == ["Before", "Unlink", '"intent.json"'])
+    seals = [row for row in rows[:cleanup]
+             if row[1:] == ["Before", boundary, json.dumps(relative)]]
+    assert seals, f"observed generation authorized cleanup without {boundary}: {relative}"
+    cut = int(seals[0][0])
+    for fault in ["error", "kill"]:
+        marker.write_bytes(marker_bytes)
+        marker.chmod(0o644)
+        entry.write_bytes(entry_bytes)
+        entry.chmod(0o600)
+        refused = invoke({"GRIPSACK_FS_CUT": str(cut), "GRIPSACK_FS_FAULT": fault})
+        assert refused.returncode != 0, refused.stdout + refused.stderr
+        if fault == "kill":
+            assert refused.returncode == -signal.SIGKILL
+        assert marker.read_bytes() == marker_bytes and entry.read_bytes() == entry_bytes
+        assert manifest.read_bytes() == manifest_bytes and profile.read_bytes() == profile_bytes
+        assert destination.readlink() == Path("installed")
+        assert (home / "current").readlink() == Path("generations/1")
+        completed = invoke()
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert not marker.exists() and not entry.exists()
+        assert destination.readlink() == Path("installed")

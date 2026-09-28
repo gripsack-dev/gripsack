@@ -1,7 +1,11 @@
 //! Generation inventory, manifest admission and pruning share one pinned root.
 use super::{Generation, admission::validate};
 use crate::{GENERATIONS_DIR, GenerationId, GenerationInventory, GenerationList};
-use gripsack_fs::{Dir, open_dir_nofollow, open_file_nofollow};
+use gripsack_fs::{
+    Dir,
+    fault::{Boundary, operation},
+    open_dir_nofollow, open_file_nofollow,
+};
 use std::io::{self, Read};
 use std::path::Path;
 
@@ -59,12 +63,20 @@ impl GenerationDirectory {
         self.generations
     }
 
-    pub fn read_manifest(&self, home: &Path, id: GenerationId) -> io::Result<Generation> {
+    /// Admit retained roots through the pinned inventory before GC effects.
+    pub fn admit_manifest(
+        &self,
+        home_directory: &Dir,
+        home: &Path,
+        id: GenerationId,
+    ) -> io::Result<Generation> {
         let directory = self
             .directory
             .as_ref()
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
-        read_manifest_in(directory, home, id)
+        let manifest = read_manifest_in(directory, home, id, ManifestAccess::EffectAuthority)?;
+        gripsack_fs::fsync_pinned_dir(home_directory, Path::new("."))?;
+        Ok(manifest)
     }
 
     /// Remove the admitted batch, then seal this exact inventory directory
@@ -78,6 +90,10 @@ impl GenerationDirectory {
                 Err(io::Error::from(io::ErrorKind::NotFound))
             };
         };
+        super::publication::preserve_allocation_floor(
+            directory,
+            self.inventory().as_slice().last().copied(),
+        )?;
         for id in ids {
             let name = id.to_string();
             gripsack_fs::fault::operation(
@@ -90,15 +106,52 @@ impl GenerationDirectory {
     }
 }
 
-fn read_manifest_in(directory: &Dir, home: &Path, id: GenerationId) -> io::Result<Generation> {
-    let generation = open_dir_nofollow(directory, Path::new(&id.to_string()))?;
+enum ManifestAccess {
+    Inspection,
+    EffectAuthority,
+}
+
+fn read_manifest_in(
+    directory: &Dir,
+    home: &Path,
+    id: GenerationId,
+    access: ManifestAccess,
+) -> io::Result<Generation> {
+    let name = id.to_string();
+    let generation = open_dir_nofollow(directory, Path::new(&name))?;
     let mut file = open_file_nofollow(&generation, Path::new("manifest.json"))?;
     let mut raw = Vec::new();
     file.read_to_end(&mut raw)?;
     let manifest: Generation = serde_json::from_slice(&raw)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     validate(&manifest, id, home)?;
+    if matches!(access, ManifestAccess::EffectAuthority) {
+        // A previous publisher may have renamed successfully, then failed its
+        // sync. Validation of cached bytes alone cannot authorize effects.
+        operation(Boundary::FileSync, Path::new("manifest.json"), || {
+            file.sync_all()
+        })?;
+        seal_observed_profile(&generation)?;
+        gripsack_fs::fsync_pinned_dir(&generation, Path::new(&name))?;
+        gripsack_fs::fsync_pinned_dir(directory, Path::new(GENERATIONS_DIR))?;
+    }
     Ok(manifest)
+}
+
+fn seal_observed_profile(generation: &Dir) -> io::Result<()> {
+    let directory = match open_dir_nofollow(generation, Path::new("env")) {
+        Ok(directory) => directory,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    match open_file_nofollow(&directory, Path::new("profile.sh")) {
+        Ok(file) => operation(Boundary::FileSync, Path::new("env/profile.sh"), || {
+            file.sync_all()
+        })?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    gripsack_fs::fsync_pinned_dir(&directory, Path::new("env"))
 }
 
 fn invalid(detail: &str) -> io::Error {
@@ -117,17 +170,26 @@ pub fn list(home: &Path) -> io::Result<GenerationList> {
     Ok(GenerationDirectory::open(&home)?.into_generations())
 }
 
-/// One strict persisted-generation reader, shared with the pinned GC session.
+/// Inspect persisted metadata without acquiring durability authority for effects.
 pub fn read_manifest(home: &Path, id: GenerationId) -> io::Result<Generation> {
-    read_manifest_at(&gripsack_fs::open(home)?, home, id)
+    let home_directory = gripsack_fs::open(home)?;
+    let root = open_dir_nofollow(&home_directory, Path::new(GENERATIONS_DIR))?;
+    read_manifest_in(&root, home, id, ManifestAccess::Inspection)
+}
+
+/// Validate and seal retained generation artifacts before they authorize effects.
+pub fn admit_manifest(home: &Path, id: GenerationId) -> io::Result<Generation> {
+    admit_manifest_at(&gripsack_fs::open(home)?, home, id)
 }
 
 /// Keep authoritative recovery reads on the same home capability as effects.
-pub(crate) fn read_manifest_at(
+pub(crate) fn admit_manifest_at(
     home: &Dir,
     home_path: &Path,
     id: GenerationId,
 ) -> io::Result<Generation> {
     let root = open_dir_nofollow(home, Path::new(GENERATIONS_DIR))?;
-    read_manifest_in(&root, home_path, id)
+    let manifest = read_manifest_in(&root, home_path, id, ManifestAccess::EffectAuthority)?;
+    gripsack_fs::fsync_pinned_dir(home, Path::new("."))?;
+    Ok(manifest)
 }

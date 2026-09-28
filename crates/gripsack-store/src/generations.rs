@@ -15,8 +15,8 @@ mod inventory;
 mod publication;
 mod selection;
 pub use current::{current, current_in, current_selection_in, flip};
-pub(crate) use inventory::read_manifest_at;
-pub use inventory::{GenerationDirectory, list, read_manifest};
+pub(crate) use inventory::admit_manifest_at;
+pub use inventory::{GenerationDirectory, admit_manifest, list, read_manifest};
 pub use publication::{allocate, publish_generation, write_manifest};
 pub(crate) use selection::{
     SelectionReservation, parse as parse_selection, reserve as reserve_selection,

@@ -96,7 +96,7 @@ pub fn flip(
     pending: &crate::journal::PendingSelection,
 ) -> io::Result<()> {
     let generation = pending.identity().generation();
-    super::read_manifest_at(home, home_path, generation)?;
+    super::admit_manifest_at(home, home_path, generation)?;
     if super::parse_selection(home, pending.target())?.as_ref() != Some(pending.identity()) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,

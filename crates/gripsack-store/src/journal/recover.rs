@@ -77,7 +77,7 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
                 // A matching pointer is not authority over a corrupt or
                 // missing generation. Admit the same pinned state before
                 // either restoration or committed cleanup can have effects.
-                crate::generations::read_manifest_at(home, home_path, selection.generation())?;
+                crate::generations::admit_manifest_at(home, home_path, selection.generation())?;
             }
             match classify(&RecoveryFacts {
                 previous: marker.previous.as_ref(),

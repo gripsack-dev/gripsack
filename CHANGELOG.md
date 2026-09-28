@@ -61,6 +61,14 @@ User-visible changes per release. Design archaeology lives in
 - GC seals generation pruning before collecting payloads whose roots it
   removed. An empty prune list on retry still seals observed absence; failure
   or process death preserves those payloads and the current generation.
+- Retained generations now acquire durability authority before apply, rollback,
+  recovery, activation or GC effects. Manifest/profile file sync and their
+  namespace barriers must succeed before mutation or journal cleanup; generation
+  listings and other inspection reads remain read-only.
+- GC preserves the highest retained generation in a durable high-water counter
+  before pruning legacy history. Missing or stale counters no longer allow a
+  later apply to reuse old allocation numbers; higher counters never decrease,
+  and exhausted counters still refuse new generations.
 - Resumed hook reports no longer manufacture a new generation in an otherwise
   satisfied apply. Resuming prior work does not create fresh IDs and deliver the
   same hooks again as if a new deployment had occurred.

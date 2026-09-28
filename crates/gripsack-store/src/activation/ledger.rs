@@ -293,7 +293,7 @@ impl ActivationBatch {
             self.archive_and_clear(home)?;
             return Ok(None);
         }
-        crate::generations::read_manifest_at(home, home_path, self.plan.selection.generation())?;
+        crate::generations::admit_manifest_at(home, home_path, self.plan.selection.generation())?;
         gripsack_fs::fsync_dir(home, Path::new("."))?;
         Ok(Some(ReadyActivation {
             batch: self,

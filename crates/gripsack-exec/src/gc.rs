@@ -107,14 +107,13 @@ pub fn gc(
         // fail CLOSED: an unparseable manifest must abort gc — dropping
         // its pins would collect referenced store paths and leave
         // dangling symlinks across the user's home (review finding G)
-        let manifest =
-            generation_directory
-                .read_manifest(home, *n)
-                .map_err(|e| ExecError::Step {
-                    module: format!("generation {n}"),
-                    step: "gc".into(),
-                    detail: format!("manifest is corrupt — refusing to collect: {e}"),
-                })?;
+        let manifest = generation_directory
+            .admit_manifest(&home_cap, home, *n)
+            .map_err(|e| ExecError::Step {
+                module: format!("generation {n}"),
+                step: "gc".into(),
+                detail: format!("manifest admission failed — refusing to collect: {e}"),
+            })?;
         if pruned.contains(n) {
             continue;
         }

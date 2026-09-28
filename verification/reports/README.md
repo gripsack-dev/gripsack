@@ -500,3 +500,20 @@ This qualifies the four concrete durability repairs at their committed source.
 It does not establish live aggregate protection, complete M-V6/M-V7 or qualify
 release artifacts and installation.
 
+
+## Observed generation authority and legacy allocation — local packet
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-28-generation-authority-local.log` | `7c2e3fd0e1650bcdd926211364e43f8c9c90160ecdf68ae02886e9028d87830a` | Retained manifest/profile/namespace admission and legacy high-water preservation: **416/416** full real CLI, **67/67** focused GC/history/recovery, all six local non-fuzz Compose gates. Fresh Rust/calibration, Verus **111/0** with **17** calibrations, shipped TLC and TLAPS pilot/calibrations; unchanged TS image has no fresh test-count claim. Standalone rollback error/kill refusal/retry and legacy GC→allocation 21 pass. Failing-before manifest admission, allocation-11 excerpt and the superseded 1200-second full-run timeout are retained. |
+
+The receipt binds **1123** registered source inputs to fingerprint
+`5abd7717ff346b74cb25042d96bd0e27f76f26e112c599b619b617cc67a265e7`
+and actual CLI binary
+`5fda015ed4156cb6214809d63421759af8ce146012ebfe8000ef05826a9b0cf7`.
+All copied gate-image input bytes match; the verifier's three intentionally
+dangling schema links match their host link texts instead. Exact disposable
+driver bytes are retained; the drivers were removed. The full CLI run used no
+shell deadline and preserved every persistence case. This is working-tree
+evidence over `010657f`, not native/final-commit CI, generalized M-V6/M-V7,
+live branch protection or release artifact qualification. No fuzz ran.

@@ -120,7 +120,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // prunes and mis-plan ownership — block the mutation
     let prev_manifest: Option<store::Generation> = match current_gen {
         Some(n) => Some(
-            store::read_manifest(&ctx.home, n).map_err(|e| ExecError::Step {
+            store::generations::admit_manifest(&ctx.home, n).map_err(|e| ExecError::Step {
                 module: "*".into(),
                 step: "manifest".into(),
                 detail: format!(

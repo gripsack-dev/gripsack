@@ -122,6 +122,19 @@ CI passed. `reports/2026-09-28-ci-e3738d7.log` has SHA-256
 `87aa22c96fe32b682e1f2fa45758c8546496f1f520bea40125a624aab6ea7637`.
 Neither checkpoint closes generalized M-V6/M-V7, live protection or the
 remaining release requirements.
+
+The subsequent observed-generation and legacy allocation-floor repairs have a
+complete local packet: **416/416** real CLI, **67/67** focused flows and all six
+non-fuzz Compose gates. `reports/2026-09-28-generation-authority-local.log`
+has SHA-256
+`7c2e3fd0e1650bcdd926211364e43f8c9c90160ecdf68ae02886e9028d87830a`.
+Its source fingerprint is
+`5abd7717ff346b74cb25042d96bd0e27f76f26e112c599b619b617cc67a265e7`;
+native/final-commit qualification is still required for those new changes.
+Private proof development now includes checked journal and activation/lifecycle
+inductions, but preparation durability and GC composition are not yet complete
+or integrated into the shipped proof runner. This is not M-V6 closure.
+
 The [report index](reports/README.md) also preserves historical M-V5 evidence:
 
 | Evidence | Observed result | What it does not establish |

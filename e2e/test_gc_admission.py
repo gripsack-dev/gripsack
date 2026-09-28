@@ -252,7 +252,9 @@ def test_generation_prune_sync_failure_preserves_payloads_on_retry(sandbox, faul
         barriers = [int(row[0]) for row in rows
                     if row[1:] == ["Before", "DirSync", '"generations"']]
         assert barriers, "GC discarded generation roots without durable namespace pruning"
-        return barriers[0]
+        # Manifest and counter admission may also seal this directory. Cut the
+        # final post-prune barrier, not an earlier admission barrier.
+        return barriers[-1]
 
     def refuse(cut):
         failed = collect({"GRIPSACK_FS_CUT": str(cut), "GRIPSACK_FS_FAULT": fault})
@@ -277,3 +279,96 @@ def test_generation_prune_sync_failure_preserves_payloads_on_retry(sandbox, faul
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert not payload.exists()
     assert (sandbox / ".owned").read_text() == "two"
+
+
+def legacy_allocation_history(sandbox, high_water):
+    repo = make_env_repo(sandbox / "legacy-env", '''
+import { module, symlink } from "@gripsack/core";
+export default module("demo", {config: {source: symlink("~/.legacy-allocation")}});
+''')
+    (repo / "source").write_text("new generation\n")
+    (repo / "env.toml").write_text('[env]\nname="fixture"\n[settings]\nkeep_generations=0\n')
+    home = sandbox / ".local/share/gripsack"
+    for number in (10, 20):
+        generation = home / "generations" / str(number)
+        generation.mkdir(parents=True)
+        (generation / "manifest.json").write_text(json.dumps({"number": number, "modules": {}}))
+    (home / "current").symlink_to("generations/10")
+    if high_water is not None:
+        (home / "generations/high-water").write_text(str(high_water))
+    return repo, home
+
+
+@pytest.mark.parametrize("high_water", [None, 12, 30, 2**64 - 1])
+def test_gc_preserves_legacy_allocation_history(sandbox, high_water):
+    repo, home = legacy_allocation_history(sandbox, high_water)
+    collected = grip("gc", cwd=repo)
+    assert collected.returncode == 0, collected.stdout + collected.stderr
+    assert not (home / "generations/20").exists()
+    assert (home / "current").readlink() == Path("generations/10")
+    floor = max(20, high_water or 0)
+    assert int((home / "generations/high-water").read_text()) == floor
+    applied = grip("apply", "--host", "testhost", cwd=repo)
+    destination = sandbox / ".legacy-allocation"
+    if floor == 2**64 - 1:
+        assert applied.returncode != 0
+        assert (home / "current").readlink() == Path("generations/10")
+        assert not destination.exists() and not destination.is_symlink()
+    else:
+        assert applied.returncode == 0, applied.stdout + applied.stderr
+        assert (home / "current").resolve().name == str(floor + 1)
+        assert destination.read_text() == "new generation\n"
+
+
+@pytest.mark.parametrize("high_water", [None, 30])
+def test_allocation_floor_sync_failure_prevents_pruning(sandbox, high_water):
+    repo, home = legacy_allocation_history(sandbox, high_water)
+    generation = home / "generations/20"
+    manifest = (generation / "manifest.json").read_bytes()
+    orphan = home / "store/unreferenced"
+    trace = sandbox / "allocation-floor-boundaries.tsv"
+    counter = home / "generations/high-water"
+
+    def seed():
+        generation.mkdir(exist_ok=True)
+        (generation / "manifest.json").write_bytes(manifest)
+        if high_water is None:
+            counter.unlink(missing_ok=True)
+        else:
+            counter.write_text(str(high_water))
+        orphan.mkdir(parents=True, exist_ok=True)
+        (orphan / "data").write_text("collect only after preserving allocation history\n")
+
+    def collect(extra=None):
+        return subprocess.run(
+            [str(GRIP), "gc"], cwd=repo, env={**os.environ, **(extra or {})},
+            capture_output=True, text=True, timeout=30,
+        )
+
+    seed()
+    observed = collect({"GRIPSACK_FS_TRACE": str(trace)})
+    assert observed.returncode == 0, observed.stdout + observed.stderr
+    assert not generation.exists() and not orphan.exists()
+    rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+    pruning = next(i for i, row in enumerate(rows)
+                   if row[1:] == ["Before", "Unlink", '"20"'])
+    files = [i for i, row in enumerate(rows[:pruning])
+             if row[1:] == ["Before", "FileSync", '"high-water"']]
+    assert files, "generation pruning discarded allocation history without a durable counter"
+    file_seal = files[-1]
+    parent_seal = next(i for i in range(file_seal + 1, pruning)
+                       if rows[i][1:3] == ["Before", "DirSync"])
+    for cut in [int(rows[file_seal][0]), int(rows[parent_seal][0])]:
+        for fault in ["error", "kill"]:
+            seed()
+            refused = collect({"GRIPSACK_FS_CUT": str(cut), "GRIPSACK_FS_FAULT": fault})
+            assert refused.returncode != 0, refused.stdout + refused.stderr
+            if fault == "kill":
+                assert refused.returncode == -signal.SIGKILL
+            assert (generation / "manifest.json").read_bytes() == manifest
+            assert (orphan / "data").read_text() == "collect only after preserving allocation history\n"
+            assert (home / "current").readlink() == Path("generations/10")
+            completed = collect()
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            assert not generation.exists() and not orphan.exists()
+            assert int(counter.read_text()) == max(20, high_water or 0)
