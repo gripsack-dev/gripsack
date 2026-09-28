@@ -1,0 +1,653 @@
+{
+  "version": 1,
+  "roots": [
+    "GeneralRecoveryProofs",
+    "PublishedPayloadBridgeProofs",
+    "DestinationProductProofs"
+  ],
+  "units": {
+    "UndoCellProofs": {
+      "minimum_obligations": 243,
+      "theorems": [
+        "LiveType",
+        "MissingType",
+        "PresentEntryType",
+        "LiveProjection",
+        "EntryProjection",
+        "MissingProjection",
+        "DiskLiveUpdateType",
+        "ControlStageUpdateType",
+        "CachedControlUpdateType",
+        "DiskEntryUpdateType",
+        "ControlProcessedUpdateType",
+        "BothDisksUpdateType",
+        "CellValueTypes",
+        "InitialDiskType",
+        "InitialCellType",
+        "InitialCellFields",
+        "InitialCellSafety",
+        "InitialCellSetSafety",
+        "PriorWriteSafety",
+        "PriorSyncSafety",
+        "EntryWriteSafety",
+        "EntrySyncSafety",
+        "MutationSafety",
+        "DestinationSyncSafety",
+        "ExternalEditSafety",
+        "ProcessDeathSafety",
+        "EntryWritebackSafety",
+        "LiveWritebackSafety",
+        "PowerLossSafety",
+        "RestorationSafety",
+        "SealPriorSafety",
+        "KeepForeignSafety",
+        "EntryRemovalSafety",
+        "CommitMonotonicity",
+        "CellStepSafety",
+        "RequiredEvidenceBeforeMutation",
+        "NoLostUndoEvidence",
+        "SuccessorEnumerationComplete",
+        "ForeignObjectIsDurable",
+        "ForeignRecoveryPreserved",
+        "CellImagesRemainTyped",
+        "PointwiseCellPreservation"
+      ]
+    },
+    "FunctionFrames": {
+      "minimum_obligations": 8,
+      "theorems": [
+        "ReplacementDomain",
+        "ReplacementFrame",
+        "IndependentReplacementsCommute",
+        "PointwiseInvariantFrame"
+      ]
+    },
+    "SelectionLifecycleProofs": {
+      "minimum_obligations": 92,
+      "theorems": [
+        "SelectionInitialSafety",
+        "SelectionInduction",
+        "NewlyReservedIdentityIsFresh",
+        "MarkerCannotCommitItsPredecessor",
+        "FlipNamesTheExactTarget",
+        "AmbiguityCannotClearEvidence",
+        "DurableReservationPersists",
+        "IssuedBindingNeverChanges",
+        "SelectionSafety",
+        "ExactTransactionPredecessorSafety"
+      ]
+    },
+    "JournalLifecycleProofs": {
+      "minimum_obligations": 70,
+      "theorems": [
+        "SelectionStateNamesAgree",
+        "SelectionFiniteDomainsAgree",
+        "SelectionNextInvariantNamesAgree",
+        "SelectionProofPremises",
+        "SelectionTransitionNamesAgree",
+        "JournalInitialSafety",
+        "JournalSelectionProjection",
+        "JournalSelectionSafety",
+        "DurableCommitCannotDisappearWithinEpoch",
+        "RejectedAdmissionHasNoCoreTransition"
+      ]
+    },
+    "JournalCellProofs": {
+      "minimum_obligations": 103,
+      "theorems": [
+        "JournalCellShapesPreserved",
+        "CleanupGrantMatchesExactCommit",
+        "NoRestorationOfCommittedEntries",
+        "NonBeginningStepIsCellwise",
+        "NonBeginningStepKeepsEpoch",
+        "JournalCellSafetyWithinEpoch",
+        "NewEpochHasFreshUndoSnapshots",
+        "JournalDestinationsPreserveUndo"
+      ]
+    },
+    "JournalFrameProofs": {
+      "minimum_obligations": 17,
+      "theorems": [
+        "EpochStateFrame",
+        "RetryRecoveryEpochFrame",
+        "MarkerStateFrame",
+        "EpochMetadataProjection",
+        "EpochMetadataReconstruction",
+        "EpochMetadataNextReconstruction",
+        "EpochMetadataFrame",
+        "PowerLossPreservesAbsentEntries"
+      ]
+    },
+    "JournalMarkerProofs": {
+      "minimum_obligations": 141,
+      "theorems": [
+        "BeginEpochPreservesMarkerOrder",
+        "PrepareSelectionPreservesMarkerOrder",
+        "WriteRunMarkerPreservesMarkerOrder",
+        "SealRunMarkerPreservesMarkerOrder",
+        "WriterStepPreservesMarkerOrder",
+        "FinishWritingPreservesMarkerOrder",
+        "FinishNoopPreservesMarkerOrder",
+        "FlipSelectionPreservesMarkerOrder",
+        "SealCommittedSelectionPreservesMarkerOrder",
+        "ClassifyRecoveryPreservesMarkerOrder",
+        "RetryRecoveryPreservesMarkerOrder",
+        "RestoreStepPreservesMarkerOrder",
+        "FinishRestoringPreservesMarkerOrder",
+        "RemoveEntryPreservesMarkerOrder",
+        "SealEntryRemovalPreservesMarkerOrder",
+        "RemoveMarkerPreservesMarkerOrder",
+        "AlreadyMissingMarkerPreservesMarkerOrder",
+        "SealMarkerRemovalPreservesMarkerOrder",
+        "CrashProcessPreservesMarkerOrder",
+        "CrashPowerPreservesMarkerOrder",
+        "WritebackSelectionPreservesMarkerOrder",
+        "WritebackDestinationPreservesMarkerOrder",
+        "ExternalDestinationPreservesMarkerOrder",
+        "UnexpectedSelectionPreservesMarkerOrder"
+      ]
+    },
+    "JournalEpochProofs": {
+      "minimum_obligations": 241,
+      "theorems": [
+        "BeginEpochPreservesEpoch",
+        "PrepareSelectionPreservesEpoch",
+        "WriteRunMarkerPreservesEpoch",
+        "SealRunMarkerPreservesEpoch",
+        "WriterStepPreservesEpoch",
+        "FinishWritingPreservesEpoch",
+        "FinishNoopPreservesEpoch",
+        "FlipSelectionPreservesEpoch",
+        "SealCommittedSelectionPreservesEpoch",
+        "ClassifyRecoveryPreservesEpoch",
+        "RetryRecoveryPreservesEpoch",
+        "RestoreStepPreservesEpoch",
+        "FinishRestoringPreservesEpoch",
+        "RemoveEntryPreservesEpoch",
+        "SealEntryRemovalPreservesEpoch",
+        "RemoveMarkerPreservesEpoch",
+        "AlreadyMissingMarkerPreservesEpoch",
+        "SealMarkerRemovalPreservesEpoch",
+        "CrashProcessPreservesEpoch",
+        "CrashPowerPreservesEpoch",
+        "WritebackSelectionPreservesEpoch",
+        "WritebackDestinationPreservesEpoch",
+        "ExternalDestinationPreservesEpoch",
+        "UnexpectedSelectionPreservesEpoch"
+      ]
+    },
+    "JournalControlFrames": {
+      "minimum_obligations": 10,
+      "theorems": [
+        "ProcessDeathSetsRecoveryStage",
+        "PowerLossSetsRecoveryStage",
+        "RecoveryImagesKeepStage",
+        "WritebackKeepsStage",
+        "ExternalEditKeepsEntryControl"
+      ]
+    },
+    "JournalControlProofs": {
+      "minimum_obligations": 95,
+      "theorems": [
+        "BeginEpochPreservesControl",
+        "PrepareSelectionPreservesControl",
+        "WriteRunMarkerPreservesControl",
+        "SealRunMarkerPreservesControl",
+        "WriterStepPreservesControl",
+        "FinishWritingPreservesControl",
+        "FinishNoopPreservesControl",
+        "FlipSelectionPreservesControl",
+        "SealCommittedSelectionPreservesControl",
+        "ClassifyRecoveryPreservesControl",
+        "RetryRecoveryPreservesControl",
+        "RestoreStepPreservesControl",
+        "FinishRestoringPreservesControl",
+        "RemoveEntryPreservesControl",
+        "SealEntryRemovalPreservesControl",
+        "RemoveMarkerPreservesControl",
+        "AlreadyMissingMarkerPreservesControl",
+        "SealMarkerRemovalPreservesControl",
+        "CrashProcessPreservesControl",
+        "CrashPowerPreservesControl",
+        "WritebackSelectionPreservesControl",
+        "WritebackDestinationPreservesControl",
+        "ExternalDestinationPreservesControl",
+        "UnexpectedSelectionPreservesControl"
+      ]
+    },
+    "JournalMetadataProofs": {
+      "minimum_obligations": 114,
+      "theorems": [
+        "JournalTypesPreserved",
+        "JournalMarkerOrdersEvidence",
+        "JournalEpochIdentityPreserved",
+        "JournalControlPreserved",
+        "JournalInduction",
+        "GeneralJournalSafety",
+        "JournalInvariantPreservesRecoveryEvidence",
+        "EntryRemovalRequiresDurableRestoration",
+        "CorruptAdmissionRetainsCoreAuthority",
+        "RecoverySafetyWithoutCrashBound"
+      ]
+    },
+    "GenerationPublicationProofs": {
+      "minimum_obligations": 111,
+      "theorems": [
+        "GenerationInitialSafety",
+        "GenerationInduction",
+        "AllocationNeverReusesPublishedId",
+        "StableHighWaterNeverDecreases",
+        "PublicationReservesWholeHistoryBeforeRename",
+        "GenerationSafety",
+        "GenerationInvariantImpliesPublication",
+        "DurableGenerationPublication"
+      ]
+    },
+    "GenerationRetentionProofs": {
+      "minimum_obligations": 9,
+      "theorems": [
+        "ObservedFloorPreservesGenerationInvariant",
+        "SealedFloorPreservesGenerationInvariant",
+        "PruneAfterCounterPreservesGenerationInvariant",
+        "ObservedInventoryAndCounterCoverEveryPublishedId",
+        "PruningDoesNotReassignHistory"
+      ]
+    },
+    "PublicationBridgeProofs": {
+      "minimum_obligations": 21,
+      "theorems": [
+        "PublicationStateNamesAgree",
+        "PublicationProofPremises",
+        "PublicationTransitionNamesAgree",
+        "PublicationComponentInitialSafety",
+        "PublicationComponentInduction",
+        "PublicationStutterPreservesInvariant",
+        "LifecycleProjectsPublication"
+      ]
+    },
+    "PublicationSelectionProofs": {
+      "minimum_obligations": 92,
+      "theorems": [
+        "JournalStutterPreservesInvariant",
+        "PublicationCommonNamesPersist",
+        "LifecycleInitialSafety",
+        "LifecycleJournalProjection",
+        "LifecycleComponentSafety",
+        "LifecycleAdmissionPreserved",
+        "JournalChangesCurrentOnlyToAdmittedGenerations",
+        "LifecycleCurrentPreserved",
+        "LifecycleInduction",
+        "PublicationSelectionSafety"
+      ]
+    },
+    "ActivationFrames": {
+      "minimum_obligations": 44,
+      "theorems": [
+        "ActivationVariableFrame",
+        "ActivationPredicateFrame",
+        "PlanPredicateFrame",
+        "HomePredicateFrame",
+        "RecordPredicateFrame",
+        "ArchivePredicateFrame",
+        "HistoryPredicateFrame"
+      ]
+    },
+    "ActivationRecordProofs": {
+      "minimum_obligations": 98,
+      "theorems": [
+        "OutcomeStateFields",
+        "AttemptOutcomeConstructor",
+        "SupersededOutcomeConstructor",
+        "OutcomeSlotReplacementType",
+        "SettledDomain",
+        "SettledMembership",
+        "OutcomeBarrierRecords",
+        "PowerLossRecords",
+        "OutcomeSlotReplacementFrame",
+        "DirtyOutcomeRecords",
+        "OutcomeWriteHistory",
+        "OutcomeSealHistory",
+        "OutcomeSealArchive",
+        "OutcomeWritePlan",
+        "OutcomeSealPlan",
+        "PowerLossHistory"
+      ]
+    },
+    "ActivationSteps": {
+      "minimum_obligations": 23,
+      "theorems": [
+        "DeclaredIntentDomain",
+        "EarlySuccessIsDisabled",
+        "SealHomePreservesInvariant"
+      ]
+    },
+    "ActivationPointerProofs": {
+      "minimum_obligations": 579,
+      "theorems": [
+        "PreparePreservesInvariant",
+        "WritePointerPreservesInvariant",
+        "SyncPointerPreservesInvariant",
+        "FlipPreservesInvariant",
+        "SyncFlipPreservesInvariant",
+        "OpenPreservesInvariant",
+        "AuthorizePreservesInvariant",
+        "ClearPreservesInvariant",
+        "ClearBarrierPreservesInvariant",
+        "SelectWithoutActivationPreservesInvariant",
+        "SealWithoutActivationPreservesInvariant"
+      ]
+    },
+    "ActivationIntentProofs": {
+      "minimum_obligations": 746,
+      "theorems": [
+        "SkipPreservesInvariant",
+        "StartPreservesInvariant",
+        "StartBarrierPreservesInvariant",
+        "InvokePreservesInvariant",
+        "ReturnPreservesInvariant",
+        "WriteOutcomePreservesInvariant",
+        "OutcomeBarrierPreservesInvariant",
+        "SkipSupersededPreservesInvariant",
+        "SupersedePreservesInvariant",
+        "SupersedeBarrierPreservesInvariant",
+        "FinishSupersedingPreservesInvariant",
+        "FinishScanPreservesInvariant"
+      ]
+    },
+    "ActivationStorageProofs": {
+      "minimum_obligations": 463,
+      "theorems": [
+        "SealOutcomesPreservesInvariant",
+        "WriteArchivePreservesInvariant",
+        "ArchiveBarrierPreservesInvariant",
+        "WritebackCurrentPreservesInvariant",
+        "WritebackPendingPreservesInvariant",
+        "WritebackOutcomesPreservesInvariant",
+        "WritebackArchivePreservesInvariant",
+        "ProcessDeathPreservesInvariant",
+        "PowerLossPreservesInvariant"
+      ]
+    },
+    "ActivationProofs": {
+      "minimum_obligations": 99,
+      "theorems": [
+        "PendingStateType",
+        "ActivationInitialSafety",
+        "ActivationInduction",
+        "ActivationInvariantImpliesSafety",
+        "GeneralActivationSafety",
+        "ActivationProtocolSafety"
+      ]
+    },
+    "ActivationBridgeProofs": {
+      "minimum_obligations": 31,
+      "theorems": [
+        "HookStateNamesAgree",
+        "HookVariableFramesAgree",
+        "HookFiniteDomainsAgree",
+        "HookProofPremises",
+        "HookTransitionNamesAgree",
+        "HookComponentInitialSafety",
+        "HookComponentInduction",
+        "HookStutterPreservesInvariant",
+        "LifecycleProjectsHookTransitions",
+        "LifecycleProjectsPublicationSelection"
+      ]
+    },
+    "ActivationCouplingProofs": {
+      "minimum_obligations": 10,
+      "theorems": [
+        "CouplingStateFrame",
+        "PublishingTargetHasDurableReservation",
+        "PublishingTargetIsNotCurrent",
+        "NewReservationHasNoSavedPlan"
+      ]
+    },
+    "ActivationCouplingSteps": {
+      "minimum_obligations": 88,
+      "theorems": [
+        "PublicationWithHooksPreservesCoupling",
+        "ObservedGenerationWithHooksPreservesCoupling",
+        "BeginLifecycleEpochPreservesCoupling",
+        "StationaryJournalStepPreservesCoupling",
+        "PrepareActivationPlanPreservesCoupling",
+        "WriteActivationPointerPreservesCoupling",
+        "SealActivationPointerPreservesCoupling",
+        "FlipLifecycleSelectionPreservesCoupling",
+        "SealLifecycleCommitPreservesCoupling",
+        "WritebackLifecycleCurrentPreservesCoupling",
+        "ActivationExecutionStepPreservesCoupling",
+        "ActivationHomeBarrierPreservesCoupling",
+        "ActivationStorageStepPreservesCoupling",
+        "LifecycleProcessCrashPreservesCoupling",
+        "LifecycleStorageCrashPreservesCoupling"
+      ]
+    },
+    "ActivationLifecycleProofs": {
+      "minimum_obligations": 71,
+      "theorems": [
+        "PublicationSelectionInvariantFrame",
+        "ActivationLifecycleInitialSafety",
+        "ActivationLifecycleComponentInduction",
+        "ActivationLifecycleCouplingInduction",
+        "ActivationLifecycleInduction",
+        "GeneralActivationLifecycleSafety",
+        "InvocationUsesDurableFullSelection",
+        "ClearedPendingResurrectionHasNoUnsettledIntents"
+      ]
+    },
+    "NamespaceSealingProofs": {
+      "minimum_obligations": 110,
+      "theorems": [
+        "ExtendSealedSuffix",
+        "NamespaceInitialSafety",
+        "ResetMatchesInit",
+        "NamespaceResetSafety",
+        "NamespaceInduction",
+        "ArbitraryDepthNamespaceSafety",
+        "DurableNamespaceAuthority"
+      ]
+    },
+    "PreparationPublicationProofs": {
+      "minimum_obligations": 141,
+      "theorems": [
+        "NamespaceStateNamesAgree",
+        "NamespaceProofPremises",
+        "NamespaceTransitionNamesAgree",
+        "NamespaceInitialComponentSafety",
+        "PreparationNamespaceProjection",
+        "PreparationNamespaceSafety",
+        "PreparationInitialScopeSafety",
+        "PreparationInitialSafety",
+        "PreparationResetMatchesInit",
+        "PreparationResetScopeSafety",
+        "PreparationDocumentInduction",
+        "PreparationReturnHasDurableDocuments",
+        "PreparationDurableSetsGrow",
+        "PreparationResultChangesOnlyOnReturn",
+        "SealedNamespacePersists",
+        "PreparationDurableAuthorityPreserved",
+        "PreparationInduction",
+        "ArbitraryDocumentPreparationSafety",
+        "PreparedDocumentAuthority"
+      ]
+    },
+    "PreparedActivationBridgeProofs": {
+      "minimum_obligations": 34,
+      "theorems": [
+        "PreparationStateNamesAgree",
+        "PreparationInitializerNamesAgree",
+        "PreparationFiniteDomainsAgree",
+        "PreparationProofPremises",
+        "PreparationTransitionNamesAgree",
+        "PreparationComponentInitialSafety",
+        "PreparationComponentResetSafety",
+        "PreparationComponentInduction",
+        "PreparationComponentFrame",
+        "PreparedStepsProjectActivationLifecycle",
+        "RequiredDocumentsWithinUniverse"
+      ]
+    },
+    "PreparedActivationSteps": {
+      "minimum_obligations": 63,
+      "theorems": [
+        "ActivationLifecycleStateFrame",
+        "DurableSnapshotIsTyped",
+        "SnapshotCoversDeclaredDocuments",
+        "PreparationIOKeepsInputAndCoordinator",
+        "OrdinaryLifecycleKeepsPlanBytes",
+        "OrdinaryLifecycleKeepsActiveConstructor",
+        "BeginPreparationPreservesHistory",
+        "PreparationIOPreservesHistory",
+        "FinishPreparationPreservesHistory",
+        "OrdinaryPreparedStepPreservesHistory",
+        "PreparedProcessCrashPreservesHistory",
+        "PreparedStorageCrashPreservesHistory"
+      ]
+    },
+    "PreparedActivationProofs": {
+      "minimum_obligations": 63,
+      "theorems": [
+        "PreparedLifecycleInitialSafety",
+        "PreparedLifecyclePreservesHigherProtocol",
+        "PreparedStepsProjectPreparation",
+        "PreparedLifecyclePreservesPreparation",
+        "PreparedLifecycleHistoryInduction",
+        "PreparedLifecycleInduction",
+        "GeneralPreparedActivationSafety",
+        "PendingPointerRequiresCompleteDurablePreparation",
+        "FreshPreparationNamespacesDoNotOverlap"
+      ]
+    },
+    "LifecycleRetentionBridgeProofs": {
+      "minimum_obligations": 52,
+      "theorems": [
+        "RetentionPrimitiveNamesAgree",
+        "ObserveFloorComponentSafety",
+        "SealFloorComponentSafety",
+        "PruneGenerationComponentSafety",
+        "NonGenerationStateFrame",
+        "PreparedLifecyclePredicateFrame",
+        "NoObservedJournalImpliesNoJournalRoots",
+        "NoObservedActivationImpliesNoActivationRoots",
+        "CollectedPayloadsAreOutsideAllProtectedRoots",
+        "CollectionPreservesExistingProtectedPayloads"
+      ]
+    },
+    "LifecycleRetentionSteps": {
+      "minimum_obligations": 65,
+      "theorems": [
+        "CollectionFramesNonGenerationState",
+        "CollectionPreservesGenerationProtocol",
+        "CollectionPreservesGenerationAdmission",
+        "CollectionPreservesCurrentGeneration",
+        "CollectionPreservesHigherProtocol",
+        "MetadataEnvironmentProjectsPreparedLifecycle",
+        "RetentionStepsProjectHigherProtocol",
+        "RetentionPreservesHigherProtocol"
+      ]
+    },
+    "LifecycleRetentionControlProofs": {
+      "minimum_obligations": 83,
+      "theorems": [
+        "MetadataEnvironmentKeepsCollectionInputs",
+        "MetadataEnvironmentProjectsPublicationWriteback",
+        "MetadataEnvironmentKeepsCurrentBarrier",
+        "MetadataEnvironmentKeepsCollectionBarriers",
+        "MetadataEnvironmentPreservesCollectionControl",
+        "LifecycleOperationPreservesCollectionControl",
+        "CollectionAcquisitionPreservesControl",
+        "CurrentAdmissionPreservesCollectionControl",
+        "GenerationAdmissionPreservesCollectionControl",
+        "FloorObservationPreservesCollectionControl",
+        "FloorBarrierPreservesCollectionControl",
+        "GenerationRemovalPreservesCollectionControl",
+        "GenerationPruneCompletionPreservesCollectionControl",
+        "GenerationPruneBarrierPreservesCollectionControl",
+        "InterruptedCollectionLosesOnlyCoordinatorState",
+        "OtherRetentionStepsPreserveCollectionControl",
+        "RetentionPreservesCollectionControl"
+      ]
+    },
+    "LifecycleRetentionProofs": {
+      "minimum_obligations": 60,
+      "theorems": [
+        "ReferencedRootsAreTyped",
+        "RetentionInitialSafety",
+        "RetentionAcquisitionPreservesTypes",
+        "RetentionControlUpdatesPreserveTypes",
+        "RetentionPayloadUpdatesPreserveTypes",
+        "RetentionInterruptionsPreserveTypes",
+        "RetentionPreservesTypes",
+        "RetentionPreservesProtectedRoots",
+        "RetentionInduction",
+        "RetentionPredicateFrame",
+        "GeneralLifecycleRetentionSafety",
+        "PrunedGenerationIdsRemainCovered",
+        "CollectionCannotDeleteProtectedExistingPayload"
+      ]
+    },
+    "GeneralRecoveryProofs": {
+      "minimum_obligations": 23,
+      "theorems": [
+        "CommitClassificationUsesExactIdentity",
+        "JoinedInvariantImpliesRecoveryContract",
+        "ArbitraryFiniteRepeatedRecoverySafety",
+        "JoinedEntryCleanupRequiresStableRestoration",
+        "JoinedHookInvocationBindsDurableSelection",
+        "JoinedPendingResurrectionIsSettled",
+        "RejectedAdmissionCannotRemoveVisiblePayloads"
+      ]
+    },
+    "ObjectPublicationProofs": {
+      "minimum_obligations": 91,
+      "theorems": [
+        "PublicationInitialSafety",
+        "PublicationInduction",
+        "AuthorityRequiresBothBarriers",
+        "ObjectPublicationSafety",
+        "DurablePublishedAuthority"
+      ]
+    },
+    "ObjectNamespaceProofs": {
+      "minimum_obligations": 51,
+      "theorems": [
+        "NamespaceComponentNamesAgree",
+        "NamespaceComponentPremises",
+        "NamespaceComponentInitialSafety",
+        "NamespaceComponentSafety",
+        "ObjectComponentSafety",
+        "JoinedPublicationProjectsBothComponents",
+        "ObjectNamespaceInitialSafety",
+        "ObjectNamespaceInduction",
+        "CompleteObjectPublicationSafety",
+        "ReturnedObjectAdmissionSafety",
+        "ObjectReturnDischargesConsumerDurability"
+      ]
+    },
+    "PublishedPayloadBridgeProofs": {
+      "minimum_obligations": 18,
+      "theorems": [
+        "PublicationEpisodePremises",
+        "PublicationEpisodeEstablishesItsAdmissionInvariant",
+        "PublishedPayloadHandoffProjectsLifecycle",
+        "PublishedPayloadHandoffPreservesLifecycle",
+        "PublishedPayloadHandoffHasRealDurabilityPredecessors"
+      ]
+    },
+    "DestinationProductProofs": {
+      "minimum_obligations": 69,
+      "theorems": [
+        "ProductInitialSafety",
+        "DestinationTransitionSafety",
+        "IndependentDestinationImagesCommute",
+        "IndependentPowerLossSafety",
+        "MonotoneCommitInterfaceSafety",
+        "ProductInduction",
+        "ProductInvariantImpliesRecoverySafety",
+        "ArbitraryDestinationSafety",
+        "ArbitraryDestinationRecoveryEvidence"
+      ]
+    }
+  }
+}

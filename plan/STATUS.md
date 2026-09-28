@@ -259,6 +259,23 @@ receipt is `2026-09-28-ci-ae77f52.log` (SHA-256
 Only fuzz/replay was owner-waived/not run. Generalized M-V6/M-V7, live aggregate
 protection and the remaining handover/release work remain open.
 
+**Generalized recovery integration (2026-09-29):** M-V6 now has shared
+journal/publication/selection/preparation/activation/retention definitions.
+Source-matched development runs checked **40 proof modules, 443 named theorems
+and 4,542 obligations**. A timed-out coupling obligation was decomposed and
+then passed; no timeout is counted as a proof or mutant.
+The frozen catalog admits the entire local dependency closure and rejects
+missing imported units, wrong theorem names, zero floors, unreachable units
+and commented-out proofs. Its actual admission/calibration smoke passed.
+`RepeatedRecovery` replaces the obsolete hard-coded `MultiDestination`
+engine; seven finite-work completion cases and the constructive missing-restore
+barrier calibration passed privately. The real six-destination campaign passed
+six consecutive interrupted recoveries, including four SIGKILLs, while
+preserving an independent edit and refusing both forms of collection.
+Full rebuilt Compose and current-commit/native qualification are in progress;
+M-V6 release closure, M-V7 and the remaining handover remain open.
+
+
 ## Security maintenance (non-release changes)
 
 - 2026-09-26: The protected `audit` check exposed

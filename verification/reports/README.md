@@ -1,4 +1,4 @@
-# verification/reports — archived runner logs (2026-09-24–28)
+# verification/reports — archived runner logs (2026-09-24–29)
 
 Unmodified copies of the gate logs captured on 2026-09-24 in `/tmp/gripsack-baseline/`
 (pristine-worktree baseline runs) and `/tmp/gripsack-a0/` (A0-tree runs), archived
@@ -527,3 +527,24 @@ live branch protection or release artifact qualification. No fuzz ran.
 This qualifies the committed runtime repairs. Generalized M-V6/M-V7, live
 aggregate protection, the remaining handover and release artifacts/installation
 remain separate gates. No private prototype proof is promoted by this receipt.
+
+## M-V6 generalized recovery development (2026-09-29)
+
+`2026-09-29-m-v6-development.log` (1,334,549 bytes) has SHA-256
+`88215f6fcac8ebac9136dc4f3f7656fa22c82a443edac81b58a64a30275f1750`.
+It retains source digests and fresh Toolbox output covering **40 modules,
+443 named theorems and 4,542 obligations** across the initial and corrected
+continuation runs. Only `ActivationCouplingSteps` changed between them;
+its initial timeout is excluded, and its decomposed 88-obligation proof passed.
+The receipt also contains eight object/namespace cases, seven shared-action
+conditional-completion cases, the reachable missing-restore counterexample
+and seven-obligation witness, and the real six-destination retry campaign.
+
+Five retention cases completed, including all three named counterexamples.
+The larger retained-generation/fresh-publication/journal/activation/GC instance
+timed out with a nonempty queue after reporting 51,132,269 distinct states.
+That exploration is explicitly incomplete, not a passing gate. The separate
+fresh-lifecycle discovery run also remains unqualified until it completes.
+Full rebuilt Compose, exact candidate/native CI and release evidence are
+separate from this development receipt. Only fuzz/corpus replay is owner-waived.
+

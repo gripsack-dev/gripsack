@@ -16,13 +16,16 @@ check() {
     config=$2
     expected=${3:-clean}
     cfg="$spec/$config"
+    heap=${4:-1g}
+    workers=${5:-1}
     log="$work/$(basename "$config").log"
     status=0
-    (cd "$spec" && java -Xmx1g -cp "$jar" tlc2.TLC -cleanup -workers 1 \
+    (cd "$spec" && java "-Xmx$heap" -XX:+UseParallelGC -cp "$jar" tlc2.TLC -cleanup -workers "$workers" \
         -metadir "$work/states" -config "$config" "$module") >"$log" 2>&1 || status=$?
     case "$expected" in
         clean)
-            if [ "$status" -ne 0 ] || ! grep -q 'Model checking completed. No error' "$log"; then
+            if [ "$status" -ne 0 ] || ! grep -q 'Model checking completed. No error' "$log" \
+                || ! grep -Eq 'Finished computing initial states: [1-9][0-9,]* distinct states? generated' "$log"; then
                 cat "$log"; echo "FAIL: $config" >&2; exit 1
             fi
             ;;
@@ -45,7 +48,7 @@ check() {
         *)
             # The negative must actually check the named invariant, so the
             # reported violation is the intended calibration.
-            if ! tr -s ' \t' '\n' <"$cfg" | grep -qx "$expected" \
+            if [ "$status" -ne 12 ] || ! tr -s ' \t' '\n' <"$cfg" | grep -qx "$expected" \
                 || ! grep -q "Invariant $expected is violated" "$log"; then
                 cat "$log"; echo "FAIL: $config did not violate $expected" >&2; exit 1
             fi
@@ -57,8 +60,11 @@ check() {
 check Ownership.tla cfg/ownership.cfg
 for mode in apply-deploy apply-prune rollback-deploy rollback-prune; do
     check Transaction.tla "cfg/$mode.cfg"
-    check MultiDestination.tla "cfg/repeated-$mode.cfg"
+    check RepeatedRecovery.tla "cfg/repeated-$mode.cfg"
 done
+check RepeatedRecovery.tla cfg/repeated-same-generation.cfg
+check RepeatedRecovery.tla cfg/repeated-empty-destinations.cfg
+check RepeatedRecovery.tla cfg/repeated-fresh-selection.cfg
 check Activation.tla cfg/activation.cfg
 check Activation.tla cfg/activation-unsealed-start.cfg PermitAfterDurableStart
 check Activation.tla cfg/activation-early-success.cfg OutcomeAfterReturn
@@ -68,7 +74,6 @@ check Activation.tla cfg/activation-early-clear.cfg ArchiveBeforeClear
 check Activation.tla cfg/activation-generation-token.cfg DistinctIntentIdentity
 check RepeatedActivation.tla cfg/repeated-activation.cfg
 check RepeatedActivation.tla cfg/repeated-activation-repeated-generation.cfg
-check MultiDestination.tla cfg/repeated-transaction-premature-cleanup.cfg RestoreBeforeCleanup
 check RepeatedActivation.tla cfg/repeated-activation-lost-pending.cfg NoSilentSkip
 # Journal v2: repeated writes to one destination retain the original prior and
 # recognize a durable intermediate state before the next write lands.
@@ -126,3 +131,76 @@ check MergeBoundary.tla cfg/merge-boundary-first-prune.cfg PruneNeedsWholeEviden
 check WorkerLease.tla cfg/worker-lease.cfg
 check WorkerLease.tla cfg/worker-lease-early-stop.cfg NoStopWithLiveLease
 check WorkerLease.tla cfg/worker-lease-crash-wipes.cfg NoSilentLeaseVanish
+
+# M-V6: finite discovery instances of the shared, crash-unbounded protocol.
+# The separate TLAPS catalog checks every generalized theorem dependency.
+check UndoCellCheck.tla cfg/generalized/cell.cfg clean
+check DestinationProduct.tla cfg/generalized/product-empty.cfg clean
+check DestinationProduct.tla cfg/generalized/product-two.cfg clean
+check SelectionLifecycle.tla cfg/generalized/selection-normal.cfg clean
+check ObjectPublication.tla cfg/generalized/object-write.cfg clean
+check ObjectPublication.tla cfg/generalized/object-observed.cfg clean
+check ObjectPublication.tla cfg/generalized/object-file-sync.cfg PublishedObjectHasDurablePayload
+check ObjectPublication.tla cfg/generalized/object-mode-order.cfg PublishedObjectHasDurablePayload
+check ObjectPublication.tla cfg/generalized/object-parent-sync.cfg AuthorityHasDurableObject
+check ObjectPublication.tla cfg/generalized/object-observed-file-sync.cfg AuthorityHasDurableObject
+check NamespaceSealing.tla cfg/generalized/namespace-empty.cfg clean
+check NamespaceSealing.tla cfg/generalized/namespace-one.cfg clean
+check NamespaceSealing.tla cfg/generalized/namespace-deep.cfg clean
+check NamespaceSealing.tla cfg/generalized/namespace-skip-existing.cfg AuthorityHasDurableNamespace
+check NamespaceSealing.tla cfg/generalized/namespace-leaf-only.cfg AuthorityHasDurableNamespace
+check GenerationPublication.tla cfg/generalized/generation-zero-space.cfg clean
+check GenerationPublication.tla cfg/generalized/generation-fresh.cfg clean
+check GenerationPublication.tla cfg/generalized/generation-retained-gap.cfg clean
+check GenerationPublication.tla cfg/generalized/generation-legacy-floor.cfg clean
+check GenerationPublication.tla cfg/generalized/generation-legacy-exhausted.cfg clean
+check GenerationPublication.tla cfg/generalized/generation-missing-high-water.cfg NewPublicationsHaveStableHighWater
+check GenerationPublication.tla cfg/generalized/generation-missing-file-sync.cfg PublishedGenerationHasDurableArtifacts
+check GenerationPublication.tla cfg/generalized/generation-missing-parent-sync.cfg ReturnedPublicationIsStable
+check PreparationPublication.tla cfg/generalized/preparation-empty.cfg clean 3g 2
+check PreparationPublication.tla cfg/generalized/preparation-plan.cfg clean 3g 2
+check PreparationPublication.tla cfg/generalized/preparation-plan-and-outcomes.cfg clean 3g 2
+check PreparationPublication.tla cfg/generalized/preparation-file-sync.cfg PreparedDocumentsAreDurable 3g 2
+check PreparationPublication.tla cfg/generalized/preparation-mode-order.cfg PreparedDocumentsAreDurable 3g 2
+check PreparationPublication.tla cfg/generalized/preparation-parent-sync.cfg PreparedDocumentsAreDurable 3g 2
+check PreparationPublication.tla cfg/generalized/preparation-incomplete-set.cfg PreparedDocumentsAreDurable 3g 2
+check PreparationPublication.tla cfg/generalized/preparation-existing-namespace.cfg PreparedDocumentsAreDurable 3g 2
+check PreparationPublication.tla cfg/generalized/preparation-leaf-namespace.cfg PreparedDocumentsAreDurable 3g 2
+check ObjectNamespacePublication.tla cfg/generalized/reachable-new-object-nested-path.cfg clean
+check ObjectNamespacePublication.tla cfg/generalized/reachable-observed-object-nested-path.cfg clean
+check ObjectNamespacePublication.tla cfg/generalized/reachable-missing-object-file-sync.cfg ReturnedObjectIsReachableAndDurable
+check ObjectNamespacePublication.tla cfg/generalized/reachable-observed-object-file-sync.cfg ReturnedObjectIsReachableAndDurable
+check ObjectNamespacePublication.tla cfg/generalized/reachable-late-private-mode.cfg ReturnedObjectIsReachableAndDurable
+check ObjectNamespacePublication.tla cfg/generalized/reachable-missing-object-parent-sync.cfg ReturnedObjectIsReachableAndDurable
+check ObjectNamespacePublication.tla cfg/generalized/reachable-unsealed-existing-ancestors.cfg ReturnedObjectIsReachableAndDurable
+check ObjectNamespacePublication.tla cfg/generalized/reachable-leaf-only-directory-sync.cfg ReturnedObjectIsReachableAndDurable
+check JournalLifecycle.tla cfg/generalized/journal-empty.cfg clean 3g 2
+check JournalLifecycle.tla cfg/generalized/journal-two-transactions.cfg clean 3g 2
+check JournalLifecycle.tla cfg/generalized/journal-two-destinations.cfg clean 3g 2
+check JournalLifecycle.tla cfg/generalized/journal-entry-removal-barrier.cfg MarkerCoversEntries 3g 2
+check JournalLifecycle.tla cfg/generalized/journal-current-admission-barrier.cfg RecoveryEvidencePreserved 3g 2
+check JournalLifecycle.tla cfg/generalized/journal-marker-publication-barrier.cfg MutationHasDurableMarker 3g 2
+check JournalLifecycle.tla cfg/generalized/journal-generation-is-not-transaction.cfg ExactCommitIdentity 3g 2
+check SelectionLifecycle.tla cfg/generalized/selection-generation-identity.cfg PredecessorCannotCommit
+check PublicationSelection.tla cfg/generalized/publication-selection-empty.cfg clean 3g 2
+check PublicationSelection.tla cfg/generalized/publication-selection-one-destination.cfg clean 3g 2
+check PublicationSelection.tla cfg/generalized/publication-selection-unsealed-generation.cfg CurrentNamesDurableGeneration 3g 2
+check ActivationLifecycleMC.tla cfg/generalized/activation-lifecycle-empty-intents.cfg clean 3g 2
+check ActivationLifecycleMC.tla cfg/generalized/activation-lifecycle-one-intent.cfg clean 3g 2
+check ActivationLifecycleMC.tla cfg/generalized/activation-lifecycle-mixed-legacy.cfg clean 3g 2
+check ActivationLifecycleMC.tla cfg/generalized/activation-lifecycle-one-destination.cfg clean 3g 2
+check PreparedActivationMC.tla cfg/generalized/prepared-lifecycle-no-hooks.cfg clean 3g 2
+check PreparedActivationMC.tla cfg/generalized/prepared-lifecycle-prepared-hook.cfg clean 3g 2
+check PreparedActivationMC.tla cfg/generalized/prepared-lifecycle-destination-hook.cfg clean 3g 2
+check PreparedActivationMC.tla cfg/generalized/prepared-lifecycle-unsealed-initial-file.cfg EveryPlanHasDurablePreparation 3g 2
+check PreparedActivationMC.tla cfg/generalized/prepared-lifecycle-unsealed-initial-name.cfg EveryPlanHasDurablePreparation 3g 2
+check PreparedActivationMC.tla cfg/generalized/prepared-lifecycle-missing-initial-outcome.cfg EveryPlanHasDurablePreparation 3g 2
+check PreparedActivationMC.tla cfg/generalized/prepared-lifecycle-unsealed-instance-namespace.cfg EveryPlanHasDurablePreparation 3g 2
+check LifecycleRetentionMC.tla cfg/generalized/retention-retained-history.cfg clean 3g 2
+check LifecycleRetentionMC.tla cfg/generalized/retention-legacy-floor.cfg clean 3g 2
+check LifecycleRetentionMC.tla cfg/generalized/retention-missing-prune-barrier.cfg NoProtectedRootCollection 3g 2
+check LifecycleRetentionMC.tla cfg/generalized/retention-missing-allocation-floor.cfg AllocationHistoryCovered 3g 2
+check LifecycleRetentionMC.tla cfg/generalized/retention-ignored-pending-work.cfg NoProtectedRootCollection 3g 2
+check LifecycleRetentionMC.tla cfg/generalized/retention-fresh-journal-and-activation.cfg clean 3g 2
+check ActivationInvariant.tla cfg/generalized/activation-empty.cfg clean
+check ActivationInvariant.tla cfg/generalized/activation-heterogeneous.cfg clean

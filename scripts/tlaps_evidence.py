@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
+import tlaps_source
+
 
 class EvidenceError(ValueError):
     pass
@@ -66,7 +68,7 @@ class Evidence:
         if any(item.status not in {'proved', 'trivial'} or item.already != 'false'
                for item in self.obligations.values()):
             raise EvidenceError('missing, failed, omitted or cached proof result')
-        ranges = theorem_ranges(source)
+        ranges = tlaps_source.theorem_ranges(source)
         for name in names:
             if name not in ranges:
                 raise EvidenceError('required theorem missing: ' + name)
@@ -77,7 +79,7 @@ class Evidence:
     def mutant(self, status: int, source: Path, expected: str) -> None:
         if not status or not self.count:
             raise EvidenceError('mutant did not fail a nonempty proof run')
-        ranges = theorem_ranges(source)
+        ranges = tlaps_source.theorem_ranges(source)
         if expected not in ranges:
             raise EvidenceError('mutant theorem missing')
         start, end = ranges[expected]
@@ -93,19 +95,3 @@ class Evidence:
             if item.reason != 'false' or not item.prover:
                 raise EvidenceError('timeout/tool failure is not semantic calibration')
 
-
-def theorem_ranges(source: Path) -> dict[str, tuple[int, int]]:
-    """Locate declarations, then require actual prover events inside each span."""
-    lines = source.read_text().splitlines()
-    declarations = []
-    for number, line in enumerate(lines, 1):
-        match = re.match(r'^(?:THEOREM|LEMMA)\s+([A-Za-z_][A-Za-z0-9_]*)\b', line)
-        if match:
-            declarations.append((match[1], number))
-    result = {}
-    for index, (name, start) in enumerate(declarations):
-        if name in result:
-            raise EvidenceError('duplicate theorem declaration')
-        end = declarations[index + 1][1] - 1 if index + 1 < len(declarations) else len(lines)
-        result[name] = (start, end)
-    return result

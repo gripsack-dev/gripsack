@@ -30,15 +30,17 @@
 ***************************************************************************)
 EXTENDS Integers, FiniteSets
 
-CONSTANTS TXS, GENS, IntentCount, MaxAttempts, NONE, MUTANT
-ASSUME /\ TXS # {} /\ IsFiniteSet(TXS)
+CONSTANTS TXS, GENS, IntentCount, IntentCounts, MaxAttempts, NONE, MUTANT
+ASSUME ActivationParameters == /\ TXS # {} /\ IsFiniteSet(TXS)
        /\ GENS # {} /\ IsFiniteSet(GENS)
        /\ NONE \notin TXS \cup GENS
-       /\ IntentCount \in Nat \ {0} /\ MaxAttempts \in Nat \ {0}
+       /\ IntentCount \in Nat /\ MaxAttempts \in Nat \ {0}
+       /\ IntentCounts \in [TXS -> 0..IntentCount]
        /\ MUTANT \in {"none", "unsealed_start", "early_success", "retry_failure",
                        "generation_commit", "early_clear", "generation_token"}
 
 Intents == 1..IntentCount
+DeclaredIntents(transaction) == 1..IntentCounts[transaction]
 Attempts == 1..MaxAttempts
 Pair(t, i) == <<t, i>>
 Triple(t, i, a) == <<t, i, a>>
@@ -46,13 +48,15 @@ State(k, a) == [kind |-> k, attempt |-> a]
 Pending == State("pending", 0)
 Terminal(s) == s.kind \in {"succeeded", "failed", "superseded"}
 States == {Pending} \cup
-          {State(k, a) : k \in {"started", "succeeded", "failed"}, a \in Attempts} \cup
-          {State("superseded", a) : a \in 0..MaxAttempts}
+          [kind: {"started", "succeeded", "failed"}, attempt: Attempts] \cup
+          [kind: {"superseded"}, attempt: 0..MaxAttempts]
 Permits == [tx: TXS, intent: Intents, attempt: Attempts]
+\* Rust's Option discriminant cannot equal a present permit or result value.
+ASSUME OptionalValueDomain == NONE \notin Permits \union {"succeeded", "failed"}
 Phases == {"idle", "prepared", "pointer-dirty", "pre-flip", "flip-dirty",
            "load-home", "load-outcomes", "authorize", "ready", "start-dirty",
            "permitted", "running", "returned", "outcome-dirty", "supersede",
-           "archive", "archive-dirty", "archived", "clear-dirty"}
+           "supersede-dirty", "archive", "archive-dirty", "archived", "clear-dirty"}
 
 VARIABLES currentC, currentD, pendingC, pendingD, plans,
           stateC, stateD, archiveC, archiveD,
@@ -69,7 +73,7 @@ vars == <<home, plans, records, archives, process, history>>
 Pairs == TXS \X Intents
 Triples == TXS \X Intents \X Attempts
 Settled(t, states) == {Pair(t, i) : i \in {j \in Intents : Terminal(states[t][j])}}
-AllSettled(t, states) == \A i \in Intents : Terminal(states[t][i])
+AllSettled(t, states) == \A i \in DeclaredIntents(t) : Terminal(states[t][i])
 Token(t, i) == IF MUTANT = "generation_token" THEN <<plans[t], i>> ELSE <<t, i>>
 
 Init ==
@@ -145,7 +149,7 @@ Authorize ==
     /\ UNCHANGED <<home, plans, records, archives, active, cursor, permit, result, history>>
 
 Skip ==
-    /\ phase = "ready" /\ cursor \in Intents
+    /\ phase = "ready" /\ cursor \in DeclaredIntents(active)
     /\ Terminal(stateC[active][cursor])
     /\ cursor' = cursor + 1
     /\ UNCHANGED <<home, plans, records, archives, phase, active, permit, result, history>>
@@ -154,7 +158,7 @@ CanStart(s) == s.kind \in {"pending", "started"} \/
               (MUTANT = "retry_failure" /\ s.kind = "failed")
 
 Start ==
-    /\ phase = "ready" /\ cursor \in Intents
+    /\ phase = "ready" /\ cursor \in DeclaredIntents(active)
     /\ CanStart(stateC[active][cursor])
     /\ stateC[active][cursor].attempt < MaxAttempts
     /\ stateC' = [stateC EXCEPT ![active][cursor] = State("started", @.attempt + 1)]
@@ -201,19 +205,34 @@ OutcomeBarrier ==
     /\ UNCHANGED <<home, plans, stateC, archives, active, permit, result,
                     invokedUnder, returned, replayedTerminal, cleared>>
 
+SkipSuperseded ==
+    /\ phase = "supersede" /\ cursor \in DeclaredIntents(active)
+    /\ Terminal(stateC[active][cursor])
+    /\ cursor' = cursor + 1
+    /\ UNCHANGED <<home, plans, records, archives, phase, active, permit, result, history>>
+
 Supersede ==
-    /\ phase = "supersede"
-    /\ stateC' = [stateC EXCEPT ![active] = [i \in Intents |->
-          IF Terminal(stateC[active][i]) THEN stateC[active][i]
-          ELSE State("superseded", stateC[active][i].attempt)]]
-    /\ stateD' = [stateD EXCEPT ![active] = stateC'[active]]
-    /\ terminalEver' = terminalEver \cup Settled(active, stateC')
-    /\ phase' = "archive"
-    /\ UNCHANGED <<home, plans, archives, active, cursor, permit, result,
+    /\ phase = "supersede" /\ cursor \in DeclaredIntents(active)
+    /\ ~Terminal(stateC[active][cursor])
+    /\ stateC' = [stateC EXCEPT ![active][cursor] = State("superseded", @.attempt)]
+    /\ phase' = "supersede-dirty"
+    /\ UNCHANGED <<home, plans, stateD, archives, active, cursor, permit, result, history>>
+
+SupersedeBarrier ==
+    /\ phase = "supersede-dirty"
+    /\ stateD' = [stateD EXCEPT ![active] = stateC[active]]
+    /\ terminalEver' = terminalEver \cup Settled(active, stateC)
+    /\ cursor' = cursor + 1 /\ phase' = "supersede"
+    /\ UNCHANGED <<home, plans, stateC, archives, active, permit, result,
                     invokedUnder, returned, replayedTerminal, cleared>>
 
+FinishSuperseding ==
+    /\ phase = "supersede" /\ cursor > IntentCounts[active] /\ AllSettled(active, stateD)
+    /\ phase' = "archive"
+    /\ UNCHANGED <<home, plans, records, archives, active, cursor, permit, result, history>>
+
 FinishScan ==
-    /\ phase = "ready" /\ cursor > IntentCount /\ AllSettled(active, stateC)
+    /\ phase = "ready" /\ cursor > IntentCounts[active] /\ AllSettled(active, stateC)
     /\ phase' = "archive"
     /\ UNCHANGED <<home, plans, records, archives, active, cursor, permit, result, history>>
 
@@ -246,10 +265,22 @@ EarlySuccess ==
     /\ permit' = NONE /\ phase' = "outcome-dirty"
     /\ UNCHANGED <<home, plans, stateD, archives, active, cursor, result, history>>
 
-WritebackHome ==
-    /\ currentC # currentD \/ pendingC # pendingD
+\* NONE also projects a selected transaction with no activation intents. The
+\* lifecycle parent supplies the immutable hook-bearing-transaction domain.
+SelectWithoutActivation ==
+    /\ phase = "idle" /\ pendingC = NONE /\ currentC # NONE
+    /\ currentC' = NONE
+    /\ UNCHANGED <<currentD, pendingC, pendingD, plans, records, archives, process, history>>
+SealWithoutActivation ==
+    /\ phase = "idle" /\ pendingC = NONE /\ currentC = NONE
     /\ currentD' = currentC /\ pendingD' = pendingC
     /\ UNCHANGED <<currentC, pendingC, plans, records, archives, process, history>>
+WritebackCurrent ==
+    /\ currentC # currentD /\ currentD' = currentC
+    /\ UNCHANGED <<currentC, pendingC, pendingD, plans, records, archives, process, history>>
+WritebackPending ==
+    /\ pendingC # pendingD /\ pendingD' = pendingC
+    /\ UNCHANGED <<currentC, currentD, pendingC, plans, records, archives, process, history>>
 
 WritebackOutcomes(t) ==
     /\ stateC[t] # stateD[t]
@@ -281,9 +312,11 @@ Progress ==
     \/ WritePointer \/ SyncPointer \/ Flip \/ SyncFlip
     \/ Open \/ SealHome \/ SealOutcomes \/ Authorize \/ Skip \/ Start \/ StartBarrier
     \/ Invoke \/ (\E verdict \in {"succeeded", "failed"} : Return(verdict))
-    \/ WriteOutcome \/ OutcomeBarrier \/ Supersede \/ FinishScan
+    \/ WriteOutcome \/ OutcomeBarrier \/ Supersede \/ SkipSuperseded \/ SupersedeBarrier
+    \/ FinishSuperseding \/ FinishScan
     \/ WriteArchive \/ ArchiveBarrier \/ Clear \/ ClearBarrier \/ EarlySuccess
-    \/ WritebackHome \/ (\E t \in TXS : WritebackOutcomes(t) \/ WritebackArchive(t))
+    \/ SelectWithoutActivation \/ SealWithoutActivation \/ WritebackCurrent \/ WritebackPending
+    \/ (\E t \in TXS : WritebackOutcomes(t) \/ WritebackArchive(t))
 Next == Progress \/ ProcessDeath \/ PowerLoss
 Spec == Init /\ [][Next]_vars
 
@@ -307,9 +340,17 @@ OutcomeAfterReturn == \A t \in TXS, i \in Intents, states \in {stateC, stateD} :
     states[t][i].kind \in {"succeeded", "failed"} => Triple(t, i, states[t][i].attempt) \in returned
 TerminalNoReplay == ~replayedTerminal
 EffectsBindFullSelection == \A call \in Triples : invokedUnder[call] # NONE => invokedUnder[call] = call[1]
+InvocationUsesDeclaredIntent == \A call \in Triples :
+    invokedUnder[call] # NONE => call[2] \in DeclaredIntents(call[1])
 ArchiveBeforeClear == cleared \subseteq archiveD
 ArchiveHasTerminalOutcomes == \A t \in archiveD : AllSettled(t, stateD)
 NoSilentSkip == currentD # NONE => (pendingD = currentD \/ currentD \in archiveD)
 DistinctIntentIdentity == \A t, u \in TXS, i, j \in Intents :
     plans[t] # NONE /\ plans[u] # NONE /\ (t # u \/ i # j) => Token(t, i) # Token(u, j)
+
+\* TLC conveniences only. The proof admits every IntentCounts function in the
+\* declared domain, including heterogeneous and empty plans.
+UniformIntentCounts == [transaction \in TXS |-> IntentCount]
+VaryingIntentCounts == [transaction \in TXS |->
+    IF transaction = (CHOOSE first \in TXS : TRUE) THEN 0 ELSE IntentCount]
 =============================================================================

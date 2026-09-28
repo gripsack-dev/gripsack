@@ -4,8 +4,8 @@ One row per guarantee: what is promised, where it is enforced, what is
 trusted, and what evidence backs it. Statuses: `proposed`,
 `implemented-unverified`, `checked` (machine proof), `blocked`,
 `superseded`. Populated with evidence, not intentions (hardening
-handoff §8). Proof work is on the roadmap; today's evidence is
-regression tests, explorers, models and e2e.
+handoff §8). Rows distinguish checked kernels/protocols from tested
+implementation bridges; a new unqualified proof packet remains explicit.
 | ID | Claim (with exclusions) | Enforcement | Admission boundary | Trusted components | Coverage | Bridges | Calibration | Status |
 |---|---|---|---|---|---|---|---|---|
 | CLASSIFY-001 | Exact admitted selection identity decides commitment: Committed iff current equals target; Uncommitted iff fresh with no current or current equals previous but not target; Ambiguous otherwise. Transaction identity is distinct from generation history identity. Exclusions: parser/current admission, successive-lifecycle composition and physical persistence require their own evidence. | `gripsack-policy/src/selection.rs::classify`; production recovery and both bounded explorers invoke it | Versioned marker selections and strict reserved current namespace; legacy same-generation ambiguity is refused before effects | Pinned Verus/Rust/Z3/vstd, serde and capability IO | Total kernel contract; new production-source calibration is being qualified | Actual same-generation rollback failed before; the repaired CLI restores both missing priors before flip and retains both committed links after flip | `2026-09-27-same-generation-before.log` and `2026-09-27-transaction-identity-development.log`; identity/ambiguity mutants remain required | Concrete bridge tested; full candidate proof/qualification pending |
@@ -38,6 +38,7 @@ regression tests, explorers, models and e2e.
 | PLUGIN-ADMISSION-001 | Managed-plugin cache hits require the requested source and tag. Declared-domain token waits, capability probing and the fetch exchange share one absolute deadline; invalid rates cannot construct nonfinite or sub-token buckets. Persisted balances/timestamps cannot bypass numeric admission. Exclusions: this is not a proof of plugin confinement, executable authenticity, global acquisition-queue bounds, clocks/syscalls or M-V7. | `PluginStore::ensure`, private `RateBudget`, `ThrottleAdmission` and the existing `gripsack-process::run` with `Limits::operation_deadline` | source/tag receipt comparison; finite capacity ≥1; bounded saved token balances and checked SystemTime construction | Rust/OS clocks, process-group behavior and existing optional capability negotiation | local process/fetch 90 cases, 55 real CLI cases and six before/after standalone witnesses | actual plugin callbacks, offline wrong-origin provisioning refusal, exhausted-token failure followed by successful recovery/apply | original NaN/fractional/hourly/cache-origin and corrupt-state witnesses; no formal semantic mutant claimed | implemented-unverified |
 | ACTIVATION-OUTCOMES-001 | Stable instance/action/occurrence IDs survive interrupted replay; durable terminal outcomes do not retry, superseded selections do not execute, and a durable archive precedes pending cleanup. Known failure warns without generation rollback. Exclusions: legacy pre-migration deduplication, arbitrary remote exactly-once effects, metadata authenticity and physical storage guarantees. | `gripsack-policy::activation::{next_attempt,finish_attempt,supersede}`; private `activation::ledger::{ActivationBatch,ReadyActivation,LaunchPermit}`; one executor adapter path | Versioned bounded no-follow plan/state/receipt admission, exact current selection, durable Started before a non-cloneable permit, terminal sealing on recovery | Rust/serde, SHA-256 collision resistance, pinned filesystem capabilities and named sync/rename assumptions | Eight named Verus activation queries; finite activation TLC plus conditional completion wrapper; 43 focused CLI cases and actual fixture commands | Before/during/after hook crashes, outcome-sync error/kill, archive-before-clear, legacy migration, same-generation rollback, known failure, retained evidence and private permissions | Six activation model mutants plus pending-loss calibration; interrupted-attempt/stale-outcome/supersession proof mutants; concrete false-new-generation replay failure fixed | Locally checked/tested components; full candidate/native qualification and generalized M-V6 remain open |
 | NATIVE-INVOKE-001 | Changed hook paths execute an admitted image through direct execve, with explicit operator environment and retained working-directory/descriptor authority. Linux seals selected image bytes; macOS reports a weaker private-copy pathname tier. No implicit execvp shell fallback can change the recorded executable. Exclusions: dynamic libraries/subcommands, arbitrary native confinement, complete-tree cleanup, host-integrity attacks and universal clock/syscall progress. | `gripsack-process::{invocation::Invocation,exec_payload::ExecPayload,environment::OperatorEnvironment,descriptors::DescriptorPolicy}` over the existing shared supervisor/raw-output mode; terminal control formatter also serves trust prompts | Bounded executable/argv/env/stdout/stderr domains; digest check; explicit reserved hook IDs; before-fork vector construction and child-only FD closure | OS exec/fs/proc APIs, libc, scheduler progress and the documented group-only tier | Linux native script-replacement, env/non-CLOEXEC canary, closed-stdio and actual-syscall legacy-capability probes; real hook CLI/fixture flows | The ENOEXEC fixture exposed actual implicit shell fallback; direct execve now retains its kernel error as SpawnFailure | Seven native boundary cases passed; syscall capability faults are software injection, not older-kernel or macOS qualification | Implemented with local evidence; native Mac and final candidate gates pending |
+| RECOVERY-LIFECYCLE-001 | Under the named model/storage assumptions, arbitrary finite destinations and unbounded recovery crashes preserve undo evidence, exact commitment, admitted current generations, allocation history, protected existing payloads and activation intent history. Exclusions: Rust/OS refinement, parser authenticity, external-writer CAS, remote exactly-once effects and unconditional liveness. | `specs/GeneralRecoveryProofs.tla` over the shared journal/publication/preparation/activation/retention transitions | Admitted identities and metadata; explicit file, name, namespace and cleanup barriers; cooperating lifecycle sessions | Pinned TLAPS/TLA semantics, atomic record publication and successful fsync contracts; immutable private control metadata except modeled core actions | Component proofs and joined theorem source integrated; full frozen dependency-catalog qualification pending | Actual durability repairs plus `test_repeated_recovery.py`: six destinations, six recovery interruptions, drift preservation and GC refusal | Named barrier/identity/publication/retention mutants; constructive restore-barrier witness; inventory omission/comment calibration | implemented-unverified — integrated and native/current-commit qualification remain open |
 
 ## Limits that stay visible
 
@@ -61,3 +62,37 @@ regression tests, explorers, models and e2e.
   exactly-once effects nor eventual hook success are promised.
 - Verified or not, policy functions do not prove Deno, TLS, the
   compiler, the solver or storage hardware.
+
+## Generalized recovery correspondence and limits
+
+The M-V6 source separates protocol layers instead of assuming one opaque
+durable-write operation:
+
+| Model boundary | Concrete correspondence |
+|---|---|
+| `ObjectPublication`, `NamespaceSealing`, `ObjectNamespacePublication` | File bytes/mode sync, atomic name publication and every ancestor namespace precede returned authority. The per-call `PublishedPayloadBridgeProofs` handoff supplies retention admission; a completed constructor is not a promise that later GC can never remove an unprotected object. |
+| `UndoCell`, `JournalLifecycle` | The run-original prior and v2 immediate-before/intended identities survive repeated writes, independent writeback and recovery restarts. `journal::{capture,record}` and `recover::{reconcile,restore,seal_observed_prior}` supply the concrete bridge; strict decoding remains separately tested. |
+| `GenerationPublication`, `PublicationSelection` | `allocate`, `preserve_allocation_floor`, manifest admission and reserved current selection keep new publication distinct from rollback to an older generation. Historical IDs lost before admission cannot be reconstructed by the theorem. |
+| `PreparationPublication`, `PreparedActivationLifecycle`, `ActivationLifecycle` | Actual initial plan/outcome files and their namespace precede the pending pointer; durable Started precedes invocation; outcomes/archive precede pending removal. Plans with no hooks do not invent native work. |
+| `LifecycleRetention` | The cooperating session excludes concurrent lifecycle mutation. Observed pending work blocks collection; current/counter/inventory admission and the final prune barrier precede payload deletion. The root statement preserves existing admitted roots, not an invented invariant that every manifest reference must exist. Root extraction/completeness is separately covered by M-V5. |
+
+The general safety model contains no crash counter. Its destination domain
+may be empty; transaction identities range over a nonempty finite universe,
+with arbitrary permitted per-transaction intent counts and attempt bounds.
+Proofs quantify those parameters rather than lifting a TLC state count into
+a universal claim. Finite discovery cfgs choose explicit smaller domains.
+
+`RepeatedRecovery` and `RepeatedActivation` are separate conditional
+completion explorers. Their finite crash budgets, finite work, successful
+scheduled I/O and fairness assumptions are not production retry limits.
+The old hard-coded `MultiDestination` transition engine is removed.
+
+The joined cooperating-core model excludes outside writes to private
+control metadata. The standalone journal model additionally covers admitted
+unexpected selections and refusal; malformed-byte admission is exercised by
+the actual decoder/recovery campaign. External destination edits are modeled
+as durable edits under the existing ownership contract, without a portable
+compare-and-swap claim. Process death retains kernel-visible state; modeled
+power loss resolves independently dirty fields. Neither is certification of
+physical filesystem or device behavior.
+
