@@ -67,13 +67,26 @@ impl GenerationDirectory {
         read_manifest_in(directory, home, id)
     }
 
-    /// Called only after all manifests and collection inventories are admitted.
-    pub fn remove(&self, id: GenerationId) -> io::Result<()> {
-        let directory = self
-            .directory
-            .as_ref()
-            .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
-        directory.remove_dir_all(id.to_string())
+    /// Remove the admitted batch, then seal this exact inventory directory
+    /// before payload roots can be discarded. Even an empty batch must seal
+    /// observed absence left by an earlier interrupted pruning attempt.
+    pub fn prune(&self, ids: &[GenerationId]) -> io::Result<()> {
+        let Some(directory) = &self.directory else {
+            return if ids.is_empty() {
+                Ok(())
+            } else {
+                Err(io::Error::from(io::ErrorKind::NotFound))
+            };
+        };
+        for id in ids {
+            let name = id.to_string();
+            gripsack_fs::fault::operation(
+                gripsack_fs::fault::Boundary::Unlink,
+                Path::new(&name),
+                || directory.remove_dir_all(&name),
+            )?;
+        }
+        gripsack_fs::fsync_pinned_dir(directory, Path::new(GENERATIONS_DIR))
     }
 }
 

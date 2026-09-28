@@ -210,6 +210,19 @@ closed-stdio cases use the actual executor. See the R3 leaf record and
 `verification/reports/` for precise evidence/limits. Full candidate/native CI,
 M-V6/M-V7 and the remaining handover implementation are still required.
 
+**Durable metadata authority (2026-09-28):** generalized recovery work exposed
+four concrete gaps: cached-prior admission, visible directory-birth retry,
+retained-prior reads and generation pruning before payload collection. Each
+has a retained failing-before witness and a repaired real consumer path.
+All six local non-fuzz Compose gates passed, including **405/405** real CLI,
+Rust/clippy/tests and current contract calibration. Standalone prior/GC
+refusal/retry journeys passed; no physical power-loss claim follows. The
+source/image-bound report is `2026-09-28-durable-authority-local.log`.
+Earlier R3 source `472a111` separately passed full native/Linux CI run
+`36357284121`; these newer repairs still need native/current-commit CI.
+Generalized lifecycle/activation composition, M-V7 and the remaining handover
+implementation/release requirements remain open.
+
 ## Security maintenance (non-release changes)
 
 - 2026-09-26: The protected `audit` check exposed

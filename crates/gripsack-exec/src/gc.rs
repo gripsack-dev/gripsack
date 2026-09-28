@@ -147,9 +147,7 @@ pub fn gc(
     // All roots, manifests, candidate names and size observations are admitted
     // before the first deletion. Effects use the very same pinned directories.
     if !dry_run {
-        for n in &pruned {
-            generation_directory.remove(*n)?;
-        }
+        generation_directory.prune(&report.generations_removed)?;
     }
     store_plan.collect(dry_run, &mut report)?;
     prior_plan.collect(dry_run, &mut report)?;

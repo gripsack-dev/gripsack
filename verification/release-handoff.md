@@ -27,19 +27,19 @@ Update plan 0048's leaf record and the owning delivery rows as work progresses.
 All acceptance subcases in the cited sections remain conjunctive; the concise
 rows below do not replace or narrow them.
 
-Observed before the next R3/selection packet push:
+Observed R3/selection checkpoint, before the later durability repairs:
 
-- Branch: `handover/h0-bundle-import`; pushed base
-  `24c1f6c84f859bb759237b5f66a98bbd69058c37`. M-V5 and the initial concrete
-  recovery-barrier repair are committed; the new transaction/activation packet
-  has complete local gate evidence indexed below.
-- [PR #164](https://github.com/gripsack-dev/gripsack/pull/164) remains draft,
-  `BLOCKED`, with that remote head and no qualifying check rollup.
+- Branch: `handover/h0-bundle-import`; pushed source
+  `472a111da0a8a59b21e31da89e588a9a76074afd`. M-V5, transaction-bound
+  selection and durable activation outcomes are committed.
+- [PR #164](https://github.com/gripsack-dev/gripsack/pull/164) remains draft;
+  the complete handover and remaining NEXT requirements are not merge-ready.
 - Explicit-waiver run
-  [36337128792](https://github.com/gripsack-dev/gripsack/actions/runs/36337128792)
-  skipped only fuzz and correctly failed its aggregate on native filename
-  fixtures and a TLAPS case-combination timeout. Both repairs are in the new
-  packet; corrected native/current-commit execution remains required.
+  [36357284121](https://github.com/gripsack-dev/gripsack/actions/runs/36357284121)
+  passed Linux, native macOS, docs, audit and the aggregate. Mac process tests
+  passed **25/25**; CLI passed **399**, with **2** filesystem-unconstructible
+  filename fixtures explicitly skipped. Only fuzz was an owner-waived job.
+  Earlier run `36337128792`'s failures remain evidence, not erased by the repair.
 - Last observed `main` protection requires `test`, with strict up-to-date
   checks, `enforce_admins=false` and zero required approvals. The fail-closed
   `gate` is now implemented, but its live protection requirement is not yet
@@ -71,8 +71,9 @@ gate remains mandatory.
 - CI supports the explicit manual-dispatch input
   `fuzz_waiver=REL-FUZZ-2026-09-27` and fail-closed result aggregation.
   Local calibration passed 4 positive/64 negative cases and four executable
-  entrypoint smokes. Real run `36337128792` correctly failed on non-fuzz
-  failures; a positive current-candidate run and protection remain pending.
+  entrypoint smokes. Run `36337128792` correctly failed on non-fuzz failures;
+  run `36357284121` passed for exact source `472a111`. Live aggregate protection
+  and later-source qualification remain pending.
   Release assurance must still bind the exception into the candidate tuple.
   `delivery.json` has no `waived` status: do not invent one there or label a
   skipped fuzz job `verified`.
@@ -109,13 +110,15 @@ it and claim complete Rust/Go conformance.
 
 ## 3. Evidence already available: reuse with source matching
 
-The latest local packet is R3/transaction identity, not the whole release.
-All six Compose gates passed, including **401/401** CLI, Verus **111/0** plus
-**17** calibrations, TypeScript **67**, the **301**-obligation TLAPS pilot and
-the complete TLC gate. See `reports/2026-09-27-activation-local-gates.log`
-(SHA-256 `2b023ff85b3d0e96170ccf51a3541ca585d9f96c97da348e580c342328548311`)
-for exact image/source/binary binding and the retained initial failures.
-This is not generalized M-V6, native macOS or candidate-release closure.
+The R3/transaction-identity packet is qualified at source `472a111`, not as a
+whole release. All six local Compose gates passed, including **401/401** CLI,
+Verus **111/0** plus **17** calibrations, TypeScript **67**, the **301**-obligation
+TLAPS pilot and the complete TLC gate. Full native/current-commit CI then
+passed; `reports/2026-09-28-ci-472a111.log` has SHA-256
+`8b573eee464d1e739f942bba572296b5a8e969f30855b5e3f3e7a041be5b658d`.
+The later working-tree prior-cache, directory-birth and retained-prior
+admission repairs need their own final gates. This checkpoint does not close
+generalized M-V6/M-V7, live protection or the remaining release requirements.
 The [report index](reports/README.md) also preserves historical M-V5 evidence:
 
 | Evidence | Observed result | What it does not establish |

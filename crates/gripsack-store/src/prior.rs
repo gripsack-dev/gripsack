@@ -89,8 +89,8 @@ pub fn directory(home: &Dir) -> io::Result<Dir> {
     gripsack_fs::open_dir_nofollow(home, Path::new("prior"))
 }
 
-/// Read only the named admitted blob through a pinned capability and verify its
-/// bytes before allowing either a restore intent or a destination mutation.
+/// Read the named admitted blob through a pinned capability, verify its bytes,
+/// then seal the observed file and namespace before granting restore authority.
 pub fn read_blob(home: &Dir, identity: &PriorBlobId) -> io::Result<Vec<u8>> {
     let directory = directory(home)?;
     let mut file = gripsack_fs::open_file_nofollow(&directory, Path::new(identity.as_str()))?;
@@ -102,11 +102,16 @@ pub fn read_blob(home: &Dir, identity: &PriorBlobId) -> io::Result<Vec<u8>> {
             "prior blob content hash mismatch",
         ));
     }
+    crate::private_state::seal_file(&file, Path::new(identity.as_str()))?;
+    gripsack_fs::fsync_dir(&directory, Path::new("."))?;
+    gripsack_fs::fsync_dir(home, Path::new("."))?;
     Ok(bytes)
 }
 
 /// Preserve originals at 0600 in a 0700 directory; deduplicate by raw bytes.
 /// Corrupt existing regular bytes are quarantined, never accepted by pathname.
+/// A cache hit is only visible evidence: seal its bytes/mode and namespace
+/// before returning an identity that can authorize a journaled mutation.
 pub fn store_blob(home: &Dir, bytes: &[u8]) -> io::Result<PriorBlobId> {
     let identity = PriorBlobId(crate::hash::hex_sha256(bytes));
     let directory = crate::private_state::ensure_directory(home, Path::new("prior"))?;
@@ -115,7 +120,8 @@ pub fn store_blob(home: &Dir, bytes: &[u8]) -> io::Result<PriorBlobId> {
             let mut existing = Vec::new();
             file.read_to_end(&mut existing)?;
             if existing == bytes {
-                crate::private_state::restrict_file(&file, Path::new(identity.as_str()))?;
+                crate::private_state::seal_file(&file, Path::new(identity.as_str()))?;
+                gripsack_fs::fsync_dir(&directory, Path::new("."))?;
                 return Ok(identity);
             }
             gripsack_fs::rename(

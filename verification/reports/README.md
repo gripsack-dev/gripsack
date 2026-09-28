@@ -1,4 +1,4 @@
-# verification/reports — archived runner logs (2026-09-24–27)
+# verification/reports — archived runner logs (2026-09-24–28)
 
 Unmodified copies of the gate logs captured on 2026-09-24 in `/tmp/gripsack-baseline/`
 (pristine-worktree baseline runs) and `/tmp/gripsack-a0/` (A0-tree runs), archived
@@ -455,4 +455,38 @@ These remain working-tree observations over `24c1f6c`, not protected
 exact-final-commit CI, native macOS or release qualification. Generalized
 M-V6 and the remaining NEXT work are not replaced by these bounded models.
 No fuzz target or saved fuzz corpus was executed.
+
+## Cached-prior admission — concrete generalized-model prerequisite
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-28-prior-cache-development.log` | `a53979db4bc84cd33cafb389945708e7290c4862fc18514ec9b913fd6000ed25` | Retained real failing-before private-cache hit, corrected **51/51** recovery/activation CLI cases, and standalone file/parent-sync failure refusal with unchanged destination/current/prior and successful retries. Exact changed-source hashes, tested binary/image identity and disposable driver bytes are included. The driver was removed after archiving. |
+
+This is working-tree evidence over `472a111`, not protected final-source CI,
+completed M-V6/M-V7 or a physical power-loss experiment. Existing-directory
+retry qualification and lifecycle/retention composition remain required.
+
+## R3 / transaction-selection — exact candidate CI
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-28-ci-472a111.log` | `8b573eee464d1e739f942bba572296b5a8e969f30855b5e3f3e7a041be5b658d` | Full metadata and job logs for successful run `36357284121` at `472a111da0a8a59b21e31da89e588a9a76074afd`: Linux test/proof/BuildKit gates, native macOS, docs, audit and aggregate passed. Mac process **25/25** and CLI **399 passed / 2 unconstructible-filename skips**. Fuzz was explicitly owner-waived/not run. |
+
+This receipt does not qualify the subsequent working-tree durability repairs,
+establish live branch protection, complete M-V6/M-V7 or authorize a release.
+
+## Durable metadata authority — final local regression packet
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-28-durable-authority-local.log` | `f0080630ca0b57561da7f8168d9c2550e04f9123f010c205a058ba1754191d23` | Cached/retained prior, directory-birth and generation-prune repairs: all six local non-fuzz gates passed; **405/405** full CLI, Rust/clippy/calibration, fresh Verus **111/0** with **17** calibrations, fresh TLAPS pilot **301** plus its calibration. Unchanged TypeScript/TLC RUNs were cached. Includes failing-before namespace/GC traces, retained-prior failure excerpt, both superseded campaign timeouts, standalone prior/GC output and exact disposable drivers. |
+
+The receipt binds 1123 behavior-bearing source files and all copied gate-image
+inputs to fingerprint
+`9e2f95fb24af87902209c3b80c353f3cae6da90857c3e066ab3acedbd8346e0c`.
+Binary SHA-256:
+`ff7f83c739eecf7eb9e322e13952bd0e8c6191ed30ab0b902ef70a370a821d46`.
+The smoke drivers were removed after archiving. Native/new-commit CI and full
+M-V6/M-V7 composition remain separate gates; no hardware durability or fuzz pass
+is claimed.
 

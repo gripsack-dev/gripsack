@@ -291,3 +291,130 @@ def test_legacy_same_generation_marker_remains_ambiguous(sandbox):
     assert marker.read_bytes() == marker_bytes and entry.read_bytes() == entry_bytes
     assert destination.readlink() == Path("installed")
     assert (home / "current").readlink() == Path("generations/1")
+
+
+def test_cached_prior_sync_failure_cannot_authorize_a_deployment(sandbox):
+    repo = make_env_repo(sandbox / "env", '''
+import { module, trackedCopy } from "@gripsack/core";
+export default module("demo", {config: {source: trackedCopy("~/.cached-prior")}});
+''')
+    original = b"original captured bytes\n"
+    replacement = b"replacement bytes\n"
+    source = repo / "source"
+    source.write_bytes(original)
+    destination = sandbox / ".cached-prior"
+    home = sandbox / ".local/share/gripsack"
+    trace = sandbox / "cached-prior-boundaries.tsv"
+
+    def invoke(arguments, extra=None):
+        return subprocess.run(
+            [str(GRIP), *arguments], cwd=repo,
+            env={**os.environ, **(extra or {})},
+            capture_output=True, text=True, timeout=30,
+        )
+
+    def apply(extra=None):
+        return invoke(["apply", "--host", "testhost"], extra)
+
+    first = apply()
+    assert first.returncode == 0, first.stdout + first.stderr
+    source.write_bytes(replacement)
+    second = apply()
+    assert second.returncode == 0, second.stdout + second.stderr
+    blob = home / "prior" / hashlib.sha256(original).hexdigest()
+    assert blob.read_bytes() == original
+    assert blob.stat().st_mode & 0o7777 == 0o600
+    assert blob.parent.stat().st_mode & 0o7777 == 0o700
+    restored = invoke(["rollback", "1"])
+    assert restored.returncode == 0, restored.stdout + restored.stderr
+    assert destination.read_bytes() == original
+
+    # Visibility and private permissions are not evidence that an earlier
+    # publication's file/parent sync completed. The trace locates the real
+    # admission barriers; injected failure must prevent the consumer's write.
+    observed = apply({"GRIPSACK_FS_TRACE": str(trace)})
+    assert observed.returncode == 0, observed.stdout + observed.stderr
+    assert destination.read_bytes() == replacement
+    rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+    file_barriers = [i for i, row in enumerate(rows)
+                     if row[1:] == ["Before", "FileSync", json.dumps(blob.name)]]
+    assert file_barriers, "cached prior authorized a deployment without sealing its file"
+    file_barrier = file_barriers[0]
+    parent_barrier = next(i for i in range(file_barrier + 1, len(rows))
+                          if rows[i][1:] == ["Before", "DirSync", '"."'])
+    cuts = [int(rows[file_barrier][0]), int(rows[parent_barrier][0])]
+
+    for cut in cuts:
+        restored = invoke(["rollback", "1"])
+        assert restored.returncode == 0, restored.stdout + restored.stderr
+        assert destination.read_bytes() == original
+        previous = (home / "current").readlink()
+        refused = apply({"GRIPSACK_FS_CUT": str(cut), "GRIPSACK_FS_FAULT": "error"})
+        assert refused.returncode != 0, refused.stdout + refused.stderr
+        assert destination.read_bytes() == original
+        assert (home / "current").readlink() == previous
+        assert blob.read_bytes() == original
+        completed = apply()
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert destination.read_bytes() == replacement
+
+
+def test_retained_prior_seal_failure_prevents_recovery_mutation(sandbox):
+    repo, home, destination, marker, entry, _ = committed_fixture(sandbox)
+    original = b"retained recovery bytes\n"
+    prior_dir = home / "prior"
+    prior_dir.mkdir(mode=0o700)
+    blob = prior_dir / hashlib.sha256(original).hexdigest()
+    blob.write_bytes(original)
+    blob.chmod(0o600)
+    prior = {"kind": "file", "hash": blob.name, "mode": 0o600}
+    marker_bytes = b'{"previous_generation":1,"target_generation":2,"op":"apply"}'
+    entry_bytes = json.dumps({
+        "v": 2, "dest": str(destination), "prior": prior, "before": prior,
+        "after": {"kind": "link", "target": "installed"},
+    }).encode()
+    trace = sandbox / "retained-prior-boundaries.tsv"
+
+    def seed():
+        destination.unlink(missing_ok=True)
+        destination.symlink_to("installed")
+        marker.write_bytes(marker_bytes)
+        marker.chmod(0o644)
+        entry.write_bytes(entry_bytes)
+        entry.chmod(0o600)
+        trace.unlink(missing_ok=True)
+
+    def invoke(extra=None):
+        return subprocess.run(
+            [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+            env={**os.environ, "GRIPSACK_FS_RECOVER_ONLY": "1", **(extra or {})},
+            capture_output=True, text=True, timeout=30,
+        )
+
+    seed()
+    observed = invoke({"GRIPSACK_FS_TRACE": str(trace)})
+    assert observed.returncode == 0, observed.stdout + observed.stderr
+    assert destination.read_bytes() == original
+    rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+    seals = [i for i, row in enumerate(rows)
+             if row[1:] == ["Before", "FileSync", json.dumps(blob.name)]]
+    assert seals, "recovery consumed retained prior bytes without sealing their authority"
+    file_seal = seals[0]
+    parent_seal = next(i for i in range(file_seal + 1, len(rows))
+                       if rows[i][1:] == ["Before", "DirSync", '"."'])
+    previous = (home / "current").readlink()
+    for cut in [int(rows[file_seal][0]), int(rows[parent_seal][0])]:
+        for fault in ["error", "kill"]:
+            seed()
+            failed = invoke({"GRIPSACK_FS_CUT": str(cut), "GRIPSACK_FS_FAULT": fault})
+            assert failed.returncode != 0, failed.stdout + failed.stderr
+            if fault == "kill":
+                assert failed.returncode == -signal.SIGKILL
+            assert destination.readlink() == Path("installed")
+            assert marker.read_bytes() == marker_bytes and entry.read_bytes() == entry_bytes
+            assert blob.read_bytes() == original
+            assert (home / "current").readlink() == previous
+            completed = invoke()
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            assert destination.read_bytes() == original
+            assert not marker.exists() and not entry.exists()

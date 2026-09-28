@@ -29,7 +29,9 @@ mod scoped;
 mod streamed;
 pub use streamed::{atomic_copy_with_mode, publication_occurred};
 pub mod fault;
-pub use directories::{create_dir_all, open_or_create, remove_file, rename};
+pub use directories::{
+    create_dir_all, fsync_dir, fsync_pinned_dir, open_or_create, remove_file, rename,
+};
 use fault::{Boundary, operation};
 pub use scoped::{open_dir_nofollow, open_file_nofollow};
 use std::io;
@@ -69,22 +71,6 @@ fn parent_rel(name: &Path) -> &Path {
     name.parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."))
-}
-/// fsync a directory (relative to `dir`) so renames into it are
-/// durable. cap-std opens directories O_PATH on Linux, and fsync on
-/// an O_PATH fd is EBADF — so the target directory is reopened
-/// O_RDONLY relative to the capability and THAT fd is fsync'd.
-pub fn fsync_dir(dir: &Dir, rel: &Path) -> io::Result<()> {
-    let fd = rustix::fs::openat(
-        dir,
-        rel,
-        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
-        rustix::fs::Mode::empty(),
-    )
-    .map_err(io::Error::from)?;
-    operation(Boundary::DirSync, rel, || {
-        rustix::fs::fsync(fd).map_err(io::Error::from)
-    })
 }
 
 /// Keep an existing destination's mode across a content-only update
@@ -370,8 +356,7 @@ fn read_only_files(_dir: &Path) -> io::Result<()> {
 /// parent on the spot. See the module docs: incidental writes only.
 pub fn atomic_write_at(path: &Path, contents: &[u8]) -> io::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    let dir = open(parent)?;
+    let dir = open_or_create(parent)?;
     atomic_write(
         &dir,
         Path::new(path.file_name().unwrap_or_default()),
@@ -417,7 +402,7 @@ pub fn atomic_write_with_mode(
 /// [`symlink_replace`] at an absolute path (parent opened on the spot).
 pub fn symlink_replace_at(link: &Path, target: &Path) -> io::Result<()> {
     let parent = link.parent().unwrap_or_else(|| Path::new("."));
-    let dir = open(parent)?;
+    let dir = directories::open_existing_durable(parent)?;
     symlink_replace(
         &dir,
         Path::new(link.file_name().unwrap_or_default()),
@@ -429,8 +414,7 @@ pub fn symlink_replace_at(link: &Path, target: &Path) -> io::Result<()> {
 /// spot).
 pub fn publish_dir_at(staging: &Path, dest: &Path) -> io::Result<()> {
     let parent = dest.parent().unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    let dir = open(parent)?;
+    let dir = open_or_create(parent)?;
     publish_dir(
         &dir,
         staging,

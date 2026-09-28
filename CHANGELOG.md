@@ -49,6 +49,18 @@ User-visible changes per release. Design archaeology lives in
 
 ### Fixed
 
+- Cached prior files are sealed along with their containing directory before
+  they authorize a deployment. Already-private permissions do not prove an
+  interrupted publication became durable; sync failure now leaves the
+  destination and current selection unchanged.
+- Recovery also seals retained prior bytes before using them for restoration;
+  failed file or directory sync retains the destination and journal evidence.
+- Namespace admission seals already-visible directory ancestors after an
+  interrupted creation attempt. Ambient file/link/tree publishers use the
+  admitted root rather than treating an existing path as a completed barrier.
+- GC seals generation pruning before collecting payloads whose roots it
+  removed. An empty prune list on retry still seals observed absence; failure
+  or process death preserves those payloads and the current generation.
 - Resumed hook reports no longer manufacture a new generation in an otherwise
   satisfied apply. Resuming prior work does not create fresh IDs and deliver the
   same hooks again as if a new deployment had occurred.

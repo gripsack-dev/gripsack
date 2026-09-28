@@ -1,9 +1,13 @@
 """0041: metadata/config admission must precede any destructive GC work."""
 import errno
 import json
+import os
+import shutil
+import signal
+import subprocess
 from pathlib import Path
 import pytest
-from conftest import grip, make_env_repo
+from conftest import GRIP, grip, make_env_repo
 
 
 def setup(sandbox):
@@ -216,4 +220,60 @@ def test_collecting_orphan_symlink_never_traverses_its_payload(sandbox):
     assert out.returncode == 0, out.stderr
     assert not orphan.is_symlink()
     assert sentinel.read_bytes() == b"foreign payload"
+    assert (sandbox / ".owned").read_text() == "two"
+
+
+@pytest.mark.parametrize("fault", ["error", "kill"])
+def test_generation_prune_sync_failure_preserves_payloads_on_retry(sandbox, fault):
+    repo, home = setup(sandbox)
+    (repo / "env.toml").write_text('[env]\nname="fixture"\n[settings]\nkeep_generations=1\n')
+    previous = (home / "current").readlink()
+    generation = home / "generations/1"
+    manifest = json.loads((generation / "manifest.json").read_text())
+    payload = Path(manifest["modules"]["demo"]["store_path"])
+    saved_generation = sandbox / "saved-generation"
+    saved_payload = sandbox / "saved-payload"
+    shutil.copytree(generation, saved_generation, symlinks=True)
+    shutil.copytree(payload, saved_payload, symlinks=True)
+    trace = sandbox / "gc-prune-boundaries.tsv"
+
+    def collect(extra=None):
+        return subprocess.run(
+            [str(GRIP), "gc"], cwd=repo, env={**os.environ, **(extra or {})},
+            capture_output=True, text=True, timeout=30,
+        )
+
+    def barrier_cut():
+        trace.unlink(missing_ok=True)
+        observed = collect({"GRIPSACK_FS_TRACE": str(trace)})
+        assert observed.returncode == 0, observed.stdout + observed.stderr
+        assert not generation.exists() and not payload.exists()
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        barriers = [int(row[0]) for row in rows
+                    if row[1:] == ["Before", "DirSync", '"generations"']]
+        assert barriers, "GC discarded generation roots without durable namespace pruning"
+        return barriers[0]
+
+    def refuse(cut):
+        failed = collect({"GRIPSACK_FS_CUT": str(cut), "GRIPSACK_FS_FAULT": fault})
+        assert failed.returncode != 0, failed.stdout + failed.stderr
+        if fault == "kill":
+            assert failed.returncode == -signal.SIGKILL
+        assert not generation.exists()
+        assert (payload / "payload").read_text() == "one"
+        assert (home / "current").readlink() == previous
+        assert (sandbox / ".owned").read_text() == "two"
+
+    prune_cut = barrier_cut()
+    shutil.copytree(saved_generation, generation, symlinks=True)
+    shutil.copytree(saved_payload, payload, symlinks=True)
+    refuse(prune_cut)
+    # The removed generation is already invisible on retry. An empty prune
+    # list must still seal that observation before its payload can be collected.
+    empty_cut = barrier_cut()
+    shutil.copytree(saved_payload, payload, symlinks=True)
+    refuse(empty_cut)
+    completed = collect()
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert not payload.exists()
     assert (sandbox / ".owned").read_text() == "two"
