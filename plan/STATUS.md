@@ -218,8 +218,11 @@ All six local non-fuzz Compose gates passed, including **405/405** real CLI,
 Rust/clippy/tests and current contract calibration. Standalone prior/GC
 refusal/retry journeys passed; no physical power-loss claim follows. The
 source/image-bound report is `2026-09-28-durable-authority-local.log`.
-Earlier R3 source `472a111` separately passed full native/Linux CI run
-`36357284121`; these newer repairs still need native/current-commit CI.
+The committed repairs at `e3738d765025aa5ea352f47d603f83b43760feb5` passed full
+CI run `36385223651`: Linux CLI **405/405**, native Mac CLI **403 passed / 2
+unconstructible-filename skips**, native process **25/25**, docs, audit and
+aggregate. `2026-09-28-ci-e3738d7.log` retains the exact-source evidence;
+fuzz/replay alone was owner-waived/not run. Live `gate` protection is separate.
 Generalized lifecycle/activation composition, M-V7 and the remaining handover
 implementation/release requirements remain open.
 

@@ -1,6 +1,6 @@
 # Release qualification tracking and post-release fuzz handoff
 
-Snapshot: 2026-09-27. Goal: a qualified release the owner can install and share
+Snapshot: 2026-09-28. Goal: a qualified release the owner can install and share
 with close friends for feedback. **Not merge-ready or release-ready yet.**
 Implementation, landing and qualified releases continue with the current
 assistant. The additional agent is assigned post-release fuzzing and repairs,
@@ -27,17 +27,17 @@ Update plan 0048's leaf record and the owning delivery rows as work progresses.
 All acceptance subcases in the cited sections remain conjunctive; the concise
 rows below do not replace or narrow them.
 
-Observed R3/selection checkpoint, before the later durability repairs:
+Observed durable-authority checkpoint:
 
 - Branch: `handover/h0-bundle-import`; pushed source
-  `472a111da0a8a59b21e31da89e588a9a76074afd`. M-V5, transaction-bound
-  selection and durable activation outcomes are committed.
+  `e3738d765025aa5ea352f47d603f83b43760feb5`. M-V5, transaction-bound
+  selection, activation outcomes and four durability repairs are committed.
 - [PR #164](https://github.com/gripsack-dev/gripsack/pull/164) remains draft;
   the complete handover and remaining NEXT requirements are not merge-ready.
 - Explicit-waiver run
-  [36357284121](https://github.com/gripsack-dev/gripsack/actions/runs/36357284121)
-  passed Linux, native macOS, docs, audit and the aggregate. Mac process tests
-  passed **25/25**; CLI passed **399**, with **2** filesystem-unconstructible
+  [36385223651](https://github.com/gripsack-dev/gripsack/actions/runs/36385223651)
+  passed Linux, native macOS, docs, audit and the aggregate. Linux CLI passed
+  **405/405**. Mac process tests passed **25/25**; CLI passed **403**, with **2** filesystem-unconstructible
   filename fixtures explicitly skipped. Only fuzz was an owner-waived job.
   Earlier run `36337128792`'s failures remain evidence, not erased by the repair.
 - Last observed `main` protection requires `test`, with strict up-to-date
@@ -72,8 +72,8 @@ gate remains mandatory.
   `fuzz_waiver=REL-FUZZ-2026-09-27` and fail-closed result aggregation.
   Local calibration passed 4 positive/64 negative cases and four executable
   entrypoint smokes. Run `36337128792` correctly failed on non-fuzz failures;
-  run `36357284121` passed for exact source `472a111`. Live aggregate protection
-  and later-source qualification remain pending.
+  runs `36357284121` (`472a111`) and `36385223651` (`e3738d7`) passed at their
+  exact sources. Live aggregate protection remains pending.
   Release assurance must still bind the exception into the candidate tuple.
   `delivery.json` has no `waived` status: do not invent one there or label a
   skipped fuzz job `verified`.
@@ -116,9 +116,12 @@ Verus **111/0** plus **17** calibrations, TypeScript **67**, the **301**-obligat
 TLAPS pilot and the complete TLC gate. Full native/current-commit CI then
 passed; `reports/2026-09-28-ci-472a111.log` has SHA-256
 `8b573eee464d1e739f942bba572296b5a8e969f30855b5e3f3e7a041be5b658d`.
-The later working-tree prior-cache, directory-birth and retained-prior
-admission repairs need their own final gates. This checkpoint does not close
-generalized M-V6/M-V7, live protection or the remaining release requirements.
+The later prior-cache, directory-birth, retained-prior and generation-prune
+repairs are qualified at `e3738d7`: all local gates and full native/current-commit
+CI passed. `reports/2026-09-28-ci-e3738d7.log` has SHA-256
+`87aa22c96fe32b682e1f2fa45758c8546496f1f520bea40125a624aab6ea7637`.
+Neither checkpoint closes generalized M-V6/M-V7, live protection or the
+remaining release requirements.
 The [report index](reports/README.md) also preserves historical M-V5 evidence:
 
 | Evidence | Observed result | What it does not establish |
@@ -151,7 +154,7 @@ reports. Preserve their named obligations/calibrations when extending them.
 | M-V7 — §6 items 1–5 | No completed production-connected journal/process/update/acquisition transition-proof packet is recorded | Constrain actual effect authority by typed/verified durable predecessor states; prove distinct frame/byte/work counters and budget arithmetic, one operation deadline, terminal-failure precedence, complete update accounting and shared check/publish decision. Extend actual observers/executors/error/receipt oracles and dropped-sync persistence calibration. Register every external-effect assumption; no ghost-only clone or opaque trusted write wrapper. |
 | R1 — all §13 R1 changes/acceptance | `trust.rs` still keys approval by path and accepts `GRIPSACK_TRUST_ALL=1` | Implement captured immutable `PreparedEvaluation`, complete bounded admitted read set, source/grant/runtime-bound approval, all-round bundle reuse, versioned trust migration and private receipts. Migrate every eval caller, fixture/demo bypass and diagnostic path. Run every named worktree/import/symlink/submodule/pin/grant/pause/IO case through real Deno. |
 | R2 — remaining §13 R2 plus §10 | M-V5 supplies generation types/inventory/exact pruning, **not** ownership role types, complete independent seam oracles or policy receipts | Finish zero-copy desired/live/prior roles, takeover and lineage authority types; migrate every caller/model/proof without raw overloads. Extend real filesystem oracles and attributable role/authority/observation/effect/receipt mutants; implement the versioned durable policy receipt. Required compile-fail and Verus contracts remain part of acceptance. |
-| R3 — all §13 R3 | Stable selection/intent IDs, private outcomes/archives, settled failure/supersession, legacy migration, inspection and fixture-only simulations are implemented with final local gates | Qualify native macOS/current-commit CI; preserve the 43-case focused crash/activation bridge, full 401-case CLI result, real simulation/example smokes and six bounded model mutants. Compose the persisted identity with generalized M-V6; no exactly-once claim. |
+| R3 — all §13 R3 | Stable selection/intent IDs, private outcomes/archives, settled failure/supersession, legacy migration, inspection and fixture-only simulations are implemented and qualified by local/native/current-commit runtime gates | Preserve the 43-case focused crash/activation bridge, latest 405-case Linux / 403-case native CLI results, real simulation/example smokes and six bounded model mutants. Compose the persisted identity with generalized M-V6; no exactly-once claim. |
 | R5 — NEXT portion from §9 | Scoped process supervision/plugin fixes exist; full required identity/env/FD/receipt/escaping campaign is not closed | Inventory and migrate every caller touched by NEXT work; bind launched executable/interpreter/script identity with honest OS assumptions, role env/grants and FD handling. Add private bounded receipts/required trace controls and actual lifecycle/pressure/canary/terminal-output cases. Current process tests live at `crates/gripsack-process/src/tests/`, not the older plan's `tests/` spelling. Additional full-tree containment is claim-gated, never silently inferred from process groups. |
 | R6 — NEXT applicability/identity and software-fault cases | Existing persistence tests do not close the complete named applicability/campaign contract | Record actual metadata/alias/filesystem limits, resolve dangling guarantee IDs, add the machine-readable applicability matrix and applicable ENOSPC/EDQUOT/EIO/ESTALE/EXDEV/lock/parent-replacement/readonly cases across real publication/recovery/receipts. Qualified VM power-cut evidence is separately claim-gated/M5: do not invent a hardware claim or run destructive experiments on user disks. |
 | R4 — all §13 R4 | No `schema/release/` or `schema/verification/` contracts found; `install.sh` currently installs after same-origin checksum verification | Implement generated assurance/release manifests, exact-source/evidence/artifact/compatible-SDK binding, identity/ref/workflow-constrained attestation verification, fail-closed installer/self-update, revocation and interrupted-publication recovery. Run the complete non-publishing valid/tampered/wrong-identity/missing-evidence/mismatched-SDK/revoked cases; old binary stays usable on every failure. |

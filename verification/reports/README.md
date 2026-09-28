@@ -486,7 +486,17 @@ inputs to fingerprint
 `9e2f95fb24af87902209c3b80c353f3cae6da90857c3e066ab3acedbd8346e0c`.
 Binary SHA-256:
 `ff7f83c739eecf7eb9e322e13952bd0e8c6191ed30ab0b902ef70a370a821d46`.
-The smoke drivers were removed after archiving. Native/new-commit CI and full
-M-V6/M-V7 composition remain separate gates; no hardware durability or fuzz pass
-is claimed.
+The smoke drivers were removed after archiving. The exact-source CI receipt
+below qualifies the native/new-commit lane. Full M-V6/M-V7 composition remains
+separate; no hardware durability or fuzz pass is claimed.
+
+## Durable metadata authority — exact candidate CI
+
+| report | sha256 | observed execution |
+|---|---|---|
+| `2026-09-28-ci-e3738d7.log` | `87aa22c96fe32b682e1f2fa45758c8546496f1f520bea40125a624aab6ea7637` | Full metadata and job logs for successful run `36385223651` at `e3738d765025aa5ea352f47d603f83b43760feb5`: Linux test/proof/BuildKit, native macOS, docs, audit and aggregate passed. Linux CLI **405/405**; native process **25/25** and CLI **403 passed / 2 unconstructible-filename skips**. Verus **111/0** plus **17** calibrations; TLAPS remains the **301**-obligation pilot, not generalized M-V6. Fuzz/replay was explicitly owner-waived/not run. |
+
+This qualifies the four concrete durability repairs at their committed source.
+It does not establish live aggregate protection, complete M-V6/M-V7 or qualify
+release artifacts and installation.
 
