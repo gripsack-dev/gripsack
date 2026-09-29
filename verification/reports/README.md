@@ -544,7 +544,36 @@ Five retention cases completed, including all three named counterexamples.
 The larger retained-generation/fresh-publication/journal/activation/GC instance
 timed out with a nonempty queue after reporting 51,132,269 distinct states.
 That exploration is explicitly incomplete, not a passing gate. The separate
-fresh-lifecycle discovery run also remains unqualified until it completes.
+fresh-lifecycle cfg subsequently completed unchanged in the full model gate below.
 Full rebuilt Compose, exact candidate/native CI and release evidence are
 separate from this development receipt. Only fuzz/corpus replay is owner-waived.
+
+
+## M-V6 complete local qualification — source 8bad070
+
+`2026-09-29-m-v6-local.log` (3,455,102 bytes) has SHA-256
+`3c8c86e72bf9ad6882206ec045df25dbc019dd8e3743341616e9ac582ed0937a`.
+The immutable source is `8bad070f662f03d0ec56e9b9a2e1568968fbeb9e`;
+its registered-source `git ls-tree` fingerprint is
+`b10c175d2d2ccbe78fbb5b2584d2662a376631463f51294b688c6250cb94ec51`.
+This is explicitly the registered source-root inventory, not a new claim about
+unregistered release inputs.
+
+All six local non-fuzz Compose gates passed. CLI: **417/417**, including all
+six persistence cases and the repeated-recovery campaign. TLC: **146** cases
+(72 positive, 74 named negative), including every one of the 70 generalized
+cfgs. The fresh-lifecycle cfg completed with its original three-payload domain;
+the earlier timeout is not substituted for this successful run. TLAPS:
+**4,542** fresh generalized obligations, **301** pilot obligations, **13 + 7**
+constructive barrier-witness obligations and five inventory-admission negatives.
+Existing Verus: **111 verified / 0 errors**, 17 calibrations and ten
+evidence-admission negatives. The unchanged TypeScript image passed Compose;
+no fresh Deno case count is inferred from the cached layer.
+
+The receipt records source hashes, observed image identities, binary SHA-256
+`5fda015ed4156cb6214809d63421759af8ce146012ebfe8000ef05826a9b0cf7`
+and repeated-recovery test SHA-256
+`1f7a055f1937dc9fc633e44eab260054fc13f35928d75e1ab5c9ffdc0ac3cfe5`.
+Native/current-commit CI `36497472294`, live required aggregate protection,
+M-V7 and the remaining handover/release gates are not closed by this local receipt.
 
