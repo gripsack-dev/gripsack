@@ -598,5 +598,40 @@ and a two-CPU container proved **101/101** module obligations. Its source
 SHA-256 is `d30ec87eaff6fc42d6c2be67ac4e01ae8680a9739b1a25281259aae344ff5a23`.
 The frozen total floor rises from 4,542 to **4,555**, without removing a named
 theorem or changing transitions, assumptions, domains or prover timeouts.
-Full rebuilt local and new-commit CI qualification remain pending.
+The full rebuilt local model/TLAPS gate subsequently passed at proof source
+`b53e334f7b9b061b0bd7541a506fc32775eed369`: **40 modules / 4,555 obligations**,
+the **301**-obligation pilot, **13 + 7** barrier witnesses and five inventory
+negatives. `2026-09-29-m-v6-repair-local.log` (2,010,289 bytes) has SHA-256
+`a1852b19971092bc210dde3dacaa8406bf3b3c8da2699c354a735bb2f81f8364`.
+Its transcript includes the fresh model dependency and source/catalog hashes.
+Candidate CI `36514136863` subsequently passed the coupling module but failed
+the separate invocation theorem, as recorded below. In-progress acquisition
+Rust work is not qualified by this proof-only receipt.
+
+## M-V6 invocation proof — second candidate failure and repair
+
+`2026-09-29-ci-b53e334-repair.log` (4,105,073 bytes) has SHA-256
+`f21f23fb12456050ad38a4595a86809fdafffd36bc2b6d64083ad01ba6527455`.
+It retains exact metadata and complete Linux/native logs for
+[`36514136863`](https://github.com/gripsack-dev/gripsack/actions/runs/36514136863)
+at `b53e334f7b9b061b0bd7541a506fc32775eed369`, plus the fresh repair driver,
+source hashes, raw proof output and updated catalog.
+Linux CLI passed **417/417**; native macOS process passed **25/25** and CLI
+**415 passed / 2 unconstructible-filename skips**. Docs/audit passed.
+Only fuzz/replay was owner-waived/not run.
+
+The candidate **failed**: `InvocationUsesDurableFullSelection` exhausted its
+internal prover timeout (1/71 obligations), and Verus was not reached.
+The aggregate refused. The earlier 101-obligation coupling repair passed.
+The new repair derives process/current identity, non-None projections, tuple
+typing, current binding and active-plan binding separately, then combines
+them into the unchanged durable full-selection conclusion.
+Fresh strict/no-fingerprint TLAPM 7824dab, unchanged stretch/thread settings,
+and a two-CPU container proved **105/105** module obligations in **68.15 s**.
+The repaired source SHA-256 is
+`f1586d6f26fcd4fcc177e487cae19e5502a28f8fd3315ef05c63494cbc611523`.
+The catalog floor rises to **4,589**, still 40 modules and 443 theorem names.
+No transition, invariant, theorem statement, domain or timeout changed.
+Complete updated local and new-candidate CI qualification remain required;
+this proof-only receipt does not qualify the uncommitted M-V7 runtime work.
 

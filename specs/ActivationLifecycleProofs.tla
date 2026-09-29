@@ -63,12 +63,30 @@ THEOREM GeneralActivationLifecycleSafety == ActivationLifecycleSpec => []Activat
 THEOREM InvocationUsesDurableFullSelection ==
   ASSUME ActivationLifecycleInvariant, Hooks!Invoke
   PROVE currentVisible = <<active, plans[active]>> /\ currentStable = currentVisible
-  BY SMT, HookDomain, SelectionDomain
-  DEF ActivationLifecycleInvariant, LifecycleInvariant, Invariant, TypeOK,
-      CurrentProjection, HookSelection, PlanSelectionBinding, Hooks!Invoke,
-      Hooks!ActivationInductiveInvariant, Hooks!ProcessInvariant, Hooks!NativePhases,
-      Hooks!TypeOK, Hooks!ActivationParameters, Selection!Invariant, Selection!TypeOK,
-      Selection!CurrentInvariant, Selection!Bound, Selection!IsTransaction, Selection!Selections
+<1>1. /\ Selection!TypeOK /\ Selection!CurrentInvariant
+       /\ PlanSelectionBinding /\ CurrentProjection /\ Hooks!ProcessInvariant
+  BY ONLY SMT, ActivationLifecycleInvariant
+  DEF ActivationLifecycleInvariant, LifecycleInvariant, Invariant,
+      Selection!Invariant, Hooks!ActivationInductiveInvariant
+<1>2. activationPhase = "permitted"
+  BY ONLY SMT, Hooks!Invoke DEF Hooks!Invoke
+<1>3. /\ active \in Transactions /\ plans[active] # ActivationNone
+       /\ currentC = active /\ currentD = active
+  BY ONLY SMT, <1>1, <1>2 DEF Hooks!ProcessInvariant, Hooks!NativePhases
+<1>4. active # ActivationNone
+  BY ONLY SMT, <1>3, HookDomain DEF HookDomain, Hooks!ActivationParameters
+<1>5. /\ currentVisible # NoSelection /\ currentStable # NoSelection
+       /\ currentVisible[1] = active /\ currentStable[1] = active
+  BY ONLY SMT, <1>1, <1>3, <1>4 DEF CurrentProjection, HookSelection
+<1>6. /\ currentVisible = <<currentVisible[1], currentVisible[2]>>
+       /\ currentStable = <<currentStable[1], currentStable[2]>>
+  BY ONLY SMT, <1>1, <1>5 DEF Selection!TypeOK, Selection!Selections
+<1>7. binding[active] = currentVisible[2] /\ binding[active] = currentStable[2]
+  BY ONLY SMT, <1>1, <1>3, <1>5
+  DEF Selection!CurrentInvariant, Selection!Bound, Selection!IsTransaction
+<1>8. binding[active] = plans[active]
+  BY ONLY SMT, <1>1, <1>3 DEF PlanSelectionBinding
+<1>9. QED BY ONLY SMT, <1>5, <1>6, <1>7, <1>8
 
 THEOREM ClearedPendingResurrectionHasNoUnsettledIntents ==
   ASSUME ActivationLifecycleInvariant, pendingC = ActivationNone, pendingD # ActivationNone

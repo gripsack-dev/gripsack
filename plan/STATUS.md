@@ -276,12 +276,19 @@ All six local Compose gates passed at `8bad070`. Candidate CI `36497472294`
 passed Linux CLI **417/417**, native macOS process **25/25** and CLI
 **415 passed / 2 unconstructible-filename skips**, but failed a coupling
 proof obligation on an internal prover timeout; Verus was not reached.
-The same implication is now split into epoch identity, preparation binding
-and active-plan typing premises. Its fresh two-CPU smoke passed **101**
-obligations without changing a theorem, model domain or timeout. The catalog
-floor is now **4,555**. Rebuilt local and new-commit CI qualification remain
-required; the failed run is not release approval. See
-`verification/reports/2026-09-29-ci-8bad070-repair.log`.
+The same implication was split into epoch identity, preparation binding and
+active-plan typing premises; its **101** obligations passed fresh two-CPU,
+complete rebuilt local and candidate-CI execution at `b53e334`.
+CI `36514136863` then failed a separate invocation theorem (1/71 module
+obligations, internal timeout), while Linux CLI **417/417**, native process
+**25/25** and native CLI **415 passed / 2 unconstructible-filename skips**
+passed. Verus was not reached and the aggregate refused.
+The unchanged durable full-selection conclusion now follows separate
+projection/typing/binding facts. Fresh two-CPU execution passed **105/105**
+module obligations; the catalog floor is **4,589**, still 40 modules / 443 names.
+Updated complete local and new-candidate CI qualification remain required.
+Neither timeout is release approval. The failure/repair receipts in
+`verification/reports/` retain complete logs and the exercised source hashes.
 M-V6 release closure, M-V7 and the remaining handover remain open.
 
 

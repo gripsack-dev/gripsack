@@ -66,12 +66,18 @@ implementation bridges; a new unqualified proof packet remains explicit.
 ## Generalized recovery correspondence and limits
 
 Source `8bad070` passed all local gates and the native runtime campaign.
-Its candidate CI nevertheless failed a coupling obligation on an internal
-prover timeout and did not reach Verus. The unchanged implication's
-decomposed 101-obligation module passed a fresh two-CPU smoke; complete
-repaired-candidate qualification is still required. The
-[`8bad070` failure/repair receipt](reports/2026-09-29-ci-8bad070-repair.log)
-keeps that distinction explicit.
+Its CI coupling timeout was repaired by decomposition: the 101-obligation
+module passed fresh two-CPU, complete local and candidate-CI execution at
+`b53e334`. That candidate's CI then failed `InvocationUsesDurableFullSelection`
+on an internal timeout and did not reach Verus. Separating process/current
+identity, projections, tuple typing and plan bindings proves the unchanged
+conclusion; the fresh two-CPU smoke passed 105/105 module obligations.
+The updated catalog floor is 4,589; complete local/new-candidate CI
+qualification remains required. The
+[`8bad070` failure/repair receipt](reports/2026-09-29-ci-8bad070-repair.log),
+[repaired local gate](reports/2026-09-29-m-v6-repair-local.log) and
+[`b53e334` failure/repair receipt](reports/2026-09-29-ci-b53e334-repair.log)
+keep failures, focused repairs and qualification boundaries explicit.
 
 The M-V6 source separates protocol layers instead of assuming one opaque
 durable-write operation:

@@ -424,7 +424,7 @@
       ]
     },
     "ActivationLifecycleProofs": {
-      "minimum_obligations": 71,
+      "minimum_obligations": 105,
       "theorems": [
         "PublicationSelectionInvariantFrame",
         "ActivationLifecycleInitialSafety",
