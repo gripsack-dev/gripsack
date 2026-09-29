@@ -577,3 +577,26 @@ and repeated-recovery test SHA-256
 Native/current-commit CI `36497472294`, live required aggregate protection,
 M-V7 and the remaining handover/release gates are not closed by this local receipt.
 
+
+## M-V6 candidate CI failure and proof repair
+
+`2026-09-29-ci-8bad070-repair.log` (3,994,770 bytes) has SHA-256
+`283820f03236730fe2b92d4b17afbaf5da8bed976354ecaf510b3ff122426a2d`.
+It retains exact run metadata and complete Linux/native job logs for
+[`36497472294`](https://github.com/gripsack-dev/gripsack/actions/runs/36497472294)
+at `8bad070f662f03d0ec56e9b9a2e1568968fbeb9e`, plus the source-bound repair smoke.
+Linux CLI passed **417/417**. Native macOS 14.8.9 arm64 passed process
+**25/25** and CLI **415 passed / 2 unconstructible-filename skips**.
+Docs/audit succeeded; fuzz/replay was owner-waived/not run.
+
+The candidate **failed**: `ActivationCouplingSteps.tla:95` ended in an
+internal prover timeout, and CI did not reach Verus. The aggregate refused
+that result. The repair derives epoch identity, preparation binding and
+active-plan typing separately instead of expanding their combined context.
+Fresh strict/no-fingerprint TLAPM 7824dab, unchanged stretch/thread settings,
+and a two-CPU container proved **101/101** module obligations. Its source
+SHA-256 is `d30ec87eaff6fc42d6c2be67ac4e01ae8680a9739b1a25281259aae344ff5a23`.
+The frozen total floor rises from 4,542 to **4,555**, without removing a named
+theorem or changing transitions, assumptions, domains or prover timeouts.
+Full rebuilt local and new-commit CI qualification remain pending.
+

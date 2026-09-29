@@ -272,7 +272,16 @@ engine; seven finite-work completion cases and the constructive missing-restore
 barrier calibration passed privately. The real six-destination campaign passed
 six consecutive interrupted recoveries, including four SIGKILLs, while
 preserving an independent edit and refusing both forms of collection.
-Full rebuilt Compose and current-commit/native qualification are in progress;
+All six local Compose gates passed at `8bad070`. Candidate CI `36497472294`
+passed Linux CLI **417/417**, native macOS process **25/25** and CLI
+**415 passed / 2 unconstructible-filename skips**, but failed a coupling
+proof obligation on an internal prover timeout; Verus was not reached.
+The same implication is now split into epoch identity, preparation binding
+and active-plan typing premises. Its fresh two-CPU smoke passed **101**
+obligations without changing a theorem, model domain or timeout. The catalog
+floor is now **4,555**. Rebuilt local and new-commit CI qualification remain
+required; the failed run is not release approval. See
+`verification/reports/2026-09-29-ci-8bad070-repair.log`.
 M-V6 release closure, M-V7 and the remaining handover remain open.
 
 

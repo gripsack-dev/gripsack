@@ -91,11 +91,16 @@ THEOREM FlipLifecycleSelectionPreservesCoupling ==
            /\ currentC' = active /\ currentD' = currentD /\ plans' = plans
       BY ONLY SMT, <2>1, FlipLifecycleSelection
       DEF FlipLifecycleSelection, FlipSelection, Selection!Flip, Hooks!Flip
-    <3>2. pending = <<active, plans[active]>> /\ active \in Transactions /\ plans[active] # ActivationNone
-      BY ONLY SMT, <3>1, ActivationLifecycleInvariant
-      DEF ActivationLifecycleInvariant, LifecycleInvariant, Invariant, ControlInvariant,
-          PreparationMatchesEpoch, PreparationPhases, Hooks!ActivationInductiveInvariant, Hooks!ProcessInvariant
-    <3>3. QED BY ONLY SMT, <3>1, <3>2, ActivationLifecycleInvariant
+    <3>2. EpochInvariant /\ PreparationMatchesEpoch /\ Hooks!ProcessInvariant
+      BY ONLY SMT, ActivationLifecycleInvariant
+      DEF ActivationLifecycleInvariant, LifecycleInvariant, Invariant, Hooks!ActivationInductiveInvariant
+    <3>3. pending = epochTarget
+      BY ONLY SMT, <3>1, <3>2 DEF EpochInvariant
+    <3>4. epochTarget = <<active, plans[active]>>
+      BY ONLY SMT, <3>1, <3>2 DEF PreparationMatchesEpoch, PreparationPhases
+    <3>5. active \in Transactions /\ plans[active] # ActivationNone
+      BY ONLY SMT, <3>1, <3>2 DEF Hooks!ProcessInvariant
+    <3>6. QED BY ONLY SMT, <3>1, <3>3, <3>4, <3>5, ActivationLifecycleInvariant
       DEF ActivationLifecycleInvariant, CurrentProjection, HookSelection
   <2>2. CASE ~NeedsActivation(pending)
     BY SMT, <2>2

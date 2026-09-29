@@ -65,6 +65,14 @@ implementation bridges; a new unqualified proof packet remains explicit.
 
 ## Generalized recovery correspondence and limits
 
+Source `8bad070` passed all local gates and the native runtime campaign.
+Its candidate CI nevertheless failed a coupling obligation on an internal
+prover timeout and did not reach Verus. The unchanged implication's
+decomposed 101-obligation module passed a fresh two-CPU smoke; complete
+repaired-candidate qualification is still required. The
+[`8bad070` failure/repair receipt](reports/2026-09-29-ci-8bad070-repair.log)
+keeps that distinction explicit.
+
 The M-V6 source separates protocol layers instead of assuming one opaque
 durable-write operation:
 

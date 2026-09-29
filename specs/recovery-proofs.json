@@ -404,7 +404,7 @@
       ]
     },
     "ActivationCouplingSteps": {
-      "minimum_obligations": 88,
+      "minimum_obligations": 101,
       "theorems": [
         "PublicationWithHooksPreservesCoupling",
         "ObservedGenerationWithHooksPreservesCoupling",
