@@ -85,7 +85,12 @@ class Evidence:
             spans = diagnostic.get("spans", [])
             # Both file and proof-failure kind must belong to THIS diagnostic,
             # not independent greps joined from unrelated errors/warnings.
-            proof_failure = "not satisfied" in message or message == "assertion failed"
+            proof_failure = "not satisfied" in message or message in {
+                "assertion failed",
+                "possible arithmetic underflow/overflow",
+                "value may fail to meet its declared type invariant after assignment",
+                "constructed value may fail to meet its declared type invariant",
+            }
             exact_file = any(
                 (workspace / span["file_name"]).resolve() == source.resolve()
                 for span in spans if span.get("is_primary")
@@ -115,6 +120,17 @@ def self_check() -> None:
         Evidence(failure, functions, tuple(diagnostics)).mutant(status, source, "classify", workspace)
 
     attribution({"classify": False}, [target_error])
+    invariant_error = {
+        **target_error,
+        "message": "value may fail to meet its declared type invariant after assignment",
+    }
+    arithmetic_error = {**target_error, "message": "possible arithmetic underflow/overflow"}
+    attribution({"classify": False}, [invariant_error, arithmetic_error])
+    constructed_error = {
+        **target_error,
+        "message": "constructed value may fail to meet its declared type invariant",
+    }
+    attribution({"classify": False}, [constructed_error])
     bad_cases = (
         ("missing family", lambda: good.positive(0, 72, {"retention": ("retention::plan_delete",)})),
         ("zero/fewer obligations", lambda: good.positive(0, 73, {})),
@@ -136,6 +152,22 @@ def self_check() -> None:
             {"classify": False}, [{**target_error, "message": "cannot find value"}])),
         ("successful mutant process", lambda: attribution(
             {"classify": False}, [target_error], 0)),
+        ("type invariant foreign primary span", lambda: attribution(
+            {"classify": False}, [{**invariant_error, "spans": [foreign_span]}])),
+        ("type invariant secondary target span", lambda: attribution(
+            {"classify": False}, [{**invariant_error, "spans": [
+                {**target_span, "is_primary": False}, foreign_span,
+            ]}])),
+        ("arithmetic unrelated function", lambda: attribution(
+            {"classify": True, "unrelated_lemma": False}, [arithmetic_error])),
+        ("arithmetic foreign primary span", lambda: attribution(
+            {"classify": False}, [{**arithmetic_error, "spans": [foreign_span]}])),
+        ("constructed invariant secondary target span", lambda: attribution(
+            {"classify": False}, [{**constructed_error, "spans": [
+                {**target_span, "is_primary": False}, foreign_span,
+            ]}])),
+        ("constructed invariant unrelated function", lambda: attribution(
+            {"classify": True, "unrelated_lemma": False}, [constructed_error])),
     )
     for name, check in bad_cases:
         try:

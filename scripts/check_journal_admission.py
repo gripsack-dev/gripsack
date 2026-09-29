@@ -38,8 +38,10 @@ MINIMUMS = {
 
 
 def run(root: Path, target: Path, selection: str, exact: bool = False):
+    # Capture each test's output before rendering it: --nocapture can splice
+    # a counter into the harness's concurrent "... ok" status text.
     command = ['cargo', 'test', '--locked', '-p', 'gripsack-store', '--lib',
-               selection, '--', '--nocapture']
+               selection, '--', '--show-output']
     if exact:
         command.append('--exact')
     print('RUNNER_COMMAND=' + ' '.join(command), flush=True)

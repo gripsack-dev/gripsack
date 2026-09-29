@@ -632,6 +632,127 @@ The repaired source SHA-256 is
 `f1586d6f26fcd4fcc177e487cae19e5502a28f8fd3315ef05c63494cbc611523`.
 The catalog floor rises to **4,589**, still 40 modules and 443 theorem names.
 No transition, invariant, theorem statement, domain or timeout changed.
-Complete updated local and new-candidate CI qualification remain required;
-this proof-only receipt does not qualify the uncommitted M-V7 runtime work.
+The complete rebuilt local model/TLAPS gate subsequently passed at
+`fd20e09500a6eddf6fd7f281a57e339f4693066b`: **40 modules / 4,589 obligations**
+and the full model/pilot/barrier/inventory calibration programme.
+`2026-09-29-m-v6-invocation-local.log` (2,033,998 bytes) has SHA-256
+`fefbfe8a6c288d016428cc4f346241bda7d926aff0a08a3bdc5945cf29f14f81`.
+It retains complete output and observed image/source identities.
+CI `36531160370` subsequently passed this invocation module but failed the
+separate prepared-constructor proof below. This proof-only receipt does not
+qualify uncommitted M-V7 runtime changes.
+
+## M-V6 prepared constructor — third candidate failure and repair
+
+`2026-09-29-ci-fd20e09-repair.log` (4,483,569 bytes) has SHA-256
+`31a22555948e5c0a62582676268a65c08c529dc783d8e4a1a92e7895e97c1cc7`.
+It retains exact metadata and complete Linux/native logs for
+[`36531160370`](https://github.com/gripsack-dev/gripsack/actions/runs/36531160370)
+at `fd20e09500a6eddf6fd7f281a57e339f4693066b`, plus the repair driver,
+source/catalog and fresh proof output.
+Linux CLI passed **417/417**; native process passed **25/25** and CLI
+**415 passed / 2 unconstructible-filename skips**. The candidate **failed**:
+`OrdinaryLifecycleKeepsActiveConstructor` exhausted its internal timeout;
+the aggregate refused and Verus was not run.
+
+The unchanged constructor-preservation implication now uses separate ordinary
+transition cases. Fresh strict/no-fingerprint TLAPM 7824dab, unchanged
+stretch/thread settings and a two-CPU limit proved **97/97** module obligations
+in **121.86 s**. The catalog floor rises to **4,623**, still 40 modules and
+443 theorem names. No transition, invariant, theorem statement, domain or
+timeout changed. Full rebuilt local and exact-source new-candidate CI
+qualification remain required; M-V7 runtime work is not qualified by this
+proof-only receipt. No fuzz or saved fuzz corpus was run.
+
+## M-V7 acquisition — production-connected local qualification
+
+`2026-09-29-m-v7-acquisition-local.log` (376,749 bytes) has SHA-256
+`27c9ba05d60c1c6cb833cfdf9af60fc7b813456e4e3c7fe27f4a6ac58da9c639`.
+It retains complete rebuilt Rust and Verus gate output, observed image
+identities, and the scripts/output/binary identities for three rate and five
+HTTP real CLI journeys. CLI runs are earlier development snapshots, not
+falsely labelled as the final proof image or committed candidate.
+
+The Rust gate passed fmt/clippy/tests, the existing Loom/journal/GC campaigns,
+**13** rate properties with **six** adapter mutants and **12** HTTP properties
+with **four** adapter mutants. The proof gate passed **244 verified / 0 errors**,
+**32** semantic/evidence calibrations and **ten** evidence-admission negatives.
+Actual pre-fix throttle waits admitted work after their deadline; a real
+loopback body consumer returned success after expiry. Permanent concrete
+oracles and the completed mutant campaigns exercise both corrected paths.
+
+The checked production subset is full-range exact token arithmetic,
+floor-only migration, monotone operation-budget state, HTTP attempt/wait
+transitions and completion/error precedence. Clock, syscall, callback,
+mutex, allocator and TLS behavior remain external assumptions with tested
+bridges. Journal authority, remaining process framing/counters/lifecycle,
+complete update accounting, exact-candidate/native and release qualification
+remain required. No fuzz or saved fuzz corpus was run.
+
+## M-V7 process budgets — development proof and concrete faults
+
+`2026-09-29-m-v7-process-development.log` (1,783,653 bytes) has SHA-256
+`543491a9842ee908955ddd354e435968d208c3ff2a0d0b31b09b567d9e53b857`.
+It retains the complete current policy proof (**305 verified / 0 errors**) and
+source-bound Linux process calibration (**35 positives / 10 mutants**).
+Six frozen families name **45** process executable queries; the whole-crate
+305 total includes existing policy work and is not 305 new process theorems.
+
+Thirty-three library oracles and two real isolated permission fixtures cover
+the actual supervisor, including a live different-UID child after its parent
+drops credentials and an exited foreign-UID child without CAP_KILL.
+Mutants alter input/output observers, framing admission, input windows,
+retained bytes, deadline observation, reap authority and signal error/errno
+classification. Compilation failure and timeout are not semantic negatives.
+Earlier four-journey public-API smokes and signal-denial before/after runs
+retain their own source/binary identities rather than borrowing current ones.
+
+The Darwin observer compiled cross-target before the final Child-ownership
+constructor cutover; native execution remains required. Full rebuilt aggregate
+Rust/Verus/CLI and exact-candidate/native gates remain open at report creation.
+Journal authority, complete update accounting and remaining NEXT/handover work
+are not closed. No fuzz or saved fuzz corpus was run.
+
+## M-V7 complete update survey — development qualification
+
+`2026-09-29-m-v7-update-development.log` (1,789,088 bytes) has SHA-256
+`ae5192cf0d20d9e0295d0b88c9b288560289706fefdebe4632ef3c71e1c4dfca`.
+The current whole policy crate passed **320 verified / 0 errors**.
+Twelve named executable queries cover bounded complete accounting,
+failure precedence and the shared Check/Publish lock decision.
+Three model/filesystem properties and **seven** attributable mutants passed.
+The first byte-only Check oracle missed an identical-byte atomic publication;
+the corrected oracle holds the old file open and checks its identity too.
+
+Four actual rebuilt grip/Deno journeys passed: complete five-result survey
+with error dominance and unchanged lock/cache, failed Publish preserving the
+lock, repaired publication without native effects, and current Check/Publish
+preserving exact noncanonical lock bytes. Binary SHA-256:
+`2be63b942c935159adc7bdfd7d9ee4039e87c8fb74f79b79c6d5198730efee86`.
+The receipt retains full proof, concrete calibration, smoke source and output.
+These are development snapshots, not exact-candidate/native qualification.
+Journal authority and all remaining release/handover gates remain mandatory.
+No fuzz or saved fuzz corpus was run.
+
+## M-V7 journal authority — development qualification
+
+`2026-09-29-m-v7-journal-development.log` (1,784,944 bytes) has SHA-256
+`433491cb0e73495d87f28ff6a4d956fd9551048f758e8ecdf835af94391556b8`.
+It retains the complete working-tree policy proof (**333 verified / 0 errors**)
+and a rebuilt real grip/Deno journey, including the script, binary and image
+identities. The proof run precedes final source formatting and is not labelled
+as an exact-candidate receipt. Its 13 additional executable queries include
+five generated enum clones; the frozen journal families contain eight named
+queries. The separate dependency verification count is not a policy count.
+
+Apply/take-over, update, interrupted rollback, recovery to committed content
+and ordinary rollback with a fresh transaction selection all passed in an
+isolated HOME. Required file/namespace barriers are separate stages; the real
+executor consumes run/capture/mutation/commit authority, including historical
+wire admission and all fixture consumers.
+
+Full rebuilt Rust/Verus/effect-calibration/CLI gates and exact-candidate/native
+qualification remain required. The filesystem mapping is tested/calibrated,
+not promoted to a formal refinement theorem or physical durability proof.
+No fuzz or saved fuzz corpus was run.
 

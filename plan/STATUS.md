@@ -286,10 +286,74 @@ passed. Verus was not reached and the aggregate refused.
 The unchanged durable full-selection conclusion now follows separate
 projection/typing/binding facts. Fresh two-CPU execution passed **105/105**
 module obligations; the catalog floor is **4,589**, still 40 modules / 443 names.
-Updated complete local and new-candidate CI qualification remain required.
-Neither timeout is release approval. The failure/repair receipts in
+The complete rebuilt local model/TLAPS gate passed at `fd20e09`, including
+all **4,589** obligations. Its receipt is
+`2026-09-29-m-v6-invocation-local.log`. Candidate CI `36531160370` passed
+the coupling/invocation modules, Linux CLI **417/417**, native process **25/25**
+and native CLI **415 passed / 2 unconstructible-filename skips**, but failed
+`OrdinaryLifecycleKeepsActiveConstructor` on an internal prover timeout.
+The unchanged implication now uses explicit ordinary-transition cases;
+fresh two-CPU execution passed **97/97** module obligations. The catalog
+floor is **4,623**, still 40 modules / 443 names. The complete rebuilt gate
+and exact-source new-candidate CI remain required.
+No timeout is release approval. The failure/repair receipts in
 `verification/reports/` retain complete logs and the exercised source hashes.
 M-V6 release closure, M-V7 and the remaining handover remain open.
+
+**M-V7 acquisition continuation (2026-09-29):** actual token credits now use
+full-range finite-rate arithmetic, explicit legacy migration and exact saved
+nanoseconds. Monotone operation deadlines constrain process/throttle callers;
+timed parking_lot locks and HTTP attempt/completion transitions use the original
+budget. Reproduced bugs admitted throttled work after a contended deadline and
+returned HTTP body success after expiry. Both have permanent concrete oracles
+and failing semantic/effect mutants. Rebuilt local Rust and Verus gates passed:
+**244/0**, **32** proof/evidence calibrations, **10** evidence negatives;
+**13 rate properties / 6 mutants**, **12 HTTP properties / 4 mutants**.
+Three rate and five HTTP real CLI journeys passed at explicitly identified
+development snapshots. See `2026-09-29-m-v7-acquisition-local.log`.
+This is not exact-candidate/native evidence or whole-M-V7 closure:
+journal authority, process frames/counters/lifecycle and update accounting
+remain required before release.
+
+**M-V7 process continuation (2026-09-29):** named byte units, one outstanding
+input write, framing, cumulative counters, exact retained suffixes and
+signal/reap/cleanup states now constrain the actual supervisor. The guard
+consumes an owned `Child`, not an arbitrary PID. Whole-policy proof passed
+**305/0**; the concrete Linux gate passed **35 positives / 10 mutants**.
+Actual faults exposed expired cleanup reported successful, swallowed EPERM
+and lost native errno. The corrected deadline/classification/receipt paths
+have permanent calibrated oracles. Darwin's zombie-only exception now checks
+complete identity-stable group observations; cross-compilation passed before
+the final ownership cutover, but native execution remains required.
+See `2026-09-29-m-v7-process-development.log`. Full aggregate/new-candidate
+qualification, journal authority and complete update accounting remain open.
+
+**M-V7 complete survey continuation (2026-09-29):** legacy modules and native
+file profiles now stream into one complete-only report collector. Selected
+counts and actual report positions constrain summary construction; failure
+dominates changes and CLI/executor share the checked publication decision.
+Whole-policy proof passed **320/0**, with **12** named survey queries.
+Three production model/filesystem properties and seven seam mutants passed.
+Four real grip/Deno journeys preserved Check's lock/cache, failed Publish's
+lock, exact current lock bytes and the distinction between layout and native
+effects. The no-publication oracle also pins file identity: byte equality
+alone missed a same-byte atomic write. See
+`2026-09-29-m-v7-update-development.log`. Journal effect authority and
+full/new-candidate/native qualification remain required.
+
+**M-V7 journal authority continuation (2026-09-29):** record publication now
+uses separate file/name/namespace states; mutation borrows its admitted run,
+captured prior and pinned destination parent. Current publication consumes the
+run, and cleanup requires committed or reconciled progress. All executor and
+fixture consumers migrated without a directory-only compatibility adapter.
+The development policy proof passed **333/0** with eight named journal queries;
+real grip/Deno apply, update, interrupted rollback, recovery and fresh-selection
+rollback passed. Four permission/error oracles plus the actual filesystem-order
+oracle register six source mutants, including dropped file/parent syncs; eight
+journal proof mutants are also registered. Complete rebuilt, native and
+exact-candidate qualification remain required. See
+`2026-09-29-m-v7-journal-development.log`; no formal model-to-Rust refinement or
+physical-storage guarantee is inferred.
 
 
 ## Security maintenance (non-release changes)

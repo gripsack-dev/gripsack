@@ -12,7 +12,8 @@ pub use failure::{HttpFailure, HttpFailureKind};
 pub(crate) use request::RequestKind;
 pub use retry::RetryStopReason;
 
-use std::sync::{Arc, Mutex, OnceLock};
+use parking_lot::Mutex;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 pub(crate) struct Client {

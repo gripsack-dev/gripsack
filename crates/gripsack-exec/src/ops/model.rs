@@ -228,8 +228,16 @@ mod tests {
         // nothing
         let before = store::journal::live_identity(&dest_dir, &dest_name).unwrap();
         let ctx = model_ctx(home);
-        let (_report, _prior) =
-            execute_op(ctx.home_dir().unwrap(), op.as_executable().unwrap()).unwrap();
+        let capability = ctx.home_dir().unwrap();
+        let run = store::journal::begin_run(
+            capability,
+            home,
+            None,
+            store::GenerationId::new(1),
+            store::journal::RunOp::Apply,
+        )
+        .unwrap();
+        let (_report, _prior) = execute_op(&run, op.as_executable().unwrap()).unwrap();
         let after = store::journal::live_identity(&dest_dir, &dest_name).unwrap();
         match op.kind() {
             OpKind::Write { .. } | OpKind::Link { .. } | OpKind::MergeUpsert { .. } => {
@@ -276,6 +284,15 @@ mod tests {
         let tilde = home.join("dest");
         let entry_tilde = entry(Ownership::TrackedCopy, &tilde);
         let ctx = model_ctx(home);
+        let capability = ctx.home_dir().unwrap();
+        let run = store::journal::begin_run(
+            capability,
+            home,
+            None,
+            store::GenerationId::new(1),
+            store::journal::RunOp::Apply,
+        )
+        .unwrap();
         let (dest_dir, dest_name) = crate::deploy::dest_capability(&tilde).unwrap();
         let observed = crate::deploy::observe(&dest_dir, &dest_name).unwrap();
         let view = DestView {
@@ -296,7 +313,7 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(op.kind(), OpKind::Write { .. }));
-        let _ = execute_op(ctx.home_dir().unwrap(), op.as_executable().unwrap()).unwrap();
+        let _ = execute_op(&run, op.as_executable().unwrap()).unwrap();
         let produced = op.produces().expect("a write produces an entry");
 
         // the same file declared by its absolute spelling: prev's key

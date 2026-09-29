@@ -2,6 +2,8 @@
 
 use crate::ctx::Outcome;
 use gripsack_ir::Verify;
+use gripsack_policy::update_survey::{SurveyProgress, UpdateDisposition};
+pub use gripsack_policy::update_survey::{UpdateCheckOutcome, UpdateSummary};
 
 /// One user-visible line of what a step did — the CLI renders these.
 #[derive(Debug, Clone, PartialEq)]
@@ -80,43 +82,67 @@ pub enum UpdateStatus {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UpdateCheckOutcome {
-    Current,
-    ChangesAvailable,
-    Incomplete,
+/// A returned survey accounts for every admitted selected entry.
+#[derive(Debug)]
+pub struct UpdateSurvey {
+    reports: Vec<UpdateReport>,
+    summary: UpdateSummary,
 }
 
-#[derive(Debug, Default)]
-pub struct UpdateSummary {
-    pub unchanged: usize,
-    pub changed: usize,
-    pub skipped: usize,
-    pub failed: usize,
-}
-
-impl UpdateSummary {
-    pub fn from_reports(reports: &[UpdateReport]) -> Self {
-        let mut summary = Self::default();
-        for report in reports {
-            match report.status {
-                UpdateStatus::Unchanged => summary.unchanged += 1,
-                UpdateStatus::Bumped { .. } => summary.changed += 1,
-                UpdateStatus::Skipped { .. } => summary.skipped += 1,
-                UpdateStatus::Failed { .. } => summary.failed += 1,
-            }
-        }
-        summary
+impl UpdateSurvey {
+    pub fn reports(&self) -> &[UpdateReport] {
+        &self.reports
     }
 
-    pub fn outcome(&self) -> UpdateCheckOutcome {
-        if self.failed != 0 {
-            UpdateCheckOutcome::Incomplete
-        } else if self.changed != 0 {
-            UpdateCheckOutcome::ChangesAvailable
-        } else {
-            UpdateCheckOutcome::Current
+    pub fn summary(&self) -> &UpdateSummary {
+        &self.summary
+    }
+}
+
+pub(crate) struct SurveyReports {
+    reports: Vec<UpdateReport>,
+    progress: SurveyProgress,
+}
+
+impl SurveyReports {
+    pub(crate) fn new(selected: usize) -> Self {
+        Self {
+            reports: Vec::new(),
+            progress: SurveyProgress::new(selected),
         }
+    }
+
+    pub(crate) fn push(&mut self, report: UpdateReport) -> Result<(), crate::ExecError> {
+        let disposition = match &report.status {
+            UpdateStatus::Unchanged => UpdateDisposition::Unchanged,
+            UpdateStatus::Bumped { .. } => UpdateDisposition::Changed,
+            UpdateStatus::Skipped { .. } => UpdateDisposition::Skipped,
+            UpdateStatus::Failed { .. } => UpdateDisposition::Failed,
+        };
+        if !self.progress.record(self.reports.len(), disposition) {
+            return Err(survey_accounting_error());
+        }
+        self.reports.push(report);
+        Ok(())
+    }
+
+    pub(crate) fn finish(self) -> Result<UpdateSurvey, crate::ExecError> {
+        let summary = self
+            .progress
+            .finish(self.reports.len())
+            .ok_or_else(survey_accounting_error)?;
+        Ok(UpdateSurvey {
+            reports: self.reports,
+            summary,
+        })
+    }
+}
+
+fn survey_accounting_error() -> crate::ExecError {
+    crate::ExecError::Step {
+        module: "*".into(),
+        step: "survey".into(),
+        detail: "update report accounting does not match the selected entries".into(),
     }
 }
 
@@ -129,30 +155,32 @@ mod update_model {
             for second in 0..4 {
                 for third in 0..4 {
                     let kinds = [first, second, third];
-                    let reports = kinds
-                        .into_iter()
-                        .map(|kind| UpdateReport {
-                            module: "fixture".into(),
-                            layout: Default::default(),
-                            status: match kind {
-                                0 => UpdateStatus::Unchanged,
-                                1 => UpdateStatus::Bumped {
-                                    old: None,
-                                    new: "v2".into(),
+                    let mut reports = SurveyReports::new(kinds.len());
+                    for (index, kind) in kinds.into_iter().enumerate() {
+                        reports
+                            .push(UpdateReport {
+                                module: format!("fixture-{index}"),
+                                layout: Default::default(),
+                                status: match kind {
+                                    0 => UpdateStatus::Unchanged,
+                                    1 => UpdateStatus::Bumped {
+                                        old: None,
+                                        new: "v2".into(),
+                                    },
+                                    2 => UpdateStatus::Failed {
+                                        error: Box::new(crate::ctx::ExecError::Step {
+                                            module: format!("fixture-{index}"),
+                                            step: "resolve".into(),
+                                            detail: "unavailable".into(),
+                                        }),
+                                    },
+                                    _ => UpdateStatus::Skipped {
+                                        reason: "no fetch source",
+                                    },
                                 },
-                                2 => UpdateStatus::Failed {
-                                    error: Box::new(crate::ctx::ExecError::Step {
-                                        module: "fixture".into(),
-                                        step: "resolve".into(),
-                                        detail: "unavailable".into(),
-                                    }),
-                                },
-                                _ => UpdateStatus::Skipped {
-                                    reason: "no fetch source",
-                                },
-                            },
-                        })
-                        .collect::<Vec<_>>();
+                            })
+                            .unwrap();
+                    }
                     let expected = if kinds.contains(&2) {
                         UpdateCheckOutcome::Incomplete
                     } else if kinds.contains(&1) {
@@ -160,12 +188,30 @@ mod update_model {
                     } else {
                         UpdateCheckOutcome::Current
                     };
-                    assert_eq!(UpdateSummary::from_reports(&reports).outcome(), expected);
+                    let survey = reports.finish().unwrap();
+                    assert_eq!(survey.summary().outcome(), expected);
+                    assert_eq!(survey.summary().selected(), kinds.len());
+                    assert_eq!(
+                        survey.summary().unchanged(),
+                        kinds.iter().filter(|&&kind| kind == 0).count()
+                    );
+                    assert_eq!(
+                        survey.summary().changed(),
+                        kinds.iter().filter(|&&kind| kind == 1).count()
+                    );
+                    assert_eq!(
+                        survey.summary().failed(),
+                        kinds.iter().filter(|&&kind| kind == 2).count()
+                    );
+                    assert_eq!(
+                        survey.summary().skipped(),
+                        kinds.iter().filter(|&&kind| kind == 3).count()
+                    );
                 }
             }
         }
         assert_eq!(
-            UpdateSummary::from_reports(&[]).outcome(),
+            SurveyReports::new(0).finish().unwrap().summary().outcome(),
             UpdateCheckOutcome::Current
         );
     }

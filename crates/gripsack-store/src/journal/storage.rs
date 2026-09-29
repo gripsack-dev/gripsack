@@ -1,6 +1,9 @@
 //! One pinned directory owns journal IO, including quarantine and cleanup.
 use crate::private_state;
 use gripsack_fs::Dir;
+use gripsack_policy::journal_protocol::{
+    DurableRecord, PublicationAction, RecordPublication, RecordRole,
+};
 use std::{
     io::{self, Read},
     path::{Path, PathBuf},
@@ -8,6 +11,7 @@ use std::{
 
 pub(super) const RUN_MARKER: &str = "run.json";
 
+#[derive(Debug)]
 pub(super) struct Journal {
     pub(super) directory: Dir,
 }
@@ -40,8 +44,27 @@ impl Journal {
         Ok(bytes)
     }
 
-    pub(super) fn write(&self, name: &Path, bytes: &[u8]) -> io::Result<()> {
-        gripsack_fs::atomic_write_with_mode(&self.directory, name, bytes, 0o600)
+    pub(super) fn write(
+        &self,
+        name: &Path,
+        bytes: &[u8],
+        role: RecordRole,
+    ) -> io::Result<DurableRecord> {
+        let mut publication = RecordPublication::new(role);
+        let staged = publication_step(&mut publication, PublicationAction::Stage, || {
+            gripsack_fs::StagedFileWrite::with_mode(&self.directory, name, bytes, 0o600)
+        })?;
+        let synced = publication_step(&mut publication, PublicationAction::SyncFile, || {
+            staged.sync_file()
+        })?;
+        let visible = publication_step(&mut publication, PublicationAction::PublishName, || {
+            synced.publish()
+        })?;
+        let _durable =
+            publication_step(&mut publication, PublicationAction::SyncNamespace, || {
+                visible.sync_parent()
+            })?;
+        publication.finish().ok_or_else(publication_order_error)
     }
 
     pub(super) fn quarantine_directory(&self) -> io::Result<Option<Dir>> {
@@ -76,5 +99,35 @@ impl Journal {
         gripsack_fs::rename(&self.directory, name, &quarantine, name)?;
         gripsack_fs::fsync_dir(&quarantine, Path::new("."))?;
         gripsack_fs::fsync_dir(&self.directory, Path::new("."))
+    }
+}
+
+fn publication_order_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "journal publication effect order is invalid",
+    )
+}
+
+fn publication_step<T>(
+    publication: &mut RecordPublication,
+    action: PublicationAction,
+    effect: impl FnOnce() -> io::Result<T>,
+) -> io::Result<T> {
+    if publication.action() != action {
+        return Err(publication_order_error());
+    }
+    match effect() {
+        Ok(value) => {
+            if publication.acknowledge(action, true) {
+                Ok(value)
+            } else {
+                Err(publication_order_error())
+            }
+        }
+        Err(error) => {
+            publication.acknowledge(action, false);
+            Err(error)
+        }
     }
 }

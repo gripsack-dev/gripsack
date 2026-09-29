@@ -42,6 +42,7 @@ struct ModuleRun<'a> {
     recipes: &'a crate::resolve::RecipeGraph,
     plan: &'a PreparedModule,
     ctx: &'a Ctx,
+    journal: &'a store::journal::JournalRun<'a>,
     prev_map: &'a std::collections::BTreeMap<store::OwnershipKey, &'a store::DeployedEntry>,
     /// The previous generation's record for THIS module — the
     /// verification receipt lives there (0035 F2)
@@ -96,6 +97,7 @@ struct ModuleRun<'a> {
 /// lineage records, and the lock. A struct, not nine positional
 /// arguments — the signature says what a run consumes.
 pub(crate) struct ModuleInputs<'a> {
+    pub journal: &'a store::journal::JournalRun<'a>,
     pub name: &'a str,
     pub module: &'a gripsack_ir::Module,
     pub recipes: &'a crate::resolve::RecipeGraph,
@@ -137,6 +139,7 @@ impl<'a> ModuleRun<'a> {
     /// compute the same path (0008 §5).
     fn new(inputs: ModuleInputs<'a>, ctx: &'a Ctx) -> Result<Self, ExecError> {
         let ModuleInputs {
+            journal,
             name,
             module,
             recipes,
@@ -164,6 +167,7 @@ impl<'a> ModuleRun<'a> {
             .into_iter()
             .collect::<Vec<_>>();
         Ok(ModuleRun {
+            journal,
             name,
             module,
             recipes,
@@ -303,6 +307,7 @@ impl<'a> ModuleRun<'a> {
                             &mut self.deployed,
                             self.ctx,
                             DeploymentInput {
+                                journal: self.journal,
                                 owner: self.name,
                                 store_path: &self.store_path,
                                 entry,

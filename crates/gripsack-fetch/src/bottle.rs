@@ -131,11 +131,11 @@ impl HostPlatform {
             Limits {
                 timeout: Duration::from_secs(3),
                 operation_deadline: None,
-                input_bytes: 0,
-                line_bytes: 64,
-                stdout_bytes: 128,
-                stderr_bytes: 128,
-                retained_stderr_bytes: 0,
+                input_bytes: gripsack_process::InputByteLimit::new(0),
+                line_bytes: gripsack_process::FrameByteLimit::new(64),
+                stdout_bytes: gripsack_process::StdoutByteLimit::new(128),
+                stderr_bytes: gripsack_process::StderrByteLimit::new(128),
+                retained_stderr_bytes: gripsack_process::RetainedStderrLimit::new(0),
             },
             |line| {
                 lines += 1;

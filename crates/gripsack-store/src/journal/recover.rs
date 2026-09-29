@@ -6,6 +6,7 @@
 //! with a warning. Never delete user edits.
 
 use gripsack_fs::Dir;
+use gripsack_policy::journal_protocol::{CleanupAction, CleanupProgress, CleanupScope};
 
 /// One recovery outcome from [`reconcile`], typed so callers render
 /// severity instead of parsing message text: a kept post-crash edit
@@ -29,9 +30,11 @@ impl std::fmt::Display for RecoveryNote {
     }
 }
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use super::marker::{Classification, RecoveryFacts, classify, cleanup, run_marker};
+use super::marker::{
+    Classification, RecoveryFacts, classify, cleanup, cleanup_order_error, run_marker,
+};
 use super::storage::Journal;
 use super::{
     Entry, Intended, ObjectIdentity, PriorSerde, dest_capability, live_identity, prior_identity,
@@ -106,8 +109,9 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
         // seal that observation before durable cleanup destroys the journal.
         gripsack_fs::fsync_dir(home, Path::new("."))?;
         cleanup(
-            &journal,
-            &entries.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
+            &journal.directory,
+            entries.iter().map(|(path, _)| path.as_path()),
+            CleanupProgress::new(CleanupScope::Committed, entries.len()),
         )?;
         lines.push(RecoveryNote {
             severity: NoteSeverity::Info,
@@ -117,14 +121,18 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
         });
         return Ok(lines);
     }
-    let mut entry_paths = Vec::new();
-    for (path, entry) in entries {
-        let dest = PathBuf::from(&entry.dest);
+    let mut progress = CleanupProgress::new(CleanupScope::Uncommitted, entries.len());
+    for (index, (_, entry)) in entries.iter().enumerate() {
+        let action = CleanupAction::ReconcileEntry { index };
+        if progress.action() != action {
+            return Err(cleanup_order_error());
+        }
+        let dest = Path::new(&entry.dest);
         // the drift check and the restore share ONE pinned parent
         // inode: a parent symlink swapped between decide() and
         // restore() cannot redirect the recovery write (plan/0021)
-        let (dest_dir, dest_name) = dest_capability(&dest)?;
-        match decide(&dest_dir, &dest_name, &entry, home)? {
+        let (dest_dir, dest_name) = dest_capability(dest)?;
+        match decide(&dest_dir, &dest_name, entry, home)? {
             Recovery::Restore(what) => {
                 restore(&dest_dir, &dest_name, &entry.prior, home)?;
                 // recovery is held to the transaction's standard
@@ -163,9 +171,15 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
                 });
             }
         }
-        entry_paths.push(path);
+        if !progress.acknowledge(action, true) {
+            return Err(cleanup_order_error());
+        }
     }
-    cleanup(&journal, &entry_paths)?;
+    cleanup(
+        &journal.directory,
+        entries.iter().map(|(path, _)| path.as_path()),
+        progress,
+    )?;
     Ok(lines)
 }
 

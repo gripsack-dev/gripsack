@@ -25,6 +25,8 @@
 //! through them.
 
 mod directories;
+mod publication;
+pub use publication::{DurableFileWrite, StagedFileWrite, SyncedFileWrite, VisibleFileWrite};
 mod scoped;
 mod streamed;
 pub use streamed::{atomic_copy_with_mode, publication_occurred};
@@ -119,26 +121,11 @@ fn create_temp(dir: &Dir, tmp: &Path) -> io::Result<cap_std::fs::File> {
 /// file in the same directory, fsync, rename over, fsync the parent.
 /// Parent directories are created as needed.
 pub fn atomic_write(dir: &Dir, name: &Path, contents: &[u8]) -> io::Result<()> {
-    let parent = parent_rel(name);
-    create_dir_all(dir, parent)?;
-    let tmp = parent.join(temp_name("tmp-write", name));
-    let result = (|| {
-        let mut file = create_temp(dir, &tmp)?;
-        operation(Boundary::Write, name, || {
-            io::Write::write_all(&mut file, contents)
-        })?;
-        // a content update is not a mode change (0026 §7): the fresh
-        // temp file would otherwise land 0644&umask, silently
-        // widening a 0600 secret or dropping an exec bit on update
-        operation(Boundary::Mode, name, || preserve_mode(dir, name, &file))?;
-        operation(Boundary::FileSync, name, || file.sync_all())?;
-        operation(Boundary::FilePublish, name, || dir.rename(&tmp, dir, name))
-    })();
-    if result.is_err() {
-        let _ = remove_file(dir, &tmp);
-    }
-    result?;
-    fsync_dir(dir, parent)
+    StagedFileWrite::preserving_mode(dir, name, contents)?
+        .sync_file()?
+        .publish()?
+        .sync_parent()
+        .map(drop)
 }
 
 /// Atomically point `link` (relative to `dir`) at `target`, replacing
@@ -375,28 +362,11 @@ pub fn atomic_write_with_mode(
     contents: &[u8],
     mode: u32,
 ) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let parent = parent_rel(name);
-    create_dir_all(dir, parent)?;
-    let tmp = parent.join(temp_name("tmp-write", name));
-    let result = (|| {
-        let mut file = create_temp(dir, &tmp)?;
-        operation(Boundary::Write, name, || {
-            io::Write::write_all(&mut file, contents)
-        })?;
-        operation(Boundary::Mode, name, || {
-            file.set_permissions(cap_std::fs::Permissions::from_std(
-                std::fs::Permissions::from_mode(mode),
-            ))
-        })?;
-        operation(Boundary::FileSync, name, || file.sync_all())?;
-        operation(Boundary::FilePublish, name, || dir.rename(&tmp, dir, name))
-    })();
-    if result.is_err() {
-        let _ = remove_file(dir, &tmp);
-    }
-    result?;
-    fsync_dir(dir, parent)
+    StagedFileWrite::with_mode(dir, name, contents, mode)?
+        .sync_file()?
+        .publish()?
+        .sync_parent()
+        .map(drop)
 }
 
 /// [`symlink_replace`] at an absolute path (parent opened on the spot).

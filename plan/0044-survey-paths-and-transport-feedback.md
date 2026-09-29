@@ -307,6 +307,10 @@ remaining upstream quota; do not retune them to claim to solve the Space's 403.
   one unchanged **600s operation deadline** including throttle/requests/body reads.
   Never multiply the existing request deadline per retry. A long healthy asset
   transfer is not arbitrarily cut to 30s: 30s is the retry-wait cap, not payload time.
+  Completion is admitted after the body consumer returns, not merely after a
+  successful HTTP status or final read. An expired consumer cannot publish a
+  successful result. The first terminal refusal stays terminal; overlapping
+  attempts and completion without an admitted in-flight attempt are rejected.
 - Honor Retry-After/reset evidence as a lower bound. If it cannot fit the remaining
   budget, stop with a specific cooldown/budget reason; never clamp it downward and
   request early. Confirmed secondary-limit advice requires at least the documented
@@ -316,6 +320,7 @@ remaining upstream quota; do not retune them to claim to solve the Space's 403.
   same-host modules without a request storm. A module failure on another forge does
   not globally block healthy hosts. Make throttle waits deadline-aware and debit
   each policy attempt; preserve existing domain override precedence.
+  Cooldown-map mutex acquisition also uses the original absolute deadline.
 - Replay the same resolved source and expected pin, never resolve `latest` again
   during payload retry. Discard partial spools; restart at zero, not append/resume.
   Count actual bytes across retries against one acquisition budget; do not reset
@@ -326,7 +331,10 @@ remaining upstream quota; do not retune them to claim to solve the Space's 403.
   reconnects are not observable policy attempts: do not claim this count is an
   exact count of TCP connections/wire transmissions.
 
-Ownership: `http/retry.rs` owns classification/deadline decisions;
+Ownership: `gripsack-policy::retry_budget` owns the executed attempt state,
+exact admission decisions, cumulative wait arithmetic and refusal precedence.
+`http/retry.rs` adapts monotonic clock observations and classified failures;
+its origin/deadline/counters are not independently mutable by callers.
 `http.rs` remains the per-context transport/policy entrypoint. Share typed failure
 context with D and keep the streamed-spool seam in `fetch/tarball.rs`/`spool.rs`.
 Avoid stacking resolver, fetcher and scheduler retries. No IR retry fields, recipe
@@ -335,10 +343,14 @@ authentication fallback in this round.
 
 Proof: `HttpRetry.tla` checks bounded attempts, fixed deadline, terminal exclusions,
 throttle admission and termination under explicit clock/OS-progress assumptions.
-Future Rust tests drive the shipped classifier with a fake clock; loopback flows
-cover 500→success, exhausted 5xx, 401/403, Retry-After beyond budget, truncated
-streams, checksum failure, deadline exhaustion and no partial publication. Header
-classification and body limits require real transport tests, not only the model.
+Verus checks the shipped transition bodies, including exact positive/negative
+decisions rather than safety implications permitting arbitrary refusal. Real
+clock/classification adapters and loopback effects remain separate evidence:
+500→success, exhausted 5xx, 401/403, server waits, interrupted streams, aggregate
+byte caps, lock contention and late body completion must exercise production
+code. Neither those tests nor the kernel contracts prove clocks, TLS, OS
+scheduling or arbitrary callback termination. Claim/evidence status is maintained
+in plan/0048 and the verification ledger.
 
 ## Deferred roadmap entries
 

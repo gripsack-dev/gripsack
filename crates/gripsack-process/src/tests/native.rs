@@ -114,8 +114,8 @@ fn raw_bytes_have_no_line_limit_but_keep_the_total_output_limit() {
         &mut command("printf 'a\\000b\\377\\nlast'"),
         b"",
         Limits {
-            line_bytes: 1,
-            stdout_bytes: 10,
+            line_bytes: crate::FrameByteLimit::new(1),
+            stdout_bytes: crate::StdoutByteLimit::new(10),
             ..limits()
         },
         |bytes| {
@@ -131,8 +131,8 @@ fn raw_bytes_have_no_line_limit_but_keep_the_total_output_limit() {
         &mut command("printf 0123456789; exec sleep 60"),
         b"",
         Limits {
-            line_bytes: 1,
-            stdout_bytes: 9,
+            line_bytes: crate::FrameByteLimit::new(1),
+            stdout_bytes: crate::StdoutByteLimit::new(9),
             ..limits()
         },
         |_| Control::Continue,

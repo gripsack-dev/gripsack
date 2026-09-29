@@ -58,6 +58,12 @@ User-visible changes per release. Design archaeology lives in
 
 ### Fixed
 
+- Journaled mutations now require a captured prior under the active transaction
+  and keep its pinned destination parent through execution. Current-pointer
+  publication consumes that run; only committed or reconciled state authorizes
+  cleanup. Effect errors retain the journal, and a nonempty run cannot be
+  discarded as an unchanged apply. File and namespace publication barriers
+  remain separate, checked stages rather than one assumed durable-write step.
 - Cached prior files are sealed along with their containing directory before
   they authorize a deployment. Already-private permissions do not prove an
   interrupted publication became durable; sync failure now leaves the
@@ -105,6 +111,29 @@ User-visible changes per release. Design archaeology lives in
   panicking or waiting forever. Persisted token balances and timestamps
   are bounded before use. Expired operation deadlines cannot be reset by
   request serialization or a later frontend/protocol exchange.
+- Token buckets now use checked exact credits across the full admitted finite
+  rate range, including fractional/scientific declarations and rates larger
+  than `u64`. Saved balances retain their period and nanosecond timestamp;
+  legacy floating balances migrate without minting a fractional credit.
+  A backward wall clock cannot refill an already-accounted interval twice.
+- Throttle and HTTP cooldown mutex waits consume the original operation
+  deadline. Contention cannot grant expired work or start another timeout.
+  HTTP attempt order, cumulative waiting and terminal error precedence use
+  the verified transition kernel; a body consumer returning after its deadline
+  is no longer reported as a successful HTTP operation.
+- Process input, frame, stdout, stderr and retained-tail limits now have
+  distinct types. Verified transfer/framing/accounting states constrain the
+  actual supervisor, including one outstanding input write and signal/reap
+  ownership. Finishing cleanup cannot erase an expired operation deadline.
+- Process-group signal denials remain failures with their native errno;
+  they are no longer silently reported as successful cleanup. Darwin's
+  zombie-only-group exception requires complete, identity-stable observations
+  within the original deadline rather than treating every `EPERM` as benign.
+- Update reports now carry a complete, checked accounting of selected entries.
+  Invalid or partial accounting cannot become a successful survey; failures
+  dominate changes, and the CLI and executor share one lock-publication
+  decision. Check still leaves the lock and source cache untouched and does
+  not execute recipes, executable verifiers, deployment or hooks.
 - A panicking module completes the scheduler failure transition and wakes
   idle workers instead of hanging a parallel apply. Loom now exercises the
   production mutex/condition-variable coordinator with calibrated

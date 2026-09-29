@@ -1,6 +1,6 @@
 use crate::commands::{check_ir, eval_repo, trust_gate};
 use crate::render::Palette;
-use gripsack_exec::{Ctx, UpdateCheckOutcome, UpdateMode, UpdateStatus, UpdateSummary};
+use gripsack_exec::{Ctx, UpdateCheckOutcome, UpdateMode, UpdateStatus};
 use gripsack_store as store;
 use owo_colors::OwoColorize;
 use std::path::Path;
@@ -59,17 +59,17 @@ pub fn update(
     };
     let result = gripsack_exec::update(&ir, &ctx, mode);
     gripsack_fetch::throttle::save_global();
-    let reports = match result {
+    let survey = match result {
         Ok(reports) => reports,
         Err(error) => {
             eprintln!("error: {error}");
             return failed;
         }
     };
-    if reports.is_empty() {
+    if survey.reports().is_empty() {
         println!("nothing to resolve — no selected modules");
     }
-    for report in &reports {
+    for report in survey.reports() {
         let status = match &report.status {
             UpdateStatus::Unchanged => "unchanged".to_string(),
             UpdateStatus::Bumped { old, new } => format!(
@@ -94,7 +94,7 @@ pub fn update(
             println!("    {layout}");
         }
     }
-    let summary = UpdateSummary::from_reports(&reports);
+    let summary = survey.summary();
     if check {
         let disposition = summary.outcome();
         println!(
@@ -104,10 +104,10 @@ pub fn update(
             } else {
                 "complete"
             },
-            summary.unchanged,
-            summary.changed,
-            summary.skipped,
-            summary.failed
+            summary.unchanged(),
+            summary.changed(),
+            summary.skipped(),
+            summary.failed()
         );
         match disposition {
             UpdateCheckOutcome::Current => ExitCode::SUCCESS,
@@ -115,7 +115,7 @@ pub fn update(
             UpdateCheckOutcome::Incomplete => ExitCode::from(2),
         }
     } else {
-        if summary.changed != 0 {
+        if summary.publishes_lock(mode) {
             println!("lockfile updated — run `grip apply` to deploy");
         }
         ExitCode::SUCCESS

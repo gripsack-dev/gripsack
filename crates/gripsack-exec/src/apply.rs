@@ -179,9 +179,17 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         store::journal::RunOp::Apply,
     )?;
     let execution = if let Some(native) = &native {
-        native.deploy(ctx, &prev_modules)
+        native.deploy(ctx, &selection, &prev_modules)
     } else {
-        crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)
+        crate::schedule::run_all(
+            ir,
+            &steps_by_module,
+            &order,
+            ctx,
+            &selection,
+            &prev_modules,
+            &lock,
+        )
     };
     let outcome = match execution {
         Ok(outcome) => outcome,
@@ -235,6 +243,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // error from it means nothing flipped, so it compensates too.
     match pre_flip(
         ctx,
+        &selection,
         &prev_manifest,
         &modules,
         next,
@@ -245,7 +254,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         // vacuous run: nothing journaled, nothing flipped — the
         // marker begin_run wrote must not linger
         Ok(None) => {
-            store::journal::end_run(ctx.home_dir()?)?;
+            store::journal::end_run(selection)?;
             return Ok(ApplyResult {
                 outcome: Outcome::Satisfied {
                     generation: current_gen,
@@ -298,16 +307,19 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             return Err(error.into());
         }
     };
-    if let Err(e) = store::flip(ctx.home_dir()?, &ctx.home, &selection) {
-        compensate(ctx);
-        return Err(e.into());
-    }
+    let committed = match store::flip(selection) {
+        Ok(committed) => committed,
+        Err(error) => {
+            compensate(ctx);
+            return Err(error.into());
+        }
+    };
     // test-only kill switch: the flip→adapters crash window's e2e
     crate::util::crash_hook("before-adapters");
     // the flip is the run's commit point: everything the journal
     // recorded is now owned by the new generation — the crash window
     // closes here
-    if let Err(e) = store::journal::commit_run(ctx.home_dir()?) {
+    if let Err(e) = store::journal::commit_run(committed) {
         // the flip already committed — this is cleanup-pending, not a
         // failed apply (0029 §13); the next run's reconcile finishes it
         reports.push(crate::report::StepReport {
@@ -428,6 +440,7 @@ fn compensate(ctx: &Ctx) {
 /// is the vacuous (satisfied) run.
 fn pre_flip(
     ctx: &Ctx,
+    journal: &store::journal::JournalRun<'_>,
     prev_manifest: &Option<store::Generation>,
     modules: &BTreeMap<String, store::ModuleState>,
     next: store::GenerationId,
@@ -447,7 +460,7 @@ fn pre_flip(
     // the recorded hash (user edits are never deleted). Every prune
     // mutation is journaled like a deploy (0025 §B).
     if let Some(prev) = prev_manifest {
-        prune_undeclared(prev, modules, ctx.home_dir()?)?;
+        prune_undeclared(prev, modules, journal)?;
     }
     // test-only kill switch: the prune→flip crash window's e2e (0025)
     crate::util::crash_hook("after-prune");
@@ -493,8 +506,9 @@ fn pre_flip(
 fn prune_undeclared(
     prev: &store::Generation,
     modules: &BTreeMap<String, store::ModuleState>,
-    home_dir: &gripsack_fs::Dir,
+    journal: &store::journal::JournalRun<'_>,
 ) -> Result<(), ExecError> {
+    let home_dir = journal.home();
     let declared: BTreeSet<std::path::PathBuf> = modules
         .values()
         .flat_map(|m| m.entries.iter().map(|e| e.key()))
@@ -540,7 +554,7 @@ fn prune_undeclared(
             if matches!(op.kind(), crate::ops::OpKind::Preserved) {
                 continue; // plan_remove_op already warned
             }
-            crate::ops::execute_op(home_dir, op.as_executable()?)?;
+            crate::ops::execute_op(journal, op.as_executable()?)?;
             info!(
                 "{} {}",
                 if entry.prior.is_some() {

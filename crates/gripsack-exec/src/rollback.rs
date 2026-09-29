@@ -63,7 +63,7 @@ pub fn rollback_generation(
     )?;
 
     let result = (|| {
-        let mut planned_notes = restore_destinations(&home, home_path, current, target)?;
+        let mut planned_notes = restore_destinations(&selection, current, target)?;
         notes.append(&mut planned_notes);
         // The env profile renders INTO the generation before the flip
         // (0025 §C): activation and profile become one indivisible step.
@@ -75,15 +75,15 @@ pub fn rollback_generation(
         let activation = store::activation::prepare(&home, &selection, intents)?;
         // test-only kill switch: the restore→flip crash window's e2e
         crate::util::crash_hook("after-rollback-restore");
-        store::flip(&home, home_path, &selection)?;
-        Ok(activation)
+        let committed = store::flip(selection)?;
+        Ok((activation, committed))
     })();
     match result {
-        Ok(activation) => {
+        Ok((activation, committed)) => {
             // the flip already committed — a cleanup failure is
             // cleanup-pending, not a failed rollback (0030 §13); the
             // next reconcile finishes it
-            if let Err(e) = store::journal::commit_run(&home) {
+            if let Err(e) = store::journal::commit_run(committed) {
                 notes.push(store::journal::RecoveryNote {
                     severity: store::journal::NoteSeverity::Warn,
                     message: format!(
@@ -185,12 +185,13 @@ fn rollback_intents(
 /// previous block's actual result, not reuse a stale whole-file observation.
 /// The one planner and journal retain their drift and recovery authority.
 fn restore_destinations(
-    home: &gripsack_fs::Dir,
-    home_path: &Path,
+    journal: &store::journal::JournalRun<'_>,
     current: Option<&store::Generation>,
     target: &store::Generation,
 ) -> Result<Vec<store::journal::RecoveryNote>, ExecError> {
     use store::journal::{NoteSeverity, RecoveryNote};
+    let home = journal.home();
+    let home_path = journal.home_path();
     preflight(target)?;
     let current_by_dest = current.map(by_destination).unwrap_or_default();
     let target_by_dest = by_destination(target);
@@ -221,7 +222,7 @@ fn restore_destinations(
                         });
                     }
                     Some(op) => {
-                        crate::ops::execute_op(home, op.as_executable()?)?;
+                        crate::ops::execute_op(journal, op.as_executable()?)?;
                     }
                 }
             }
@@ -248,7 +249,7 @@ fn restore_destinations(
                                 op.dest().display()
                             ),
                         }),
-                        _ => { crate::ops::execute_op(home, op.as_executable()?)?; }
+                        _ => { crate::ops::execute_op(journal, op.as_executable()?)?; }
                     },
                 }
             }
@@ -280,7 +281,7 @@ fn restore_destinations(
                                 op.dest().display()
                             ),
                         }),
-                        _ => { crate::ops::execute_op(home, op.as_executable()?)?; }
+                        _ => { crate::ops::execute_op(journal, op.as_executable()?)?; }
                     },
                 }
             }

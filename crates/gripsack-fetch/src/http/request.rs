@@ -138,6 +138,17 @@ impl Client {
         url: &str,
         kind: RequestKind<'_>,
         limit: u64,
+        consume: impl FnMut(&mut dyn Read) -> io::Result<T>,
+    ) -> Result<T, FetchError> {
+        self.consume_at(url, kind, limit, Instant::now(), consume)
+    }
+
+    fn consume_at<T>(
+        &self,
+        url: &str,
+        kind: RequestKind<'_>,
+        limit: u64,
+        started: Instant,
         mut consume: impl FnMut(&mut dyn Read) -> io::Result<T>,
     ) -> Result<T, FetchError> {
         let api_url = match kind {
@@ -165,7 +176,7 @@ impl Client {
         let host = super::host_port(selected).map(|(host, _)| host);
         let _request_span =
             tracing::info_span!("http", url = %safe, purpose = kind.label()).entered();
-        let mut budget = RequestBudget::new(Instant::now());
+        let mut budget = RequestBudget::new(started)?;
         let mut transfer = TransferBudget::new(limit);
         let authentication = || match kind {
             RequestKind::RegistryArtifact { .. } => AuthenticationDisposition::OtherBound,
@@ -176,12 +187,20 @@ impl Client {
             error.api_host = api_url.and_then(super::host_port).map(|(host, _)| host);
             error
         };
+        let admission_failure = |budget: &RequestBudget, stop: RetryStopReason| -> FetchError {
+            if stop == RetryStopReason::ProtocolOrder {
+                io::Error::new(io::ErrorKind::InvalidData, stop.to_string()).into()
+            } else {
+                failure(HttpFailureKind::Timeout, budget, stop).into()
+            }
+        };
         // Refuse the entire operation rather than silently dropping a bound
         // credential and falling back to a cleartext API/browser URL.
         let registry_auth = matches!(kind, RequestKind::RegistryArtifact { .. });
         let insecure_registry =
             registry_auth && !url::Url::parse(selected).is_ok_and(|url| url.scheme() == "https");
         if matches!(credential, CredentialRoute::Insecure) || insecure_registry {
+            budget.stop(gripsack_policy::retry_budget::RetryRefusal::NonRetryable);
             return Err(failure(
                 HttpFailureKind::InsecureCredential,
                 &budget,
@@ -190,9 +209,16 @@ impl Client {
             .into());
         }
         if let Some(host) = &host {
-            let mut cooldowns = self.cooldowns.lock().expect("HTTP cooldown lock");
+            let mut cooldowns = self
+                .cooldowns
+                .try_lock_until(budget.deadline())
+                .ok_or_else(|| {
+                    let stop = budget.stop(gripsack_policy::retry_budget::RetryRefusal::Deadline);
+                    admission_failure(&budget, stop)
+                })?;
             if let Some(cooldown) = cooldowns.get(host).copied() {
                 if cooldown.until.is_none_or(|until| until > Instant::now()) {
+                    budget.stop(gripsack_policy::retry_budget::RetryRefusal::ServerCooldown);
                     let mut error =
                         failure(cooldown.kind, &budget, RetryStopReason::ServerCooldown);
                     error.server_wait = cooldown
@@ -207,17 +233,18 @@ impl Client {
             }
         }
         loop {
-            if crate::throttle::acquire_url_until(selected, budget.deadline)
+            if crate::throttle::acquire_url_until(selected, budget.deadline())
                 == crate::throttle::ThrottleAdmission::DeadlineExpired
             {
+                budget.stop(gripsack_policy::retry_budget::RetryRefusal::Deadline);
                 return Err(
                     failure(HttpFailureKind::Timeout, &budget, RetryStopReason::Deadline).into(),
                 );
             }
             let mut request = self.request(selected).set("User-Agent", "gripsack");
-            let remaining = budget.begin(Instant::now()).map_err(|stop| {
-                FetchError::from(failure(HttpFailureKind::Timeout, &budget, stop))
-            })?;
+            let remaining = budget
+                .begin(Instant::now())
+                .map_err(|stop| admission_failure(&budget, stop))?;
             request = request.timeout(remaining);
             let authorization = match kind {
                 RequestKind::RegistryArtifact { authorization } => Some(authorization),
@@ -232,7 +259,7 @@ impl Client {
             if api_url.is_some_and(|api| api == selected) {
                 request = request.set("Accept", "application/octet-stream");
             }
-            tracing::info!(attempt = budget.attempts, "HTTP policy attempt");
+            tracing::info!(attempt = budget.attempts(), "HTTP policy attempt");
             let (failure_kind, effective, server_delay) = match request.call() {
                 Ok(response) => {
                     let effective = safe_url(response.get_url());
@@ -253,14 +280,17 @@ impl Client {
                         let mut reader = ResponseReader {
                             inner: response.into_reader(),
                             budget: &mut transfer,
-                            deadline: budget.deadline,
+                            deadline: budget.deadline(),
                             expected_remaining,
                         };
                         match consume(&mut reader) {
                             Ok(value) => {
+                                budget
+                                    .complete(Instant::now())
+                                    .map_err(|stop| admission_failure(&budget, stop))?;
                                 tracing::info!(
-                                    attempts = budget.attempts,
-                                    elapsed_ms = budget.started.elapsed().as_millis() as u64,
+                                    attempts = budget.attempts(),
+                                    elapsed_ms = budget.started().elapsed().as_millis() as u64,
                                     "HTTP operation completed"
                                 );
                                 return Ok(value);
@@ -279,8 +309,9 @@ impl Client {
                                 match classified {
                                     Some(kind) => (kind, Some(effective), ServerDelay::None),
                                     None => {
+                                        budget.stop(gripsack_policy::retry_budget::RetryRefusal::NonRetryable);
                                         tracing::warn!(
-                                            attempts = budget.attempts,
+                                            attempts = budget.attempts(),
                                             stop = "permanent resource or local I/O failure",
                                             "HTTP consumption failed without replay"
                                         );
@@ -302,7 +333,7 @@ impl Client {
                     let mut reader = ResponseReader {
                         inner: response.into_reader(),
                         budget: &mut transfer,
-                        deadline: budget.deadline,
+                        deadline: budget.deadline(),
                         expected_remaining,
                     };
                     // Only classification is retained; never echo response bodies or header values.
@@ -352,7 +383,15 @@ impl Client {
                         ServerDelay::Minimum(wait) => Instant::now().checked_add(wait),
                         _ => None,
                     };
-                    self.cooldowns.lock().expect("HTTP cooldown lock").insert(
+                    let mut cooldowns = self
+                        .cooldowns
+                        .try_lock_until(budget.deadline())
+                        .ok_or_else(|| {
+                            let stop =
+                                budget.stop(gripsack_policy::retry_budget::RetryRefusal::Deadline);
+                            admission_failure(&budget, stop)
+                        })?;
+                    cooldowns.insert(
                         host,
                         Cooldown {
                             until,
@@ -366,17 +405,19 @@ impl Client {
                 _ => None,
             };
             let decision = if matches!(server_delay, ServerDelay::Unknown) {
-                RetryDecision::Stop(RetryStopReason::UnknownServerDelay)
+                RetryDecision::Stop(
+                    budget.stop(gripsack_policy::retry_budget::RetryRefusal::UnknownServerDelay),
+                )
             } else {
                 budget.decide(Instant::now(), failure_kind, server_wait)
             };
             match decision {
                 RetryDecision::RetryAfter(wait) if transfer.remaining != 0 => {
-                    tracing::warn!(attempt = budget.attempts, failure = %failure_kind, wait_ms = wait.as_millis() as u64, "retrying HTTP policy attempt");
-                    budget.waited += wait;
+                    tracing::warn!(attempt = budget.attempts(), failure = %failure_kind, wait_ms = wait.as_millis() as u64, "retrying HTTP policy attempt");
                     std::thread::sleep(wait);
                 }
                 RetryDecision::RetryAfter(_) => {
+                    budget.stop(gripsack_policy::retry_budget::RetryRefusal::NonRetryable);
                     return Err(FetchError::PayloadTooLarge {
                         what: "HTTP transfer across attempts".into(),
                         limit,
@@ -389,10 +430,123 @@ impl Client {
                     if matches!(kind, RequestKind::GithubMetadata) {
                         error.github_context(Some(selected));
                     }
-                    tracing::warn!(attempts = budget.attempts, failure = %failure_kind, stop = %stop, "HTTP operation failed");
+                    tracing::warn!(attempts = budget.attempts(), failure = %failure_kind, stop = %stop, "HTTP operation failed");
                     return Err(error.into());
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+    use std::io::Write;
+    use std::net::TcpListener;
+
+    fn loopback_client() -> Client {
+        let mut client = Client::from_env(&Default::default());
+        client.proxy = None;
+        client.policy.no_proxy = "*".into();
+        client.policy.github = None;
+        client.policy.enterprise = None;
+        client.policy.enterprise_host = None;
+        client
+    }
+
+    #[test]
+    fn a_successful_body_consumer_cannot_complete_after_the_operation_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!("http://{}/payload", listener.local_addr().unwrap());
+        let client = loopback_client();
+        // Load platform CA locations before the short, already-spent operation.
+        // This builds the real agent but does not open a network connection.
+        let _ = client.request(&url);
+        std::thread::scope(|scope| {
+            let server = scope.spawn(move || {
+                let end = Instant::now() + Duration::from_secs(2);
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error)
+                            if error.kind() == io::ErrorKind::WouldBlock
+                                && Instant::now() < end =>
+                        {
+                            std::thread::sleep(Duration::from_millis(2));
+                        }
+                        Err(error) => panic!("loopback HTTP admission failed: {error}"),
+                    }
+                };
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut request = [0u8; 4096];
+                let mut used = 0;
+                while !request[..used].ends_with(b"\r\n\r\n") {
+                    assert!(used < request.len());
+                    let count = stream.read(&mut request[used..]).unwrap();
+                    assert!(count > 0);
+                    used += count;
+                }
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nbody",
+                    )
+                    .unwrap();
+            });
+            let end = Instant::now() + Duration::from_millis(500);
+            let started = end - super::super::retry::OPERATION_TIMEOUT;
+            let consumed = Cell::new(false);
+            let result = client.consume_at(&url, RequestKind::Text, 8, started, |reader| {
+                let mut body = String::new();
+                reader.read_to_string(&mut body)?;
+                consumed.set(true);
+                std::thread::sleep(
+                    end.saturating_duration_since(Instant::now()) + Duration::from_millis(20),
+                );
+                Ok(body)
+            });
+            server.join().unwrap();
+            assert!(
+                consumed.get(),
+                "late-completion fixture did not exercise the real body consumer"
+            );
+            assert!(
+                matches!(&result, Err(FetchError::Http(failure)) if failure.kind() == HttpFailureKind::Timeout),
+                "late_http_consumer_was_reported_successfully: {result:?}",
+            );
+        });
+    }
+
+    #[test]
+    fn cooldown_contention_cannot_extend_the_original_operation_deadline() {
+        let client = loopback_client();
+        std::thread::scope(|scope| {
+            let held = client.cooldowns.lock();
+            let (send, receive) = std::sync::mpsc::channel();
+            let shared = &client;
+            let worker = scope.spawn(move || {
+                let end = Instant::now() + Duration::from_millis(30);
+                let started = end - super::super::retry::OPERATION_TIMEOUT;
+                let result = shared.consume_at(
+                    "http://127.0.0.1:9/never-requested",
+                    RequestKind::Text,
+                    8,
+                    started,
+                    |_| Ok(()),
+                );
+                send.send(result).unwrap();
+            });
+            let result = receive.recv_timeout(Duration::from_secs(2));
+            drop(held);
+            worker.join().unwrap();
+            let result = result.expect("deadline_blocked_by_http_cooldown_lock");
+            assert!(
+                matches!(&result, Err(FetchError::Http(failure)) if failure.kind() == HttpFailureKind::Timeout && failure.attempts() == 0),
+                "expired_http_cooldown_admitted_work: {result:?}",
+            );
+        });
     }
 }

@@ -2,7 +2,7 @@
 //! recovery path. No random generator, fuzz runner or corpus replay is involved.
 use super::marker::{RunMarker, RunOp, begin_run};
 use super::recover::reconcile;
-use super::{Entry, Intended, ObjectIdentity, Prior, entry_name, record};
+use super::{Entry, Intended, ObjectIdentity, entry_name, record};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -527,7 +527,7 @@ impl RecoveryFixture {
         let journal = temporary.path().join("journal");
         let marker_path = journal.join("run.json");
         let entry_path = journal.join(entry_name(&destination));
-        begin_run(
+        let run = begin_run(
             &home,
             temporary.path(),
             None,
@@ -535,13 +535,22 @@ impl RecoveryFixture {
             RunOp::Apply,
         )
         .unwrap();
-        record(
-            &home,
+        let captured = super::capture(
+            &run,
+            gripsack_fs::open_or_create(temporary.path()).unwrap(),
+            Path::new("destination").to_path_buf(),
             &destination,
-            &Prior::Absent,
-            &Intended::Object(ObjectIdentity::Link("installed".into())),
+            None,
         )
         .unwrap();
+        drop(
+            record(
+                captured,
+                &Intended::Object(ObjectIdentity::Link("installed".into())),
+            )
+            .unwrap(),
+        );
+        drop(run);
         home.symlink("installed", Path::new("destination")).unwrap();
         Self {
             temporary,

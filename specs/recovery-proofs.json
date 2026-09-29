@@ -489,7 +489,7 @@
       ]
     },
     "PreparedActivationSteps": {
-      "minimum_obligations": 63,
+      "minimum_obligations": 97,
       "theorems": [
         "ActivationLifecycleStateFrame",
         "DurableSnapshotIsTyped",

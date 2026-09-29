@@ -4,7 +4,9 @@ use std::io;
 use std::os::fd::RawFd;
 use std::os::unix::process::ExitStatusExt;
 use std::process::ExitStatus;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+#[cfg(target_os = "macos")]
+mod macos;
 
 pub(super) fn nonblocking(fd: RawFd) -> io::Result<()> {
     // SAFETY: caller owns a live pipe descriptor; F_GETFL has no pointer argument.
@@ -67,7 +69,7 @@ pub(super) fn observe(pid: libc::pid_t) -> io::Result<bool> {
     Ok(unsafe { info.si_pid() } == pid)
 }
 
-pub(super) fn kill_group(pid: libc::pid_t) -> io::Result<()> {
+pub(super) fn kill_group(pid: libc::pid_t, _deadline: Instant) -> io::Result<()> {
     if pid <= 1 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -78,13 +80,19 @@ pub(super) fn kill_group(pid: libc::pid_t) -> io::Result<()> {
     // leader; this is never the parent's group or an arbitrary supplied PID.
     if unsafe { libc::killpg(pid, libc::SIGKILL) } < 0 {
         let error = io::Error::last_os_error();
-        // ESRCH: the group is gone. EPERM: Darwin returns it for a
-        // group whose members are all zombies (libuv's precedent treats
-        // it as "already dead"). A live group of our own descendants
-        // cannot legitimately EPERM — we spawned its leader.
-        if !matches!(error.raw_os_error(), Some(libc::ESRCH) | Some(libc::EPERM)) {
-            return Err(error);
+        if error.raw_os_error() == Some(libc::ESRCH) {
+            return Ok(());
         }
+        // Darwin's killpg skips zombies. EPERM is benign only after a complete,
+        // identity-stable observation of a zombie-only owned group, never just
+        // because the leader is our child or has exited.
+        #[cfg(target_os = "macos")]
+        if error.raw_os_error() == Some(libc::EPERM)
+            && macos::group_is_zombie_only(pid, _deadline).is_ok_and(|dead| dead)
+        {
+            return Ok(());
+        }
+        return Err(error);
     }
     Ok(())
 }

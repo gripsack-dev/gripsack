@@ -15,6 +15,8 @@
 //! that deliberately leave the group cannot be killed by this mechanism;
 //! their inherited pipes are closed at the deadline instead.
 
+mod deadline;
+pub use deadline::OperationDeadline;
 mod digest;
 mod exchange;
 pub use digest::Sha256Digest;
@@ -31,6 +33,9 @@ mod invocation;
 pub use invocation::{ActivationEnvironment, Invocation, NativeInput, NativeOutcome};
 mod input;
 pub mod terminal;
+pub use gripsack_policy::process_budget::{
+    FrameByteLimit, InputByteLimit, RetainedStderrLimit, StderrByteLimit, StdoutByteLimit,
+};
 pub use input::InputBuffer;
 mod lifecycle;
 mod sys;
@@ -56,13 +61,13 @@ pub struct Limits {
     pub timeout: Duration,
     /// A shared operation budget may shorten, never extend, this exchange.
     pub operation_deadline: Option<Instant>,
-    pub input_bytes: usize,
+    pub input_bytes: InputByteLimit,
     /// Content bytes, excluding LF. CR is ordinary content.
-    pub line_bytes: usize,
+    pub line_bytes: FrameByteLimit,
     /// Includes delimiters and bytes received after Response.
-    pub stdout_bytes: u64,
-    pub stderr_bytes: u64,
-    pub retained_stderr_bytes: usize,
+    pub stdout_bytes: StdoutByteLimit,
+    pub stderr_bytes: StderrByteLimit,
+    pub retained_stderr_bytes: RetainedStderrLimit,
 }
 
 impl Default for Limits {
@@ -70,11 +75,11 @@ impl Default for Limits {
         Self {
             timeout: Duration::from_secs(600),
             operation_deadline: None,
-            input_bytes: 4 * 1024 * 1024,
-            line_bytes: 1024 * 1024,
-            stdout_bytes: 16 * 1024 * 1024,
-            stderr_bytes: 16 * 1024 * 1024,
-            retained_stderr_bytes: 64 * 1024,
+            input_bytes: InputByteLimit::new(4 * 1024 * 1024),
+            line_bytes: FrameByteLimit::new(1024 * 1024),
+            stdout_bytes: StdoutByteLimit::new(16 * 1024 * 1024),
+            stderr_bytes: StderrByteLimit::new(16 * 1024 * 1024),
+            retained_stderr_bytes: RetainedStderrLimit::new(64 * 1024),
         }
     }
 }
@@ -166,9 +171,11 @@ fn supervise(
         stderr: Vec::new(),
         stderr_truncated: false,
     };
-    if input.len() > limits.input_bytes {
+    let Some(input_transfer) =
+        gripsack_policy::process_budget::InputTransfer::admit(input.len(), limits.input_bytes)
+    else {
         return Ok(empty(StopReason::InputLimit));
-    }
+    };
     let start = Instant::now();
     let end = start.checked_add(limits.timeout).ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "timeout exceeds Instant range")
@@ -177,22 +184,22 @@ fn supervise(
         .operation_deadline
         .map_or(end, |deadline| deadline.min(end));
     let remaining = end.saturating_duration_since(start);
-    if remaining.is_zero() {
+    let reserve = (remaining / 4).min(MAX_CLEANUP_RESERVE);
+    let mut active_deadline = OperationDeadline::at(end - reserve);
+    if active_deadline.remaining().is_none() {
         return Ok(empty(StopReason::Deadline));
     }
-    let reserve = (remaining / 4).min(MAX_CLEANUP_RESERVE);
-    let active_end = end - reserve;
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
-    let mut child = command.spawn()?;
+    let child = command.spawn()?;
     // Install before any post-spawn fallible operation. Child::drop does not wait.
-    let mut guard = lifecycle::Guard::new(child.id(), end);
-    let mut exchange = exchange::Exchange::new(&mut child, input, limits, output);
+    let (mut guard, pipes) = lifecycle::Guard::new(child, end);
+    let mut exchange = exchange::Exchange::new(pipes, input, input_transfer, limits, output);
     let reason = match exchange.configure() {
-        Ok(()) => exchange.drive(&mut guard, active_end, &mut on_line),
+        Ok(()) => exchange.drive(&mut guard, active_deadline, &mut on_line),
         Err(error) => StopReason::Io(error),
     };
     exchange.close_input();

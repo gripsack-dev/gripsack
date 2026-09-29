@@ -49,11 +49,11 @@ pub(super) fn version(executable: &Path) -> Result<String, String> {
     let limits = Limits {
         timeout: Duration::from_secs(10),
         operation_deadline: None,
-        input_bytes: 0,
-        line_bytes: 1024,
-        stdout_bytes: 4096,
-        stderr_bytes: 4096,
-        retained_stderr_bytes: 1024,
+        input_bytes: gripsack_process::InputByteLimit::new(0),
+        line_bytes: gripsack_process::FrameByteLimit::new(1024),
+        stdout_bytes: gripsack_process::StdoutByteLimit::new(4096),
+        stderr_bytes: gripsack_process::StderrByteLimit::new(4096),
+        retained_stderr_bytes: gripsack_process::RetainedStderrLimit::new(1024),
     };
     let mut lines = Vec::new();
     let outcome = gripsack_process::run(&mut command, &[], limits, |line| {

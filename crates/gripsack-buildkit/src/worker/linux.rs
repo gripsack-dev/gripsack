@@ -390,10 +390,10 @@ impl RunDocker for DockerCli {
         let mut stdout: Vec<u8> = Vec::new();
         let limits = gripsack_process::Limits {
             timeout: deadline,
-            line_bytes: 4096,
-            stdout_bytes: 64 * 1024,
-            stderr_bytes: 64 * 1024,
-            retained_stderr_bytes: 4096,
+            line_bytes: gripsack_process::FrameByteLimit::new(4096),
+            stdout_bytes: gripsack_process::StdoutByteLimit::new(64 * 1024),
+            stderr_bytes: gripsack_process::StderrByteLimit::new(64 * 1024),
+            retained_stderr_bytes: gripsack_process::RetainedStderrLimit::new(4096),
             ..Default::default()
         };
         let outcome = gripsack_process::run(&mut command, &[], limits, |line| {

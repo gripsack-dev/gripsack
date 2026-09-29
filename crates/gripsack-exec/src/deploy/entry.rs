@@ -7,6 +7,7 @@ use gripsack_store as store;
 use std::path::Path;
 
 pub(crate) struct DeploymentInput<'a> {
+    pub journal: &'a store::journal::JournalRun<'a>,
     pub owner: &'a str,
     pub store_path: &'a Path,
     pub entry: &'a Entry,
@@ -23,6 +24,7 @@ pub(crate) fn deploy_entry(
     input: DeploymentInput<'_>,
 ) -> Result<(String, ReportKind), ExecError> {
     let DeploymentInput {
+        journal,
         owner: module,
         store_path,
         entry,
@@ -220,7 +222,7 @@ pub(crate) fn deploy_entry(
             ),
         });
     }
-    let (report, captured_prior) = crate::ops::execute_op(ctx.home_dir()?, op.as_executable()?)?;
+    let (report, captured_prior) = crate::ops::execute_op(journal, op.as_executable()?)?;
     // the manifest entry: what the op produces, or the previous entry
     // carried forward (satisfied)
     match op.produces() {

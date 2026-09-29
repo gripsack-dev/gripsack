@@ -68,8 +68,8 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
                     trigger: gripsack_ir::Trigger::PostActivate,
                 }],
             )?;
-            store::flip(&home, &home_path, &pending)?;
-            store::journal::commit_run(&home)?;
+            let committed = store::flip(pending)?;
+            store::journal::commit_run(committed)?;
         }
         Some(generation) if generation == store::GenerationId::new(1) => {}
         Some(_) => return Err(invalid("fixture worker cannot select another generation")),

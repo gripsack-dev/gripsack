@@ -10,6 +10,7 @@ pub(crate) use restore::intact_deployed;
 
 #[cfg(test)]
 use gripsack_ir::Ownership;
+#[cfg(test)]
 use gripsack_store as store;
 use std::path::Path;
 
@@ -57,63 +58,6 @@ pub(crate) fn observe(
 /// agreement with the last managed write; explicit take-over always
 /// absorbs, capturing the origin even when the bytes already match.
 pub(crate) use gripsack_policy::ownership::{CopyPlan, LinkPlan, plan_copy, plan_link};
-
-/// What the precondition expects of the live object before the
-/// mutation — None: the destination must be ABSENT, anything
-/// appearing aborts the run. (The 0031 typed form of the old
-/// `Expect` enum: `Option<ObjectIdentity>`, no stringly `Is`.)
-pub(crate) type Expect = Option<store::journal::ObjectIdentity>;
-
-pub(crate) fn journaled(
-    home: &gripsack_fs::Dir,
-    dest_dir: &gripsack_fs::Dir,
-    dest_name: &Path,
-    dest: &Path,
-    intended: store::journal::Intended,
-    expected_before: Expect,
-    mutate: impl FnOnce() -> std::io::Result<()>,
-) -> std::io::Result<()> {
-    use store::journal::Intended;
-    // the live object must still be the one the drift decision was
-    // made against — a write between decision and capture aborts
-    // instead of clobbering it. (There is no portable content-CAS:
-    // renameat2 RENAME_EXCHANGE is Linux-only. Capture and mutation
-    // are back-to-back; the residual window is documented on the
-    // safety page.)
-    let live = gripsack_store::journal::live_identity(dest_dir, dest_name)?;
-    if live != expected_before {
-        return Err(std::io::Error::other(format!(
-            "{} changed between the drift decision and the mutation — aborting; re-run to retry",
-            dest.display()
-        )));
-    }
-    // prior AND intended post-state are durable BEFORE the mutation
-    // (0026 §6): reconcile's three-way decision never confuses a
-    // post-crash user edit with the mutation
-    let prior = gripsack_store::journal::capture(dest_dir, dest_name, dest, home)?;
-    gripsack_store::journal::record(home, dest, &prior, &intended)?;
-    mutate()?;
-    // the transaction postcondition (0027 §1): a helper that returns
-    // Ok without producing the intended state fails the run HERE, and
-    // compensation restores the prior — the flip never commits an
-    // unverified destination
-    let live = gripsack_store::journal::live_identity(dest_dir, dest_name)?;
-    let landed = match &intended {
-        Intended::Removed => live.is_none(),
-        Intended::Object(id) => live.as_ref() == Some(id),
-    };
-    if !landed {
-        return Err(std::io::Error::other(format!(
-            "{} did not reach its intended state (expected {}, found {})",
-            dest.display(),
-            intended,
-            live.as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "absent".into())
-        )));
-    }
-    Ok(())
-}
 
 /// A read-only observation by plain path (0035 F7): the preview's
 /// eyes — no capability, NO directory creation. Mutation paths use
@@ -197,27 +141,32 @@ mod tests {
         // an unverified destination
         let dir = tempfile::tempdir().unwrap();
         let home = gripsack_fs::open_or_create(dir.path()).unwrap();
+        let run = store::journal::begin_run(
+            &home,
+            dir.path(),
+            None,
+            store::GenerationId::new(1),
+            store::journal::RunOp::Apply,
+        )
+        .unwrap();
         let dest = dir.path().join("config");
         let (dest_dir, dest_name) = dest_capability(&dest).unwrap();
-        let err = journaled(
-            &home,
-            &dest_dir,
-            &dest_name,
-            &dest,
-            store::journal::Intended::Object(store::journal::ObjectIdentity::Link(
-                "intended".into(),
-            )),
-            None,
-            || Ok(()), // reports success, writes nothing
-        )
-        .unwrap_err();
-        assert!(
-            err.to_string().contains("did not reach its intended state"),
-            "{err}"
-        );
-        // the journal entry survives for reconcile
-        let lines = store::journal::reconcile(&home, dir.path()).unwrap();
-        assert!(!lines.is_empty());
+        let captured = store::journal::capture(&run, dest_dir, dest_name, &dest, None).unwrap();
+        let intended = store::journal::Intended::Object(store::journal::ObjectIdentity::Link(
+            "intended".into(),
+        ));
+        let error = store::journal::record(captured, &intended)
+            .unwrap()
+            .execute(|_, _| Ok(()))
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert!(dest.symlink_metadata().is_err());
+        let pending = store::journal::pending_recovery(&home).unwrap().unwrap();
+        assert_eq!(pending.entries, 1);
+        assert!(pending.run_marker);
+        drop(run);
+        store::journal::reconcile(&home, dir.path()).unwrap();
+        assert!(store::journal::pending_recovery(&home).unwrap().is_none());
     }
 
     #[test]

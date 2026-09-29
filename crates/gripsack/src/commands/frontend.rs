@@ -117,12 +117,14 @@ impl<'a> Frontend<'a> {
             operation_deadline: Some(deadline),
             ..Limits::default()
         };
-        limits.line_bytes = limits.stdout_bytes.try_into().map_err(|_| {
-            FrontendRunError::Process(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "frontend stdout limit exceeds addressable memory",
-            ))
-        })?;
+        limits.line_bytes = gripsack_process::FrameByteLimit::new(
+            limits.stdout_bytes.bytes().try_into().map_err(|_| {
+                FrontendRunError::Process(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "frontend stdout limit exceeds addressable memory",
+                ))
+            })?,
+        );
         let mut stdout = Vec::new();
         let mut first_line = true;
         let mut command = self.command(inputs).map_err(FrontendRunError::Grant)?;

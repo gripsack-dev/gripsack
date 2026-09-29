@@ -320,7 +320,7 @@ mod tests {
         let home = dir.path();
         let cap = gripsack_fs::open_or_create(home).unwrap();
         // a run declared its target and journaled one destination
-        store::journal::begin_run(
+        let run = store::journal::begin_run(
             &cap,
             home,
             Some(GenerationId::new(3)),
@@ -330,14 +330,21 @@ mod tests {
         .unwrap();
         let dest = home.join("dest.txt");
         fs::write(&dest, b"user bytes\n").unwrap();
-        let blob = store::prior::store_blob(&cap, b"user bytes\n").unwrap();
-        let prior = store::journal::Prior::File {
-            hash: blob.clone(),
-            mode: store::prior::FileMode::try_from(0o644).unwrap(),
+        let directory = gripsack_fs::open(home).unwrap();
+        let observed = store::journal::live_identity(&directory, Path::new("dest.txt")).unwrap();
+        let captured = store::journal::capture(
+            &run,
+            directory,
+            PathBuf::from("dest.txt"),
+            &dest,
+            observed.as_ref(),
+        )
+        .unwrap();
+        let store::journal::Prior::File { hash, .. } = captured.prior() else {
+            panic!("the actual destination must produce a retained file prior");
         };
-        store::journal::record(&cap, &dest, &prior, &store::journal::Intended::Removed).unwrap();
-        // sanity: the blob exists and no manifest references it
-        let blob_path = blob.path_in(home);
+        let blob_path = hash.path_in(home);
+        drop(store::journal::record(captured, &store::journal::Intended::Removed).unwrap());
         assert!(blob_path.exists());
         (dir, blob_path)
     }

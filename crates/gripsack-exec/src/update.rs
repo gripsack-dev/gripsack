@@ -2,16 +2,12 @@
 mod prepare;
 use crate::ctx::{Ctx, ExecError};
 use crate::lockfile::LockRead;
-use crate::report::{UpdateReport, UpdateStatus};
+use crate::report::{SurveyReports, UpdateReport, UpdateStatus, UpdateSurvey};
 use gripsack_ir::{Ir, prepared::PreparedModule};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UpdateMode {
-    Publish,
-    Check,
-}
+pub use gripsack_policy::update_survey::UpdateMode;
 
-pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>, ExecError> {
+pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, ExecError> {
     if let Some(diagnostic) =
         ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Update)
     {
@@ -25,15 +21,21 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>,
             &ctx.only,
             ctx.fetch.limits(),
         )?;
-        return Ok(native.update_reports());
+        return native.update_reports();
     }
     let _session = crate::util::LifecycleSession::acquire(&ctx.home)?;
     let (order, missing) = crate::apply::scoped_order(ir, &ctx.only)?;
-    let mut reports = Vec::new();
-    for name in missing
-        .into_iter()
-        .collect::<std::collections::BTreeSet<_>>()
-    {
+    let missing: std::collections::BTreeSet<_> = missing.into_iter().collect();
+    let selected = order
+        .len()
+        .checked_add(missing.len())
+        .ok_or_else(|| ExecError::Step {
+            module: "*".into(),
+            step: "selection".into(),
+            detail: "selected update entry count exceeds the addressable range".into(),
+        })?;
+    let mut reports = SurveyReports::new(selected);
+    for name in missing {
         let status = if mode == UpdateMode::Check {
             UpdateStatus::Failed {
                 error: Box::new(ExecError::Step {
@@ -51,7 +53,7 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>,
             module: name,
             status,
             layout: Default::default(),
-        });
+        })?;
     }
     let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
         LockRead::Parsed(lock) => lock,
@@ -67,7 +69,6 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>,
             });
         }
     };
-    let mut lock_changed = false;
     for name in order {
         let _module = tracing::info_span!("module", module = %name).entered();
         let plan = PreparedModule::new(&ir.modules[&name]).map_err(ExecError::Gate)?;
@@ -78,7 +79,7 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>,
                     reason: "no fetch source",
                 },
                 layout: Default::default(),
-            });
+            })?;
             continue;
         }
         let prepared = match prepare::PreparedUpdate::acquire(ctx, &name, &plan) {
@@ -90,7 +91,7 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>,
                         error: Box::new(error),
                     },
                     layout: Default::default(),
-                });
+                })?;
                 continue;
             }
             Err(error) => return Err(error),
@@ -119,21 +120,21 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<Vec<UpdateReport>,
         };
         if mode == UpdateMode::Publish {
             prepared.publish(ctx, &name)?;
-        }
-        if !unchanged {
-            lock.modules.insert(name.clone(), prepared.entry);
-            lock_changed = true;
+            if !unchanged {
+                lock.modules.insert(name.clone(), prepared.entry);
+            }
         }
         reports.push(UpdateReport {
             module: name,
             status,
             layout: prepared.layout,
-        });
+        })?;
     }
-    if mode == UpdateMode::Publish && lock_changed {
+    let survey = reports.finish()?;
+    if survey.summary().publishes_lock(mode) {
         crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
     }
-    Ok(reports)
+    Ok(survey)
 }
 
 #[cfg(test)]

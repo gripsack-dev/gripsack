@@ -17,12 +17,18 @@ pub mod activation;
 pub mod generation;
 pub use generation::{GenerationId, GenerationInventory, GenerationList};
 pub mod graph;
+pub mod journal_protocol;
 pub mod merge;
+pub mod operation_budget;
 pub mod ownership;
+pub mod process_budget;
+pub mod rate_limit;
 pub mod retention;
+pub mod retry_budget;
 pub mod schedule;
 pub mod selection;
 pub mod target;
+pub mod update_survey;
 
 verus! {
 

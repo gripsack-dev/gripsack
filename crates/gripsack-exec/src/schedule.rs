@@ -52,6 +52,7 @@ pub(crate) fn run_all(
     steps_by_module: &BTreeMap<String, gripsack_ir::prepared::PreparedModule>,
     order: &[String],
     ctx: &Ctx,
+    journal: &store::journal::JournalRun<'_>,
     prev: &BTreeMap<String, store::ModuleState>,
     lock: &Lockfile,
 ) -> Result<ScheduleOutcome, ExecError> {
@@ -145,6 +146,7 @@ pub(crate) fn run_all(
                                 prev,
                                 &current_lock,
                                 Scheduled {
+                                    journal,
                                     build_env,
                                     build_only: build_only.contains(name),
                                     recipes: &recipes,
@@ -247,6 +249,7 @@ pub(crate) fn previous_ownership(
 /// inputs (0039): the composed build closure and the build-only
 /// verdict. A struct, not two more positional arguments.
 struct Scheduled<'a> {
+    journal: &'a store::journal::JournalRun<'a>,
     build_env: crate::closure::BuildEnv,
     build_only: bool,
     recipes: &'a crate::resolve::RecipeGraph,
@@ -266,6 +269,7 @@ fn run_one(
     let plan = &steps_by_module[name];
     run_module(
         crate::module::ModuleInputs {
+            journal: scheduled.journal,
             name,
             module,
             recipes: scheduled.recipes,

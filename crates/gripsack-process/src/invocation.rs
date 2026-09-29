@@ -114,7 +114,7 @@ impl<'a> Invocation<'a> {
         activation: &ActivationEnvironment,
         on_bytes: impl FnMut(&[u8]) -> Control,
     ) -> io::Result<NativeOutcome> {
-        if script.len() > self.limits.input_bytes {
+        if script.len() > self.limits.input_bytes.bytes() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "hook script exceeds the input budget",
@@ -192,8 +192,8 @@ impl<'a> Invocation<'a> {
             enforcement: Enforcement::ProcessGroup,
             environment_keys,
             deadline_millis: self.deadline_millis,
-            stdout_limit: limits.stdout_bytes,
-            stderr_limit: limits.stderr_bytes,
+            stdout_limit: limits.stdout_bytes.bytes(),
+            stderr_limit: limits.stderr_bytes.bytes(),
             exit_code: None,
             signal: None,
             disposition: ProcessDisposition::SpawnFailure,

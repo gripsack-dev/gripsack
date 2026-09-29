@@ -14,7 +14,7 @@ mod current;
 mod inventory;
 mod publication;
 mod selection;
-pub use current::{current, current_in, current_selection_in, flip};
+pub use current::{CommittedSelection, current, current_in, current_selection_in, flip};
 pub(crate) use inventory::admit_manifest_at;
 pub use inventory::{GenerationDirectory, admit_manifest, list, read_manifest};
 pub use publication::{allocate, publish_generation, write_manifest};
@@ -239,8 +239,8 @@ mod tests {
             crate::journal::RunOp::Apply,
         )
         .unwrap();
-        flip(&cap, home, &first).unwrap();
-        crate::journal::commit_run(&cap).unwrap();
+        let committed = flip(first).unwrap();
+        crate::journal::commit_run(committed).unwrap();
         assert_eq!(current(home).unwrap(), Some(GenerationId::new(1)));
         let second = crate::journal::begin_run(
             &cap,
@@ -250,8 +250,8 @@ mod tests {
             crate::journal::RunOp::Apply,
         )
         .unwrap();
-        flip(&cap, home, &second).unwrap();
-        crate::journal::commit_run(&cap).unwrap();
+        let committed = flip(second).unwrap();
+        crate::journal::commit_run(committed).unwrap();
         assert_eq!(current(home).unwrap(), Some(GenerationId::new(2)));
     }
 

@@ -62,7 +62,12 @@ RUN apk add --no-cache python3 \
     && python3 scripts/gen_frontend_embed.py --check \
     && python3 scripts/check_scheduler_loom.py \
     && python3 scripts/check_journal_admission.py \
-    && python3 scripts/check_gc_roots.py
+    && python3 scripts/check_journal_protocol.py \
+    && python3 scripts/check_gc_roots.py \
+    && python3 scripts/check_rate_admission.py \
+    && python3 scripts/check_http_budget.py \
+    && python3 scripts/check_process_bounds.py \
+    && python3 scripts/check_update_survey.py
 
 # The debug binary for stages that need a runnable grip (e2e).
 FROM builder AS bin

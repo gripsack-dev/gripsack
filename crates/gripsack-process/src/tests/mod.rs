@@ -59,7 +59,7 @@ fn input_rejected_before_spawn() {
         &mut c,
         b"xx",
         Limits {
-            input_bytes: 1,
+            input_bytes: crate::InputByteLimit::new(1),
             ..limits()
         },
         |_| panic!(),
@@ -97,7 +97,7 @@ fn expired_operation_rejects_spawn_without_overriding_input_failure() {
     let mut command = Command::new("/nonexistent/gripsack-test");
     let limits = Limits {
         operation_deadline: Some(Instant::now()),
-        input_bytes: 1,
+        input_bytes: crate::InputByteLimit::new(1),
         ..limits()
     };
     let expired = run(&mut command, b"", limits, |_| panic!()).unwrap();
@@ -140,7 +140,7 @@ fn tail_is_exact_and_can_be_disabled() {
             "printf 0123456789abc >&2",
             b"",
             Limits {
-                retained_stderr_bytes: cap,
+                retained_stderr_bytes: crate::RetainedStderrLimit::new(cap),
                 ..limits()
             },
         );
@@ -156,7 +156,7 @@ fn exact_line_limit_and_empty_lines() {
         "printf 'abcd\nlast'",
         b"",
         Limits {
-            line_bytes: 4,
+            line_bytes: crate::FrameByteLimit::new(4),
             ..limits()
         },
     );
@@ -166,7 +166,7 @@ fn exact_line_limit_and_empty_lines() {
         "printf '\n\n'",
         b"",
         Limits {
-            line_bytes: 0,
+            line_bytes: crate::FrameByteLimit::new(0),
             ..limits()
         },
     );

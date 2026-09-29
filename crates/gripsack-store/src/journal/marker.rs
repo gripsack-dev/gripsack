@@ -5,6 +5,9 @@
 
 use crate::{GenerationId, generations::SelectionReservation};
 use gripsack_fs::Dir;
+use gripsack_policy::journal_protocol::{
+    CleanupAction, CleanupProgress, CleanupScope, DurableRecord, RecordRole,
+};
 use gripsack_policy::selection::SelectionIdentity;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -15,13 +18,29 @@ use super::storage::{Journal, RUN_MARKER};
 /// A transaction-specific selection whose run marker is durably published.
 /// New flips require this handle; generation equality alone is not authority.
 #[derive(Debug)]
-pub struct PendingSelection {
+pub struct JournalRun<'a> {
+    home: &'a Dir,
+    home_path: &'a Path,
+    pub(super) journal: Journal,
+    pub(super) marker_record: DurableRecord,
     reservation: SelectionReservation,
 }
 
-impl PendingSelection {
+impl JournalRun<'_> {
     pub fn identity(&self) -> &SelectionIdentity {
         self.reservation.identity()
+    }
+
+    pub fn home(&self) -> &Dir {
+        self.home
+    }
+
+    pub fn home_path(&self) -> &Path {
+        self.home_path
+    }
+
+    pub(crate) fn journal_directory(&self) -> &Dir {
+        &self.journal.directory
     }
 
     pub(crate) fn target(&self) -> &Path {
@@ -42,13 +61,13 @@ pub enum RunOp {
 /// Declare the transaction before any destination mutation. The observed
 /// predecessor must still select the caller's admitted generation; the newly
 /// reserved target distinguishes even a same-generation rollback.
-pub fn begin_run(
-    home: &Dir,
-    home_path: &Path,
+pub fn begin_run<'a>(
+    home: &'a Dir,
+    home_path: &'a Path,
     previous_generation: Option<GenerationId>,
     target_generation: GenerationId,
     op: RunOp,
-) -> io::Result<PendingSelection> {
+) -> io::Result<JournalRun<'a>> {
     if super::pending_recovery(home)?.is_some() {
         return Err(io::Error::other(
             "unfinished journal must be reconciled before a new transaction",
@@ -62,23 +81,29 @@ pub fn begin_run(
     }
     let reservation = crate::generations::reserve_selection(home, target_generation)?;
     let marker = RunMarker::transaction(previous, *reservation.identity(), op)?;
-    Journal::prepare(home)?.write(
+    let journal = Journal::prepare(home)?;
+    let marker_record = journal.write(
         Path::new(RUN_MARKER),
         serde_json::to_string(&marker)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
             .as_bytes(),
+        RecordRole::RunMarker,
     )?;
-    Ok(PendingSelection { reservation })
+    Ok(JournalRun {
+        home,
+        home_path,
+        journal,
+        marker_record,
+        reservation,
+    })
 }
 
 /// The run completed and the generation flipped: nothing left to
 /// recover. Entries, stragglers, and the run marker are gone.
-pub fn commit_run(home: &Dir) -> io::Result<()> {
-    let Some(journal) = Journal::open(home)? else {
-        return Ok(());
-    };
-    journal.restrict()?;
-    let entries = journal.directory.read_dir(".")?;
+pub fn commit_run(committed: crate::CommittedSelection<'_>) -> io::Result<()> {
+    let directory = committed.journal_directory();
+    crate::private_state::restrict_directory(directory, Path::new("journal"))?;
+    let entries = directory.read_dir(".")?;
     let mut entry_paths = Vec::new();
     for entry in entries {
         let name = entry?.file_name();
@@ -88,7 +113,12 @@ pub fn commit_run(home: &Dir) -> io::Result<()> {
             entry_paths.push(rel);
         }
     }
-    cleanup(&journal, &entry_paths)
+    let progress = CleanupProgress::new(CleanupScope::Committed, entry_paths.len());
+    cleanup(
+        directory,
+        entry_paths.iter().map(PathBuf::as_path),
+        progress,
+    )
 }
 
 /// Two durability barriers (0026 §5): entries deleted and fsync'd
@@ -98,19 +128,65 @@ pub fn commit_run(home: &Dir) -> io::Result<()> {
 /// with no marker read as an uncommitted run and would restore a
 /// committed generation's priors (the 0.19.1 bug class, one level
 /// down).
-pub(super) fn cleanup(journal: &Journal, entry_paths: &[PathBuf]) -> io::Result<()> {
-    for path in entry_paths {
-        gripsack_fs::remove_file(&journal.directory, path)?;
+pub(super) fn cleanup<'a>(
+    directory: &Dir,
+    entry_paths: impl IntoIterator<Item = &'a Path>,
+    mut progress: CleanupProgress,
+) -> io::Result<()> {
+    for (index, path) in entry_paths.into_iter().enumerate() {
+        cleanup_step(&mut progress, CleanupAction::RemoveEntry { index }, || {
+            gripsack_fs::remove_file(directory, path)
+        })?;
     }
-    gripsack_fs::fsync_dir(&journal.directory, Path::new("."))?;
-    // a run that never mutated has no marker (end_run already
-    // removed it) — absent is fine, anything else is real
-    match gripsack_fs::remove_file(&journal.directory, Path::new(RUN_MARKER)) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
+    cleanup_step(&mut progress, CleanupAction::SyncEntries, || {
+        gripsack_fs::fsync_dir(directory, Path::new("."))
+    })?;
+    cleanup_step(
+        &mut progress,
+        CleanupAction::RemoveMarker,
+        || match gripsack_fs::remove_file(directory, Path::new(RUN_MARKER)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        },
+    )?;
+    cleanup_step(&mut progress, CleanupAction::SyncMarker, || {
+        gripsack_fs::fsync_dir(directory, Path::new("."))
+    })?;
+    if progress.action() != CleanupAction::Complete {
+        return Err(cleanup_order_error());
     }
-    gripsack_fs::fsync_dir(&journal.directory, Path::new("."))
+    Ok(())
+}
+
+pub(super) fn cleanup_order_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "journal cleanup effect order is invalid",
+    )
+}
+
+fn cleanup_step(
+    progress: &mut CleanupProgress,
+    action: CleanupAction,
+    effect: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    if progress.action() != action {
+        return Err(cleanup_order_error());
+    }
+    match effect() {
+        Ok(()) => {
+            if progress.acknowledge(action, true) {
+                Ok(())
+            } else {
+                Err(cleanup_order_error())
+            }
+        }
+        Err(error) => {
+            progress.acknowledge(action, false);
+            Err(error)
+        }
+    }
 }
 
 /// The run ended without mutating anything (satisfied, empty graph):
@@ -118,19 +194,25 @@ pub(super) fn cleanup(journal: &Journal, entry_paths: &[PathBuf]) -> io::Result<
 /// marker with no entries is harmless but noisy, and a marker whose
 /// target generation is later than `current` would misread the NEXT
 /// crash window.
-pub fn end_run(home: &Dir) -> io::Result<()> {
-    let Some(journal) = Journal::open(home)? else {
-        return Ok(());
-    };
-    journal.restrict()?;
-    // a stale marker misleads the NEXT crash window — its deletion is
-    // a durability operation, never `let _ =` (0030 §12)
-    match gripsack_fs::remove_file(&journal.directory, Path::new(RUN_MARKER)) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
+pub fn end_run(run: JournalRun<'_>) -> io::Result<()> {
+    run.journal.restrict()?;
+    for entry in run.journal.directory.read_dir(".")? {
+        let name = entry?.file_name();
+        if name != RUN_MARKER
+            && Path::new(&name)
+                .extension()
+                .is_some_and(|value| value == "json")
+        {
+            return Err(io::Error::other(
+                "cannot end a journal run with outstanding destination entries",
+            ));
+        }
     }
-    gripsack_fs::fsync_dir(&journal.directory, Path::new("."))
+    cleanup(
+        &run.journal.directory,
+        std::iter::empty(),
+        CleanupProgress::new(CleanupScope::Uncommitted, 0),
+    )
 }
 
 pub(super) fn run_marker(journal: &Journal) -> io::Result<Option<RunMarker>> {

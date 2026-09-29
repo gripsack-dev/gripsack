@@ -7,7 +7,7 @@ use super::{
     pointer::{PendingPointer, PointerRecord},
     storage::{self, Access, RecordKind},
 };
-use crate::{journal::PendingSelection, private_state};
+use crate::{journal::JournalRun, private_state};
 use gripsack_fs::Dir;
 use gripsack_policy::{
     activation::{self, AttemptNumber, IntentState, Outcome, StartDecision},
@@ -74,7 +74,7 @@ pub fn has_pending(home: &Dir) -> io::Result<bool> {
 
 pub fn prepare(
     home: &Dir,
-    selection: &PendingSelection,
+    selection: &JournalRun,
     declarations: Vec<PendingIntent>,
 ) -> io::Result<Option<ActivationBatch>> {
     if declarations.is_empty() {

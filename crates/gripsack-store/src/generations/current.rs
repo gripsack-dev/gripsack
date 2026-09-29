@@ -87,21 +87,33 @@ fn parse_current_relative(target: &Path) -> Option<GenerationId> {
     }
 }
 
+/// Exact selection whose current-pointer publication completed its barrier.
+/// Only `flip` constructs this cleanup authority.
+#[derive(Debug)]
+pub struct CommittedSelection<'a> {
+    run: crate::journal::JournalRun<'a>,
+}
+
+impl CommittedSelection<'_> {
+    pub(crate) fn journal_directory(&self) -> &gripsack_fs::Dir {
+        self.run.journal_directory()
+    }
+}
+
 /// Activate exactly the target whose transaction marker was durably recorded.
 /// Both the generation and the reserved selection path are admitted before
 /// the single current-pointer rename; no generation-only write path remains.
-pub fn flip(
-    home: &gripsack_fs::Dir,
-    home_path: &Path,
-    pending: &crate::journal::PendingSelection,
-) -> io::Result<()> {
-    let generation = pending.identity().generation();
+pub fn flip(run: crate::journal::JournalRun<'_>) -> io::Result<CommittedSelection<'_>> {
+    let home = run.home();
+    let home_path = run.home_path();
+    let generation = run.identity().generation();
     super::admit_manifest_at(home, home_path, generation)?;
-    if super::parse_selection(home, pending.target())?.as_ref() != Some(pending.identity()) {
+    if super::parse_selection(home, run.target())?.as_ref() != Some(run.identity()) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "reserved selection identity changed before activation",
         ));
     }
-    gripsack_fs::symlink_replace(home, Path::new("current"), pending.target())
+    gripsack_fs::symlink_replace(home, Path::new("current"), run.target())?;
+    Ok(CommittedSelection { run })
 }

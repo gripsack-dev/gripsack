@@ -7,10 +7,17 @@
 //! $GRIPSACK_HOME/throttle.json, so back-to-back applies share one
 //! budget — that is the GitHub-403 failure mode this exists for.
 
+use gripsack_policy::rate_limit;
+use parking_lot::{Mutex, MutexGuard};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::OnceLock;
+use std::time::{Duration, Instant, SystemTime};
+
+mod persistence;
+
+#[derive(Debug)]
+struct DeadlineExpired;
 
 /// Built-in budgets for the registries the internal fetchers call.
 /// Downloads (release CDNs, tarball mirrors) are deliberately not
@@ -21,62 +28,36 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("formulae.brew.sh", "60/min"),
 ];
 
-/// A bucket can hold at least one token and refills at a finite positive rate.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct RateBudget {
-    capacity: f64,
-    per_second: f64,
-}
-
 /// Admit "N/unit" once; units are seconds, minutes or hours.
-fn parse_budget(s: &str) -> Option<RateBudget> {
+fn parse_budget(s: &str) -> Option<rate_limit::BinaryTokenRate> {
     let (n, unit) = s.trim().split_once('/')?;
     let n: f64 = n.trim().parse().ok()?;
-    if !n.is_finite() || n < 1.0 {
-        return None;
-    }
-    let secs = match unit.trim() {
-        "s" | "sec" | "second" => 1.0,
-        "m" | "min" | "minute" => 60.0,
-        "h" | "hr" | "hour" => 3600.0,
+    let period = match unit.trim() {
+        "s" | "sec" | "second" => rate_limit::RatePeriod::Second,
+        "m" | "min" | "minute" => rate_limit::RatePeriod::Minute,
+        "h" | "hr" | "hour" => rate_limit::RatePeriod::Hour,
         _ => return None,
     };
-    Some(RateBudget {
-        capacity: n,
-        per_second: n / secs,
-    })
+    rate_limit::admit_binary_rate(n.to_bits(), period)
 }
 
 struct Bucket {
-    tokens: f64,
-    budget: RateBudget,
+    tokens: rate_limit::TokenBucket,
     updated: SystemTime,
 }
 
 impl Bucket {
-    fn new(budget: RateBudget) -> Self {
+    fn new(budget: rate_limit::BinaryTokenRate) -> Self {
         Bucket {
-            tokens: budget.capacity,
-            budget,
+            tokens: rate_limit::TokenBucket::full(budget),
             updated: SystemTime::now(),
         }
     }
 
-    /// Refill from elapsed time; the wait until the next token.
-    fn refill(&mut self) -> Duration {
-        let now = SystemTime::now();
-        let elapsed = now
-            .duration_since(self.updated)
-            .unwrap_or_default()
-            .as_secs_f64();
-        self.tokens = (self.tokens + elapsed * self.budget.per_second).min(self.budget.capacity);
-        self.updated = now;
-        if self.tokens >= 1.0 {
-            Duration::ZERO
-        } else {
-            // Rounding a sub-nanosecond wait to zero must not mint a token.
-            Duration::from_secs_f64((1.0 - self.tokens) / self.budget.per_second)
-                .max(Duration::from_nanos(1))
+    fn refill(&mut self, now: SystemTime) {
+        if let Ok(elapsed) = now.duration_since(self.updated) {
+            self.tokens.refill(elapsed.as_nanos());
+            self.updated = now;
         }
     }
 }
@@ -128,21 +109,52 @@ impl Throttle {
     /// built-in default — the fetcher knows its registry best — but
     /// never a user declaration.
     pub fn register(&self, domain: &str, budget: &str) {
+        self.register_before(domain, budget, None)
+            .expect("unbounded rate registration");
+    }
+
+    fn register_before(
+        &self,
+        domain: &str,
+        budget: &str,
+        deadline: Option<Instant>,
+    ) -> Result<(), DeadlineExpired> {
+        let mut deadline = deadline.map(gripsack_process::OperationDeadline::at);
+        if deadline
+            .as_mut()
+            .is_some_and(|deadline| deadline.remaining().is_none())
+        {
+            return Err(DeadlineExpired);
+        }
         if self.user_declared.contains(domain) {
-            return;
+            return Ok(());
         }
         if let Some(budget) = parse_budget(budget) {
-            let mut buckets = self.buckets.lock().expect("throttle mutex");
+            let mut buckets = self.lock_before(&mut deadline)?;
             match buckets.get_mut(domain) {
-                Some(bucket) => {
-                    bucket.budget = budget;
-                    bucket.tokens = bucket.tokens.min(budget.capacity);
-                }
+                Some(bucket) => bucket.tokens.reconfigure(budget),
                 None => {
                     buckets.insert(domain.to_owned(), Bucket::new(budget));
                 }
             }
         }
+        Ok(())
+    }
+
+    fn lock_before(
+        &self,
+        deadline: &mut Option<gripsack_process::OperationDeadline>,
+    ) -> Result<MutexGuard<'_, BTreeMap<String, Bucket>>, DeadlineExpired> {
+        let Some(deadline) = deadline else {
+            return Ok(self.buckets.lock());
+        };
+        let end = deadline.instant();
+        let Some(buckets) = self.buckets.try_lock_until(end) else {
+            deadline.stop();
+            return Err(DeadlineExpired);
+        };
+        deadline.remaining().ok_or(DeadlineExpired)?;
+        Ok(buckets)
     }
 
     /// Block until one token is available for `domain`; unknown
@@ -152,26 +164,37 @@ impl Throttle {
     }
 
     fn acquire_before(&self, domain: &str, deadline: Option<Instant>) -> ThrottleAdmission {
+        let mut deadline = deadline.map(gripsack_process::OperationDeadline::at);
         loop {
-            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            if deadline
+                .as_mut()
+                .is_some_and(|deadline| deadline.remaining().is_none())
+            {
                 return ThrottleAdmission::DeadlineExpired;
             }
             let wait = {
-                let mut buckets = self.buckets.lock().expect("throttle mutex");
+                let mut buckets = match self.lock_before(&mut deadline) {
+                    Ok(buckets) => buckets,
+                    Err(DeadlineExpired) => return ThrottleAdmission::DeadlineExpired,
+                };
                 match buckets.get_mut(domain) {
                     None => return ThrottleAdmission::Granted,
                     Some(bucket) => {
-                        let wait = bucket.refill();
-                        if wait.is_zero() {
-                            bucket.tokens -= 1.0;
-                            return ThrottleAdmission::Granted;
+                        bucket.refill(SystemTime::now());
+                        match bucket.tokens.take() {
+                            rate_limit::TokenAdmission::Granted => {
+                                return ThrottleAdmission::Granted;
+                            }
+                            rate_limit::TokenAdmission::Wait { nanoseconds } => {
+                                Duration::from_nanos(nanoseconds)
+                            }
                         }
-                        wait
                     }
                 }
             };
             if deadline
-                .is_some_and(|deadline| wait >= deadline.saturating_duration_since(Instant::now()))
+                .as_mut()
+                .is_some_and(|deadline| !deadline.admit_wait(wait))
             {
                 return ThrottleAdmission::DeadlineExpired;
             }
@@ -191,50 +214,19 @@ impl Throttle {
         let Ok(text) = std::fs::read_to_string(path) else {
             return;
         };
-        let Ok(saved) = serde_json::from_str::<BTreeMap<String, serde_json::Value>>(&text) else {
-            return;
-        };
-        let mut buckets = self.buckets.lock().expect("throttle mutex");
-        for (domain, state) in saved {
-            if let Some(bucket) = buckets.get_mut(&domain) {
-                bucket.tokens = state
-                    .get("tokens")
-                    .and_then(|t| t.as_f64())
-                    .unwrap_or(bucket.budget.capacity)
-                    .clamp(0.0, bucket.budget.capacity);
-                bucket.updated = state
-                    .get("updated")
-                    .and_then(|time| time.as_u64())
-                    .and_then(|seconds| UNIX_EPOCH.checked_add(Duration::from_secs(seconds)))
-                    .unwrap_or_else(SystemTime::now);
-            }
-        }
+        let mut buckets = self.buckets.lock();
+        persistence::restore(&text, &mut buckets);
     }
 
     pub fn save(&self) {
         let Some(path) = &self.persist else {
             return;
         };
-        let saved: BTreeMap<String, serde_json::Value> = self
-            .buckets
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .iter()
-            .map(|(domain, b)| {
-                (
-                    domain.clone(),
-                    serde_json::json!({
-                        "tokens": b.tokens,
-                        "updated": b.updated.duration_since(UNIX_EPOCH)
-                            .unwrap_or_default().as_secs(),
-                    }),
-                )
-            })
-            .collect();
+        let json = persistence::encode(&self.buckets.lock());
         // the store's atomic write (temp + fsync + rename): a hand-
         // rolled tmp+rename could persist a torn file on crash
-        if let Ok(json) = serde_json::to_string(&saved) {
-            let _ = gripsack_fs::atomic_write_at(path, json.as_bytes());
+        if let Ok(json) = json {
+            let _ = gripsack_fs::atomic_write_at(path, &json);
         }
     }
 }
@@ -270,7 +262,10 @@ pub fn acquire_url(url: &str) {
 }
 
 pub(crate) fn acquire_url_until(url: &str, deadline: Instant) -> ThrottleAdmission {
-    if Instant::now() >= deadline {
+    if gripsack_process::OperationDeadline::at(deadline)
+        .remaining()
+        .is_none()
+    {
         return ThrottleAdmission::DeadlineExpired;
     }
     match (global(), url_host(url)) {
@@ -293,12 +288,20 @@ pub(crate) fn acquire_declared_until(
     budget: &str,
     deadline: Instant,
 ) -> ThrottleAdmission {
-    if Instant::now() >= deadline {
+    if gripsack_process::OperationDeadline::at(deadline)
+        .remaining()
+        .is_none()
+    {
         return ThrottleAdmission::DeadlineExpired;
     }
     match global() {
         Some(throttle) => {
-            throttle.register(domain, budget);
+            if throttle
+                .register_before(domain, budget, Some(deadline))
+                .is_err()
+            {
+                return ThrottleAdmission::DeadlineExpired;
+            }
             throttle.acquire_before(domain, Some(deadline))
         }
         None => ThrottleAdmission::Granted,
@@ -310,45 +313,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_budget_syntax() {
-        assert_eq!(
-            parse_budget("2/s"),
-            Some(RateBudget {
-                capacity: 2.0,
-                per_second: 2.0
-            })
-        );
-        assert_eq!(
-            parse_budget("60/min"),
-            Some(RateBudget {
-                capacity: 60.0,
-                per_second: 1.0
-            })
-        );
-        assert_eq!(
-            parse_budget("5000/hr"),
-            Some(RateBudget {
-                capacity: 5000.0,
-                per_second: 5000.0 / 3600.0
-            })
-        );
-        assert_eq!(parse_budget("nope"), None);
-        assert_eq!(parse_budget("0/s"), None);
-        assert_eq!(parse_budget("1/fortnight"), None);
-    }
-
-    #[test]
     fn rate_admission_rejects_nonfinite_and_unfillable_buckets() {
-        for rate in ["NaN/s", "inf/min", "-inf/hr", "0.5/s", "-2/s", "1e309/s"] {
-            assert_eq!(parse_budget(rate), None, "{rate}");
+        for rate in [
+            "NaN/s",
+            "inf/min",
+            "-inf/hr",
+            "0.5/s",
+            "-2/s",
+            "1e309/s",
+            "nope",
+            "0/s",
+            "1/fortnight",
+        ] {
+            assert_eq!(parse_budget(rate), None, "invalid_rate_admitted: {rate}");
         }
-        assert_eq!(
-            parse_budget("1/hr"),
-            Some(RateBudget {
-                capacity: 1.0,
-                per_second: 1.0 / 3600.0
-            })
-        );
     }
 
     #[test]
@@ -367,6 +345,100 @@ mod tests {
         assert_eq!(
             throttle.acquire_before("unknown.example", Some(Instant::now())),
             ThrottleAdmission::DeadlineExpired
+        );
+    }
+
+    #[test]
+    fn mutex_contention_cannot_outlive_or_grant_after_the_original_deadline() {
+        let throttle = Throttle::new(&BTreeMap::new(), None);
+        throttle.register("registered.example", "1/hr");
+        for domain in ["unknown.example", "registered.example"] {
+            std::thread::scope(|scope| {
+                let held = throttle.buckets.lock();
+                let (send, receive) = std::sync::mpsc::channel();
+                let shared = &throttle;
+                let worker = scope.spawn(move || {
+                    let deadline = Instant::now() + Duration::from_millis(30);
+                    send.send(shared.acquire_before(domain, Some(deadline)))
+                        .unwrap();
+                });
+                let result = receive.recv_timeout(Duration::from_secs(2));
+                drop(held);
+                worker.join().unwrap();
+                assert_eq!(
+                    result.expect("deadline_blocked_by_throttle_lock"),
+                    ThrottleAdmission::DeadlineExpired,
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn capability_registration_consumes_the_same_contended_deadline() {
+        let throttle = Throttle::new(&BTreeMap::new(), None);
+        std::thread::scope(|scope| {
+            let held = throttle.buckets.lock();
+            let (send, receive) = std::sync::mpsc::channel();
+            let shared = &throttle;
+            let worker = scope.spawn(move || {
+                let deadline = Instant::now() + Duration::from_millis(30);
+                send.send(
+                    shared
+                        .register_before("plugin.example", "2/s", Some(deadline))
+                        .is_err(),
+                )
+                .unwrap();
+            });
+            let result = receive.recv_timeout(Duration::from_secs(2));
+            drop(held);
+            worker.join().unwrap();
+            assert!(result.unwrap());
+        });
+        assert!(!throttle.buckets.lock().contains_key("plugin.example"));
+    }
+
+    #[test]
+    fn fractional_declarations_retain_their_exact_refill_boundary() {
+        for (declaration, period_ns) in [
+            ("1.5/s", 1_000_000_000u64),
+            ("1.5/min", 60_000_000_000),
+            ("1.5/hr", 3_600_000_000_000),
+        ] {
+            let start = SystemTime::UNIX_EPOCH + Duration::from_secs(4_000_000_000);
+            let mut bucket = Bucket::new(parse_budget(declaration).unwrap());
+            bucket.updated = start;
+            assert_eq!(bucket.tokens.take(), rate_limit::TokenAdmission::Granted);
+            let wait = period_ns.div_ceil(3);
+            assert_eq!(
+                bucket.tokens.take(),
+                rate_limit::TokenAdmission::Wait { nanoseconds: wait },
+                "declared_period_was_changed",
+            );
+            bucket.refill(start + Duration::from_nanos(wait - 1));
+            assert_eq!(
+                bucket.tokens.take(),
+                rate_limit::TokenAdmission::Wait { nanoseconds: 1 }
+            );
+            bucket.refill(start + Duration::from_nanos(wait));
+            assert_eq!(bucket.tokens.take(), rate_limit::TokenAdmission::Granted);
+        }
+    }
+
+    #[test]
+    fn a_backward_wall_clock_does_not_refill_the_same_interval_twice() {
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(4_000_000_000);
+        let mut bucket = Bucket::new(parse_budget("1/s").unwrap());
+        bucket.updated = start;
+        assert_eq!(bucket.tokens.take(), rate_limit::TokenAdmission::Granted);
+        bucket.refill(start + Duration::from_millis(500));
+        bucket.refill(start + Duration::from_millis(250));
+        bucket.refill(start + Duration::from_millis(500));
+        assert_eq!(
+            bucket.tokens.take(),
+            rate_limit::TokenAdmission::Wait {
+                nanoseconds: 500_000_000
+            },
+            "wall_clock_interval_reused",
         );
     }
 
@@ -407,16 +479,34 @@ mod tests {
         overrides.insert("api.github.com".to_string(), "2/s".to_string());
         let t = Throttle::new(&overrides, None);
         t.register("api.github.com", "5000/hr");
-        let buckets = t.buckets.lock().expect("mutex");
-        assert_eq!(buckets["api.github.com"].budget.capacity, 2.0);
+        let mut buckets = t.buckets.lock();
+        let bucket = buckets.get_mut("api.github.com").unwrap();
+        for _ in 0..2 {
+            assert_eq!(bucket.tokens.take(), rate_limit::TokenAdmission::Granted);
+        }
+        assert_eq!(
+            bucket.tokens.take(),
+            rate_limit::TokenAdmission::Wait {
+                nanoseconds: 500_000_000
+            }
+        );
     }
 
     #[test]
     fn plugin_declaration_replaces_builtin_default() {
         let t = Throttle::new(&BTreeMap::new(), None);
         t.register("api.github.com", "10/s");
-        let buckets = t.buckets.lock().expect("mutex");
-        assert_eq!(buckets["api.github.com"].budget.capacity, 10.0);
+        let mut buckets = t.buckets.lock();
+        let bucket = buckets.get_mut("api.github.com").unwrap();
+        for _ in 0..10 {
+            assert_eq!(bucket.tokens.take(), rate_limit::TokenAdmission::Granted);
+        }
+        assert_eq!(
+            bucket.tokens.take(),
+            rate_limit::TokenAdmission::Wait {
+                nanoseconds: 100_000_000
+            }
+        );
     }
 
     #[test]

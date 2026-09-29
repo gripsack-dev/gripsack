@@ -27,8 +27,8 @@ pub fn resolve_head(context: &crate::FetchContext, url: &str) -> Result<String, 
 fn run(command: &mut std::process::Command, url: &str) -> Result<Vec<u8>, FetchError> {
     let mut stdout = Vec::new();
     let limits = gripsack_process::Limits {
-        stdout_bytes: 16 * 1024,
-        line_bytes: 16 * 1024,
+        stdout_bytes: gripsack_process::StdoutByteLimit::new(16 * 1024),
+        line_bytes: gripsack_process::FrameByteLimit::new(16 * 1024),
         ..Default::default()
     };
     let outcome = gripsack_process::run(command, &[], limits, |line| {

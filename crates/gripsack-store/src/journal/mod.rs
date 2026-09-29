@@ -24,12 +24,14 @@
 
 pub mod marker;
 mod marker_wire;
+mod mutation;
+pub use mutation::{CapturedPrior, MutationPermit, capture, record};
 pub(crate) mod recover;
 mod storage;
 mod wire;
 pub use wire::{Entry, IntendedSerde, PriorSerde, WireRejection};
 
-pub use marker::{PendingSelection, RunOp, begin_run, commit_run, end_run};
+pub use marker::{JournalRun, RunOp, begin_run, commit_run, end_run};
 pub use recover::{NoteSeverity, RecoveryNote, reconcile};
 
 use gripsack_fs::Dir;
@@ -173,121 +175,6 @@ fn entry_name(dest: &Path) -> PathBuf {
         // never share an entry file because one was undecodable
         crate::hash::hex_sha256(dest.as_os_str().as_encoded_bytes())
     ))
-}
-
-/// Capture a destination's current state through its pinned parent
-/// capability (plan/0021): the capture, the journaled write, and the
-/// mark-after all name the SAME parent inode — a swapped path
-/// component cannot redirect the mutation the journal is protecting.
-/// File bytes back up into the prior blob store under `home`.
-/// `dest` is the display/record form (absolute); `dest_dir` +
-/// `dest_name` are the access path. Call immediately before the
-/// mutation; the capture and the write race nothing (the lifecycle
-/// lock serializes runs).
-pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io::Result<Prior> {
-    let meta = match dest_dir.symlink_metadata(dest_name) {
-        Ok(meta) => meta,
-        // only NotFound means absent — a permission error or I/O
-        // failure recorded as Absent would make recovery REMOVE a
-        // destination it could not even read (review finding)
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Prior::Absent),
-        Err(e) => {
-            return Err(io::Error::other(format!(
-                "cannot inspect {} to journal its prior state: {e}",
-                dest.display()
-            )));
-        }
-    };
-    if meta.file_type().is_symlink() {
-        let target = dest_dir.read_link_contents(dest_name)?;
-        let Some(target) = target.to_str() else {
-            // a non-UTF-8 target lossily recorded would re-create a
-            // DIFFERENT link on recovery — refuse the mutation
-            // instead of corrupting it on undo
-            return Err(io::Error::other(format!(
-                "{} is a symlink with a non-UTF-8 target ({} bytes) — gripsack \
-                 cannot journal it for recovery; remove or adopt it by hand",
-                dest.display(),
-                target.as_os_str().len()
-            )));
-        };
-        return Ok(Prior::Symlink {
-            target: target.to_string(),
-        });
-    }
-    if meta.is_file() {
-        let bytes = dest_dir.read(dest_name)?;
-        let hash = crate::prior::store_blob(home, &bytes)?;
-        #[cfg(unix)]
-        let mode = {
-            use gripsack_fs::cap_std::fs::MetadataExt;
-            meta.mode() & 0o7777
-        };
-        #[cfg(not(unix))]
-        let mode = 0o644;
-        return Ok(Prior::File {
-            hash,
-            mode: crate::prior::FileMode::try_from(mode)?,
-        });
-    }
-    // directories/fifos/devices are refused by deploy's guards; if
-    // one is here anyway, treat it as absent — recovery will not
-    // delete a directory through this path (remove_file only)
-    Ok(Prior::Absent)
-}
-
-/// Record the intent to mutate `dest`: prior state AND the intended
-/// post-mutation identity, durable BEFORE the mutation lands
-pub fn record(home: &Dir, dest: &Path, prior: &Prior, after: &Intended) -> io::Result<()> {
-    // 0045 F1: a lossy destination spelling would be restored to a
-    // DIFFERENT path after a crash — refuse to journal it. The object
-    // is untouched (record runs before the mutation) and the failed
-    // run compensates. Destinations originate in the UTF-8 IR, so
-    // this is defense in depth, not a user-facing rule.
-    let dest_str = dest.to_str().ok_or_else(|| {
-        io::Error::other(format!(
-            "destination {} is not valid UTF-8 — refusing to journal it (the object is untouched)",
-            dest.display()
-        ))
-    })?;
-    let journal = Journal::prepare(home)?;
-    let name = entry_name(dest);
-    let before = PriorSerde::from(prior);
-    let entry = match journal.read(&name) {
-        Ok(bytes) => {
-            let previous = Entry::from_wire(&bytes)
-                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
-            if previous.dest != dest_str {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "journal destination identity changed",
-                ));
-            }
-            let observed = prior_identity(&before, home)?;
-            let expected = Intended::from_wire(&previous.after);
-            let follows_previous = match (&observed, &expected) {
-                (None, Intended::Removed) => true,
-                (Some(observed), Intended::Object(expected)) => observed == expected,
-                _ => false,
-            };
-            if !follows_previous {
-                return Err(io::Error::other(
-                    "destination changed between journaled mutations; refusing to overwrite the intervening edit",
-                ));
-            }
-            previous.advance(before, after.to_serde())
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            Entry::new(dest_str.to_owned(), before, after.to_serde())
-        }
-        Err(error) => return Err(error),
-    };
-    journal.write(
-        &name,
-        serde_json::to_string(&entry)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-            .as_bytes(),
-    )
 }
 
 /// Open a destination's parent as a capability, returning it with the
@@ -500,6 +387,9 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<ObjectIde
 
 #[cfg(test)]
 mod admission_tests;
+
+#[cfg(test)]
+mod protocol_tests;
 
 #[cfg(test)]
 mod tests;

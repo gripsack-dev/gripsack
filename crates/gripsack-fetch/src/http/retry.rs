@@ -1,10 +1,11 @@
-//! Pure retry decisions; callers supply the monotonic clock (HttpRetry.tla bridge).
+//! HTTP clock/classification adapter for the shipped retry transition kernel.
 use super::failure::HttpFailureKind;
+use gripsack_policy::retry_budget as policy;
+use std::io;
 use std::time::{Duration, Instant};
 
-pub(crate) const OPERATION_TIMEOUT: Duration = Duration::from_secs(600);
-const WAIT_LIMIT: Duration = Duration::from_secs(30);
-const ATTEMPT_LIMIT: u8 = 3;
+pub(crate) const OPERATION_TIMEOUT: Duration =
+    Duration::from_nanos(policy::OPERATION_NANOSECONDS as u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetryStopReason {
@@ -14,6 +15,7 @@ pub enum RetryStopReason {
     WaitBudget,
     ServerCooldown,
     UnknownServerDelay,
+    ProtocolOrder,
 }
 impl std::fmt::Display for RetryStopReason {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -24,7 +26,21 @@ impl std::fmt::Display for RetryStopReason {
             Self::WaitBudget => "server delay exceeds retry-wait budget",
             Self::ServerCooldown => "host cooldown active; request not attempted",
             Self::UnknownServerDelay => "server cooldown/reset unavailable or invalid; not retried",
+            Self::ProtocolOrder => "HTTP attempt protocol order was violated",
         })
+    }
+}
+impl From<policy::RetryRefusal> for RetryStopReason {
+    fn from(reason: policy::RetryRefusal) -> Self {
+        match reason {
+            policy::RetryRefusal::NonRetryable => Self::NonRetryable,
+            policy::RetryRefusal::AttemptLimit => Self::AttemptLimit,
+            policy::RetryRefusal::Deadline => Self::Deadline,
+            policy::RetryRefusal::WaitBudget => Self::WaitBudget,
+            policy::RetryRefusal::ServerCooldown => Self::ServerCooldown,
+            policy::RetryRefusal::UnknownServerDelay => Self::UnknownServerDelay,
+            policy::RetryRefusal::ProtocolOrder => Self::ProtocolOrder,
+        }
     }
 }
 
@@ -35,88 +51,124 @@ pub(crate) enum RetryDecision {
 }
 
 pub(crate) struct RequestBudget {
-    pub started: Instant,
-    pub deadline: Instant,
-    pub attempts: u8,
-    pub waited: Duration,
+    started: Instant,
+    deadline: Instant,
+    state: policy::RetryBudget,
 }
 impl RequestBudget {
-    pub fn new(now: Instant) -> Self {
-        Self {
+    pub fn new(now: Instant) -> io::Result<Self> {
+        let deadline = now.checked_add(OPERATION_TIMEOUT).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "HTTP operation timeout exceeds Instant range",
+            )
+        })?;
+        Ok(Self {
             started: now,
-            deadline: now + OPERATION_TIMEOUT,
-            attempts: 0,
-            waited: Duration::ZERO,
+            deadline,
+            state: policy::RetryBudget::new(),
+        })
+    }
+
+    pub fn started(&self) -> Instant {
+        self.started
+    }
+    pub fn deadline(&self) -> Instant {
+        self.deadline
+    }
+    pub fn attempts(&self) -> u8 {
+        self.state.attempt_count()
+    }
+    pub fn waited(&self) -> Duration {
+        Duration::from_nanos(self.state.waited_nanoseconds())
+    }
+
+    pub fn begin(&mut self, mut now: Instant) -> Result<Duration, RetryStopReason> {
+        loop {
+            match self
+                .state
+                .begin(now.saturating_duration_since(self.started).as_nanos())
+            {
+                policy::AttemptAdmission::Start { remaining_ns, .. } => {
+                    return Ok(Duration::from_nanos(remaining_ns));
+                }
+                policy::AttemptAdmission::Wait { nanoseconds } => {
+                    std::thread::sleep(Duration::from_nanos(nanoseconds));
+                    now = Instant::now();
+                }
+                policy::AttemptAdmission::Stop(reason) => return Err(reason.into()),
+            }
         }
     }
-    pub fn begin(&mut self, now: Instant) -> Result<Duration, RetryStopReason> {
-        if now >= self.deadline {
-            return Err(RetryStopReason::Deadline);
-        }
-        if self.attempts >= ATTEMPT_LIMIT {
-            return Err(RetryStopReason::AttemptLimit);
-        }
-        self.attempts += 1;
-        Ok(self.deadline.duration_since(now))
-    }
+
     pub fn decide(
-        &self,
+        &mut self,
         now: Instant,
         kind: HttpFailureKind,
         server_wait: Option<Duration>,
     ) -> RetryDecision {
-        if !kind.retryable() {
-            return RetryDecision::Stop(RetryStopReason::NonRetryable);
+        match self.state.decide(
+            now.saturating_duration_since(self.started).as_nanos(),
+            kind.retryable(),
+            server_wait.map(|wait| wait.as_nanos()),
+        ) {
+            policy::RetryDecision::RetryAfter { nanoseconds } => {
+                RetryDecision::RetryAfter(Duration::from_nanos(nanoseconds))
+            }
+            policy::RetryDecision::Stop(reason) => RetryDecision::Stop(reason.into()),
         }
-        if now >= self.deadline {
-            return RetryDecision::Stop(RetryStopReason::Deadline);
-        }
-        if self.attempts >= ATTEMPT_LIMIT {
-            return RetryDecision::Stop(RetryStopReason::AttemptLimit);
-        }
-        let delay = Duration::from_secs(1 << self.attempts.saturating_sub(1));
-        let delay = server_wait.map_or(delay, |server| server.max(delay));
-        if delay > WAIT_LIMIT.saturating_sub(self.waited) {
-            return RetryDecision::Stop(RetryStopReason::WaitBudget);
-        }
-        if delay >= self.deadline.saturating_duration_since(now) {
-            return RetryDecision::Stop(RetryStopReason::Deadline);
-        }
-        RetryDecision::RetryAfter(delay)
+    }
+
+    pub fn complete(&mut self, now: Instant) -> Result<(), RetryStopReason> {
+        self.state
+            .complete(now.saturating_duration_since(self.started).as_nanos())
+            .map_err(Into::into)
+    }
+
+    pub fn stop(&mut self, reason: policy::RetryRefusal) -> RetryStopReason {
+        self.state.stop(reason).into()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_expired_clock_observation_cannot_admit_an_attempt() {
+        let started = Instant::now();
+        let mut budget = RequestBudget::new(started).unwrap();
+        assert_eq!(
+            budget.begin(started + OPERATION_TIMEOUT),
+            Err(RetryStopReason::Deadline),
+            "expired_http_attempt_admitted",
+        );
+    }
     #[test]
     fn real_retry_policy_has_fixed_deadline_and_bounded_attempts() {
         let start = Instant::now();
-        let mut budget = RequestBudget::new(start);
-        let original_deadline = budget.deadline;
+        let mut budget = RequestBudget::new(start).unwrap();
+        let original_deadline = budget.deadline();
         let mut now = start;
         for attempt in 1..=3 {
             budget.begin(now).unwrap();
-            assert_eq!(budget.attempts, attempt);
+            assert_eq!(budget.attempts(), attempt);
             match budget.decide(now, HttpFailureKind::Status(500), None) {
                 RetryDecision::RetryAfter(delay) => {
                     now += delay;
-                    budget.waited += delay;
                 }
                 RetryDecision::Stop(reason) => {
                     assert_eq!(attempt, 3);
                     assert_eq!(reason, RetryStopReason::AttemptLimit);
                 }
             }
-            assert_eq!(budget.deadline, original_deadline);
+            assert_eq!(budget.deadline(), original_deadline);
         }
         assert_eq!(budget.begin(now), Err(RetryStopReason::AttemptLimit));
     }
     #[test]
     fn terminal_classes_and_upstream_cooldowns_never_get_fast_replays() {
         let now = Instant::now();
-        let mut budget = RequestBudget::new(now);
-        budget.begin(now).unwrap();
         for kind in [
             HttpFailureKind::Status(401),
             HttpFailureKind::Status(403),
@@ -125,11 +177,18 @@ mod tests {
             HttpFailureKind::InvalidMetadata,
             HttpFailureKind::LoginPage,
         ] {
+            let mut budget = RequestBudget::new(now).unwrap();
+            budget.begin(now).unwrap();
             assert_eq!(
                 budget.decide(now, kind, None),
-                RetryDecision::Stop(RetryStopReason::NonRetryable)
+                RetryDecision::Stop(RetryStopReason::NonRetryable),
+                "nonretryable_http_failure_replayed",
             );
+            assert_eq!(budget.complete(now), Err(RetryStopReason::NonRetryable));
+            assert_eq!(budget.begin(now), Err(RetryStopReason::NonRetryable));
         }
+        let mut budget = RequestBudget::new(now).unwrap();
+        budget.begin(now).unwrap();
         assert_eq!(
             budget.decide(
                 now,
@@ -138,10 +197,14 @@ mod tests {
             ),
             RetryDecision::Stop(RetryStopReason::WaitBudget)
         );
+        let mut budget = RequestBudget::new(now).unwrap();
+        budget.begin(now).unwrap();
         assert_eq!(
-            budget.decide(budget.deadline, HttpFailureKind::Timeout, None),
+            budget.decide(budget.deadline(), HttpFailureKind::Timeout, None),
             RetryDecision::Stop(RetryStopReason::Deadline)
         );
+        let mut budget = RequestBudget::new(now).unwrap();
+        budget.begin(now).unwrap();
         assert_eq!(
             budget.decide(
                 now,

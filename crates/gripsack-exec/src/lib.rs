@@ -50,7 +50,7 @@ pub use frontend::{ensure_deno, ensure_ts_frontend};
 pub use gc::{GcReport, PathOwner, gc, why_owns};
 pub use report::{
     ApplyResult, ReportKind, StepReport, UpdateCheckOutcome, UpdateReport, UpdateStatus,
-    UpdateSummary,
+    UpdateSummary, UpdateSurvey,
 };
 pub use rollback::rollback_generation;
 pub use source::preflight::{

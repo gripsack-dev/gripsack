@@ -138,17 +138,21 @@ impl NativeProfiles {
             .collect()
     }
 
-    pub(crate) fn update_reports(&self) -> Vec<crate::UpdateReport> {
-        self.layout_evidence()
-            .into_iter()
-            .map(|(name, layout)| crate::UpdateReport {
-                module: name,
+    pub(crate) fn update_reports(&self) -> Result<crate::UpdateSurvey, ExecError> {
+        let mut reports = crate::report::SurveyReports::new(self.profiles.len());
+        for (name, profile) in &self.profiles {
+            reports.push(crate::UpdateReport {
+                module: name.clone(),
                 status: crate::UpdateStatus::Skipped {
                     reason: "native profile files are captured directly; no external pins",
                 },
-                layout,
-            })
-            .collect()
+                layout: crate::LayoutEvidence {
+                    checked_paths: profile.files.len(),
+                    deferred: Vec::new(),
+                },
+            })?;
+        }
+        reports.finish()
     }
 
     /// All file preparation and all immutable publication complete before the
@@ -156,6 +160,7 @@ impl NativeProfiles {
     pub(crate) fn deploy(
         &self,
         ctx: &Ctx,
+        journal: &store::journal::JournalRun<'_>,
         previous: &BTreeMap<String, store::ModuleState>,
     ) -> Result<crate::schedule::ScheduleOutcome, ExecError> {
         let mut reports = Vec::new();
@@ -213,6 +218,7 @@ impl NativeProfiles {
                     &mut entries,
                     ctx,
                     DeploymentInput {
+                        journal,
                         owner: name,
                         entry: &file.entry,
                         store_path: &profile.store_path,

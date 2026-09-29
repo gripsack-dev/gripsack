@@ -65,19 +65,38 @@ THEOREM OrdinaryLifecycleKeepsActiveConstructor ==
   BY SMT DEF PreparationTypes, PreparationOwnerBinding, NeedsActivation
 <1>2. UNCHANGED plans
   BY OrdinaryLifecycleKeepsPlanBytes
-<1>3. QED
-  BY SMT, <1>1, <1>2, CorrectJournal
-  DEF OrdinaryPreparedLifecycleStep, PublicationWithHooks, PublicationStep, ObservedGenerationWithHooks,
-      AdmitObservedGeneration, BeginLifecycleEpoch, BeginEpoch, StationaryJournalStep, PrepareSelection,
-      WriteRunMarker, SealRunMarker, WriterStep, RestoreStep, RemoveEntry, FinishWriting, FinishNoop,
-      ClassifyRecovery, RetryRecovery, FinishRestoring, SealEntryRemoval, RemoveMarker, AlreadyMissingMarker,
-      SealMarkerRemoval, WritebackDestination, ExternalDestination, Selection!SealReservations, Selection!SealMarker,
-      WriteActivationPointer, SealActivationPointer, FlipLifecycleSelection, SealLifecycleCommit,
-      FlipSelection, SealCommittedSelection, WritebackLifecycleCurrent, HookCurrentWriteback,
-      ActivationExecutionStep, ActivationHomeBarrier, ActivationStorageStep, JournalHomeBarrier,
-      Selection!SealCurrent, Hooks!WritePointer, Hooks!SyncPointer, Hooks!Flip, Hooks!WritebackCurrent,
-      Hooks!WritebackPending, Hooks!WritebackOutcomes, Hooks!WritebackArchive,
-      activationLifecycleVars, lifecycleVars, vars, selectionVars, control, hookVars, Hooks!home, Hooks!process
+<1>3. CASE PublicationWithHooks \/ (\E generation \in GenerationIds : ObservedGenerationWithHooks(generation))
+  BY ONLY SMT, <1>3, <1>2
+  DEF PublicationWithHooks, PublicationStep, ObservedGenerationWithHooks, AdmitObservedGeneration,
+      vars, selectionVars, control, hookVars
+<1>4. CASE \E transaction \in Transactions, generation \in GenerationIds :
+            BeginLifecycleEpoch(transaction, generation)
+  BY ONLY SMT, <1>4, <1>1 DEF BeginLifecycleEpoch, BeginEpoch
+<1>5. CASE StationaryJournalStep(admitted)
+  BY ONLY SMT, <1>5, <1>1, <1>2
+  DEF StationaryJournalStep, PrepareSelection, WriteRunMarker, SealRunMarker, WriterStep,
+      RestoreStep, RemoveEntry, FinishWriting, FinishNoop, ClassifyRecovery, RetryRecovery,
+      FinishRestoring, SealEntryRemoval, RemoveMarker, AlreadyMissingMarker, SealMarkerRemoval,
+      WritebackDestination, ExternalDestination, Selection!SealReservations, Selection!SealMarker,
+      selectionVars, control, hookVars
+<1>6. CASE WriteActivationPointer \/ SealActivationPointer \/ FlipLifecycleSelection
+  BY ONLY SMT, <1>6, <1>1
+  DEF WriteActivationPointer, SealActivationPointer, FlipLifecycleSelection,
+      Hooks!WritePointer, Hooks!SyncPointer, Hooks!Flip
+<1>7. CASE SealLifecycleCommit \/ ActivationExecutionStep \/ ActivationHomeBarrier
+  BY ONLY SMT, <1>7, <1>1
+  DEF SealLifecycleCommit, SealCommittedSelection, ActivationExecutionStep, ActivationHomeBarrier
+<1>8. CASE WritebackLifecycleCurrent
+  BY ONLY SMT, <1>8, <1>2
+  DEF WritebackLifecycleCurrent, JournalHomeBarrier, HookCurrentWriteback, Selection!SealCurrent,
+      Hooks!WritebackCurrent, control, hookVars, Hooks!process
+<1>9. CASE ActivationStorageStep
+  BY ONLY SMT, <1>9, <1>2
+  DEF ActivationStorageStep, Hooks!WritebackPending, Hooks!WritebackOutcomes, Hooks!WritebackArchive,
+      lifecycleVars, vars, selectionVars, control, Hooks!home, Hooks!process
+<1>10. QED
+  BY ONLY SMT, OrdinaryPreparedLifecycleStep(admitted), <1>3, <1>4, <1>5, <1>6, <1>7, <1>8, <1>9
+  DEF OrdinaryPreparedLifecycleStep
 
 THEOREM BeginPreparationPreservesHistory ==
   ASSUME NEW transaction \in Transactions, PreparedLifecycleInvariant, BeginPreparation(transaction)

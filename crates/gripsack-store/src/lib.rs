@@ -38,8 +38,8 @@ mod selection_wire;
 pub mod trust;
 
 pub use generations::{
-    DeployedEntry, Generation, IntentRecord, ModuleState, current as current_generation, flip,
-    list as list_generations, read_manifest, write_manifest,
+    CommittedSelection, DeployedEntry, Generation, IntentRecord, ModuleState,
+    current as current_generation, flip, list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{
     canonical_bytes_hash, canonical_bytes_identity, canonical_file_hash, canonical_file_hash_in,
