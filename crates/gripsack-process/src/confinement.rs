@@ -22,14 +22,14 @@
 //!
 //! Other platforms fail closed: assembling a boundary returns an error and the
 //! evaluator refuses to run rather than evaluating unconfined.
+#[cfg(target_os = "linux")]
 use std::os::fd::FromRawFd;
+#[cfg(target_os = "linux")]
+use std::{ffi::OsStr, io::Read, os::unix::io::AsRawFd, process::Command};
 use std::{
-    ffi::OsStr,
     fs::File,
-    io::{self, Read},
-    os::unix::io::AsRawFd,
+    io,
     path::{Path, PathBuf},
-    process::Command,
 };
 /// `prctl(PR_SET_NO_NEW_PRIVS)` — fixed as 38 on every Linux ABI.
 const PR_SET_NO_NEW_PRIVS: libc::c_int = 38;

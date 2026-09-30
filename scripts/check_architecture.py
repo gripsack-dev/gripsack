@@ -29,6 +29,10 @@ ALLOWED: dict[str, frozenset[str]] = {
     "gripsack-store": frozenset({
         "gripsack-fs", "gripsack-ir", "gripsack-policy", "gripsack-process", "serde", "serde_json",
         "toml", "sha2", "tempfile", "getrandom",
+        # url: pure RFC3986 parsing for logical_text's file-URL mapping (no
+        # network/TLS surface). jsonschema: dev-only schema↔producer parity
+        # tests for trust/evaluation/source-bundle wire contracts.
+        "url", "jsonschema",
     }),
 }
 FORBIDDEN_TLS = frozenset({"openssl", "openssl-sys", "native-tls"})

@@ -99,7 +99,11 @@ fn completed_cleanup_cannot_erase_an_expired_operation() {
     }
     // The original operation allowance expires after successful termination.
     // There are no pipes to drain; only otherwise-complete cleanup is tested.
-    std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+    // Loop rather than one sleep: an early wake must never let the deadline
+    // look unexpired to the guard.
+    while Instant::now() < deadline {
+        std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+    }
     let (status, error) = guard.finish(|_| Ok(true));
     assert_eq!(status.unwrap().signal(), Some(libc::SIGKILL));
     assert!(
