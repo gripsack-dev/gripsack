@@ -1,7 +1,7 @@
 //! Exec exactly the admitted image. std::Command's Unix execvp fallback may
 //! interpret ENOEXEC through an unadmitted shell; this path deliberately uses
 //! execve after the shared supervisor has configured stdio/process groups.
-use super::{ActivationEnvironment, OperatorEnvironment, ProcessRole, image::Program};
+use super::{ActivationEnvironment, OperatorEnvironment, ProcessRole, image::SelectedProgram};
 use std::{
     ffi::{CString, OsStr},
     io,
@@ -45,7 +45,7 @@ unsafe impl Sync for ExecPayload {}
 
 impl ExecPayload {
     pub(crate) fn new(
-        program: &Program,
+        program: &SelectedProgram,
         arguments: &[&OsStr],
         operator: &OperatorEnvironment,
         role: ProcessRole,

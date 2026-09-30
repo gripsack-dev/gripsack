@@ -1,0 +1,3543 @@
+R1 captured-source development evidence — 2026-09-29
+Status: development only; complete/native/exact-candidate qualification remains open.
+No fuzz or saved-corpus replay was run.
+
+=== Initial real CLI source/policy approval smoke (artifact 920) ===
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.37kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.8s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 0.6s
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.6s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#9 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 4.22MB 0.2s done
+#11 DONE 0.2s
+
+#12 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#12 CACHED
+
+#13 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#13 CACHED
+
+#14 [builder  4/10] WORKDIR /app
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 DONE 0.1s
+
+#16 [builder  6/10] COPY crates ./crates
+#16 DONE 0.3s
+
+#17 [builder  7/10] COPY fuzz ./fuzz
+#17 DONE 0.1s
+
+#18 [builder  8/10] COPY schema ./schema
+#18 DONE 0.0s
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 DONE 0.1s
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.0s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.391     Updating crates.io index
+#21 2.855  Downloading crates ...
+#21 2.927   Downloaded errno v0.3.14
+#21 2.938   Downloaded adler2 v2.0.1
+#21 2.941   Downloaded ambient-authority v0.0.2
+#21 2.943   Downloaded anstyle v1.0.14
+#21 2.945   Downloaded anstyle-parse v1.0.0
+#21 2.948   Downloaded lazy_static v1.5.0
+#21 2.952   Downloaded block-buffer v0.12.1
+#21 2.954   Downloaded anstyle-query v1.1.5
+#21 2.957   Downloaded stable_deref_trait v1.2.1
+#21 2.958   Downloaded crypto-common v0.2.2
+#21 2.960   Downloaded subtle v2.6.1
+#21 2.965   Downloaded cfg-if v1.0.4
+#21 2.968   Downloaded fs-set-times v0.20.3
+#21 2.971   Downloaded form_urlencoded v1.2.2
+#21 2.973   Downloaded anstream v1.0.0
+#21 2.977   Downloaded equivalent v1.0.2
+#21 2.979   Downloaded filetime v0.2.29
+#21 2.983   Downloaded log v0.4.34
+#21 2.988   Downloaded find-msvc-tools v0.1.11
+#21 2.991   Downloaded digest v0.11.3
+#21 2.996   Downloaded displaydoc v0.2.7
+#21 2.999   Downloaded crc32fast v1.5.1
+#21 3.004   Downloaded matchers v0.2.0
+#21 3.006   Downloaded clap_lex v1.1.0
+#21 3.008   Downloaded maybe-owned v0.3.4
+#21 3.010   Downloaded potential_utf v0.1.6
+#21 3.013   Downloaded cpufeatures v0.3.0
+#21 3.015   Downloaded is_terminal_polyfill v1.70.2
+#21 3.017   Downloaded convert_case v0.4.0
+#21 3.019   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 3.021   Downloaded idna_adapter v1.2.2
+#21 3.023   Downloaded openssl-probe v0.2.1
+#21 3.026   Downloaded shell-words v1.1.1
+#21 3.028   Downloaded strsim v0.11.1
+#21 3.031   Downloaded tracing-serde v0.2.0
+#21 3.033   Downloaded colorchoice v1.0.5
+#21 3.034   Downloaded httpdate v1.0.3
+#21 3.038   Downloaded heck v0.5.0
+#21 3.040   Downloaded zerofrom-derive v0.1.7
+#21 3.042   Downloaded serde_spanned v1.1.1
+#21 3.044   Downloaded dialoguer v0.12.0
+#21 3.051   Downloaded itoa v1.0.18
+#21 3.055   Downloaded ipnet v2.12.1
+#21 3.057   Downloaded percent-encoding v2.3.2
+#21 3.059   Downloaded io-lifetimes v3.0.1
+#21 3.062   Downloaded rustix-linux-procfs v0.1.1
+#21 3.064   Downloaded quote v1.0.47
+#21 3.070   Downloaded bzip2 v0.6.1
+#21 3.074   Downloaded io-lifetimes v2.0.4
+#21 3.076   Downloaded lock_api v0.4.14
+#21 3.078   Downloaded scopeguard v1.2.0
+#21 3.081   Downloaded thread_local v1.1.10
+#21 3.084   Downloaded pkg-config v0.3.34
+#21 3.087   Downloaded rustls-native-certs v0.8.4
+#21 3.089   Downloaded nu-ansi-term v0.50.3
+#21 3.094   Downloaded pin-project-lite v0.2.17
+#21 3.106   Downloaded fastrand v2.5.0
+#21 3.109   Downloaded owo-colors v4.3.0
+#21 3.112   Downloaded console v0.16.4
+#21 3.115   Downloaded clap_derive v4.6.4
+#21 3.120   Downloaded getrandom v0.2.17
+#21 3.125   Downloaded parking_lot v0.12.5
+#21 3.130   Downloaded parking_lot_core v0.9.12
+#21 3.134   Downloaded litemap v0.8.3
+#21 3.139   Downloaded once_cell v1.21.4
+#21 3.143   Downloaded rustls-pki-types v1.15.1
+#21 3.147   Downloaded ryu v1.0.23
+#21 3.154   Downloaded bitflags v2.13.1
+#21 3.160   Downloaded cap-std v4.0.3
+#21 3.167   Downloaded jobserver v0.1.35
+#21 3.171   Downloaded simd-adler32 v0.3.10
+#21 3.174   Downloaded io-extras v0.19.0
+#21 3.178   Downloaded tinystr v0.8.4
+#21 3.182   Downloaded clap v4.6.6
+#21 3.198   Downloaded thiserror v2.0.20
+#21 3.207   Downloaded hybrid-array v0.4.14
+#21 3.211   Downloaded const-oid v0.10.2
+#21 3.215   Downloaded utf8parse v0.2.2
+#21 3.217   Downloaded getrandom v0.4.3
+#21 3.223   Downloaded webpki-roots v0.26.11
+#21 3.226   Downloaded unit-prefix v0.5.2
+#21 3.229   Downloaded utf8_iter v1.0.4
+#21 3.230   Downloaded serde_core v1.0.229
+#21 3.235   Downloaded icu_provider v2.3.1
+#21 3.240   Downloaded libbz2-rs-sys v0.2.5
+#21 3.243   Downloaded flate2 v1.1.9
+#21 3.251   Downloaded proc-macro2 v1.0.107
+#21 3.256   Downloaded serde_yaml v0.9.34+deprecated
+#21 3.262   Downloaded indicatif v0.18.6
+#21 3.268   Downloaded base64 v0.22.1
+#21 3.276   Downloaded bumpalo v3.20.3
+#21 3.281   Downloaded yoke-derive v0.8.2
+#21 3.283   Downloaded aho-corasick v1.1.5
+#21 3.292   Downloaded miniz_oxide v0.8.9
+#21 3.296   Downloaded icu_normalizer_data v2.3.0
+#21 3.300   Downloaded xattr v1.6.1
+#21 3.304   Downloaded icu_collections v2.3.0
+#21 3.315   Downloaded icu_locale_core v2.3.0
+#21 3.330   Downloaded serde v1.0.229
+#21 3.337   Downloaded rustls-webpki v0.103.15
+#21 3.342   Downloaded cap-primitives v4.0.3
+#21 3.359   Downloaded memchr v2.8.3
+#21 3.372   Downloaded icu_properties v2.3.0
+#21 3.377   Downloaded untrusted v0.9.0
+#21 3.381   Downloaded cc v1.4.4
+#21 3.386   Downloaded indexmap v2.14.0
+#21 3.394   Downloaded idna v1.1.0
+#21 3.399   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 3.401   Downloaded thiserror-impl v2.0.20
+#21 3.404   Downloaded shlex v2.0.1
+#21 3.408   Downloaded clap_builder v4.6.6
+#21 3.420   Downloaded hashbrown v0.17.1
+#21 3.430   Downloaded icu_properties_data v2.3.0
+#21 3.445   Downloaded serde_json v1.0.151
+#21 3.457   Downloaded portable-atomic v1.15.0
+#21 3.469   Downloaded tracing-log v0.2.0
+#21 3.472   Downloaded smallvec v1.15.2
+#21 3.475   Downloaded zstd-safe v7.2.4
+#21 3.477   Downloaded zstd v0.13.3
+#21 3.483   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 3.485   Downloaded xz2 v0.1.7
+#21 3.489   Downloaded writeable v0.6.4
+#21 3.493   Downloaded zerofrom v0.1.8
+#21 3.495   Downloaded regex-syntax v0.8.11
+#21 3.503   Downloaded zeroize v1.9.0
+#21 3.507   Downloaded zerovec-derive v0.11.6
+#21 3.510   Downloaded zmij v1.0.23
+#21 3.514   Downloaded rustls v0.23.45
+#21 3.532   Downloaded rustix v1.1.4
+#21 3.586   Downloaded synstructure v0.13.2
+#21 3.588   Downloaded yoke v0.8.3
+#21 3.591   Downloaded sha2 v0.11.0
+#21 3.599   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 3.604   Downloaded icu_normalizer v2.3.0
+#21 3.614   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 3.616   Downloaded regex-automata v0.4.18
+#21 3.637   Downloaded tempfile v3.27.0
+#21 3.642   Downloaded sharded-slab v0.1.7
+#21 3.648   Downloaded lzma-sys v0.1.20
+#21 3.694   Downloaded tracing-core v0.1.36
+#21 3.699   Downloaded libc v0.2.189
+#21 3.812   Downloaded serde_derive v1.0.229
+#21 3.816   Downloaded unicode-ident v1.0.24
+#21 3.822   Downloaded toml v1.1.4+spec-1.1.0
+#21 3.830   Downloaded ring v0.17.14
+#21 3.891   Downloaded tracing-attributes v0.1.31
+#21 3.896   Downloaded unsafe-libyaml v0.2.11
+#21 3.903   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 3.910   Downloaded tar v0.4.46
+#21 3.916   Downloaded toml v0.9.12+spec-1.1.0
+#21 3.924   Downloaded zopfli v0.8.3
+#21 3.927   Downloaded linux-raw-sys v0.12.1
+#21 3.993   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.000   Downloaded url v2.5.8
+#21 4.003   Downloaded zerotrie v0.2.5
+#21 4.011   Downloaded typenum v1.20.1
+#21 4.016   Downloaded typed-path v0.12.3
+#21 4.032   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 4.036   Downloaded ureq v2.12.1
+#21 4.045   Downloaded zerovec v0.11.8
+#21 4.055   Downloaded zip v8.6.0
+#21 4.061   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 4.066   Downloaded winnow v1.0.4
+#21 4.083   Downloaded winnow v0.7.15
+#21 4.101   Downloaded tracing-subscriber v0.3.23
+#21 4.116   Downloaded zlib-rs v0.6.7
+#21 4.125   Downloaded webpki-roots v1.0.9
+#21 4.129   Downloaded unicode-width v0.2.2
+#21 4.137   Downloaded syn v3.0.4
+#21 4.151   Downloaded syn v2.0.119
+#21 4.165   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 4.180   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 4.195   Downloaded tracing v0.1.44
+#21 4.213   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 4.428    Compiling proc-macro2 v1.0.107
+#21 4.428    Compiling quote v1.0.47
+#21 4.429    Compiling unicode-ident v1.0.24
+#21 4.432    Compiling libc v0.2.189
+#21 4.435    Compiling cfg-if v1.0.4
+#21 4.437    Compiling serde_core v1.0.229
+#21 4.437    Compiling find-msvc-tools v0.1.11
+#21 4.439    Compiling shlex v2.0.1
+#21 4.439    Compiling stable_deref_trait v1.2.1
+#21 4.440    Compiling equivalent v1.0.2
+#21 4.440    Compiling hashbrown v0.17.1
+#21 4.440    Compiling once_cell v1.21.4
+#21 4.440    Compiling rustix v1.1.4
+#21 4.443    Compiling serde v1.0.229
+#21 4.443    Compiling bitflags v2.13.1
+#21 4.444    Compiling linux-raw-sys v0.12.1
+#21 4.447    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.450    Compiling pkg-config v0.3.34
+#21 4.456    Compiling writeable v0.6.4
+#21 4.461    Compiling zmij v1.0.23
+#21 4.461    Compiling litemap v0.8.3
+#21 4.465    Compiling smallvec v1.15.2
+#21 4.474    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.478    Compiling icu_normalizer_data v2.3.0
+#21 4.485    Compiling itoa v1.0.18
+#21 4.485    Compiling utf8_iter v1.0.4
+#21 4.497    Compiling memchr v2.8.3
+#21 4.497    Compiling convert_case v0.4.0
+#21 4.497    Compiling serde_json v1.0.151
+#21 4.497    Compiling icu_properties_data v2.3.0
+#21 4.497    Compiling typenum v1.20.1
+#21 4.507    Compiling zeroize v1.9.0
+#21 4.522    Compiling io-lifetimes v3.0.1
+#21 4.601    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.604    Compiling winnow v1.0.4
+#21 4.637    Compiling io-lifetimes v2.0.4
+#21 4.648    Compiling io-extras v0.19.0
+#21 4.756    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 4.756    Compiling log v0.4.34
+#21 4.771    Compiling thiserror v2.0.20
+#21 4.788    Compiling rustls-pki-types v1.15.1
+#21 4.802    Compiling cap-primitives v4.0.3
+#21 4.819    Compiling getrandom v0.4.3
+#21 4.837    Compiling tracing-core v0.1.36
+#21 4.855    Compiling percent-encoding v2.3.2
+#21 4.862    Compiling maybe-owned v0.3.4
+#21 4.871    Compiling crc32fast v1.5.1
+#21 4.891    Compiling ambient-authority v0.0.2
+#21 4.891    Compiling const-oid v0.10.2
+#21 4.953    Compiling cap-std v4.0.3
+#21 4.957    Compiling ipnet v2.12.1
+#21 4.991    Compiling cpufeatures v0.3.0
+#21 5.005    Compiling winnow v0.7.15
+#21 5.027    Compiling fastrand v2.5.0
+#21 5.057    Compiling form_urlencoded v1.2.2
+#21 5.080    Compiling zstd-safe v7.2.4
+#21 5.093    Compiling simd-adler32 v0.3.10
+#21 5.125    Compiling untrusted v0.9.0
+#21 5.138    Compiling pin-project-lite v0.2.17
+#21 5.177    Compiling parking_lot_core v0.9.12
+#21 5.215    Compiling adler2 v2.0.1
+#21 5.228    Compiling rustls v0.23.45
+#21 5.229    Compiling zlib-rs v0.6.7
+#21 5.247    Compiling subtle v2.6.1
+#21 5.265    Compiling scopeguard v1.2.0
+#21 5.273    Compiling libbz2-rs-sys v0.2.5
+#21 5.274    Compiling bumpalo v3.20.3
+#21 5.292    Compiling openssl-probe v0.2.1
+#21 5.339    Compiling lock_api v0.4.14
+#21 5.348    Compiling typed-path v0.12.3
+#21 5.348    Compiling regex-syntax v0.8.11
+#21 5.355    Compiling miniz_oxide v0.8.9
+#21 5.361    Compiling base64 v0.22.1
+#21 5.386    Compiling webpki-roots v1.0.9
+#21 5.401    Compiling utf8parse v0.2.2
+#21 5.446    Compiling indexmap v2.14.0
+#21 5.484    Compiling rustls-native-certs v0.8.4
+#21 5.495    Compiling colorchoice v1.0.5
+#21 5.507    Compiling webpki-roots v0.26.11
+#21 5.513    Compiling anstyle-parse v1.0.0
+#21 5.521    Compiling portable-atomic v1.15.0
+#21 5.528    Compiling anstyle v1.0.14
+#21 5.533    Compiling anstyle-query v1.1.5
+#21 5.574    Compiling unicode-width v0.2.2
+#21 5.585    Compiling is_terminal_polyfill v1.70.2
+#21 5.620    Compiling httpdate v1.0.3
+#21 5.628    Compiling ryu v1.0.23
+#21 5.670    Compiling zopfli v0.8.3
+#21 5.681    Compiling unsafe-libyaml v0.2.11
+#21 5.692    Compiling lazy_static v1.5.0
+#21 5.711    Compiling tracing-log v0.2.0
+#21 5.729    Compiling thread_local v1.1.10
+#21 5.737    Compiling nu-ansi-term v0.50.3
+#21 5.737    Compiling owo-colors v4.3.0
+#21 5.754    Compiling heck v0.5.0
+#21 5.782    Compiling sharded-slab v0.1.7
+#21 5.818    Compiling strsim v0.11.1
+#21 5.889    Compiling anstream v1.0.0
+#21 5.973    Compiling clap_lex v1.1.0
+#21 5.982    Compiling unit-prefix v0.5.2
+#21 5.987    Compiling shell-words v1.1.1
+#21 6.110    Compiling bzip2 v0.6.1
+#21 6.280    Compiling hybrid-array v0.4.14
+#21 6.288    Compiling clap_builder v4.6.6
+#21 6.323    Compiling syn v2.0.119
+#21 6.332    Compiling syn v3.0.4
+#21 6.340    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 6.651    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 6.657    Compiling jobserver v0.1.35
+#21 6.657    Compiling getrandom v0.2.17
+#21 6.658    Compiling filetime v0.2.29
+#21 6.658    Compiling console v0.16.4
+#21 6.908    Compiling parking_lot v0.12.5
+#21 6.932    Compiling cc v1.4.4
+#21 7.037    Compiling block-buffer v0.12.1
+#21 7.037    Compiling crypto-common v0.2.2
+#21 7.212    Compiling indicatif v0.18.6
+#21 7.361    Compiling regex-automata v0.4.18
+#21 7.984    Compiling digest v0.11.3
+#21 8.110    Compiling sha2 v0.11.0
+#21 8.486    Compiling serde_spanned v1.1.1
+#21 8.486    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 8.486    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 8.673    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 8.673    Compiling ring v0.17.14
+#21 8.673    Compiling lzma-sys v0.1.20
+#21 8.729    Compiling toml v0.9.12+spec-1.1.0
+#21 8.746    Compiling toml v1.1.4+spec-1.1.0
+#21 8.746    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 8.936    Compiling flate2 v1.1.9
+#21 9.814    Compiling rustix-linux-procfs v0.1.1
+#21 9.814    Compiling fs-set-times v0.20.3
+#21 9.856    Compiling tempfile v3.27.0
+#21 9.915    Compiling xattr v1.6.1
+#21 9.915    Compiling matchers v0.2.0
+#21 10.13    Compiling xz2 v0.1.7
+#21 10.21    Compiling tar v0.4.46
+#21 10.27    Compiling dialoguer v0.12.0
+#21 11.22    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 11.59    Compiling synstructure v0.13.2
+#21 12.25    Compiling zerovec-derive v0.11.6
+#21 12.25    Compiling displaydoc v0.2.7
+#21 12.25    Compiling serde_derive v1.0.229
+#21 12.25    Compiling thiserror-impl v2.0.20
+#21 12.25    Compiling clap_derive v4.6.4
+#21 12.43    Compiling zstd v0.13.3
+#21 12.61    Compiling zip v8.6.0
+#21 13.02    Compiling zerofrom-derive v0.1.7
+#21 13.02    Compiling yoke-derive v0.8.2
+#21 13.02    Compiling tracing-attributes v0.1.31
+#21 13.21    Compiling rustls-webpki v0.103.15
+#21 14.40    Compiling clap v4.6.6
+#21 14.57    Compiling zerofrom v0.1.8
+#21 14.63    Compiling tracing v0.1.44
+#21 14.64    Compiling yoke v0.8.3
+#21 14.77    Compiling zerovec v0.11.8
+#21 14.77    Compiling zerotrie v0.2.5
+#21 14.80    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 14.80    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 15.27    Compiling tinystr v0.8.4
+#21 15.27    Compiling potential_utf v0.1.6
+#21 15.34    Compiling icu_collections v2.3.0
+#21 15.39    Compiling icu_locale_core v2.3.0
+#21 16.17    Compiling icu_provider v2.3.1
+#21 16.18    Compiling tracing-serde v0.2.0
+#21 16.18    Compiling serde_yaml v0.9.34+deprecated
+#21 16.27    Compiling tracing-subscriber v0.3.23
+#21 16.35    Compiling icu_properties v2.3.0
+#21 16.35    Compiling icu_normalizer v2.3.0
+#21 17.33    Compiling idna_adapter v1.2.2
+#21 17.40    Compiling idna v1.1.0
+#21 17.71    Compiling url v2.5.8
+#21 18.34    Compiling ureq v2.12.1
+#21 23.07    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 23.59    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 23.59    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 26.38    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 26.38    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 26.38    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 29.07    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 29.07    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 30.75    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 30.75    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 34.99    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 35.13 warning: unused import: `Path`
+#21 35.13   --> crates/gripsack/src/commands/mod.rs:98:17
+#21 35.13    |
+#21 35.13 98 | use std::path::{Path, PathBuf};
+#21 35.13    |                 ^^^^
+#21 35.13    |
+#21 35.13    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+#21 35.13 
+#21 35.13 warning: unused import: `std::process::ExitCode`
+#21 35.13   --> crates/gripsack/src/commands/mod.rs:99:5
+#21 35.13    |
+#21 35.13 99 | use std::process::ExitCode;
+#21 35.13    |     ^^^^^^^^^^^^^^^^^^^^^^
+#21 35.13 
+#21 41.34 warning: `gripsack` (bin "grip") generated 2 warnings (run `cargo fix --bin "grip" -p gripsack` to apply 2 suggestions)
+#21 41.34     Finished `dev` profile [unoptimized + debuginfo] target(s) in 41.04s
+#21 DONE 41.9s
+
+#22 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#22 CACHED
+
+#23 [e2e  2/12] WORKDIR /app
+#23 CACHED
+
+#24 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#24 CACHED
+
+#25 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#27 DONE 0.4s
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 DONE 0.1s
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.297 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.297 Creating virtual environment at: .venv
+#29 0.305 Resolved 10 packages in 4ms
+#29 0.401 Downloading pygments (1.2MiB)
+#29 0.508  Downloaded pygments
+#29 0.508 Prepared 5 packages in 202ms
+#29 0.523 Installed 5 packages in 14ms
+#29 0.523  + iniconfig==2.3.0
+#29 0.523  + packaging==26.3
+#29 0.523  + pluggy==1.6.0
+#29 0.523  + pygments==2.21.0
+#29 0.523  + pytest==9.1.1
+#29 DONE 0.5s
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 3.0s done
+#33 exporting manifest sha256:7053a168c1a0ff4d23616c8305800b13deb68376729792ba17aec24e8895cd74 0.0s done
+#33 exporting config sha256:4a2247105f1323fd41f827cb1c3bbbba8e4b9a05f0c69a2b23417e4281890eab 0.0s done
+#33 exporting attestation manifest sha256:7da0251bc522a2d782e93affb025249cacf56503359be874317f6a9e9997a8de 0.0s done
+#33 exporting manifest list sha256:e8aaac1808cf042de2379f00f7421f03d79bb4d89141458e725cb13d10d55826 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.8s done
+#33 DONE 3.9s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-6fccb1ba67b3 Creating 
+ Container gripsack-e2e-run-6fccb1ba67b3 Created 
+BINARY_SHA256=fe661fba2782ec6239776d0076d9282109e9ae71ea40303e5f44efded7ec2d9e
+COMMAND=check --host testhost EXIT=1
+ grip: captured source/policy is not approved for /tmp/gripsack-source-approval-cli-scixvv4k/env
+hint: inspect with `grip trust inspect --json`, then approve with `grip trust add --bundle ce5a49fa76bbb77114834705407394ae893d648f384e796ec8d1114b0daeca06 --policy ac612c0de900e8c70d89a66d9756b2120db8911d559d8f4819d602e520e3c7b9`
+
+COMMAND=trust inspect --json EXIT=0
+{
+  "version": 1,
+  "repository": "/tmp/gripsack-source-approval-cli-scixvv4k/env",
+  "bundle_digest": "ce5a49fa76bbb77114834705407394ae893d648f384e796ec8d1114b0daeca06",
+  "policy_digest": "ac612c0de900e8c70d89a66d9756b2120db8911d559d8f4819d602e520e3c7b9",
+  "policy": {
+    "version": 1,
+    "profile": "captured_read_only_v1",
+    "read_roots": [
+      "repository",
+      "frontend"
+    ],
+    "frontend": {
+      "bundle": "ce5a49fa76bbb77114834705407394ae893d648f384e796ec8d1114b0daeca06",
+      "implementation": "frontend",
+      "driver": "frontend"
+    },
+    "runtime": {
+      "executable_sha256": "bceb5b6a6239b0b010418406d8c77a508f67cf4337d94288f1c19fe71304aab0",
+      "script_sha256": null,
+      "byte_binding": "executable_handle"
+    },
+    "probes": [
+      "executable_lookup",
+      "file_existence"
+    ],
+    "native_declarations": "explicit_commands_v1",
+    "native_configuration_sha256": "e0a66afd13c936f70e3d8a5b10d52b6b2154a2960cc6ad9ae425d8661a4cffdb",
+    "budget": {
+      "operation_millis": 600000,
+      "input_bytes": 4194304,
+      "input_document_bytes": 16777216,
+      "stdout_bytes": 16777216,
+      "stderr_bytes": 16777216,
+      "retained_stderr_bytes": 65536,
+      "rounds": 4
+    }
+  },
+  "provenance": {
+    "remote": null,
+    "commit": null
+  },
+  "inventory": {
+    "version": 1,
+    "roots": [
+      "repository",
+      "frontend"
+    ],
+    "entries": [
+      {
+        "path": "frontend",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "frontend/.complete",
+        "object": {
+          "kind": "file",
+          "bytes": 3,
+          "sha256": "dc51b8c96c2d745df3bd5590d990230a482fd247123599548e0632fdbf97fc22",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/deno.json",
+        "object": {
+          "kind": "file",
+          "bytes": 159,
+          "sha256": "3d1b165f65e0c903984dda6919fa68fff3ef131571533bd15aa9b7b24c4c0aa6",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/package.json",
+        "object": {
+          "kind": "file",
+          "bytes": 749,
+          "sha256": "068f71cd05d0856ef71a90d4d70d4977291dacea9708ecff2e41c7fca7b17013",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "frontend/src/cli.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 6753,
+          "sha256": "ae6dba0a90eda1f785deea67efd6df3f43e9666123a5357bafd29aff953bbc8a",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/conditions.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1507,
+          "sha256": "d84b409e812ff7bceef799e8ff0ece7994bdc4abda7b585be0735b68eacfa3c4",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/deps.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1137,
+          "sha256": "8cc85364d92eb7711a4ba65651c2cddc59285f066fafa1d6503f7f81e9efcd9f",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/diagnostic.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 6389,
+          "sha256": "5ad776be978c39beabbea10789bf92b46a8e9716b6731442447fa4919effb0ce",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/diagnostic_codes.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 508,
+          "sha256": "92dee41f3730c619d8da89ab81800e9eb1924e1df58f0c7203e88fe59f269383",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/entries.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1317,
+          "sha256": "58aecbf4e86ad55863009efc1f9629bd6b41476750543744e2e6f0393857a5d1",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/facts.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 513,
+          "sha256": "821a5ff3bca27215466ed91a40b4b4efd0cf07689918ac6310e2399b135c0e33",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/fetch.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 2727,
+          "sha256": "c9e6d771cd369ceec035efba4795dad841525fef1230bdfed5f685fe9ff95f0f",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/fields.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1560,
+          "sha256": "f91d58110d466a7f54dd30829e69cacd83d36aafb609c95317188a7be27080db",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/graph.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 4109,
+          "sha256": "1a2e0ffb5a79b9ff5ad869b24ed2bc1b704b7aaa5a06765d3663469e22c3a560",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/index.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 3372,
+          "sha256": "dc2afeb03836f11d50475b894ce6a530d2b8f719db7d86ea1d2192e7400b8015",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/inputs.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 3148,
+          "sha256": "0334e80aa50b7940591d27178a85a7b7aad585b74901005cdecb8a64362053de",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/intents.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1177,
+          "sha256": "7542eb098a588aa9a557c4f4ca74c0d872d85f97547bbb1ee9b992fed0bb7c7e",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/module.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 5394,
+          "sha256": "d4802cde57432d1e330d73c8a2269d92abc383dbca4af49263f9c01c41461023",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/pin.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 7810,
+          "sha256": "795803d9181d6e5f136924d42cef08572657afdd7142fc436966fb1ee87b3980",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/probe.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 2343,
+          "sha256": "c26cf1350b22cacaf876bf5abf919c39a26205967d4f59043fe075c3b188cfd4",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/resources.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 2247,
+          "sha256": "584fd7d63da24f755989139d5bd3d988a276c0e89854e1a3ac33c1635db1c940",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/steps.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 6189,
+          "sha256": "e070cc97430556ca0ca0b13dc1d44a6efb8eb367259b8111d684e2e2c7fe23a8",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/tree.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1054,
+          "sha256": "7afa66179ec902a11c6334ef3be3262e5f17a8d5fa03ec05cc5e64214ee59681",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/verify.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 933,
+          "sha256": "859237db57e6c6650ce38f456341fcb41b530aed9351e5bd4eb45d2ea289d2e0",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "frontend/src/workspace.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 3027,
+          "sha256": "094dcc658f280bcc3438b0aac9d569f2fbb00f7113d8cacfb9ae2b8a8a84cc45",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/commands.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 10834,
+          "sha256": "7eb0ca1849221de12936dc63ee9f31211b5cc27595ced01085606c546eafa1d8",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/emit.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 13027,
+          "sha256": "febdfafb4082fc98963b11e58cba3f7d31474a6db557aadef6a00f31879fe93a",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/files.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 3608,
+          "sha256": "fd6418a2bc9cb568304d1ed01b37ffb18e0a106c217a7b30d3a574cccd92761d",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/ir.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 11254,
+          "sha256": "ff24d365484a62f402948a52e43bdcd5a050760aa848154b09bdde0691bf9bb1",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/outputs.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 12106,
+          "sha256": "8fbe5568d994252286db1b3fc59254714a7246a9a323f06dcad9344f278c5448",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/target.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 7566,
+          "sha256": "5b4dcdedfecd7f085a97408db84135144acf6bf1d4894a278887bf40fe946a4b",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/tree.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 5084,
+          "sha256": "9c735c78d29b6241fa0444fef3d51db2e7f2f304a50109009a8b6e6bd60d9ea8",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/validate.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 15415,
+          "sha256": "64e33bdb840d760ba9beff0303eff54122dda1618710c46000445060839483a8",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "repo/.gitignore",
+        "object": {
+          "kind": "file",
+          "bytes": 11,
+          "sha256": "58c22c3af80eb1e3f3d22a77a521b130f4d1ddedc843d277da41c2812483e41c",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/env.toml",
+        "object": {
+          "kind": "file",
+          "bytes": 23,
+          "sha256": "8fe61c03aa1c96bc4fbbd0bcf287bcfdc8efd46fca27c1d1fbe7b3657665870f",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/hosts",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "repo/hosts/testhost.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 166,
+          "sha256": "ea00b58e8e25258b4009916f598ee9f3f728b1cdea14dfe3e133051f56237c1d",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/ignored.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 26,
+          "sha256": "27d1b515608b530f63a16409d241b62aa9662fcde1afe0336a30e5dd79af75ba",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/modules",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "repo/modules/hello.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 135,
+          "sha256": "18a291968e6cc40b5478aaa36c0252b1fc33e3be78a5c16ea1a2ee2ee2aec46d",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/payload",
+        "object": {
+          "kind": "file",
+          "bytes": 13,
+          "sha256": "4fd540fd153381f83feabc6a254a32ff2db2f4f63aba6f9d96a4c5ac2d0bf992",
+          "mode": 420
+        }
+      }
+    ],
+    "exclusions": []
+  },
+  "approval": {
+    "status": {
+      "status": "unapproved"
+    },
+    "previous_bundle": null,
+    "changes": [
+      {
+        "path": "frontend",
+        "change": "added"
+      },
+      {
+        "path": "frontend/.complete",
+        "change": "added"
+      },
+      {
+        "path": "frontend/deno.json",
+        "change": "added"
+      },
+      {
+        "path": "frontend/package.json",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/cli.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/conditions.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/deps.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/diagnostic.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/diagnostic_codes.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/entries.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/facts.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/fetch.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/fields.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/graph.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/index.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/inputs.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/intents.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/module.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/pin.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/probe.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/resources.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/steps.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/tree.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/verify.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace/commands.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace/emit.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace/files.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace/ir.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace/outputs.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace/target.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace/tree.ts",
+        "change": "added"
+      },
+      {
+        "path": "frontend/src/workspace/validate.ts",
+        "change": "added"
+      },
+      {
+        "path": "repo",
+        "change": "added"
+      },
+      {
+        "path": "repo/.gitignore",
+        "change": "added"
+      },
+      {
+        "path": "repo/env.toml",
+        "change": "added"
+      },
+      {
+        "path": "repo/hosts",
+        "change": "added"
+      },
+      {
+        "path": "repo/hosts/testhost.ts",
+        "change": "added"
+      },
+      {
+        "path": "repo/ignored.ts",
+        "change": "added"
+      },
+      {
+        "path": "repo/modules",
+        "change": "added"
+      },
+      {
+        "path": "repo/modules/hello.ts",
+        "change": "added"
+      },
+      {
+        "path": "repo/payload",
+        "change": "added"
+      }
+    ]
+  }
+}
+ 
+COMMAND=trust add --bundle ce5a49fa76bbb77114834705407394ae893d648f384e796ec8d1114b0daeca06 --policy ac612c0de900e8c70d89a66d9756b2120db8911d559d8f4819d602e520e3c7b9 EXIT=0
+approved source ce5a49fa76bbb77114834705407394ae893d648f384e796ec8d1114b0daeca06 policy ac612c0de900e8c70d89a66d9756b2120db8911d559d8f4819d602e520e3c7b9 for /tmp/gripsack-source-approval-cli-scixvv4k/env
+ 
+COMMAND=check --host testhost EXIT=0
+  demo: layout: 0 paths checked; deferred (matching artifact unavailable, no fetch performed)
+check: ok 1 modules · host linux/x86_64 · tags: test
+ 
+COMMAND=trust inspect --receipt 108e466fa649d495397ad9dda2a46e8c033f9f58173a2734dc789bbbb0da8ab9 --json EXIT=0
+{
+  "version": 1,
+  "id": "108e466fa649d495397ad9dda2a46e8c033f9f58173a2734dc789bbbb0da8ab9",
+  "repository": "/tmp/gripsack-source-approval-cli-scixvv4k/env",
+  "source": "ce5a49fa76bbb77114834705407394ae893d648f384e796ec8d1114b0daeca06",
+  "policy_digest": "ac612c0de900e8c70d89a66d9756b2120db8911d559d8f4819d602e520e3c7b9",
+  "policy": {
+    "version": 1,
+    "profile": "captured_read_only_v1",
+    "read_roots": [
+      "repository",
+      "frontend"
+    ],
+    "frontend": {
+      "bundle": "ce5a49fa76bbb77114834705407394ae893d648f384e796ec8d1114b0daeca06",
+      "implementation": "frontend",
+      "driver": "frontend"
+    },
+    "runtime": {
+      "executable_sha256": "bceb5b6a6239b0b010418406d8c77a508f67cf4337d94288f1c19fe71304aab0",
+      "script_sha256": null,
+      "byte_binding": "executable_handle"
+    },
+    "probes": [
+      "executable_lookup",
+      "file_existence"
+    ],
+    "native_declarations": "explicit_commands_v1",
+    "native_configuration_sha256": "e0a66afd13c936f70e3d8a5b10d52b6b2154a2960cc6ad9ae425d8661a4cffdb",
+    "budget": {
+      "operation_millis": 600000,
+      "input_bytes": 4194304,
+      "input_document_bytes": 16777216,
+      "stdout_bytes": 16777216,
+      "stderr_bytes": 16777216,
+      "retained_stderr_bytes": 65536,
+      "rounds": 4
+    }
+  },
+  "provenance": {
+    "remote": null,
+    "commit": null
+  },
+  "created_at": "2026-09-29T13:36:22Z",
+  "outcome": "completed",
+  "rounds": [
+    {
+      "number": 1,
+      "input_sha256": "6f5a78cbadbb94a3a2ea44d7d88c318734b2dd6ead98be23c66b622e76bdfe10",
+      "process": {
+        "executable_sha256": "bceb5b6a6239b0b010418406d8c77a508f67cf4337d94288f1c19fe71304aab0",
+        "script_sha256": null,
+        "byte_binding": "executable_handle",
+        "enforcement": "process_group",
+        "environment_keys": [
+          "DENO_DIR",
+          "HOME",
+          "LC_CTYPE",
+          "PATH"
+        ],
+        "deadline_millis": 599990,
+        "stdout_limit": 16777216,
+        "stderr_limit": 16777216,
+        "exit_code": 0,
+        "signal": null,
+        "disposition": "exited",
+        "error": null,
+        "cleanup_cause": null
+      }
+    }
+  ]
+}
+ 
+COMMAND=check --host testhost EXIT=1
+ grip: captured source/policy is not approved for /tmp/gripsack-source-approval-cli-scixvv4k/env
+hint: inspect with `grip trust inspect --json`, then approve with `grip trust add --bundle 9880b452a8ed1731033e73930a535e1186daa7e11264c3f225a6ad28867aea16 --policy 7ed879790be05207af3402793173ad2bb0edd0fe39df2d668ecfd9d2229b8735`
+
+COMMAND=trust inspect --json EXIT=0
+{
+  "version": 1,
+  "repository": "/tmp/gripsack-source-approval-cli-scixvv4k/env",
+  "bundle_digest": "9880b452a8ed1731033e73930a535e1186daa7e11264c3f225a6ad28867aea16",
+  "policy_digest": "7ed879790be05207af3402793173ad2bb0edd0fe39df2d668ecfd9d2229b8735",
+  "policy": {
+    "version": 1,
+    "profile": "captured_read_only_v1",
+    "read_roots": [
+      "repository",
+      "frontend"
+    ],
+    "frontend": {
+      "bundle": "9880b452a8ed1731033e73930a535e1186daa7e11264c3f225a6ad28867aea16",
+      "implementation": "frontend",
+      "driver": "frontend"
+    },
+    "runtime": {
+      "executable_sha256": "bceb5b6a6239b0b010418406d8c77a508f67cf4337d94288f1c19fe71304aab0",
+      "script_sha256": null,
+      "byte_binding": "executable_handle"
+    },
+    "probes": [
+      "executable_lookup",
+      "file_existence"
+    ],
+    "native_declarations": "explicit_commands_v1",
+    "native_configuration_sha256": "e0a66afd13c936f70e3d8a5b10d52b6b2154a2960cc6ad9ae425d8661a4cffdb",
+    "budget": {
+      "operation_millis": 600000,
+      "input_bytes": 4194304,
+      "input_document_bytes": 16777216,
+      "stdout_bytes": 16777216,
+      "stderr_bytes": 16777216,
+      "retained_stderr_bytes": 65536,
+      "rounds": 4
+    }
+  },
+  "provenance": {
+    "remote": null,
+    "commit": null
+  },
+  "inventory": {
+    "version": 1,
+    "roots": [
+      "repository",
+      "frontend"
+    ],
+    "entries": [
+      {
+        "path": "frontend",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "frontend/.complete",
+        "object": {
+          "kind": "file",
+          "bytes": 3,
+          "sha256": "dc51b8c96c2d745df3bd5590d990230a482fd247123599548e0632fdbf97fc22",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/deno.json",
+        "object": {
+          "kind": "file",
+          "bytes": 159,
+          "sha256": "3d1b165f65e0c903984dda6919fa68fff3ef131571533bd15aa9b7b24c4c0aa6",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/package.json",
+        "object": {
+          "kind": "file",
+          "bytes": 749,
+          "sha256": "068f71cd05d0856ef71a90d4d70d4977291dacea9708ecff2e41c7fca7b17013",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "frontend/src/cli.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 6753,
+          "sha256": "ae6dba0a90eda1f785deea67efd6df3f43e9666123a5357bafd29aff953bbc8a",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/conditions.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1507,
+          "sha256": "d84b409e812ff7bceef799e8ff0ece7994bdc4abda7b585be0735b68eacfa3c4",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/deps.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1137,
+          "sha256": "8cc85364d92eb7711a4ba65651c2cddc59285f066fafa1d6503f7f81e9efcd9f",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/diagnostic.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 6389,
+          "sha256": "5ad776be978c39beabbea10789bf92b46a8e9716b6731442447fa4919effb0ce",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/diagnostic_codes.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 508,
+          "sha256": "92dee41f3730c619d8da89ab81800e9eb1924e1df58f0c7203e88fe59f269383",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/entries.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1317,
+          "sha256": "58aecbf4e86ad55863009efc1f9629bd6b41476750543744e2e6f0393857a5d1",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/facts.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 513,
+          "sha256": "821a5ff3bca27215466ed91a40b4b4efd0cf07689918ac6310e2399b135c0e33",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/fetch.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 2727,
+          "sha256": "c9e6d771cd369ceec035efba4795dad841525fef1230bdfed5f685fe9ff95f0f",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/fields.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1560,
+          "sha256": "f91d58110d466a7f54dd30829e69cacd83d36aafb609c95317188a7be27080db",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/graph.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 4109,
+          "sha256": "1a2e0ffb5a79b9ff5ad869b24ed2bc1b704b7aaa5a06765d3663469e22c3a560",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/index.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 3372,
+          "sha256": "dc2afeb03836f11d50475b894ce6a530d2b8f719db7d86ea1d2192e7400b8015",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/inputs.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 3148,
+          "sha256": "0334e80aa50b7940591d27178a85a7b7aad585b74901005cdecb8a64362053de",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/intents.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1177,
+          "sha256": "7542eb098a588aa9a557c4f4ca74c0d872d85f97547bbb1ee9b992fed0bb7c7e",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/module.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 5394,
+          "sha256": "d4802cde57432d1e330d73c8a2269d92abc383dbca4af49263f9c01c41461023",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/pin.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 7810,
+          "sha256": "795803d9181d6e5f136924d42cef08572657afdd7142fc436966fb1ee87b3980",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/probe.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 2343,
+          "sha256": "c26cf1350b22cacaf876bf5abf919c39a26205967d4f59043fe075c3b188cfd4",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/resources.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 2247,
+          "sha256": "584fd7d63da24f755989139d5bd3d988a276c0e89854e1a3ac33c1635db1c940",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/steps.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 6189,
+          "sha256": "e070cc97430556ca0ca0b13dc1d44a6efb8eb367259b8111d684e2e2c7fe23a8",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/tree.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 1054,
+          "sha256": "7afa66179ec902a11c6334ef3be3262e5f17a8d5fa03ec05cc5e64214ee59681",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/verify.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 933,
+          "sha256": "859237db57e6c6650ce38f456341fcb41b530aed9351e5bd4eb45d2ea289d2e0",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "frontend/src/workspace.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 3027,
+          "sha256": "094dcc658f280bcc3438b0aac9d569f2fbb00f7113d8cacfb9ae2b8a8a84cc45",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/commands.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 10834,
+          "sha256": "7eb0ca1849221de12936dc63ee9f31211b5cc27595ced01085606c546eafa1d8",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/emit.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 13027,
+          "sha256": "febdfafb4082fc98963b11e58cba3f7d31474a6db557aadef6a00f31879fe93a",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/files.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 3608,
+          "sha256": "fd6418a2bc9cb568304d1ed01b37ffb18e0a106c217a7b30d3a574cccd92761d",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/ir.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 11254,
+          "sha256": "ff24d365484a62f402948a52e43bdcd5a050760aa848154b09bdde0691bf9bb1",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/outputs.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 12106,
+          "sha256": "8fbe5568d994252286db1b3fc59254714a7246a9a323f06dcad9344f278c5448",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/target.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 7566,
+          "sha256": "5b4dcdedfecd7f085a97408db84135144acf6bf1d4894a278887bf40fe946a4b",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/tree.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 5084,
+          "sha256": "9c735c78d29b6241fa0444fef3d51db2e7f2f304a50109009a8b6e6bd60d9ea8",
+          "mode": 420
+        }
+      },
+      {
+        "path": "frontend/src/workspace/validate.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 15415,
+          "sha256": "64e33bdb840d760ba9beff0303eff54122dda1618710c46000445060839483a8",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "repo/.gitignore",
+        "object": {
+          "kind": "file",
+          "bytes": 11,
+          "sha256": "58c22c3af80eb1e3f3d22a77a521b130f4d1ddedc843d277da41c2812483e41c",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/env.toml",
+        "object": {
+          "kind": "file",
+          "bytes": 23,
+          "sha256": "8fe61c03aa1c96bc4fbbd0bcf287bcfdc8efd46fca27c1d1fbe7b3657665870f",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/hosts",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "repo/hosts/testhost.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 166,
+          "sha256": "ea00b58e8e25258b4009916f598ee9f3f728b1cdea14dfe3e133051f56237c1d",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/ignored.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 26,
+          "sha256": "738248b65e59fb7609f3c951743983d478a9f7f795eeba8e4cee36ecfe19a54f",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/modules",
+        "object": {
+          "kind": "directory"
+        }
+      },
+      {
+        "path": "repo/modules/hello.ts",
+        "object": {
+          "kind": "file",
+          "bytes": 135,
+          "sha256": "18a291968e6cc40b5478aaa36c0252b1fc33e3be78a5c16ea1a2ee2ee2aec46d",
+          "mode": 420
+        }
+      },
+      {
+        "path": "repo/payload",
+        "object": {
+          "kind": "file",
+          "bytes": 13,
+          "sha256": "4fd540fd153381f83feabc6a254a32ff2db2f4f63aba6f9d96a4c5ac2d0bf992",
+          "mode": 420
+        }
+      }
+    ],
+    "exclusions": []
+  },
+  "approval": {
+    "status": {
+      "status": "changed",
+      "source_changed": true,
+      "policy_changed": true
+    },
+    "previous_bundle": "ce5a49fa76bbb77114834705407394ae893d648f384e796ec8d1114b0daeca06",
+    "changes": [
+      {
+        "path": "repo/ignored.ts",
+        "change": "changed"
+      }
+    ]
+  }
+}
+ 
+COMMAND=trust add --bundle 9880b452a8ed1731033e73930a535e1186daa7e11264c3f225a6ad28867aea16 --policy 7ed879790be05207af3402793173ad2bb0edd0fe39df2d668ecfd9d2229b8735 EXIT=0
+approved source 9880b452a8ed1731033e73930a535e1186daa7e11264c3f225a6ad28867aea16 policy 7ed879790be05207af3402793173ad2bb0edd0fe39df2d668ecfd9d2229b8735 for /tmp/gripsack-source-approval-cli-scixvv4k/env
+ 
+COMMAND=apply --host testhost --jobs 1 EXIT=0
+  demo ✓ copied demo → ~/setting
+[1m[32mapplied —[39m[0m generation 1 active ([2m0.1s[0m)
+ 
+SOURCE_APPROVAL_CLI=unapproved_denial_explicit_source_policy_approval_private_receipt_ignored_edit_reapproval_apply PASSED
+
+=== First focused CLI campaign, 43 pass / 5 fail (artifact 924) ===
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.37kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.7s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.6s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.6s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#9 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#9 DONE 0.0s
+
+#10 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#10 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 294.78kB 0.1s done
+#11 DONE 0.1s
+
+#12 [builder  4/10] WORKDIR /app
+#12 CACHED
+
+#13 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#13 CACHED
+
+#14 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 CACHED
+
+#16 [builder  6/10] COPY crates ./crates
+#16 DONE 0.3s
+
+#17 [builder  7/10] COPY fuzz ./fuzz
+#17 DONE 0.1s
+
+#18 [builder  8/10] COPY schema ./schema
+#18 DONE 0.1s
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 DONE 0.1s
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.1s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.314     Updating crates.io index
+#21 2.808  Downloading crates ...
+#21 2.908   Downloaded ambient-authority v0.0.2
+#21 2.913   Downloaded anstream v1.0.0
+#21 2.919   Downloaded adler2 v2.0.1
+#21 2.921   Downloaded anstyle-query v1.1.5
+#21 2.927   Downloaded convert_case v0.4.0
+#21 2.931   Downloaded clap_lex v1.1.0
+#21 2.934   Downloaded form_urlencoded v1.2.2
+#21 2.936   Downloaded fs-set-times v0.20.3
+#21 2.939   Downloaded heck v0.5.0
+#21 2.942   Downloaded errno v0.3.14
+#21 2.946   Downloaded block-buffer v0.12.1
+#21 2.948   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 2.961   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 2.965   Downloaded cfg-if v1.0.4
+#21 2.968   Downloaded synstructure v0.13.2
+#21 2.974   Downloaded percent-encoding v2.3.2
+#21 2.977   Downloaded colorchoice v1.0.5
+#21 2.979   Downloaded openssl-probe v0.2.1
+#21 2.982   Downloaded matchers v0.2.0
+#21 2.985   Downloaded lazy_static v1.5.0
+#21 2.989   Downloaded potential_utf v0.1.6
+#21 2.997   Downloaded serde_spanned v1.1.1
+#21 3.006   Downloaded maybe-owned v0.3.4
+#21 3.009   Downloaded idna_adapter v1.2.2
+#21 3.017   Downloaded httpdate v1.0.3
+#21 3.021   Downloaded anstyle-parse v1.0.0
+#21 3.024   Downloaded equivalent v1.0.2
+#21 3.028   Downloaded fastrand v2.5.0
+#21 3.031   Downloaded cpufeatures v0.3.0
+#21 3.034   Downloaded is_terminal_polyfill v1.70.2
+#21 3.037   Downloaded thread_local v1.1.10
+#21 3.040   Downloaded crypto-common v0.2.2
+#21 3.042   Downloaded itoa v1.0.18
+#21 3.046   Downloaded anstyle v1.0.14
+#21 3.049   Downloaded io-lifetimes v2.0.4
+#21 3.052   Downloaded ipnet v2.12.1
+#21 3.055   Downloaded digest v0.11.3
+#21 3.060   Downloaded lock_api v0.4.14
+#21 3.062   Downloaded displaydoc v0.2.7
+#21 3.066   Downloaded dialoguer v0.12.0
+#21 3.074   Downloaded filetime v0.2.29
+#21 3.078   Downloaded pin-project-lite v0.2.17
+#21 3.093   Downloaded zerofrom v0.1.8
+#21 3.096   Downloaded rustls-native-certs v0.8.4
+#21 3.099   Downloaded io-lifetimes v3.0.1
+#21 3.102   Downloaded clap_derive v4.6.4
+#21 3.106   Downloaded cap-std v4.0.3
+#21 3.114   Downloaded console v0.16.4
+#21 3.118   Downloaded hybrid-array v0.4.14
+#21 3.122   Downloaded shell-words v1.1.1
+#21 3.124   Downloaded rustix-linux-procfs v0.1.1
+#21 3.126   Downloaded nu-ansi-term v0.50.3
+#21 3.132   Downloaded pkg-config v0.3.34
+#21 3.135   Downloaded jobserver v0.1.35
+#21 3.139   Downloaded xattr v1.6.1
+#21 3.144   Downloaded unit-prefix v0.5.2
+#21 3.148   Downloaded quote v1.0.47
+#21 3.153   Downloaded rustls-pki-types v1.15.1
+#21 3.158   Downloaded find-msvc-tools v0.1.11
+#21 3.161   Downloaded bzip2 v0.6.1
+#21 3.165   Downloaded once_cell v1.21.4
+#21 3.170   Downloaded scopeguard v1.2.0
+#21 3.174   Downloaded crc32fast v1.5.1
+#21 3.179   Downloaded parking_lot v0.12.5
+#21 3.184   Downloaded parking_lot_core v0.9.12
+#21 3.188   Downloaded owo-colors v4.3.0
+#21 3.191   Downloaded zerofrom-derive v0.1.7
+#21 3.194   Downloaded litemap v0.8.3
+#21 3.199   Downloaded io-extras v0.19.0
+#21 3.203   Downloaded webpki-roots v0.26.11
+#21 3.206   Downloaded clap v4.6.6
+#21 3.223   Downloaded bitflags v2.13.1
+#21 3.230   Downloaded const-oid v0.10.2
+#21 3.235   Downloaded stable_deref_trait v1.2.1
+#21 3.237   Downloaded getrandom v0.2.17
+#21 3.242   Downloaded getrandom v0.4.3
+#21 3.249   Downloaded serde_core v1.0.229
+#21 3.254   Downloaded proc-macro2 v1.0.107
+#21 3.260   Downloaded libbz2-rs-sys v0.2.5
+#21 3.263   Downloaded base64 v0.22.1
+#21 3.272   Downloaded icu_locale_core v2.3.0
+#21 3.288   Downloaded icu_normalizer_data v2.3.0
+#21 3.292   Downloaded icu_provider v2.3.1
+#21 3.298   Downloaded miniz_oxide v0.8.9
+#21 3.303   Downloaded ryu v1.0.23
+#21 3.311   Downloaded log v0.4.34
+#21 3.316   Downloaded indicatif v0.18.6
+#21 3.324   Downloaded flate2 v1.1.9
+#21 3.332   Downloaded icu_collections v2.3.0
+#21 3.345   Downloaded rustls-webpki v0.103.15
+#21 3.352   Downloaded tracing-serde v0.2.0
+#21 3.353   Downloaded bumpalo v3.20.3
+#21 3.358   Downloaded cap-primitives v4.0.3
+#21 3.380   Downloaded memchr v2.8.3
+#21 3.393   Downloaded indexmap v2.14.0
+#21 3.404   Downloaded aho-corasick v1.1.5
+#21 3.415   Downloaded serde v1.0.229
+#21 3.422   Downloaded icu_properties v2.3.0
+#21 3.428   Downloaded cc v1.4.4
+#21 3.434   Downloaded utf8parse v0.2.2
+#21 3.437   Downloaded untrusted v0.9.0
+#21 3.441   Downloaded idna v1.1.0
+#21 3.447   Downloaded hashbrown v0.17.1
+#21 3.456   Downloaded icu_properties_data v2.3.0
+#21 3.472   Downloaded clap_builder v4.6.6
+#21 3.484   Downloaded portable-atomic v1.15.0
+#21 3.498   Downloaded subtle v2.6.1
+#21 3.502   Downloaded strsim v0.11.1
+#21 3.505   Downloaded yoke-derive v0.8.2
+#21 3.508   Downloaded regex-syntax v0.8.11
+#21 3.517   Downloaded rustls v0.23.45
+#21 3.538   Downloaded rustix v1.1.4
+#21 3.602   Downloaded utf8_iter v1.0.4
+#21 3.604   Downloaded icu_normalizer v2.3.0
+#21 3.617   Downloaded regex-automata v0.4.18
+#21 3.642   Downloaded thiserror v2.0.20
+#21 3.653   Downloaded lzma-sys v0.1.20
+#21 3.710   Downloaded thiserror-impl v2.0.20
+#21 3.713   Downloaded libc v0.2.189
+#21 3.839   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 3.841   Downloaded tinystr v0.8.4
+#21 3.846   Downloaded ring v0.17.14
+#21 3.916   Downloaded linux-raw-sys v0.12.1
+#21 4.027   Downloaded xz2 v0.1.7
+#21 4.031   Downloaded zmij v1.0.23
+#21 4.036   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 4.039   Downloaded writeable v0.6.4
+#21 4.044   Downloaded zerovec-derive v0.11.6
+#21 4.048   Downloaded zeroize v1.9.0
+#21 4.051   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 4.053   Downloaded shlex v2.0.1
+#21 4.056   Downloaded tracing-log v0.2.0
+#21 4.059   Downloaded zstd v0.13.3
+#21 4.067   Downloaded simd-adler32 v0.3.10
+#21 4.071   Downloaded smallvec v1.15.2
+#21 4.074   Downloaded sha2 v0.11.0
+#21 4.083   Downloaded yoke v0.8.3
+#21 4.086   Downloaded tracing-attributes v0.1.31
+#21 4.092   Downloaded zstd-safe v7.2.4
+#21 4.095   Downloaded serde_yaml v0.9.34+deprecated
+#21 4.101   Downloaded tempfile v3.27.0
+#21 4.107   Downloaded toml v1.1.4+spec-1.1.0
+#21 4.116   Downloaded unicode-ident v1.0.24
+#21 4.123   Downloaded tracing-core v0.1.36
+#21 4.127   Downloaded sharded-slab v0.1.7
+#21 4.135   Downloaded zopfli v0.8.3
+#21 4.139   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 4.146   Downloaded unsafe-libyaml v0.2.11
+#21 4.153   Downloaded tar v0.4.46
+#21 4.159   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.166   Downloaded serde_derive v1.0.229
+#21 4.171   Downloaded url v2.5.8
+#21 4.175   Downloaded zerotrie v0.2.5
+#21 4.184   Downloaded toml v0.9.12+spec-1.1.0
+#21 4.192   Downloaded typenum v1.20.1
+#21 4.197   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 4.202   Downloaded typed-path v0.12.3
+#21 4.220   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 4.225   Downloaded ureq v2.12.1
+#21 4.235   Downloaded zip v8.6.0
+#21 4.243   Downloaded zerovec v0.11.8
+#21 4.255   Downloaded serde_json v1.0.151
+#21 4.269   Downloaded winnow v1.0.4
+#21 4.289   Downloaded winnow v0.7.15
+#21 4.307   Downloaded tracing-subscriber v0.3.23
+#21 4.323   Downloaded zlib-rs v0.6.7
+#21 4.332   Downloaded webpki-roots v1.0.9
+#21 4.336   Downloaded unicode-width v0.2.2
+#21 4.343   Downloaded syn v3.0.4
+#21 4.360   Downloaded syn v2.0.119
+#21 4.376   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 4.394   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 4.411   Downloaded tracing v0.1.44
+#21 4.429   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 4.641    Compiling proc-macro2 v1.0.107
+#21 4.641    Compiling quote v1.0.47
+#21 4.641    Compiling unicode-ident v1.0.24
+#21 4.641    Compiling libc v0.2.189
+#21 4.641    Compiling cfg-if v1.0.4
+#21 4.645    Compiling serde_core v1.0.229
+#21 4.645    Compiling shlex v2.0.1
+#21 4.648    Compiling find-msvc-tools v0.1.11
+#21 4.650    Compiling equivalent v1.0.2
+#21 4.650    Compiling stable_deref_trait v1.2.1
+#21 4.651    Compiling hashbrown v0.17.1
+#21 4.651    Compiling once_cell v1.21.4
+#21 4.656    Compiling rustix v1.1.4
+#21 4.656    Compiling serde v1.0.229
+#21 4.659    Compiling linux-raw-sys v0.12.1
+#21 4.662    Compiling bitflags v2.13.1
+#21 4.669    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.671    Compiling pkg-config v0.3.34
+#21 4.672    Compiling litemap v0.8.3
+#21 4.672    Compiling zmij v1.0.23
+#21 4.677    Compiling writeable v0.6.4
+#21 4.685    Compiling smallvec v1.15.2
+#21 4.685    Compiling convert_case v0.4.0
+#21 4.691    Compiling icu_normalizer_data v2.3.0
+#21 4.694    Compiling utf8_iter v1.0.4
+#21 4.697    Compiling memchr v2.8.3
+#21 4.698    Compiling icu_properties_data v2.3.0
+#21 4.700    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.704    Compiling itoa v1.0.18
+#21 4.704    Compiling serde_json v1.0.151
+#21 4.704    Compiling typenum v1.20.1
+#21 4.705    Compiling io-lifetimes v2.0.4
+#21 4.722    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.807    Compiling zeroize v1.9.0
+#21 4.807    Compiling io-lifetimes v3.0.1
+#21 4.808    Compiling winnow v1.0.4
+#21 4.841    Compiling log v0.4.34
+#21 4.920    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 4.932    Compiling io-extras v0.19.0
+#21 4.948    Compiling thiserror v2.0.20
+#21 4.963    Compiling cap-primitives v4.0.3
+#21 4.972    Compiling getrandom v0.4.3
+#21 4.988    Compiling tracing-core v0.1.36
+#21 5.019    Compiling rustls-pki-types v1.15.1
+#21 5.067    Compiling percent-encoding v2.3.2
+#21 5.083    Compiling cap-std v4.0.3
+#21 5.100    Compiling crc32fast v1.5.1
+#21 5.100    Compiling ipnet v2.12.1
+#21 5.123    Compiling ambient-authority v0.0.2
+#21 5.123    Compiling const-oid v0.10.2
+#21 5.158    Compiling maybe-owned v0.3.4
+#21 5.167    Compiling untrusted v0.9.0
+#21 5.167    Compiling fastrand v2.5.0
+#21 5.185    Compiling winnow v0.7.15
+#21 5.215    Compiling simd-adler32 v0.3.10
+#21 5.255    Compiling form_urlencoded v1.2.2
+#21 5.266    Compiling zstd-safe v7.2.4
+#21 5.309    Compiling cpufeatures v0.3.0
+#21 5.316    Compiling pin-project-lite v0.2.17
+#21 5.345    Compiling adler2 v2.0.1
+#21 5.350    Compiling parking_lot_core v0.9.12
+#21 5.377    Compiling rustls v0.23.45
+#21 5.380    Compiling libbz2-rs-sys v0.2.5
+#21 5.392    Compiling bumpalo v3.20.3
+#21 5.433    Compiling subtle v2.6.1
+#21 5.444    Compiling scopeguard v1.2.0
+#21 5.471    Compiling zlib-rs v0.6.7
+#21 5.471    Compiling typed-path v0.12.3
+#21 5.484    Compiling base64 v0.22.1
+#21 5.500    Compiling miniz_oxide v0.8.9
+#21 5.522    Compiling lock_api v0.4.14
+#21 5.539    Compiling utf8parse v0.2.2
+#21 5.550    Compiling regex-syntax v0.8.11
+#21 5.571    Compiling openssl-probe v0.2.1
+#21 5.587    Compiling anstyle-query v1.1.5
+#21 5.639    Compiling indexmap v2.14.0
+#21 5.652    Compiling webpki-roots v1.0.9
+#21 5.660    Compiling anstyle-parse v1.0.0
+#21 5.668    Compiling lazy_static v1.5.0
+#21 5.679    Compiling portable-atomic v1.15.0
+#21 5.687    Compiling httpdate v1.0.3
+#21 5.707    Compiling rustls-native-certs v0.8.4
+#21 5.728    Compiling ryu v1.0.23
+#21 5.755    Compiling unicode-width v0.2.2
+#21 5.775    Compiling webpki-roots v0.26.11
+#21 5.794    Compiling zopfli v0.8.3
+#21 5.807    Compiling is_terminal_polyfill v1.70.2
+#21 5.817    Compiling colorchoice v1.0.5
+#21 5.822    Compiling anstyle v1.0.14
+#21 5.832    Compiling unsafe-libyaml v0.2.11
+#21 5.882    Compiling sharded-slab v0.1.7
+#21 5.884    Compiling tracing-log v0.2.0
+#21 5.911    Compiling thread_local v1.1.10
+#21 5.921    Compiling nu-ansi-term v0.50.3
+#21 5.930    Compiling owo-colors v4.3.0
+#21 5.939    Compiling strsim v0.11.1
+#21 6.002    Compiling heck v0.5.0
+#21 6.015    Compiling clap_lex v1.1.0
+#21 6.036    Compiling unit-prefix v0.5.2
+#21 6.054    Compiling shell-words v1.1.1
+#21 6.146    Compiling bzip2 v0.6.1
+#21 6.187    Compiling anstream v1.0.0
+#21 6.287    Compiling hybrid-array v0.4.14
+#21 6.423    Compiling syn v2.0.119
+#21 6.423    Compiling syn v3.0.4
+#21 6.423    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 6.504    Compiling clap_builder v4.6.6
+#21 6.677    Compiling jobserver v0.1.35
+#21 6.677    Compiling getrandom v0.2.17
+#21 6.678    Compiling filetime v0.2.29
+#21 6.684    Compiling console v0.16.4
+#21 6.783    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 6.932    Compiling parking_lot v0.12.5
+#21 6.959    Compiling cc v1.4.4
+#21 7.045    Compiling block-buffer v0.12.1
+#21 7.045    Compiling crypto-common v0.2.2
+#21 7.190    Compiling indicatif v0.18.6
+#21 7.381    Compiling regex-automata v0.4.18
+#21 8.145    Compiling digest v0.11.3
+#21 8.257    Compiling sha2 v0.11.0
+#21 8.442    Compiling serde_spanned v1.1.1
+#21 8.442    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 8.442    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 8.575    Compiling ring v0.17.14
+#21 8.575    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 8.575    Compiling lzma-sys v0.1.20
+#21 8.665    Compiling toml v1.1.4+spec-1.1.0
+#21 8.665    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 8.695    Compiling toml v0.9.12+spec-1.1.0
+#21 9.005    Compiling flate2 v1.1.9
+#21 9.744    Compiling rustix-linux-procfs v0.1.1
+#21 9.783    Compiling fs-set-times v0.20.3
+#21 9.794    Compiling tempfile v3.27.0
+#21 9.795    Compiling xattr v1.6.1
+#21 9.898    Compiling xz2 v0.1.7
+#21 9.974    Compiling tar v0.4.46
+#21 10.11    Compiling matchers v0.2.0
+#21 10.17    Compiling dialoguer v0.12.0
+#21 11.13    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 11.71    Compiling synstructure v0.13.2
+#21 12.07    Compiling zerovec-derive v0.11.6
+#21 12.07    Compiling displaydoc v0.2.7
+#21 12.07    Compiling serde_derive v1.0.229
+#21 12.07    Compiling thiserror-impl v2.0.20
+#21 12.07    Compiling clap_derive v4.6.4
+#21 12.51    Compiling rustls-webpki v0.103.15
+#21 12.79    Compiling zstd v0.13.3
+#21 13.07    Compiling zip v8.6.0
+#21 13.12    Compiling zerofrom-derive v0.1.7
+#21 13.12    Compiling yoke-derive v0.8.2
+#21 13.12    Compiling tracing-attributes v0.1.31
+#21 14.23    Compiling clap v4.6.6
+#21 14.59    Compiling zerofrom v0.1.8
+#21 14.70    Compiling yoke v0.8.3
+#21 14.76    Compiling tracing v0.1.44
+#21 14.86    Compiling zerovec v0.11.8
+#21 14.86    Compiling zerotrie v0.2.5
+#21 15.02    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 15.02    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 15.42    Compiling tinystr v0.8.4
+#21 15.42    Compiling potential_utf v0.1.6
+#21 15.48    Compiling icu_collections v2.3.0
+#21 15.54    Compiling icu_locale_core v2.3.0
+#21 16.01    Compiling serde_yaml v0.9.34+deprecated
+#21 16.01    Compiling tracing-serde v0.2.0
+#21 16.10    Compiling tracing-subscriber v0.3.23
+#21 16.33    Compiling icu_provider v2.3.1
+#21 16.53    Compiling icu_properties v2.3.0
+#21 16.53    Compiling icu_normalizer v2.3.0
+#21 17.58    Compiling idna_adapter v1.2.2
+#21 17.66    Compiling idna v1.1.0
+#21 17.99    Compiling url v2.5.8
+#21 18.57    Compiling ureq v2.12.1
+#21 23.85    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 24.39    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 24.39    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 27.18    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 27.18    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 27.18    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 30.06    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 30.06    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 31.65    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 31.65    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 35.85    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 35.99 warning: unused import: `Path`
+#21 35.99   --> crates/gripsack/src/commands/mod.rs:98:17
+#21 35.99    |
+#21 35.99 98 | use std::path::{Path, PathBuf};
+#21 35.99    |                 ^^^^
+#21 35.99    |
+#21 35.99    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+#21 35.99 
+#21 35.99 warning: unused import: `std::process::ExitCode`
+#21 35.99   --> crates/gripsack/src/commands/mod.rs:99:5
+#21 35.99    |
+#21 35.99 99 | use std::process::ExitCode;
+#21 35.99    |     ^^^^^^^^^^^^^^^^^^^^^^
+#21 35.99 
+#21 42.39 warning: `gripsack` (bin "grip") generated 2 warnings (run `cargo fix --bin "grip" -p gripsack` to apply 2 suggestions)
+#21 42.39     Finished `dev` profile [unoptimized + debuginfo] target(s) in 42.20s
+#21 DONE 43.2s
+
+#22 [e2e  2/12] WORKDIR /app
+#22 CACHED
+
+#23 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#23 CACHED
+
+#24 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#24 CACHED
+
+#25 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#27 DONE 0.3s
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 DONE 0.1s
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.247 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.247 Creating virtual environment at: .venv
+#29 0.252 Resolved 10 packages in 1ms
+#29 0.342 Downloading pygments (1.2MiB)
+#29 0.435  Downloaded pygments
+#29 0.436 Prepared 5 packages in 183ms
+#29 0.452 Installed 5 packages in 16ms
+#29 0.452  + iniconfig==2.3.0
+#29 0.452  + packaging==26.3
+#29 0.452  + pluggy==1.6.0
+#29 0.452  + pygments==2.21.0
+#29 0.452  + pytest==9.1.1
+#29 DONE 0.5s
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 3.0s done
+#33 exporting manifest sha256:17a0640462e1fd94dc6c307af7f33914c4f623730a2b4abec774c76b599d9f33 0.0s done
+#33 exporting config sha256:9a8990d861dcbd15cbd1490634cd47652acdbd4cf8179d05f27debb57259eb1a 0.0s done
+#33 exporting attestation manifest sha256:7e66c41cf2ad3e3a198caf3c24e7e719b392e04b32ff64994455da5a4c330693 0.0s done
+#33 exporting manifest list sha256:0c4cf734619155f5911720380416b5954c9e49b95e17ba79f490d089eb3d7c53 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.8s done
+#33 DONE 4.0s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-0d60bcf22863 Creating 
+ Container gripsack-e2e-run-0d60bcf22863 Created 
+................F...F.....FFF...................                         [100%]
+=================================== FAILURES ===================================
+_____________ test_absolute_host_cannot_replace_lock_outside_repo ______________
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_absolute_host_cannot_repl0')
+
+    def test_absolute_host_cannot_replace_lock_outside_repo(sandbox):
+        """0048 §1.3: an absolute CLI host is not an arbitrary .lock writer."""
+        repo = make_env_repo(sandbox / "myenv", {})
+        absolute_host = str(sandbox / "victim")
+        nested_host = repo / "hosts" / f"{absolute_host.lstrip('/')}.ts"
+        nested_host.parent.mkdir(parents=True)
+        nested_host.write_text(
+            'import { defineEnv } from "@gripsack/core";\n'
+            "export default defineEnv(() => ({ modules: [] }));\n"
+        )
+        victim = sandbox / "victim.lock"
+        victim.write_text("do not clobber\n")
+        out = grip("update", "--host", absolute_host, cwd=repo)
+        assert out.returncode != 0
+        assert "E132" in out.stderr, out.stderr
+        assert victim.read_text() == "do not clobber\n"
+>       assert not (sandbox / ".local/share/gripsack/frontend").exists()
+E       AssertionError: assert not True
+E        +  where True = exists()
+E        +    where exists = (PosixPath('/tmp/pytest-of-root/pytest-0/test_absolute_host_cannot_repl0') / '.local/share/gripsack/frontend').exists
+
+test_eval_gate.py:393: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790691514-61c2a3.jsonl), last 25 lines ---
+
+________________ test_exec_failures_render_with_codes_and_spans ________________
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_exec_failures_render_with0')
+
+    def test_exec_failures_render_with_codes_and_spans(sandbox):
+        """0004 §3 across the stack: a fetch failure at apply is a coded,
+        span-labeled diagnostic pointing at the module — never a bare
+        `error:` line. (The placeholder E114 path is unit-tested in
+        gripsack-ir; this covers the apply renderer.)"""
+        repo = make_env_repo(
+            sandbox / "myenv",
+            """
+    import { module, tarball } from "@gripsack/core";
+    
+    export default module("demo", {
+      fetch: tarball("http://127.0.0.1:1/never-there.tar.gz"),
+    });
+    """,
+        )
+        out = grip("apply", "--host", "testhost", cwd=repo)
+        assert out.returncode != 0
+        assert "E301" in out.stderr
+        assert "modules/hello.ts" in out.stderr  # make_env_repo's default filename
+>       assert "raised here" in out.stderr
+E       AssertionError: assert 'raised here' in '2026-09-29T14:19:17.150006Z  WARN gripsack_fetch::http::request: retrying HTTP policy attempt attempt=1 failure=trans...p/gripsack-source-8YhA9B/848e5c42131486a82ac9568b929489057b0a31084b9cb34b206968883a43915d/repo/modules/hello.ts:4:16\n'
+E        +  where '2026-09-29T14:19:17.150006Z  WARN gripsack_fetch::http::request: retrying HTTP policy attempt attempt=1 failure=trans...p/gripsack-source-8YhA9B/848e5c42131486a82ac9568b929489057b0a31084b9cb34b206968883a43915d/repo/modules/hello.ts:4:16\n' = CompletedProcess(args=['/usr/local/bin/grip', 'apply', '--host', 'testhost'], returncode=1, stdout='', stderr='2026-09.../gripsack-source-8YhA9B/848e5c42131486a82ac9568b929489057b0a31084b9cb34b206968883a43915d/repo/modules/hello.ts:4:16\n').stderr
+
+test_eval_gate.py:523: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790691555-90dea8.jsonl), last 25 lines ---
+{"timestamp":"2026-09-29T14:19:16.986411Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_exec_failures_render_with0/myenv\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790691555-90dea8","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_exec_failures_render_with0/myenv\"","name":"eval"}]}
+{"timestamp":"2026-09-29T14:19:17.083594Z","level":"INFO","fields":{"message":"evaluation source and inputs recorded","evaluation":"10b074160cc5a34c6f0eaaf8bfa5f6df363d1d6dde5b38e8e55d90b91a86280c","source":"848e5c42131486a82ac9568b929489057b0a31084b9cb34b206968883a43915d"},"target":"grip::commands::eval","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_exec_failures_render_with0/myenv\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790691555-90dea8","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_exec_failures_render_with0/myenv\"","name":"eval"}]}
+{"timestamp":"2026-09-29T14:19:17.149583Z","level":"INFO","fields":{"message":"HTTP policy attempt","attempt":1},"target":"gripsack_fetch::http::request","span":{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"},"spans":[{"command":"Apply","run_id":"1790691555-90dea8","name":"run"},{"module":"demo","name":"module"},{"step":"fetch","name":"step"},{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"}]}
+{"timestamp":"2026-09-29T14:19:17.150063Z","level":"WARN","fields":{"message":"retrying HTTP policy attempt","attempt":1,"failure":"transient connection failure","wait_ms":1000},"target":"gripsack_fetch::http::request","span":{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"},"spans":[{"command":"Apply","run_id":"1790691555-90dea8","name":"run"},{"module":"demo","name":"module"},{"step":"fetch","name":"step"},{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"}]}
+{"timestamp":"2026-09-29T14:19:18.150603Z","level":"INFO","fields":{"message":"HTTP policy attempt","attempt":2},"target":"gripsack_fetch::http::request","span":{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"},"spans":[{"command":"Apply","run_id":"1790691555-90dea8","name":"run"},{"module":"demo","name":"module"},{"step":"fetch","name":"step"},{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"}]}
+{"timestamp":"2026-09-29T14:19:18.151000Z","level":"WARN","fields":{"message":"retrying HTTP policy attempt","attempt":2,"failure":"transient connection failure","wait_ms":2000},"target":"gripsack_fetch::http::request","span":{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"},"spans":[{"command":"Apply","run_id":"1790691555-90dea8","name":"run"},{"module":"demo","name":"module"},{"step":"fetch","name":"step"},{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"}]}
+{"timestamp":"2026-09-29T14:19:20.152694Z","level":"INFO","fields":{"message":"HTTP policy attempt","attempt":3},"target":"gripsack_fetch::http::request","span":{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"},"spans":[{"command":"Apply","run_id":"1790691555-90dea8","name":"run"},{"module":"demo","name":"module"},{"step":"fetch","name":"step"},{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"}]}
+{"timestamp":"2026-09-29T14:19:20.153235Z","level":"WARN","fields":{"message":"HTTP operation failed","attempts":3,"failure":"transient connection failure","stop":"attempt limit reached"},"target":"gripsack_fetch::http::request","span":{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"},"spans":[{"command":"Apply","run_id":"1790691555-90dea8","name":"run"},{"module":"demo","name":"module"},{"step":"fetch","name":"step"},{"purpose":"artifact","url":"http://127.0.0.1:1/never-there.tar.gz","name":"http"}]}
+___________ test_comma_pinned_package_cannot_expand_deno_read_grant ____________
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_comma_pinned_package_cann0')
+
+    def test_comma_pinned_package_cannot_expand_deno_read_grant(sandbox):
+        """0048 §1.1: comma in a canonical core pin must not turn the
+        Deno --allow-read path list into permission for an outside canary."""
+        outside = sandbox / "outside"
+        outside.mkdir()
+        canary = outside / "canary.ts"
+        canary.write_text('export default "outside";\n')
+        repo = make_env_repo(sandbox / "myenv", {})
+        (repo / "modules" / "evil.ts").write_text(
+            'import { module } from "@gripsack/core";\n'
+            f'import secret from "{canary.as_uri()}";\n'
+            'export default module(secret === "outside" ? "evil" : "bad", { install: [] });\n'
+        )
+        refresh_host(repo)
+    
+        control = grip("check", "--host", "testhost", cwd=repo)
+        assert control.returncode != 0, "outside import must not work without a planted pin"
+    
+        # Copy the real embedded SDK into a valid package whose *canonical*
+        # path contains `,/tmp/.../outside`. A symlink to the SDK would
+        # canonicalize away the comma and miss the vulnerable grant.
+        frontend = sandbox / ".local/share/gripsack/frontend/current"
+        assert frontend.is_symlink()
+        planted = repo / f"pin,{outside}"
+        planted.parent.mkdir(parents=True)
+        shutil.copytree(frontend.resolve(), planted)
+        pin = repo / "node_modules" / "@gripsack"
+        pin.mkdir(parents=True)
+        (pin / "core").symlink_to(planted, target_is_directory=True)
+    
+        out = grip("check", "--host", "testhost", cwd=repo)
+        assert out.returncode != 0, (out.returncode, out.stdout[:300], out.stderr[:300])
+>       assert "E133" in out.stderr, out.stderr[:500]
+E       AssertionError: TypeError: Requires read access to "/tmp/pytest-of-root/pytest-0/test_comma_pinned_package_cann0/outside/canary.ts", run again with the --allow-read flag
+E             at [0m[36mfile:///tmp/pytest-of-root/pytest-0/test_comma_pinned_package_cann0/myenv/modules/evil.ts[0m:[0m[33m2[0m:[0m[33m20[0m
+E             at async main (file:///tmp/pytest-of-root/pytest-0/test_comma_pinned_package_cann0/.local/share/gripsack/frontend/ts-0.42.0/src/cli.ts:128:20) {
+E           code: "ERR_MODULE_NOT_FOUND"
+E         }
+E         grip: frontend eval fai
+E       assert 'E133' in 'TypeError: Requires read access to "/tmp/pytest-of-root/pytest-0/test_comma_pinned_package_cann0/outside/canary.ts", ...ck/frontend/ts-0.42.0/src/cli.ts:128:20) {\n  code: "ERR_MODULE_NOT_FOUND"\n}\ngrip: frontend eval failed (testhost)\n'
+E        +  where 'TypeError: Requires read access to "/tmp/pytest-of-root/pytest-0/test_comma_pinned_package_cann0/outside/canary.ts", ...ck/frontend/ts-0.42.0/src/cli.ts:128:20) {\n  code: "ERR_MODULE_NOT_FOUND"\n}\ngrip: frontend eval failed (testhost)\n' = CompletedProcess(args=['/usr/local/bin/grip', 'check', '--host', 'testhost'], returncode=1, stdout='', stderr='TypeErr...k/frontend/ts-0.42.0/src/cli.ts:128:20) {\n  code: "ERR_MODULE_NOT_FOUND"\n}\ngrip: frontend eval failed (testhost)\n').stderr
+
+test_eval_gate.py:785: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790691590-e8b046.jsonl), last 25 lines ---
+{"timestamp":"2026-09-29T14:19:52.059456Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_comma_pinned_package_cann0/myenv\"","name":"eval"},"spans":[{"command":"Check","run_id":"1790691590-e8b046","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_comma_pinned_package_cann0/myenv\"","name":"eval"}]}
+____________ test_comma_in_repo_path_cannot_expand_deno_read_grant _____________
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0')
+
+    def test_comma_in_repo_path_cannot_expand_deno_read_grant(sandbox):
+        """A comma in the repo path must fail admission with E133 before
+        launching Deno, not merely crash later on its own split read grant."""
+        outside = sandbox / "outside"
+        outside.mkdir()
+        canary = outside / "canary.ts"
+        canary.write_text('export default "outside";\n')
+        repo = make_env_repo(sandbox / f"env,{outside}", {})
+        (repo / "modules" / "evil.ts").write_text(
+            'import { module } from "@gripsack/core";\n'
+            f'import secret from "{canary.as_uri()}";\n'
+            'export default module(secret === "outside" ? "evil" : "bad", { install: [] });\n'
+        )
+        refresh_host(repo)
+    
+        out = grip("check", "--host", "testhost", cwd=repo)
+        assert out.returncode != 0, (out.returncode, out.stdout[:300], out.stderr[:300])
+>       assert "E133" in out.stderr, out.stderr[:500]
+E       AssertionError: TypeError: Requires read access to "/tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/outside/canary.ts", run again with the --allow-read flag
+E             at [0m[36mfile:///tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/env,/tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/outside/modules/evil.ts[0m:[0m[33m2[0m:[0m[33m20[0m
+E             at async main (file:///tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/.local/share/gripsack/frontend/ts-0.42.0/src/cli.ts
+E       assert 'E133' in 'TypeError: Requires read access to "/tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/outside/canary.ts", ...ck/frontend/ts-0.42.0/src/cli.ts:128:20) {\n  code: "ERR_MODULE_NOT_FOUND"\n}\ngrip: frontend eval failed (testhost)\n'
+E        +  where 'TypeError: Requires read access to "/tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/outside/canary.ts", ...ck/frontend/ts-0.42.0/src/cli.ts:128:20) {\n  code: "ERR_MODULE_NOT_FOUND"\n}\ngrip: frontend eval failed (testhost)\n' = CompletedProcess(args=['/usr/local/bin/grip', 'check', '--host', 'testhost'], returncode=1, stdout='', stderr='TypeErr...k/frontend/ts-0.42.0/src/cli.ts:128:20) {\n  code: "ERR_MODULE_NOT_FOUND"\n}\ngrip: frontend eval failed (testhost)\n').stderr
+
+test_eval_gate.py:805: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790691595-6071cf.jsonl), last 25 lines ---
+{"timestamp":"2026-09-29T14:19:56.590260Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/env,/tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/outside\"","name":"eval"},"spans":[{"command":"Check","run_id":"1790691595-6071cf","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/env,/tmp/pytest-of-root/pytest-0/test_comma_in_repo_path_cannot0/outside\"","name":"eval"}]}
+____________ test_comma_in_frontend_home_rejects_before_deno_spawn _____________
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_comma_in_frontend_home_re0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7da5b4ad8440>
+
+    def test_comma_in_frontend_home_rejects_before_deno_spawn(sandbox, monkeypatch):
+        """The inputs and embedded frontend are grant paths too, not just
+        the optional package pin."""
+        repo = make_env_repo(sandbox / "myenv", {})
+        monkeypatch.setenv("GRIPSACK_HOME", str(sandbox / "managed,home"))
+        out = grip("check", "--host", "testhost", cwd=repo)
+>       assert out.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/usr/local/bin/grip', 'check', '--host', 'testhost'], returncode=0, stdout='check: ok 0 modules · host linux/x86_64 · tags: test\n', stderr='').returncode
+
+test_eval_gate.py:817: AssertionError
+=========================== short test summary info ============================
+FAILED test_eval_gate.py::test_absolute_host_cannot_replace_lock_outside_repo
+FAILED test_eval_gate.py::test_exec_failures_render_with_codes_and_spans - As...
+FAILED test_eval_gate.py::test_comma_pinned_package_cannot_expand_deno_read_grant
+FAILED test_eval_gate.py::test_comma_in_repo_path_cannot_expand_deno_read_grant
+FAILED test_eval_gate.py::test_comma_in_frontend_home_rejects_before_deno_spawn
+5 failed, 43 passed in 382.66s (0:06:22)
+
+
+=== Source/adopt/eval campaign, 63 pass / 1 invalid config fixture key (artifact 928) ===
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.37kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.7s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 ...
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.8s
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.8s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.1s done
+#10 DONE 0.1s
+
+#11 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.1s done
+#11 DONE 0.1s
+
+#9 [internal] load build context
+#9 transferring context: 271.75kB 0.1s done
+#9 DONE 0.1s
+
+#12 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#12 CACHED
+
+#13 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#13 CACHED
+
+#14 [builder  4/10] WORKDIR /app
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 CACHED
+
+#16 [builder  6/10] COPY crates ./crates
+#16 DONE 0.3s
+
+#17 [builder  7/10] COPY fuzz ./fuzz
+#17 DONE 0.1s
+
+#18 [builder  8/10] COPY schema ./schema
+#18 DONE 0.1s
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 DONE 0.1s
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.1s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.292     Updating crates.io index
+#21 2.766  Downloading crates ...
+#21 2.844   Downloaded anstyle v1.0.14
+#21 2.853   Downloaded cfg-if v1.0.4
+#21 2.856   Downloaded colorchoice v1.0.5
+#21 2.858   Downloaded cpufeatures v0.3.0
+#21 2.861   Downloaded anstyle-query v1.1.5
+#21 2.863   Downloaded convert_case v0.4.0
+#21 2.865   Downloaded clap_lex v1.1.0
+#21 2.867   Downloaded httpdate v1.0.3
+#21 2.871   Downloaded block-buffer v0.12.1
+#21 2.874   Downloaded adler2 v2.0.1
+#21 2.877   Downloaded crypto-common v0.2.2
+#21 2.879   Downloaded displaydoc v0.2.7
+#21 2.883   Downloaded base64 v0.22.1
+#21 2.893   Downloaded digest v0.11.3
+#21 2.898   Downloaded zstd v0.13.3
+#21 2.906   Downloaded ambient-authority v0.0.2
+#21 2.908   Downloaded anstyle-parse v1.0.0
+#21 2.912   Downloaded dialoguer v0.12.0
+#21 2.920   Downloaded anstream v1.0.0
+#21 2.925   Downloaded sharded-slab v0.1.7
+#21 2.932   Downloaded form_urlencoded v1.2.2
+#21 2.934   Downloaded bzip2 v0.6.1
+#21 2.938   Downloaded crc32fast v1.5.1
+#21 2.943   Downloaded clap_derive v4.6.4
+#21 2.947   Downloaded console v0.16.4
+#21 2.950   Downloaded equivalent v1.0.2
+#21 2.953   Downloaded maybe-owned v0.3.4
+#21 2.956   Downloaded zerofrom-derive v0.1.7
+#21 2.959   Downloaded fs-set-times v0.20.3
+#21 2.962   Downloaded lazy_static v1.5.0
+#21 2.966   Downloaded unicode-ident v1.0.24
+#21 2.973   Downloaded cap-std v4.0.3
+#21 2.980   Downloaded heck v0.5.0
+#21 2.983   Downloaded openssl-probe v0.2.1
+#21 2.986   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 2.989   Downloaded potential_utf v0.1.6
+#21 2.991   Downloaded idna_adapter v1.2.2
+#21 2.993   Downloaded toml v0.9.12+spec-1.1.0
+#21 3.004   Downloaded utf8parse v0.2.2
+#21 3.006   Downloaded percent-encoding v2.3.2
+#21 3.008   Downloaded is_terminal_polyfill v1.70.2
+#21 3.010   Downloaded matchers v0.2.0
+#21 3.013   Downloaded scopeguard v1.2.0
+#21 3.016   Downloaded const-oid v0.10.2
+#21 3.020   Downloaded rustls-native-certs v0.8.4
+#21 3.023   Downloaded io-lifetimes v2.0.4
+#21 3.026   Downloaded stable_deref_trait v1.2.1
+#21 3.027   Downloaded itoa v1.0.18
+#21 3.032   Downloaded fastrand v2.5.0
+#21 3.035   Downloaded find-msvc-tools v0.1.11
+#21 3.037   Downloaded clap v4.6.6
+#21 3.053   Downloaded errno v0.3.14
+#21 3.057   Downloaded io-lifetimes v3.0.1
+#21 3.060   Downloaded nu-ansi-term v0.50.3
+#21 3.065   Downloaded tracing-serde v0.2.0
+#21 3.067   Downloaded untrusted v0.9.0
+#21 3.071   Downloaded pkg-config v0.3.34
+#21 3.075   Downloaded quote v1.0.47
+#21 3.081   Downloaded xattr v1.6.1
+#21 3.086   Downloaded lock_api v0.4.14
+#21 3.088   Downloaded shell-words v1.1.1
+#21 3.090   Downloaded ipnet v2.12.1
+#21 3.093   Downloaded zerofrom v0.1.8
+#21 3.095   Downloaded jobserver v0.1.35
+#21 3.100   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 3.101   Downloaded getrandom v0.2.17
+#21 3.107   Downloaded strsim v0.11.1
+#21 3.110   Downloaded owo-colors v4.3.0
+#21 3.114   Downloaded once_cell v1.21.4
+#21 3.120   Downloaded parking_lot_core v0.9.12
+#21 3.125   Downloaded pin-project-lite v0.2.17
+#21 3.141   Downloaded io-extras v0.19.0
+#21 3.145   Downloaded filetime v0.2.29
+#21 3.150   Downloaded rustix-linux-procfs v0.1.1
+#21 3.152   Downloaded hybrid-array v0.4.14
+#21 3.156   Downloaded parking_lot v0.12.5
+#21 3.161   Downloaded rustls-pki-types v1.15.1
+#21 3.165   Downloaded bitflags v2.13.1
+#21 3.173   Downloaded cap-primitives v4.0.3
+#21 3.194   Downloaded icu_provider v2.3.1
+#21 3.199   Downloaded libbz2-rs-sys v0.2.5
+#21 3.202   Downloaded litemap v0.8.3
+#21 3.207   Downloaded webpki-roots v0.26.11
+#21 3.210   Downloaded log v0.4.34
+#21 3.215   Downloaded proc-macro2 v1.0.107
+#21 3.222   Downloaded serde_core v1.0.229
+#21 3.227   Downloaded yoke-derive v0.8.2
+#21 3.230   Downloaded getrandom v0.4.3
+#21 3.236   Downloaded cc v1.4.4
+#21 3.241   Downloaded serde_spanned v1.1.1
+#21 3.243   Downloaded icu_locale_core v2.3.0
+#21 3.259   Downloaded miniz_oxide v0.8.9
+#21 3.264   Downloaded icu_normalizer_data v2.3.0
+#21 3.268   Downloaded indicatif v0.18.6
+#21 3.274   Downloaded flate2 v1.1.9
+#21 3.284   Downloaded ryu v1.0.23
+#21 3.292   Downloaded bumpalo v3.20.3
+#21 3.296   Downloaded subtle v2.6.1
+#21 3.300   Downloaded thread_local v1.1.10
+#21 3.303   Downloaded icu_collections v2.3.0
+#21 3.315   Downloaded memchr v2.8.3
+#21 3.328   Downloaded icu_properties v2.3.0
+#21 3.334   Downloaded unit-prefix v0.5.2
+#21 3.337   Downloaded rustls-webpki v0.103.15
+#21 3.342   Downloaded indexmap v2.14.0
+#21 3.350   Downloaded serde v1.0.229
+#21 3.356   Downloaded utf8_iter v1.0.4
+#21 3.358   Downloaded simd-adler32 v0.3.10
+#21 3.363   Downloaded aho-corasick v1.1.5
+#21 3.372   Downloaded idna v1.1.0
+#21 3.377   Downloaded xz2 v0.1.7
+#21 3.381   Downloaded writeable v0.6.4
+#21 3.386   Downloaded clap_builder v4.6.6
+#21 3.397   Downloaded icu_properties_data v2.3.0
+#21 3.410   Downloaded hashbrown v0.17.1
+#21 3.419   Downloaded thiserror v2.0.20
+#21 3.429   Downloaded zeroize v1.9.0
+#21 3.432   Downloaded tinystr v0.8.4
+#21 3.436   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 3.439   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 3.441   Downloaded portable-atomic v1.15.0
+#21 3.454   Downloaded shlex v2.0.1
+#21 3.457   Downloaded zmij v1.0.23
+#21 3.462   Downloaded tracing-log v0.2.0
+#21 3.465   Downloaded thiserror-impl v2.0.20
+#21 3.468   Downloaded zstd-safe v7.2.4
+#21 3.471   Downloaded yoke v0.8.3
+#21 3.474   Downloaded smallvec v1.15.2
+#21 3.476   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 3.480   Downloaded sha2 v0.11.0
+#21 3.489   Downloaded synstructure v0.13.2
+#21 3.491   Downloaded regex-syntax v0.8.11
+#21 3.500   Downloaded rustls v0.23.45
+#21 3.519   Downloaded zerovec-derive v0.11.6
+#21 3.524   Downloaded rustix v1.1.4
+#21 3.581   Downloaded tracing-core v0.1.36
+#21 3.586   Downloaded tracing-attributes v0.1.31
+#21 3.591   Downloaded icu_normalizer v2.3.0
+#21 3.606   Downloaded serde_derive v1.0.229
+#21 3.612   Downloaded zopfli v0.8.3
+#21 3.616   Downloaded tempfile v3.27.0
+#21 3.622   Downloaded regex-automata v0.4.18
+#21 3.661   Downloaded tar v0.4.46
+#21 3.667   Downloaded lzma-sys v0.1.20
+#21 3.716   Downloaded serde_yaml v0.9.34+deprecated
+#21 3.723   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 3.729   Downloaded libc v0.2.189
+#21 3.845   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 3.852   Downloaded toml v1.1.4+spec-1.1.0
+#21 3.869   Downloaded unsafe-libyaml v0.2.11
+#21 3.876   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 3.881   Downloaded url v2.5.8
+#21 3.884   Downloaded zerotrie v0.2.5
+#21 3.892   Downloaded ring v0.17.14
+#21 3.958   Downloaded ureq v2.12.1
+#21 3.967   Downloaded typenum v1.20.1
+#21 3.972   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 3.976   Downloaded typed-path v0.12.3
+#21 3.993   Downloaded zip v8.6.0
+#21 4.000   Downloaded zerovec v0.11.8
+#21 4.010   Downloaded linux-raw-sys v0.12.1
+#21 4.088   Downloaded winnow v1.0.4
+#21 4.107   Downloaded serde_json v1.0.151
+#21 4.119   Downloaded winnow v0.7.15
+#21 4.139   Downloaded zlib-rs v0.6.7
+#21 4.148   Downloaded tracing-subscriber v0.3.23
+#21 4.162   Downloaded webpki-roots v1.0.9
+#21 4.167   Downloaded syn v3.0.4
+#21 4.181   Downloaded unicode-width v0.2.2
+#21 4.188   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 4.205   Downloaded syn v2.0.119
+#21 4.219   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 4.234   Downloaded tracing v0.1.44
+#21 4.251   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 4.462    Compiling proc-macro2 v1.0.107
+#21 4.462    Compiling quote v1.0.47
+#21 4.463    Compiling unicode-ident v1.0.24
+#21 4.463    Compiling libc v0.2.189
+#21 4.463    Compiling cfg-if v1.0.4
+#21 4.468    Compiling serde_core v1.0.229
+#21 4.469    Compiling shlex v2.0.1
+#21 4.474    Compiling find-msvc-tools v0.1.11
+#21 4.477    Compiling hashbrown v0.17.1
+#21 4.477    Compiling stable_deref_trait v1.2.1
+#21 4.479    Compiling equivalent v1.0.2
+#21 4.483    Compiling once_cell v1.21.4
+#21 4.485    Compiling rustix v1.1.4
+#21 4.486    Compiling serde v1.0.229
+#21 4.490    Compiling linux-raw-sys v0.12.1
+#21 4.494    Compiling bitflags v2.13.1
+#21 4.497    Compiling pkg-config v0.3.34
+#21 4.497    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.497    Compiling smallvec v1.15.2
+#21 4.503    Compiling writeable v0.6.4
+#21 4.503    Compiling litemap v0.8.3
+#21 4.507    Compiling zmij v1.0.23
+#21 4.511    Compiling icu_properties_data v2.3.0
+#21 4.516    Compiling convert_case v0.4.0
+#21 4.525    Compiling memchr v2.8.3
+#21 4.525    Compiling serde_json v1.0.151
+#21 4.525    Compiling utf8_iter v1.0.4
+#21 4.526    Compiling icu_normalizer_data v2.3.0
+#21 4.530    Compiling itoa v1.0.18
+#21 4.530    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.531    Compiling zeroize v1.9.0
+#21 4.531    Compiling io-lifetimes v3.0.1
+#21 4.531    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.532    Compiling typenum v1.20.1
+#21 4.540    Compiling winnow v1.0.4
+#21 4.556    Compiling io-lifetimes v2.0.4
+#21 4.706    Compiling thiserror v2.0.20
+#21 4.753    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 4.776    Compiling log v0.4.34
+#21 4.778    Compiling io-extras v0.19.0
+#21 4.797    Compiling rustls-pki-types v1.15.1
+#21 4.798    Compiling getrandom v0.4.3
+#21 4.798    Compiling cap-primitives v4.0.3
+#21 4.845    Compiling tracing-core v0.1.36
+#21 4.860    Compiling cap-std v4.0.3
+#21 4.866    Compiling maybe-owned v0.3.4
+#21 4.888    Compiling const-oid v0.10.2
+#21 4.922    Compiling ipnet v2.12.1
+#21 4.933    Compiling crc32fast v1.5.1
+#21 4.934    Compiling ambient-authority v0.0.2
+#21 4.981    Compiling percent-encoding v2.3.2
+#21 4.994    Compiling zstd-safe v7.2.4
+#21 5.001    Compiling simd-adler32 v0.3.10
+#21 5.022    Compiling winnow v0.7.15
+#21 5.078    Compiling fastrand v2.5.0
+#21 5.100    Compiling untrusted v0.9.0
+#21 5.112    Compiling cpufeatures v0.3.0
+#21 5.113    Compiling parking_lot_core v0.9.12
+#21 5.138    Compiling adler2 v2.0.1
+#21 5.138    Compiling rustls v0.23.45
+#21 5.168    Compiling form_urlencoded v1.2.2
+#21 5.171    Compiling pin-project-lite v0.2.17
+#21 5.184    Compiling scopeguard v1.2.0
+#21 5.192    Compiling zlib-rs v0.6.7
+#21 5.216    Compiling bumpalo v3.20.3
+#21 5.245    Compiling subtle v2.6.1
+#21 5.246    Compiling libbz2-rs-sys v0.2.5
+#21 5.264    Compiling miniz_oxide v0.8.9
+#21 5.273    Compiling lock_api v0.4.14
+#21 5.279    Compiling base64 v0.22.1
+#21 5.280    Compiling utf8parse v0.2.2
+#21 5.317    Compiling openssl-probe v0.2.1
+#21 5.359    Compiling indexmap v2.14.0
+#21 5.373    Compiling webpki-roots v1.0.9
+#21 5.380    Compiling regex-syntax v0.8.11
+#21 5.431    Compiling typed-path v0.12.3
+#21 5.437    Compiling anstyle-parse v1.0.0
+#21 5.446    Compiling is_terminal_polyfill v1.70.2
+#21 5.456    Compiling rustls-native-certs v0.8.4
+#21 5.467    Compiling unsafe-libyaml v0.2.11
+#21 5.489    Compiling colorchoice v1.0.5
+#21 5.518    Compiling webpki-roots v0.26.11
+#21 5.529    Compiling portable-atomic v1.15.0
+#21 5.541    Compiling lazy_static v1.5.0
+#21 5.542    Compiling httpdate v1.0.3
+#21 5.558    Compiling anstyle-query v1.1.5
+#21 5.569    Compiling anstyle v1.0.14
+#21 5.592    Compiling ryu v1.0.23
+#21 5.618    Compiling zopfli v0.8.3
+#21 5.636    Compiling unicode-width v0.2.2
+#21 5.656    Compiling sharded-slab v0.1.7
+#21 5.669    Compiling tracing-log v0.2.0
+#21 5.678    Compiling thread_local v1.1.10
+#21 5.688    Compiling heck v0.5.0
+#21 5.695    Compiling strsim v0.11.1
+#21 5.725    Compiling owo-colors v4.3.0
+#21 5.757    Compiling clap_lex v1.1.0
+#21 5.859    Compiling anstream v1.0.0
+#21 5.919    Compiling nu-ansi-term v0.50.3
+#21 5.931    Compiling unit-prefix v0.5.2
+#21 5.965    Compiling shell-words v1.1.1
+#21 6.082    Compiling bzip2 v0.6.1
+#21 6.128    Compiling hybrid-array v0.4.14
+#21 6.185    Compiling syn v2.0.119
+#21 6.191    Compiling syn v3.0.4
+#21 6.200    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 6.202    Compiling clap_builder v4.6.6
+#21 6.411    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 6.486    Compiling jobserver v0.1.35
+#21 6.486    Compiling getrandom v0.2.17
+#21 6.487    Compiling filetime v0.2.29
+#21 6.504    Compiling console v0.16.4
+#21 6.747    Compiling cc v1.4.4
+#21 6.757    Compiling parking_lot v0.12.5
+#21 6.897    Compiling crypto-common v0.2.2
+#21 6.897    Compiling block-buffer v0.12.1
+#21 7.022    Compiling indicatif v0.18.6
+#21 7.215    Compiling regex-automata v0.4.18
+#21 7.926    Compiling digest v0.11.3
+#21 8.096    Compiling sha2 v0.11.0
+#21 8.356    Compiling ring v0.17.14
+#21 8.356    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 8.356    Compiling lzma-sys v0.1.20
+#21 8.415    Compiling serde_spanned v1.1.1
+#21 8.415    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 8.416    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 8.648    Compiling flate2 v1.1.9
+#21 8.655    Compiling toml v0.9.12+spec-1.1.0
+#21 8.700    Compiling toml v1.1.4+spec-1.1.0
+#21 8.700    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 9.584    Compiling rustix-linux-procfs v0.1.1
+#21 9.584    Compiling fs-set-times v0.20.3
+#21 9.584    Compiling tempfile v3.27.0
+#21 9.585    Compiling xattr v1.6.1
+#21 9.691    Compiling xz2 v0.1.7
+#21 9.730    Compiling matchers v0.2.0
+#21 9.762    Compiling tar v0.4.46
+#21 9.925    Compiling dialoguer v0.12.0
+#21 10.95    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 11.08    Compiling synstructure v0.13.2
+#21 12.17    Compiling zerovec-derive v0.11.6
+#21 12.17    Compiling displaydoc v0.2.7
+#21 12.17    Compiling serde_derive v1.0.229
+#21 12.17    Compiling thiserror-impl v2.0.20
+#21 12.17    Compiling clap_derive v4.6.4
+#21 12.48    Compiling zerofrom-derive v0.1.7
+#21 12.48    Compiling yoke-derive v0.8.2
+#21 12.48    Compiling tracing-attributes v0.1.31
+#21 12.49    Compiling rustls-webpki v0.103.15
+#21 12.74    Compiling zstd v0.13.3
+#21 13.06    Compiling zip v8.6.0
+#21 13.97    Compiling zerofrom v0.1.8
+#21 14.05    Compiling yoke v0.8.3
+#21 14.15    Compiling tracing v0.1.44
+#21 14.18    Compiling zerovec v0.11.8
+#21 14.18    Compiling zerotrie v0.2.5
+#21 14.39    Compiling clap v4.6.6
+#21 14.72    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 14.72    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 14.75    Compiling tinystr v0.8.4
+#21 14.75    Compiling potential_utf v0.1.6
+#21 14.82    Compiling icu_collections v2.3.0
+#21 14.88    Compiling icu_locale_core v2.3.0
+#21 15.66    Compiling icu_provider v2.3.1
+#21 15.86    Compiling icu_normalizer v2.3.0
+#21 15.86    Compiling icu_properties v2.3.0
+#21 15.87    Compiling serde_yaml v0.9.34+deprecated
+#21 15.87    Compiling tracing-serde v0.2.0
+#21 15.97    Compiling tracing-subscriber v0.3.23
+#21 16.89    Compiling idna_adapter v1.2.2
+#21 16.94    Compiling idna v1.1.0
+#21 17.21    Compiling url v2.5.8
+#21 17.73    Compiling ureq v2.12.1
+#21 23.00    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 23.48    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 23.48    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 26.30    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 26.30    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 26.30    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 28.96    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 28.96    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 30.66    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 30.66    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 34.93    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 35.08 warning: unused import: `Path`
+#21 35.08   --> crates/gripsack/src/commands/mod.rs:98:17
+#21 35.08    |
+#21 35.08 98 | use std::path::{Path, PathBuf};
+#21 35.08    |                 ^^^^
+#21 35.08    |
+#21 35.08    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+#21 35.08 
+#21 35.08 warning: unused import: `std::process::ExitCode`
+#21 35.08   --> crates/gripsack/src/commands/mod.rs:99:5
+#21 35.08    |
+#21 35.08 99 | use std::process::ExitCode;
+#21 35.08    |     ^^^^^^^^^^^^^^^^^^^^^^
+#21 35.08 
+#21 41.34 warning: `gripsack` (bin "grip") generated 2 warnings (run `cargo fix --bin "grip" -p gripsack` to apply 2 suggestions)
+#21 41.34     Finished `dev` profile [unoptimized + debuginfo] target(s) in 41.16s
+#21 DONE 41.8s
+
+#22 [e2e  2/12] WORKDIR /app
+#22 CACHED
+
+#23 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#23 CACHED
+
+#24 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#24 CACHED
+
+#25 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#27 DONE 0.3s
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 DONE 0.1s
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.261 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.261 Creating virtual environment at: .venv
+#29 0.268 Resolved 10 packages in 1ms
+#29 0.353 Downloading pygments (1.2MiB)
+#29 0.481  Downloaded pygments
+#29 0.482 Prepared 5 packages in 213ms
+#29 0.497 Installed 5 packages in 15ms
+#29 0.497  + iniconfig==2.3.0
+#29 0.497  + packaging==26.3
+#29 0.497  + pluggy==1.6.0
+#29 0.497  + pygments==2.21.0
+#29 0.497  + pytest==9.1.1
+#29 DONE 0.5s
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 3.0s done
+#33 exporting manifest sha256:6af8b2f96f516ec486c9c8610d88085c616976f5195158fc9aa5da79121d4297 0.0s done
+#33 exporting config sha256:20d76bfd565ac6d20d86e93563d31f3b5bcfcbbfacb6bbeb1c189d7de466ab83 0.0s done
+#33 exporting attestation manifest sha256:450689e08fdcf25c208340aebacb7825eb288bb10122043f09b5a44202226fa9 0.0s done
+#33 exporting manifest list sha256:40dcc3984d5412c52820330217f3cd2e38177dd0c641e4d4cd3efa46783d4709 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.8s done
+#33 DONE 4.0s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-916f0768d772 Creating 
+ Container gripsack-e2e-run-916f0768d772 Created 
+.........F......................................................         [100%]
+=================================== FAILURES ===================================
+_____ test_pinned_frontend_content_and_added_native_policy_require_renewal _____
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_pinned_frontend_content_a0')
+
+    def test_pinned_frontend_content_and_added_native_policy_require_renewal(sandbox):
+        repo, value = pinned_value_repo(sandbox)
+        source = approve_source(repo)
+        checked(repo, "before", source)
+        value_file(value, "after")
+        rejected(repo)
+        checked(repo, "after", approve_source(repo))
+        # Operator policy is outside source capture; even unchanged source cannot
+        # retain approval when the effective native action configuration expands.
+        user_config = sandbox / ".config/gripsack/config.toml"
+        user_config.parent.mkdir(parents=True)
+        before = inspect_source(repo)
+        user_config.write_text('[settings]\nmax_download_bytes = 67108864\n')
+>       after = inspect_source(repo)
+                ^^^^^^^^^^^^^^^^^^^^
+
+test_source_approval.py:220: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+repo = PosixPath('/tmp/pytest-of-root/pytest-0/test_pinned_frontend_content_a0/repo')
+
+    def inspect_source(repo):
+        result = grip("trust", "inspect", str(repo), "--json", approve=False)
+>       assert result.returncode == 0, result.stderr
+E       AssertionError: error[E400]: invalid config: unknown field `max_download_bytes`, expected one of `keep_generations`, `acquisition_jobs`, `download_limit_bytes`, `expanded_limit_bytes`, `archive_entry_limit`, `decoder_memory_bytes`
+E           --> /tmp/pytest-of-root/pytest-0/test_pinned_frontend_content_a0/.config/gripsack/config.toml:2:1
+E           help: check the key name and type against doc/settings-reference
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/usr/local/bin/grip', 'trust', 'inspect', '/tmp/pytest-of-root/pytest-0/test_pinned_frontend_c...end_content_a0/.config/gripsack/config.toml:2:1\n  help: check the key name and type against doc/settings-reference\n').returncode
+
+test_source_approval.py:31: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790692681-bf65a5.jsonl), last 25 lines ---
+
+=========================== short test summary info ============================
+FAILED test_source_approval.py::test_pinned_frontend_content_and_added_native_policy_require_renewal
+1 failed, 63 passed in 413.80s (0:06:53)
+
+
+
+Wall time: 465.10 seconds
+
+Command exited with code 1
+=== Resolved native source alias smoke (artifact 930) ===
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.37kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.7s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 ...
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.6s
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 0.6s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 DONE 0.0s
+
+#10 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#10 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#10 DONE 0.0s
+
+#11 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#11 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#11 DONE 0.0s
+
+#9 [internal] load build context
+#9 transferring context: 321.41kB 0.1s done
+#9 DONE 0.1s
+
+#12 [builder  4/10] WORKDIR /app
+#12 CACHED
+
+#13 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#13 CACHED
+
+#14 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 CACHED
+
+#16 [builder  6/10] COPY crates ./crates
+#16 DONE 0.3s
+
+#17 [builder  7/10] COPY fuzz ./fuzz
+#17 DONE 0.1s
+
+#18 [builder  8/10] COPY schema ./schema
+#18 DONE 0.1s
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 DONE 0.1s
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.1s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.269     Updating crates.io index
+#21 2.794  Downloading crates ...
+#21 2.883   Downloaded ambient-authority v0.0.2
+#21 2.890   Downloaded adler2 v2.0.1
+#21 2.892   Downloaded cfg-if v1.0.4
+#21 2.904   Downloaded shell-words v1.1.1
+#21 2.906   Downloaded anstyle-query v1.1.5
+#21 2.917   Downloaded block-buffer v0.12.1
+#21 2.920   Downloaded fs-set-times v0.20.3
+#21 2.922   Downloaded heck v0.5.0
+#21 2.925   Downloaded lazy_static v1.5.0
+#21 2.928   Downloaded convert_case v0.4.0
+#21 2.930   Downloaded httpdate v1.0.3
+#21 2.933   Downloaded cpufeatures v0.3.0
+#21 2.936   Downloaded shlex v2.0.1
+#21 2.939   Downloaded idna_adapter v1.2.2
+#21 2.941   Downloaded sha2 v0.11.0
+#21 2.951   Downloaded sharded-slab v0.1.7
+#21 2.958   Downloaded form_urlencoded v1.2.2
+#21 2.960   Downloaded simd-adler32 v0.3.10
+#21 2.964   Downloaded colorchoice v1.0.5
+#21 2.966   Downloaded stable_deref_trait v1.2.1
+#21 2.968   Downloaded crypto-common v0.2.2
+#21 2.970   Downloaded is_terminal_polyfill v1.70.2
+#21 2.972   Downloaded clap_lex v1.1.0
+#21 2.974   Downloaded matchers v0.2.0
+#21 2.977   Downloaded itoa v1.0.18
+#21 2.981   Downloaded potential_utf v0.1.6
+#21 2.983   Downloaded unit-prefix v0.5.2
+#21 2.986   Downloaded errno v0.3.14
+#21 2.990   Downloaded equivalent v1.0.2
+#21 2.993   Downloaded strsim v0.11.1
+#21 2.995   Downloaded anstyle-parse v1.0.0
+#21 2.999   Downloaded anstream v1.0.0
+#21 3.003   Downloaded anstyle v1.0.14
+#21 3.006   Downloaded scopeguard v1.2.0
+#21 3.009   Downloaded serde_spanned v1.1.1
+#21 3.011   Downloaded openssl-probe v0.2.1
+#21 3.014   Downloaded utf8_iter v1.0.4
+#21 3.016   Downloaded ipnet v2.12.1
+#21 3.018   Downloaded displaydoc v0.2.7
+#21 3.023   Downloaded lock_api v0.4.14
+#21 3.025   Downloaded fastrand v2.5.0
+#21 3.027   Downloaded find-msvc-tools v0.1.11
+#21 3.030   Downloaded rustls-native-certs v0.8.4
+#21 3.032   Downloaded pin-project-lite v0.2.17
+#21 3.044   Downloaded subtle v2.6.1
+#21 3.047   Downloaded digest v0.11.3
+#21 3.053   Downloaded maybe-owned v0.3.4
+#21 3.055   Downloaded rustix-linux-procfs v0.1.1
+#21 3.057   Downloaded io-lifetimes v2.0.4
+#21 3.060   Downloaded io-lifetimes v3.0.1
+#21 3.062   Downloaded jobserver v0.1.35
+#21 3.066   Downloaded dialoguer v0.12.0
+#21 3.073   Downloaded pkg-config v0.3.34
+#21 3.077   Downloaded zerofrom-derive v0.1.7
+#21 3.079   Downloaded yoke-derive v0.8.2
+#21 3.081   Downloaded percent-encoding v2.3.2
+#21 3.082   Downloaded filetime v0.2.29
+#21 3.086   Downloaded xattr v1.6.1
+#21 3.090   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 3.093   Downloaded cap-std v4.0.3
+#21 3.099   Downloaded bzip2 v0.6.1
+#21 3.102   Downloaded clap_derive v4.6.4
+#21 3.106   Downloaded thread_local v1.1.10
+#21 3.109   Downloaded hybrid-array v0.4.14
+#21 3.113   Downloaded parking_lot_core v0.9.12
+#21 3.117   Downloaded litemap v0.8.3
+#21 3.122   Downloaded tracing-serde v0.2.0
+#21 3.124   Downloaded crc32fast v1.5.1
+#21 3.129   Downloaded getrandom v0.2.17
+#21 3.135   Downloaded parking_lot v0.12.5
+#21 3.139   Downloaded webpki-roots v0.26.11
+#21 3.142   Downloaded owo-colors v4.3.0
+#21 3.145   Downloaded once_cell v1.21.4
+#21 3.151   Downloaded bitflags v2.13.1
+#21 3.158   Downloaded quote v1.0.47
+#21 3.163   Downloaded clap v4.6.6
+#21 3.179   Downloaded io-extras v0.19.0
+#21 3.184   Downloaded log v0.4.34
+#21 3.189   Downloaded const-oid v0.10.2
+#21 3.193   Downloaded getrandom v0.4.3
+#21 3.200   Downloaded ryu v1.0.23
+#21 3.206   Downloaded serde_core v1.0.229
+#21 3.211   Downloaded rustls-pki-types v1.15.1
+#21 3.215   Downloaded proc-macro2 v1.0.107
+#21 3.221   Downloaded base64 v0.22.1
+#21 3.229   Downloaded serde_yaml v0.9.34+deprecated
+#21 3.236   Downloaded icu_provider v2.3.1
+#21 3.241   Downloaded icu_locale_core v2.3.0
+#21 3.257   Downloaded icu_normalizer_data v2.3.0
+#21 3.261   Downloaded console v0.16.4
+#21 3.264   Downloaded nu-ansi-term v0.50.3
+#21 3.269   Downloaded zerofrom v0.1.8
+#21 3.271   Downloaded icu_collections v2.3.0
+#21 3.282   Downloaded indicatif v0.18.6
+#21 3.288   Downloaded flate2 v1.1.9
+#21 3.297   Downloaded miniz_oxide v0.8.9
+#21 3.302   Downloaded bumpalo v3.20.3
+#21 3.306   Downloaded cc v1.4.4
+#21 3.310   Downloaded icu_properties v2.3.0
+#21 3.316   Downloaded memchr v2.8.3
+#21 3.329   Downloaded serde v1.0.229
+#21 3.335   Downloaded rustls-webpki v0.103.15
+#21 3.341   Downloaded cap-primitives v4.0.3
+#21 3.360   Downloaded thiserror-impl v2.0.20
+#21 3.363   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 3.365   Downloaded indexmap v2.14.0
+#21 3.373   Downloaded libbz2-rs-sys v0.2.5
+#21 3.376   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 3.379   Downloaded tracing-log v0.2.0
+#21 3.382   Downloaded thiserror v2.0.20
+#21 3.393   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 3.395   Downloaded untrusted v0.9.0
+#21 3.399   Downloaded aho-corasick v1.1.5
+#21 3.408   Downloaded utf8parse v0.2.2
+#21 3.410   Downloaded hashbrown v0.17.1
+#21 3.418   Downloaded serde_json v1.0.151
+#21 3.431   Downloaded xz2 v0.1.7
+#21 3.435   Downloaded idna v1.1.0
+#21 3.440   Downloaded writeable v0.6.4
+#21 3.444   Downloaded zerovec-derive v0.11.6
+#21 3.447   Downloaded icu_properties_data v2.3.0
+#21 3.461   Downloaded synstructure v0.13.2
+#21 3.463   Downloaded tinystr v0.8.4
+#21 3.467   Downloaded clap_builder v4.6.6
+#21 3.477   Downloaded portable-atomic v1.15.0
+#21 3.491   Downloaded zeroize v1.9.0
+#21 3.494   Downloaded zmij v1.0.23
+#21 3.498   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 3.502   Downloaded zstd v0.13.3
+#21 3.509   Downloaded zstd-safe v7.2.4
+#21 3.512   Downloaded smallvec v1.15.2
+#21 3.515   Downloaded yoke v0.8.3
+#21 3.518   Downloaded rustls v0.23.45
+#21 3.537   Downloaded regex-syntax v0.8.11
+#21 3.546   Downloaded rustix v1.1.4
+#21 3.604   Downloaded serde_derive v1.0.229
+#21 3.608   Downloaded tempfile v3.27.0
+#21 3.614   Downloaded unicode-ident v1.0.24
+#21 3.620   Downloaded unsafe-libyaml v0.2.11
+#21 3.627   Downloaded zopfli v0.8.3
+#21 3.631   Downloaded icu_normalizer v2.3.0
+#21 3.642   Downloaded tracing-attributes v0.1.31
+#21 3.647   Downloaded regex-automata v0.4.18
+#21 3.670   Downloaded toml v1.1.4+spec-1.1.0
+#21 3.677   Downloaded tar v0.4.46
+#21 3.683   Downloaded toml v0.9.12+spec-1.1.0
+#21 3.692   Downloaded tracing-core v0.1.36
+#21 3.697   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 3.703   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 3.709   Downloaded lzma-sys v0.1.20
+#21 3.759   Downloaded libc v0.2.189
+#21 3.877   Downloaded url v2.5.8
+#21 3.882   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 3.885   Downloaded typed-path v0.12.3
+#21 3.902   Downloaded ring v0.17.14
+#21 3.966   Downloaded zerotrie v0.2.5
+#21 3.974   Downloaded typenum v1.20.1
+#21 3.979   Downloaded ureq v2.12.1
+#21 3.988   Downloaded zerovec v0.11.8
+#21 3.998   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 4.003   Downloaded zip v8.6.0
+#21 4.009   Downloaded linux-raw-sys v0.12.1
+#21 4.111   Downloaded winnow v0.7.15
+#21 4.129   Downloaded winnow v1.0.4
+#21 4.146   Downloaded zlib-rs v0.6.7
+#21 4.155   Downloaded webpki-roots v1.0.9
+#21 4.159   Downloaded tracing-subscriber v0.3.23
+#21 4.173   Downloaded unicode-width v0.2.2
+#21 4.180   Downloaded syn v2.0.119
+#21 4.194   Downloaded syn v3.0.4
+#21 4.208   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 4.224   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 4.239   Downloaded tracing v0.1.44
+#21 4.256   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 4.473    Compiling proc-macro2 v1.0.107
+#21 4.473    Compiling quote v1.0.47
+#21 4.473    Compiling unicode-ident v1.0.24
+#21 4.474    Compiling libc v0.2.189
+#21 4.474    Compiling cfg-if v1.0.4
+#21 4.474    Compiling serde_core v1.0.229
+#21 4.484    Compiling shlex v2.0.1
+#21 4.484    Compiling find-msvc-tools v0.1.11
+#21 4.485    Compiling hashbrown v0.17.1
+#21 4.487    Compiling stable_deref_trait v1.2.1
+#21 4.487    Compiling equivalent v1.0.2
+#21 4.487    Compiling once_cell v1.21.4
+#21 4.495    Compiling rustix v1.1.4
+#21 4.496    Compiling linux-raw-sys v0.12.1
+#21 4.496    Compiling serde v1.0.229
+#21 4.503    Compiling bitflags v2.13.1
+#21 4.508    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.508    Compiling pkg-config v0.3.34
+#21 4.508    Compiling smallvec v1.15.2
+#21 4.512    Compiling writeable v0.6.4
+#21 4.513    Compiling litemap v0.8.3
+#21 4.518    Compiling zmij v1.0.23
+#21 4.518    Compiling memchr v2.8.3
+#21 4.518    Compiling serde_json v1.0.151
+#21 4.519    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.522    Compiling icu_normalizer_data v2.3.0
+#21 4.523    Compiling convert_case v0.4.0
+#21 4.536    Compiling utf8_iter v1.0.4
+#21 4.536    Compiling itoa v1.0.18
+#21 4.536    Compiling icu_properties_data v2.3.0
+#21 4.537    Compiling io-lifetimes v3.0.1
+#21 4.542    Compiling typenum v1.20.1
+#21 4.554    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.556    Compiling winnow v1.0.4
+#21 4.592    Compiling io-lifetimes v2.0.4
+#21 4.625    Compiling zeroize v1.9.0
+#21 4.691    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 4.734    Compiling log v0.4.34
+#21 4.772    Compiling io-extras v0.19.0
+#21 4.783    Compiling thiserror v2.0.20
+#21 4.791    Compiling cap-primitives v4.0.3
+#21 4.815    Compiling rustls-pki-types v1.15.1
+#21 4.825    Compiling getrandom v0.4.3
+#21 4.826    Compiling tracing-core v0.1.36
+#21 4.827    Compiling cap-std v4.0.3
+#21 4.851    Compiling ambient-authority v0.0.2
+#21 4.860    Compiling const-oid v0.10.2
+#21 4.878    Compiling crc32fast v1.5.1
+#21 4.911    Compiling ipnet v2.12.1
+#21 4.940    Compiling percent-encoding v2.3.2
+#21 4.996    Compiling maybe-owned v0.3.4
+#21 4.997    Compiling winnow v0.7.15
+#21 5.016    Compiling zstd-safe v7.2.4
+#21 5.016    Compiling cpufeatures v0.3.0
+#21 5.038    Compiling fastrand v2.5.0
+#21 5.045    Compiling simd-adler32 v0.3.10
+#21 5.083    Compiling untrusted v0.9.0
+#21 5.136    Compiling parking_lot_core v0.9.12
+#21 5.152    Compiling adler2 v2.0.1
+#21 5.182    Compiling pin-project-lite v0.2.17
+#21 5.208    Compiling form_urlencoded v1.2.2
+#21 5.221    Compiling rustls v0.23.45
+#21 5.242    Compiling zlib-rs v0.6.7
+#21 5.247    Compiling libbz2-rs-sys v0.2.5
+#21 5.277    Compiling bumpalo v3.20.3
+#21 5.286    Compiling subtle v2.6.1
+#21 5.329    Compiling scopeguard v1.2.0
+#21 5.341    Compiling typed-path v0.12.3
+#21 5.341    Compiling openssl-probe v0.2.1
+#21 5.347    Compiling regex-syntax v0.8.11
+#21 5.359    Compiling miniz_oxide v0.8.9
+#21 5.420    Compiling webpki-roots v1.0.9
+#21 5.442    Compiling indexmap v2.14.0
+#21 5.465    Compiling lock_api v0.4.14
+#21 5.480    Compiling base64 v0.22.1
+#21 5.496    Compiling utf8parse v0.2.2
+#21 5.517    Compiling rustls-native-certs v0.8.4
+#21 5.528    Compiling anstyle v1.0.14
+#21 5.533    Compiling anstyle-query v1.1.5
+#21 5.547    Compiling portable-atomic v1.15.0
+#21 5.559    Compiling unicode-width v0.2.2
+#21 5.593    Compiling zopfli v0.8.3
+#21 5.608    Compiling webpki-roots v0.26.11
+#21 5.608    Compiling anstyle-parse v1.0.0
+#21 5.608    Compiling is_terminal_polyfill v1.70.2
+#21 5.627    Compiling httpdate v1.0.3
+#21 5.633    Compiling ryu v1.0.23
+#21 5.666    Compiling lazy_static v1.5.0
+#21 5.676    Compiling colorchoice v1.0.5
+#21 5.691    Compiling unsafe-libyaml v0.2.11
+#21 5.719    Compiling tracing-log v0.2.0
+#21 5.727    Compiling thread_local v1.1.10
+#21 5.765    Compiling sharded-slab v0.1.7
+#21 5.780    Compiling clap_lex v1.1.0
+#21 5.789    Compiling heck v0.5.0
+#21 5.846    Compiling anstream v1.0.0
+#21 5.868    Compiling nu-ansi-term v0.50.3
+#21 5.885    Compiling owo-colors v4.3.0
+#21 5.904    Compiling strsim v0.11.1
+#21 5.914    Compiling unit-prefix v0.5.2
+#21 5.928    Compiling shell-words v1.1.1
+#21 6.053    Compiling bzip2 v0.6.1
+#21 6.177    Compiling clap_builder v4.6.6
+#21 6.292    Compiling hybrid-array v0.4.14
+#21 6.312    Compiling syn v2.0.119
+#21 6.312    Compiling syn v3.0.4
+#21 6.314    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 6.555    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 6.619    Compiling jobserver v0.1.35
+#21 6.619    Compiling getrandom v0.2.17
+#21 6.619    Compiling filetime v0.2.29
+#21 6.619    Compiling console v0.16.4
+#21 6.864    Compiling cc v1.4.4
+#21 6.878    Compiling parking_lot v0.12.5
+#21 7.033    Compiling block-buffer v0.12.1
+#21 7.033    Compiling crypto-common v0.2.2
+#21 7.120    Compiling indicatif v0.18.6
+#21 7.243    Compiling regex-automata v0.4.18
+#21 8.043    Compiling digest v0.11.3
+#21 8.181    Compiling sha2 v0.11.0
+#21 8.515    Compiling serde_spanned v1.1.1
+#21 8.515    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 8.516    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 8.554    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 8.554    Compiling ring v0.17.14
+#21 8.554    Compiling lzma-sys v0.1.20
+#21 8.629    Compiling flate2 v1.1.9
+#21 8.727    Compiling toml v0.9.12+spec-1.1.0
+#21 8.741    Compiling toml v1.1.4+spec-1.1.0
+#21 8.741    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 9.751    Compiling fs-set-times v0.20.3
+#21 9.760    Compiling rustix-linux-procfs v0.1.1
+#21 9.760    Compiling tempfile v3.27.0
+#21 9.760    Compiling xattr v1.6.1
+#21 9.790    Compiling matchers v0.2.0
+#21 9.933    Compiling tar v0.4.46
+#21 10.03    Compiling xz2 v0.1.7
+#21 10.14    Compiling dialoguer v0.12.0
+#21 11.10    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 11.65    Compiling synstructure v0.13.2
+#21 12.32    Compiling zerovec-derive v0.11.6
+#21 12.32    Compiling displaydoc v0.2.7
+#21 12.32    Compiling serde_derive v1.0.229
+#21 12.32    Compiling thiserror-impl v2.0.20
+#21 12.32    Compiling clap_derive v4.6.4
+#21 12.36    Compiling zstd v0.13.3
+#21 12.38    Compiling rustls-webpki v0.103.15
+#21 12.58    Compiling zip v8.6.0
+#21 13.06    Compiling zerofrom-derive v0.1.7
+#21 13.06    Compiling yoke-derive v0.8.2
+#21 13.06    Compiling tracing-attributes v0.1.31
+#21 14.52    Compiling clap v4.6.6
+#21 14.62    Compiling zerofrom v0.1.8
+#21 14.70    Compiling yoke v0.8.3
+#21 14.72    Compiling tracing v0.1.44
+#21 14.81    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 14.81    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 14.84    Compiling zerovec v0.11.8
+#21 14.84    Compiling zerotrie v0.2.5
+#21 15.43    Compiling tinystr v0.8.4
+#21 15.43    Compiling potential_utf v0.1.6
+#21 15.50    Compiling icu_collections v2.3.0
+#21 15.55    Compiling icu_locale_core v2.3.0
+#21 16.19    Compiling serde_yaml v0.9.34+deprecated
+#21 16.19    Compiling tracing-serde v0.2.0
+#21 16.28    Compiling tracing-subscriber v0.3.23
+#21 16.35    Compiling icu_provider v2.3.1
+#21 16.55    Compiling icu_properties v2.3.0
+#21 16.55    Compiling icu_normalizer v2.3.0
+#21 17.74    Compiling idna_adapter v1.2.2
+#21 17.82    Compiling idna v1.1.0
+#21 18.19    Compiling url v2.5.8
+#21 18.83    Compiling ureq v2.12.1
+#21 23.27    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 23.82    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 23.82    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 26.72    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 26.72    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 26.72    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 29.60    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 29.60    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 31.30    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 31.30    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 35.72    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 35.88 warning: unused import: `std::process::ExitCode`
+#21 35.88   --> crates/gripsack/src/commands/mod.rs:99:5
+#21 35.88    |
+#21 35.88 99 | use std::process::ExitCode;
+#21 35.88    |     ^^^^^^^^^^^^^^^^^^^^^^
+#21 35.88    |
+#21 35.88    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+#21 35.88 
+#21 42.39 warning: `gripsack` (bin "grip") generated 1 warning (run `cargo fix --bin "grip" -p gripsack` to apply 1 suggestion)
+#21 42.39     Finished `dev` profile [unoptimized + debuginfo] target(s) in 42.29s
+#21 DONE 43.0s
+
+#22 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#22 CACHED
+
+#23 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#23 CACHED
+
+#24 [e2e  2/12] WORKDIR /app
+#24 CACHED
+
+#25 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#27 DONE 0.3s
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 DONE 0.1s
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.276 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.276 Creating virtual environment at: .venv
+#29 0.282 Resolved 10 packages in 0.89ms
+#29 0.368 Downloading pygments (1.2MiB)
+#29 0.500  Downloaded pygments
+#29 0.500 Prepared 5 packages in 217ms
+#29 0.515 Installed 5 packages in 15ms
+#29 0.515  + iniconfig==2.3.0
+#29 0.515  + packaging==26.3
+#29 0.515  + pluggy==1.6.0
+#29 0.515  + pygments==2.21.0
+#29 0.515  + pytest==9.1.1
+#29 DONE 0.5s
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 3.1s done
+#33 exporting manifest sha256:d2cc647d7ed574ce350ad7fe90e1637f87a96b7f3135a879467a01beabd81e2c 0.0s done
+#33 exporting config sha256:52d0cdd6ccbfd513866ec5eea14ba8248febb78b7f489db4123a6396493ee221 0.0s done
+#33 exporting attestation manifest sha256:ea3363fc8d25390f2b834702ac68cbd1b77ab392aeb0f5ee9f8b32bc0b870dd3 0.0s done
+#33 exporting manifest list sha256:1b900c25a9307e32e5d57efb13d5a397fbd959a191bd3cb086053edcc077079f 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.8s done
+#33 DONE 4.0s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-71bf0a499386 Creating 
+ Container gripsack-e2e-run-71bf0a499386 Created 
+{"returncode": 0, "stdout": "  value \u2713 linked value \u2192 ~/.captured-alias\n\u001b[1m\u001b[32mapplied \u2014\u001b[39m\u001b[0m generation 1 active (\u001b[2m0.1s\u001b[0m)\n", "stderr": "", "installed_exists": true, "installed_link": true}
+materialized alias remains captured after live source mutation
+
+=== Before native alias repair: observed bg_408 result ===
+apply exited 1: no payload or repo file at the published value/alias path; installed_exists=false; installed_link=false.
+The absolute in-repo alias was copied as a relative link without its selected target.
+The same standalone scenario after repair exited 0, installed a readable link, and retained captured content after original source mutation.
+
+=== Initial capture API smoke source (now covered by permanent cases) ===
+use gripsack_store::source_bundle::{SourceBundle, SourceInventory};
+use std::{io, os::unix::fs::{symlink, PermissionsExt}, path::Path};
+
+fn mode(path: &Path) -> u32 { std::fs::metadata(path).unwrap().permissions().mode() & 0o7777 }
+
+fn main() -> io::Result<()> {
+    let temporary = tempfile::tempdir()?;
+    let base = temporary.path();
+    let repo = base.join("repo");
+    let frontend = base.join("frontend");
+    let pin = base.join("sdk");
+    let home = repo.join("private-state");
+    for path in [&repo, &frontend, &pin, &home] { std::fs::create_dir(path)?; }
+    std::fs::write(frontend.join("driver.ts"), b"// trusted driver fixture\n")?;
+    std::fs::write(pin.join("package.json"), br#"{"name":"@gripsack/core"}"#)?;
+    std::fs::write(pin.join("index.ts"), b"export const pinned = 1;\n")?;
+    std::fs::write(repo.join(".gitignore"), b"ignored.ts\n")?;
+    std::fs::write(repo.join("ignored.ts"), b"export const captured = 1;\n")?;
+    std::fs::set_permissions(repo.join("ignored.ts"), std::fs::Permissions::from_mode(0o755))?;
+    std::fs::write(home.join("private"), b"not an evaluator source\n")?;
+    std::fs::create_dir(repo.join(".git"))?;
+    std::fs::write(repo.join(".git/config"), b"control metadata\n")?;
+    symlink("ignored.ts", repo.join("alias.ts"))?;
+    symlink(repo.join("ignored.ts"), repo.join("absolute.ts"))?;
+    std::fs::create_dir_all(repo.join("vendor_modules/@gripsack"))?;
+    symlink(&pin, repo.join("vendor_modules/@gripsack/core"))?;
+    symlink("vendor_modules", repo.join("node_modules"))?;
+    let captured = SourceBundle::capture(&repo, &frontend, Some(&pin), &home)?;
+    assert_eq!(std::fs::read(captured.repository().join("ignored.ts"))?, b"export const captured = 1;\n");
+    assert_eq!(std::fs::canonicalize(captured.repository().join("alias.ts"))?,
+               std::fs::canonicalize(captured.repository().join("ignored.ts"))?);
+    assert_eq!(std::fs::canonicalize(captured.repository().join("absolute.ts"))?,
+               std::fs::canonicalize(captured.repository().join("ignored.ts"))?);
+    assert_eq!(std::fs::canonicalize(captured.repository().join("node_modules/@gripsack/core"))?,
+               captured.pinned_frontend().unwrap());
+    assert!(!captured.repository().join(".git").exists());
+    assert!(!captured.repository().join("private-state").exists());
+    assert_eq!(mode(captured.repository()), 0o500);
+    assert_eq!(mode(&captured.repository().join("ignored.ts")), 0o500);
+    assert_eq!(captured.original_mode(Path::new("alias.ts"))?.bits(), 0o755);
+    let admitted = SourceInventory::decode(captured.inventory_bytes(), captured.digest())?;
+    assert_eq!(admitted.entries(), captured.inventory().entries());
+    std::fs::write(repo.join("ignored.ts"), b"export const captured = 2;\n")?;
+    std::fs::write(pin.join("index.ts"), b"export const pinned = 2;\n")?;
+    assert_eq!(std::fs::read(captured.repository().join("ignored.ts"))?, b"export const captured = 1;\n");
+    assert_eq!(std::fs::read(captured.pinned_frontend().unwrap().join("index.ts"))?, b"export const pinned = 1;\n");
+    let changed = SourceBundle::capture(&repo, &frontend, Some(&pin), &home)?;
+    assert_ne!(captured.digest(), changed.digest());
+    let owned = captured.repository().parent().unwrap().parent().unwrap().to_path_buf();
+    drop(captured);
+    assert!(!owned.exists());
+    let outside = base.join("outside");
+    std::fs::write(&outside, b"outside fixture\n")?;
+    let outside_mode = mode(&outside);
+    symlink(&outside, repo.join("escape"))?;
+    assert!(SourceBundle::capture(&repo, &frontend, Some(&pin), &home).is_err());
+    assert_eq!(std::fs::read(&outside)?, b"outside fixture\n");
+    assert_eq!(mode(&outside), outside_mode);
+    std::fs::remove_file(repo.join("escape"))?;
+    symlink(".", repo.join("cycle"))?;
+    assert!(SourceBundle::capture(&repo, &frontend, Some(&pin), &home).is_err());
+    assert_eq!(mode(&repo.join("ignored.ts")), 0o755);
+    println!("SOURCE_CAPTURE_SMOKE=ignored_files_alias_identity_external_pin_readonly_original_modes_changed_source_escape_cycle_cleanup PASSED");
+    Ok(())
+}
+
+=== Actual native alias smoke source ===
+import json, os, pathlib, subprocess, tempfile
+root = pathlib.Path(tempfile.mkdtemp(prefix='grip-source-alias-'))
+repo = root / 'repo'; home = root / 'home'
+(repo / 'hosts').mkdir(parents=True); (repo / 'modules').mkdir(); home.mkdir()
+(repo / 'env.toml').write_text('[env]\nname="alias witness"\n')
+(repo / 'hosts/testhost.ts').write_text('import {defineEnv} from "@gripsack/core"; import value from "../modules/value.ts"; export default defineEnv(() => ({modules:[value]}));\n')
+(repo / 'modules/value.ts').write_text('import {module,symlink} from "@gripsack/core"; export default module("value",{config:{alias:symlink("~/.captured-alias")}});\n')
+(repo / 'value').write_text('captured source\n')
+(repo / 'alias').symlink_to(repo / 'value')
+env = dict(os.environ, HOME=str(home), GRIPSACK_HOME=str(home / '.grip'))
+env.pop('GRIPSACK_TRUST_ALL', None)
+def run(*args):
+    return subprocess.run([os.environ['GRIPSACK_BIN'], *args], cwd=repo, env=env, capture_output=True, text=True)
+inspected = run('trust','inspect','--json'); assert inspected.returncode == 0, inspected.stderr
+source = json.loads(inspected.stdout)
+approval = run('trust','add','--bundle',source['bundle_digest'],'--policy',source['policy_digest']); assert approval.returncode == 0, approval.stderr
+applied = run('apply','--host','testhost')
+print(json.dumps({'returncode':applied.returncode,'stdout':applied.stdout,'stderr':applied.stderr,'installed_exists':(home / '.captured-alias').exists(),'installed_link':(home / '.captured-alias').is_symlink()}))
+if applied.returncode == 0:
+    assert (home / '.captured-alias').read_text() == 'captured source\n'
+    (repo / 'value').write_text('later live source\n')
+    assert (home / '.captured-alias').read_text() == 'captured source\n'
+    print('materialized alias remains captured after live source mutation')

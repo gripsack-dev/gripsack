@@ -16,7 +16,7 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, Exec
     if let Some(workspace) = &ir.workspace {
         let native = crate::workspace::NativeProfiles::prepare(
             workspace,
-            &ctx.repo,
+            ctx.repository.contents(),
             &ctx.home,
             &ctx.only,
             ctx.fetch.limits(),
@@ -55,7 +55,7 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, Exec
             layout: Default::default(),
         })?;
     }
-    let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
+    let mut lock = match crate::lockfile::read(ctx.repository.identity(), &ctx.host) {
         LockRead::Parsed(lock) => lock,
         LockRead::Missing => Default::default(),
         LockRead::Corrupt(reason) => {
@@ -64,7 +64,7 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, Exec
                 step: "lockfile".into(),
                 detail: format!(
                     "{} is corrupt ({reason}) — restore it or delete it to re-pin deliberately",
-                    crate::lockfile::path(&ctx.repo, &ctx.host).display()
+                    crate::lockfile::path(ctx.repository.identity(), &ctx.host).display()
                 ),
             });
         }
@@ -132,7 +132,7 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, Exec
     }
     let survey = reports.finish()?;
     if survey.summary().publishes_lock(mode) {
-        crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;
+        crate::lockfile::write(ctx.repository.identity(), &ctx.host, &lock)?;
     }
     Ok(survey)
 }

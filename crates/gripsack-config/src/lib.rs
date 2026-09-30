@@ -15,7 +15,7 @@
 //! throttle domains, and settings. The user layer only fills gaps —
 //! a cloned repo behaves identically everywhere.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use gripsack_ir::{Diagnostic, Span, codes};
@@ -95,7 +95,7 @@ pub struct FetcherSection {
 }
 /// A named linter (0010 §3, 0011 §7): provisioned from the plugin
 /// store by ref, or an explicit executable path for development.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct LinterSection {
     /// Plugin-store ref `owner/repo@tag` — downloaded, sha256-verified,
@@ -106,7 +106,7 @@ pub struct LinterSection {
     pub path: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub keep_generations: Option<u32>,
@@ -119,13 +119,13 @@ pub struct Settings {
 }
 
 /// The merged, effective configuration after layering.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Config {
     pub settings: Settings,
     pub fetchers: BTreeMap<String, FetcherSectionView>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct FetcherSectionView {
     pub plugin: Option<String>,
     pub package: Option<String>,

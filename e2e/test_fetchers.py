@@ -18,6 +18,7 @@ from conftest import (
     make_env_repo,
     make_tarball,
     only_store_path,
+    run_grip,
 )
 
 
@@ -192,10 +193,7 @@ def test_invalid_rate_cannot_panic_or_park_a_plugin(sandbox, budget, override):
         config.write('\n[fetchers.demo]\npackage = "acme/gripfetch-demo@1.0"\n')
         if override:
             config.write(f'\n[throttle]\n"demo.local" = "{budget}"\n')
-    out = subprocess.run(
-        [str(GRIP.resolve()), "apply", "--host", "testhost"],
-        cwd=repo, capture_output=True, text=True, timeout=20,
-    )
+    out = run_grip([str(GRIP.resolve()), "apply", "--host", "testhost"], cwd=repo, capture_output=True, text=True, timeout=20,)
     assert out.returncode == 0, out.stdout + out.stderr
     assert (sandbox / ".local/bin/demo-a").read_text() == "#!/bin/sh\necho demo\n"
 
@@ -211,10 +209,7 @@ def test_plugin_token_wait_is_bounded_and_failed_apply_remains_recoverable(sandb
     repo = make_env_repo(sandbox / "myenv", PLUGIN_MODULES)
     with (repo / "env.toml").open("a") as config:
         config.write('\n[fetchers.demo]\npackage = "acme/gripfetch-demo@1.0"\n')
-    out = subprocess.run(
-        [str(GRIP.resolve()), "apply", "--host", "testhost"],
-        cwd=repo, capture_output=True, text=True, timeout=20,
-    )
+    out = run_grip([str(GRIP.resolve()), "apply", "--host", "testhost"], cwd=repo, capture_output=True, text=True, timeout=20,)
     assert out.returncode == 1, out.stdout + out.stderr
     assert invocations.read_text() == "fetch\n"
     with (repo / "env.toml").open("a") as config:

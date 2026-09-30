@@ -15,10 +15,16 @@ Sleep 4s
 Type@40ms "grip apply --host demo"
 Enter
 Sleep 4s
+Type@40ms "y"
+Enter
+Sleep 4s
 Type@40ms "# edit a config and apply - generation 2"
 Enter
 Sleep 2s
 Type@40ms "sed -i 's/catppuccin-mocha/nord/' editor.toml && grip apply --host demo"
+Enter
+Sleep 4s
+Type@40ms "y"
 Enter
 Sleep 4s
 Type@40ms "# the deployed file has the new value"

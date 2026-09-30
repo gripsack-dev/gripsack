@@ -5,6 +5,8 @@ use std::{io, path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Boundary {
+    /// Opt-in read failures; excluded from the durability-only trace by default.
+    Read,
     Write,
     Mode,
     FileSync,
@@ -47,6 +49,8 @@ fn checkpoint(boundary: Boundary, edge: Edge, path: &Path) -> io::Result<()> {
         trace: Option<std::path::PathBuf>,
         cut: Option<usize>,
         kill: bool,
+        reads: bool,
+        errno: Option<i32>,
         ordinal: usize,
     }
     static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
@@ -57,6 +61,12 @@ fn checkpoint(boundary: Boundary, edge: Edge, path: &Path) -> io::Result<()> {
                 .and_then(|s| s.parse().ok()),
             kill: std::env::var("GRIPSACK_FS_FAULT").as_deref() == Ok("kill"),
             ordinal: 0,
+            reads: std::env::var("GRIPSACK_FS_INCLUDE_READS").as_deref() == Ok("1"),
+            errno: match std::env::var("GRIPSACK_FS_FAULT").as_deref() {
+                Ok("eio") => Some(libc::EIO),
+                Ok("permission") => Some(libc::EACCES),
+                _ => None,
+            },
         })
     });
     #[cfg(test)]
@@ -70,6 +80,9 @@ fn checkpoint(boundary: Boundary, edge: Edge, path: &Path) -> io::Result<()> {
         }
     });
     let mut state = CONFIG.lock().expect("fault observer");
+    if matches!(boundary, Boundary::Read) && !state.reads {
+        return Ok(());
+    }
     if state.trace.is_none() && state.cut.is_none() {
         return Ok(());
     }
@@ -90,6 +103,9 @@ fn checkpoint(boundary: Boundary, edge: Edge, path: &Path) -> io::Result<()> {
                 rustix::process::getpid(),
                 rustix::process::Signal::KILL,
             )?;
+        }
+        if let Some(errno) = state.errno {
+            return Err(io::Error::from_raw_os_error(errno));
         }
         return Err(io::Error::other(format!("injected {edge:?} {boundary:?}")));
     }

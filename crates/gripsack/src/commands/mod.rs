@@ -13,6 +13,7 @@ pub mod generations;
 pub mod hooks;
 pub mod init;
 pub mod plan;
+mod prepared;
 pub mod probe;
 pub mod repo;
 pub mod rollback;
@@ -41,20 +42,6 @@ pub use store_verify::store_verify;
 pub use trust::{TrustCommand, trust};
 pub use update::update;
 pub use why_owns::why_owns;
-
-/// The trust gate (0013 D7): call before the first frontend eval of a
-/// repo. `Some(code)` = untrusted and the user declined (or there is
-/// no TTY to ask) — the message is printed here, the caller returns
-/// the code.
-pub fn trust_gate(repo: &Path) -> Option<ExitCode> {
-    match gripsack_store::trust::ensure_trusted(repo) {
-        Ok(()) => None,
-        Err(e) => {
-            eprintln!("{}", Palette::detect().error(&format!("error: {e}")));
-            Some(ExitCode::FAILURE)
-        }
-    }
-}
 
 /// The machine's hostname — $HOSTNAME, else the `hostname` command.
 /// init and eval MUST agree on this (a mismatch means init writes
@@ -107,6 +94,4 @@ pub fn default_host() -> String {
 pub fn expand_home(to: &str) -> PathBuf {
     gripsack_store::expand_home(to)
 }
-use crate::render::Palette;
-use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::path::PathBuf;

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gripsack.dev/schema/source-bundle/v1.json",
+  "title": "Gripsack captured-source inventory v1",
+  "description": "Digest-addressed copied-source inventory. Authoritative Rust admission additionally enforces ordered unique paths, admitted-root membership, real directory parents, closed alias targets, directory-alias acyclicity, disjoint exclusions, aggregate metadata/content budgets and required root directories. The complete encoded document is limited to 16 MiB and source content to 512 MiB.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "roots", "entries", "exclusions"],
+  "properties": {
+    "version": {"const": 1},
+    "roots": {
+      "oneOf": [
+        {"const": ["repository", "frontend"]},
+        {"const": ["repository", "frontend", "pinned_frontend"]}
+      ]
+    },
+    "entries": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {"$ref": "#/$defs/entry"}
+    },
+    "exclusions": {
+      "type": "array",
+      "maxItems": 100000,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/path"}
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "pattern": "^(repo|frontend|pin)(/(?!\\.{1,2}(?:/|$))[^/\\u0000]+)*$",
+      "description": "Root-qualified UTF-8 object path, at most 128 components. No empty, dot, parent or NUL-containing component. Raw source names are metadata, not executable arguments."
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "object"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "object": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": {"kind": {"const": "directory"}}
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "bytes", "sha256", "mode"],
+              "properties": {
+                "kind": {"const": "file"},
+                "bytes": {"type": "integer", "minimum": 0, "maximum": 67108864},
+                "sha256": {"$ref": "#/$defs/sha256"},
+                "mode": {"type": "integer", "minimum": 0, "maximum": 4095}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "target"],
+              "properties": {
+                "kind": {"const": "alias"},
+                "target": {"$ref": "#/$defs/path"}
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

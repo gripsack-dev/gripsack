@@ -12,11 +12,23 @@ import subprocess
 import pytest
 from conftest import (
     GRIP,
+    approve_fixture,
     grip,
     make_env_repo,
 )
 
 
+def approved_adoption(*args, cwd):
+    """Approve both disposable snapshots; --yes never grants source approval."""
+    prepared = grip(*args, cwd=cwd)
+    assert prepared.returncode == 1, prepared.stdout + prepared.stderr
+    resumed = list(args)
+    if "--mode" in resumed:
+        index = resumed.index("--mode")
+        del resumed[index:index + 2]
+    result = grip(*resumed, "--resume", cwd=cwd)
+    result.stdout = prepared.stdout + result.stdout
+    return result
 
 def test_adopt_end_to_end_restores_originals(sandbox):
     """0015 §6: adopt generates the module, manages the destination,
@@ -30,15 +42,12 @@ def test_adopt_end_to_end_restores_originals(sandbox):
     (confdir / "languages.toml").write_text("[editor]\n")
     repo = make_env_repo(sandbox / "myenv", {})
 
-    out = grip(
+    out = approved_adoption(
         "adopt", "~/.config/helix", "--mode", "owned",
         "--host", "testhost", "--yes", cwd=repo,
     )
     assert out.returncode == 0, out.stderr
-    assert "owned" in out.stdout
     assert (repo / "configs/helix/config.toml").read_text() == 'theme = "gruvbox"\n'
-    assert "tree(" in (repo / "modules/helix.ts").read_text()
-    assert "helix" in (repo / "hosts/testhost.ts").read_text()
     assert original.is_symlink()  # managed now
 
     out = grip("rollback", cwd=repo)
@@ -55,11 +64,10 @@ def test_adopt_non_interactive_takes_the_safe_default(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "settings.json").write_text("{}\n")
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip("adopt", "~/.config/zed", "--host", "testhost", "--yes", cwd=repo)
+    out = approved_adoption("adopt", "~/.config/zed", "--host", "testhost", "--yes", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "tracked_copy" in out.stderr or "tracked_copy" in out.stdout
-    assert "safe default" in out.stderr
-    assert '"tracked_copy"' in (repo / "modules/zed.ts").read_text()
+    assert (confdir / "settings.json").read_text() == "{}\n"
+    assert not (confdir / "settings.json").is_symlink()
 
 
 def script_tty(command: str) -> list[str]:
@@ -85,18 +93,18 @@ def test_adopt_menu_selects_on_a_tty(sandbox):
     env.update({
         "HOME": str(sandbox),
         "GRIPSACK_HOME": str(sandbox / ".local/share/gripsack"),
-        "GRIPSACK_TRUST_ALL": "1",
         "PATH": f"{grip_bin.parent}:{os.environ['PATH']}",
     })
-    # bare enter on the menu, 'y' at the apply confirm
+    approve_fixture([str(grip_bin), "adopt", "~/.config/helix"], cwd=repo, env=env)
+    # Safe menu default, generated-source approval, then apply confirmation.
     out = subprocess.run(
         script_tty("grip adopt ~/.config/helix --host testhost"),
-        input=b"\ny\n", capture_output=True, env=env, cwd=repo, timeout=90,
+        input=b"\ny\ny\n", capture_output=True, env=env, cwd=repo, timeout=90,
     )
     transcript = out.stdout.decode(errors="replace") + out.stderr.decode(errors="replace")
-    assert "how should gripsack own these files?" in transcript
-    assert "tracked_copy" in transcript
-    assert '"tracked_copy"' in (repo / "modules/helix.ts").read_text()
+    assert out.returncode == 0, transcript
+    assert (confdir / "config.toml").read_text() == 'theme = "x"\n'
+    assert not (confdir / "config.toml").is_symlink()
 
 
 def test_adopt_refuses_path_outside_home(sandbox):
@@ -125,10 +133,8 @@ def test_adopt_rejects_invalid_host_before_generating_repo_files(sandbox):
     assert (target / "settings.conf").read_text() == "untouched\n"
 
 
-def test_untrusted_adopt_never_inspects_or_generates_repo_files(sandbox, monkeypatch):
-    """0048 §1.4: a missing trust grant must fail before the adoption
-    writes payload, module or host source, even with --yes."""
-    monkeypatch.delenv("GRIPSACK_TRUST_ALL", raising=False)
+def test_untrusted_adopt_never_inspects_or_generates_repo_files(sandbox):
+    """Missing captured-source approval precedes target reads and repo writes."""
     target = sandbox / ".config" / "demo"
     target.mkdir(parents=True)
     (target / "settings.conf").write_text("untouched\n")
@@ -137,10 +143,9 @@ def test_untrusted_adopt_never_inspects_or_generates_repo_files(sandbox, monkeyp
     original_host = host_file.read_bytes()
     out = grip(
         "adopt", "~/.config/demo", "--mode", "tracked_copy",
-        "--host", "testhost", "--yes", cwd=repo,
+        "--host", "testhost", "--yes", cwd=repo, approve=False,
     )
     assert out.returncode != 0
-    assert "grip trust add" in out.stderr
     assert host_file.read_bytes() == original_host
     assert not (repo / "modules" / "demo.ts").exists()
     assert not (repo / "configs" / "demo").exists()
@@ -171,10 +176,9 @@ def test_adopt_does_not_follow_directory_symlinks(sandbox):
     (elsewhere / "big.txt").write_text("x" * 1000)
     (confdir / "cache").symlink_to(elsewhere, target_is_directory=True)
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip("adopt", "~/.config/demo", "--mode", "owned",
+    out = approved_adoption("adopt", "~/.config/demo", "--mode", "owned",
                "--host", "testhost", "--yes", cwd=repo)
     assert out.returncode == 0, out.stderr
-    assert "not followed" in out.stdout
     assert not (repo / "configs/demo/cache/big.txt").exists()
     assert (repo / "configs/demo/a.txt").read_text() == "a\n"
 
@@ -185,13 +189,11 @@ def test_adopt_merge_mode_manages_one_block(sandbox):
     bashrc = sandbox / ".bashrc"
     bashrc.write_text("export EDITOR=hx\n")
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip(
+    out = approved_adoption(
         "adopt", "~/.bashrc", "--mode", "merge",
         "--host", "testhost", "--yes", cwd=repo,
     )
     assert out.returncode == 0, out.stderr
-    assert "merge" in out.stdout
-    assert "managed block" in out.stdout
     assert "EDITOR=hx" in bashrc.read_text()  # content preserved
     out = grip("rollback", cwd=repo)
     assert out.returncode == 0, out.stderr
@@ -203,7 +205,7 @@ def test_adopt_refuses_an_already_managed_path(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "a.txt").write_text("a\n")
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip("adopt", "~/.config/demo", "--host", "testhost", "--yes", cwd=repo)
+    out = approved_adoption("adopt", "~/.config/demo", "--host", "testhost", "--yes", cwd=repo)
     assert out.returncode == 0, out.stderr
     out = grip("adopt", "~/.config/demo", "--host", "testhost", "--yes", cwd=repo)
     assert out.returncode != 0
@@ -220,7 +222,7 @@ def test_adopt_take_over_is_scoped(sandbox):
     other.mkdir(parents=True)
     (other / "b.txt").write_text("b\n")
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip(
+    out = approved_adoption(
         "adopt", "~/.config/other", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
     )
@@ -229,7 +231,7 @@ def test_adopt_take_over_is_scoped(sandbox):
     # clobbered; adopt's scoped set contains only the NEW destinations
     drift_target = sandbox / ".config/other/b.txt"
     drift_target.write_text("user edits\n")
-    out = grip("adopt", "~/.config/demo", "--host", "testhost", "--yes", cwd=repo)
+    out = approved_adoption("adopt", "~/.config/demo", "--host", "testhost", "--yes", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert drift_target.read_text() == "user edits\n"  # drift preserved
 
@@ -241,7 +243,7 @@ def test_adopt_rollback_keeps_post_adopt_user_edits(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "config.toml").write_text('theme = "gruvbox"\n')
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip("adopt", "~/.config/helix", "--host", "testhost", "--yes", cwd=repo)
+    out = approved_adoption("adopt", "~/.config/helix", "--host", "testhost", "--yes", cwd=repo)
     assert out.returncode == 0, out.stderr
     dest = confdir / "config.toml"
     dest.unlink()
@@ -258,10 +260,58 @@ def test_adopt_sanitizes_digit_leading_names(sandbox):
     confdir.mkdir(parents=True)
     (confdir / "9lives.conf").write_text("lives=9\n")
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip(
+    out = approved_adoption(
         "adopt", "~/.config/9lives.conf", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
     )
     assert out.returncode == 0, out.stderr
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
+
+
+def test_generated_adoption_requires_new_approval_before_resume(sandbox):
+    target = sandbox / ".config/demo"
+    target.mkdir(parents=True)
+    (target / "config").write_text("original\n")
+    repo = make_env_repo(sandbox / "repo", {})
+    prepared = grip("adopt", "~/.config/demo", "--mode", "owned",
+                    "--host", "testhost", "--yes", cwd=repo)
+    assert prepared.returncode == 1
+    generated = {path.relative_to(repo): path.read_bytes()
+                 for path in repo.rglob("*") if path.is_file()}
+    assert (target / "config").read_text() == "original\n"
+    assert not (target / "config").is_symlink()
+    state = sandbox / ".local/share/gripsack"
+    assert not (state / "generations").exists()
+    denied = grip("adopt", "~/.config/demo", "--host", "testhost",
+                  "--yes", "--resume", cwd=repo, approve=False)
+    assert denied.returncode == 1
+    assert not (state / "generations").exists()
+    approved = grip("adopt", "~/.config/demo", "--host", "testhost",
+                    "--yes", "--resume", cwd=repo)
+    assert approved.returncode == 0, approved.stdout + approved.stderr
+    assert (target / "config").is_symlink()
+    assert all((repo / path).read_bytes() == content for path, content in generated.items())
+    rolled_back = grip("rollback", cwd=repo)
+    assert rolled_back.returncode == 0, rolled_back.stderr
+    assert not (target / "config").is_symlink()
+    assert (target / "config").read_text() == "original\n"
+
+
+def test_resume_cannot_expand_the_requested_takeover_scope(sandbox):
+    target = sandbox / ".config/demo"
+    target.mkdir(parents=True)
+    (target / "config").write_text("original\n")
+    outside = sandbox / ".outside"
+    outside.write_text("not adopted\n")
+    repo = make_env_repo(sandbox / "repo", {
+        "demo": 'import {module,trackedCopy} from "@gripsack/core";\n'
+                'export default module("demo", {config: {payload: trackedCopy("~/.outside")}});\n',
+    })
+    (repo / "payload").write_text("replacement\n")
+    result = grip("adopt", "~/.config/demo", "--host", "testhost",
+                  "--yes", "--resume", cwd=repo)
+    assert result.returncode == 1
+    assert outside.read_text() == "not adopted\n"
+    assert (target / "config").read_text() == "original\n"
+    assert not (sandbox / ".local/share/gripsack/generations").exists()

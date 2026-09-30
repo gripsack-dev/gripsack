@@ -9,11 +9,10 @@ import os
 import signal
 import shutil
 import stat
-import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import GRIP, grip, make_env_repo
+from conftest import GRIP, grip, make_env_repo, run_grip
 
 
 def snapshot(home):
@@ -34,7 +33,7 @@ export default module('demo', {{ config: {config}, env: {{ MATRIX: '{version}' }
 
 
 def command(repo, args, env):
-    return subprocess.run([str(GRIP), *args], cwd=repo, env=env, capture_output=True, text=True, timeout=120)
+    return run_grip([str(GRIP), *args], cwd=repo, env=env, capture_output=True, text=True, timeout=120)
 
 
 @pytest.mark.parametrize('scenario', ['apply-deploy', 'apply-prune', 'rollback-deploy', 'rollback-prune', 'apply-deploy-copy', 'apply-prune-copy'])

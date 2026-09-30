@@ -266,14 +266,22 @@ fn run_worker(
     mode: SimulationMode,
     environment: &OperatorEnvironment,
 ) -> io::Result<()> {
+    let timeout = Duration::from_secs(30);
+    let deadline = std::time::Instant::now() + timeout;
+    let selected = gripsack_process::SelectedProgram::select(
+        environment,
+        &root.helper(),
+        Some(root.meta.helper_sha256),
+        deadline,
+    )?;
     let invocation = Invocation::admit(
         environment,
         ProcessRole::Probe,
-        &root.helper(),
-        Some(root.meta.helper_sha256),
+        &selected,
         &root.path,
         Limits {
-            timeout: Duration::from_secs(30),
+            timeout,
+            operation_deadline: Some(deadline),
             ..Limits::default()
         },
     )?;

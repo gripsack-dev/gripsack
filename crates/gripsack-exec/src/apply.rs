@@ -43,7 +43,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     let mut lock = if ir.workspace.is_some() {
         crate::lockfile::Lockfile::default()
     } else {
-        match crate::lockfile::read(&ctx.repo, &ctx.host) {
+        match crate::lockfile::read(ctx.repository.identity(), &ctx.host) {
             crate::lockfile::LockRead::Parsed(lock) => lock,
             crate::lockfile::LockRead::Missing => Default::default(),
             crate::lockfile::LockRead::Corrupt(why) => {
@@ -55,7 +55,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
                     step: "lockfile".into(),
                     detail: format!(
                         "{} is corrupt ({why}) — delete it to re-pin from scratch",
-                        crate::lockfile::path(&ctx.repo, &ctx.host).display()
+                        crate::lockfile::path(ctx.repository.identity(), &ctx.host).display()
                     ),
                 });
             }
@@ -100,7 +100,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         .map(|workspace| {
             crate::workspace::NativeProfiles::prepare(
                 workspace,
-                &ctx.repo,
+                ctx.repository.contents(),
                 &ctx.home,
                 &ctx.only,
                 ctx.fetch.limits(),
@@ -452,7 +452,7 @@ fn pre_flip(
     // the write, so a mirror-swap re-fetch never refreshed its pin
     // and every later apply re-resolved)
     if let Some(lock) = lock {
-        crate::lockfile::write(&ctx.repo, &ctx.host, lock)?;
+        crate::lockfile::write(ctx.repository.identity(), &ctx.host, lock)?;
     }
 
     // Prune-on-undeclare (0006 critique): destinations in the previous

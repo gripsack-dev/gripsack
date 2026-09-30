@@ -1,8 +1,9 @@
 //! One admission/execution path for supervised native effects. Executable
 //! selection and environment capture never consult a repository overlay.
+use super::Ruleset;
 use super::{
     Control, Enforcement, Limits, OperatorEnvironment, Outcome, ProcessDisposition, ProcessReceipt,
-    ProcessRole, Sha256Digest, StopReason, descriptors::DescriptorPolicy, image::Program,
+    ProcessRole, Sha256Digest, StopReason, descriptors::DescriptorPolicy, image::SelectedProgram,
 };
 use std::{
     ffi::OsStr,
@@ -40,21 +41,21 @@ pub struct NativeOutcome {
 }
 
 pub struct Invocation<'a> {
-    program: Program,
+    program: &'a SelectedProgram,
     environment: &'a OperatorEnvironment,
     role: ProcessRole,
     directory: File,
     limits: Limits,
     deadline: Instant,
     deadline_millis: u64,
+    confinement: Option<Ruleset>,
 }
 
 impl<'a> Invocation<'a> {
     pub fn admit(
         environment: &'a OperatorEnvironment,
         role: ProcessRole,
-        program: &Path,
-        expected: Option<Sha256Digest>,
+        program: &'a SelectedProgram,
         directory: &Path,
         limits: Limits,
     ) -> io::Result<Self> {
@@ -86,7 +87,6 @@ impl<'a> Invocation<'a> {
             .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW)
             .open(directory)?;
         let directory = super::descriptors::retain_above_stdio(directory)?;
-        let program = Program::select(environment, program, expected, deadline)?;
         let deadline_millis =
             u64::try_from(deadline.duration_since(now).as_millis()).map_err(|_| {
                 io::Error::new(
@@ -102,7 +102,16 @@ impl<'a> Invocation<'a> {
             limits,
             deadline,
             deadline_millis,
+            confinement: None,
         })
+    }
+
+    /// Confine the launched process (and its descendants) to an assembled
+    /// filesystem boundary. Applied in the forked child before descriptors and
+    /// exec; assembly errors surface before spawn.
+    pub fn confine(mut self, ruleset: Ruleset) -> Self {
+        self.confinement = Some(ruleset);
+        self
     }
 
     /// Preserve the shell action's `-c` semantics, with closed bounded stdin.
@@ -151,7 +160,7 @@ impl<'a> Invocation<'a> {
             }
         };
         let (payload, environment_keys) = super::exec_payload::ExecPayload::new(
-            &self.program,
+            self.program,
             arguments,
             self.environment,
             self.role,
@@ -160,6 +169,11 @@ impl<'a> Invocation<'a> {
         let mut command = Command::new(&self.program.executable.path);
         command.env_clear();
         let descriptors = DescriptorPolicy::admit()?;
+        let confinement = self
+            .confinement
+            .as_ref()
+            .map(super::Ruleset::try_clone)
+            .transpose()?;
         let directory = self.directory.as_raw_fd();
         #[cfg(target_os = "linux")]
         let script = self
@@ -170,9 +184,15 @@ impl<'a> Invocation<'a> {
         #[cfg(target_os = "macos")]
         let script = None;
         // SAFETY: retained image/directory owners outlive spawn and supervision.
-        // The closure performs only fchdir/fcntl/close_range/execve and errno reads.
+        // The closure performs only fchdir/landlock syscalls/fcntl/close_range/
+        // execve and errno reads.
         unsafe {
             command.pre_exec(move || {
+                if let Some(ruleset) = &confinement
+                    && let Err(error) = ruleset.restrict()
+                {
+                    return Err(error);
+                }
                 if libc::fchdir(directory) < 0 {
                     return Err(io::Error::last_os_error());
                 }

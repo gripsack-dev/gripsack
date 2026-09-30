@@ -1,0 +1,70 @@
+# EVAL-CONFINEMENT-001 — Linux Landlock evaluator boundary
+
+Date: 2026-09-29. Owner-selected OS filesystem isolation (see
+`continuation-handoff.md` §Immediate blocker). Working tree: uncommitted on
+`handover/h0-bundle-import` after `8143443`. **Development evidence only** —
+exact-source/native CI has not run for this change, and no fuzz/replay ran.
+
+## What landed
+
+- `crates/gripsack-process/src/confinement.rs`: `Boundary` (read/read-write
+  roots), `Ruleset::assemble` (Landlock ruleset built parent-side; the child
+  applies only `PR_SET_NO_NEW_PRIVS` + `LANDLOCK_RESTRICT_SELF` and, for `#!`
+  runtimes, one `/proc/self/fd` rule — no allocation in `pre_exec`), and
+  `runtime_read_roots` (program dir, `ldd` libraries, `#!` interpreter chain
+  including `/usr/bin/env NAME` resolution, python prefix/stdlib via an
+  argv[0]-faithful probe). `EXECUTE` is handled but granted only at `/`:
+  running a binary never widens the read/write boundary; Deno's own permission
+  model still denies evaluated-code process spawning.
+- `OperatorEnvironment::with_evaluator_temp` redirects TMPDIR/TMP/TEMP to the
+  private evaluator scratch; `PreparedEvaluation` provisions
+  `$GRIPSACK_HOME/{deno-cache,eval-tmp}` and records runtime roots;
+  `Frontend::run_bounded` assembles the per-launch boundary (captured roots,
+  input directory, cache/scratch, runtime roots, runtime home, operator PATH
+  dirs) and confines the invocation. Any assembly failure is an operational
+  error before spawn — evaluation never runs unconfined.
+- macOS: `Ruleset::assemble` returns `Unsupported`; the evaluator fails closed.
+  That lane needs a qualified seatbelt design before native CI can pass.
+- e2e harness: session-scoped `confined_runtime` fixture puts one deno copy on
+  PATH (the operator executable space the boundary grants); wrapper-based
+  fixtures exec it by PATH; the pause harness rendezvous moved under the
+  evaluator's private scratch.
+- Five ownership/lineage tests migrated to the approved-adoption resume flow
+  (`test_destination_ownership.py`, `test_ownership_modes.py`) — they still
+  asserted the removed single-shot auto-approve adopt behavior.
+
+## Observed runs (this session, e2e container)
+
+| Command (docker compose run --build --rm e2e uv run --locked --no-sync pytest …) | Result |
+|---|---|
+| `-q test_source_approval.py -k hoisted_node_modules` (pre-fix baseline, bg_441) | **1 failed** — ambient ancestor npm package evaluated, receipt `completed`. The permanent regression reproduced. |
+| same (post-confinement, bg_442) | **2 passed** — ancestor package denied; input-file parent-directory denial intact. |
+| `-q test_source_approval.py test_eval_gate.py test_adopt.py` (bg_445) | 65 passed / 10 failed — all failures wrapper-runtime cases (sh/exec chain, `env` chain, python venv, hostile stdout/stderr fakes). |
+| wrapper-focused re-runs (bg_446→bg_465) | incremental fixes: `ldd` on scripts, `#!/usr/bin/env` resolution, exec-requires-read (runtime home + PATH executable space), python venv prefix. Final: **11 passed** — six pause scenarios, stale-runtime renewal, both hostile-budget fakes, build-env wrapper, hoisted denial. |
+| full suite (bg_466) | **442 passed / 5 failed** — exactly the five ownership/lineage tests still using removed single-shot adopt. No other regression under confinement. |
+| `-q test_destination_ownership.py test_ownership_modes.py` (bg_467) | **29 passed** — the five migrated tests green under the approved/resume flow. |
+| `docker compose run --build --rm test` (bg_472) | **gate passed** — fmt + clippy -D warnings + cargo test, including the three new Landlock oracles and the repaired native cleanup-deadline fixture. |
+| TS gate (bg_418, unchanged frontend sources) | **67 passed**. |
+
+Focused unit oracles: `cargo test -p gripsack-process --lib tests::confinement`
+→ 3 passed (granted read works; outside read kernel-denied; writes confined to
+scratch roots; boundary roots must exist; runtime roots are real directories).
+
+## Honest limits
+
+- macOS evaluation currently fails closed (`Unsupported`); the macOS CI lane
+  cannot pass eval-dependent jobs until a seatbelt boundary lands and is
+  natively qualified. This is the owner's fail-closed requirement, recorded as
+  the open R1 leaf.
+- `EXECUTE`-at-root means an operator-selected runtime may exec any binary;
+  those binaries still inherit the read/write rules unchanged, and Deno denies
+  spawning by evaluated code. Reading an executed binary is allowed anywhere
+  only when its directory is an operator PATH entry, the runtime home, or an
+  explicitly derived root — that is the operator's declared executable space.
+- `ldd`/python-prefix probing trusts the operator-selected runtime (never repo
+  bytes). A hostile operator runtime is outside this boundary by definition.
+- Landlock itself, kernel correctness and host integrity are trusted, not
+  proved. No Landlock kernel theorem or formal refinement is claimed.
+- The earlier M-V6/M-V7 exact-candidate CI (36557008541) predates this change
+  and does not qualify it. Exact-source CI for this tree has not been
+  dispatched.

@@ -2,8 +2,6 @@
 
 use crate::ctx::ExecError;
 use gripsack_ir::{Module, StepAction, prepared::PreparedModule};
-use gripsack_store as store;
-use std::path::Path;
 
 pub(super) fn without_spans(module: &Module) -> Module {
     let mut projected = module.clone();
@@ -29,11 +27,11 @@ pub(super) fn without_spans(module: &Module) -> Module {
 
 pub(crate) fn repo_overlay(
     plan: &PreparedModule,
-    repo: &Path,
+    repo: &crate::Repository,
 ) -> Result<Option<String>, ExecError> {
     let mut froms = Vec::new();
     for entry in plan.entries() {
-        match repo.join(&entry.from).symlink_metadata() {
+        match repo.contents().join(&entry.from).symlink_metadata() {
             Ok(_) => froms.push(entry.from.clone()),
             Err(error)
                 if matches!(
@@ -46,7 +44,5 @@ pub(crate) fn repo_overlay(
     if froms.is_empty() {
         return Ok(None);
     }
-    Ok(Some(
-        store::canonical_overlay_hash(repo, &froms)?.to_string(),
-    ))
+    Ok(Some(String::from(repo.overlay_hash(&froms)?)))
 }

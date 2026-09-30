@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gripsack.dev/schema/evaluation/v1.json",
+  "title": "Gripsack bound evaluation receipt v1",
+  "description": "Private source/policy/input/process evidence, limited to 128 KiB. Rust admission also checks filename identity, source/policy digests, consecutive rounds, runtime identity agreement and outcome completeness. Completed means a stable successful frontend envelope, not successful downstream validation, build or deployment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "repository", "source", "policy_digest", "policy", "provenance", "created_at", "outcome", "rounds"],
+  "properties": {
+    "version": {"const": 1},
+    "id": {"$ref": "#/$defs/digest"},
+    "repository": {"$ref": "../trust/v2.json#/$defs/repository"},
+    "source": {"$ref": "#/$defs/digest"},
+    "policy_digest": {"$ref": "#/$defs/digest"},
+    "policy": {"$ref": "../trust/v2.json#/$defs/policy"},
+    "provenance": {"$ref": "../trust/v2.json#/$defs/provenance"},
+    "created_at": {"type": "string"},
+    "outcome": {"enum": ["started", "rejected", "failed", "completed"]},
+    "rounds": {"type": "array", "items": {"$ref": "#/$defs/round"}}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "optionalDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "u64": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+    "optionalI32": {"type": ["integer", "null"], "minimum": -2147483648, "maximum": 2147483647},
+    "disposition": {"enum": ["exited", "deadline", "input_limit", "line_limit", "stdout_limit", "stderr_limit", "io", "cleanup_failure", "spawn_failure"]},
+    "error": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"enum": ["not_found", "permission_denied", "invalid_input", "invalid_data", "deadline", "unsupported", "interrupted", "would_block", "resource_unavailable", "io"]},
+        "os_code": {"$ref": "#/$defs/optionalI32"}
+      }
+    },
+    "process": {
+      "type": "object", "additionalProperties": false,
+      "required": ["executable_sha256", "byte_binding", "enforcement", "environment_keys", "deadline_millis", "stdout_limit", "stderr_limit", "disposition"],
+      "properties": {
+        "executable_sha256": {"$ref": "#/$defs/digest"},
+        "script_sha256": {"$ref": "#/$defs/optionalDigest"},
+        "byte_binding": {"enum": ["executable_handle", "private_copy_path"]},
+        "enforcement": {"const": "process_group"},
+        "environment_keys": {"type": "array", "items": {"type": "string"}},
+        "deadline_millis": {"$ref": "#/$defs/u64"},
+        "stdout_limit": {"$ref": "#/$defs/u64"},
+        "stderr_limit": {"$ref": "#/$defs/u64"},
+        "exit_code": {"$ref": "#/$defs/optionalI32"},
+        "signal": {"$ref": "#/$defs/optionalI32"},
+        "disposition": {"$ref": "#/$defs/disposition"},
+        "error": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/error"}]},
+        "cleanup_cause": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/disposition"}]}
+      }
+    },
+    "round": {
+      "type": "object", "additionalProperties": false,
+      "required": ["number", "input_sha256"],
+      "properties": {
+        "number": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+        "input_sha256": {"$ref": "#/$defs/digest"},
+        "process": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/process"}]}
+      }
+    }
+  }
+}

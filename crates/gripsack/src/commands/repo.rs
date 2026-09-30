@@ -51,11 +51,8 @@ fn clone_or_update(url: &str) -> Result<PathBuf, ExitCode> {
         git(&["clone", "--quiet", url, &dir.display().to_string()])
     };
     if ok {
-        // 0013 D7: the --repo bootstrap trusts right after the clone,
-        // before anything evaluates the fetched code.
-        if let Some(code) = crate::commands::trust_gate(&dir) {
-            return Err(code);
-        }
+        // Cloning does not grant source authority. The common evaluation
+        // entrypoint captures and approves these bytes before any repo code.
         Ok(dir)
     } else {
         eprintln!("grip: cannot fetch {url} (see output above)");

@@ -32,6 +32,8 @@ pub mod managed_blocks;
 pub mod module;
 pub mod ops;
 pub mod report;
+mod repository;
+pub use repository::Repository;
 pub mod resolve;
 pub mod rollback;
 pub mod schedule;

@@ -58,6 +58,43 @@ impl OperatorEnvironment {
         })
     }
 
+    /// The evaluator's cache is a core-selected runtime directory, never an
+    /// ambient or repository-controlled DENO_DIR.
+    pub fn with_evaluator_cache(mut self, directory: &Path) -> io::Result<Self> {
+        if !directory.is_absolute() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "evaluator cache must be absolute",
+            ));
+        }
+        self.values
+            .insert(OsString::from("DENO_DIR"), directory.as_os_str().to_owned());
+        Ok(self)
+    }
+
+    /// The evaluator's scratch directory replaces any ambient TMPDIR/TMP/TEMP
+    /// so the confined runtime cannot reach operator temp trees.
+    pub fn with_evaluator_temp(mut self, directory: &Path) -> io::Result<Self> {
+        if !directory.is_absolute() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "evaluator temp directory must be absolute",
+            ));
+        }
+        self.values
+            .insert(OsString::from("TMPDIR"), directory.as_os_str().to_owned());
+        self.values.remove(OsStr::new("TMP"));
+        self.values.remove(OsStr::new("TEMP"));
+        Ok(self)
+    }
+
+    /// The operator's executable search space. Confinement grants these
+    /// directories reads: executing a binary requires reading it, and an
+    /// operator-selected script runtime resolves its real interpreter here.
+    pub fn search_directories(&self) -> &[PathBuf] {
+        &self.search_path
+    }
+
     pub(crate) fn resolve(&self, program: &Path) -> io::Result<PathBuf> {
         if program.is_absolute() {
             return std::fs::canonicalize(program);

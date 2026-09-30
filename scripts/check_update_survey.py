@@ -52,12 +52,12 @@ MUTANTS = (
            'if survey.summary().publishes_lock(UpdateMode::Publish) {',
            METADATA_CASE, 'check_published_lock'),
     Mutant('dropped-lock-effect', UPDATE,
-           '        crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;', '',
+           '        crate::lockfile::write(ctx.repository.identity(), &ctx.host, &lock)?;', '',
            METADATA_CASE, 'published lock missing'),
     Mutant('premature-lock-effect', UPDATE,
            '                lock.modules.insert(name.clone(), prepared.entry);',
            '                lock.modules.insert(name.clone(), prepared.entry);\n'
-           '                crate::lockfile::write(&ctx.repo, &ctx.host, &lock)?;',
+           '                crate::lockfile::write(ctx.repository.identity(), &ctx.host, &lock)?;',
            COMPLETE_CASE, 'failed_update_partially_published_lock'),
 )
 

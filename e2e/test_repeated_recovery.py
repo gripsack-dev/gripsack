@@ -10,9 +10,8 @@ from pathlib import Path
 import shutil
 import signal
 import stat
-import subprocess
 
-from conftest import GRIP, make_env_repo
+from conftest import GRIP, make_env_repo, run_grip
 
 
 def test_repeated_recovery_preserves_destination_and_collection_authority(sandbox):
@@ -45,10 +44,8 @@ export default module("demo", {env: {RECOVERY_VERSION: "one"}});
     trace = sandbox / "repeated-recovery.tsv"
 
     def invoke(arguments, extra=None):
-        return subprocess.run(
-            [str(GRIP), *arguments], cwd=repo, env={**environment, **(extra or {})},
-            capture_output=True, text=True, timeout=60,
-        )
+        return run_grip([str(GRIP), *arguments], cwd=repo, env={**environment, **(extra or {})},
+        capture_output=True, text=True, timeout=60,)
 
     def succeeds(arguments, extra=None):
         result = invoke(arguments, extra)

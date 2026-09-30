@@ -3,7 +3,7 @@
 import json
 import subprocess
 import pytest
-from conftest import GRIP, grip, make_env_repo, make_tarball, refresh_host, remove_module
+from conftest import GRIP, grip, make_env_repo, make_tarball, refresh_host, remove_module, start_grip
 
 
 @pytest.mark.parametrize("tamper", ["hash", "mode", "blob-symlink"])
@@ -92,14 +92,14 @@ export default module("{name}", {{
         },
     )
     grip_bin = str(GRIP.resolve())
-    p1 = subprocess.Popen(
+    p1 = start_grip(
         [grip_bin, "apply", "--host", "testhost", "amod"],
         cwd=repo,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
-    p2 = subprocess.Popen(
+    p2 = start_grip(
         [grip_bin, "apply", "--host", "testhost", "bmod"],
         cwd=repo,
         stdout=subprocess.PIPE,

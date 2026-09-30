@@ -405,8 +405,17 @@ mod tests {
             };
             let lock = crate::lockfile::Lockfile::default();
             let adopting = Default::default();
-            let runtime =
-                preview_ops(&ir, repo, None, &adopting, &lock, Default::default(), &[]).unwrap();
+            let repository = crate::Repository::direct(repo.to_path_buf());
+            let runtime = preview_ops(
+                &ir,
+                &repository,
+                None,
+                &adopting,
+                &lock,
+                Default::default(),
+                &[],
+            )
+            .unwrap();
             ir.modules
                 .get_mut("consumer")
                 .unwrap()
@@ -416,8 +425,16 @@ mod tests {
                     edge: gripsack_ir::EdgeKind::Build,
                     span: None,
                 });
-            let build =
-                preview_ops(&ir, repo, None, &adopting, &lock, Default::default(), &[]).unwrap();
+            let build = preview_ops(
+                &ir,
+                &repository,
+                None,
+                &adopting,
+                &lock,
+                Default::default(),
+                &[],
+            )
+            .unwrap();
             let compiler: Vec<_> = build.iter().filter(|o| o.module == "compiler").collect();
             assert_eq!(
                 compiler.len(),
@@ -447,7 +464,7 @@ mod tests {
     fn model_ctx(home: &Path) -> Ctx {
         Ctx {
             home: home.to_path_buf(),
-            repo: home.to_path_buf(),
+            repository: crate::Repository::direct(home.to_path_buf()),
             only: vec![],
             host: HostName::parse("test").unwrap(),
             on_progress: None,

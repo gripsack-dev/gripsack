@@ -1,24 +1,25 @@
-use crate::commands::{eval_repo, trust_gate, validated_ir};
+use crate::commands::{eval_repo, validated_ir};
 use crate::render::{CheckHostReport, CheckOutputReport, CheckReport, DiagnosticSink};
 use gripsack_ir::{Ir, Span};
 use std::path::Path;
 use std::process::ExitCode;
 
-/// grip check: eval + IR sema + linters, then stop (0011 §9). Zero
-/// retained side effects — no lockfile, store or destination mutation.
-/// Native files may be captured into private temporary snapshots for validation.
+/// grip check: eval + IR sema + linters, then stop (0011 §9). No
+/// lockfile, store payload or destination mutation. Private evaluation receipts
+/// bind the source/input snapshot; captured source bytes are command-owned.
 /// `--json` emits one versioned document on stdout carrying the same
 /// facts the terminal renders (0052 A1-06); operational failures
 /// (trust gate, missing deno) keep their stderr text in both modes.
 pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> ExitCode {
-    if let Some(code) = trust_gate(repo) {
-        return sink.finish_failure(code);
-    }
     let outcome = match eval_repo(repo, host, &mut sink) {
         Ok(o) => o,
         Err(code) => return sink.finish_failure(code),
     };
-    let ir = match validated_ir(&outcome, repo, &mut sink) {
+    let repository = gripsack_exec::Repository::evaluated(
+        std::sync::Arc::clone(&outcome.sources),
+        outcome.receipt,
+    );
+    let ir = match validated_ir(&outcome, &mut sink) {
         Ok(ir) => ir,
         Err(code) => return sink.finish_failure(code),
     };
@@ -26,8 +27,12 @@ pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> Exi
         && ir
             .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
             .is_none()
-        && let Err(error) =
-            gripsack_exec::inspect_known_layouts(&ir, repo, &outcome.host, outcome.fetch.limits())
+        && let Err(error) = gripsack_exec::inspect_known_layouts(
+            &ir,
+            &repository,
+            &outcome.host,
+            outcome.fetch.limits(),
+        )
     {
         let diagnostic = match error {
             gripsack_exec::ExecError::Gate(diagnostic) => diagnostic,
@@ -38,18 +43,25 @@ pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> Exi
         sink.report(&[diagnostic]);
         return sink.finish_failure(ExitCode::FAILURE);
     }
-    match workspace_outputs(&ir) {
+    match workspace_outputs(&ir, &outcome.sources) {
         Some(outputs) => check_workspace(&ir, outputs, sink),
-        None => check_legacy(&ir, &outcome, repo, sink),
+        None => check_legacy(&ir, &outcome, &repository, sink),
     }
 }
 
 /// The admitted catalog as report rows (v5 and read-only v4 alike).
-fn workspace_outputs(ir: &Ir) -> Option<Vec<CheckOutputReport>> {
+fn workspace_outputs(
+    ir: &Ir,
+    sources: &gripsack_store::source_bundle::SourceBundle,
+) -> Option<Vec<CheckOutputReport>> {
     let row = |name: &str, kind: &str, span: &Span| CheckOutputReport {
         name: name.to_string(),
         kind: kind.to_string(),
-        span: span.clone(),
+        span: Span {
+            file: sources.logical_text(&span.file).into_owned(),
+            line: span.line,
+            col: span.col,
+        },
     };
     if let Some(workspace) = &ir.workspace {
         return Some(
@@ -102,7 +114,7 @@ fn check_workspace(ir: &Ir, outputs: Vec<CheckOutputReport>, sink: DiagnosticSin
 fn check_legacy(
     ir: &Ir,
     outcome: &crate::commands::eval::EvalOutcome,
-    repo: &Path,
+    repository: &gripsack_exec::Repository,
     mut sink: DiagnosticSink,
 ) -> ExitCode {
     let unique = gripsack_exec::expand::expand_all(&ir.modules)
@@ -118,15 +130,18 @@ fn check_legacy(
             return sink.finish_failure(ExitCode::FAILURE);
         }
     }
-    let layouts =
-        match gripsack_exec::inspect_known_layouts(ir, repo, &outcome.host, outcome.fetch.limits())
-        {
-            Ok(layouts) => layouts,
-            Err(error) => {
-                eprintln!("grip: {error}");
-                return sink.finish_failure(ExitCode::FAILURE);
-            }
-        };
+    let layouts = match gripsack_exec::inspect_known_layouts(
+        ir,
+        repository,
+        &outcome.host,
+        outcome.fetch.limits(),
+    ) {
+        Ok(layouts) => layouts,
+        Err(error) => {
+            eprintln!("grip: {error}");
+            return sink.finish_failure(ExitCode::FAILURE);
+        }
+    };
     if sink.is_json() {
         let mut report = CheckReport::success(sink.into_collected());
         report.host = Some(CheckHostReport {

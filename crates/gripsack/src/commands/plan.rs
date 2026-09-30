@@ -123,7 +123,7 @@ fn native_preview(
     let host = gripsack_ir::HostName::parse("workspace").expect("constant host identifier");
     match render::diff_section(
         ir,
-        repo,
+        &gripsack_exec::Repository::direct(repo.to_path_buf()),
         &host,
         &Default::default(),
         palette,

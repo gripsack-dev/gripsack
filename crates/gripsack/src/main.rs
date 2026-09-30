@@ -55,6 +55,9 @@ enum Command {
         /// Apply without the confirmation prompt
         #[arg(long)]
         yes: bool,
+        /// Apply an already-generated, newly approved module without writing repo files
+        #[arg(long, conflicts_with = "mode")]
+        resume: bool,
     },
     /// Deploy native workspace file profiles or fetch/build/deploy legacy modules
     Apply {
@@ -151,9 +154,8 @@ enum Command {
         #[command(subcommand)]
         command: commands::HooksCommand,
     },
-    /// Manage the repo trust list — the gate before any eval (0013 D7).
-    /// The first eval of an untrusted repo prompts; `GRIPSACK_TRUST_ALL=1`
-    /// is the CI bypass.
+    /// Inspect and approve captured source bytes and their evaluation policy.
+    /// Source or grant changes require renewed digest-bound approval.
     Trust {
         #[command(subcommand)]
         command: commands::TrustCommand,
@@ -208,12 +210,14 @@ fn main() -> ExitCode {
             mode,
             host,
             yes,
+            resume,
         } => commands::adopt(
             &path,
             name.as_deref(),
             mode.as_deref(),
             host.as_deref(),
             yes,
+            resume,
             palette,
         ),
         Command::Apply {
@@ -291,17 +295,18 @@ fn main() -> ExitCode {
                 Ok(r) => r,
                 Err(code) => return code,
             };
-            if let Some(code) = commands::trust_gate(&repo) {
-                return code;
-            }
             let mut sink = render::DiagnosticSink::terminal(palette, &repo);
             let outcome = match commands::eval_repo(&repo, host, &mut sink) {
                 Ok(o) => o,
                 Err(code) => return code,
             };
+            let repository = gripsack_exec::Repository::evaluated(
+                std::sync::Arc::clone(&outcome.sources),
+                outcome.receipt,
+            );
             // the same validation pipeline check/apply run (0033 R5):
             // a plan that succeeds where apply would fail is a lie
-            let ir = match commands::validated_ir(&outcome, &repo, &mut sink) {
+            let ir = match commands::validated_ir(&outcome, &mut sink) {
                 Ok(ir) => ir,
                 Err(code) => return code,
             };
@@ -318,10 +323,7 @@ fn main() -> ExitCode {
                 }) {
                     Ok(()) => {}
                     Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
-                        eprintln!(
-                            "{}",
-                            render::render_diagnostics_bounded(&[d], palette, &repo)
-                        );
+                        sink.report(&[d]);
                         return ExitCode::FAILURE;
                     }
                     Err(e) => {
@@ -333,7 +335,7 @@ fn main() -> ExitCode {
             if !ir.has_workspace() {
                 match gripsack_exec::inspect_known_layouts(
                     &ir,
-                    &repo,
+                    &repository,
                     &outcome.host,
                     outcome.fetch.limits(),
                 ) {
@@ -361,7 +363,7 @@ fn main() -> ExitCode {
             if modules.is_empty() || ir.workspace.is_some() {
                 match render::diff_section(
                     &ir,
-                    &repo,
+                    &repository,
                     &outcome.host,
                     &Default::default(),
                     palette,

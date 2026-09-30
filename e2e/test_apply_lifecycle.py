@@ -3,7 +3,7 @@
 import os
 import shutil
 import subprocess
-from conftest import GRIP, grip, make_env_repo, make_tarball
+from conftest import GRIP, grip, make_env_repo, make_tarball, run_grip
 
 
 def test_panicking_worker_completes_and_releases_the_apply_lock(sandbox, monkeypatch):
@@ -17,10 +17,7 @@ def test_panicking_worker_completes_and_releases_the_apply_lock(sandbox, monkeyp
         },
     )
     monkeypatch.setenv("GRIPSACK_PANIC_MODULE", "panic")
-    failed = subprocess.run(
-        [str(GRIP), "apply", "--host", "testhost", "--jobs", "2"],
-        cwd=repo, capture_output=True, text=True, timeout=15,
-    )
+    failed = run_grip([str(GRIP), "apply", "--host", "testhost", "--jobs", "2"], cwd=repo, capture_output=True, text=True, timeout=15,)
     assert failed.returncode != 0
     assert "worker panicked" in failed.stderr, failed.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()

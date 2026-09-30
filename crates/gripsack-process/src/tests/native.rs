@@ -27,17 +27,21 @@ fn selected_script_survives_source_replacement_and_stale_approval_refuses() {
     fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
     let environment = operator(&[("PATH", "/usr/bin:/bin")]);
     let digest = Sha256Digest::of(original);
-    let selected = Invocation::admit(
+    let deadline = std::time::Instant::now() + limits().timeout;
+    let selected = SelectedProgram::select(&environment, &path, Some(digest), deadline).unwrap();
+    fs::write(&path, b"#!/bin/sh\nprintf replaced > effect\n").unwrap();
+    let invocation = Invocation::admit(
         &environment,
         ProcessRole::Hook,
-        &path,
-        Some(digest),
+        &selected,
         temporary.path(),
-        limits(),
+        Limits {
+            operation_deadline: Some(deadline),
+            ..limits()
+        },
     )
     .unwrap();
-    fs::write(&path, b"#!/bin/sh\nprintf replaced > effect\n").unwrap();
-    let outcome = selected
+    let outcome = invocation
         .run(&[], NativeInput::Bytes(b""), None, |_| Control::Continue)
         .unwrap();
     assert!(outcome.success, "{:?}", outcome.receipt);
@@ -46,17 +50,7 @@ fn selected_script_survives_source_replacement_and_stale_approval_refuses() {
         b"original"
     );
     fs::remove_file(temporary.path().join("effect")).unwrap();
-    assert!(
-        Invocation::admit(
-            &environment,
-            ProcessRole::Hook,
-            &path,
-            Some(digest),
-            temporary.path(),
-            limits()
-        )
-        .is_err()
-    );
+    assert!(SelectedProgram::select(&environment, &path, Some(digest), deadline).is_err());
     assert!(!temporary.path().join("effect").exists());
 }
 
@@ -77,13 +71,18 @@ fn native_child_cannot_read_ungranted_environment_or_inherited_descriptor() {
         ("LD_PRELOAD", "/nonexistent/gripsack-canary"),
         ("BASH_ENV", "/nonexistent/gripsack-canary"),
     ]);
+    let deadline = std::time::Instant::now() + limits().timeout;
+    let selected =
+        SelectedProgram::select(&environment, Path::new("/bin/sh"), None, deadline).unwrap();
     let invocation = Invocation::admit(
         &environment,
         ProcessRole::Hook,
-        Path::new("/bin/sh"),
-        None,
+        &selected,
         temporary.path(),
-        limits(),
+        Limits {
+            operation_deadline: Some(deadline),
+            ..limits()
+        },
     )
     .unwrap();
     let script = format!(
@@ -149,13 +148,17 @@ fn spawn_failure_keeps_the_kernel_error_and_does_not_report_success() {
     fs::write(&executable, b"not an executable image\n").unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
     let environment = operator(&[("PATH", "/usr/bin:/bin")]);
+    let deadline = std::time::Instant::now() + limits().timeout;
+    let selected = SelectedProgram::select(&environment, &executable, None, deadline).unwrap();
     let invocation = Invocation::admit(
         &environment,
         ProcessRole::Hook,
-        &executable,
-        None,
+        &selected,
         temporary.path(),
-        limits(),
+        Limits {
+            operation_deadline: Some(deadline),
+            ..limits()
+        },
     )
     .unwrap();
     let outcome = invocation
@@ -245,13 +248,18 @@ fn isolated_native_probe(test: &str, probe: NativeProbe) {
                 None => std::borrow::Cow::Borrowed("printf bound > effect"),
             };
             let environment = operator(&[("PATH", "/usr/bin:/bin")]);
+            let deadline = std::time::Instant::now() + limits().timeout;
+            let selected =
+                SelectedProgram::select(&environment, Path::new("/bin/sh"), None, deadline)?;
             let invocation = Invocation::admit(
                 &environment,
                 ProcessRole::Hook,
-                Path::new("/bin/sh"),
-                None,
+                &selected,
                 Path::new(&directory),
-                limits(),
+                Limits {
+                    operation_deadline: Some(deadline),
+                    ..limits()
+                },
             )?;
             let result = invocation.run(
                 &[OsStr::new("-c"), OsStr::new(script.as_ref())],

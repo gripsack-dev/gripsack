@@ -17,7 +17,7 @@ const MODES: [u32; 3] = [0o644, 0o755, 0o600];
 fn context(home: &Path) -> Ctx {
     Ctx {
         home: home.into(),
-        repo: home.into(),
+        repository: crate::Repository::direct(home.into()),
         only: vec![],
         host: HostName::parse("model").unwrap(),
         on_progress: None,

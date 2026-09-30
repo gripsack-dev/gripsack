@@ -110,6 +110,12 @@ jobs:
 
       - name: E2E (flow suite, native macOS)
         working-directory: e2e
+        env:
+          # macOS has no kernel evaluator confinement yet (R1 open leaf):
+          # Landlock is Linux-only, and the default fails closed. This lane
+          # acknowledges the gap explicitly instead of disabling the suite;
+          # the acknowledgment is operator-level, never repo-controlled.
+          GRIPSACK_EVAL_UNCONFINED: "1"
         run: |
           python -m pip install pytest
           python -m pytest -q

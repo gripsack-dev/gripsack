@@ -660,9 +660,10 @@ transition cases. Fresh strict/no-fingerprint TLAPM 7824dab, unchanged
 stretch/thread settings and a two-CPU limit proved **97/97** module obligations
 in **121.86 s**. The catalog floor rises to **4,623**, still 40 modules and
 443 theorem names. No transition, invariant, theorem statement, domain or
-timeout changed. Full rebuilt local and exact-source new-candidate CI
-qualification remain required; M-V7 runtime work is not qualified by this
-proof-only receipt. No fuzz or saved fuzz corpus was run.
+timeout changed. The complete rebuilt model/TLAPS gate subsequently passed
+**40 modules / 4,623 obligations**; the receipt below retains its entire output.
+Exact-source new-candidate CI remains required. This proof-only receipt does
+not qualify M-V7 runtime work. No fuzz or saved fuzz corpus was run.
 
 ## M-V7 acquisition — production-connected local qualification
 
@@ -751,8 +752,63 @@ isolated HOME. Required file/namespace barriers are separate stages; the real
 executor consumes run/capture/mutation/commit authority, including historical
 wire admission and all fixture consumers.
 
-Full rebuilt Rust/Verus/effect-calibration/CLI gates and exact-candidate/native
-qualification remain required. The filesystem mapping is tested/calibrated,
+Complete rebuilt local Rust, Verus, effect calibration and **417-case CLI**
+qualification subsequently passed, as recorded below. Exact-candidate/native
+qualification remains required. The filesystem mapping is tested/calibrated,
 not promoted to a formal refinement theorem or physical durability proof.
 No fuzz or saved fuzz corpus was run.
+
+## Integrated M-V6/M-V7 — complete local gates at the 8143443 checkpoint
+
+The source checkpoint is `814344394503ba0574a8bbf397c81ed8be628412`.
+Its explicit-waiver [CI run 36557008541](https://github.com/gripsack-dev/gripsack/actions/runs/36557008541)
+is still required. Subsequent R1 captured-source/runtime-selection work is not
+qualified by these receipts.
+
+| Receipt | Bytes | SHA-256 | Observed scope |
+|---|---:|---|---|
+| `2026-09-29-m-v6-constructor-local.log` | 2,037,640 | `f9edec3ce4ebf25f48d0d1ba31c7862e5d908828248493d1b9fe2fe416489d86` | Complete rebuilt model/TLAPS gate, 40 modules / 4,623 generalized obligations, plus required calibration. |
+| `2026-09-29-m-v7-runtime-local.log` | 299,379 | `a2a17445b405ae68ee8e1e84b7c5ab4aa8605d85be24150c7c93109e46b6f0a8` | Complete corrected Rust gate and actual effects: journal 5 positives / 6 mutants, plus existing scheduler/admission/GC/rate/HTTP/process/survey campaigns. Retains the earlier two needless-borrow clippy failures, not relabelled success. TS Compose gate also passed; no fresh TS case count claimed. |
+| `2026-09-29-m-v7-proof-local.log` | 208,252 | `f7b02dde90a367989c32be686d60fc3e42cd46ff009126949f55081dd09f66a4` | Whole policy 333 verified / 0 errors, 60 semantic/evidence calibrations and 16 evidence negatives. The journal families freeze eight executable queries and eight attributable mutants. |
+| `2026-09-29-m-v7-cli-local.log` | 24,656 | `4cbe2dfcd2148f1365d4ff951ad0387fe999b9fd7b9e80d4b43d46ac43ebfbdb` | Complete rebuilt Linux CLI/Deno/persistence suite: 417 passed, no failures/skips. The image precedes two test-only borrow fixes; its production and e2e source is unchanged by those fixes. |
+
+None proves filesystem hardware, Deno/TLS/compiler correctness, native macOS
+execution, formal model-to-Rust refinement or release closure. No fuzz or saved
+fuzz corpus was run.
+
+## R1 captured-source approval — development evidence
+
+`2026-09-29-r1-development.log` (147,236 bytes) has SHA-256
+`fa90d2b56644e2c9ca00731668a5b022fd912040427f109b28496447443c9ff8`.
+It retains the initial real approval/apply smoke, a 43-pass/5-failure migration
+run, the 63-pass/1-invalid-config-key source/adopt campaign, and the real native
+alias repair witness, including smoke sources. The six controlled one/two-round
+repository/pin/link mutations use an explicitly selected wrapper around real
+Deno, not a fabricated evaluation envelope.
+
+The first native alias apply failed because staging retained the alias without
+its target. After resolved captured-object materialization, apply succeeded and
+the deployed file retained captured bytes after the original changed.
+The later source/read-fault/adopt/golden group passed 75 cases and failed three
+new alias cases at an incidental assertion demanding extra executable bits.
+That assertion was removed, not re-pinned; reuse/preview/live-edit parts still
+require the next run. Strict source/trust/evaluation schema and reader tests
+passed separately, with actual native process metadata.
+
+These are intermediate working-tree runs, not final/native/exact-candidate
+qualification. Complete Rust gate attempts exposed the new read-boundary
+projection and nested-condition lint corrections; their later passing gates
+must be retained separately. No fuzz or saved fuzz corpus was run.
+
+## Current implementation handoff and blocking npm evidence
+
+The owner requested an implementation-agent switch after selecting OS filesystem
+isolation for R1. See [`continuation-handoff.md`](../continuation-handoff.md).
+The source-approval packet is blocked by an observed stock-Deno ancestor npm
+escape; no OS enforcement implementation is claimed.
+
+| Report | Bytes | SHA-256 | Scope |
+|---|---:|---|---|
+| `2026-09-29-ci-8143443-qualification.log` | 9,511,007 | `cec1a7fa958e37f23faa7eda65f84cc8e9a22751d0a4b9d9d49efe1479d6b748` | Exact candidate CI metadata and full Linux/native logs. Linux 417 CLI, 40/4,623 generalized TLAPS and Verus 333/0 passed; native 32/1 failed before journal/CLI, so aggregate failed. |
+| `2026-09-29-r1-qualification-and-blocker.log` | 557,208 | `da3759eec0d368a280637b53bce7e9062551576aba41dbaeb424d1f10cf056cb` | Complete local Rust, fresh TS 67, unchanged cached model/TLAPS, full Verus gate, binary identities and unsuccessful Deno isolation experiments. Includes the observed failing real npm case and current reproduction scripts; not release qualification. |
 

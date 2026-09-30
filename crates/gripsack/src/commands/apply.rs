@@ -1,7 +1,6 @@
-use crate::commands::{eval_repo, trust_gate};
+use super::eval::{EvalOutcome, eval_repo};
 use crate::render::Palette;
 use gripsack_exec::{Ctx, Outcome};
-use gripsack_ir::HostName;
 use gripsack_store as store;
 use owo_colors::OwoColorize;
 use std::path::Path;
@@ -19,13 +18,9 @@ pub struct ApplyOptions {
 }
 
 impl ApplyOptions {
-    fn scoped(
-        entries: std::collections::BTreeSet<String>,
-        host: HostName,
-        jobs: Option<usize>,
-    ) -> Self {
+    fn scoped(entries: std::collections::BTreeSet<String>, jobs: Option<usize>) -> Self {
         ApplyOptions {
-            host: Some(host.into_string()),
+            host: None,
             modules: vec![],
             take_over: false,
             take_over_entries: Some(entries),
@@ -42,41 +37,60 @@ pub fn apply(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
 /// Apply with scoped take-over (0015 §3): `grip adopt` absorbs exactly
 /// the destinations it generated — unrelated drift is never clobbered.
 pub fn apply_scoped(
-    repo: &Path,
+    outcome: EvalOutcome,
     entries: std::collections::BTreeSet<String>,
-    host: HostName,
     jobs: Option<usize>,
     palette: Palette,
 ) -> ExitCode {
-    apply_inner(repo, ApplyOptions::scoped(entries, host, jobs), palette)
+    let opts = ApplyOptions::scoped(entries, jobs);
+    if let Err(code) = admit_jobs(&opts) {
+        return code;
+    }
+    let mut sink =
+        crate::render::DiagnosticSink::terminal(palette, outcome.sources.repository_identity());
+    sink.bind_captured_source(std::sync::Arc::clone(&outcome.sources));
+    apply_evaluated(outcome, opts, palette, &mut sink)
 }
 
-fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
+fn admit_jobs(opts: &ApplyOptions) -> Result<(), ExitCode> {
     if opts.jobs == Some(0) {
         eprintln!("grip: --jobs 0 would run zero modules — pass a positive count");
-        return ExitCode::from(2);
+        return Err(ExitCode::from(2));
     }
     if opts.jobs.is_none() && std::env::var("GRIPSACK_JOBS").ok().as_deref() == Some("0") {
         eprintln!("grip: GRIPSACK_JOBS=0 would run zero modules — unset or fix it");
-        return ExitCode::from(2);
+        return Err(ExitCode::from(2));
     }
-    if let Some(code) = trust_gate(repo) {
+    Ok(())
+}
+
+fn apply_inner(repo: &Path, mut opts: ApplyOptions, palette: Palette) -> ExitCode {
+    if let Err(code) = admit_jobs(&opts) {
         return code;
     }
-    let host = opts.host;
+    let host = opts.host.take();
     let mut sink = crate::render::DiagnosticSink::terminal(palette, repo);
     let outcome = match eval_repo(repo, host, &mut sink) {
         Ok(o) => o,
         Err(code) => return code,
     };
-    let ir = match crate::commands::validated_ir(&outcome, repo, &mut sink) {
+    apply_evaluated(outcome, opts, palette, &mut sink)
+}
+
+fn apply_evaluated(
+    outcome: EvalOutcome,
+    opts: ApplyOptions,
+    palette: Palette,
+    sink: &mut crate::render::DiagnosticSink,
+) -> ExitCode {
+    let ir = match crate::commands::validated_ir(&outcome, sink) {
         Ok(ir) => ir,
         Err(code) => return code,
     };
     if let Err(code) = crate::commands::reject_workspace_execution(
         &ir,
         gripsack_ir::workspace::WorkspaceOperation::Apply,
-        &mut sink,
+        sink,
     ) {
         return code;
     }
@@ -97,7 +111,10 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
     let ctx = Ctx {
         home: store::gripsack_home(),
         home_dir: Default::default(),
-        repo: repo.to_path_buf(),
+        repository: gripsack_exec::Repository::evaluated(
+            std::sync::Arc::clone(&outcome.sources),
+            outcome.receipt,
+        ),
         only: opts.modules,
         host: outcome.host.clone(),
         take_over: opts.take_over,
@@ -146,19 +163,13 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
             diagnostics,
         ))) => {
             // plugin diagnostics render through the one renderer (0009 §2)
-            eprintln!(
-                "{}",
-                crate::render::render_diagnostics_bounded(&diagnostics, palette, repo)
-            );
+            sink.report(&diagnostics);
             ExitCode::FAILURE
         }
         Err(gripsack_exec::ExecError::Gate(d)) => {
             // pre-mutation validity gates carry their own spans —
             // render them as-is, same as sema (0030 §P0-1)
-            eprintln!(
-                "{}",
-                crate::render::render_diagnostics_bounded(&[d], palette, repo)
-            );
+            sink.report(&[d]);
             ExitCode::FAILURE
         }
         Err(e) => {
@@ -182,10 +193,7 @@ fn apply_inner(repo: &Path, opts: ApplyOptions, palette: Palette) -> ExitCode {
             if let Some(span) = span {
                 d = d.with_label(Some(span), "raised here");
             }
-            eprintln!(
-                "{}",
-                crate::render::render_diagnostics_bounded(&[d], palette, repo)
-            );
+            sink.report(&[d]);
             ExitCode::FAILURE
         }
     }

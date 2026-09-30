@@ -158,7 +158,7 @@ impl<'a> ModuleRun<'a> {
             recipes,
             plan,
             home: &ctx.home,
-            repo: &ctx.repo,
+            repo: &ctx.repository,
             locked,
             lock,
         })?;
@@ -239,7 +239,7 @@ impl<'a> ModuleRun<'a> {
         // last file was dropped) must create it explicitly or the
         // publish rename fails with ENOENT.
         std::fs::create_dir_all(&stage)?;
-        let overlay = crate::source::Overlay::capture(self.plan, &self.ctx.repo, &stage)?;
+        let overlay = crate::source::Overlay::capture(self.plan, &self.ctx.repository, &stage)?;
         let repo256 = overlay.merge(&stage)?;
         if let Some(entry) = &mut self.lock_entry
             && let Some(pin) = &mut entry.resolved

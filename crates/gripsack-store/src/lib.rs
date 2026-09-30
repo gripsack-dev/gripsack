@@ -35,6 +35,7 @@ pub mod paths;
 pub mod prior;
 mod private_state;
 mod selection_wire;
+pub mod source_bundle;
 pub mod trust;
 
 pub use generations::{
@@ -52,4 +53,3 @@ pub use paths::{
     generation_dir, gripsack_home, input_hash, store_path,
 };
 pub use prior::Prior;
-pub use trust::{TrustedRepo, ensure_trusted};

@@ -18,10 +18,13 @@ Sleep 2s
 Type@40ms "find . -type f -not -path './.git/*' | sort"
 Enter
 Sleep 4s
-Type@40ms "# check - eval + sema + linters, zero side effects"
+Type@40ms "# check - approve captured source, eval + sema + linters"
 Enter
 Sleep 2s
 Type@40ms "grip check"
+Enter
+Sleep 4s
+Type@40ms "y"
 Enter
 Sleep 4s
 Type@40ms "# first apply deploys the hello module"

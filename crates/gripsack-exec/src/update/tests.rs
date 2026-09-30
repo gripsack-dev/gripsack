@@ -11,7 +11,7 @@ fn check_and_publish_agree_on_metadata_only_pin_changes() {
     std::fs::write(&source, b"unchanged source bytes").unwrap();
     let ctx = Ctx {
         home: temporary.path().join("home"),
-        repo,
+        repository: crate::Repository::direct(repo),
         only: vec![],
         host: gripsack_ir::HostName::parse("testhost").unwrap(),
         on_progress: None,
@@ -27,7 +27,8 @@ fn check_and_publish_agree_on_metadata_only_pin_changes() {
     }))
     .unwrap();
     update(&ir, &ctx, UpdateMode::Publish).unwrap();
-    let crate::lockfile::LockRead::Parsed(mut lock) = crate::lockfile::read(&ctx.repo, &ctx.host)
+    let crate::lockfile::LockRead::Parsed(mut lock) =
+        crate::lockfile::read(ctx.repository.identity(), &ctx.host)
     else {
         panic!("published lock missing");
     };
@@ -38,8 +39,8 @@ fn check_and_publish_agree_on_metadata_only_pin_changes() {
         .as_mut()
         .unwrap()
         .api_url = Some("https://unused.invalid/old-source-metadata".into());
-    crate::lockfile::write(&ctx.repo, &ctx.host, &lock).unwrap();
-    let lock_path = crate::lockfile::path(&ctx.repo, &ctx.host);
+    crate::lockfile::write(ctx.repository.identity(), &ctx.host, &lock).unwrap();
+    let lock_path = crate::lockfile::path(ctx.repository.identity(), &ctx.host);
     let before_check = std::fs::read(&lock_path).unwrap();
     let pinned_lock = std::fs::File::open(&lock_path).unwrap();
     let check = update(&ir, &ctx, UpdateMode::Check).unwrap();
@@ -92,7 +93,7 @@ fn selected_survey_preserves_every_result_and_only_complete_publish_changes_lock
     std::fs::write(&source, b"first source").unwrap();
     let mut ctx = Ctx {
         home: temporary.path().join("home"),
-        repo,
+        repository: crate::Repository::direct(repo),
         only: vec!["alpha".into()],
         host: gripsack_ir::HostName::parse("testhost").unwrap(),
         on_progress: None,
@@ -112,7 +113,7 @@ fn selected_survey_preserves_every_result_and_only_complete_publish_changes_lock
     }))
     .unwrap();
     update(&ir, &ctx, UpdateMode::Publish).unwrap();
-    let lock_path = crate::lockfile::path(&ctx.repo, &ctx.host);
+    let lock_path = crate::lockfile::path(ctx.repository.identity(), &ctx.host);
     let lock_before = std::fs::read(&lock_path).unwrap();
     let store_root = ctx.home.join("store");
     let store_before = gripsack_store::canonical_tree_hash(&store_root).unwrap();
@@ -184,7 +185,8 @@ fn selected_survey_preserves_every_result_and_only_complete_publish_changes_lock
     assert_eq!(repaired.summary().skipped(), 2);
     assert_eq!(repaired.summary().failed(), 0);
     assert!(repaired.summary().publishes_lock(UpdateMode::Publish));
-    let crate::lockfile::LockRead::Parsed(lock) = crate::lockfile::read(&ctx.repo, &ctx.host)
+    let crate::lockfile::LockRead::Parsed(lock) =
+        crate::lockfile::read(ctx.repository.identity(), &ctx.host)
     else {
         panic!("completed update did not publish its lock");
     };

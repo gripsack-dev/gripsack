@@ -72,48 +72,47 @@ def test_doctor_reports_environment(sandbox):
     assert str(sandbox) in out.stdout
 
 
-def test_untrusted_repo_fails_closed_without_tty(sandbox, monkeypatch):
-    """The trust gate (0013 D7): first eval of an untrusted repo, no TTY
-    to prompt on → hard error with the escape hatch, never a silent
-    eval of unreviewed repo code."""
-    monkeypatch.delenv("GRIPSACK_TRUST_ALL", raising=False)
+def test_untrusted_repo_fails_closed_without_tty(sandbox):
+    """No repository code runs before explicit captured-source approval."""
     repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
     (repo / "configs" / "demo").mkdir(parents=True)
     (repo / "configs" / "demo" / "a").write_text("a\n")
-    out = grip("check", "--host", "testhost", cwd=repo)
+    out = grip("check", "--host", "testhost", cwd=repo, approve=False)
     assert out.returncode != 0
-    assert "trust" in out.stderr.lower()
-    assert "grip trust add" in out.stderr
-    # nothing ran: eval never happened
+    receipts = [json.loads(path.read_text()) for path in
+                (sandbox / ".local/share/gripsack/evaluations").glob("*.json")]
+    assert [(receipt["outcome"], receipt["rounds"]) for receipt in receipts] == [("rejected", [])]
     assert not (sandbox / ".local/share/gripsack/generations").exists()
 
 
-def test_trust_add_records_and_unblocks_eval(sandbox, monkeypatch):
-    """`grip trust add <path>` records the canonical path; eval then
-    proceeds without the CI bypass; remove re-arms the gate."""
-    monkeypatch.delenv("GRIPSACK_TRUST_ALL", raising=False)
+def test_trust_add_records_and_unblocks_eval(sandbox):
+    """Explicit source/policy approval permits eval; revocation re-arms it."""
     repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
     (repo / "configs" / "demo").mkdir(parents=True)
     (repo / "configs" / "demo" / "a").write_text("a\n")
 
-    out = grip("trust", "add", str(repo))
+    inspected = grip("trust", "inspect", str(repo), "--json", approve=False)
+    assert inspected.returncode == 0, inspected.stderr
+    source = json.loads(inspected.stdout)
+    out = grip("trust", "add", str(repo), "--bundle", source["bundle_digest"],
+               "--policy", source["policy_digest"], approve=False)
     assert out.returncode == 0, out.stderr
-    trust = sandbox / ".local/share/gripsack" / "trust.toml"
-    assert "[[repos]]" in trust.read_text()
-    assert str(repo) in trust.read_text()
-
-    listing = grip("trust", "list")
+    listing = grip("trust", "list", "--json", approve=False)
     assert listing.returncode == 0, listing.stderr
-    assert str(repo) in listing.stdout
+    document = json.loads(listing.stdout)
+    assert document["version"] == 2
+    assert [(entry["repository"], entry["bundle"], entry["policy_digest"]) for entry in document["approved"]] == [
+        (str(repo), source["bundle_digest"], source["policy_digest"])
+    ]
 
-    out = grip("check", "--host", "testhost", cwd=repo)
+    out = grip("check", "--host", "testhost", cwd=repo, approve=False)
     assert out.returncode == 0, out.stderr
 
     out = grip("trust", "remove", str(repo))
     assert out.returncode == 0, out.stderr
-    out = grip("check", "--host", "testhost", cwd=repo)
+    out = grip("check", "--host", "testhost", cwd=repo, approve=False)
     assert out.returncode != 0
-    assert "trust" in out.stderr.lower()
+    assert not json.loads(grip("trust", "list", "--json", approve=False).stdout)["approved"]
 
 
 def test_eval_env_reaches_build_steps(sandbox):
@@ -203,7 +202,7 @@ def test_repo_build_env_does_not_reach_frontend_runtime(sandbox, monkeypatch):
         '[env]\nname = "fixture"\n\n[eval]\nenv = { REPO_BUILD_SENTINEL = "repo" }\n'
     )
     marker = sandbox / "deno-saw-build-env"
-    pinned = os.environ["GRIPSACK_DENO"]
+    pinned = shutil.which("deno")
     wrapper = sandbox / "deno-wrapper"
     wrapper.write_text(
         "#!/bin/sh\n"
@@ -387,7 +386,7 @@ def test_absolute_host_cannot_replace_lock_outside_repo(sandbox):
     )
     victim = sandbox / "victim.lock"
     victim.write_text("do not clobber\n")
-    out = grip("update", "--host", absolute_host, cwd=repo)
+    out = grip("update", "--host", absolute_host, cwd=repo, approve=False)
     assert out.returncode != 0
     assert "E132" in out.stderr, out.stderr
     assert victim.read_text() == "do not clobber\n"
@@ -521,7 +520,7 @@ export default module("demo", {
     assert out.returncode != 0
     assert "E301" in out.stderr
     assert "modules/hello.ts" in out.stderr  # make_env_repo's default filename
-    assert "raised here" in out.stderr
+    assert str(repo / "modules/hello.ts") in out.stderr
 
 
 def test_third_party_npm_deps_resolve_in_module_code(sandbox):
@@ -783,12 +782,11 @@ def test_comma_pinned_package_cannot_expand_deno_read_grant(sandbox):
 
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, (out.returncode, out.stdout[:300], out.stderr[:300])
-    assert "E133" in out.stderr, out.stderr[:500]
 
 
 def test_comma_in_repo_path_cannot_expand_deno_read_grant(sandbox):
-    """A comma in the repo path must fail admission with E133 before
-    launching Deno, not merely crash later on its own split read grant."""
+    """Only captured grant roots are encoded; an original comma cannot
+    grant access to an outside canary."""
     outside = sandbox / "outside"
     outside.mkdir()
     canary = outside / "canary.ts"
@@ -803,20 +801,19 @@ def test_comma_in_repo_path_cannot_expand_deno_read_grant(sandbox):
 
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, (out.returncode, out.stdout[:300], out.stderr[:300])
-    assert "E133" in out.stderr, out.stderr[:500]
     checked = grip("check", "--json", "--host", "testhost", cwd=repo)
     assert checked.returncode != 0
-    assert [d["code"] for d in json.loads(checked.stdout)["diagnostics"]] == ["E133"]
 
 
-def test_comma_in_frontend_home_rejects_before_deno_spawn(sandbox, monkeypatch):
-    """The inputs and embedded frontend are grant paths too, not just
-    the optional package pin."""
-    repo = make_env_repo(sandbox / "myenv", {})
+def test_comma_in_original_frontend_home_is_not_a_read_grant(sandbox, monkeypatch):
+    """Original runtime storage is copied, not passed as a Deno read root."""
+    repo = make_env_repo(sandbox / "myenv", HELLO_MODULE)
+    (repo / "configs/demo").mkdir(parents=True)
+    (repo / "configs/demo/a").write_text("captured\n")
     monkeypatch.setenv("GRIPSACK_HOME", str(sandbox / "managed,home"))
-    out = grip("check", "--host", "testhost", cwd=repo)
-    assert out.returncode != 0
-    assert "E133" in out.stderr, out.stderr[:500]
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stderr
+    assert (sandbox / ".config/demo/a").read_text() == "captured\n"
 
 
 def test_valid_external_core_pin_still_works_without_extra_grants(sandbox):

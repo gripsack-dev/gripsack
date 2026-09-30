@@ -77,7 +77,8 @@ fn callback_panic_kills_and_reaps_the_leader() {
 
 #[test]
 fn completed_cleanup_cannot_erase_an_expired_operation() {
-    let child = command(":")
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let child = command("exec sleep 60")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -85,16 +86,22 @@ fn completed_cleanup_cannot_erase_an_expired_operation() {
         .spawn()
         .unwrap();
     let pid = child.id() as libc::pid_t;
-    let (mut guard, _pipes) = crate::lifecycle::Guard::new(child, Instant::now());
+    let (mut guard, _pipes) = crate::lifecycle::Guard::new(child, deadline);
+    // Establish successful signalling while the group is live. Darwin may
+    // legitimately return EPERM for a zombie-only group; with an already
+    // expired budget the classifier cannot prove that EPERM benign. That
+    // earlier syscall error must remain observable, not be hidden by a timeout.
+    guard.terminate().unwrap();
     let observation_deadline = Instant::now() + Duration::from_secs(2);
     while !guard.observe().unwrap() {
         assert!(Instant::now() < observation_deadline, "child did not exit");
         std::thread::yield_now();
     }
-    // All descriptors are null: there are no pipes to drain. Reaping still
-    // happens, but it cannot change an expired operation into successful cleanup.
+    // The original operation allowance expires after successful termination.
+    // There are no pipes to drain; only otherwise-complete cleanup is tested.
+    std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
     let (status, error) = guard.finish(|_| Ok(true));
-    assert_eq!(status.unwrap().code(), Some(0));
+    assert_eq!(status.unwrap().signal(), Some(libc::SIGKILL));
     assert!(
         matches!(
             error.as_ref().map(io::Error::kind),

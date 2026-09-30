@@ -43,16 +43,15 @@ jobs:
 
       - name: Render demo GIFs (one per site palette)
         run: |
-          # the tape runs a real apply: eval needs the Deno runtime
-          # (GRIPSACK_DENO/PATH) and a repo the trust gate accepts —
-          # CI has no TTY for the prompt, so trust is granted here.
+          # Tapes explicitly approve each changed fixture snapshot using the
+          # real interactive source/policy prompt; no ambient CI trust bypass.
           # One render per palette the site's picker offers
           # (gripsack-dev.github.io website/index.html palette-bar), so
           # the site can swap the demo to match the picked palette —
           # the rootle.dev pattern. Theme names are VHS built-ins
           # (THEMES.md); demo.tape's own Output/Theme lines are the
           # default-palette render and stay canonical.
-          docker run --rm -v "$PWD:/vhs" -w /vhs -e GRIPSACK_TRUST_ALL=1 \
+          docker run --rm -v "$PWD:/vhs" -w /vhs \
             --entrypoint sh ghcr.io/charmbracelet/vhs -c '
             apt-get update -qq && apt-get install -y -qq curl unzip >/dev/null \
              && curl -fsSL https://deno.land/install.sh | sh >/dev/null 2>&1 \

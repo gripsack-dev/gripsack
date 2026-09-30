@@ -13,7 +13,7 @@ use store::journal::Intended;
 /// take-over to the adopt flow's destinations (0015 §7 S6).
 pub fn preview_ops(
     ir: &gripsack_ir::Ir,
-    repo: &Path,
+    repository: &crate::Repository,
     prev: Option<&store::Generation>,
     adopting: &std::collections::BTreeSet<String>,
     lock: &crate::lockfile::Lockfile,
@@ -25,6 +25,7 @@ pub fn preview_ops(
     {
         return Err(ExecError::Gate(diagnostic));
     }
+    let repo = repository.contents();
     if let Some(workspace) = &ir.workspace {
         let home = store::gripsack_home();
         return crate::workspace::NativeProfiles::prepare(
@@ -50,7 +51,7 @@ pub fn preview_ops(
     let steps_by_module = crate::expand::expand_all(&ir.modules)?;
     let recipes = crate::resolve::RecipeGraph::new(
         ir,
-        repo,
+        repository,
         &steps_by_module,
         ir.modules.keys().map(String::as_str),
     )?;
@@ -99,7 +100,7 @@ pub fn preview_ops(
             recipes: &recipes,
             plan: steps,
             home: &home,
-            repo,
+            repo: repository,
             locked,
             lock,
         })?;

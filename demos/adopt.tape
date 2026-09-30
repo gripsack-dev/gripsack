@@ -25,10 +25,16 @@ Sleep 2s
 Type@40ms "grip adopt ~/.config/helix"
 Enter
 Sleep 5s
+Type@40ms "y"
+Enter
+Sleep 3s
 Up
 Sleep 2s
 Enter
 Sleep 3s
+Type@40ms "y"
+Enter
+Sleep 6s
 Type@40ms "y"
 Enter
 Sleep 6s

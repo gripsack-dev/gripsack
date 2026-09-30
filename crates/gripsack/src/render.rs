@@ -333,6 +333,7 @@ pub struct DiagnosticSink {
     palette: Palette,
     /// Pinned evaluated repo; absent for JSON (no source reads).
     source: Option<SourceRoot>,
+    captured: Option<std::sync::Arc<gripsack_store::source_bundle::SourceBundle>>,
     /// Some(collected) under --json; None prints as raised.
     json: Option<Vec<Diagnostic>>,
 }
@@ -344,6 +345,7 @@ impl DiagnosticSink {
             palette,
             json: None,
             source: SourceRoot::open(repo),
+            captured: None,
         }
     }
 
@@ -354,7 +356,25 @@ impl DiagnosticSink {
             palette: Palette::default(),
             json: Some(Vec::new()),
             source: None,
+            captured: None,
         }
+    }
+
+    /// Render logical source labels against the captured bytes which actually
+    /// produced the diagnostic, never a later edit in the original worktree.
+    pub fn bind_captured_source(
+        &mut self,
+        sources: std::sync::Arc<gripsack_store::source_bundle::SourceBundle>,
+    ) {
+        if self.json.is_none() {
+            self.source = gripsack_fs::open(sources.repository())
+                .ok()
+                .map(|dir| SourceRoot {
+                    path: sources.repository_identity().to_path_buf(),
+                    dir,
+                });
+        }
+        self.captured = Some(sources);
     }
 
     /// Styling for non-diagnostic lines; disabled under --json (the
@@ -370,15 +390,23 @@ impl DiagnosticSink {
     /// Record diagnostics: rendered now on the terminal surface,
     /// collected for the JSON document on the machine surface.
     pub fn report(&mut self, diagnostics: &[Diagnostic]) {
-        match &mut self.json {
-            Some(collected) => collected.extend(diagnostics.iter().cloned()),
-            None if !diagnostics.is_empty() => {
-                eprintln!(
-                    "{}",
-                    render_diagnostics_impl(diagnostics, self.palette, self.source.as_ref())
-                );
+        for (index, diagnostic) in diagnostics.iter().enumerate() {
+            let diagnostic = match &self.captured {
+                Some(sources) => logical_diagnostic(sources, diagnostic),
+                None => std::borrow::Cow::Borrowed(diagnostic),
+            };
+            match &mut self.json {
+                Some(collected) => collected.push(diagnostic.into_owned()),
+                None => {
+                    if index != 0 {
+                        eprintln!();
+                    }
+                    eprintln!(
+                        "{}",
+                        render_diagnostic_impl(&diagnostic, self.palette, self.source.as_ref(),)
+                    );
+                }
             }
-            None => {}
         }
     }
 
@@ -398,6 +426,34 @@ impl DiagnosticSink {
         }
         code
     }
+}
+
+fn logical_diagnostic<'a>(
+    sources: &gripsack_store::source_bundle::SourceBundle,
+    diagnostic: &'a Diagnostic,
+) -> std::borrow::Cow<'a, Diagnostic> {
+    use std::borrow::Cow;
+    let mut mapped = Cow::Borrowed(diagnostic);
+    if let Cow::Owned(message) = sources.logical_text(&diagnostic.message) {
+        mapped.to_mut().message = message;
+    }
+    if let Some(help) = &diagnostic.help
+        && let Cow::Owned(help) = sources.logical_text(help)
+    {
+        mapped.to_mut().help = Some(help);
+    }
+    for (index, label) in diagnostic.labels.iter().enumerate() {
+        if let Some(span) = &label.span
+            && let Cow::Owned(file) = sources.logical_text(&span.file)
+            && let Some(span) = &mut mapped.to_mut().labels[index].span
+        {
+            span.file = file;
+        }
+        if let Cow::Owned(note) = sources.logical_text(&label.note) {
+            mapped.to_mut().labels[index].note = note;
+        }
+    }
+    mapped
 }
 
 /// `grip check --json`'s document format version.
@@ -471,7 +527,7 @@ impl CheckReport {
 /// their store-path satisfaction without a fetch.
 pub fn diff_section(
     ir: &Ir,
-    repo: &Path,
+    repository: &gripsack_exec::Repository,
     host: &HostName,
     adopting: &std::collections::BTreeSet<String>,
     palette: Palette,
@@ -509,7 +565,7 @@ pub fn diff_section(
     let lock = if ir.workspace.is_some() {
         gripsack_exec::lockfile::Lockfile::default()
     } else {
-        match gripsack_exec::lockfile::read(repo, host) {
+        match gripsack_exec::lockfile::read(repository.identity(), host) {
             gripsack_exec::lockfile::LockRead::Parsed(lock) => lock,
             gripsack_exec::lockfile::LockRead::Missing => Default::default(),
             gripsack_exec::lockfile::LockRead::Corrupt(detail) => {
@@ -523,7 +579,7 @@ pub fn diff_section(
     };
     let ops = gripsack_exec::ops::preview_ops(
         ir,
-        repo,
+        repository,
         current.as_ref(),
         adopting,
         &lock,

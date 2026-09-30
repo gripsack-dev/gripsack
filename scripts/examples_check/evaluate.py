@@ -2,11 +2,10 @@
 behavior-level assertions, and the negative selfchecks that keep the
 harness honest.
 
-  frontend level — the SDK driver (sourced from the core repo's
-  typescript/src/cli.ts, exactly what the core spawns) runs each
-  scaffolded repo under the core's sandbox flags; every @gripsack/core
-  binding resolves to the INSTALLED PACKAGE via the deliberate-pin
-  rule, so the packaged export surface is what serves the examples.
+  frontend level — the SDK driver runs each disposable scaffold with
+  deny-by-default flags. This SDK-only harness does not claim the core's
+  captured-source approval or runtime receipt guarantees. @gripsack/core
+  resolves to the installed package, exercising its public export surface.
 
   core level — the real `grip check` (embedded frontend, sandboxed
   deno, two-stage probe binding) must accept the same repo; the
@@ -50,16 +49,16 @@ def minimal_env(home, deno_dir: bool = True, path: str | None = None) -> dict:
 
 
 def frontend_eval(sdk_src, deno, repo, inputs: dict, home) -> dict:
-    """Run the SDK's own driver under the exact core sandbox flags and
-    return the eval envelope (ir, diagnostics, probe_requests)."""
+    """Run the SDK-only driver with the core's sandbox grant profile."""
     inputs_dir = home / "inputs"
     inputs_dir.mkdir(parents=True, exist_ok=True)
     inputs_path = inputs_dir / "inputs.json"
     inputs_path.write_text(json.dumps(inputs), encoding="utf-8")
     cmd = [
         str(deno), "run", "--no-remote", "--cached-only", "--no-lock",
+        "--no-config", "--node-modules-dir=manual",
         f"--import-map={sdk_src / 'deno.json'}",
-        f"--allow-read={repo},{inputs_dir},{sdk_src}",
+        f"--allow-read={repo},{inputs_path},{sdk_src}",
         str(sdk_src / "src/cli.ts"), str(repo), "--inputs", str(inputs_path),
     ]
     res = subprocess.run(
@@ -81,9 +80,22 @@ def core_check(grip, deno, repo, host: str, home, path: str | None = None) -> in
     env = minimal_env(home, deno_dir=False, path=path)
     env.update({
         "GRIPSACK_HOME": str(home / ".local/share/gripsack"),
-        "GRIPSACK_TRUST_ALL": "1",  # CI-documented bypass (e2e precedent)
         "GRIPSACK_DENO": str(deno),
     })
+    inspected = subprocess.run(
+        [str(grip), "trust", "inspect", str(repo), "--json"],
+        cwd=repo, env=env, capture_output=True, text=True,
+    )
+    if inspected.returncode:
+        raise CheckFailure(f"fixture source inspection failed:\n{inspected.stderr[-2000:]}")
+    source = json.loads(inspected.stdout)
+    approved = subprocess.run(
+        [str(grip), "trust", "add", str(repo),
+         "--bundle", source["bundle_digest"], "--policy", source["policy_digest"]],
+        cwd=repo, env=env, capture_output=True, text=True,
+    )
+    if approved.returncode:
+        raise CheckFailure(f"fixture source approval failed:\n{approved.stderr[-2000:]}")
     res = subprocess.run(
         [str(grip), "check", "--host", host], cwd=repo, env=env,
         capture_output=True, text=True,

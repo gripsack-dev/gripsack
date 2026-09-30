@@ -5,7 +5,7 @@ use crate::report::{ReportKind, StepReport};
 use gripsack_ir::Action;
 use gripsack_process::{
     ActivationEnvironment, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessReceipt,
-    ProcessRole,
+    ProcessRole, SelectedProgram,
 };
 use gripsack_store::activation::{AdmissionStage, EffectiveIntent, IntentFailure, LaunchPermit};
 use std::{
@@ -43,20 +43,36 @@ pub(super) fn run(
                 )
             })?,
         };
-        let select = |program: &Path| {
-            Invocation::admit(
-                environment,
-                ProcessRole::Hook,
-                program,
-                None,
-                directory,
-                Limits::default(),
-            )
-            .map_err(|error| admission(AdmissionStage::Invocation, &error))
+        let limits = Limits::default();
+        let deadline = std::time::Instant::now()
+            .checked_add(limits.timeout)
+            .ok_or_else(|| {
+                admission(
+                    AdmissionStage::Invocation,
+                    &io::Error::from(io::ErrorKind::InvalidInput),
+                )
+            })?;
+        let program = match intent.action() {
+            Action::CustomShell { .. } => "/bin/sh",
+            Action::Fonts => "fc-cache",
+            Action::DesktopEntry => "update-desktop-database",
+            Action::Service { .. } => "systemctl",
         };
+        let selected = SelectedProgram::select(environment, Path::new(program), None, deadline)
+            .map_err(|error| admission(AdmissionStage::Invocation, &error))?;
+        let invocation = Invocation::admit(
+            environment,
+            ProcessRole::Hook,
+            &selected,
+            directory,
+            Limits {
+                operation_deadline: Some(deadline),
+                ..limits
+            },
+        )
+        .map_err(|error| admission(AdmissionStage::Invocation, &error))?;
         match intent.action() {
             Action::CustomShell { script } => {
-                let invocation = select(Path::new("/bin/sh"))?;
                 let result = invocation
                     .run_shell_body(script, &activation, |bytes| output.stdout(bytes))
                     .map_err(|error| admission(AdmissionStage::Execution, &error))?;
@@ -67,11 +83,6 @@ pub(super) fn run(
             }
             Action::Fonts | Action::DesktopEntry => {
                 let fonts = matches!(intent.action(), Action::Fonts);
-                let invocation = select(Path::new(if fonts {
-                    "fc-cache"
-                } else {
-                    "update-desktop-database"
-                }))?;
                 execute(
                     &invocation,
                     &[OsStr::new("--version")],
@@ -99,7 +110,6 @@ pub(super) fn run(
                 }
             }
             Action::Service { name, user } => {
-                let invocation = select(Path::new("systemctl"))?;
                 let version = [OsStr::new("--user"), OsStr::new("--version")];
                 let reload = [OsStr::new("--user"), OsStr::new("daemon-reload")];
                 let enable = [

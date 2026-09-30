@@ -155,7 +155,7 @@ mod identity_tests {
             serde_json::from_str(&json("/home/alice/env/modules/m.py", 3)).unwrap();
         let b: gripsack_ir::Module =
             serde_json::from_str(&json("/home/bob/dotfiles/modules/m.py", 47)).unwrap();
-        let repo = std::path::Path::new("/nonexistent");
+        let repo = crate::Repository::direct("/nonexistent".into());
         let mut ir = gripsack_ir::Ir {
             ir_version: gripsack_ir::IR_VERSION,
             host: gripsack_ir::HostFacts {
@@ -171,12 +171,12 @@ mod identity_tests {
         };
         ir.modules.insert("m".into(), a);
         let plans = crate::expand::expand_all(&ir.modules).unwrap();
-        let ia = super::RecipeGraph::new(&ir, repo, &plans, ["m"])
+        let ia = super::RecipeGraph::new(&ir, &repo, &plans, ["m"])
             .unwrap()
             .input("m", &Default::default());
         ir.modules.insert("m".into(), b);
         let plans = crate::expand::expand_all(&ir.modules).unwrap();
-        let ib = super::RecipeGraph::new(&ir, repo, &plans, ["m"])
+        let ib = super::RecipeGraph::new(&ir, &repo, &plans, ["m"])
             .unwrap()
             .input("m", &Default::default());
         assert_eq!(ia, ib, "span/provenance must not change identity");

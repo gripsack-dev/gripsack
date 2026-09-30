@@ -29,8 +29,11 @@ pub use environment::{OperatorEnvironment, ProcessRole};
 mod descriptors;
 mod exec_payload;
 mod image;
+pub use image::{ProgramIdentity, SelectedProgram};
 mod invocation;
 pub use invocation::{ActivationEnvironment, Invocation, NativeInput, NativeOutcome};
+mod confinement;
+pub use confinement::{Boundary, Ruleset, runtime_read_roots};
 mod input;
 pub mod terminal;
 pub use gripsack_policy::process_budget::{

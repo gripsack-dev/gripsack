@@ -7,7 +7,7 @@ import subprocess
 import time
 
 import pytest
-from conftest import GRIP, grip, make_env_repo, remove_module
+from conftest import GRIP, grip, make_env_repo, remove_module, run_grip, start_grip
 
 
 def fixture_repo(sandbox, script, *, trigger="post_activate", second=None):
@@ -274,7 +274,7 @@ with Path({str(effect)!r}).open("a") as output:
     output.write(os.environ["GRIPSACK_ACTIVATION_INTENT_ID"] + ":" + os.environ["GRIPSACK_ACTIVATION_ATTEMPT"] + "\\n")
 '''
     repo = fixture_repo(sandbox, "python3 -c " + shlex.quote(body))
-    process = subprocess.Popen([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+    process = start_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         deadline = time.monotonic() + 20
@@ -377,11 +377,9 @@ def test_authoritative_hook_records_stay_private_under_permissive_umask(sandbox)
         os.umask(0)
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
-    interrupted = subprocess.run(
-        [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
-        env={**os.environ, "GRIPSACK_CRASH_AFTER": "hook-after-start"},
-        preexec_fn=permissive_child, capture_output=True, text=True, timeout=30,
-    )
+    interrupted = run_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+    env={**os.environ, "GRIPSACK_CRASH_AFTER": "hook-after-start"},
+    preexec_fn=permissive_child, capture_output=True, text=True, timeout=30,)
     assert interrupted.returncode != 0
     home = sandbox / ".local/share/gripsack"
     assert (home / "activation.json").stat().st_mode & 0o7777 == 0o600

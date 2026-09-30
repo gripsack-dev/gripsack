@@ -58,7 +58,7 @@ pub(crate) fn run_all(
 ) -> Result<ScheduleOutcome, ExecError> {
     let recipes = crate::resolve::RecipeGraph::new(
         ir,
-        &ctx.repo,
+        &ctx.repository,
         steps_by_module,
         order.iter().map(String::as_str),
     )?;

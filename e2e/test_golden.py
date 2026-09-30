@@ -1,9 +1,9 @@
 """Golden IR snapshot corpus (plan/0013 D1) — successor of the
 dual-frontend parity corpus: with one frontend there is no cross-language
 shadow, but the regression value stays. Every fixture env under
-fixtures/envs/ is evaluated by the SAME driver invocation the core uses
-(plan/0013 D2) with a FIXED inputs file, and the emitted envelope is
-diffed byte-exact against the snapshot under fixtures/golden/.
+fixtures/envs/ is evaluated by the SDK driver with a FIXED inputs file.
+This SDK-only harness uses the core's grant profile, but does not claim the
+core's source approval, retained runtime or evaluation receipt guarantees.
 
 Determinism: facts come from the inputs file (never this host), tags are
 fixed, and module order is the host entrypoint's import order (sorted).
@@ -106,9 +106,7 @@ export default module("c", {
 def evaluate(
     deno: str, frontend: Path, repo: Path, sandbox: Path, inputs_override: dict | None = None,
 ) -> dict:
-    """The plan/0013 D2 spawn contract, verbatim: no env, no network,
-    no subprocesses — read-only within repo, inputs dir, and the
-    provisioned frontend."""
+    """Direct SDK evaluation with deny-by-default grants and fixed facts."""
     inputs_dir = sandbox / "inputs"
     inputs_dir.mkdir(exist_ok=True)
     inputs_file = inputs_dir / "inputs.json"
@@ -121,7 +119,9 @@ def evaluate(
     out = subprocess.run(
         [
             deno, "run", "--no-remote", "--cached-only", "--no-lock",
-            f"--allow-read={repo},{inputs_dir},{frontend}",
+            "--no-config", "--node-modules-dir=manual",
+            f"--import-map={frontend / 'deno.json'}",
+            f"--allow-read={repo},{inputs_file},{frontend}",
             str(frontend / "src" / "cli.ts"),
             str(repo),
             "--inputs",

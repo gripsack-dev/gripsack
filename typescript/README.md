@@ -180,9 +180,10 @@ The core spawns the embedded driver under Deno with deny-by-default
 permissions:
 
 ```
-deno run --no-remote --cached-only --no-lock \
-    --allow-read=<repo>,<inputs dir>,<frontend dir> \
-    <frontend>/src/cli.ts <repo> --inputs <path>
+deno run --no-remote --cached-only --no-lock --no-config \
+    --node-modules-dir=manual --import-map=<captured frontend>/deno.json \
+    --allow-read=<captured repo>,<captured frontend>,<optional captured pin>,<input file> \
+    <captured frontend>/src/cli.ts <captured repo> --inputs <input file>
 ```
 
 and reads one JSON line off stdout:
@@ -192,8 +193,13 @@ repo's own `node_modules/@gripsack/core` install still wins when it
 shadows the embedded copy (the deliberate-pin rule); stale pins fail
 with instructions.
 
-First eval of an unfamiliar repo is an explicit trust decision
-(`grip trust add`), recorded in `$GRIPSACK_HOME/trust.toml`.
+Approval binds canonical repository identity, the copied read set and the
+runtime/grant policy. Ignored and untracked imports count as source; edits,
+pin changes and expanded native policy require renewed approval. Every probe
+round uses the same captured bundle. `grip trust inspect --json` exposes the
+inventory and fingerprints; non-interactive `grip trust add` requires both
+`--bundle` and `--policy`. Old path-only entries and `GRIPSACK_TRUST_ALL=1`
+do not authorize evaluation.
 
 ## API overview
 

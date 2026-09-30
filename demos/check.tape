@@ -1,5 +1,5 @@
 # gripsack CLI demo — grip check: a linter error with a rendered
-# snippet, fixed, then green. Zero side effects either way.
+# snippet, fixed, then green. Neither check activates files.
 # Local render: see .agents/skills/gripsack-demo-capture.
 Output demos/demo-check.gif
 Set FontSize 28
@@ -19,6 +19,9 @@ Sleep 2s
 Type@40ms "grip check --host demo"
 Enter
 Sleep 4s
+Type@40ms "y"
+Enter
+Sleep 4s
 Type@40ms "# fix the typo"
 Enter
 Sleep 2s
@@ -29,5 +32,8 @@ Type@40ms "# green - the CI gate for your dotfiles repo"
 Enter
 Sleep 2s
 Type@40ms "grip check --host demo"
+Enter
+Sleep 4s
+Type@40ms "y"
 Enter
 Sleep 4s

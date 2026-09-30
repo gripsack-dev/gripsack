@@ -9,10 +9,9 @@ import json
 import os
 from pathlib import Path
 import signal
-import subprocess
 
 import pytest
-from conftest import GRIP, make_env_repo
+from conftest import GRIP, make_env_repo, run_grip
 
 
 @pytest.mark.parametrize("prior_kind", ["absent", "file", "symlink"])
@@ -28,10 +27,8 @@ export default module("demo", {});
     env = dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1")
 
     def invoke(extra=None):
-        return subprocess.run(
-            [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
-            env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,
-        )
+        return run_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+        env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,)
 
     # Provision the ordinary frontend/lock paths before introducing interrupted
     # recovery metadata; no destination or generation is created by this seam.
@@ -145,11 +142,9 @@ import { module } from "@gripsack/core";
 export default module("demo", {});
 ''')
     # Keep frontend provisioning out of the recorded recovery fault ordinals.
-    warm = subprocess.run(
-        [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
-        env=dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1"),
-        capture_output=True, text=True, timeout=30,
-    )
+    warm = run_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+    env=dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1"),
+    capture_output=True, text=True, timeout=30,)
     assert warm.returncode == 0, warm.stdout + warm.stderr
     home = sandbox / ".local/share/gripsack"
     journal = home / "journal"
@@ -180,10 +175,8 @@ def test_observed_commit_is_synced_before_recovery_cleanup(sandbox):
     env = dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1", GRIPSACK_FS_TRACE=str(trace))
 
     def invoke(extra=None):
-        return subprocess.run(
-            [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
-            env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,
-        )
+        return run_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+        env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30,)
 
     marker_bytes, entry_bytes = marker.read_bytes(), entry.read_bytes()
     observed = invoke()
@@ -221,11 +214,9 @@ def test_corrupt_current_generation_retains_recovery_evidence(sandbox, corruptio
         manifest.unlink()
     else:
         manifest.write_bytes(b"{torn")
-    result = subprocess.run(
-        [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
-        env=dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1"),
-        capture_output=True, text=True, timeout=30,
-    )
+    result = run_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+    env=dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1"),
+    capture_output=True, text=True, timeout=30,)
     assert result.returncode != 0, "corrupt current gained commit authority"
     assert marker.read_bytes() == marker_bytes and entry.read_bytes() == entry_bytes
     assert destination.readlink() == Path("installed")
@@ -244,10 +235,8 @@ export default module("demo", {config: {a: symlink("~/.a"), b: symlink("~/.b")}}
     trace = sandbox / "same-generation-boundaries.tsv"
 
     def invoke(args, extra=None):
-        return subprocess.run(
-            [str(GRIP), *args], cwd=repo, env={**os.environ, **(extra or {})},
-            capture_output=True, text=True, timeout=30,
-        )
+        return run_grip([str(GRIP), *args], cwd=repo, env={**os.environ, **(extra or {})},
+        capture_output=True, text=True, timeout=30,)
 
     applied = invoke(["apply", "--host", "testhost"])
     assert applied.returncode == 0, applied.stdout + applied.stderr
@@ -282,11 +271,9 @@ def test_legacy_same_generation_marker_remains_ambiguous(sandbox):
     repo, home, destination, marker, entry, _ = committed_fixture(sandbox)
     marker.write_text('{"previous_generation":1,"target_generation":1,"op":"rollback"}')
     marker_bytes, entry_bytes = marker.read_bytes(), entry.read_bytes()
-    result = subprocess.run(
-        [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
-        env=dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1"),
-        capture_output=True, text=True, timeout=30,
-    )
+    result = run_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+    env=dict(os.environ, GRIPSACK_FS_RECOVER_ONLY="1"),
+    capture_output=True, text=True, timeout=30,)
     assert result.returncode != 0, "ambiguous historical marker gained commit authority"
     assert marker.read_bytes() == marker_bytes and entry.read_bytes() == entry_bytes
     assert destination.readlink() == Path("installed")
@@ -307,11 +294,9 @@ export default module("demo", {config: {source: trackedCopy("~/.cached-prior")}}
     trace = sandbox / "cached-prior-boundaries.tsv"
 
     def invoke(arguments, extra=None):
-        return subprocess.run(
-            [str(GRIP), *arguments], cwd=repo,
-            env={**os.environ, **(extra or {})},
-            capture_output=True, text=True, timeout=30,
-        )
+        return run_grip([str(GRIP), *arguments], cwd=repo,
+        env={**os.environ, **(extra or {})},
+        capture_output=True, text=True, timeout=30,)
 
     def apply(extra=None):
         return invoke(["apply", "--host", "testhost"], extra)
@@ -385,11 +370,9 @@ def test_retained_prior_seal_failure_prevents_recovery_mutation(sandbox):
         trace.unlink(missing_ok=True)
 
     def invoke(extra=None):
-        return subprocess.run(
-            [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
-            env={**os.environ, "GRIPSACK_FS_RECOVER_ONLY": "1", **(extra or {})},
-            capture_output=True, text=True, timeout=30,
-        )
+        return run_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+        env={**os.environ, "GRIPSACK_FS_RECOVER_ONLY": "1", **(extra or {})},
+        capture_output=True, text=True, timeout=30,)
 
     seed()
     observed = invoke({"GRIPSACK_FS_TRACE": str(trace)})
@@ -437,11 +420,9 @@ def test_observed_generation_seal_failure_retains_recovery_authority(sandbox, bo
     trace = sandbox / "observed-generation-boundaries.tsv"
 
     def invoke(extra=None):
-        return subprocess.run(
-            [str(GRIP), "apply", "--host", "testhost"], cwd=repo,
-            env={**os.environ, "GRIPSACK_FS_RECOVER_ONLY": "1", **(extra or {})},
-            capture_output=True, text=True, timeout=30,
-        )
+        return run_grip([str(GRIP), "apply", "--host", "testhost"], cwd=repo,
+        env={**os.environ, "GRIPSACK_FS_RECOVER_ONLY": "1", **(extra or {})},
+        capture_output=True, text=True, timeout=30,)
 
     observed = invoke({"GRIPSACK_FS_TRACE": str(trace)})
     assert observed.returncode == 0, observed.stdout + observed.stderr

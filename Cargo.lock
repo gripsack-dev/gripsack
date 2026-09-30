@@ -568,7 +568,7 @@ dependencies = [
 
 [[package]]
 name = "griplint"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -581,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "clap",
  "dialoguer",
@@ -607,7 +607,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-buildkit"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "base64",
  "gripsack-process",
@@ -619,7 +619,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-config"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -628,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-exec"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-config",
  "gripsack-fetch",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fetch"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "bzip2",
  "crc32fast",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fs"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "cap-std",
  "libc",
@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-ir"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-policy",
  "jsonschema",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-lint"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "griplint",
  "gripsack-config",
@@ -733,14 +733,14 @@ dependencies = [
 
 [[package]]
 name = "gripsack-policy"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "vstd",
 ]
 
 [[package]]
 name = "gripsack-process"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-policy",
  "libc",
@@ -751,23 +751,25 @@ dependencies = [
 
 [[package]]
 name = "gripsack-store"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "getrandom 0.4.3",
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-policy",
  "gripsack-process",
+ "jsonschema",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "toml 0.9.12+spec-1.1.0",
+ "url",
 ]
 
 [[package]]
 name = "gripsack-trace"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-fs",
  "gripsack-store",

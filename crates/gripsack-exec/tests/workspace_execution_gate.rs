@@ -57,7 +57,7 @@ fn every_direct_executor_entry_rejects_before_home_mutation() {
         let home = sandbox.path().join("not-created");
         let ctx = Ctx {
             home: home.clone(),
-            repo: sandbox.path().to_path_buf(),
+            repository: gripsack_exec::Repository::direct(sandbox.path().to_path_buf()),
             only: vec![],
             host: HostName::parse("model").unwrap(),
             on_progress: None,
@@ -77,7 +77,7 @@ fn every_direct_executor_entry_rejects_before_home_mutation() {
         assert!(!home.exists(), "update must not create home for v{version}");
         let ops = gripsack_exec::ops::preview_ops(
             &ir,
-            sandbox.path(),
+            &ctx.repository,
             None,
             &Default::default(),
             &gripsack_exec::lockfile::Lockfile::default(),

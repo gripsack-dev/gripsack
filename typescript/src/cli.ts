@@ -1,7 +1,7 @@
 /** Eval driver (0013 D2/D5): `deno run … src/cli.ts <repo> --inputs <path>`.
  *
  * Runs inside the core's sandbox (no env, no network, no subprocesses,
- * read-only within the repo + the inputs dir + the embedded frontend).
+ * read-only within captured source roots + one immutable input file).
  * Imports the repo's host entrypoint, calls its `defineEnv` function
  * with the core-injected context, and prints the eval envelope on
  * stdout: {"ir": …, "diagnostics": [], "probe_requests": […]}.

@@ -29,6 +29,8 @@ fn check(trace: &[Event], complete: bool) -> Result<(), String> {
             continue;
         }
         match event.boundary {
+            // Source-read observation does not mutate payload or namespace state.
+            B::Read => continue,
             B::Write => {
                 dirty_files.insert(event.path.clone());
                 dirty_dirs.insert(parent(&event.path));

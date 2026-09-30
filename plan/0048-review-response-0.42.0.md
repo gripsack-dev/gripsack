@@ -2552,10 +2552,10 @@ Independent ready work continues while that prerequisite is implemented.
 | M-V6.8 / JOURNAL-AUTHORITY-001 | NEXT / observed-generation authority | Implemented; local/native/candidate runtime qualified | A real failing-before committed-recovery case cleared evidence without sealing the observed manifest. `generations::admit_manifest` and the pinned admission path now seal validated manifest bytes, optional profile bytes and their generation/parent namespaces before granting effect authority. Apply, rollback, current flip, recovery, activation and GC use admission; inspection retains the shared validator without durability effects. The 19-case recovery campaign includes five file/namespace error/kill boundaries. Standalone rollback preserves current/destination on error/kill and restores generation 1 on clean retry. Exact-source `ae77f52` CI passed Linux 416/416, native Mac 414 plus two skips and native process 25/25; generalized composition remains required. |
 | M-V6.9 | NEXT / retained-history allocation floor | Implemented; local/native/candidate runtime qualified | The legacy-history witness pruned generation 20 and then incorrectly allocated generation 11. Publication and pruning now share `preserve_allocation_floor`: missing/stale counters rise to the admitted retained maximum, and already-higher observed counters are sealed without decreasing. The repaired CLI allocates 21; missing/stale/higher/u64-max histories and counter file/parent error/kill cuts pass in the 67-case focused campaign. Sync failure preserves generation names and payloads before pruning. Exact-source `ae77f52` Linux/native/current-commit CI passed; the generalized retention/lifecycle theorem remains open. |
 | M-V6.10 | NEXT / repeated concrete recovery campaign | Implemented; exact-source local/Linux/native CLI passed | `test_repeated_recovery.py` exercises six actual journaled destinations, six consecutive recovery interruptions (four SIGKILLs), independent drift, partial entry removal and GC/dry-run refusal at every pending cut. Bytes/modes/links, evidence, idempotent drain and fresh subsequent selection identities are checked. Source `8bad070` passed local and CI Linux 417/417, plus native macOS 415 cases with two unrelated unconstructible-filename skips. Snapshot resets only locate syscall ordinals; actual attempts retain prior interrupted state. This is software-fault/process-death evidence, not physical power loss. |
-| M-V6.11 | NEXT / complete proof inventory admission | Repaired inventory; full rebuilt gate and exact-candidate CI pending | `specs/recovery-proofs.json` freezes 40 transitive local proof modules, 443 theorem names and per-module floors totaling 4,623 obligations. The source-aware inventory ignores nested comments/strings and cannot omit an imported theorem unit. The preceding complete rebuilt gate at `fd20e09` passed all 4,589 obligations, fresh model dependency, five inventory negatives and the pilot/semantic barrier calibrations. Coupling, invocation and prepared-step floors are now 101, 105 and 97; no named proof or required negative is removed. |
+| M-V6.11 | NEXT / complete proof inventory admission | Complete rebuilt local gate passed; exact-candidate CI pending | `specs/recovery-proofs.json` freezes 40 transitive local proof modules, 443 theorem names and per-module floors totaling 4,623 obligations. The source-aware inventory ignores nested comments/strings and cannot omit an imported theorem unit. The complete rebuilt gate passed all 4,623 obligations, fresh model dependency and required inventory/pilot/barrier calibrations; its source is in `8143443`. Coupling, invocation and prepared-step floors are 101, 105 and 97; no named proof or required negative was removed. |
 | M-V6.12 | NEXT / candidate coupling-proof robustness | Coupling repair passed full local and candidate proof execution; aggregate blocked by M-V6.14 | CI `36497472294` failed `ActivationCouplingSteps.tla:95` on an internal prover timeout and correctly failed the aggregate; its Verus step was not run. Separately deriving epoch identity, preparation binding and active-plan typing proves the unchanged current-projection conclusion. Fresh strict/no-fingerprint TLAPM 7824dab with unchanged stretch/thread settings and a two-CPU limit passed all 101 module obligations; the rebuilt model/TLAPS gate then passed all 4,555 generalized obligations at `b53e334`. CI `36514136863` and `36531160370` also passed this 101-obligation module. |
 | M-V6.13 | NEXT / durable full-selection invocation proof | Invocation repair passed focused, full local and candidate proof execution; aggregate blocked by M-V6.14 | CI `36514136863` failed `InvocationUsesDurableFullSelection` on an internal timeout (1/71 module obligations failed); the aggregate refused and Verus was not reached. Separately deriving process/current identity, non-None projections, typed tuple reconstruction, current binding and active-plan binding preserves the theorem. Fresh strict/no-fingerprint TLAPM 7824dab with unchanged stretch/thread settings and a two-CPU limit passed 105 module obligations; the complete rebuilt gate at `fd20e09` then passed all 4,589. CI `36531160370` passed all 105 invocation obligations but failed the separate prepared-constructor obligation. No transition, invariant, theorem statement, domain or timeout changed. |
-| M-V6.14 | NEXT / prepared constructor preservation | Unchanged implication decomposed; focused proof passed, rebuilt gate and exact-candidate CI pending | CI `36531160370` exhausted an internal timeout in `OrdinaryLifecycleKeepsActiveConstructor`; the aggregate refused and Verus was not run. Explicit publication, preparation, selection-sealing, journal-writing, recovery and activation-writeback cases now establish the same constructor frame. Fresh strict/no-fingerprint TLAPM 7824dab, unchanged stretch/thread settings and a two-CPU limit proved 97/97 module obligations. The catalog floor rises from 63 to 97 without removing a theorem or weakening the protocol. |
+| M-V6.14 | NEXT / prepared constructor preservation | Focused and complete rebuilt local proof passed; exact-candidate CI pending | CI `36531160370` exhausted an internal timeout in `OrdinaryLifecycleKeepsActiveConstructor`; the aggregate refused and Verus was not run. Explicit publication, preparation, selection-sealing, journal-writing, recovery and activation-writeback cases establish the same constructor frame. Fresh strict/no-fingerprint TLAPM 7824dab, unchanged stretch/thread settings and a two-CPU limit proved 97/97 module obligations; the complete rebuilt gate then passed all 4,623 generalized obligations. The module floor rises from 63 to 97 without removing a theorem or weakening the protocol. |
 
 Candidate `8bad070f662f03d0ec56e9b9a2e1568968fbeb9e` passed all six local
 non-fuzz Compose gates. `verification/reports/2026-09-29-m-v6-local.log`
@@ -2591,7 +2591,10 @@ unconstructible-filename skips**. The complete Linux/native transcripts,
 candidate metadata, repaired source/catalog and focused 97-obligation proof
 are retained in `verification/reports/2026-09-29-ci-fd20e09-repair.log`,
 SHA-256 `31a22555948e5c0a62582676268a65c08c529dc783d8e4a1a92e7895e97c1cc7`.
-The rebuilt full gate and exact-source new-candidate CI remain required.
+The complete rebuilt model/TLAPS gate subsequently passed **40 modules /
+4,623 obligations**. `verification/reports/2026-09-29-m-v6-constructor-local.log`
+has SHA-256 `f9edec3ce4ebf25f48d0d1ba31c7862e5d908828248493d1b9fe2fe416489d86`.
+Exact-source CI `36557008541` at `8143443` remains required.
 
 
 The final local M-V6.8/M-V6.9 packet passed **416/416** complete real CLI
@@ -2732,7 +2735,7 @@ model-to-Rust refinement result.
 | M-V7.5 | PROCESS-BOUNDS-001 / frames, byte domains and lifecycle | Production-connected; current local proof and concrete calibration passed, full/native qualification pending | All `Limits` consumers use distinct input/frame/stdout/stderr/retained-tail types. Verified serializer, one-outstanding-write, framing, byte-counter, suffix and child-state kernels constrain actual effects; `Guard::new` consumes `Child` before transferring pipes. The whole policy crate passed 305/0; six families freeze 45 process executable queries. Thirty-three Linux oracles and two real credential/capability fixtures passed with ten seam mutants. Expired cleanup success, swallowed EPERM and lost native errno have actual failing-before or calibrated witnesses. Full rebuilt gates and native macOS remain required; clocks, syscalls, allocation, process metadata and scheduling are not proved. |
 | M-V7.6 | PROCESS-BOUNDS-001 / native signal classification | Linux real denial paths passed; Darwin compile-only evidence, native execution pending | Linux EPERM remains a cleanup failure with the original errno and primary cause. Darwin's zombie-only exception requires two complete group snapshots, already-dead birth identities and deadline checks; missing, changed, live or unreadable authority does not waive the signal error. The native gate now runs the same concrete calibration plus two Darwin observer cases and a real isolated-parent credential-drop fixture. This does not add a whole-descendant-tree containment claim or assume that every own child remains signalable. |
 | M-V7.7 | UPDATE-SURVEY-001 / complete accounting and shared publication | Production-connected; current local proof, concrete calibration and real CLI smokes passed, full/native qualification pending | `SurveyProgress` freezes the selected count, checks the actual report-prefix position, latches invalid accounting and produces `UpdateSummary` only when every selected entry is accounted for. Failure dominates changes; both update drivers return immutable `UpdateSurvey`, and CLI/executor use the same checked lock-publication decision. Whole-policy proof passed 320/0 with 12 named survey queries. Three model/filesystem properties and seven seam mutants passed, plus four rebuilt grip/Deno journeys. The Check oracle now pins the old file handle, so an identical-byte atomic publication cannot evade it. Full-entry equality, selection-name projection and filesystem effects remain calibrated bridges, not assumed proofs. |
-| M-V7.8 | JOURNAL-AUTHORITY-001 / real effect permits | Production-connected; development proof and actual CLI journey passed, full calibration/native qualification pending | The existing atomic writer now exposes `StagedFileWrite` → `SyncedFileWrite` → `VisibleFileWrite` → `DurableFileWrite`; the convenience API uses those same primitives. `RecordPublication`, `admit_mutation` and `CleanupProgress` drive individual file/namespace effects and acknowledgement/error transitions. Owned run/captured-prior/mutation/commit permits constrain every executor and fixture; historical wire admission is unchanged. Whole-policy Verus passed 333/0, including eight named journal queries. Actual apply/update/interrupted-rollback/recovery/fresh-selection CLI passed. Four new consumer oracles plus the actual filesystem-order oracle register six concrete mutants, and eight journal proof mutants are registered; complete rebuilt and native execution remain required. |
+| M-V7.8 | JOURNAL-AUTHORITY-001 / real effect permits | Production-connected; complete local proof, effect calibration and CLI passed; native/exact-candidate qualification pending | The existing atomic writer exposes `StagedFileWrite` → `SyncedFileWrite` → `VisibleFileWrite` → `DurableFileWrite`; the convenience API uses those same primitives. `RecordPublication`, `admit_mutation` and `CleanupProgress` drive individual file/namespace effects and acknowledgement/error transitions. Owned run/captured-prior/mutation/commit permits constrain every executor and fixture; historical wire admission is unchanged. The complete Verus gate passed 333/0 with 60 semantic/evidence calibrations and 16 evidence negatives, including eight named journal queries and eight journal mutants. The complete Rust gate passed five journal oracles/six source mutants, including both dropped-sync cases. Actual lifecycle smoke and complete 417-case CLI suite passed. Native/exact-candidate CI remains required. |
 
 `verification/reports/2026-09-29-m-v7-acquisition-local.log` (376,749 bytes),
 SHA-256 `27c9ba05d60c1c6cb833cfdf9af60fc7b813456e4e3c7fe27f4a6ac58da9c639`,
@@ -2776,4 +2779,108 @@ eight named journal queries exclude five generated enum clones. IO acknowledgeme
 file/namespace sync, atomic rename and cooperating lifecycle ownership remain
 explicit external assumptions. Full proof/effect calibration and
 rebuilt/native/exact-candidate gates are mandatory; no whole-M-V7 closure is claimed.
+
+### R1 execution contract — captured-source approval
+
+Prerequisite checkpoint: M-V7 source
+`814344394503ba0574a8bbf397c81ed8be628412` is committed and pushed.
+The complete local Rust, TypeScript, 417-case CLI, 333-query Verus and
+4,623-obligation generalized TLAPS gates passed. Exact-source/native CI
+[`36557008541`](https://github.com/gripsack-dev/gripsack/actions/runs/36557008541)
+remains required. No R1 implementation or qualification is claimed by that run.
+
+Responsibility/dependency map for R1: store owns bounded capability-rooted
+source capture, inventory identity and private versioned trust/receipt
+admission; CLI `PreparedEvaluation` owns the captured roots, configuration,
+runtime selection, approval and all evaluation rounds. Process owns selected
+executable bytes and launch receipts. The frontend invocation may borrow only
+approved coordinates, not reconstruct grants from the live worktree.
+Executor repository identity/lock destination and captured content source
+remain distinct; adopting new generated source requires its own approval.
+The one existing TypeScript frontend and current IR contract remain in use.
+
+Capture uses copied bytes, not hardlinks or a preliminary mutable-tree hash.
+Admitted symlinks resolve to objects inside the captured root set; module
+aliases remain internal and cycles/escapes/special files fail admission.
+Git control metadata and the selected gripsack runtime-state subtree are
+explicit non-source exclusions and must be unavailable to evaluation.
+Source bytes are owned for the command lifetime rather than introducing a
+second persistent source cache; retained inventories/approvals/receipts are
+private and digest-validated. The same-UID/privileged runtime-storage integrity
+assumption remains explicit. Count, traversal, copied-byte and inventory-byte
+limits are named capture-policy bounds, not unbounded recursive copying.
+
+| Leaf | Class / owner | Implementation and acceptance | State |
+|---|---|---|---|
+| R1.1 | NEXT / store + CLI | Approval key binds canonical repository identity, copied source digest, frontend/runtime identities and actual grant policy. HEAD/remote remain sanitized provenance. Dirty bytes require explicit approval; branch spelling is not authority. Update help, migration and security contracts. | Implemented-unverified: source/policy CLI and migration docs exist. Website changes are on separate `handover/source-approval-docs`, not published. |
+| R1.2 | NEXT / source capture | Private read-only content-addressed captured tree; hash bytes actually copied; no hardlinks, code evaluation or repo-selected native provisioning before approval. Preserve captured bytes through the whole command. | Implemented-unverified: command-owned copies and borrowed approval feed the real frontend. Ephemeral source copies are sealed, not needlessly fsynced as durable records; retained inventories remain durable. |
+| R1.3 | NEXT / source inventory | Complete bounded admitted read set: env/config/maps, every repo-local file including ignored/untracked imports, dirty submodule bytes, embedded frontend, explicit pin and all allowed dependency roots. Publish path/type/size/digest inventory; excluded paths cannot fall back to live reads. | Implemented-unverified: strict v1 inventory and named bounds; ignored/untracked and dirty-submodule real-Deno cases passed. Packaged schema/reader corpus is being qualified. |
+| R1.4 | NEXT / filesystem + frontend | Capability-rooted traversal and in-root alias resolution; reject cycles, escapes, special files, malformed/unsupported imports and IO failures. Copy admitted external SDK roots, retain SDK module identity, rebind CWD/imports/grants and render logical source locations. No package fetch or ambient node_modules fallback during eval. | Implemented-unverified: API controls and real outside-import/SDK cases passed. Native alias staging initially retained a dangling link; resolved captured-object traversal and matching hash now pass the real apply/live-edit witness. Read-fault, alias-form and final/native campaigns remain open. |
+| R1.5 | NEXT / evaluation + process | One owned `PreparedEvaluation` and captured config/pin across every fixpoint round. Separate immutable round-input bytes/digests and declared probe capabilities. Bind selected runtime bytes through process authority; no post-approval live runtime reselection. | Implemented-unverified: six controlled one/two-round repo/pin/link mutations passed through real Deno, with process/input receipt agreement. No standalone-entrypoint substitute was used. |
+| R1.6 | NEXT / trust persistence + CLI | Strict versioned trust admission; old path-only entries require renewed approval, not invented digests/grants. Non-evaluating inspect/add/list show inventory changes and grants; non-TTY add requires the expected digest. Test relocation, same-path re-clone and unchanged bytes across branch changes. | Implemented-unverified: trust v2, exact source/policy expectations and private inventories; Git worktree/branch/re-clone cases and legacy renewal passed development flows. |
+| R1.7 | NEXT / all consumers | Remove ambient `GRIPSACK_TRUST_ALL` approval with migration diagnostics. Migrate check/plan/apply/update/adopt/doctor/clones, disposable e2e fixture approval, demos/examples/workflows and docs. Gate tests do not auto-approve; CI flags/runner names never grant trust. | Implemented-unverified: eval and native source callers migrated; adopt resume consumes one outcome; preview distinguishes captured contents from live lock publication. Doctor remains non-evaluating operator-runtime/package metadata inspection. Fixture and workflow bypasses are removed; demo/examples/whole-suite qualification remains open. |
+| R1.8 | NEXT / evaluation receipts | Private strict versioned receipt, stable evaluation ID, source/root/Git/frontend/runtime/grant identities, round-input digests and outcome. Schema, admitted producer, inspector and fixtures land together. No raw source, secrets, environment values or credential-bearing remotes. | Implemented-unverified: private v1 producer/reader/CLI and schema; development flows inspect exact receipts. Schema/relational/size rejection corpus is being qualified. |
+| R1.9 | NEXT / real Deno campaign | Staged/unstaged edits, untracked/ignored imports, symlink retarget, dirty submodules with unchanged parent pointer, alternate worktree and branch changes: reject unapproved bytes, then bind approved output and receipt. | Development cases passed in the 63-case run; final/native qualification remains required. |
+| R1.10 | NEXT / real Deno campaign | Same-path re-clone, outside/generated imports, changed SDK pin and added grants; no undeclared source executes. Exercise the actual trusted-driver/dynamic-host import path, not a different standalone entrypoint permission model. | Re-clone/import/pin cases passed. The first operator-budget fixture used an invalid config key and failed setup; corrected to actual `download_limit_bytes`, with the expanded policy and runtime-renewal cases awaiting rerun. |
+| R1.11 | NEXT / capture/round campaign | Controlled pause after approval and between fixpoint rounds; mutate original repo/pin/link and observe captured bytes only. PermissionDenied/EIO fail capture before execution. Cached authoritative inventory corruption fails admission. | Six actual-runtime pause witnesses passed. Source-read EIO/EACCES use opt-in read boundaries, preserving the existing durability trace domain. Their rebuilt run and current reader-negative corpus remain open. |
+| R1.12 | NEXT / migration + qualification | Non-TTY old trust and blanket bypass fail with a usable migration path; explicit digest-bound reviewed-fixture approval works. Rebuild all affected gates and native/exact-candidate evidence; no real HOME or credentials in fixtures. | Legacy/bypass/adopt migration cases passed development runs. Latest run: 63 passed, one invalid fixture key failed and was corrected. No complete or native R1 gate is claimed. |
+
+### 2026-09-29 owner-selected OS boundary and implementation handoff
+
+The real CLI `test_hoisted_node_modules_never_become_ambient_evaluation_sources`
+executed an unapproved ancestor package under stock Deno 2.9.6, returning success
+and a completed receipt. Captured read grants alone do not satisfy R1. Explicit
+deny/ignore-read, linker mode and config experiments did not close it; no-npm
+breaks ordinary local ESM resolution and still allows CommonJS ancestor loading
+through mapped packages. The regression remains, and R1 remains blocked.
+
+The owner selected **OS filesystem isolation**, preserving captured local npm
+behavior and refusing evaluation on hosts without the required isolation
+capability. This authorizes implementing/qualifying the stronger Linux/macOS
+boundary, not weakening the source guarantee or silently removing npm support.
+No OS enforcement implementation exists at this checkpoint. A Linux Landlock
+version query returned ABI 7; that query is not enforcement evidence.
+
+The owner subsequently requested another implementation agent take over now.
+[`verification/continuation-handoff.md`](../verification/continuation-handoff.md)
+records the exact dirty trees, interfaces, evidence and running gate. Full NEXT
+and product-handover/release scope remains mandatory; the existing no-fuzz/replay
+exception remains unchanged.
+
+CI `36557008541` at `8143443` completed with Linux/docs/audit success, but the
+aggregate refused the native process failure. Linux included 417 CLI cases,
+40 generalized modules / 4,623 obligations and Verus 333/0. Native macOS passed
+32 process cases and failed the already-expired zombie-group fixture before
+journal/CLI stages. Production retained the real EPERM correctly. The fixture
+now establishes successful termination before its unchanged deadline expires;
+the repaired actual-Guard test passed locally, not yet on the native candidate.
+
+### 2026-09-29 (later) — Linux Landlock boundary landed; macOS fail-closed
+
+The owner-selected OS filesystem isolation is now implemented for Linux:
+`gripsack-process::confinement` assembles a Landlock ruleset parent-side and
+the forked child applies only `PR_SET_NO_PRIVS` + `LANDLOCK_RESTRICT_SELF`
+(no allocation in `pre_exec`); the evaluator launcher assembles the per-launch
+boundary (captured roots, round input directory, private cache/scratch,
+runtime load roots incl. `ldd`/interpreter/python-prefix derivation, runtime
+home and the operator PATH executable space) and fails closed on any assembly
+error. `EXECUTE` is granted only at the root — it never widens the read/write
+boundary, and Deno's own permission model still denies evaluated-code
+spawning. macOS `Ruleset::assemble` returns `Unsupported`, so evaluation
+refuses to run rather than executing unconfined: that lane needs a qualified
+seatbelt design plus native evidence and remains the open R1 leaf.
+
+Observed (development receipts, not exact-source qualification):
+the hoisted-ancestor npm regression now fails evaluation instead of loading
+unapproved bytes; captured local npm, direct-ELF, sh/env/python-venv wrapper
+runtimes and the six controlled pause scenarios run confined; the complete
+local Rust gate passed (including three new Landlock oracles and the repaired
+native cleanup-deadline fixture); TS passed 67/67 unchanged; the full CLI
+suite reached 442/445 with exactly the five ownership tests still asserting
+the removed single-shot adopt flow — those five were migrated to the
+approved/resume flow and their modules pass 29/29. See
+`verification/reports/2026-09-29-eval-confinement-linux.log` and guarantee
+`EVAL-CONFINEMENT-001`. No fuzz/replay ran; exact-source/native CI for this
+tree is still required, and the macOS lane will fail by design until the
+seatbelt leaf lands.
 

@@ -1,4 +1,4 @@
-use crate::commands::{check_ir, eval_repo, trust_gate};
+use crate::commands::{check_ir, eval_repo};
 use crate::render::Palette;
 use gripsack_exec::{Ctx, UpdateCheckOutcome, UpdateMode, UpdateStatus};
 use gripsack_store as store;
@@ -19,9 +19,6 @@ pub fn update(
     } else {
         ExitCode::FAILURE
     };
-    if trust_gate(repo).is_some() {
-        return failed;
-    }
     let mut sink = crate::render::DiagnosticSink::terminal(palette, repo);
     let outcome = match eval_repo(repo, host, &mut sink) {
         Ok(outcome) => outcome,
@@ -43,7 +40,10 @@ pub fn update(
     let ctx = Ctx {
         home: store::gripsack_home(),
         home_dir: Default::default(),
-        repo: repo.into(),
+        repository: gripsack_exec::Repository::evaluated(
+            std::sync::Arc::clone(&outcome.sources),
+            outcome.receipt,
+        ),
         only: modules,
         host: outcome.host.clone(),
         on_progress: None,

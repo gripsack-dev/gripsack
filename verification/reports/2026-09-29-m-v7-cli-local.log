@@ -1,0 +1,532 @@
+M-V7 complete local CLI qualification
+Date: 2026-09-29
+Candidate source: 814344394503ba0574a8bbf397c81ed8be628412
+Source note: image built before the final two test-only needless-borrow fixes; exercised production/CLI/e2e source is unchanged by those fixes. Subsequent R1 source capture work is NOT included.
+FUZZ=not_run_owner_instruction
+COMMAND=docker compose run --build --rm e2e
+RESULT=417 passed, 0 failed, 0 skipped, 3238.94 seconds
+This is Linux container runtime/persistence evidence, not native macOS, physical power loss, or release closure.
+
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 11.37kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.0s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.1s
+
+#8 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#8 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#8 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#8 DONE 0.0s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 96.49kB 0.1s done
+#11 DONE 0.1s
+
+#12 [builder  6/10] COPY crates ./crates
+#12 CACHED
+
+#13 [builder  4/10] WORKDIR /app
+#13 CACHED
+
+#14 [builder  8/10] COPY schema ./schema
+#14 CACHED
+
+#15 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#15 CACHED
+
+#16 [builder  7/10] COPY fuzz ./fuzz
+#16 CACHED
+
+#17 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#17 CACHED
+
+#18 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#18 CACHED
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 CACHED
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.0s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.297     Updating crates.io index
+#21 2.391  Downloading crates ...
+#21 2.498   Downloaded anstyle-query v1.1.5
+#21 2.520   Downloaded adler2 v2.0.1
+#21 2.523   Downloaded ambient-authority v0.0.2
+#21 2.532   Downloaded anstyle-parse v1.0.0
+#21 2.547   Downloaded anstream v1.0.0
+#21 2.559   Downloaded serde_derive v1.0.229
+#21 2.565   Downloaded zerofrom-derive v0.1.7
+#21 2.594   Downloaded form_urlencoded v1.2.2
+#21 2.596   Downloaded openssl-probe v0.2.1
+#21 2.600   Downloaded colorchoice v1.0.5
+#21 2.629   Downloaded clap_lex v1.1.0
+#21 2.632   Downloaded cpufeatures v0.3.0
+#21 2.637   Downloaded maybe-owned v0.3.4
+#21 2.648   Downloaded equivalent v1.0.2
+#21 2.667   Downloaded idna_adapter v1.2.2
+#21 2.680   Downloaded itoa v1.0.18
+#21 2.685   Downloaded errno v0.3.14
+#21 2.689   Downloaded crypto-common v0.2.2
+#21 2.691   Downloaded httpdate v1.0.3
+#21 2.695   Downloaded lazy_static v1.5.0
+#21 2.705   Downloaded shell-words v1.1.1
+#21 2.707   Downloaded stable_deref_trait v1.2.1
+#21 2.718   Downloaded heck v0.5.0
+#21 2.730   Downloaded matchers v0.2.0
+#21 2.742   Downloaded utf8parse v0.2.2
+#21 2.745   Downloaded untrusted v0.9.0
+#21 2.749   Downloaded is_terminal_polyfill v1.70.2
+#21 2.769   Downloaded percent-encoding v2.3.2
+#21 2.771   Downloaded fs-set-times v0.20.3
+#21 2.773   Downloaded convert_case v0.4.0
+#21 2.778   Downloaded webpki-roots v0.26.11
+#21 2.792   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 2.796   Downloaded cfg-if v1.0.4
+#21 2.804   Downloaded unit-prefix v0.5.2
+#21 2.810   Downloaded potential_utf v0.1.6
+#21 2.813   Downloaded scopeguard v1.2.0
+#21 2.816   Downloaded zerofrom v0.1.8
+#21 2.818   Downloaded block-buffer v0.12.1
+#21 2.831   Downloaded tracing-serde v0.2.0
+#21 2.835   Downloaded serde_spanned v1.1.1
+#21 2.837   Downloaded yoke-derive v0.8.2
+#21 2.839   Downloaded anstyle v1.0.14
+#21 2.847   Downloaded jobserver v0.1.35
+#21 2.851   Downloaded quote v1.0.47
+#21 2.857   Downloaded utf8_iter v1.0.4
+#21 2.859   Downloaded filetime v0.2.29
+#21 2.864   Downloaded io-lifetimes v2.0.4
+#21 2.868   Downloaded lock_api v0.4.14
+#21 2.871   Downloaded strsim v0.11.1
+#21 2.874   Downloaded digest v0.11.3
+#21 2.880   Downloaded subtle v2.6.1
+#21 2.882   Downloaded pkg-config v0.3.34
+#21 2.888   Downloaded find-msvc-tools v0.1.11
+#21 2.890   Downloaded io-lifetimes v3.0.1
+#21 2.893   Downloaded xattr v1.6.1
+#21 2.897   Downloaded rustls-native-certs v0.8.4
+#21 2.900   Downloaded displaydoc v0.2.7
+#21 2.903   Downloaded rustix-linux-procfs v0.1.1
+#21 2.909   Downloaded tracing-log v0.2.0
+#21 2.913   Downloaded ipnet v2.12.1
+#21 2.915   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 2.918   Downloaded nu-ansi-term v0.50.3
+#21 2.924   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 2.926   Downloaded thiserror v2.0.20
+#21 2.936   Downloaded thiserror-impl v2.0.20
+#21 2.938   Downloaded zmij v1.0.23
+#21 2.942   Downloaded owo-colors v4.3.0
+#21 2.945   Downloaded writeable v0.6.4
+#21 2.950   Downloaded fastrand v2.5.0
+#21 2.953   Downloaded shlex v2.0.1
+#21 2.956   Downloaded parking_lot_core v0.9.12
+#21 2.959   Downloaded clap_derive v4.6.4
+#21 2.963   Downloaded tinystr v0.8.4
+#21 2.967   Downloaded console v0.16.4
+#21 2.970   Downloaded zeroize v1.9.0
+#21 2.973   Downloaded zstd-safe v7.2.4
+#21 2.976   Downloaded litemap v0.8.3
+#21 2.980   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 2.982   Downloaded xz2 v0.1.7
+#21 2.986   Downloaded io-extras v0.19.0
+#21 2.989   Downloaded bzip2 v0.6.1
+#21 2.993   Downloaded once_cell v1.21.4
+#21 2.998   Downloaded pin-project-lite v0.2.17
+#21 3.011   Downloaded cap-std v4.0.3
+#21 3.018   Downloaded dialoguer v0.12.0
+#21 3.025   Downloaded zstd v0.13.3
+#21 3.031   Downloaded synstructure v0.13.2
+#21 3.033   Downloaded parking_lot v0.12.5
+#21 3.038   Downloaded icu_provider v2.3.1
+#21 3.044   Downloaded simd-adler32 v0.3.10
+#21 3.048   Downloaded rustls-pki-types v1.15.1
+#21 3.052   Downloaded bitflags v2.13.1
+#21 3.059   Downloaded getrandom v0.2.17
+#21 3.064   Downloaded thread_local v1.1.10
+#21 3.067   Downloaded tracing-attributes v0.1.31
+#21 3.073   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 3.077   Downloaded getrandom v0.4.3
+#21 3.083   Downloaded crc32fast v1.5.1
+#21 3.088   Downloaded libbz2-rs-sys v0.2.5
+#21 3.091   Downloaded log v0.4.34
+#21 3.096   Downloaded proc-macro2 v1.0.107
+#21 3.102   Downloaded clap v4.6.6
+#21 3.118   Downloaded sha2 v0.11.0
+#21 3.127   Downloaded miniz_oxide v0.8.9
+#21 3.131   Downloaded hybrid-array v0.4.14
+#21 3.136   Downloaded smallvec v1.15.2
+#21 3.138   Downloaded yoke v0.8.3
+#21 3.142   Downloaded indicatif v0.18.6
+#21 3.148   Downloaded icu_locale_core v2.3.0
+#21 3.163   Downloaded ryu v1.0.23
+#21 3.172   Downloaded const-oid v0.10.2
+#21 3.178   Downloaded icu_normalizer_data v2.3.0
+#21 3.183   Downloaded serde_core v1.0.229
+#21 3.190   Downloaded flate2 v1.1.9
+#21 3.203   Downloaded base64 v0.22.1
+#21 3.216   Downloaded serde v1.0.229
+#21 3.225   Downloaded rustls-webpki v0.103.15
+#21 3.233   Downloaded toml v0.9.12+spec-1.1.0
+#21 3.243   Downloaded icu_collections v2.3.0
+#21 3.253   Downloaded aho-corasick v1.1.5
+#21 3.262   Downloaded indexmap v2.14.0
+#21 3.270   Downloaded zerovec-derive v0.11.6
+#21 3.274   Downloaded cc v1.4.4
+#21 3.278   Downloaded bumpalo v3.20.3
+#21 3.283   Downloaded cap-primitives v4.0.3
+#21 3.303   Downloaded icu_properties v2.3.0
+#21 3.308   Downloaded unicode-ident v1.0.24
+#21 3.315   Downloaded zopfli v0.8.3
+#21 3.318   Downloaded unsafe-libyaml v0.2.11
+#21 3.327   Downloaded memchr v2.8.3
+#21 3.343   Downloaded tempfile v3.27.0
+#21 3.349   Downloaded serde_yaml v0.9.34+deprecated
+#21 3.355   Downloaded toml v1.1.4+spec-1.1.0
+#21 3.365   Downloaded tracing-core v0.1.36
+#21 3.370   Downloaded tar v0.4.46
+#21 3.377   Downloaded idna v1.1.0
+#21 3.383   Downloaded serde_json v1.0.151
+#21 3.394   Downloaded clap_builder v4.6.6
+#21 3.405   Downloaded hashbrown v0.17.1
+#21 3.416   Downloaded icu_properties_data v2.3.0
+#21 3.433   Downloaded sharded-slab v0.1.7
+#21 3.442   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 3.450   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 3.458   Downloaded portable-atomic v1.15.0
+#21 3.474   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 3.479   Downloaded url v2.5.8
+#21 3.483   Downloaded typenum v1.20.1
+#21 3.514   Downloaded typed-path v0.12.3
+#21 3.553   Downloaded ureq v2.12.1
+#21 3.568   Downloaded zerotrie v0.2.5
+#21 3.577   Downloaded regex-syntax v0.8.11
+#21 3.586   Downloaded rustls v0.23.45
+#21 3.604   Downloaded rustix v1.1.4
+#21 3.659   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 3.664   Downloaded zerovec v0.11.8
+#21 3.674   Downloaded zip v8.6.0
+#21 3.681   Downloaded icu_normalizer v2.3.0
+#21 3.692   Downloaded regex-automata v0.4.18
+#21 3.719   Downloaded winnow v0.7.15
+#21 3.748   Downloaded winnow v1.0.4
+#21 3.775   Downloaded zlib-rs v0.6.7
+#21 3.783   Downloaded lzma-sys v0.1.20
+#21 3.832   Downloaded libc v0.2.189
+#21 3.950   Downloaded webpki-roots v1.0.9
+#21 3.955   Downloaded tracing-subscriber v0.3.23
+#21 3.970   Downloaded unicode-width v0.2.2
+#21 3.978   Downloaded syn v2.0.119
+#21 3.993   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 4.009   Downloaded ring v0.17.14
+#21 4.074   Downloaded syn v3.0.4
+#21 4.088   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 4.104   Downloaded tracing v0.1.44
+#21 4.121   Downloaded linux-raw-sys v0.12.1
+#21 4.213   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 4.430    Compiling proc-macro2 v1.0.107
+#21 4.430    Compiling unicode-ident v1.0.24
+#21 4.430    Compiling quote v1.0.47
+#21 4.430    Compiling libc v0.2.189
+#21 4.430    Compiling cfg-if v1.0.4
+#21 4.431    Compiling serde_core v1.0.229
+#21 4.434    Compiling find-msvc-tools v0.1.11
+#21 4.435    Compiling shlex v2.0.1
+#21 4.442    Compiling hashbrown v0.17.1
+#21 4.445    Compiling equivalent v1.0.2
+#21 4.445    Compiling once_cell v1.21.4
+#21 4.448    Compiling stable_deref_trait v1.2.1
+#21 4.448    Compiling rustix v1.1.4
+#21 4.453    Compiling bitflags v2.13.1
+#21 4.458    Compiling serde v1.0.229
+#21 4.458    Compiling linux-raw-sys v0.12.1
+#21 4.459    Compiling pkg-config v0.3.34
+#21 4.464    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.464    Compiling zmij v1.0.23
+#21 4.464    Compiling convert_case v0.4.0
+#21 4.470    Compiling smallvec v1.15.2
+#21 4.474    Compiling memchr v2.8.3
+#21 4.474    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.475    Compiling serde_json v1.0.151
+#21 4.475    Compiling itoa v1.0.18
+#21 4.480    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.483    Compiling zeroize v1.9.0
+#21 4.493    Compiling winnow v1.0.4
+#21 4.502    Compiling typenum v1.20.1
+#21 4.502    Compiling writeable v0.6.4
+#21 4.512    Compiling litemap v0.8.3
+#21 4.512    Compiling io-lifetimes v2.0.4
+#21 4.513    Compiling io-lifetimes v3.0.1
+#21 4.538    Compiling thiserror v2.0.20
+#21 4.620    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 4.621    Compiling utf8_iter v1.0.4
+#21 4.643    Compiling log v0.4.34
+#21 4.773    Compiling icu_properties_data v2.3.0
+#21 4.787    Compiling icu_normalizer_data v2.3.0
+#21 4.788    Compiling io-extras v0.19.0
+#21 4.829    Compiling rustls-pki-types v1.15.1
+#21 4.858    Compiling cap-primitives v4.0.3
+#21 4.866    Compiling getrandom v0.4.3
+#21 4.869    Compiling tracing-core v0.1.36
+#21 4.869    Compiling maybe-owned v0.3.4
+#21 4.897    Compiling ipnet v2.12.1
+#21 4.912    Compiling crc32fast v1.5.1
+#21 4.913    Compiling ambient-authority v0.0.2
+#21 4.915    Compiling cap-std v4.0.3
+#21 4.988    Compiling const-oid v0.10.2
+#21 4.988    Compiling winnow v0.7.15
+#21 5.022    Compiling simd-adler32 v0.3.10
+#21 5.050    Compiling fastrand v2.5.0
+#21 5.061    Compiling untrusted v0.9.0
+#21 5.094    Compiling cpufeatures v0.3.0
+#21 5.101    Compiling zstd-safe v7.2.4
+#21 5.185    Compiling rustls v0.23.45
+#21 5.208    Compiling pin-project-lite v0.2.17
+#21 5.255    Compiling percent-encoding v2.3.2
+#21 5.277    Compiling parking_lot_core v0.9.12
+#21 5.291    Compiling adler2 v2.0.1
+#21 5.292    Compiling scopeguard v1.2.0
+#21 5.384    Compiling zlib-rs v0.6.7
+#21 5.416    Compiling subtle v2.6.1
+#21 5.426    Compiling libbz2-rs-sys v0.2.5
+#21 5.427    Compiling miniz_oxide v0.8.9
+#21 5.479    Compiling bumpalo v3.20.3
+#21 5.493    Compiling lock_api v0.4.14
+#21 5.494    Compiling form_urlencoded v1.2.2
+#21 5.525    Compiling utf8parse v0.2.2
+#21 5.549    Compiling openssl-probe v0.2.1
+#21 5.555    Compiling base64 v0.22.1
+#21 5.569    Compiling typed-path v0.12.3
+#21 5.618    Compiling regex-syntax v0.8.11
+#21 5.640    Compiling unicode-width v0.2.2
+#21 5.652    Compiling anstyle-parse v1.0.0
+#21 5.708    Compiling webpki-roots v1.0.9
+#21 5.776    Compiling indexmap v2.14.0
+#21 5.819    Compiling rustls-native-certs v0.8.4
+#21 5.840    Compiling lazy_static v1.5.0
+#21 5.856    Compiling webpki-roots v0.26.11
+#21 5.862    Compiling ryu v1.0.23
+#21 5.899    Compiling httpdate v1.0.3
+#21 5.946    Compiling colorchoice v1.0.5
+#21 6.007    Compiling anstyle-query v1.1.5
+#21 6.007    Compiling anstyle v1.0.14
+#21 6.007    Compiling is_terminal_polyfill v1.70.2
+#21 6.038    Compiling unsafe-libyaml v0.2.11
+#21 6.073    Compiling portable-atomic v1.15.0
+#21 6.096    Compiling sharded-slab v0.1.7
+#21 6.129    Compiling zopfli v0.8.3
+#21 6.155    Compiling tracing-log v0.2.0
+#21 6.188    Compiling thread_local v1.1.10
+#21 6.197    Compiling strsim v0.11.1
+#21 6.205    Compiling clap_lex v1.1.0
+#21 6.205    Compiling heck v0.5.0
+#21 6.206    Compiling owo-colors v4.3.0
+#21 6.240    Compiling nu-ansi-term v0.50.3
+#21 6.240    Compiling shell-words v1.1.1
+#21 6.291    Compiling unit-prefix v0.5.2
+#21 6.381    Compiling anstream v1.0.0
+#21 6.567    Compiling bzip2 v0.6.1
+#21 6.708    Compiling clap_builder v4.6.6
+#21 6.822    Compiling syn v3.0.4
+#21 6.822    Compiling syn v2.0.119
+#21 6.833    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 6.835    Compiling hybrid-array v0.4.14
+#21 6.949    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 7.128    Compiling jobserver v0.1.35
+#21 7.128    Compiling getrandom v0.2.17
+#21 7.128    Compiling filetime v0.2.29
+#21 7.135    Compiling console v0.16.4
+#21 7.446    Compiling parking_lot v0.12.5
+#21 7.464    Compiling cc v1.4.4
+#21 7.681    Compiling block-buffer v0.12.1
+#21 7.681    Compiling crypto-common v0.2.2
+#21 7.847    Compiling indicatif v0.18.6
+#21 7.865    Compiling regex-automata v0.4.18
+#21 9.273    Compiling digest v0.11.3
+#21 9.683    Compiling sha2 v0.11.0
+#21 9.800    Compiling flate2 v1.1.9
+#21 9.870    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 9.871    Compiling ring v0.17.14
+#21 9.872    Compiling lzma-sys v0.1.20
+#21 9.965    Compiling serde_spanned v1.1.1
+#21 9.976    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 9.977    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 10.36    Compiling toml v1.1.4+spec-1.1.0
+#21 10.36    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 10.57    Compiling toml v0.9.12+spec-1.1.0
+#21 12.84    Compiling rustix-linux-procfs v0.1.1
+#21 12.97    Compiling fs-set-times v0.20.3
+#21 13.01    Compiling tempfile v3.27.0
+#21 13.02    Compiling xattr v1.6.1
+#21 13.44    Compiling dialoguer v0.12.0
+#21 13.51    Compiling tar v0.4.46
+#21 13.78    Compiling matchers v0.2.0
+#21 13.99    Compiling xz2 v0.1.7
+#21 14.75    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 15.46    Compiling synstructure v0.13.2
+#21 15.73    Compiling zstd v0.13.3
+#21 16.13    Compiling zip v8.6.0
+#21 16.33    Compiling rustls-webpki v0.103.15
+#21 17.83    Compiling zerofrom-derive v0.1.7
+#21 17.83    Compiling yoke-derive v0.8.2
+#21 17.83    Compiling tracing-attributes v0.1.31
+#21 18.19    Compiling zerovec-derive v0.11.6
+#21 18.19    Compiling serde_derive v1.0.229
+#21 18.19    Compiling displaydoc v0.2.7
+#21 18.19    Compiling thiserror-impl v2.0.20
+#21 18.19    Compiling clap_derive v4.6.4
+#21 19.75    Compiling tracing v0.1.44
+#21 19.79    Compiling zerofrom v0.1.8
+#21 19.92    Compiling yoke v0.8.3
+#21 20.18    Compiling zerovec v0.11.8
+#21 20.18    Compiling zerotrie v0.2.5
+#21 20.84    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 20.84    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 20.97    Compiling clap v4.6.6
+#21 21.10    Compiling tinystr v0.8.4
+#21 21.10    Compiling potential_utf v0.1.6
+#21 21.22    Compiling icu_collections v2.3.0
+#21 21.31    Compiling icu_locale_core v2.3.0
+#21 22.81    Compiling icu_provider v2.3.1
+#21 23.20    Compiling icu_normalizer v2.3.0
+#21 23.20    Compiling icu_properties v2.3.0
+#21 23.47    Compiling serde_yaml v0.9.34+deprecated
+#21 23.47    Compiling tracing-serde v0.2.0
+#21 23.62    Compiling tracing-subscriber v0.3.23
+#21 24.89    Compiling idna_adapter v1.2.2
+#21 24.96    Compiling idna v1.1.0
+#21 25.40    Compiling url v2.5.8
+#21 26.17    Compiling ureq v2.12.1
+#21 31.96    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 32.55    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 32.55    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 35.96    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 35.96    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 35.96    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 38.33    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 38.33    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 40.26    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 40.26    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 45.39    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 52.45     Finished `dev` profile [unoptimized + debuginfo] target(s) in 52.32s
+#21 DONE 52.7s
+
+#22 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#22 CACHED
+
+#23 [e2e 10/12] COPY e2e ./e2e
+#23 CACHED
+
+#24 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#24 CACHED
+
+#25 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  2/12] WORKDIR /app
+#27 CACHED
+
+#28 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#28 CACHED
+
+#29 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#29 CACHED
+
+#30 [e2e  9/12] RUN cd e2e && uv sync --locked
+#30 CACHED
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 CACHED
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 CACHED
+
+#33 exporting to image
+#33 exporting layers done
+#33 exporting manifest sha256:ec6a213b9ccd37819325c4bf540899dd9c41ab9d4b67f139b81822b16fda04d9 done
+#33 exporting config sha256:a871c760d2b888d85e4269b89c6477b75c854fc72c5081a1957509d7e2059df5 done
+#33 exporting attestation manifest sha256:a8943e90b14c7ff132c3fadfe7ca93d058f5ac09e0fa6e7acc740a31f91ef190 0.0s done
+#33 exporting manifest list sha256:a3c8fbe980f5b6a3f13e6ba07f8b2a2a361eea9e5df0a1e188a272c798e897d6 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.0s done
+#33 DONE 0.1s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-e07226ac6168 Creating 
+ Container gripsack-e2e-run-e07226ac6168 Created 
+============================= test session starts ==============================
+platform linux -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /app/e2e
+configfile: pyproject.toml
+collected 417 items
+
+test_activation_lifecycle.py ...........                                 [  2%]
+test_adopt.py .............                                              [  5%]
+test_apply_lifecycle.py ........                                         [  7%]
+test_build_closures.py .......                                           [  9%]
+test_complete_pins.py ...........                                        [ 11%]
+test_contract_fidelity.py ..........................                     [ 18%]
+test_destination_ownership.py .............                              [ 21%]
+test_eval_gate.py ................................                       [ 29%]
+test_execution_contracts.py ..........                                   [ 31%]
+test_fetchers.py ..................                                      [ 35%]
+test_gc_admission.py ......................................              [ 44%]
+test_generation_history.py ..........                                    [ 47%]
+test_golden.py .....                                                     [ 48%]
+test_hook_outcomes.py ...........................                        [ 54%]
+test_http_policy.py ............                                         [ 57%]
+test_journey.py .....                                                    [ 58%]
+test_journey_contracts.py ...                                            [ 59%]
+test_linters.py ............                                             [ 62%]
+test_merge_boundaries.py ........                                        [ 64%]
+test_migration_feedback.py .........                                     [ 66%]
+test_ownership_modes.py ................                                 [ 70%]
+test_persistence_matrix.py ......                                        [ 71%]
+test_plan_operations.py ...                                              [ 72%]
+test_recovery_durability.py ...................                          [ 77%]
+test_repeated_recovery.py .                                              [ 77%]
+test_self_update.py .....                                                [ 78%]
+test_store_hygiene.py ........                                           [ 80%]
+test_trace_context.py ..                                                 [ 81%]
+test_transaction_recovery.py ..........                                  [ 83%]
+test_update_surveys.py ........                                          [ 85%]
+test_workspace_contract.py .......................                       [ 90%]
+test_workspace_diagnostics.py ..............................             [ 98%]
+test_workspace_files.py ........                                         [100%]
+
+======================= 417 passed in 3238.94s (0:53:58) =======================

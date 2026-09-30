@@ -13,8 +13,8 @@ pub type ProgressCallback = Box<dyn Fn(&str, &str) + Send + Sync>;
 pub struct Ctx {
     /// $GRIPSACK_HOME.
     pub home: PathBuf,
-    /// The env repo root (config `from` paths are repo-relative).
-    pub repo: PathBuf,
+    /// Repository publication identity and selected content are separate roles.
+    pub repository: crate::Repository,
     /// Subset apply: only these modules plus their dependencies (0001
     /// §3.6). Empty = the whole graph.
     pub only: Vec<String>,

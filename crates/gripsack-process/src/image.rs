@@ -221,15 +221,26 @@ impl Image {
     }
 }
 
-pub(crate) struct Program {
+/// Selected native bytes may be retained across an approval pause. Each launch
+/// still receives its own explicit operation budget; selection cannot choose
+/// another executable after that approval.
+pub struct SelectedProgram {
     pub(crate) executable: Image,
     pub(crate) script: Option<Image>,
     pub(crate) interpreter_argument: Option<OsString>,
     pub(crate) argument_zero: OsString,
 }
 
-impl Program {
-    pub(crate) fn select(
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProgramIdentity {
+    pub executable_sha256: Sha256Digest,
+    pub script_sha256: Option<Sha256Digest>,
+    pub byte_binding: ByteBinding,
+}
+
+impl SelectedProgram {
+    pub fn select(
         environment: &OperatorEnvironment,
         name: &Path,
         expected: Option<Sha256Digest>,
@@ -257,5 +268,18 @@ impl Program {
             interpreter_argument: argument,
             argument_zero: interpreter.into_os_string(),
         })
+    }
+
+    /// True when the runtime is a `#!` script executed through an interpreter.
+    pub fn is_script(&self) -> bool {
+        self.script.is_some()
+    }
+
+    pub fn identity(&self) -> ProgramIdentity {
+        ProgramIdentity {
+            executable_sha256: self.executable.digest,
+            script_sha256: self.script.as_ref().map(|script| script.digest),
+            byte_binding: self.executable.binding.clone(),
+        }
     }
 }

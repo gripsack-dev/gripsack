@@ -85,8 +85,18 @@ pub(crate) fn deploy_entry(
         .symlink_metadata()
         .is_ok_and(|m| m.file_type().is_symlink());
     let owned_replace_ok = matches!(entry.mode, Ownership::Owned) && dest_is_symlink;
-    if dest_resolves_into(&dest, &ctx.repo) && !owned_replace_ok {
-        let hint = if dest_is_symlink {
+    let inside_source_entry = dest.starts_with(ctx.repository.identity())
+        || ctx
+            .repository
+            .snapshot_root()
+            .is_some_and(|root| dest.starts_with(root));
+    let resolves_to_source = dest_resolves_into(&dest, ctx.repository.identity())
+        || ctx
+            .repository
+            .snapshot_root()
+            .is_some_and(|root| dest_resolves_into(&dest, root));
+    if inside_source_entry || (resolves_to_source && !owned_replace_ok) {
+        let hint = if dest_is_symlink && !inside_source_entry {
             "\n  hint: the destination is a symlink into the repo — likely left by an \
              older gripsack that deployed config from the checkout; remove it and \
              re-apply, or declare the entry `owned` so gripsack replaces it"
@@ -94,9 +104,9 @@ pub(crate) fn deploy_entry(
             ""
         };
         return Err(fail(format!(
-            "{} resolves inside the env repo ({}) — refusing to deploy into the source checkout{hint}",
+            "{} resolves inside the env repo or captured source ({}) — refusing to deploy into source{hint}",
             entry.to,
-            ctx.repo.display()
+            ctx.repository.identity().display()
         )));
     }
     // Expansion is total: a placeholder surviving to deploy means a

@@ -62,10 +62,10 @@ Your first eval downloads the pinned, hash-verified Deno runtime
   network, and no subprocesses; host facts arrive core-injected, and
   probes (`ctx.probe`) are explicit, inspectable requests the core
   binds ([plan/0013](plan/0013-constrained-evaluation.md)).
-- **A trust decision before code runs** — the first eval of an
-  unfamiliar env repo prompts: path, remote, commit, and the exact
-  capability set eval will get. `grip trust list|add|remove` manages
-  it; `GRIPSACK_TRUST_ALL=1` is the CI hatch.
+- **Approve the bytes that run** — approval binds the canonical repository,
+  a copied source-bundle digest, and the evaluator/runtime/native-action policy.
+  Edits, changed pins or expanded grants require renewed approval.
+  `grip trust inspect|add|list|remove` exposes that boundary; CI has no blanket bypass.
 - **Dotfiles, first-class** — per-file ownership: `owned` symlinks,
   `tracked-copy` with drift detection, `merge` blocks, `template` for
   per-machine values. Dotfiles-only modules are a first-class usage
@@ -79,12 +79,51 @@ Your first eval downloads the pinned, hash-verified Deno runtime
   diagnostics are structured with stable codes. An LSP is a shim away
   ([plan/0004](plan/0004-rich-ir-and-passes.md)).
 
+## Source approval and migration
+
+Evaluation reads one private, read-only snapshot, including ignored/untracked
+files, dirty submodules and the admitted frontend pin. Every probe round uses
+that same snapshot with a separate immutable host-input file. `.git` and the
+selected gripsack runtime-state subtree are excluded and unavailable to eval.
+Lockfiles inside the repository are source too: an apply/update that changes
+them can require renewed approval on the next command.
+
+Old path-only trust entries do not authorize execution. Unset
+`GRIPSACK_TRUST_ALL`; `=1` now fails with migration guidance. Interactive
+commands show the captured digest and policy before asking. For a reviewed
+disposable CI fixture, pass both expected fingerprints explicitly:
+
+```sh
+source=$(grip trust inspect --json)
+printf '%s\n' "$source"  # review the inventory, changes and actual policy
+grip trust add \
+  --bundle "$(printf '%s' "$source" | jq -r .bundle_digest)" \
+  --policy "$(printf '%s' "$source" | jq -r .policy_digest)"
+grip check
+```
+
+Inspection and approval do not evaluate repository code. A change between them
+fails approval rather than blessing newer bytes. Remote/HEAD are sanitized
+provenance, not trust keys. `grip trust inspect --receipt ID --json` inspects
+private source/input/process evidence; `completed` covers frontend evaluation,
+not a later build or deployment.
+
+`adopt --yes` skips only apply confirmation. Generated source needs its own
+approval. After reviewing and approving it, repeat adoption with `--resume`
+and omit `--mode`; the approved module supplies the mode, no repo files are
+rewritten, and takeover remains restricted to the requested target.
+
+Source capture is not a sandbox for native plugins or protection against a
+privileged/same-UID attacker modifying trusted runtime storage. It identifies
+the bytes actually copied, not an atomic Git checkout or proof of source intent.
+
 ## How it works
 
 ```
 your env repo (modules + env.toml + hosts/)
-  → core detects host facts, writes the inputs envelope
-  → frontend evaluates modules in sandboxed Deno → IR (JSON, span-annotated)
+  → capture source + select runtime → explicit source/policy approval
+  → core detects host facts, writes one immutable input per probe round
+  → frontend evaluates the captured bundle in sandboxed Deno → IR (JSON, span-annotated)
   → lockfile pins URLs + hashes per host
   → core passes: parse → validate → resolve → lower → plan
   → fetch & build as a DAG into /store/<hash>-<name>

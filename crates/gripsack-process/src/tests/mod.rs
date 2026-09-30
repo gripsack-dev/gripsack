@@ -1,6 +1,8 @@
 use super::*;
 use std::os::unix::process::ExitStatusExt;
 
+#[cfg(target_os = "linux")]
+mod confinement;
 mod lifecycle;
 mod native;
 mod pressure;
