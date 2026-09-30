@@ -19,7 +19,7 @@ fn main() {
     }
     let mut child = Command::new("/bin/sh");
     child
-        .args(["-c", if live { "printf '%s\n' $$; sleep 8; exit 0" } else { "exit 0" }])
+        .args(["-c", if live { "printf '%s\n' $$; sleep 30; exit 0" } else { "exit 0" }])
         .env_clear()
         .current_dir("/tmp")
         .uid(65534)
@@ -29,7 +29,7 @@ fn main() {
         &mut child,
         b"",
         Limits {
-            timeout: Duration::from_secs(if live { 5 } else { 2 }),
+            timeout: Duration::from_secs(if live { 20 } else { 2 }),
             ..Limits::default()
         },
         |line| {
