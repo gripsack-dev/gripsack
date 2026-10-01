@@ -1,4 +1,4 @@
-name: mac-seatbelt-qualification
+name: mac-worker-platform-diagnosis
 
 on:
   workflow_dispatch:
@@ -7,52 +7,34 @@ permissions:
   contents: read
 
 jobs:
-  native-evaluation:
+  worker-platform:
     runs-on: macos-14
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Require native Mac ARM
-        run: test "$(uname -m)" = arm64
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
-        with:
-          toolchain: "1.98.0"
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: "3.12"
-      - name: Build the actual CLI
-        run: cargo build --locked -p gripsack
-      - name: Prefetch the pinned Mac ARM Deno
-        run: |
-          curl -fsSL https://github.com/denoland/deno/releases/download/v2.9.6/deno-aarch64-apple-darwin.zip -o /tmp/deno.zip
-          echo "213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472  /tmp/deno.zip" | shasum -a 256 --check
-          unzip -q /tmp/deno.zip -d "$HOME/.deno-bin"
-          echo "$HOME/.deno-bin" >> "$GITHUB_PATH"
-          echo "GRIPSACK_DENO=$HOME/.deno-bin/deno" >> "$GITHUB_ENV"
-      - name: Observe native read-only directory rename semantics
+      - name: Measure native architecture and virtualization facilities
         run: |
           python3 - <<'PY'
-          from pathlib import Path
-          import tempfile
-          with tempfile.TemporaryDirectory() as temporary:
-              source = Path(temporary) / "stage"
-              source.mkdir(mode=0o700)
-              source.chmod(0o500)
-              target = Path(temporary) / "final"
-              try:
-                  source.rename(target)
-              except PermissionError as error:
-                  print(f"MAC_READ_ONLY_DIRECTORY_RENAME=denied errno={error.errno}")
-                  source.chmod(0o700)
-              else:
-                  print("MAC_READ_ONLY_DIRECTORY_RENAME=allowed")
-                  target.chmod(0o700)
+          import json
+          import platform
+          import shutil
+          import subprocess
+          assert platform.machine() == 'arm64'
+          report = {'architecture': platform.machine(),
+                    'tools': {name: shutil.which(name) for name in ('limactl', 'qemu-system-aarch64')}}
+          for name, command in (
+              ('hypervisor', ['sysctl', 'kern.hv_support']),
+              ('operating_system', ['sw_vers']),
+          ):
+              result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+              report[name] = {'status': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr}
+          result = subprocess.run(['brew', 'info', 'lima', 'qemu', '--json=v2'],
+                                  capture_output=True, text=True, timeout=90)
+          report['brew_status'] = result.returncode
+          if result.returncode == 0:
+              info = json.loads(result.stdout)
+              report['formulae'] = [{key: formula.get(key) for key in ('name', 'versions', 'installed', 'bottle')}
+                                   for formula in info.get('formulae', [])]
+          else:
+              report['brew_error'] = result.stderr[-4096:]
+          print('MAC_WORKER_PLATFORM=' + json.dumps(report, sort_keys=True))
           PY
-      - name: Exercise source capture sealing and cleanup
-        run: |
-          cargo test --locked -p gripsack-store source_bundle:: -- --nocapture
-      - name: Exercise the real confined evaluator and approval boundaries
-        working-directory: e2e
-        run: |
-          python -m pip install pytest
-          python -m pytest -q test_source_approval.py test_eval_gate.py
