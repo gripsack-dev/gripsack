@@ -389,7 +389,6 @@ pub(super) fn reject_blanket_bypass() -> Result<(), ExitCode> {
 }
 
 pub(super) fn operational(error: impl std::fmt::Display) -> ExitCode {
-    eprintln!("MAC_CAPTURE_BACKTRACE={}", std::backtrace::Backtrace::force_capture());
     eprintln!(
         "grip: {}",
         gripsack_process::terminal::tame(error.to_string())

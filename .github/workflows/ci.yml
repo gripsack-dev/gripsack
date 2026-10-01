@@ -29,8 +29,30 @@ jobs:
           unzip -q /tmp/deno.zip -d "$HOME/.deno-bin"
           echo "$HOME/.deno-bin" >> "$GITHUB_PATH"
           echo "GRIPSACK_DENO=$HOME/.deno-bin/deno" >> "$GITHUB_ENV"
+      - name: Observe native read-only directory rename semantics
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import tempfile
+          with tempfile.TemporaryDirectory() as temporary:
+              source = Path(temporary) / "stage"
+              source.mkdir(mode=0o700)
+              source.chmod(0o500)
+              target = Path(temporary) / "final"
+              try:
+                  source.rename(target)
+              except PermissionError as error:
+                  print(f"MAC_READ_ONLY_DIRECTORY_RENAME=denied errno={error.errno}")
+                  source.chmod(0o700)
+              else:
+                  print("MAC_READ_ONLY_DIRECTORY_RENAME=allowed")
+                  target.chmod(0o700)
+          PY
+      - name: Exercise source capture sealing and cleanup
+        run: |
+          cargo test --locked -p gripsack-store source_bundle:: -- --nocapture
       - name: Exercise the real confined evaluator and approval boundaries
         working-directory: e2e
         run: |
           python -m pip install pytest
-          python -m pytest -q test_eval_gate.py::test_trust_add_records_and_unblocks_eval
+          python -m pytest -q test_source_approval.py test_eval_gate.py

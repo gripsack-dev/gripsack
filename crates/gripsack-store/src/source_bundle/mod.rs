@@ -182,9 +182,11 @@ impl SourceBundle {
         }
         let inventory_bytes = inventory.encode()?;
         let digest = SourceBundleDigest::of_inventory(&inventory_bytes);
-        capture::freeze(&stage)?;
+        // Finalize the private directory's name while it remains writable.
+        // No captured authority escapes until read-only sealing succeeds.
         let name = digest.to_string();
         owned.directory.rename("stage", &owned.directory, &name)?;
+        capture::freeze(&stage)?;
         let root = owned.temporary.path().join(name);
         let repository = root.join("repo");
         let frontend = root.join("frontend");
