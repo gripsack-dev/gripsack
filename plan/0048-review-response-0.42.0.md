@@ -2949,3 +2949,25 @@ Proof source SHA-256:
 `34db9e66703ee412ccdbda7156cc4d937356efd8ad3b0ce9482ab4e4603ad5e9`.
 No theorem/catalog floor, checker, timeout or attribution rule was relaxed.
 Exact-candidate CI remains required; full raw output stays outside the repository.
+
+### Complete persistence partitions (2026-10-01)
+
+Eight Linux apply scenario/fault jobs in run `36906254878` reached their
+120-minute job limit. Real pytest inventories measured **440/448/290/302/458/460**
+cuts for apply-deploy, apply-prune, rollback-deploy, rollback-prune and the two
+apply-copy cases. Each cut runs both drift states and repeated real recovery.
+
+CI now uses eight deterministic disjoint cut partitions per scenario/fault/platform
+(**192 jobs**), without changing the job limit or dropping a boundary. Default
+local execution remains unpartitioned. The required aggregate admits only a
+complete, source-bound set of partition receipts with matching per-platform
+inventories, exact cut ownership, both drift states and native Mac ARM.
+Missing, duplicate, failed, cancelled, skipped or vacuous required work fails.
+
+Observed after the change: Linux apply-prune-copy partition 7/8 passed **57/460
+cuts × two drift states**, separately for error and kill, in **1084.4/1032.2 s**.
+All six actual inventories had nonempty disjoint partitions with full union;
+these inventory measurements do not claim complete recovery execution.
+Gate calibration passed **6 positive / 294 negative** admissions, and partition
+configuration rejected **11** invalid/vacuous cases. Full candidate CI remains
+required. Receipts live in CI artifacts; their checkout directory is ignored.

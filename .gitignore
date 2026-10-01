@@ -9,6 +9,7 @@ demos/out/
 /repro/
 /fuzz/target/
 /fuzz/artifacts/
+/persistence-reports/
 
 # Generated verification output is not source or durable evidence.
 # New runner reports require deliberate admission; see verification/reports/README.md.

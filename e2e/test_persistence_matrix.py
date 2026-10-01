@@ -8,7 +8,9 @@ import json
 import os
 import signal
 import shutil
+import platform
 import stat
+import time
 from pathlib import Path
 
 import pytest
@@ -36,12 +38,28 @@ def command(repo, args, env):
     return run_grip([str(GRIP), *args], cwd=repo, env=env, capture_output=True, text=True, timeout=120)
 
 
-# fault is a parameter (not an inner loop) so CI can address every
-# scenario x fault shard directly; each shard still runs every recorded
-# cut x both drift states x real recovery — the union is the full matrix.
+# Zero-based round-robin partitions retain every traced boundary, including
+# newly added ones. Both drift states stay together; no configuration means
+# the complete local matrix. Never allow an empty required partition.
+def cut_partition(total, environment):
+    index = environment.get('GRIPSACK_PERSISTENCE_SHARD')
+    count = environment.get('GRIPSACK_PERSISTENCE_SHARDS')
+    if index is None and count is None:
+        return 0, 1, range(1, total + 1)
+    if index is None or count is None or not index.isdecimal() or not count.isdecimal():
+        raise ValueError('persistence shard index/count must both be nonnegative decimal integers')
+    index, count = int(index), int(count)
+    if not 0 <= index < count <= total:
+        raise ValueError(f'invalid or vacuous persistence partition: {index}/{count}, cuts={total}')
+    return index, count, range(index + 1, total + 1, count)
+
+
 @pytest.mark.parametrize('fault', ['error', 'kill'])
 @pytest.mark.parametrize('scenario', ['apply-deploy', 'apply-prune', 'rollback-deploy', 'rollback-prune', 'apply-deploy-copy', 'apply-prune-copy'])
 def test_every_reachable_persistence_boundary(sandbox, scenario, fault):
+    started = time.monotonic()
+    # Validate paired configuration before any expensive fixture setup.
+    cut_partition(2**63 - 1, os.environ)
     home = sandbox / 'home'
     home.mkdir()
     env = dict(os.environ, HOME=str(home), GRIPSACK_HOME=str(home / '.local/share/gripsack'))
@@ -83,7 +101,12 @@ def test_every_reachable_persistence_boundary(sandbox, scenario, fault):
     assert any('activation.json' in row[3] for row in points)
     assert any('current' in row[3] for row in points)
 
-    for cut, expected in enumerate(points, 1):
+    index, count, cuts = cut_partition(len(points), os.environ)
+    print(f'{scenario} {fault}: measured {len(points)} cuts; '
+          f'partition {index}/{count} selects {len(cuts)} x 2 drift states', flush=True)
+    completed = []
+    for cut in cuts:
+        expected = points[cut - 1]
         for drift in [False, True]:
             shutil.rmtree(home)
             shutil.copytree(saved, home, symlinks=True)
@@ -114,4 +137,20 @@ def test_every_reachable_persistence_boundary(sandbox, scenario, fault):
             again = command(repo, ['apply', '--host', 'testhost'], dict(env, GRIPSACK_FS_RECOVER_ONLY='1'))
             assert again.returncode == 0, context + '\n' + again.stderr
             assert snapshot(home) == actual, context + ': recovery was not idempotent'
-    print(f'{scenario} {fault}: {len(points)} boundaries x 2 drift states verified (fault shard)')
+        completed.append(cut)
+        print(f'{scenario} {fault}: cut {cut}/{len(points)} both drift states recovered '
+              f'and idempotent ({time.monotonic() - started:.1f}s)', flush=True)
+    elapsed = time.monotonic() - started
+    report = {
+        'scenario': scenario, 'fault': fault, 'shard': index, 'shards': count,
+        'inventory': [row[1:3] for row in points], 'completed_cuts': completed,
+        'drift_states': [False, True], 'seconds': elapsed,
+        'system': platform.system(), 'machine': platform.machine(),
+        'source': os.environ.get('GITHUB_SHA'),
+    }
+    if directory := os.environ.get('GRIPSACK_PERSISTENCE_REPORTS'):
+        path = Path(directory)
+        path.mkdir(parents=True, exist_ok=True)
+        (path / f'{platform.system()}-{scenario}-{fault}-{index}.json').write_text(json.dumps(report))
+    print(f'{scenario} {fault}: {len(completed)}/{len(points)} boundaries x 2 drift states '
+          f'verified in {elapsed:.1f}s (partition {index}/{count})', flush=True)

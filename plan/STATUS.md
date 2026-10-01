@@ -103,6 +103,14 @@ Generated prover output is now ignored and archived logs marked generated;
 checksum-bound historical evidence remains intact rather than being silently
 deleted or counted as current release qualification.
 
+**0048 persistence CI completion (2026-10-01):** Scenario/fault sharding still
+hit the two-hour bound on eight Linux apply jobs. Eight disjoint cut partitions
+now retain the entire measured matrix on Linux and native Mac ARM (**192 jobs**);
+the protected aggregate also requires complete source-bound partition receipts.
+Focused error/kill recovery passed **57/460 cuts × both drift states** per mode;
+all-inventory union and **6 positive / 294 negative** gate checks passed.
+The complete new candidate run, not these focused observations, qualifies release.
+
 **0051 source update (`80b50a3`, 2026-09-26):** The retired
 BuildKit v0.33.0 manifest-list digest was replaced by a resolvable
 digest with the same qualified amd64 leaf. The pinned Go bridge was

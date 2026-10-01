@@ -75,10 +75,9 @@ jobs:
           fi
           docker compose run --build --rm e2e uv run --locked --no-sync pytest --ignore=test_persistence_matrix.py "${extra[@]}"
 
-  # 0041's persistence matrix: every scenario x fault shard runs every
-  # recorded cut x both drift states x real recovery. Sharding is by pytest
-  # node id over the FULL parametrization — no sampling, no dropped
-  # combination; the union of shards is exactly the old serial matrix.
+  # Every scenario x fault x platform runs eight disjoint round-robin cut
+  # partitions. Each partition retains both drift states and real recovery;
+  # the required aggregate checks their complete measured inventory union.
   e2e-persistence:
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 120
@@ -88,11 +87,22 @@ jobs:
         platform: [ubuntu-latest, macos-14]
         scenario: [apply-deploy, apply-prune, rollback-deploy, rollback-prune, apply-deploy-copy, apply-prune-copy]
         fault: [error, kill]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      GRIPSACK_PERSISTENCE_SHARD: ${{ matrix.shard }}
+      GRIPSACK_PERSISTENCE_SHARDS: "8"
+      GRIPSACK_PERSISTENCE_REPORTS: ${{ github.workspace }}/persistence-reports
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: E2E (Linux persistence shard)
         if: runner.os == 'Linux'
-        run: docker compose run --build --rm e2e uv run --locked --no-sync pytest "test_persistence_matrix.py::test_every_reachable_persistence_boundary[${{ matrix.scenario }}-${{ matrix.fault }}]"
+        run: |
+          mkdir -p "$GRIPSACK_PERSISTENCE_REPORTS"
+          docker compose run --build --rm \
+            -e GRIPSACK_PERSISTENCE_SHARD -e GRIPSACK_PERSISTENCE_SHARDS \
+            -e GRIPSACK_PERSISTENCE_REPORTS=/persistence-reports -e GITHUB_SHA \
+            -v "$GRIPSACK_PERSISTENCE_REPORTS:/persistence-reports" \
+            e2e uv run --locked --no-sync pytest -s "test_persistence_matrix.py::test_every_reachable_persistence_boundary[${{ matrix.scenario }}-${{ matrix.fault }}]"
       - name: Require native Mac ARM
         if: runner.os == 'macOS'
         run: test "$(uname -m)" = arm64
@@ -120,7 +130,13 @@ jobs:
         working-directory: e2e
         run: |
           python -m pip install pytest
-          python -m pytest -q "test_persistence_matrix.py::test_every_reachable_persistence_boundary[${{ matrix.scenario }}-${{ matrix.fault }}]"
+          python -m pytest -q -s "test_persistence_matrix.py::test_every_reachable_persistence_boundary[${{ matrix.scenario }}-${{ matrix.fault }}]"
+      - name: Publish completed persistence partition
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: persistence-${{ matrix.platform }}-${{ matrix.scenario }}-${{ matrix.fault }}-${{ matrix.shard }}
+          path: persistence-reports/*.json
+          if-no-files-found: error
 
   formal:
     runs-on: ubuntu-latest
@@ -141,24 +157,17 @@ jobs:
     needs: [core, e2e, e2e-persistence, formal, e2e-macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: persistence-*
+          path: persistence-reports
+      - name: Calibrate complete required-work admission
+        run: python3 scripts/check_ci_gate.py --self-check
       - name: Admit every required lane
         env:
           GRIPSACK_TEST_NEEDS: ${{ toJSON(needs) }}
-        run: |
-          python3 - <<'EOF'
-          import json, os, sys
-          needs = json.loads(os.environ["GRIPSACK_TEST_NEEDS"])
-          expected = {"core", "e2e", "e2e-persistence", "formal", "e2e-macos"}
-          if set(needs) != expected:
-              print(f"FAIL: missing/substituted required lanes: {set(needs) ^ expected}")
-              sys.exit(1)
-          rejected = {lane: need["result"] for lane, need in needs.items()
-                      if need["result"] != "success"}
-          if rejected:
-              print(f"FAIL: required lanes not green: {rejected}")
-              sys.exit(1)
-          print(f"test aggregate OK: {sorted(needs)} all succeeded")
-          EOF
+        run: python3 scripts/check_ci_gate.py --test-lanes --persistence-reports persistence-reports
 
   # Native macOS round (plan/0020's queued item): real build plus the
   # native process/journal authority gates AND the full flow suite on APFS —
