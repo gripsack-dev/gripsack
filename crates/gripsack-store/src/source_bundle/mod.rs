@@ -118,13 +118,30 @@ impl Drop for OwnedDirectory {
     }
 }
 
+/// Trust uses canonical identity; diagnostics retain the caller's spelling.
+/// Native bindings recognize both, so a root alias cannot select live bytes.
+#[derive(Debug)]
+struct SourceOrigin {
+    canonical: PathBuf,
+    declared: PathBuf,
+}
+
+impl From<CaptureRoot> for SourceOrigin {
+    fn from(root: CaptureRoot) -> Self {
+        Self {
+            canonical: root.canonical,
+            declared: root.declared,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SourceBundle {
     _owned: OwnedDirectory,
     root: Dir,
-    repository_identity: PathBuf,
-    frontend_origin: PathBuf,
-    pinned_origin: Option<PathBuf>,
+    repository_origin: SourceOrigin,
+    frontend_origin: SourceOrigin,
+    pinned_origin: Option<SourceOrigin>,
     repository: PathBuf,
     frontend: PathBuf,
     pinned_frontend: Option<PathBuf>,
@@ -155,13 +172,14 @@ impl SourceBundle {
         let temporary = tempfile::Builder::new()
             .prefix("gripsack-source-")
             .tempdir()?;
+        let mut capture_root = temporary.path().canonicalize()?;
         let owned = OwnedDirectory {
             directory: gripsack_fs::open(temporary.path())?,
             temporary,
         };
         if roots
             .iter()
-            .any(|root| owned.temporary.path().starts_with(&root.canonical))
+            .any(|root| capture_root.starts_with(&root.canonical))
         {
             return Err(invalid("source root contains its own capture directory"));
         }
@@ -187,18 +205,18 @@ impl SourceBundle {
         let name = digest.to_string();
         owned.directory.rename("stage", &owned.directory, &name)?;
         capture::freeze(&stage)?;
-        let root = owned.temporary.path().join(name);
-        let repository = root.join("repo");
-        let frontend = root.join("frontend");
-        let pinned_frontend = pin.map(|_| root.join("pin"));
+        capture_root.push(name);
+        let repository = capture_root.join("repo");
+        let frontend = capture_root.join("frontend");
+        let pinned_frontend = pin.map(|_| capture_root.join("pin"));
         let mut roots = roots.into_iter();
-        let repository_identity = roots.next().expect("repository root is required").canonical;
-        let frontend_origin = roots.next().expect("frontend root is required").canonical;
-        let pinned_origin = roots.next().map(|root| root.canonical);
+        let repository_origin = roots.next().expect("repository root is required").into();
+        let frontend_origin = roots.next().expect("frontend root is required").into();
+        let pinned_origin = roots.next().map(SourceOrigin::from);
         Ok(Self {
             _owned: owned,
             root: stage,
-            repository_identity,
+            repository_origin,
             frontend_origin,
             pinned_origin,
             repository,
@@ -211,7 +229,7 @@ impl SourceBundle {
     }
 
     pub fn repository_identity(&self) -> &Path {
-        &self.repository_identity
+        &self.repository_origin.canonical
     }
     pub fn repository(&self) -> &Path {
         &self.repository
@@ -233,10 +251,14 @@ impl SourceBundle {
     }
 
     pub fn original_root(&self, kind: SourceRootKind) -> Option<&Path> {
+        self.origin(kind).map(|origin| origin.canonical.as_path())
+    }
+
+    fn origin(&self, kind: SourceRootKind) -> Option<&SourceOrigin> {
         match kind {
-            SourceRootKind::Repository => Some(&self.repository_identity),
+            SourceRootKind::Repository => Some(&self.repository_origin),
             SourceRootKind::Frontend => Some(&self.frontend_origin),
-            SourceRootKind::PinnedFrontend => self.pinned_origin.as_deref(),
+            SourceRootKind::PinnedFrontend => self.pinned_origin.as_ref(),
         }
     }
 
@@ -277,9 +299,11 @@ impl SourceBundle {
                 .map_err(|_| invalid("captured native path is not UTF-8"));
         }
         for &kind in self.inventory.roots().iter().rev() {
-            if let (Some(original), Some(captured)) =
-                (self.original_root(kind), self.captured_root(kind))
-                && let Ok(relative) = path.strip_prefix(original)
+            if let (Some(origin), Some(captured)) = (self.origin(kind), self.captured_root(kind))
+                && let Some(relative) = path
+                    .strip_prefix(&origin.canonical)
+                    .ok()
+                    .or_else(|| path.strip_prefix(&origin.declared).ok())
             {
                 return captured
                     .join(relative)
@@ -307,9 +331,10 @@ impl SourceBundle {
         }
         let mut result = Cow::Borrowed(text);
         for &kind in self.inventory.roots() {
-            let (Some(captured), Some(original)) =
-                (self.captured_root(kind), self.original_root(kind))
-            else {
+            let (Some(captured), Some(original)) = (
+                self.captured_root(kind),
+                self.origin(kind).map(|origin| origin.declared.as_path()),
+            ) else {
                 continue;
             };
             if result.contains("file://")

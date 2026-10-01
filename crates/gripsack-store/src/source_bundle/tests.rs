@@ -116,6 +116,40 @@ fn live_edits_and_link_retargets_cannot_change_captured_code_or_pin() {
 }
 
 #[test]
+fn root_aliases_bind_native_paths_and_diagnostics_without_changing_trust_identity() {
+    let fixture = Fixture::new();
+    let alias = fixture._temporary.path().join("declared-repo");
+    symlink(&fixture.repo, &alias).unwrap();
+    let captured =
+        SourceBundle::capture(&alias, &fixture.frontend, Some(&fixture.pin), &fixture.home)
+            .unwrap();
+    assert_eq!(
+        captured.repository_identity(),
+        fixture.repo.canonicalize().unwrap()
+    );
+    let original = alias.join("ignored.ts");
+    let canonical = original.canonicalize().unwrap();
+    fs::write(&original, b"changed after capture").unwrap();
+    for input in [&original, &canonical] {
+        let selected = captured.native_path(input.to_str().unwrap()).unwrap();
+        assert_eq!(
+            Path::new(selected.as_ref()),
+            captured.repository().join("ignored.ts")
+        );
+        assert_eq!(
+            fs::read(selected.as_ref()).unwrap(),
+            b"export const version = 1;\n"
+        );
+    }
+    let captured_url = url::Url::from_file_path(captured.repository().join("ignored.ts")).unwrap();
+    let declared_url = url::Url::from_file_path(&original).unwrap();
+    assert_eq!(
+        captured.logical_text(captured_url.as_str()),
+        declared_url.as_str()
+    );
+}
+
+#[test]
 fn excluded_state_escape_cycles_and_special_files_never_become_source() {
     let fixture = Fixture::new();
     fs::write(fixture.home.join("secret"), b"private state fixture").unwrap();
