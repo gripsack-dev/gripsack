@@ -95,8 +95,10 @@ and declared diagnostic/native-path spelling are distinct. Diagnostic source
 `e7841e3` passed **5/5 source-capture + 60/60 real-Deno** cases on native ARM64
 ([CI](https://github.com/gripsack-dev/gripsack/actions/runs/36923313515)); the
 preceding native process/journal authority job also passed. Complete candidate
-CI and persistence qualification remain open, as does the positive TLAPS
-`JournalControlProofs` induction timeout observed in run `36906254878`.
+CI and persistence qualification remain open. The positive TLAPS timeout from
+run `36906254878` is repaired by proof decomposition: fresh two-CPU `bfa9468`
+qualification passed **4,645 generalized + 301 pilot obligations** and all
+calibrations with unchanged theorem, catalog floors and timeout policy.
 Generated prover output is now ignored and archived logs marked generated;
 checksum-bound historical evidence remains intact rather than being silently
 deleted or counted as current release qualification.

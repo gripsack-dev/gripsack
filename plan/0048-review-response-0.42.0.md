@@ -2930,3 +2930,22 @@ Native Mac ARM startup qualification (2026-10-01):
   also exposed a positive TLAPS induction timeout, not an authorized deferral.
 - Compact CI references replace another committed console dump; existing
   checksum-bound reports are unchanged.
+
+### M-V6 CI proof stability (2026-10-01)
+
+Run `36906254878` correctly rejected the positive
+`BeginEpochPreservesControl` obligation on an internal 20-second SMT timeout.
+It was not the deliberately failing `UnrelatedCalibration` obligation.
+The proof now separates action projections, durable reservation binding,
+freshness, destination typing and empty reconstructed entries with `BY ONLY`
+contexts. The theorem, assumptions and destination domain are unchanged.
+
+Fresh pinned `bfa9468` qualification under a two-CPU container passed **40
+modules / 443 named theorems / 4,645 generalized obligations**, plus **301**
+pilot and **13/7** cleanup/restore-witness obligations and all existing
+calibrations. The repaired module discharged **117** obligations; its six SMT
+steps used **0.4–5.4 seconds** under the unchanged 20-second limit.
+Proof source SHA-256:
+`34db9e66703ee412ccdbda7156cc4d937356efd8ad3b0ce9482ab4e4603ad5e9`.
+No theorem/catalog floor, checker, timeout or attribution rule was relaxed.
+Exact-candidate CI remains required; full raw output stays outside the repository.

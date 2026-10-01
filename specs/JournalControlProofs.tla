@@ -4,8 +4,31 @@ EXTENDS JournalControlFrames
 THEOREM BeginEpochPreservesControl ==
   ASSUME NEW transaction \in Transactions, NEW generation \in GenerationIds, Invariant, BeginEpoch(transaction, generation)
   PROVE ControlInvariant'
-  BY SMT, CorrectJournal, SelectionDomain, InitialCellFields, MissingProjection
-  DEF BeginEpoch, Invariant, ControlInvariant, EpochInvariant, MarkerCoversEntries, CachedEntriesEmpty, StableEntriesEmpty, Committed, Classification, Selection!Classify, Selection!Marker, selectionVars, control, TypeOK, CellSpace, DiskSpace, ControlSpace, Selection!Reserve, Selection!Invariant, Selection!ReservationInvariant, Selection!CurrentInvariant, Selection!Bound, Selection!TypeOK, Selection!Parameters, Selection!Selections, Selection!IsTransaction, InitialCell, InitialDisk, Missing
+\* Keep record construction separate from selection freshness. Expanding both
+\* into the entire control invariant makes the SMT search needlessly broad.
+<1>1. /\ mode' = "preparing" /\ pending' = epochTarget'
+      /\ epochTarget' = <<transaction, generation>>
+      /\ currentVisible' = epochPrevious' /\ currentStable' = currentStable
+      /\ ~markerVisible'.present /\ ~markerStable'.present
+      /\ transaction \notin reservationVisible
+  BY ONLY SMT, BeginEpoch(transaction, generation)
+  DEF BeginEpoch, Selection!Reserve
+<1>2. reservationStable \subseteq reservationVisible /\ Selection!Bound(currentStable)
+  BY ONLY SMT, Invariant
+  DEF Invariant, Selection!Invariant, Selection!ReservationInvariant, Selection!CurrentInvariant
+<1>3. ~Committed'
+  BY ONLY SMT, <1>1, <1>2, SelectionDomain, transaction \in Transactions,
+          generation \in GenerationIds
+  DEF Committed, Selection!Bound, Selection!IsTransaction, Selection!Parameters
+<1>4. \A destination \in Destinations :
+        /\ cells[destination].cached.live.value \in Objects
+        /\ cells[destination].durable.live.value \in Objects
+  BY ONLY SMT, Invariant, CellValueTypes DEF Invariant, TypeOK
+<1>5. CachedEntriesEmpty' /\ StableEntriesEmpty'
+  BY ONLY SMT, BeginEpoch(transaction, generation), <1>4, InitialCellFields, MissingProjection
+  DEF BeginEpoch, CachedEntriesEmpty, StableEntriesEmpty
+<1>6. QED
+  BY ONLY SMT, <1>1, <1>3, <1>5 DEF ControlInvariant
 
 THEOREM PrepareSelectionPreservesControl ==
   ASSUME Invariant, PrepareSelection
