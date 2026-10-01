@@ -1,4 +1,4 @@
-name: mac-worker-platform-diagnosis
+name: mac-worker-boot-diagnosis
 
 on:
   workflow_dispatch:
@@ -7,34 +7,61 @@ permissions:
   contents: read
 
 jobs:
-  worker-platform:
+  worker-boot:
     runs-on: macos-14
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - name: Measure native architecture and virtualization facilities
+      - name: Require native Mac ARM
+        run: test "$(uname -m)" = arm64
+      - name: Boot pinned Linux with the actual Lima VZ backend
         run: |
-          python3 - <<'PY'
-          import json
-          import platform
-          import shutil
-          import subprocess
-          assert platform.machine() == 'arm64'
-          report = {'architecture': platform.machine(),
-                    'tools': {name: shutil.which(name) for name in ('limactl', 'qemu-system-aarch64')}}
-          for name, command in (
-              ('hypervisor', ['sysctl', 'kern.hv_support']),
-              ('operating_system', ['sw_vers']),
-          ):
-              result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-              report[name] = {'status': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr}
-          result = subprocess.run(['brew', 'info', 'lima', 'qemu', '--json=v2'],
-                                  capture_output=True, text=True, timeout=90)
-          report['brew_status'] = result.returncode
-          if result.returncode == 0:
-              info = json.loads(result.stdout)
-              report['formulae'] = [{key: formula.get(key) for key in ('name', 'versions', 'installed', 'bottle')}
-                                   for formula in info.get('formulae', [])]
-          else:
-              report['brew_error'] = result.stderr[-4096:]
-          print('MAC_WORKER_PLATFORM=' + json.dumps(report, sort_keys=True))
-          PY
+          #!/bin/bash
+          set -euo pipefail
+          root=$(mktemp -d /tmp/gripsack-lima.XXXXXX)
+          chmod 700 "$root"
+          export LIMA_HOME="$root/home"
+          mkdir "$LIMA_HOME" "$root/tools"
+          curl -fL --max-time 180 -o "$root/lima.tgz" https://github.com/lima-vm/lima/releases/download/v2.0.3/lima-2.0.3-Darwin-arm64.tar.gz
+          printf '%s  %s\n' 22aee997df59e4fd448041b2d1214e48bd8eaf705d2d48a4307d65c1b179dc97 "$root/lima.tgz" | shasum -a 256 -c -
+          tar -xzf "$root/lima.tgz" -C "$root/tools"
+          curl -fL --max-time 600 -o "$root/ubuntu.img" https://cloud-images.ubuntu.com/releases/noble/release-20251213/ubuntu-24.04-server-cloudimg-arm64.img
+          printf '%s  %s\n' a40713938d74aaec811f74cb1fa8bfcb535d22e26b2a0ca1cc90ad9db898feb9 "$root/ubuntu.img" | shasum -a 256 -c -
+          cat > "$root/probe.yaml" <<EOF
+          minimumLimaVersion: 2.0.3
+          vmType: vz
+          arch: aarch64
+          cpus: 2
+          memory: 2GiB
+          disk: 8GiB
+          images:
+          - location: "$root/ubuntu.img"
+            arch: aarch64
+            digest: sha256:a40713938d74aaec811f74cb1fa8bfcb535d22e26b2a0ca1cc90ad9db898feb9
+          mounts: []
+          containerd:
+            system: false
+            user: false
+          rosetta:
+            enabled: false
+            binfmt: false
+          ssh:
+            loadDotSSHPubKeys: false
+          hostResolver:
+            enabled: false
+          EOF
+          set +e
+          "$root/tools/bin/limactl" start --tty=false --timeout=5m --name=probe "$root/probe.yaml"
+          status=$?
+          set -e
+          "$root/tools/bin/limactl" list --json
+          if [ "$status" = 0 ]; then
+            "$root/tools/bin/limactl" shell probe uname -m
+            "$root/tools/bin/limactl" shell probe nproc
+            "$root/tools/bin/limactl" stop probe
+            "$root/tools/bin/limactl" delete --force probe
+            echo NATIVE_ARM_VZ_BOOT=passed
+          else
+            echo NATIVE_ARM_VZ_BOOT=failed:$status
+            find "$LIMA_HOME/probe" -name '*stderr.log' -exec tail -c 12000 {} \;
+          fi
+          exit "$status"
