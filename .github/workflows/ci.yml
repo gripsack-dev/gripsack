@@ -85,7 +85,8 @@ jobs:
                        'OR subsystem == "com.apple.sandbox.reporting"')
           with tempfile.TemporaryFile() as output:
               status = subprocess.run(
-                  ["sudo", "-n", "/usr/bin/log", "show", "--last", "5m", "--debug",
+                  ["sudo", "-n", "/usr/bin/log", "show", "--start",
+                   time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)), "--debug",
                    "--info", "--style", "compact", "--predicate", predicate],
                   stdout=output, stderr=subprocess.STDOUT, timeout=60, check=False)
               output.seek(0)
