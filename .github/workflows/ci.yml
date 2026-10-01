@@ -1,4 +1,4 @@
-name: mac-seatbelt-diagnosis
+name: mac-seatbelt-qualification
 
 on:
   workflow_dispatch:
@@ -7,9 +7,9 @@ permissions:
   contents: read
 
 jobs:
-  native-startup-diagnosis:
+  native-authority:
     runs-on: macos-14
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Require native Mac ARM
@@ -17,80 +17,35 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
           toolchain: "1.98.0"
-      - name: Build the actual process tests
-        run: cargo test --locked -p gripsack-process --no-run
-      - name: Observe confined startup and collect native crash causes
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          import subprocess
-          import tempfile
-          import time
+      - name: Native process authority and lifecycle with calibration
+        run: python3 scripts/check_process_bounds.py
+      - name: Native journal authority and publication with calibration
+        run: python3 scripts/check_journal_protocol.py
 
-          started = time.time()
-          service = f"gui/{os.getuid()}/com.apple.ReportCrash"
-          subprocess.run(["launchctl", "enable", service], check=False)
-          result = subprocess.run(
-              ["cargo", "test", "--locked", "-p", "gripsack-process",
-               "tests::confinement", "--", "--nocapture", "--test-threads=1"],
-              timeout=300,
-              check=False,
-          )
-          print(f"CONFINED_PROCESS_TEST_STATUS={result.returncode}", flush=True)
-          directories = [Path.home() / "Library/Logs/DiagnosticReports",
-                         Path("/Library/Logs/DiagnosticReports")]
-          reports = []
-          for attempt in range(15):
-              reports = [path for directory in directories if directory.exists()
-                         for path in directory.glob("*.ips")
-                         if path.stat().st_mtime >= started - 1]
-              if len(reports) >= 3:
-                  break
-              time.sleep(1)
-          decoder = json.JSONDecoder()
-          for path in sorted(reports):
-              if path.stat().st_size > 16 * 1024 * 1024:
-                  print(f"CRASH_REPORT_TOO_LARGE={path.name}")
-                  continue
-              text = path.read_text()
-              objects = []
-              while text.strip():
-                  item, end = decoder.raw_decode(text.lstrip())
-                  objects.append(item)
-                  text = text.lstrip()[end:]
-              for report in objects:
-                  if not isinstance(report, dict) or "exception" not in report:
-                      continue
-                  summary = {key: report.get(key) for key in (
-                      "procName", "procPath", "parentProc", "exception", "termination",
-                      "asi", "faultingThread", "translated", "codeSigningID")}
-                  index = report.get("faultingThread")
-                  threads = report.get("threads", [])
-                  if isinstance(index, int) and 0 <= index < len(threads):
-                      summary["frames"] = threads[index].get("frames", [])[:20]
-                      images = report.get("usedImages", [])
-                      summary["frameImages"] = {
-                          frame["imageIndex"]: {
-                              key: images[frame["imageIndex"]].get(key)
-                              for key in ("name", "path", "arch")}
-                          for frame in summary["frames"]
-                          if isinstance(frame.get("imageIndex"), int)
-                          and 0 <= frame["imageIndex"] < len(images)}
-                  print("MAC_CRASH_CAUSE=" + json.dumps(summary, sort_keys=True))
-          print(f"MAC_CRASH_REPORTS_FOUND={len(reports)}", flush=True)
-          predicate = ('(process == "kernel" AND eventMessage CONTAINS "Sandbox") '
-                       'OR process == "sandboxd" '
-                       'OR subsystem == "com.apple.sandbox.reporting"')
-          with tempfile.TemporaryFile() as output:
-              status = subprocess.run(
-                  ["sudo", "-n", "/usr/bin/log", "show", "--start",
-                   time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)), "--debug",
-                   "--info", "--style", "compact", "--predicate", predicate],
-                  stdout=output, stderr=subprocess.STDOUT, timeout=60, check=False)
-              output.seek(0)
-              print("SANDBOX_DIAGNOSTICS_STATUS=" + str(status.returncode))
-              print(output.read(1024 * 1024).decode(errors="replace"))
-          raise SystemExit(result.returncode)
-          PY
+  native-evaluation:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Require native Mac ARM
+        run: test "$(uname -m)" = arm64
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: "1.98.0"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Build the actual CLI
+        run: cargo build --locked -p gripsack
+      - name: Prefetch the pinned Mac ARM Deno
+        run: |
+          curl -fsSL https://github.com/denoland/deno/releases/download/v2.9.6/deno-aarch64-apple-darwin.zip -o /tmp/deno.zip
+          echo "213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472  /tmp/deno.zip" | shasum -a 256 --check
+          unzip -q /tmp/deno.zip -d "$HOME/.deno-bin"
+          echo "$HOME/.deno-bin" >> "$GITHUB_PATH"
+          echo "GRIPSACK_DENO=$HOME/.deno-bin/deno" >> "$GITHUB_ENV"
+      - name: Exercise the real confined evaluator and approval boundaries
+        working-directory: e2e
+        run: |
+          python -m pip install pytest
+          python -m pytest -q test_source_approval.py test_eval_gate.py
