@@ -2884,3 +2884,23 @@ approved/resume flow and their modules pass 29/29. See
 tree is still required, and the macOS lane will fail by design until the
 seatbelt leaf lands.
 
+
+### R1 Mac confinement completion — launch responsibility map
+
+- `confinement` owns admitted roots; the Seatbelt leaf assembles the deny-default
+  profile and grants only each launch's private image directories.
+- `exec_payload` constructs a bounded, data-only platform launch prefix while
+  allocation is permitted. macOS enters `/usr/bin/sandbox-exec` after `execve`,
+  then a fixed `/bin/bash` exec bridge preserves the admitted argv0 and arguments.
+  These fixed OS executables are part of the trusted platform boundary; repository
+  PATH cannot select them and repository data is never interpolated as shell code.
+- `invocation` owns supervision, descriptor closure and launch ordering. Its forked
+  child does only the existing async-signal-safe syscall path. Seatbelt parsing,
+  allocation and error formatting must not run between fork and exec.
+
+The prior draft called `sandbox_init_with_parameters` and allocated Rust error
+strings inside `pre_exec`; a malloc atfork handler is not an async-signal-safety
+contract for the complete library call. The completion removes that path, not the
+required Mac ARM lane. Native Mac positive execution and credential/descriptor
+denial evidence remain required before release.
+

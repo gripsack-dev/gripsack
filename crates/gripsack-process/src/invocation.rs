@@ -159,21 +159,32 @@ impl<'a> Invocation<'a> {
                 (script.as_bytes(), Some(Sha256Digest::of(script.as_bytes())))
             }
         };
+        let confinement = self
+            .confinement
+            .as_ref()
+            .map(super::Ruleset::try_clone)
+            .transpose()?;
+        #[cfg(target_os = "macos")]
+        let confinement = confinement
+            .map(|ruleset| {
+                let ruleset = ruleset.granting_image_read(&self.program.executable.path)?;
+                match self.program.script.as_ref() {
+                    Some(script) => ruleset.granting_image_read(&script.path),
+                    None => Ok(ruleset),
+                }
+            })
+            .transpose()?;
         let (payload, environment_keys) = super::exec_payload::ExecPayload::new(
             self.program,
             arguments,
             self.environment,
             self.role,
             activation,
+            confinement.as_ref(),
         )?;
         let mut command = Command::new(&self.program.executable.path);
         command.env_clear();
         let descriptors = DescriptorPolicy::admit()?;
-        let confinement = self
-            .confinement
-            .as_ref()
-            .map(super::Ruleset::try_clone)
-            .transpose()?;
         let directory = self.directory.as_raw_fd();
         #[cfg(target_os = "linux")]
         let script = self
@@ -184,10 +195,12 @@ impl<'a> Invocation<'a> {
         #[cfg(target_os = "macos")]
         let script = None;
         // SAFETY: retained image/directory owners outlive spawn and supervision.
-        // The closure performs only fchdir/landlock syscalls/fcntl/close_range/
-        // execve and errno reads.
+        // The closure performs only fchdir, Linux Landlock syscalls,
+        // fcntl/close_range, execve and errno reads. macOS Seatbelt is installed
+        // by the trusted platform launcher AFTER this exec.
         unsafe {
             command.pre_exec(move || {
+                #[cfg(target_os = "linux")]
                 if let Some(ruleset) = &confinement
                     && let Err(error) = ruleset.restrict()
                 {

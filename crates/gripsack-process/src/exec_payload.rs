@@ -50,8 +50,37 @@ impl ExecPayload {
         operator: &OperatorEnvironment,
         role: ProcessRole,
         activation: Option<&ActivationEnvironment>,
+        confinement: Option<&super::Ruleset>,
     ) -> io::Result<(Self, Vec<String>)> {
-        let arguments = std::iter::once(program.argument_zero.as_os_str())
+        #[cfg(target_os = "macos")]
+        let execution = if confinement.is_some() {
+            OsStr::new(super::confinement::seatbelt::LAUNCHER)
+        } else {
+            program.executable.path.as_os_str()
+        };
+        #[cfg(not(target_os = "macos"))]
+        let execution = program.executable.path.as_os_str();
+        #[cfg(target_os = "macos")]
+        let initial_arguments = confinement
+            .map(|boundary| {
+                boundary.macos_launch_arguments(
+                    program.argument_zero.as_os_str(),
+                    program.executable.path.as_os_str(),
+                )
+            })
+            .into_iter()
+            .flatten()
+            .chain(
+                confinement
+                    .is_none()
+                    .then_some(program.argument_zero.as_os_str()),
+            );
+        #[cfg(not(target_os = "macos"))]
+        let initial_arguments = {
+            let _ = confinement;
+            std::iter::once(program.argument_zero.as_os_str())
+        };
+        let arguments = initial_arguments
             .chain(program.interpreter_argument.as_deref())
             .chain(
                 program
@@ -80,7 +109,7 @@ impl ExecPayload {
         let mut budget = VectorBudget {
             bytes: 2 * std::mem::size_of::<*const libc::c_char>(),
         };
-        budget.admit(program.executable.path.as_os_str().as_bytes().len())?;
+        budget.admit(execution.as_bytes().len())?;
         let mut argument_count = 0;
         for argument in arguments.clone() {
             budget.admit(argument.as_bytes().len())?;
@@ -125,7 +154,7 @@ impl ExecPayload {
         environment.push(std::ptr::null());
         Ok((
             Self {
-                program: c_string(program.executable.path.as_os_str().as_bytes())?,
+                program: c_string(execution.as_bytes())?,
                 _arguments: owned_arguments,
                 _environment: owned_environment,
                 arguments,

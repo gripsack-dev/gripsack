@@ -20,10 +20,13 @@ User-visible changes per release. Design archaeology lives in
   any failure refuses evaluation rather than running it unconfined.
 - Captured local npm packages keep working; direct-ELF, `sh`-wrapper,
   `/usr/bin/env` and python-virtualenv runtimes all run confined.
-- **macOS:** no kernel evaluator confinement exists yet. Evaluation fails
-  closed by default; set `GRIPSACK_EVAL_UNCONFINED=1` (operator-level,
-  loudly logged) to acknowledge the gap and run unconfined until the
-  seatbelt boundary ships.
+- **Kernel-confined evaluation (macOS).** The same approved-root boundary
+  is assembled before fork and installed by the fixed platform launcher after
+  exec, before the admitted evaluator starts. A data-only argv bridge preserves
+  argv0 and empty/spaced arguments; sandbox parsing and allocation do not run
+  in `pre_exec`. If confinement cannot be installed, evaluation fails closed.
+  Native Mac ARM qualification remains required; unconfined execution is not
+  a supported or qualifying mode.
 
 - Source approval now binds the canonical repository, copied source digest and
   actual runtime/grant policy. `trust inspect --json` exposes the bounded

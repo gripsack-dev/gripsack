@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import time
 
 import pytest
@@ -462,11 +461,6 @@ def test_takeover_cannot_replace_a_directory_entry_inside_approved_source(sandbo
     assert not (Path(os.environ["GRIPSACK_HOME"]) / "current").exists()
 
 
-@pytest.mark.skipif(
-    sys.platform == "darwin",
-    reason="R1 open leaf: macOS has no kernel evaluator confinement yet; "
-    "ambient ancestor loads are the acknowledged unconfinement gap there",
-)
 def test_hoisted_node_modules_never_become_ambient_evaluation_sources(sandbox, monkeypatch):
     monkeypatch.setenv("TMPDIR", str(sandbox))
     package = sandbox / "node_modules/ambient-fixture"

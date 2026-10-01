@@ -91,14 +91,46 @@ RUN sh scripts/check_models.sh /tla/tla2tools.jar
 # The inductive pilot and generalized recovery proofs use the same pinned TLC.
 # The rolling upstream asset is byte-pinned: replacement fails the checksum,
 # never silently upgrades the prover or its bundled Isabelle/Z3/LS4 backends.
+# Provenance: upstream re-published the mutable `1.6.0-pre` tag on
+# 2026-10-01, replacing tlapm 7824dab (sha256 a2860384…9331c, no longer
+# served anywhere; no Wayback snapshot exists) with tlapm bfa9468. The new
+# digest below was fetched from the official release URL and verified by
+# hand on 2026-10-01 (46,747,327 bytes, `tlapm --version` = bfa9468). The
+# complete induction + mutant gate (check_tlaps.py) MUST pass under bfa9468
+# before this toolchain counts as qualified — no waiver, no checksum removal.
 FROM model AS tlaps
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     python3 libgmp10 \
     && rm -rf /var/lib/apt/lists/*
-ARG TLAPS_SHA256=a2860384bc89c4c5b2c73ec367e29f44d829e4d4a2698ab295139f829219331c
+ARG TLAPS_SHA256=0d6ce5b0536903995c524a5f9ae62a997b11f16663cb59d4860934965f45b4bd
 ADD --checksum=sha256:${TLAPS_SHA256} https://github.com/tlaplus/tlapm/releases/download/1.6.0-pre/tlapm-1.6.0-pre-x86_64-linux-gnu.tar.gz /tmp/tlapm.tar.gz
-RUN mkdir -p /opt/tlapm && tar -xzf /tmp/tlapm.tar.gz -C /opt/tlapm --strip-components=1 \
-    && rm /tmp/tlapm.tar.gz
+# The bfa9468 slim bundle ships `Isabelle-install` without the Isabelle2025
+# component option files, and its pre-built heaps resolve their parent heaps
+# and those option files through the upstream CI build path baked into the
+# heap bytes (observed: Poly/ML loadState ENOENT / parent-mismatch without
+# them). Harvest ONLY the `*/etc/options` files from the official pinned
+# Isabelle2025 distribution (the same pin upstream's deps/isabelle/dune.mk
+# builds against) and place the heaps at their baked location. Any upstream
+# re-publish changes bytes and fails the checksums above — fail-closed.
+ARG ISABELLE_SHA256=3d1d66de371823fe31aa8ae66638f73575bac244f00b31aee1dcb62f38147c56
+ADD --checksum=sha256:${ISABELLE_SHA256} https://isabelle.in.tum.de/website-Isabelle2025/dist/Isabelle2025_linux.tar.gz /tmp/isabelle.tar.gz
+RUN set -e; \
+    mkdir -p /opt/tlapm; \
+    tar -xzf /tmp/tlapm.tar.gz -C /opt/tlapm --strip-components=1; \
+    rm /tmp/tlapm.tar.gz; \
+    N=/opt/tlapm/lib/tlapm/backends/Isabelle-install; \
+    B=/home/runner/work/tlapm/tlapm/_build/default/deps/isabelle/Isabelle; \
+    mkdir -p "$B/heaps/polyml-5.9.1_x86_64_32-linux"; \
+    cp "$N/heaps/Pure" "$N/heaps/TLA+" "$N/heaps/Options" \
+       "$B/heaps/polyml-5.9.1_x86_64_32-linux/"; \
+    mkdir -p /tmp/isabelle-opt; \
+    tar -xzf /tmp/isabelle.tar.gz -C /tmp/isabelle-opt --wildcards \
+        'Isabelle2025/etc/options' 'Isabelle2025/*/etc/options'; \
+    cd /tmp/isabelle-opt/Isabelle2025; \
+    find . -path '*/etc/options' | while read -r f; do \
+      mkdir -p "$B/$(dirname "$f")"; cp "$f" "$B/$f"; \
+    done; \
+    rm -rf /tmp/isabelle-opt /tmp/isabelle.tar.gz
 ENV PATH="/opt/tlapm/bin:$PATH"
 COPY scripts/check_tlaps.py scripts/tlaps_evidence.py scripts/tlaps_source.py scripts/tlaps_catalog.py ./scripts/
 RUN python3 scripts/check_tlaps.py

@@ -20,18 +20,29 @@
 //! interpreter at an arbitrary path, and keeps the retained memfd executable
 //! binding (`execve` of `/proc/self/fd/N`) working without broad read grants.
 //!
-//! Other platforms fail closed: assembling a boundary returns an error and the
-//! evaluator refuses to run rather than evaluating unconfined.
+//! macOS assembles an SBPL profile parent-side and applies it through the
+//! fixed platform launcher after exec. Profile parsing and allocation never
+//! run in the fork/exec interval. The boundary persists across exec and is
+//! inherited by descendants.
+//!
+//! Platforms without a kernel boundary fail closed: assembling a boundary
+//! returns an error and the evaluator refuses to run rather than evaluating
+//! unconfined.
+#[cfg(target_os = "macos")]
+pub(super) mod seatbelt;
+#[cfg(target_os = "linux")]
+use std::fs::File;
 #[cfg(target_os = "linux")]
 use std::os::fd::FromRawFd;
 #[cfg(target_os = "linux")]
-use std::{ffi::OsStr, io::Read, os::unix::io::AsRawFd, process::Command};
-use std::{
-    fs::File,
-    io,
-    path::{Path, PathBuf},
-};
+use std::os::unix::io::AsRawFd;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::path::PathBuf;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::{ffi::OsStr, io::Read, process::Command};
+use std::{io, path::Path};
 /// `prctl(PR_SET_NO_NEW_PRIVS)` — fixed as 38 on every Linux ABI.
+#[cfg(target_os = "linux")]
 const PR_SET_NO_NEW_PRIVS: libc::c_int = 38;
 
 /// The filesystem objects evaluation may touch, assembled before fork.
@@ -95,32 +106,42 @@ fn push_unique(roots: &mut Vec<PathBuf>, directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// An assembled Landlock ruleset plus the launch-time additions the child must
-/// make after fork (per-pid `/proc/self/fd` cannot be anchored parent-side).
+/// An assembled kernel boundary plus the launch-time additions the child
+/// must make after fork. Linux holds the populated Landlock ruleset
+/// descriptor (per-pid `/proc/self/fd` cannot be anchored parent-side);
+/// macOS holds a Seatbelt launch profile, fully assembled while allocation
+/// is still allowed and applied by the platform launcher after exec.
 pub struct Ruleset {
+    #[cfg(target_os = "linux")]
     ruleset: Option<File>,
+    #[cfg(target_os = "linux")]
     proc_self_fd: bool,
+    #[cfg(target_os = "macos")]
+    profile: seatbelt::Profile,
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    _unimplemented: (),
 }
 
-/// Operator-acknowledged unconfinement for platforms with no kernel boundary
-/// yet (macOS today). The default stays fail-closed; only this explicit
-/// operator environment variable — never a repository-controlled value —
-/// lets evaluation run, and every launch says so on stderr.
-#[cfg(not(target_os = "linux"))]
-pub const UNCONFINED_ACKNOWLEDGMENT: &str = "GRIPSACK_EVAL_UNCONFINED";
+// No acknowledgment escape hatch exists: the owner-selected contract (plan/0048,
+// 2026-09-29) is fail-closed — hosts without a kernel boundary refuse
+// evaluation. Unconfined runs are not qualification for any claim.
 
 // Landlock wire structures (u64 access masks; the kernel parses by size).
+#[cfg(target_os = "linux")]
 #[repr(C)]
 struct RulesetAttr {
     handled_access_fs: u64,
 }
+#[cfg(target_os = "linux")]
 #[repr(C)]
 struct PathBeneathAttr {
     allowed_access: u64,
     parent_fd: libc::c_int,
 }
 
+#[cfg(target_os = "linux")]
 const ACCESS_READ: u64 = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR;
+#[cfg(target_os = "linux")]
 const ACCESS_READ_WRITE: u64 = ACCESS_READ
     | LANDLOCK_ACCESS_FS_WRITE_FILE
     | LANDLOCK_ACCESS_FS_MAKE_DIR
@@ -130,35 +151,86 @@ const ACCESS_READ_WRITE: u64 = ACCESS_READ
     | LANDLOCK_ACCESS_FS_REMOVE_DIR;
 
 impl Ruleset {
-    /// Duplicate the assembled ruleset descriptor for one launch. Rules were
-    /// already added; the duplicate behaves identically for restriction.
+    /// Duplicate the assembled boundary for one launch. Linux duplicates the
+    /// ruleset descriptor (its rules were already added); the Seatbelt
+    /// profile is a plain string copy.
     pub(crate) fn try_clone(&self) -> io::Result<Self> {
+        #[cfg(target_os = "linux")]
+        {
+            Ok(Self {
+                ruleset: self.ruleset.as_ref().map(File::try_clone).transpose()?,
+                proc_self_fd: self.proc_self_fd,
+            })
+        }
+        #[cfg(target_os = "macos")]
+        {
+            Ok(Self {
+                profile: self.profile.clone(),
+            })
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            Ok(Self { _unimplemented: () })
+        }
+    }
+
+    /// A private macOS image's directory joins the boundary for this launch.
+    /// The payload and optional script are both private copied images.
+    #[cfg(target_os = "macos")]
+    pub(crate) fn granting_image_read(self, image: &Path) -> io::Result<Self> {
         Ok(Self {
-            ruleset: self.ruleset.as_ref().map(File::try_clone).transpose()?,
-            proc_self_fd: self.proc_self_fd,
+            profile: self.profile.granting_image(image)?,
         })
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn macos_launch_arguments<'a>(
+        &'a self,
+        argument_zero: &'a std::ffi::OsStr,
+        image: &'a std::ffi::OsStr,
+    ) -> [&'a std::ffi::OsStr; 11] {
+        self.profile.arguments(argument_zero, image)
     }
 }
 
-const LANDLOCK_ACCESS_FS_WRITE_FILE: u64 = 1 << 1;
-const LANDLOCK_ACCESS_FS_READ_FILE: u64 = 1 << 2;
-const LANDLOCK_ACCESS_FS_READ_DIR: u64 = 1 << 3;
-const LANDLOCK_ACCESS_FS_REMOVE_DIR: u64 = 1 << 4;
-const LANDLOCK_ACCESS_FS_REMOVE_FILE: u64 = 1 << 5;
-const LANDLOCK_ACCESS_FS_MAKE_DIR: u64 = 1 << 7;
-const LANDLOCK_ACCESS_FS_MAKE_REG: u64 = 1 << 8;
-const LANDLOCK_ACCESS_FS_MAKE_SYM: u64 = 1 << 12;
-const LANDLOCK_ACCESS_FS_TRUNCATE: u64 = 1 << 14;
-const LANDLOCK_ACCESS_FS_EXECUTE: u64 = 1 << 0;
-
-const LANDLOCK_RULE_PATH_BENEATH: libc::c_int = 1;
-const LANDLOCK_CREATE_RULESET_VERSION: libc::c_ulong = 1 << 0;
-const PROC_SELF_FD: &[u8] = b"/proc/self/fd\0";
+#[cfg(target_os = "linux")]
+mod landlock {
+    pub const ACCESS_FS_WRITE_FILE: u64 = 1 << 1;
+    pub const ACCESS_FS_READ_FILE: u64 = 1 << 2;
+    pub const ACCESS_FS_READ_DIR: u64 = 1 << 3;
+    pub const ACCESS_FS_REMOVE_DIR: u64 = 1 << 4;
+    pub const ACCESS_FS_REMOVE_FILE: u64 = 1 << 5;
+    pub const ACCESS_FS_MAKE_DIR: u64 = 1 << 7;
+    pub const ACCESS_FS_MAKE_REG: u64 = 1 << 8;
+    pub const ACCESS_FS_MAKE_SYM: u64 = 1 << 12;
+    pub const ACCESS_FS_TRUNCATE: u64 = 1 << 14;
+    pub const ACCESS_FS_EXECUTE: u64 = 1 << 0;
+    pub const RULE_PATH_BENEATH: libc::c_int = 1;
+    pub const CREATE_RULESET_VERSION: libc::c_ulong = 1 << 0;
+    pub const PROC_SELF_FD: &[u8] = b"/proc/self/fd\0";
+}
+#[cfg(target_os = "linux")]
+use landlock::{
+    ACCESS_FS_EXECUTE as LANDLOCK_ACCESS_FS_EXECUTE,
+    ACCESS_FS_MAKE_DIR as LANDLOCK_ACCESS_FS_MAKE_DIR,
+    ACCESS_FS_MAKE_REG as LANDLOCK_ACCESS_FS_MAKE_REG,
+    ACCESS_FS_MAKE_SYM as LANDLOCK_ACCESS_FS_MAKE_SYM,
+    ACCESS_FS_READ_DIR as LANDLOCK_ACCESS_FS_READ_DIR,
+    ACCESS_FS_READ_FILE as LANDLOCK_ACCESS_FS_READ_FILE,
+    ACCESS_FS_REMOVE_DIR as LANDLOCK_ACCESS_FS_REMOVE_DIR,
+    ACCESS_FS_REMOVE_FILE as LANDLOCK_ACCESS_FS_REMOVE_FILE,
+    ACCESS_FS_TRUNCATE as LANDLOCK_ACCESS_FS_TRUNCATE,
+    ACCESS_FS_WRITE_FILE as LANDLOCK_ACCESS_FS_WRITE_FILE,
+    CREATE_RULESET_VERSION as LANDLOCK_CREATE_RULESET_VERSION, PROC_SELF_FD,
+    RULE_PATH_BENEATH as LANDLOCK_RULE_PATH_BENEATH,
+};
 
 impl Ruleset {
-    /// Assemble every rule while allocation is still allowed. `boundary`
-    /// itself and the (optional) per-pid `/proc/self/fd` script-grant are the
-    /// only launch-time inputs; both are resolved from fields, never paths.
+    /// Assemble every rule while allocation is still allowed. On Linux
+    /// `boundary` itself and the (optional) per-pid `/proc/self/fd`
+    /// script-grant are the only launch-time inputs; both are resolved from
+    /// fields, never paths. macOS assembles its complete launch profile here;
+    /// private image directories are added per launch before payload encoding.
     pub fn assemble(boundary: &Boundary, proc_self_fd: bool) -> io::Result<Self> {
         #[cfg(target_os = "linux")]
         {
@@ -212,19 +284,16 @@ impl Ruleset {
             ruleset.add_path_beneath(Path::new("/"), LANDLOCK_ACCESS_FS_EXECUTE)?;
             Ok(ruleset)
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        {
+            let _ = proc_self_fd;
+            Ok(Self {
+                profile: seatbelt::Profile::assemble(boundary)?,
+            })
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         {
             let _ = (boundary, proc_self_fd);
-            if std::env::var_os(UNCONFINED_ACKNOWLEDGMENT).is_some_and(|value| value == "1") {
-                eprintln!(
-                    "grip: no evaluator filesystem confinement exists on this platform; \
-                     running unconfined per {UNCONFINED_ACKNOWLEDGMENT}=1 (operator-acknowledged)"
-                );
-                return Ok(Self {
-                    ruleset: None,
-                    proc_self_fd: false,
-                });
-            }
             Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "evaluator filesystem confinement is not implemented on this platform; \
@@ -268,9 +337,7 @@ impl Ruleset {
     /// anchored by the parent), `PR_SET_NO_PRIVS`, `restrict_self`.
     #[cfg(target_os = "linux")]
     pub(crate) fn restrict(&self) -> io::Result<()> {
-        let Some(ruleset) = self.ruleset.as_ref() else {
-            return Ok(()); // acknowledged-unconfined platform placeholder
-        };
+        let ruleset = self.ruleset.as_ref().expect("assembled linux ruleset");
         if self.proc_self_fd {
             // SAFETY: static NUL-terminated path; success yields an owned fd.
             let fd =
@@ -320,11 +387,6 @@ impl Ruleset {
         }
         Ok(())
     }
-
-    #[cfg(not(target_os = "linux"))]
-    pub(crate) fn restrict(&self) -> io::Result<()> {
-        Ok(()) // only the acknowledged-unconfined placeholder exists here
-    }
 }
 
 #[cfg(target_os = "linux")]
@@ -356,13 +418,15 @@ fn landlock_abi() -> io::Result<u32> {
 /// interpreter with the same treatment, and a python interpreter's standard
 /// library when the runtime is a script wrapper. `EXECUTE` needs no rule; see
 /// the module header.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn runtime_read_roots(
     environment: &super::OperatorEnvironment,
     program: &Path,
 ) -> io::Result<Vec<PathBuf>> {
     let mut roots = Vec::new();
     let resolved = resolve_program(environment, program)?;
+    #[cfg(target_os = "macos")]
+    seatbelt::system_runtime_roots(&mut roots);
     match script_interpreter(&resolved)? {
         None => add_program_roots(&resolved, &mut roots)?,
         Some((interpreter, argument)) => {
@@ -397,7 +461,7 @@ pub fn runtime_read_roots(
 
 /// Without a kernel confinement mechanism there is no boundary to derive
 /// roots for; evaluator launch fails closed at ruleset assembly instead.
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn runtime_read_roots(
     _environment: &super::OperatorEnvironment,
     _program: &Path,
@@ -405,7 +469,7 @@ pub fn runtime_read_roots(
     Ok(Vec::new())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn resolve_program(
     environment: &super::OperatorEnvironment,
     program: &Path,
@@ -413,7 +477,7 @@ fn resolve_program(
     environment.resolve(program)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn add_program_roots(resolved: &Path, roots: &mut Vec<PathBuf>) -> io::Result<()> {
     let parent = resolved.parent().ok_or_else(|| {
         io::Error::new(
@@ -422,6 +486,7 @@ fn add_program_roots(resolved: &Path, roots: &mut Vec<PathBuf>) -> io::Result<()
         )
     })?;
     push_existing(parent, roots);
+    #[cfg(target_os = "linux")]
     for library in shared_libraries(resolved)? {
         if let Some(parent) = library.parent() {
             push_existing(parent, roots);
@@ -430,7 +495,7 @@ fn add_program_roots(resolved: &Path, roots: &mut Vec<PathBuf>) -> io::Result<()
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn push_existing(directory: &Path, roots: &mut Vec<PathBuf>) {
     if let Ok(canonical) = directory.canonicalize()
         && canonical.is_dir()
@@ -479,7 +544,7 @@ fn shared_libraries(resolved: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(libraries)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn script_interpreter(resolved: &Path) -> io::Result<Option<(PathBuf, Option<String>)>> {
     use std::os::unix::fs::OpenOptionsExt;
     let mut file = std::fs::OpenOptions::new()
@@ -515,7 +580,7 @@ fn script_interpreter(resolved: &Path) -> io::Result<Option<(PathBuf, Option<Str
     Ok(Some((interpreter, argument.map(str::to_owned))))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn is_python(resolved: &Path) -> bool {
     resolved
         .file_name()
@@ -523,7 +588,7 @@ fn is_python(resolved: &Path) -> bool {
         .is_some_and(|name| name.starts_with("python"))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn add_python_stdlib(interpreter: &Path, origin: &str, roots: &mut Vec<PathBuf>) {
     use std::os::unix::process::CommandExt;
     let mut command = Command::new(interpreter);

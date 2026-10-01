@@ -36,8 +36,12 @@ def command(repo, args, env):
     return run_grip([str(GRIP), *args], cwd=repo, env=env, capture_output=True, text=True, timeout=120)
 
 
+# fault is a parameter (not an inner loop) so CI can address every
+# scenario x fault shard directly; each shard still runs every recorded
+# cut x both drift states x real recovery — the union is the full matrix.
+@pytest.mark.parametrize('fault', ['error', 'kill'])
 @pytest.mark.parametrize('scenario', ['apply-deploy', 'apply-prune', 'rollback-deploy', 'rollback-prune', 'apply-deploy-copy', 'apply-prune-copy'])
-def test_every_reachable_persistence_boundary(sandbox, scenario):
+def test_every_reachable_persistence_boundary(sandbox, scenario, fault):
     home = sandbox / 'home'
     home.mkdir()
     env = dict(os.environ, HOME=str(home), GRIPSACK_HOME=str(home / '.local/share/gripsack'))
@@ -79,36 +83,35 @@ def test_every_reachable_persistence_boundary(sandbox, scenario):
     assert any('activation.json' in row[3] for row in points)
     assert any('current' in row[3] for row in points)
 
-    for fault in ['error', 'kill']:
-        for cut, expected in enumerate(points, 1):
-            for drift in [False, True]:
-                shutil.rmtree(home)
-                shutil.copytree(saved, home, symlinks=True)
-                trace.unlink(missing_ok=True)
-                injected = dict(active, GRIPSACK_FS_CUT=str(cut), GRIPSACK_FS_FAULT=fault)
-                result = command(repo, operation, injected)
-                emitted = [line.split('\t', 3) for line in trace.read_text().splitlines()]
-                context = f'{scenario} {fault} cut={cut}/{len(points)} {expected[1:3]} drift={drift}'
-                assert len(emitted) >= cut, context + '\n' + result.stderr
-                assert emitted[cut - 1][1:3] == expected[1:3], context + ': boundary sequence changed'
-                if fault == 'kill':
-                    assert result.returncode == -signal.SIGKILL, context + ': process was not killed'
-                if drift:
-                    (home / '.matrix').write_text('user-change')
-                    (home / '.matrix').chmod(0o640)
-                # Recovery only executes the shipped reconcile/resume methods.
-                recovery = command(repo, ['apply', '--host', 'testhost'], dict(env, GRIPSACK_FS_RECOVER_ONLY='1'))
-                assert recovery.returncode == 0, context + '\n' + recovery.stderr
-                actual = snapshot(home)
-                assert actual[2] in (old[2], target[2]), context
-                expected_state = target if actual[2] == target[2] else old
-                if drift:
-                    assert actual[:2] == (b'user-change', 0o640), context
-                else:
-                    assert actual[:2] == expected_state[:2], context + repr((actual, expected_state))
-                assert actual[3] == expected_state[3], context + ': activation not resumed/discarded correctly'
-                # A second recovery is idempotent and consumes no new generation.
-                again = command(repo, ['apply', '--host', 'testhost'], dict(env, GRIPSACK_FS_RECOVER_ONLY='1'))
-                assert again.returncode == 0, context + '\n' + again.stderr
-                assert snapshot(home) == actual, context + ': recovery was not idempotent'
-    print(f'{scenario}: {len(points)} boundaries x 2 failure kinds x 2 drift states verified')
+    for cut, expected in enumerate(points, 1):
+        for drift in [False, True]:
+            shutil.rmtree(home)
+            shutil.copytree(saved, home, symlinks=True)
+            trace.unlink(missing_ok=True)
+            injected = dict(active, GRIPSACK_FS_CUT=str(cut), GRIPSACK_FS_FAULT=fault)
+            result = command(repo, operation, injected)
+            emitted = [line.split('\t', 3) for line in trace.read_text().splitlines()]
+            context = f'{scenario} {fault} cut={cut}/{len(points)} {expected[1:3]} drift={drift}'
+            assert len(emitted) >= cut, context + '\n' + result.stderr
+            assert emitted[cut - 1][1:3] == expected[1:3], context + ': boundary sequence changed'
+            if fault == 'kill':
+                assert result.returncode == -signal.SIGKILL, context + ': process was not killed'
+            if drift:
+                (home / '.matrix').write_text('user-change')
+                (home / '.matrix').chmod(0o640)
+            # Recovery only executes the shipped reconcile/resume methods.
+            recovery = command(repo, ['apply', '--host', 'testhost'], dict(env, GRIPSACK_FS_RECOVER_ONLY='1'))
+            assert recovery.returncode == 0, context + '\n' + recovery.stderr
+            actual = snapshot(home)
+            assert actual[2] in (old[2], target[2]), context
+            expected_state = target if actual[2] == target[2] else old
+            if drift:
+                assert actual[:2] == (b'user-change', 0o640), context
+            else:
+                assert actual[:2] == expected_state[:2], context + repr((actual, expected_state))
+            assert actual[3] == expected_state[3], context + ': activation not resumed/discarded correctly'
+            # A second recovery is idempotent and consumes no new generation.
+            again = command(repo, ['apply', '--host', 'testhost'], dict(env, GRIPSACK_FS_RECOVER_ONLY='1'))
+            assert again.returncode == 0, context + '\n' + again.stderr
+            assert snapshot(home) == actual, context + ': recovery was not idempotent'
+    print(f'{scenario} {fault}: {len(points)} boundaries x 2 drift states verified (fault shard)')
