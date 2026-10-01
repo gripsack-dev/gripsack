@@ -88,6 +88,19 @@ and consumes the same outcome for preview/apply. Schema/read-fault/alias-form,
 whole-suite, demos/examples and native/exact-source qualification remain open.
 Website migration changes live separately on `handover/source-approval-docs`.
 
+**0048 R1 Mac ARM qualification (2026-10-01):** A literal root-directory
+Seatbelt grant fixes platform-launcher SIGABRT without recursive read access.
+Private source captures are named before read-only sealing; canonical identity
+and declared diagnostic/native-path spelling are distinct. Diagnostic source
+`e7841e3` passed **5/5 source-capture + 60/60 real-Deno** cases on native ARM64
+([CI](https://github.com/gripsack-dev/gripsack/actions/runs/36923313515)); the
+preceding native process/journal authority job also passed. Complete candidate
+CI and persistence qualification remain open, as does the positive TLAPS
+`JournalControlProofs` induction timeout observed in run `36906254878`.
+Generated prover output is now ignored and archived logs marked generated;
+checksum-bound historical evidence remains intact rather than being silently
+deleted or counted as current release qualification.
+
 **0051 source update (`80b50a3`, 2026-09-26):** The retired
 BuildKit v0.33.0 manifest-list digest was replaced by a resolvable
 digest with the same qualified amd64 leaf. The pinned Go bridge was

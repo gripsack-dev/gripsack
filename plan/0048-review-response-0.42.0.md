@@ -2904,3 +2904,29 @@ contract for the complete library call. The completion removes that path, not th
 required Mac ARM lane. Native Mac positive execution and credential/descriptor
 denial evidence remain required before release.
 
+Native Mac ARM startup qualification (2026-10-01):
+
+- Candidate `19ca6a0`, required CI run
+  [36906254878](https://github.com/gripsack-dev/gripsack/actions/runs/36906254878),
+  reached the native process gate but three confined launches aborted.
+  [Crash diagnosis](https://github.com/gripsack-dev/gripsack/actions/runs/36918264900)
+  identified `/bin/bash` and a kernel denial of `file-read-data /`.
+- A literal root-directory grant, not a recursive filesystem grant, fixes startup:
+  [source `18b80bd`](https://github.com/gripsack-dev/gripsack/actions/runs/36918823659)
+  passed all four confinement cases, including outside-file/APFS-alias read denial
+  and outside-scratch write denial. The
+  [broader native authority job](https://github.com/gripsack-dev/gripsack/actions/runs/36919381180/job/110561319514)
+  also passed process and journal qualification with calibration.
+- The broader run exposed `SourceBundle::capture` permission failure before
+  evaluator execution. A native filesystem probe confirmed that macOS rejects
+  renaming a read-only directory (`EACCES`). Capture now finalizes its private
+  name before sealing, publishes canonical captured paths, and keeps declared
+  source spelling separate from canonical trust identity. Native paths through
+  either admitted spelling bind captured bytes, not a later live edit.
+- [Source `e7841e3`](https://github.com/gripsack-dev/gripsack/actions/runs/36923313515)
+  passed **5/5 source-capture cases** and **60/60 real-Deno source-approval/eval
+  cases** on macOS 14.8.9 ARM64, with no skips. The complete candidate CI,
+  persistence matrix and release gates remain required; the earlier full run
+  also exposed a positive TLAPS induction timeout, not an authorized deferral.
+- Compact CI references replace another committed console dump; existing
+  checksum-bound reports are unchanged.

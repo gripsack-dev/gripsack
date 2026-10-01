@@ -46,11 +46,14 @@ impl Profile {
         // Landlock parity: metadata queries, executable mapping and process
         // creation remain available. Every descendant inherits the byte-access
         // boundary; Deno independently denies repository subprocess requests.
+        // The platform launcher needs to open the root directory at startup.
+        // This literal grant does not admit reads of any descendant's contents.
         let mut profile = String::from(
             "(version 1)\n(deny default)\n\
              (allow signal (target self))\n\
              (allow sysctl-read)\n\
              (allow file-read-metadata)\n\
+             (allow file-read-data (literal \"/\"))\n\
              (allow file-map-executable)\n\
              (allow process-exec* process-fork)\n\
              (allow file-read* (literal \"/bin/bash\"))\n\
