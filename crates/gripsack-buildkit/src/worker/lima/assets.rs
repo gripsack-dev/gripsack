@@ -17,9 +17,12 @@ pub(super) const LIMA: Asset = Asset {
     sha256: "22aee997df59e4fd448041b2d1214e48bd8eaf705d2d48a4307d65c1b179dc97",
     bytes: 37_829_370,
 };
+// Ubuntu's dated-image redirect targets an HTTP-only S3 website endpoint.
+// Use that same official archive bucket's TLS REST endpoint directly; redirects
+// remain HTTPS-only and the independently measured byte pin remains unchanged.
 pub(super) const GUEST: Asset = Asset {
     name: "ubuntu.img",
-    url: "https://cloud-images.ubuntu.com/releases/noble/release-20251213/ubuntu-24.04-server-cloudimg-arm64.img",
+    url: "https://s3.us-east-1.amazonaws.com/cloud-images-archive.ubuntu.com/releases/noble/release-20251213/ubuntu-24.04-server-cloudimg-arm64.img",
     sha256: "a40713938d74aaec811f74cb1fa8bfcb535d22e26b2a0ca1cc90ad9db898feb9",
     bytes: 620_884_992,
 };
@@ -79,7 +82,13 @@ pub(super) fn provision(
         Control::Continue
     })?;
     if let Some(error) = write_error { return Err(error.into()); }
-    if !outcome.success { return Err(WorkerError::Effect(String::from_utf8_lossy(&outcome.stderr).into_owned())); }
+    if !outcome.success {
+        return Err(WorkerError::Effect(format!(
+            "pinned builder input {} from {} failed ({:?}): {}",
+            asset.name, asset.url, outcome.receipt.disposition,
+            String::from_utf8_lossy(&outcome.stderr),
+        )));
+    }
     spool.rewind()?;
     let mut spool = verify(spool, asset.sha256, asset.bytes, deadline)?;
     gripsack_fs::atomic_copy_with_mode(directory, Path::new(asset.name), &mut spool, 0o400)?;
