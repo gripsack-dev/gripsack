@@ -308,7 +308,7 @@ fn rejected_documents_fail_both_sides() {
         ),
         (
             "ir_version out of range",
-            json!({"ir_version": 6, "host": host(), "workspace": workspace(json!([recipe("build")]))}),
+            json!({"ir_version": gripsack_ir::IR_VERSION + 1, "host": host(), "workspace": workspace(json!([recipe("build")]))}),
         ),
         (
             "hostname selector in host facts",

@@ -18,10 +18,14 @@
 use super::{allowed_fetch_fields, check_tagged_at, raw_node_span};
 use crate::diagnostic::Diagnostic;
 
+mod v6;
+type FieldRule = fn(&str) -> Option<&'static [&'static str]>;
+
 #[derive(Clone, Copy)]
 pub(super) enum WorkspaceWireVersion {
     LegacyV4,
     CurrentV5,
+    CurrentV6,
 }
 
 /// Workspace output kinds → allowed keys (the tag plus the variant's
@@ -178,27 +182,44 @@ fn check_workspace_command(
     node: &serde_json::Value,
     path: &str,
     output_span: Option<&crate::Span>,
+    version: WorkspaceWireVersion,
     out: &mut Vec<Diagnostic>,
 ) {
     let command_span = raw_node_span(node).or_else(|| output_span.cloned());
     let span = command_span.as_ref();
-    check_tagged_at(node, path, allowed_workspace_command_fields, span, out);
+    let current_v6 = matches!(version, WorkspaceWireVersion::CurrentV6);
+    let command_fields: FieldRule = if current_v6 {
+        v6::command_fields
+    } else {
+        allowed_workspace_command_fields
+    };
+    let arg_fields: FieldRule = if current_v6 {
+        v6::argument_fields
+    } else {
+        allowed_workspace_arg_fields
+    };
+    let path_fields: FieldRule = if current_v6 {
+        v6::path_fields
+    } else {
+        allowed_workspace_path_fields
+    };
+    check_tagged_at(node, path, command_fields, span, out);
     let Some(obj) = node.as_object() else { return };
     if let Some(argv) = obj.get("argv").and_then(|a| a.as_array()) {
         for arg in argv {
-            check_tagged_at(arg, path, allowed_workspace_arg_fields, span, out);
+            check_tagged_at(arg, path, arg_fields, span, out);
         }
     }
     if let Some(interpreter) = obj.get("interpreter") {
-        check_tagged_at(interpreter, path, allowed_workspace_arg_fields, span, out);
+        check_tagged_at(interpreter, path, arg_fields, span, out);
     }
     if let Some(env) = obj.get("env").and_then(|e| e.as_object()) {
         for arg in env.values() {
-            check_tagged_at(arg, path, allowed_workspace_arg_fields, span, out);
+            check_tagged_at(arg, path, arg_fields, span, out);
         }
     }
     if let Some(cwd) = obj.get("cwd") {
-        check_tagged_at(cwd, path, allowed_workspace_path_fields, span, out);
+        check_tagged_at(cwd, path, path_fields, span, out);
     }
 }
 
@@ -209,6 +230,30 @@ pub(super) fn check(
     out: &mut Vec<Diagnostic>,
 ) {
     let legacy_v4 = matches!(version, WorkspaceWireVersion::LegacyV4);
+    let current_v6 = matches!(version, WorkspaceWireVersion::CurrentV6);
+    if current_v6 {
+        v6::inputs(value, out);
+    }
+    let execution_fields: FieldRule = if current_v6 {
+        v6::execution_fields
+    } else {
+        allowed_workspace_execution_fields
+    };
+    let arg_fields: FieldRule = if current_v6 {
+        v6::argument_fields
+    } else {
+        allowed_workspace_arg_fields
+    };
+    let source_fields: FieldRule = if current_v6 {
+        v6::source_fields
+    } else {
+        allowed_workspace_source_fields
+    };
+    let content_fields: FieldRule = if current_v6 {
+        v6::content_fields
+    } else {
+        allowed_workspace_content_fields
+    };
     let Some(outputs) = value
         .get("workspace")
         .and_then(|w| w.get("outputs"))
@@ -231,6 +276,8 @@ pub(super) fn check(
         let output_span = raw_node_span(output);
         let allowed: fn(&str) -> Option<&'static [&'static str]> = if legacy_v4 {
             allowed_workspace_output_fields_v4
+        } else if current_v6 {
+            v6::output_fields
         } else {
             allowed_workspace_output_fields
         };
@@ -241,15 +288,17 @@ pub(super) fn check(
                     check_tagged_at(
                         execution,
                         &path,
-                        allowed_workspace_execution_fields,
+                        execution_fields,
                         output_span.as_ref(),
                         out,
                     );
                 }
                 if let Some(source) = output.get("source") {
-                    // The workspaceFetch wrapper's own span, else the recipe's.
+                    // The acquisition source's own span, else the recipe's.
                     let source_span = raw_node_span(source).or_else(|| output_span.clone());
-                    if let Some(fetch) = source.get("fetch") {
+                    if current_v6 {
+                        v6::acquisition_source(source, &path, source_span.as_ref(), out);
+                    } else if let Some(fetch) = source.get("fetch") {
                         check_tagged_at(
                             fetch,
                             &path,
@@ -259,21 +308,22 @@ pub(super) fn check(
                         );
                     }
                 }
-                if let Some(steps) = output.get("steps").and_then(|s| s.as_array()) {
+                if current_v6 {
+                    v6::steps(output, &path, output_span.as_ref(), out);
+                } else if let Some(steps) = output.get("steps").and_then(|s| s.as_array()) {
                     for command in steps {
-                        check_workspace_command(command, &path, output_span.as_ref(), out);
+                        check_workspace_command(command, &path, output_span.as_ref(), version, out);
                     }
                 }
             }
             "package" => {
                 if !legacy_v4 && let Some(layout) = output.get("layout") {
-                    check_tagged_at(
-                        layout,
-                        &path,
-                        allowed_workspace_layout_fields,
-                        output_span.as_ref(),
-                        out,
-                    );
+                    let layout_fields: FieldRule = if current_v6 {
+                        v6::layout_fields
+                    } else {
+                        allowed_workspace_layout_fields
+                    };
+                    check_tagged_at(layout, &path, layout_fields, output_span.as_ref(), out);
                 }
                 if let Some(producer) = output.get("producer") {
                     check_tagged_at(
@@ -288,7 +338,9 @@ pub(super) fn check(
                     // serde cannot close the nested tagged union.
                     if let Some(provider) = producer.get("provider") {
                         let provider_span = raw_node_span(provider).or_else(|| output_span.clone());
-                        if let Some(fetch) = provider.get("fetch") {
+                        if current_v6 {
+                            v6::acquisition_source(provider, &path, provider_span.as_ref(), out);
+                        } else if let Some(fetch) = provider.get("fetch") {
                             check_tagged_at(
                                 fetch,
                                 &path,
@@ -300,22 +352,28 @@ pub(super) fn check(
                     }
                 }
             }
+            "image" if current_v6 => {
+                if let Some(arguments) = output.get("config")
+                    .and_then(|config| config.get("entrypoint"))
+                    .and_then(serde_json::Value::as_array)
+                {
+                    for argument in arguments {
+                        check_tagged_at(argument, &path, arg_fields, output_span.as_ref(), out);
+                    }
+                }
+            }
             "environment" => {
                 if let Some(env) = output.get("env").and_then(|e| e.as_object()) {
                     for arg in env.values() {
-                        check_tagged_at(
-                            arg,
-                            &path,
-                            allowed_workspace_arg_fields,
-                            output_span.as_ref(),
-                            out,
-                        );
+                        check_tagged_at(arg, &path, arg_fields, output_span.as_ref(), out);
                     }
                 }
             }
             "task" | "check" | "hook" => {
-                if let Some(run) = output.get("run") {
-                    check_workspace_command(run, &path, output_span.as_ref(), out);
+                if current_v6 && kind == "task" {
+                    v6::steps(output, &path, output_span.as_ref(), out);
+                } else if let Some(run) = output.get("run") {
+                    check_workspace_command(run, &path, output_span.as_ref(), version, out);
                 }
             }
             "schedule" => {
@@ -335,19 +393,13 @@ pub(super) fn check(
                         // The file declaration's own span, else the profile's.
                         let file_span = raw_node_span(file).or_else(|| output_span.clone());
                         if let Some(source) = file.get("source") {
-                            check_tagged_at(
-                                source,
-                                &path,
-                                allowed_workspace_source_fields,
-                                file_span.as_ref(),
-                                out,
-                            );
+                            check_tagged_at(source, &path, source_fields, file_span.as_ref(), out);
                         }
                         if let Some(content) = file.get("content") {
                             check_tagged_at(
                                 content,
                                 &path,
-                                allowed_workspace_content_fields,
+                                content_fields,
                                 file_span.as_ref(),
                                 out,
                             );

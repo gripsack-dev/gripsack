@@ -2,6 +2,8 @@
 //! retained descriptor; macOS uses a private read-only copy and reports the
 //! weaker pathname tier explicitly. Neither binds dynamic libraries or native
 //! subprocesses selected by the launched program.
+mod loader;
+pub(crate) use loader::ImageDescriptors;
 use super::{ByteBinding, OperatorEnvironment, Sha256Digest};
 use sha2::{Digest, Sha256};
 #[cfg(target_os = "linux")]
@@ -9,16 +11,14 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::{
     ffi::OsString,
     fs::File,
-    io::{self, Read, Write},
+    io::{self, Read, Seek, Write},
     os::unix::{
-        ffi::OsStringExt,
         fs::{OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
 };
 
 const EXECUTABLE_BYTES: u64 = 512 * 1024 * 1024;
-const HEADER_BYTES: usize = 4096;
 
 pub(crate) struct Image {
     pub(crate) digest: Sha256Digest,
@@ -178,46 +178,20 @@ impl Image {
     fn interpreter(&self) -> io::Result<Option<(PathBuf, Option<OsString>)>> {
         use std::os::unix::fs::FileExt;
         let mut magic = [0; 2];
-        self.file.read_exact_at(&mut magic, 0).map_err(|error| {
-            if error.kind() == io::ErrorKind::UnexpectedEof {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "selected native executable has no complete image header",
-                )
-            } else {
-                error
-            }
-        })?;
-        if magic != *b"#!" {
-            return Ok(None);
-        }
-        let length = self.file.metadata()?.len().min(HEADER_BYTES as u64) as usize;
-        let mut header = [0; HEADER_BYTES];
-        self.file.read_exact_at(&mut header[..length], 0)?;
-        let end = header[..length]
-            .iter()
-            .position(|&byte| byte == b'\n')
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "native script has an oversized or unterminated interpreter line",
-                )
-            })?;
-        let line = header[2..end].trim_ascii();
-        let split = line
-            .iter()
-            .position(|byte| matches!(byte, b' ' | b'\t'))
-            .unwrap_or(line.len());
-        let interpreter = PathBuf::from(OsString::from_vec(line[..split].to_vec()));
+        self.file.read_exact_at(&mut magic, 0)?;
+        if magic != *b"#!" { return Ok(None); }
+        let mut reader = self.file.try_clone()?;
+        reader.rewind()?;
+        let metadata = crate::executable::classify(&mut reader)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData,error))?;
+        let Some(crate::executable::Interpreter::Shebang { program,argument }) = metadata.interpreter else {
+            return Err(io::Error::new(io::ErrorKind::InvalidData,"script has no interpreter"));
+        };
+        let interpreter = PathBuf::from(program);
         if !interpreter.is_absolute() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "native script interpreter must be absolute",
-            ));
+            return Err(io::Error::new(io::ErrorKind::InvalidData,"native script interpreter must be absolute"));
         }
-        let rest = line[split..].trim_ascii();
-        let argument = (!rest.is_empty()).then(|| OsString::from_vec(rest.to_vec()));
-        Ok(Some((interpreter, argument)))
+        Ok(Some((interpreter,argument)))
     }
 }
 
@@ -229,6 +203,7 @@ pub struct SelectedProgram {
     pub(crate) script: Option<Image>,
     pub(crate) interpreter_argument: Option<OsString>,
     pub(crate) argument_zero: OsString,
+    loader: Option<loader::GnuLoader>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -236,6 +211,8 @@ pub struct SelectedProgram {
 pub struct ProgramIdentity {
     pub executable_sha256: Sha256Digest,
     pub script_sha256: Option<Sha256Digest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loader_sha256: Option<Sha256Digest>,
     pub byte_binding: ByteBinding,
 }
 
@@ -253,6 +230,7 @@ impl SelectedProgram {
                 script: None,
                 interpreter_argument: None,
                 argument_zero: name.as_os_str().to_owned(),
+                loader: None,
             });
         };
         let executable = Image::copy(&environment.resolve(&interpreter)?, None, deadline)?;
@@ -267,6 +245,7 @@ impl SelectedProgram {
             script: Some(selected),
             interpreter_argument: argument,
             argument_zero: interpreter.into_os_string(),
+            loader: None,
         })
     }
 
@@ -279,7 +258,12 @@ impl SelectedProgram {
         ProgramIdentity {
             executable_sha256: self.executable.digest,
             script_sha256: self.script.as_ref().map(|script| script.digest),
+            loader_sha256: self.loader_sha256(),
             byte_binding: self.executable.binding.clone(),
         }
+    }
+
+    pub(crate) fn loader_sha256(&self) -> Option<Sha256Digest> {
+        self.loader.as_ref().map(|loader| loader.image.digest)
     }
 }

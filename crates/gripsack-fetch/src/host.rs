@@ -1,4 +1,5 @@
-//! Host-platform asset resolution for bundled tools (pixi, deno).
+//! Host-platform asset resolution for bundled tools (pixi, deno, the
+//! BuildKit bridge helper).
 //!
 //! Each bundled tool release is pinned per platform — a version plus
 //! one sha256 per supported asset. Verification stays exact: a
@@ -94,20 +95,20 @@ pub fn resolve(release: &ToolRelease) -> Result<(String, &'static str), FetchErr
             std::env::consts::ARCH
         ),
     })?;
+    let url = release
+        .url_template
+        .replace("{version}", release.version)
+        .replace("{triple}", target.triple())
+        .replace("{denotarget}", target.deno_name());
     let sha = release
         .sha256
         .iter()
         .find(|(t, _)| *t == target)
         .map(|(_, s)| *s)
         .ok_or_else(|| FetchError::Source {
-            resource: release.url_template.to_string(),
+            resource: url.clone(),
             reason: format!("no pinned hash for {:?} at {}", target, release.version),
         })?;
-    let url = release
-        .url_template
-        .replace("{version}", release.version)
-        .replace("{triple}", target.triple())
-        .replace("{denotarget}", target.deno_name());
     Ok((url, sha))
 }
 
@@ -160,6 +161,20 @@ pub const DENO_RELEASE: ToolRelease = ToolRelease {
             "213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472",
         ),
     ],
+};
+
+/// The BuildKit bridge helper this core's workspace solves speak
+/// (protocol must match exactly). The helper rides THIS core's release
+/// tag: the url resolves under the same `core-v<version>` assets as the
+/// core tarballs, and the pins are measured from the deterministic
+/// artifact build (`tools/buildkit-bridge/dist.sh`), embedded here
+/// before the core release build — a fetched checksum manifest would
+/// authenticate nothing. Until the pins land, resolution fails closed
+/// for every platform and only an explicit `--bridge` override builds.
+pub const BRIDGE_RELEASE: ToolRelease = ToolRelease {
+    version: crate::bridge_pins::BRIDGE_VERSION,
+    url_template: "https://github.com/gripsack-dev/gripsack/releases/download/core-v{version}/grip-buildkit-bridge-{version}-{triple}",
+    sha256: crate::bridge_pins::BRIDGE_SHA256,
 };
 
 #[cfg(test)]
@@ -266,5 +281,29 @@ mod tests {
         assert!(url.contains("deno-"));
         assert!(url.ends_with(".zip"));
         assert_eq!(sha.len(), 64);
+    }
+
+    #[test]
+    fn bridge_release_fails_closed_until_pinned() {
+        // Any committed bridge pin must be a real measured sha256 —
+        // the table is empty while the helper source is unstable, and
+        // resolve() must refuse with the actionable reason.
+        for (_, sha) in BRIDGE_RELEASE.sha256 {
+            assert_eq!(sha.len(), 64);
+            assert!(sha.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        }
+        let target = AssetTarget::current().unwrap();
+        if !BRIDGE_RELEASE.sha256.iter().any(|(t, _)| *t == target) {
+            let error = resolve(&BRIDGE_RELEASE).unwrap_err();
+            assert!(error.to_string().contains("no pinned hash"), "{error}");
+        } else {
+            let (url, sha) = resolve(&BRIDGE_RELEASE).unwrap();
+            assert!(url.ends_with(&format!(
+                "grip-buildkit-bridge-{}-{}",
+                BRIDGE_RELEASE.version,
+                target.triple()
+            )));
+            assert_eq!(sha.len(), 64);
+        }
     }
 }

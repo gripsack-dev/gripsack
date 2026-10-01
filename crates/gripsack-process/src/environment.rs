@@ -17,6 +17,10 @@ pub enum ProcessRole {
     Hook,
     Fact,
     Update,
+    /// A project consumer process (run/shell/task): repository-selected
+    /// commands on the host, with an explicit repository overlay and no
+    /// evaluator-private state. Interactive admission is exclusive to it.
+    Task,
 }
 
 #[derive(Debug, Clone)]

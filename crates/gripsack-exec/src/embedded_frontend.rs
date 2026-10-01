@@ -6,6 +6,27 @@
 /// (path inside the materialized frontend dir, source) pairs.
 #[rustfmt::skip]
 pub static FRONTEND_FILES: &[(&str, &str)] = &[
+    ("src/advanced.ts", r#"/** Explicit compiler SDK. Ordinary authoring imports @gripsack/core instead. */
+export { emitIr, IR_VERSION, mergeTags } from "./graph.ts";
+export { emitWorkspaceIr } from "./workspace/emit.ts";
+export { parseInputs } from "./inputs.ts";
+export type { Inputs } from "./inputs.ts";
+export { createProbeBuilder } from "./probe.ts";
+export type { ProbeRequest } from "./probe.ts";
+export type { IrEntry, IrModule } from "./module.ts";
+export type {
+  CheckNode,
+  EnvironmentNode,
+  HookNode,
+  ImageNode,
+  PackageNode,
+  ProfileNode,
+  RecipeNode,
+  ScheduleNode,
+  TaskNode,
+  WorkspaceOutputNode,
+} from "./workspace/ir.ts";
+"#),
     ("src/cli.ts", r#"/** Eval driver (0013 D2/D5): `deno run … src/cli.ts <repo> --inputs <path>`.
  *
  * Runs inside the core's sandbox (no env, no network, no subprocesses,
@@ -22,7 +43,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { asDiagnostic, authoringDiagnostic } from "./diagnostic.ts";
-import { core, coreUrl } from "./pin.ts";
+import { core, coreUrl } from "./pin-selection.ts";
 import type { Env } from "./graph.ts";
 
 function die(msg: string): never {
@@ -606,10 +627,9 @@ import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
 /** One current frontend version (0052 §1): workspace and legacy
- *  module entrypoints both emit v5. Strict v3 module and v4 workspace
- *  documents retain their versioned core readers; only v5 is written
- *  by this frontend. */
-export const IR_VERSION = 5;
+ *  module entrypoints both emit v6. Strict historical documents keep
+ *  their versioned core readers; only v6 is written by this frontend. */
+export const IR_VERSION = 6;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,
@@ -730,18 +750,15 @@ export { brew, fileFetch, git, githubRelease, pixi, pluginFetch, tarball } from 
 export type { Fetch } from "./fetch.ts";
 export { hasTag, when } from "./conditions.ts";
 export type { Condition, FactView } from "./conditions.ts";
-export { defineEnv, emitIr, IR_VERSION, mergeTags } from "./graph.ts";
+export { defineEnv } from "./graph.ts";
 export type { Env, EnvContext, EnvFn } from "./graph.ts";
 export { tree } from "./tree.ts";
 export { module } from "./module.ts";
-export type { IrEntry, IrModule, ModuleSpec, ModuleValue, Span } from "./module.ts";
+export type { ModuleSpec, ModuleValue, Span } from "./module.ts";
 export { customHook, desktopEntry, fonts, service } from "./intents.ts";
 export type { Intent, Trigger } from "./intents.ts";
-export { parseInputs } from "./inputs.ts";
-export type { Inputs } from "./inputs.ts";
-export { createProbeBuilder } from "./probe.ts";
-export type { ProbeBuilder, ProbeKind, ProbeRequest } from "./probe.ts";
-export { CORE_RESOURCES, clearResources, resource } from "./resources.ts";
+export type { ProbeBuilder, ProbeKind } from "./probe.ts";
+export { resource } from "./resources.ts";
 export type { Resource } from "./resources.ts";
 export { buildStep, configStep, fetchStep, installStep, runStep, shellStep, step } from "./steps.ts";
 export type { Build, Phase, Step, StepAction, StepOpts } from "./steps.ts";
@@ -750,12 +767,20 @@ export type { Verify } from "./verify.ts";
 export {
   artifact,
   artifactFile,
+  artifactTree,
+  ensureArtifact,
+  input,
+  inputDirectory,
+  inputFile,
+  lock,
   bash,
   bashBody,
+  cargoPackage,
   check,
+  conda,
+  condaEnvironment,
   daily,
   defineWorkspace,
-  emitWorkspaceIr,
   environment,
   exec,
   file,
@@ -767,7 +792,10 @@ export {
   literalText,
   managedBlock,
   packageCommand,
+  sourcePath,
+  outputPath,
   pkg,
+  pixiFromLock,
   profile,
   provider,
   recipe,
@@ -787,20 +815,37 @@ export type {
   BashBody,
   BashBuilder,
   BashCommandBuilder,
+  CargoPackageSpec,
   CheckSpec,
+  CondaEnvironmentSource,
+  CondaEnvironmentSpec,
   EnvironmentSpec,
   ExecBuilder,
   ExecSpec,
   HookSpec,
+  ImageConfig,
+  ImageDestination,
+  ImageOwner,
   ImageSpec,
   PackageLayout,
   PackageSpec,
+  PixiLockSource,
+  PixiLockSpec,
   ProfileSpec,
   RecipeExecution,
   RecipeSpec,
+  FetchSource,
   RunBashSpec,
   ScheduleSpec,
   TaskSpec,
+  TaskContext,
+  WorkspaceAction,
+  WorkspaceStep,
+  WorkspaceStepValue,
+  WorkspaceInput,
+  WorkspaceInputRef,
+  WorkspaceMutationLock,
+  WorkspaceFileCheck,
   TreeFilesOptions,
   WorkspaceAbi,
   WorkspaceArg,
@@ -819,11 +864,12 @@ export type {
   WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
-  WorkspaceOutputNode,
   WorkspacePackageCommand,
   WorkspacePath,
   WorkspacePlatform,
   WorkspaceProducer,
+  WorkspaceProductionPath,
+  WorkspaceSourceV6,
   WorkspaceRunBashCommand,
   WorkspaceSource,
   WorkspaceSpec,
@@ -1122,93 +1168,79 @@ export function callerSpan(): Span | undefined {
   return undefined;
 }
 "#),
-    ("src/pin.ts", r#"/** The deliberate-pin shim (0013 D2/D3) — the deno.json import-map
- *  target for bare `@gripsack/core` imports.
- *
- * The sandboxed driver (`deno run --no-remote --cached-only --no-lock
- * --allow-read=…`) resolves the repo host entrypoint's `import … from
- * "@gripsack/core"` through the import map to THIS file, which then
- * applies the pin rule exactly once for the whole eval: the repo's own
- * `node_modules/@gripsack/core` install wins when it shadows this
- * embedded copy; the package next to this file is the fallback. The
- * driver (cli.ts) imports the same instance, so module values,
- * resource declarations, and probes always share one registry no
- * matter which copy won.
- *
- * The explicit re-export list is part of the pinned authoring surface;
- * update it when index.ts gains a supported runtime or type export. */
-
+    ("src/pin-advanced.ts", r#"/** Explicit advanced import-map target, bound to the same pin as authoring. */
+import { compiler } from "./pin-selection.ts";
+export const emitIr = compiler.emitIr;
+export const emitWorkspaceIr = compiler.emitWorkspaceIr;
+export const IR_VERSION = compiler.IR_VERSION;
+export const mergeTags = compiler.mergeTags;
+export const parseInputs = compiler.parseInputs;
+export const createProbeBuilder = compiler.createProbeBuilder;
+export type {
+  Inputs,
+  ProbeRequest,
+  IrEntry,
+  IrModule,
+  CheckNode,
+  EnvironmentNode,
+  HookNode,
+  ImageNode,
+  PackageNode,
+  ProfileNode,
+  RecipeNode,
+  ScheduleNode,
+  TaskNode,
+  WorkspaceOutputNode,
+} from "./advanced.ts";
+"#),
+    ("src/pin-selection.ts", r#"/** Driver-owned package selection. Both public and compiler APIs come from
+ * the same approved package; a historical pin keeps its original root ABI. */
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type * as Index from "./index.ts";
+import type * as Advanced from "./advanced.ts";
 
-/** The winning @gripsack/core URL, resolved from the repo's
- *  perspective — `repo` is the driver's first argument. */
-export function resolveCoreUrl(repo: string, self: string): string {
-  // the pin lives at the repo root, NOWHERE else: the eval sandbox
-  // allows reading <repo> only, so a hoisted parent node_modules is
-  // both unreadable and unimportable — and createRequire().resolve is
-  // ambient-scope-sensitive under deno besides (it can see the
-  // frontend's own package from a dev-checkout cwd)
-  const pkgDir = join(resolve(repo), "node_modules", "@gripsack", "core");
-  const pkgFile = join(pkgDir, "package.json");
-  if (existsSync(pkgFile)) {
-    const pkg = JSON.parse(readFileSync(pkgFile, "utf8")) as {
-      main?: string;
-      types?: string;
-      exports?: Record<string, unknown>;
-    };
-    const dot = pkg.exports?.["."];
-    const entry = typeof dot === "string"
-      ? dot
-      : (dot as { import?: unknown; types?: unknown; default?: unknown } | undefined);
-    const conditions = (typeof entry === "object" && entry !== null ? entry : {}) as {
-      import?: unknown;
-      types?: unknown;
-      default?: unknown;
-    };
-    // the runtime entry (0.40: dist/ for a copied npm install — Deno
-    // cannot type-strip under node_modules), falling back to the
-    // source entry when no compiled tree exists (the materialized
-    // frontend symlinked into node_modules — its realpath escapes
-    // node_modules, so type stripping is allowed there)
-    const candidates = [
-      (typeof entry === "string" ? entry : undefined) ??
-        (conditions.import ?? conditions.default) as string | undefined,
-      pkg.main,
-      (conditions.types ?? pkg.types) as string | undefined,
-      "index.js",
-    ];
-    for (const rel of candidates) {
-      if (rel && existsSync(join(pkgDir, rel))) {
-        return pathToFileURL(join(pkgDir, rel)).href;
-      }
+type Entry = string | { import?: string; default?: string; types?: string };
+interface PackageEntries {
+  main?: string;
+  types?: string;
+  exports?: Record<string, Entry>;
+}
+function resolveEntry(directory: string, entry: Entry | undefined, fallback: (string | undefined)[]): string {
+  const candidates = typeof entry === "string" ? [entry, ...fallback] : [entry?.import ?? entry?.default, ...fallback, entry?.types];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && existsSync(join(directory, candidate))) {
+      return pathToFileURL(join(directory, candidate)).href;
     }
   }
-  // the sibling entry of THIS file: the embedded tree is source-only
-  return new URL("./index.ts", self).href;
+  throw new Error(`pinned @gripsack/core has no readable entry in ${directory}`);
 }
-
-export const coreUrl = resolveCoreUrl(resolve(process.argv[2] ?? "."), import.meta.url);
-
-// plugin loading: which package instance wins is decided at runtime
-// (the repo's pin vs this embedded copy) — a static import would
-// always load the embedded one and defeat the pin rule
-let api: typeof Index;
-try {
-  api = await import(coreUrl) as typeof Index;
-} catch (e) {
-  console.error(
-    `gripsack: the pinned @gripsack/core at ${coreUrl} failed to load: ` +
-      `${(e as Error).message} — fix or remove the pin (node_modules/@gripsack/core)`,
-  );
-  process.exit(1);
+function selectEntries(): { authoring: string; compiler: string } {
+  // Deliberate pins live at this repository root, never in ambient ancestors.
+  const directory = join(resolve(process.argv[2] ?? "."), "node_modules", "@gripsack", "core");
+  const manifest = join(directory, "package.json");
+  if (!existsSync(manifest)) {
+    return { authoring: new URL("./index.ts", import.meta.url).href, compiler: new URL("./advanced.ts", import.meta.url).href };
+  }
+  const pkg: PackageEntries = JSON.parse(readFileSync(manifest, "utf8"));
+  const authoring = resolveEntry(directory, pkg.exports?.["."], [pkg.main, pkg.types, "index.js"]);
+  const advanced = pkg.exports?.["./advanced"];
+  return { authoring, compiler: advanced === undefined ? authoring : resolveEntry(directory, advanced, []) };
 }
-
-/** The winning package instance — the driver and every host module
- *  share it. */
-export const core = api;
+const entries = selectEntries();
+export const coreUrl = entries.authoring;
+export const authoring = await import(entries.authoring) as typeof Index;
+// The approved package path is chosen at runtime; a static import would bypass
+// an intentional repository pin and bind the embedded compiler instead.
+export const compiler = await import(entries.compiler) as typeof Advanced;
+// Only the internal driver consumes this combined view. The bare import-map
+// target exports authoring values only, just like the installed package root.
+export const core = { ...authoring, ...compiler };
+"#),
+    ("src/pin.ts", r#"/** Bare import-map target: exactly the ordinary authoring API of the selected
+ * package. Compiler entry points are separate, including for embedded eval. */
+import { authoring as api } from "./pin-selection.ts";
 
 export const dep = api.dep;
 export const merge = api.merge;
@@ -1225,19 +1257,12 @@ export const tarball = api.tarball;
 export const hasTag = api.hasTag;
 export const when = api.when;
 export const defineEnv = api.defineEnv;
-export const emitIr = api.emitIr;
-export const IR_VERSION = api.IR_VERSION;
-export const mergeTags = api.mergeTags;
 export const tree = api.tree;
 export const module = api.module;
 export const customHook = api.customHook;
 export const desktopEntry = api.desktopEntry;
 export const fonts = api.fonts;
 export const service = api.service;
-export const parseInputs = api.parseInputs;
-export const createProbeBuilder = api.createProbeBuilder;
-export const CORE_RESOURCES = api.CORE_RESOURCES;
-export const clearResources = api.clearResources;
 export const resource = api.resource;
 export const buildStep = api.buildStep;
 export const configStep = api.configStep;
@@ -1252,12 +1277,20 @@ export const verifyFile = api.verifyFile;
 export const verifyShell = api.verifyShell;
 export const artifact = api.artifact;
 export const artifactFile = api.artifactFile;
+export const artifactTree = api.artifactTree;
+export const ensureArtifact = api.ensureArtifact;
+export const input = api.input;
+export const inputDirectory = api.inputDirectory;
+export const inputFile = api.inputFile;
+export const lock = api.lock;
 export const bash = api.bash;
 export const bashBody = api.bashBody;
+export const cargoPackage = api.cargoPackage;
 export const check = api.check;
+export const conda = api.conda;
+export const condaEnvironment = api.condaEnvironment;
 export const daily = api.daily;
 export const defineWorkspace = api.defineWorkspace;
-export const emitWorkspaceIr = api.emitWorkspaceIr;
 export const environment = api.environment;
 export const exec = api.exec;
 export const file = api.file;
@@ -1269,7 +1302,10 @@ export const lit = api.lit;
 export const literalText = api.literalText;
 export const managedBlock = api.managedBlock;
 export const packageCommand = api.packageCommand;
+export const sourcePath = api.sourcePath;
+export const outputPath = api.outputPath;
 export const pkg = api.pkg;
+export const pixiFromLock = api.pixiFromLock;
 export const profile = api.profile;
 export const provider = api.provider;
 export const recipe = api.recipe;
@@ -1289,7 +1325,10 @@ export type {
   BashBody,
   BashBuilder,
   BashCommandBuilder,
+  CargoPackageSpec,
   CheckSpec,
+  CondaEnvironmentSource,
+  CondaEnvironmentSpec,
   Condition,
   Dependency,
   Dest,
@@ -1301,23 +1340,25 @@ export type {
   ExecBuilder,
   ExecSpec,
   FactView,
+  FetchSource,
   Fetch,
   HookSpec,
   HostFacts,
+  ImageConfig,
+  ImageDestination,
+  ImageOwner,
   ImageSpec,
-  Inputs,
   Intent,
-  IrEntry,
-  IrModule,
   ModuleSpec,
   ModuleValue,
   Ownership,
   PackageLayout,
   PackageSpec,
   Phase,
+  PixiLockSource,
+  PixiLockSpec,
   ProbeBuilder,
   ProbeKind,
-  ProbeRequest,
   ProfileSpec,
   RecipeExecution,
   RecipeSpec,
@@ -1329,6 +1370,14 @@ export type {
   StepAction,
   StepOpts,
   TaskSpec,
+  TaskContext,
+  WorkspaceAction,
+  WorkspaceStep,
+  WorkspaceStepValue,
+  WorkspaceInput,
+  WorkspaceInputRef,
+  WorkspaceMutationLock,
+  WorkspaceFileCheck,
   TreeFilesOptions,
   Trigger,
   Verify,
@@ -1349,13 +1398,14 @@ export type {
   WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
-  WorkspaceOutputNode,
   WorkspacePackageCommand,
   WorkspacePath,
   WorkspacePlatform,
   WorkspaceProducer,
+  WorkspaceProductionPath,
   WorkspaceRunBashCommand,
   WorkspaceSource,
+  WorkspaceSourceV6,
   WorkspaceSpec,
   WorkspaceValue,
   WorkspaceWeekday,
@@ -1745,7 +1795,157 @@ export function verifyDeployed(path: string): Verify {
   return { kind: "file_deployed", path };
 }
 "#),
-    ("src/workspace/commands.ts", r#"/** v5 immutable exec/runBash commands, typed arguments and dedent maps. */
+    ("src/workspace/bindings.ts", r#"/** Pure declarations: no registry, import-time effect or implicit ownership. */
+import { rejectUnknownFields } from "../fields.ts";
+import type { TaskContext, WorkspaceAction, WorkspaceInput, WorkspaceInputRef, WorkspaceMutationLock, WorkspaceStep, WorkspaceStepValue } from "./ir.ts";
+import { asCommand, asDestinationPath, asName, asRecord, asRepoFilePath, asSelector, asSpan, freezeDeep, nodeSpan } from "./validate.ts";
+
+export function inputFile(name: string, path: string): WorkspaceInput {
+  return freezeDeep({ name: asName(name, "inputFile(name)"), span: nodeSpan(undefined, "inputFile(...)"), origin: { kind: "repo_file", path: asRepoFilePath(path, "inputFile(path)") } });
+}
+export function inputDirectory(name: string, path: string, selection: { include: readonly string[]; exclude?: readonly string[] }): WorkspaceInput {
+  const value = { name, span: nodeSpan(undefined, "inputDirectory(...)"), origin: { kind: "repo_directory", path, include: [...selection.include], ...(selection.exclude ? { exclude: [...selection.exclude] } : {}) } };
+  return freezeDeep(asInput(value, "inputDirectory(...)"));
+}
+export function input(name: string | WorkspaceInput): WorkspaceInputRef {
+  return freezeDeep({ kind: "input", input: asName(typeof name === "string" ? name : name.name, "input(name)") });
+}
+export function lock(scope: "user" | "store", key: string): WorkspaceMutationLock {
+  return freezeDeep(asLock({ scope, key, span: nodeSpan(undefined, "lock(...)") }, "lock(...)"));
+}
+export function ensureArtifact(output: string): WorkspaceAction {
+  return freezeDeep({ kind: "ensure_artifact", output: asName(output, "ensureArtifact(output)"), span: nodeSpan(undefined, "ensureArtifact(...)") });
+}
+export function asPatterns(value: unknown, where: string, required: boolean): string[] {
+  if (!Array.isArray(value) || required && value.length === 0) throw new Error(`${where}: expected ${required ? "nonempty " : ""}pattern array`);
+  return [...new Set(value.map((pattern, index) => asRepoFilePath(pattern, `${where}[${index}]`)))].sort();
+}
+export function asInput(value: unknown, where: string): WorkspaceInput {
+  const record = asRecord(value, where);
+  rejectUnknownFields(where, record, ["name", "span", "origin"]);
+  const origin = asRecord(record.origin, `${where}.origin`);
+  const name = asName(record.name, `${where}.name`);
+  const span = asSpan(record.span, where);
+  if (origin.kind === "repo_file") {
+    rejectUnknownFields(`${where}.origin`, origin, ["kind", "path"]);
+    return { name, span, origin: { kind: "repo_file", path: asRepoFilePath(origin.path, `${where}.origin.path`) } };
+  } else if (origin.kind === "repo_directory") {
+    rejectUnknownFields(`${where}.origin`, origin, ["kind", "path", "include", "exclude"]);
+    const path = asSelector(origin.path, `${where}.origin.path`);
+    const include = asPatterns(origin.include, `${where}.origin.include`, true);
+    const exclude = origin.exclude === undefined ? [] : asPatterns(origin.exclude, `${where}.origin.exclude`, false);
+    return { name, span, origin: { kind: "repo_directory", path, include, ...(exclude.length ? { exclude } : {}) } };
+  } else throw new Error(`${where}.origin: expected repo_file or repo_directory`);
+}
+export function asLock(value: unknown, where: string): WorkspaceMutationLock {
+  const record = asRecord(value, where);
+  rejectUnknownFields(where, record, ["scope", "key", "span"]);
+  if (record.scope !== "user" && record.scope !== "store") throw new Error(`${where}.scope: expected user or store`);
+  if (typeof record.key !== "string" || !/^[!-~]{1,128}$/.test(record.key)) throw new Error(`${where}.key: expected 1..128 printable non-whitespace ASCII bytes`);
+  asSpan(record.span, where);
+  return value as WorkspaceMutationLock;
+}
+export function asTaskContext(value: unknown, where: string): TaskContext {
+  const record = asRecord(value, where);
+  rejectUnknownFields(where, record, ["kind", "mutable_paths"]);
+  if (record.kind !== "host" || !Array.isArray(record.mutable_paths)) throw new Error(`${where}: expected an explicit host context and mutable_paths array`);
+  record.mutable_paths.forEach((path, index) => asDestinationPath(path, `${where}.mutable_paths[${index}]`));
+  return value as TaskContext;
+}
+export function asStep(value: WorkspaceStepValue, where: string): WorkspaceStep {
+  const record = asRecord(value, where);
+  if (record.kind === "exec" || record.kind === "run_bash") return { command: asCommand(value, where) };
+  if (record.kind === "ensure_artifact") {
+    rejectUnknownFields(where, record, ["kind", "output", "span"]);
+    asName(record.output, `${where}.output`); asSpan(record.span, where);
+    return { action: value as WorkspaceAction };
+  }
+  rejectUnknownFields(where, record, ["command", "action"]);
+  if (Object.keys(record).length !== 1) throw new Error(`${where}: a local step contains exactly one command or action`);
+  if (record.command !== undefined) return { command: asCommand(record.command, where) };
+  return asStep(record.action as WorkspaceAction, where);
+}
+export function lockKey(value: WorkspaceMutationLock): string { return `${value.scope}\0${value.key}`; }
+"#),
+    ("src/workspace/cargo.ts", r#"/** Cargo over an immutable source tree and a digest-pinned official Rust image.
+ * The source includes Cargo.lock and its vendored dependency/configuration tree.
+ * No helper step resolves dependencies, downloads tools, or invokes a shell. */
+import type { Fetch } from "../fetch.ts";
+import type { Span } from "../module.ts";
+import type { PackageNode, RecipeNode, WorkspaceArg, WorkspaceOutput, WorkspacePlatform, WorkspaceStepValue } from "./ir.ts";
+import { rejectUnknownFields } from "../fields.ts";
+import { exec, lit, outputPath, sourcePath } from "./commands.ts";
+import { pkg, recipe } from "./outputs.ts";
+import { asPlatform } from "./target.ts";
+import { asName, asRecord, asSelector, freezeDeep, nodeSpan } from "./validate.ts";
+
+export interface CargoPackageSpec {
+  source: Fetch;
+  /** Digest-pinned official Rust image, including Cargo/rustup and native linker tools. */
+  toolchain: string;
+  /** Linux architecture and explicit gnu/musl ABI; no implicit cross compilation. */
+  target: WorkspacePlatform;
+  /** Public command name -> Cargo binary target name. */
+  binaries: Record<string, string>;
+  runtime?: string[];
+  checks?: string[];
+  span?: Span;
+}
+
+/** Spread the returned producer/package pair into workspace.outputs. */
+export function cargoPackage(
+  name: string,
+  spec: CargoPackageSpec,
+): readonly [WorkspaceOutput<RecipeNode>, WorkspaceOutput<PackageNode>] {
+  const what = `cargoPackage("${name}")`;
+  asName(name, `${what}: name`);
+  asRecord(spec, what);
+  rejectUnknownFields(what, spec, ["source", "toolchain", "target", "binaries", "runtime", "checks", "span"]);
+  const span = nodeSpan(spec.span, what);
+  const target = asPlatform(spec.target, `${what}: target`);
+  if (target.os !== "linux" || (target.abi !== "gnu" && target.abi !== "musl")) {
+    throw new Error(`${what}: select a Linux target with an explicit gnu or musl ABI`);
+  }
+  const triple = `${target.arch}-unknown-linux-${target.abi}`;
+  const commands: Record<string, string> = Object.create(null);
+  const binaries = new Set<string>();
+  for (const [command, value] of Object.entries(asRecord(spec.binaries, `${what}: binaries`))) {
+    asName(command, `${what}: command name`);
+    const binary = asSelector(value, `${what}: binary target`);
+    if (binary === "." || binary.includes("/")) throw new Error(`${what}: a Cargo binary target is one path component`);
+    commands[command] = `bin/${binary}`;
+    binaries.add(binary);
+  }
+  if (binaries.size === 0) throw new Error(`${what}: declare at least one exported binary target`);
+  const environment: Record<string, WorkspaceArg> = {
+    CARGO_HOME: outputPath(".cargo-home"),
+    CARGO_TARGET_DIR: outputPath(".cargo-target"),
+    RUSTUP_HOME: lit("/usr/local/rustup"),
+    RUSTC: lit("/usr/local/cargo/bin/rustc"),
+    RUSTDOC: lit("/usr/local/cargo/bin/rustdoc"),
+  };
+  const common = ["--release", "--frozen", "--offline", "--target", triple].map(lit);
+  const steps: WorkspaceStepValue[] = [
+    // Testing is in the ordered producer path, so it cannot be pruned from the
+    // exported state even if it creates no application file.
+    exec({ span, argv: [lit("/usr/local/cargo/bin/cargo"), lit("test"), lit("--all-targets"), ...common], env: environment, cwd: sourcePath() }),
+    exec({ span, argv: [lit("/usr/local/cargo/bin/cargo"), lit("build"), lit("--bins"), ...common], env: environment, cwd: sourcePath() }),
+  ];
+  for (const binary of binaries) {
+    steps.push(exec({ span, argv: [lit("install"), lit("-D"), outputPath(`.cargo-target/${triple}/release/${binary}`), outputPath(`bin/${binary}`)] }));
+  }
+  steps.push(exec({ span, argv: [lit("rm"), lit("-rf"), outputPath(".cargo-target"), outputPath(".cargo-home")] }));
+  const producer = `${name}.build`;
+  return freezeDeep([
+    recipe(producer, { source: spec.source, target, span, output_kind: "tree", steps,
+      execution: { kind: "isolated_linux", worker: "buildkit", platform: target, toolchain: { reference: spec.toolchain } },
+      ...(spec.checks ? { checks: spec.checks } : {}),
+    }),
+    pkg(name, { producer, commands, target, span, layout: { kind: "relocatable" }, ...(spec.runtime ? { runtime: spec.runtime } : {}) }),
+  ] as const);
+}
+"#),
+    ("src/workspace/commands.ts", r#"/** Immutable exec/runBash commands, typed arguments and dedent maps. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
@@ -1762,6 +1962,7 @@ import type {
   WorkspacePackageCommand,
   WorkspacePath,
   WorkspaceRunBashCommand,
+  WorkspaceProductionPath,
 } from "./ir.ts";
 import {
   asArg,
@@ -1771,6 +1972,7 @@ import {
   asRecord,
   asSelector,
   asSpan,
+  asSha256,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
@@ -1793,6 +1995,16 @@ export function artifact(output: string, selector: string): WorkspaceArtifactRef
   });
 }
 
+/** Select an immutable source path inside the enclosing producer. */
+export function sourcePath(selector = "."): WorkspaceProductionPath {
+  return freezeDeep({ kind: "source", selector: asSelector(selector, "sourcePath(selector)") });
+}
+
+/** Select writable staging, never an arbitrary live host destination. */
+export function outputPath(selector = "."): WorkspaceProductionPath {
+  return freezeDeep({ kind: "output", selector: asSelector(selector, "outputPath(selector)") });
+}
+
 /** A host filesystem path (command cwd only — never an argv value). */
 export function hostPath(path: string): WorkspaceHostPath {
   return freezeDeep({ kind: "host", path: asName(path, "hostPath(path)") });
@@ -1800,11 +2012,12 @@ export function hostPath(path: string): WorkspaceHostPath {
 
 /** A command provided by a declared package: `packageCommand("bash",
  *  "bash")` names the `bash` command of the `bash` package output. */
-export function packageCommand(pkg: string, command: string): WorkspacePackageCommand {
+export function packageCommand(pkg: string, command: string, sha256?: string): WorkspacePackageCommand {
   return freezeDeep({
     kind: "package_command",
     package: asName(pkg, "packageCommand(package)"),
     command: asName(command, "packageCommand(command)"),
+    ...(sha256 !== undefined ? { sha256: asSha256(sha256, "packageCommand(sha256)") } : {}),
   });
 }
 
@@ -1850,7 +2063,7 @@ export function exec(spec: ExecSpec | WorkspaceArg): WorkspaceExecCommand | Exec
   }
   rejectUnknownFields(what, value, ["argv", "env", "cwd", "span"]);
   const fields = spec as ExecSpec;
-  if (!Array.isArray(fields.argv)) throw new Error(`${what}: argv must be an array`);
+  if (!Array.isArray(fields.argv) || fields.argv.length === 0) throw new Error(`${what}: argv must contain an executable argument`);
   const span = nodeSpan(fields.span, what);
   const argv = fields.argv.map((a, i) => asArg(a, `${what}: argv[${i}]`));
   const env = asEnv(fields.env, `${what}: env`);
@@ -1976,6 +2189,7 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
     kind: "run_bash",
     span,
     interpreter,
+    options: ["-e", "-u", "-o", "pipefail"],
     body: text,
     ...(env ? { env } : {}),
     ...(spec.cwd !== undefined ? { cwd: asPath(spec.cwd, `${what}: cwd`) } : {}),
@@ -2047,10 +2261,15 @@ import type {
   WorkspacePackageCommand,
   WorkspacePath,
   WorkspaceValue,
+  WorkspaceInput,
+  WorkspaceStep,
 } from "./ir.ts";
 import { asName, asRecord, asSelector, asSpan, duplicateError } from "./validate.ts";
 import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
 import { checkTargetsAndLayouts } from "./target.ts";
+import { asInput } from "./bindings.ts";
+import { rejectUnknownFields } from "../fields.ts";
+import { checkImageSelection } from "./image.ts";
 
 /** Catalog roles never conflate publication checks or retention with
  * production closure. Ordered local commands are intra-output and
@@ -2143,6 +2362,11 @@ function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges
   if (cmd.cwd) argEdge(cmd.cwd);
 }
 
+function stepEdges(step: WorkspaceStep, from: string, span: Span, role: EdgeRole, edges: Edge[]): void {
+  if ("command" in step) commandEdges(step.command, from, role, edges);
+  else edges.push({ from, to: step.action.output, span: step.action.span ?? span, expected: ARTIFACT_KINDS, role });
+}
+
 function outputEdges(node: WorkspaceOutputNode): Edge[] {
   const edges: Edge[] = [];
   const names = (
@@ -2156,7 +2380,7 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
   };
   switch (node.kind) {
     case "recipe":
-      for (const c of node.steps ?? []) commandEdges(c, node.name, "build_input", edges);
+      for (const step of node.steps ?? []) stepEdges(step, node.name, node.span, "build_input", edges);
       names(node.checks, ["check"], "validation");
       break;
     case "package":
@@ -2176,7 +2400,7 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
       }
       break;
     case "task":
-      commandEdges(node.run, node.name, "runtime", edges);
+      for (const step of node.steps) stepEdges(step, node.name, node.span, "runtime", edges);
       names(node.deps, ["task"], "task_prereq");
       names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "runtime");
       names(node.checks, ["check"], "validation");
@@ -2190,12 +2414,21 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
       break;
     case "image":
       names(node.packages, ["package"], "runtime");
+      for (const argument of node.config.entrypoint) {
+        if (argument.kind === "package_command") names([argument.package], ["package"], "runtime");
+      }
       break;
     case "profile":
       for (const f of node.files ?? []) {
         if (f.source?.kind === "artifact_file") {
           checkSelector(f.source.selector, f.span, `profile '${node.name}' file source`);
           edges.push({ from: node.name, to: f.source.output, span: f.span, expected: ARTIFACT_KINDS, role: "runtime" });
+        }
+        if (f.source?.kind === "tree") {
+          edges.push({ from: node.name, to: f.source.output, span: f.span, expected: ARTIFACT_KINDS, role: "runtime" });
+        }
+        for (const check of f.checks ?? []) {
+          edges.push({ from: node.name, to: check.check, span: check.span, expected: ["check"], role: "validation" });
         }
       }
       names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "retention");
@@ -2249,6 +2482,14 @@ export function emitWorkspaceIr(
     throw new Error("emitWorkspaceIr: workspace value must carry at least one output");
   }
   asSpan(ir.span, "emitWorkspaceIr: workspace");
+  rejectUnknownFields("emitWorkspaceIr: workspace", ir, ["span", "name", "outputs", "inputs", "mutation_locks"]);
+  const inputCatalog = new Map<string, WorkspaceInput>();
+  for (const raw of ir.inputs ?? []) {
+    const input = asInput(raw, "workspace input");
+    const previous = inputCatalog.get(input.name);
+    if (previous) throw duplicateError(input.name, previous.span, input.span);
+    inputCatalog.set(input.name, input);
+  }
 
   const catalog = new Map<string, WorkspaceOutputNode>();
   for (const node of ir.outputs) {
@@ -2270,6 +2511,9 @@ export function emitWorkspaceIr(
         if (target?.kind === "package") {
           commandKeys.push({ pkg: target, command: a.command, span });
         }
+      }
+      if (a.kind === "input" && !inputCatalog.has(a.input)) {
+        throw errorAt(diagnosticCodes.unknownWorkspaceRef, `workspace: unknown captured input '${a.input}'`, span, "input referenced here");
       }
     }
   };
@@ -2306,14 +2550,15 @@ export function emitWorkspaceIr(
       }
       if (isDependency(e.role)) depEdges.push(e);
     }
-    if (node.kind === "recipe") for (const c of node.steps ?? []) collectCommandKeys(c);
-    if (node.kind === "task" || node.kind === "check" || node.kind === "hook") {
-      collectCommandKeys(node.run);
+    if (node.kind === "recipe" || node.kind === "task") {
+      for (const step of node.steps ?? []) if ("command" in step) collectCommandKeys(step.command);
     }
+    if (node.kind === "check" || node.kind === "hook") collectCommandKeys(node.run);
     if (node.kind === "environment") collectArgKeys(Object.values(node.env ?? {}), node.span);
+    if (node.kind === "image") collectArgKeys(node.config.entrypoint, node.span);
   }
   for (const { pkg: target, command, span } of commandKeys) {
-    if (!(command in target.commands)) {
+    if (!Object.hasOwn(target.commands, command)) {
       const have = Object.keys(target.commands).join(", ");
       throw new DiagnosticError({
         code: diagnosticCodes.unknownWorkspaceRef,
@@ -2325,6 +2570,9 @@ export function emitWorkspaceIr(
     }
   }
   checkTargetsAndLayouts(catalog);
+  for (const node of catalog.values()) {
+    if (node.kind === "image") checkImageSelection(node, catalog);
+  }
 
   // dependency cycles over production/build edges only — validation
   // edges (a recipe gated by a check on the package it produces) may
@@ -2372,7 +2620,7 @@ export function emitWorkspaceIr(
         tags,
         ...(facts.libc !== null ? { libc: facts.libc } : {}),
       },
-      workspace: { span: ir.span, outputs: ir.outputs },
+      workspace: ir,
     },
     null,
     2,
@@ -2397,9 +2645,13 @@ import {
   asSelector,
   asRepoFilePath,
   asSource,
+  asFile,
+  asSha256,
+  asSpan,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
+import { asPatterns } from "./bindings.ts";
 
 
 // file-declaration axes (origin / content / destination — orthogonal)
@@ -2418,6 +2670,15 @@ export function artifactFile(output: string, selector: string): WorkspaceSource 
   });
 }
 
+/** A declared artifact tree expanded into explicit owned files by the core. */
+export function artifactTree(output: string, selection: { include: readonly string[]; exclude?: readonly string[] }): WorkspaceSource {
+  return freezeDeep({
+    kind: "tree", output: asName(output, "artifactTree(output)"),
+    include: asPatterns(selection.include, "artifactTree(include)", true),
+    ...(selection.exclude ? { exclude: asPatterns(selection.exclude, "artifactTree(exclude)", false) } : {}),
+  });
+}
+
 /** Content is exactly the origin's bytes. */
 export function identity(): WorkspaceContent {
   return freezeDeep({ kind: "identity" });
@@ -2433,6 +2694,7 @@ export function literalText(text: string): WorkspaceContent {
 export function templateText(
   template: string,
   variables: Record<string, string>,
+  resultDigest?: string,
 ): WorkspaceContent {
   if (typeof template !== "string") throw new Error("templateText(template) must be a string");
   const vars = asRecord(variables, "templateText(...): variables");
@@ -2441,7 +2703,7 @@ export function templateText(
       throw new Error(`templateText(...): variables["${k}"] must be a string`);
     }
   }
-  return freezeDeep({ kind: "template", template, variables });
+  return freezeDeep({ kind: "template", template, variables, ...(resultDigest === undefined ? {} : { result_digest: asSha256(resultDigest, "templateText(resultDigest)") }) });
 }
 
 /** Store-owned, read-only destination; edits go through the declaration. */
@@ -2468,7 +2730,7 @@ export function managedBlock(path: string, marker: string): WorkspaceDestination
 export function file(spec: WorkspaceFileSpec): WorkspaceFile {
   const what = "file(...)";
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["source", "content", "destination", "span"]);
+  rejectUnknownFields(what, spec, ["source", "content", "destination", "checks", "span"]);
   const span = nodeSpan(spec.span, what);
   const content = asContent(spec.content, `${what}: content`);
   if (spec.source === undefined && content.kind !== "literal") {
@@ -2482,11 +2744,107 @@ export function file(spec: WorkspaceFileSpec): WorkspaceFile {
     ...(spec.source !== undefined ? { source: asSource(spec.source, `${what}: source`) } : {}),
     content,
     destination: asDestination(spec.destination, `${what}: destination`),
+    ...(spec.checks?.length ? { checks: spec.checks.map((check) => ({
+      ...check, span: check.span === undefined ? span : asSpan(check.span, "file check"),
+    })) } : {}),
   };
-  return freezeDeep(node);
+  return freezeDeep(asFile(node, what));
 }
 "#),
-    ("src/workspace/ir.ts", r#"/** v5 workspace wire types (schema/ir/v5.json); v4 is read-only in core. */
+    ("src/workspace/image.ts", r#"import type { ImageConfig, ImageDestination, ImageNode, ImageOwner, ImageSpec, PackageNode, WorkspaceOutputNode } from "./ir.ts";
+import { DiagnosticError, diagnosticCodes } from "../diagnostic.ts";
+import { rejectUnknownFields } from "../fields.ts";
+import { asArg, asName, asNames, asRecord } from "./validate.ts";
+import { asImageReference, asInstallPrefix, asPlatform } from "./target.ts";
+
+type ImageProperties = Pick<ImageNode, "packages" | "target" | "base" | "destinations" | "config">;
+
+export function imageProperties(spec: ImageSpec, where: string): ImageProperties {
+  const packages = asNames(spec.packages, `${where}: packages`) ?? [];
+  const target = asPlatform(spec.target, `${where}: target`);
+  if (target.os !== "linux") throw new Error(`${where}: OCI production requires a Linux target`);
+  const destinations: Record<string, ImageDestination> = Object.create(null);
+  for (const [name, raw] of Object.entries(asRecord(spec.destinations ?? {}, `${where}: destinations`))) {
+    asName(name, `${where}: destination package`);
+    const value = asRecord(raw, `${where}: destination ${name}`);
+    rejectUnknownFields(`${where}: destination ${name}`, value, ["path", "owner"]);
+    destinations[name] = {
+      path: asInstallPrefix(value.path, `${where}: destination ${name}`),
+      owner: owner(value.owner, `${where}: destination ${name} owner`),
+    };
+  }
+  const config = asRecord(spec.config ?? {}, `${where}: config`);
+  rejectUnknownFields(`${where}: config`, config, ["entrypoint", "args", "env", "cwd", "user"]);
+  if (config.entrypoint !== undefined && !Array.isArray(config.entrypoint)) throw new Error(`${where}: entrypoint must be an argv array`);
+  const entrypoint: NonNullable<ImageConfig["entrypoint"]> = [];
+  for (const [index, raw] of ((config.entrypoint ?? []) as unknown[]).entries()) {
+    const argument = asArg(raw, `${where}: entrypoint[${index}]`);
+    if (argument.kind !== "literal" && argument.kind !== "package_command") throw new Error(`${where}: image arguments cannot refer to host or production paths`);
+    if (argument.kind === "literal" && index === 0) absolutePath(argument.value, `${where}: entrypoint executable`);
+    if (argument.kind === "package_command" && !packages.includes(argument.package)) throw new Error(`${where}: image command package must be selected explicitly`);
+    entrypoint.push(argument);
+  }
+  const env: Record<string, string> = Object.create(null);
+  for (const [key, value] of Object.entries(asRecord(config.env ?? {}, `${where}: environment`))) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || typeof value !== "string" || value.includes("\0")) throw new Error(`${where}: invalid image environment binding ${key}`);
+    env[key] = value;
+  }
+  if (config.args !== undefined && !Array.isArray(config.args)) throw new Error(`${where}: image args must be an array`);
+  const args = ((config.args ?? []) as unknown[]).map((value) => {
+    if (typeof value !== "string" || value.includes("\0")) throw new Error(`${where}: image args must be NUL-free strings`);
+    return value;
+  });
+  return {
+    packages, target,
+    ...(spec.base === undefined ? {} : { base: asImageReference(spec.base, `${where}: base`) }),
+    ...(Object.keys(destinations).length ? { destinations } : {}),
+    config: { entrypoint, args, env, cwd: absolutePath(config.cwd ?? "/", `${where}: cwd`), user: owner(config.user, `${where}: user`) },
+  };
+}
+
+function owner(value: unknown, where: string): ImageOwner {
+  if (value === undefined) return { uid: 0, gid: 0 };
+  const record = asRecord(value, where);
+  rejectUnknownFields(where, record, ["uid", "gid"]);
+  for (const key of ["uid", "gid"] as const) {
+    if (!Number.isInteger(record[key]) || (record[key] as number) < 0 || (record[key] as number) > 0xffffffff) throw new Error(`${where}.${key} must be an unsigned 32-bit integer`);
+  }
+  return { uid: record.uid as number, gid: record.gid as number };
+}
+function absolutePath(value: unknown, where: string): string {
+  return value === "/" ? "/" : asInstallPrefix(value, where);
+}
+
+/** Destination authority follows runtime packages only, never build tools. */
+export function checkImageSelection(image: ImageNode, catalog: Map<string, WorkspaceOutputNode>): void {
+  const pending = [...image.packages];
+  const selected = new Set<string>();
+  const placements: Record<string, PackageNode> = Object.create(null);
+  while (pending.length) {
+    const name = pending.pop()!;
+    if (selected.has(name)) continue;
+    selected.add(name);
+    const value = catalog.get(name);
+    if (value?.kind !== "package") continue; // reference admission diagnoses this
+    pending.push(...(value.runtime ?? []));
+    const prefix = image.destinations?.[name]?.path ?? `/opt/gripsack/${name}`;
+    asInstallPrefix(prefix, `image '${image.name}' destination for '${name}'`);
+    if (value.layout.kind === "fixed_prefix" && image.destinations?.[name]?.path !== value.layout.prefix) {
+      throw new DiagnosticError({ code: diagnosticCodes.badWorkspaceContext, severity: "error", message: "fixed-prefix image package requires its exact destination", labels: [{ span: image.span, note: "image selection" }, { span: value.span, note: "fixed-prefix package" }] });
+    }
+    for (const [otherPrefix, other] of Object.entries(placements)) {
+      if (prefix === otherPrefix || prefix.startsWith(otherPrefix + "/") || otherPrefix.startsWith(prefix + "/")) {
+        throw new DiagnosticError({ code: diagnosticCodes.badWorkspaceContext, severity: "error", message: `image package destinations overlap: ${prefix} and ${otherPrefix}`, labels: [{ span: image.span, note: "image selection" }, { span: value.span, note: "package placement" }, { span: other.span, note: "conflicting package placement" }] });
+      }
+    }
+    placements[prefix] = value;
+  }
+  for (const name of Object.keys(image.destinations ?? {})) {
+    if (!selected.has(name)) throw new DiagnosticError({ code: diagnosticCodes.unknownWorkspaceRef, severity: "error", message: `image destination names unselected runtime package '${name}'`, labels: [{ span: image.span, note: "image selection" }] });
+  }
+}
+"#),
+    ("src/workspace/ir.ts", r#"/** v6 workspace wire types; the core retains strict historical readers. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
@@ -2522,10 +2880,22 @@ export interface WorkspacePackageCommand {
   kind: "package_command";
   package: string;
   command: string;
+  sha256?: string;
 }
 
-export type WorkspacePath = WorkspaceLiteral | WorkspaceArtifactRef | WorkspaceHostPath;
-export type WorkspaceArg = WorkspaceLiteral | WorkspaceArtifactRef | WorkspacePackageCommand;
+export interface WorkspaceInputRef { kind: "input"; input: string }
+/** Source/output paths belong to the enclosing production operation. */
+export interface WorkspaceProductionPath { kind: "source" | "output"; selector: string }
+export interface WorkspaceInput {
+  name: string;
+  span: Span;
+  origin:
+    | { kind: "repo_file"; path: string }
+    | { kind: "repo_directory"; path: string; include: string[]; exclude?: string[] };
+}
+export interface WorkspaceMutationLock { scope: "user" | "store"; key: string; span: Span }
+export type WorkspacePath = WorkspaceLiteral | WorkspaceArtifactRef | WorkspaceHostPath | WorkspaceProductionPath;
+export type WorkspaceArg = WorkspaceLiteral | WorkspaceArtifactRef | WorkspacePackageCommand | WorkspaceInputRef | WorkspaceProductionPath;
 
 /** Per-output requirements — never inherited from the evaluating host. */
 export interface WorkspaceOsVersion {
@@ -2545,11 +2915,41 @@ export interface WorkspacePlatform {
  *  Linux worker; no implicit native or ambient-host fallback. */
 export type RecipeExecution =
   | { kind: "host"; access: "unconfined" }
-  | { kind: "isolated_linux"; worker: "buildkit" };
+  | { kind: "isolated_linux"; worker: "buildkit"; platform: WorkspacePlatform; toolchain: { reference: string } };
 
 export type PackageLayout =
   | { kind: "relocatable" }
-  | { kind: "fixed_prefix"; prefix: string };
+  | { kind: "fixed_prefix"; prefix: string }
+  | { kind: "prefix_materialized" };
+
+// ---------------------------------------------------------------------------
+// v6 acquisition sources (wire shape: schema/ir/v6.json $defs/workspaceSourceV6)
+// ---------------------------------------------------------------------------
+
+/** Existing archive/git/github/file/plugin acquisition, wrapped with its
+ *  provenance span. The legacy brew/pixi fetch kinds are rejected in v6 —
+ *  superseded by conda_environment/pixi_lock sources. */
+export interface FetchSource { kind: "fetch"; fetch: Fetch; span: Span }
+/** A coherent binary Conda environment solved through Rattler. `platforms`
+ *  omitted means resolved per requesting consumer platform. */
+export interface CondaEnvironmentSource {
+  kind: "conda_environment";
+  channels: string[];
+  packages: Record<string, string>;
+  platforms?: WorkspacePlatform[];
+  span: Span;
+}
+/** An explicit Pixi lock import: `manifest`/`lock` are workspace INPUT
+ *  names, never host paths. */
+export interface PixiLockSource {
+  kind: "pixi_lock";
+  manifest: string;
+  lock: string;
+  environment: string;
+  span: Span;
+}
+/** How a v6 recipe or provider package obtains its payload. */
+export type WorkspaceSourceV6 = FetchSource | CondaEnvironmentSource | PixiLockSource;
 
 export interface WorkspaceExecCommand {
   kind: "exec";
@@ -2563,6 +2963,7 @@ export interface WorkspaceRunBashCommand {
   kind: "run_bash";
   span: Span;
   interpreter: WorkspaceArg;
+  options: ["-e", "-u", "-o", "pipefail"];
   body: string;
   env?: Record<string, WorkspaceArg>;
   cwd?: WorkspacePath;
@@ -2572,19 +2973,32 @@ export interface WorkspaceRunBashCommand {
 
 export type WorkspaceCommand = WorkspaceExecCommand | WorkspaceRunBashCommand;
 
+export interface WorkspaceAction { kind: "ensure_artifact"; output: string; span: Span }
+export type WorkspaceStep = { command: WorkspaceCommand } | { action: WorkspaceAction };
+export type WorkspaceStepValue = WorkspaceCommand | WorkspaceAction | WorkspaceStep;
+export interface TaskContext { kind: "host"; mutable_paths: string[] }
+
 export type WorkspaceSource =
   | { kind: "repo_file"; path: string }
-  | { kind: "artifact_file"; output: string; selector: string };
+  | { kind: "artifact_file"; output: string; selector: string }
+  | { kind: "tree"; output: string; include: string[]; exclude?: string[] };
 
 export type WorkspaceContent =
   | { kind: "identity" }
   | { kind: "literal"; text: string }
-  | { kind: "template"; template: string; variables: Record<string, string> };
+  | { kind: "template"; template: string; variables: Record<string, string>; result_digest?: string };
 
 export type WorkspaceDestination =
   | { kind: "symlink"; path: string }
   | { kind: "tracked_copy"; path: string }
   | { kind: "managed_block"; path: string; marker: string };
+
+export interface WorkspaceFileCheck {
+  check: string;
+  subject: "source" | "rendered" | "deployed";
+  stage: "pre_flip" | "post_link" | "post_activate";
+  span: Span;
+}
 
 /** One profile file: origin, content and destination policy are
  *  orthogonal axes (A1-11). `source` may be omitted only when the
@@ -2594,6 +3008,7 @@ export interface WorkspaceFile {
   source?: WorkspaceSource;
   content: WorkspaceContent;
   destination: WorkspaceDestination;
+  checks?: WorkspaceFileCheck[];
 }
 
 export type WorkspaceWeekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
@@ -2613,13 +3028,13 @@ export interface RecipeNode {
   name: string;
   span: Span;
   kind: "recipe";
-  /** The recipe's fetch carries mandatory provenance in the v5
-   *  workspaceFetch wrapper; legacy modules keep the bare shape. */
-  source: { fetch: Fetch; span: Span };
+  /** The recipe's acquisition source — the v6 tagged union
+   *  (`workspaceSourceV6`); the legacy bare `{fetch,span}` shape is gone. */
+  source: WorkspaceSourceV6;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
-  steps?: WorkspaceCommand[];
+  steps?: WorkspaceStep[];
   checks?: string[];
 }
 
@@ -2628,7 +3043,7 @@ export interface RecipeNode {
  *  acquisition carrying its own provenance — no synthetic recipe. */
 export type WorkspaceProducer =
   | { kind: "recipe"; recipe: string }
-  | { kind: "provider"; provider: { fetch: Fetch; span: Span } };
+  | { kind: "provider"; provider: WorkspaceSourceV6 };
 
 export interface PackageNode {
   name: string;
@@ -2655,7 +3070,9 @@ export interface TaskNode {
   name: string;
   span: Span;
   kind: "task";
-  run: WorkspaceCommand;
+  steps: WorkspaceStep[];
+  context: TaskContext;
+  mutation_locks?: WorkspaceMutationLock[];
   deps?: string[];
   environment?: string;
   checks?: string[];
@@ -2678,12 +3095,34 @@ export interface CheckNode {
   subject: string;
 }
 
+export interface ImageOwner {
+  uid: number;
+  gid: number;
+}
+
+export interface ImageDestination {
+  /** Absolute installation prefix inside the image, never a host destination. */
+  path: string;
+  owner?: ImageOwner;
+}
+
+export interface ImageConfig {
+  entrypoint?: Extract<WorkspaceArg, { kind: "literal" | "package_command" }>[];
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  user?: ImageOwner;
+}
+
 export interface ImageNode {
   name: string;
   span: Span;
   kind: "image";
   packages: string[];
   target: WorkspacePlatform;
+  base?: string;
+  destinations?: Record<string, ImageDestination>;
+  config: Required<ImageConfig>;
 }
 
 export interface ProfileNode {
@@ -2735,19 +3174,42 @@ export interface WorkspaceValue {
   readonly __gripsack: "workspace";
   readonly ir: {
     span: Span;
+    name?: string;
+    inputs?: WorkspaceInput[];
+    mutation_locks?: WorkspaceMutationLock[];
     outputs: WorkspaceOutputNode[];
   };
 }
 
 export interface RecipeSpec {
-  source: Fetch;
+  /** A `Fetch` (wrapped as `{"kind":"fetch",…}`), a plain
+   *  {@link CondaEnvironmentSpec}/{@link PixiLockSpec}, or a pre-built
+   *  `condaEnvironment(...)`/`pixiFromLock(...)` source value. */
+  source: Fetch | CondaEnvironmentSpec | PixiLockSpec | WorkspaceSourceV6;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
-  steps?: WorkspaceCommand[];
+  steps?: readonly WorkspaceStepValue[];
   /** Publication gates — names of `check` outputs. */
   checks?: string[];
   span?: Span;
+}
+
+/** Authoring spec for a Conda environment source — see
+ *  `condaEnvironment(...)`. Channels are names/URLs in priority order;
+ *  packages map a lowercase name to a version MatchSpec (`"*"` allowed). */
+export interface CondaEnvironmentSpec {
+  channels: string[];
+  packages: Record<string, string>;
+  platforms?: WorkspacePlatform[];
+}
+
+/** Authoring spec for an explicit Pixi lock import — see
+ *  `pixiFromLock(...)`. `manifest`/`lock` are workspace input names. */
+export interface PixiLockSpec {
+  manifest: string;
+  lock: string;
+  environment: string;
 }
 
 export interface PackageSpec {
@@ -2773,7 +3235,9 @@ export interface EnvironmentSpec {
 }
 
 export interface TaskSpec {
-  run: WorkspaceCommand;
+  steps: readonly WorkspaceStepValue[];
+  context?: TaskContext;
+  locks?: readonly WorkspaceMutationLock[];
   /** Unordered prerequisites — names of `task` outputs, verified
    *  successful within one invocation. */
   deps?: string[];
@@ -2803,6 +3267,10 @@ export interface CheckSpec {
 export interface ImageSpec {
   packages: string[];
   target: WorkspacePlatform;
+  /** Digest-pinned registry image; omitted means scratch. Base config is not inherited. */
+  base?: string;
+  destinations?: Record<string, ImageDestination>;
+  config?: ImageConfig;
   span?: Span;
 }
 
@@ -2857,11 +3325,14 @@ export interface WorkspaceFileSpec {
   source?: WorkspaceSource;
   content: WorkspaceContent;
   destination: WorkspaceDestination;
+  checks?: readonly (Omit<WorkspaceFileCheck, "span"> & { span?: Span })[];
   span?: Span;
 }
 
 export interface WorkspaceSpec {
   outputs: ReadonlyArray<WorkspaceOutput | false | null | undefined>;
+  name?: string;
+  inputs?: readonly WorkspaceInput[];
   span?: Span;
 }
 
@@ -2888,6 +3359,8 @@ import type { Span } from "../module.ts";
 import type {
   CheckNode,
   CheckSpec,
+  CondaEnvironmentSpec,
+  CondaEnvironmentSource,
   EnvironmentNode,
   EnvironmentSpec,
   HookNode,
@@ -2904,6 +3377,9 @@ import type {
   ScheduleSpec,
   TaskNode,
   TaskSpec,
+  PixiLockSpec,
+  PixiLockSource,
+  WorkspaceMutationLock,
   WorkspaceCalendar,
   WorkspaceFn,
   WorkspaceOutput,
@@ -2912,23 +3388,26 @@ import type {
   WorkspaceProducer,
   WorkspaceSpec,
   WorkspaceValue,
+  WorkspaceSourceV6,
   WorkspaceWeekday,
 } from "./ir.ts";
 import {
   asCalendar,
   asCommand,
   asEnv,
-  asFetch,
   asFile,
   asName,
   asNames,
   asProducer,
+  asSourceV6,
   asRecord,
   duplicateError,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
 import { asExecution, asInstallPrefix, asLayout, asPlatform } from "./target.ts";
+import { asInput, asLock, asStep, asTaskContext, lockKey } from "./bindings.ts";
+import { imageProperties } from "./image.ts";
 
 
 /** A per-output build/target platform. */
@@ -2936,17 +3415,80 @@ export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
   return freezeDeep(asPlatform(spec, "targetPlatform(...)"));
 }
 
+/** Lower an authoring source — a bare `Fetch`, a plain
+ *  CondaEnvironmentSpec/PixiLockSpec, or a pre-built
+ *  `condaEnvironment(...)`/`pixiFromLock(...)` value — to the v6 tagged
+ *  wire shape, stamping `span` on freshly wrapped variants. */
+function asSourceValue(source: unknown, span: Span, where: string): WorkspaceSourceV6 {
+  const rec = asRecord(source, where);
+  if (rec.kind === "fetch" || rec.kind === "conda_environment" || rec.kind === "pixi_lock") {
+    return asSourceV6(source, where);
+  }
+  if (typeof rec.kind === "string" && rec.kind !== "") {
+    // a bare Fetch spec — the v6 fetch wrapper carries the provenance span
+    return asSourceV6({ kind: "fetch", fetch: source, span }, where);
+  }
+  if (rec.channels !== undefined || rec.packages !== undefined) {
+    const conda = source as CondaEnvironmentSpec;
+    return asSourceV6({
+      kind: "conda_environment",
+      channels: conda.channels,
+      packages: conda.packages,
+      ...(conda.platforms ? { platforms: conda.platforms } : {}),
+      span,
+    }, where);
+  }
+  const pixiLock = source as PixiLockSpec;
+  return asSourceV6({
+    kind: "pixi_lock",
+    manifest: pixiLock.manifest,
+    lock: pixiLock.lock,
+    environment: pixiLock.environment,
+    span,
+  }, where);
+}
+
+/** A coherent binary Conda environment source, solved through Rattler —
+ *  usable directly as `recipe({ source })` or inside `provider(...)`. */
+export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSource {
+  const span = callerSpan();
+  if (!span) {
+    throw new Error(
+      "condaEnvironment(...): could not capture a source span — construct the source explicitly",
+    );
+  }
+  const rec = asRecord(spec, "condaEnvironment(...)");
+  rejectUnknownFields("condaEnvironment(...)", rec, ["channels", "packages", "platforms"]);
+  return freezeDeep(asSourceValue(spec, span, "condaEnvironment(...)") as CondaEnvironmentSource);
+}
+
+/** An explicit Pixi lock import: `manifest`/`lock` are workspace input
+ *  names, `environment` selects the Pixi environment from the lock. */
+export function pixiFromLock(spec: PixiLockSpec): PixiLockSource {
+  const span = callerSpan();
+  if (!span) {
+    throw new Error(
+      "pixiFromLock(...): could not capture a source span — construct the source explicitly",
+    );
+  }
+  const rec = asRecord(spec, "pixiFromLock(...)");
+  rejectUnknownFields("pixiFromLock(...)", rec, ["manifest", "lock", "environment"]);
+  return freezeDeep(asSourceValue(spec, span, "pixiFromLock(...)") as PixiLockSource);
+}
+
 /** A direct provider-backed acquisition for `pkg({ producer })` —
  *  the package resolves through the declared provider with its own
- *  provenance, no synthetic recipe output. */
-export function provider(fetch: Fetch): WorkspaceProducer {
+ *  provenance, no synthetic recipe output. Accepts a `Fetch` (wrapped as
+ *  `{"kind":"fetch",…}`) or a `condaEnvironment(...)`/`pixiFromLock(...)`
+ *  source value. */
+export function provider(source: Fetch | WorkspaceSourceV6): WorkspaceProducer {
   const span = callerSpan();
   if (!span) {
     throw new Error(
       "provider(...): could not capture a source span — construct the producer explicitly",
     );
   }
-  return freezeDeep({ kind: "provider", provider: { fetch: asFetch(fetch, "provider(...)"), span } });
+  return freezeDeep({ kind: "provider", provider: asSourceValue(source, span, "provider(...)") });
 }
 
 
@@ -2976,19 +3518,19 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
     "source", "execution", "output_kind", "target", "steps", "checks", "span",
   ]);
   const span = nodeSpan(spec.span, what);
-  const fetch = asFetch(spec.source, `${what}: source`);
+  const source = asSourceValue(spec.source, span, `${what}: source`);
   if (spec.output_kind !== "file" && spec.output_kind !== "tree") {
     throw new Error(`${what}: output_kind must be "file" or "tree"`);
   }
   const steps = spec.steps?.length
-    ? spec.steps.map((c, i) => asCommand(c, `${what}: steps[${i}]`))
+    ? spec.steps.map((c, i) => asStep(c, `${what}: steps[${i}]`))
     : undefined;
   const checks = asNames(spec.checks, `${what}: checks`);
   const node: RecipeNode = {
     name,
     span,
     kind: "recipe",
-    source: { fetch, span },
+    source,
     execution: asExecution(spec.execution, `${what}: execution`),
     output_kind: spec.output_kind,
     target: asPlatform(spec.target, `${what}: target`),
@@ -3011,7 +3553,7 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
   const span = nodeSpan(spec.span, what);
   const producer = asProducer(spec.producer, `${what}: producer`);
   const commandsRec = asRecord(spec.commands, `${what}: commands`);
-  const commands: Record<string, string> = {};
+  const commands: Record<string, string> = Object.create(null);
   for (const [k, v] of Object.entries(commandsRec)) {
     commands[k] = asName(v, `${what}: commands["${k}"]`);
   }
@@ -3054,15 +3596,19 @@ export function environment(
   return makeOutput(node);
 }
 
-/** A manual task: one command plus unordered prerequisites and
- *  per-invocation postconditions. */
+/** A manual task: ordered local actions, unordered prerequisites and
+ * per-invocation postconditions. It never becomes cached production. */
 export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
   const what = `task("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["run", "deps", "environment", "checks", "span"]);
+  rejectUnknownFields(what, spec, ["steps", "context", "locks", "deps", "environment", "checks", "span"]);
   const span = nodeSpan(spec.span, what);
-  const run = asCommand(spec.run, `${what}: run`);
+  if (!Array.isArray(spec.steps) || spec.steps.length === 0) throw new Error(`${what}: steps must be nonempty`);
+  const steps = spec.steps.map((step, index) => asStep(step, `${what}: steps[${index}]`));
+  const context = asTaskContext(spec.context ?? { kind: "host", mutable_paths: [] }, `${what}: context`);
+  if (spec.locks !== undefined && !Array.isArray(spec.locks)) throw new Error(`${what}: locks must be an array`);
+  const locks = spec.locks?.map((lock, index) => asLock(lock, `${what}: locks[${index}]`));
   const deps = asNames(spec.deps, `${what}: deps`);
   const envName = spec.environment !== undefined
     ? asName(spec.environment, `${what}: environment`)
@@ -3072,7 +3618,9 @@ export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
     name,
     span,
     kind: "task",
-    run,
+    steps,
+    context,
+    ...(locks?.length ? { mutation_locks: locks } : {}),
     ...(deps ? { deps } : {}),
     ...(envName !== undefined ? { environment: envName } : {}),
     ...(checks ? { checks } : {}),
@@ -3118,19 +3666,18 @@ export function check(name: string, spec: CheckSpec): WorkspaceOutput<CheckNode>
   return makeOutput(node);
 }
 
-/** An image: a package set realized for one target platform. */
+/** A runtime package composition exported as an OCI image. */
 export function image(name: string, spec: ImageSpec): WorkspaceOutput<ImageNode> {
   const what = `image("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["packages", "target", "span"]);
+  rejectUnknownFields(what, spec, ["packages", "target", "base", "destinations", "config", "span"]);
   const span = nodeSpan(spec.span, what);
   const node: ImageNode = {
     name,
     span,
     kind: "image",
-    packages: asNames(spec.packages, `${what}: packages`) ?? [],
-    target: asPlatform(spec.target, `${what}: target`),
+    ...imageProperties(spec, what),
   };
   return makeOutput(node);
 }
@@ -3191,9 +3738,11 @@ export function hook(name: string, spec: HookSpec): WorkspaceOutput<HookNode> {
 export function workspace(spec: WorkspaceSpec): WorkspaceValue {
   const what = "workspace(...)";
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["outputs", "span"]);
+  rejectUnknownFields(what, spec, ["outputs", "inputs", "name", "span"]);
   if (!Array.isArray(spec.outputs)) throw new Error(`${what}: outputs must be an array`);
   const span = nodeSpan(spec.span, what);
+  const name = spec.name === undefined ? undefined : asName(spec.name, `${what}: name`);
+  if (name !== undefined && /[\u0000-\u001f\u007f-\u009f]/.test(name)) throw new Error(`${what}: name cannot contain controls`);
   const outputs: WorkspaceOutputNode[] = [];
   const seen = new Map<string, Span>();
   for (const o of spec.outputs) {
@@ -3214,9 +3763,30 @@ export function workspace(spec: WorkspaceSpec): WorkspaceValue {
   if (outputs.length === 0) {
     throw new Error(`${what}: outputs must declare at least one output`);
   }
+  outputs.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  if (spec.inputs !== undefined && !Array.isArray(spec.inputs)) throw new Error(`${what}: inputs must be an array`);
+  const inputs = spec.inputs?.map((input, index) => asInput(input, `${what}: inputs[${index}]`)) ?? [];
+  const inputNames = new Map<string, Span>();
+  for (const input of inputs) {
+    const previous = inputNames.get(input.name);
+    if (previous) throw duplicateError(input.name, previous, input.span);
+    inputNames.set(input.name, input.span);
+  }
+  inputs.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  const locks = new Map<string, WorkspaceMutationLock>();
+  for (const output of outputs) {
+    if (output.kind !== "task") continue;
+    for (const lock of output.mutation_locks ?? []) {
+      const key = lockKey(lock);
+      const previous = locks.get(key);
+      if (!previous || `${lock.span.file}:${lock.span.line}:${lock.span.col ?? 0}` <
+        `${previous.span.file}:${previous.span.line}:${previous.span.col ?? 0}`) locks.set(key, lock);
+    }
+  }
+  const mutation_locks = [...locks].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([, lock]) => lock);
   return Object.freeze({
     __gripsack: "workspace",
-    ir: freezeDeep({ span, outputs }),
+    ir: freezeDeep({ span, outputs, ...(name === undefined ? {} : { name }), ...(inputs.length ? { inputs } : {}), ...(mutation_locks.length ? { mutation_locks } : {}) }),
   });
 }
 
@@ -3294,12 +3864,26 @@ export function asExecution(value: unknown, where: string): RecipeExecution {
       throw new Error(`${where}.access must explicitly be "unconfined" (host filesystem/kernel/network access)`);
     }
   } else if (execution.kind === "isolated_linux") {
-    rejectUnknownFields(where, execution, ["kind", "worker"]);
+    rejectUnknownFields(where, execution, ["kind", "worker", "platform", "toolchain"]);
     if (execution.worker !== "buildkit") throw new Error(`${where}.worker must be "buildkit"`);
+    const platform = asPlatform(execution.platform, `${where}.platform`);
+    if (platform.os !== "linux") throw new Error(`${where}.platform must be Linux`);
+    const toolchain = asRecord(execution.toolchain, `${where}.toolchain`);
+    rejectUnknownFields(`${where}.toolchain`, toolchain, ["reference"]);
+    asImageReference(toolchain.reference, `${where}.toolchain.reference`);
   } else {
     throw new Error(`${where}.kind must be "host" or "isolated_linux"; native acquisition uses a provider-backed package`);
   }
   return value as RecipeExecution;
+}
+
+export function asImageReference(value: unknown, where: string): string {
+  if (typeof value !== "string" ||
+    !/^[a-z0-9][a-z0-9._:/-]*\/[a-z0-9._:/-]+@sha256:[a-f0-9]{64}$/.test(value) ||
+    value.includes("//")) {
+    throw new Error(`${where} must be a normalized digest-pinned OCI image`);
+  }
+  return value;
 }
 
 export function asInstallPrefix(value: unknown, where: string): string {
@@ -3318,8 +3902,10 @@ export function asLayout(value: unknown, where: string): PackageLayout {
   } else if (layout.kind === "fixed_prefix") {
     rejectUnknownFields(where, layout, ["kind", "prefix"]);
     asInstallPrefix(layout.prefix, `${where}.prefix`);
+  } else if (layout.kind === "prefix_materialized") {
+    rejectUnknownFields(where, layout, ["kind"]);
   } else {
-    throw new Error(`${where}.kind must be "relocatable" or "fixed_prefix"`);
+    throw new Error(`${where}.kind must be "relocatable", "fixed_prefix" or "prefix_materialized"`);
   }
   return value as PackageLayout;
 }
@@ -3396,15 +3982,14 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
         const selected = catalog.get(name)!;
         if (selected.kind !== "package") continue; // reference pass rejected this
         requireCompatibleTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
-        if (selected.layout.kind === "fixed_prefix" &&
-          (node.kind === "image" || node.prefix !== selected.layout.prefix)) {
+        const prefix = node.kind === "image" ? node.destinations?.[name]?.path : node.prefix;
+        if (selected.layout.kind === "fixed_prefix" && prefix !== selected.layout.prefix) {
           throw new DiagnosticError({
             code: diagnosticCodes.unknownWorkspaceRef,
             severity: "error",
             message:
               `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with ` +
-              `layout fixed_prefix at '${selected.layout.prefix}' but declares no matching ` +
-              `install prefix (image prefix materialization is unavailable until B4)`,
+              `layout fixed_prefix at '${selected.layout.prefix}' but declares no matching install prefix`,
             labels: [
               { span: node.span, note: `'${node.name}' declared here` },
               { span: selected.span, note: `'${selected.name}' declared here` },
@@ -3542,7 +4127,7 @@ export function treeFiles(
   return files;
 }
 "#),
-    ("src/workspace/validate.ts", r#"/** Runtime structural guards for v5 workspace authoring values. */
+    ("src/workspace/validate.ts", r#"/** Runtime structural guards for current workspace authoring values. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import { DiagnosticError, diagnosticCodes } from "../diagnostic.ts";
@@ -3559,7 +4144,9 @@ import type {
   WorkspacePath,
   WorkspaceProducer,
   WorkspaceSource,
+  WorkspaceSourceV6,
 } from "./ir.ts";
+import { asPlatform } from "./target.ts";
 
 // ---------------------------------------------------------------------------
 
@@ -3612,16 +4199,19 @@ export function nodeSpan(explicit: Span | undefined, what: string): Span {
 const ARG_FIELDS: Record<string, readonly string[]> = {
   literal: ["kind", "value"],
   artifact: ["kind", "output", "selector"],
-  package_command: ["kind", "package", "command"],
+  package_command: ["kind", "package", "command", "sha256"],
+  input: ["kind", "input"],
+  source: ["kind", "selector"],
+  output: ["kind", "selector"],
   host: ["kind", "path"],
 };
 
 export function asArg(v: unknown, where: string): WorkspaceArg {
   const rec = asRecord(v, where);
   const kind = rec.kind;
-  if (typeof kind !== "string" || !(kind in ARG_FIELDS) || kind === "host") {
+  if (typeof kind !== "string" || !Object.hasOwn(ARG_FIELDS, kind) || kind === "host") {
     throw new Error(
-      `${where}: kind must be "literal", "artifact" or "package_command"`,
+      `${where}: expected a literal, artifact, package_command, input, source or output argument`,
     );
   }
   rejectUnknownFields(where, rec, ARG_FIELDS[kind]!);
@@ -3629,9 +4219,11 @@ export function asArg(v: unknown, where: string): WorkspaceArg {
   // every reference field names something and must be non-empty
   if (kind === "literal") {
     if (typeof rec.value !== "string") throw new Error(`${where}.value must be a string`);
+    if (rec.value.includes("\0")) throw new Error(`${where}.value cannot contain NUL`);
   } else {
     for (const field of ARG_FIELDS[kind]!) {
       if (field === "selector") asSelector(rec[field], `${where}.${field}`);
+      else if (field === "sha256") { if (rec[field] !== undefined) asSha256(rec[field], `${where}.${field}`); }
       else if (field !== "kind") asName(rec[field], `${where}.${field}`);
     }
   }
@@ -3641,8 +4233,8 @@ export function asArg(v: unknown, where: string): WorkspaceArg {
 export function asPath(v: unknown, where: string): WorkspacePath {
   const rec = asRecord(v, where);
   const kind = rec.kind;
-  if (typeof kind !== "string" || !(kind in ARG_FIELDS) || kind === "package_command") {
-    throw new Error(`${where}: kind must be "literal", "artifact" or "host"`);
+  if (typeof kind !== "string" || !Object.hasOwn(ARG_FIELDS, kind) || kind === "package_command" || kind === "input") {
+    throw new Error(`${where}: expected a literal, artifact, host, source or output path`);
   }
   rejectUnknownFields(where, rec, ARG_FIELDS[kind]!);
   if (kind === "literal") {
@@ -3662,7 +4254,7 @@ export function asPath(v: unknown, where: string): WorkspacePath {
 export function asSelector(v: unknown, where: string): string {
   const s = asName(v, where);
   if (s === ".") return s;
-  if (s.includes("\0") || s.startsWith("/") ||
+  if (s.includes("\0") || s.includes("\\") || s.startsWith("/") ||
     s.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) {
     throw new Error(
       `${where}: selector must be "." or a normalized relative POSIX path ` +
@@ -3687,6 +4279,11 @@ export function asRepoFilePath(v: unknown, where: string): string {
   return path;
 }
 
+export function asSha256(value: unknown, where: string): string {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) throw new Error(`${where}: expected 64 lowercase SHA-256 hex characters`);
+  return value;
+}
+
 /** Environment values are DATA — literal text or an artifact
  *  reference. A package_command here would invoke a program from a
  *  value position, which workspace IR never admits (0052 §2.2, core E128):
@@ -3701,6 +4298,9 @@ export function asEnv(
   // fluent inputs must emit identical bytes regardless of insertion order.
   const entries: [string, WorkspaceArg][] = [];
   for (const k of Object.keys(rec).sort()) {
+    if (k.length === 0 || k.includes("=") || k.includes("\0")) {
+      throw new Error(`${where}: environment names must be nonempty and contain neither '=' nor NUL`);
+    }
     const a = asArg(rec[k], `${where}["${k}"]`);
     if (a.kind === "package_command") {
       throw new Error(
@@ -3726,19 +4326,30 @@ export function asCommand(v: unknown, where: string): WorkspaceCommand {
   if (rec.kind === "exec") {
     rejectUnknownFields(where, rec, ["kind", "span", "argv", "env", "cwd"]);
     asSpan(rec.span, where);
-    if (!Array.isArray(rec.argv)) throw new Error(`${where}.argv must be an array`);
-    rec.argv.forEach((a, i) => asArg(a, `${where}.argv[${i}]`));
-    asEnv(rec.env as Record<string, WorkspaceArg> | undefined, `${where}.env`);
-    if (rec.cwd !== undefined) asPath(rec.cwd, `${where}.cwd`);
-    return v as WorkspaceCommand;
+    if (!Array.isArray(rec.argv) || rec.argv.length === 0) throw new Error(`${where}.argv must contain an executable argument`);
+    const argv = rec.argv.map((a, i) => asArg(a, `${where}.argv[${i}]`));
+    const env = asEnv(rec.env as Record<string, WorkspaceArg> | undefined, `${where}.env`);
+    return {
+      kind: "exec",
+      span: asSpan(rec.span, where),
+      argv,
+      ...(env ? { env } : {}),
+      ...(rec.cwd !== undefined ? { cwd: asPath(rec.cwd, `${where}.cwd`) } : {}),
+    };
   }
   if (rec.kind === "run_bash") {
-    rejectUnknownFields(where, rec, ["kind", "span", "interpreter", "body", "env", "cwd", "line_map"]);
+    rejectUnknownFields(where, rec, ["kind", "span", "interpreter", "options", "body", "env", "cwd", "line_map"]);
     asSpan(rec.span, where);
-    asArg(rec.interpreter, `${where}.interpreter`);
+    const interpreter = asArg(rec.interpreter, `${where}.interpreter`);
+    if (interpreter.kind !== "package_command") {
+      throw new Error(`${where}.interpreter must reference a declared package command`);
+    }
+    if (!Array.isArray(rec.options) || rec.options.length !== 4 ||
+      rec.options.some((value, index) => value !== ["-e", "-u", "-o", "pipefail"][index])) {
+      throw new Error(`${where}.options must be -e -u -o pipefail`);
+    }
     if (typeof rec.body !== "string") throw new Error(`${where}.body must be a string`);
-    asEnv(rec.env as Record<string, WorkspaceArg> | undefined, `${where}.env`);
-    if (rec.cwd !== undefined) asPath(rec.cwd, `${where}.cwd`);
+    const env = asEnv(rec.env as Record<string, WorkspaceArg> | undefined, `${where}.env`);
     if (rec.line_map !== undefined) {
       if (
         !Array.isArray(rec.line_map) ||
@@ -3747,7 +4358,16 @@ export function asCommand(v: unknown, where: string): WorkspaceCommand {
         throw new Error(`${where}.line_map must be an array of integers >= 1`);
       }
     }
-    return v as WorkspaceCommand;
+    return {
+      kind: "run_bash",
+      span: asSpan(rec.span, where),
+      interpreter,
+      options: ["-e", "-u", "-o", "pipefail"],
+      body: rec.body,
+      ...(env ? { env } : {}),
+      ...(rec.cwd !== undefined ? { cwd: asPath(rec.cwd, `${where}.cwd`) } : {}),
+      ...(rec.line_map !== undefined ? { line_map: rec.line_map as number[] } : {}),
+    };
   }
   throw new Error(`${where}: kind must be "exec" or "run_bash" — use exec()/runBash()`);
 }
@@ -3765,7 +4385,18 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
     asSelector(rec.selector, `${where}.selector`);
     return v as WorkspaceSource;
   }
-  throw new Error(`${where}: kind must be "repo_file" or "artifact_file"`);
+  if (rec.kind === "tree") {
+    rejectUnknownFields(where, rec, ["kind", "output", "include", "exclude"]);
+    asName(rec.output, `${where}.output`);
+    if (!Array.isArray(rec.include) || rec.include.length === 0) throw new Error(`${where}.include must be nonempty`);
+    rec.include.forEach((pattern, index) => asRepoFilePath(pattern, `${where}.include[${index}]`));
+    if (rec.exclude !== undefined) {
+      if (!Array.isArray(rec.exclude)) throw new Error(`${where}.exclude must be an array`);
+      rec.exclude.forEach((pattern, index) => asRepoFilePath(pattern, `${where}.exclude[${index}]`));
+    }
+    return v as WorkspaceSource;
+  }
+  throw new Error(`${where}: kind must be "repo_file", "artifact_file" or "tree"`);
 }
 
 export function asContent(v: unknown, where: string): WorkspaceContent {
@@ -3780,8 +4411,9 @@ export function asContent(v: unknown, where: string): WorkspaceContent {
     return v as WorkspaceContent;
   }
   if (rec.kind === "template") {
-    rejectUnknownFields(where, rec, ["kind", "template", "variables"]);
+    rejectUnknownFields(where, rec, ["kind", "template", "variables", "result_digest"]);
     if (typeof rec.template !== "string") throw new Error(`${where}.template must be a string`);
+    if (rec.result_digest !== undefined) asSha256(rec.result_digest, `${where}.result_digest`);
     const vars = asRecord(rec.variables, `${where}.variables`);
     for (const [k, val] of Object.entries(vars)) {
       if (typeof val !== "string") {
@@ -3835,7 +4467,7 @@ export function asDestinationPath(v: unknown, where: string): string {
 
 export function asFile(v: unknown, where: string): WorkspaceFile {
   const rec = asRecord(v, where);
-  rejectUnknownFields(where, rec, ["span", "source", "content", "destination"]);
+  rejectUnknownFields(where, rec, ["span", "source", "content", "destination", "checks"]);
   asSpan(rec.span, where);
   const content = asContent(rec.content, `${where}.content`);
   if (rec.source !== undefined) asSource(rec.source, `${where}.source`);
@@ -3846,6 +4478,19 @@ export function asFile(v: unknown, where: string): WorkspaceFile {
     );
   }
   asDestination(rec.destination, `${where}.destination`);
+  if (rec.checks !== undefined) {
+    if (!Array.isArray(rec.checks)) throw new Error(`${where}.checks must be an array`);
+    rec.checks.forEach((value, index) => {
+      const check = asRecord(value, `${where}.checks[${index}]`);
+      rejectUnknownFields(`${where}.checks[${index}]`, check, ["check", "subject", "stage", "span"]);
+      asName(check.check, `${where}.checks[${index}].check`);
+      asSpan(check.span, `${where}.checks[${index}]`);
+      if (!["source", "rendered", "deployed"].includes(check.subject as string) ||
+        !["pre_flip", "post_link", "post_activate"].includes(check.stage as string)) {
+        throw new Error(`${where}.checks[${index}] has an invalid subject/stage`);
+      }
+    });
+  }
   return v as WorkspaceFile;
 }
 
@@ -3881,14 +4526,9 @@ export function asProducer(v: unknown, where: string): WorkspaceProducer {
   }
   if (rec.kind === "provider") {
     rejectUnknownFields(where, rec, ["kind", "provider"]);
-    const inner = asRecord(rec.provider, `${where}.provider`);
-    rejectUnknownFields(`${where}.provider`, inner, ["fetch", "span"]);
     return {
       kind: "provider",
-      provider: {
-        fetch: asFetch(inner.fetch, `${where}.provider.fetch`),
-        span: asSpan(inner.span, `${where}.provider`),
-      },
+      provider: asSourceV6(rec.provider, `${where}.provider`),
     };
   }
   throw new Error(`${where}: producer must be a recipe output name or provider(fetch(...))`);
@@ -3900,6 +4540,60 @@ export function asFetch(v: unknown, where: string): Fetch {
     throw new Error(`${where} must be a fetch spec (githubRelease()/tarball()/…)`);
   }
   return v as Fetch;
+}
+
+/** A v6 acquisition source — the tagged union behind `RecipeNode.source`
+ *  and the provider branch of {@link WorkspaceProducer}. The legacy bare
+ *  `{fetch,span}` shape and the brew/pixi fetch kinds are rejected. */
+export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
+  const rec = asRecord(v, where);
+  if (rec.kind === "fetch") {
+    rejectUnknownFields(where, rec, ["kind", "fetch", "span"]);
+    const fetch = asFetch(rec.fetch, `${where}.fetch`);
+    if (fetch.kind === "brew" || fetch.kind === "pixi") {
+      throw new Error(
+        `${where}.fetch: "${fetch.kind}" fetches are superseded by conda_environment/pixi_lock sources in v6`,
+      );
+    }
+    asSpan(rec.span, where);
+    return v as WorkspaceSourceV6;
+  }
+  if (rec.kind === "conda_environment") {
+    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "span"]);
+    const channels = rec.channels;
+    if (!Array.isArray(channels) || channels.length === 0 ||
+      channels.some((c) => typeof c !== "string" || c === "")) {
+      throw new Error(`${where}.channels must be a non-empty array of channel names/URLs`);
+    }
+    const packages = asRecord(rec.packages, `${where}.packages`);
+    const entries = Object.entries(packages);
+    if (entries.length === 0) {
+      throw new Error(`${where}.packages must declare at least one package`);
+    }
+    for (const [name, spec] of entries) {
+      if (!/^[a-z0-9][a-z0-9._-]*$/.test(name)) {
+        throw new Error(`${where}.packages: "${name}" must be a lowercase Conda package name`);
+      }
+      if (typeof spec !== "string" || spec === "") {
+        throw new Error(`${where}.packages["${name}"] must be a non-empty MatchSpec string ("*" allowed)`);
+      }
+    }
+    if (rec.platforms !== undefined) {
+      if (!Array.isArray(rec.platforms)) throw new Error(`${where}.platforms must be an array`);
+      rec.platforms.forEach((p, i) => asPlatform(p, `${where}.platforms[${i}]`));
+    }
+    asSpan(rec.span, where);
+    return v as WorkspaceSourceV6;
+  }
+  if (rec.kind === "pixi_lock") {
+    rejectUnknownFields(where, rec, ["kind", "manifest", "lock", "environment", "span"]);
+    asName(rec.manifest, `${where}.manifest`);
+    asName(rec.lock, `${where}.lock`);
+    asName(rec.environment, `${where}.environment`);
+    asSpan(rec.span, where);
+    return v as WorkspaceSourceV6;
+  }
+  throw new Error(`${where}: source kind must be "fetch", "conda_environment" or "pixi_lock"`);
 }
 
 /** Deep copy + freeze: the returned value shares no mutable state
@@ -3934,14 +4628,14 @@ export function duplicateError(name: string, first: Span, again: Span): Diagnost
 }
 "#),
     ("src/workspace.ts", r#"/** Workspace declarations (0052 A1): the supported surface for the
- *  v5 workspace frontend — pure value constructors for nine typed
- *  output variants plus the shared command/file grammar and v5
+ *  v6 workspace frontend — pure value constructors for nine typed
+ *  output variants plus the shared command/file grammar and current
  *  emitter. No global registry or import-order magic — the
  *  root `gripsack.ts` entrypoint RETURNS a {@link WorkspaceValue}
  *  built by {@link workspace}, and the driver turns that value into
  *  IR (JSON) via {@link emitWorkspaceIr}.
  *
- *  Wire shape is exactly `schema/ir/v5.json`: every node carries a
+ *  Wire shape is exactly `schema/ir/v6.json`: every node carries a
  *  mandatory provenance span, all structs reject unknown fields at
  *  construction time (JS callers and casts get the same boundary as
  *  the type-checker), and returned values are deeply frozen — an
@@ -3957,10 +4651,14 @@ export function duplicateError(name: string, first: Span, again: Span): Diagnost
  *  admission), commands.ts, files.ts, outputs.ts and emit.ts.
  *  This file is the supported re-export surface. */
 
-export { artifact, bash, bashBody, exec, hostPath, lit, packageCommand, runBash } from "./workspace/commands.ts";
+export { artifact, bash, bashBody, exec, hostPath, lit, packageCommand, runBash, sourcePath, outputPath } from "./workspace/commands.ts";
 export type { BashBuilder, BashCommandBuilder, ExecBuilder } from "./workspace/commands.ts";
+export { ensureArtifact, input, inputDirectory, inputFile, lock } from "./workspace/bindings.ts";
+export { cargoPackage } from "./workspace/cargo.ts";
+export type { CargoPackageSpec } from "./workspace/cargo.ts";
 export {
   artifactFile,
+  artifactTree,
   file,
   identity,
   literalText,
@@ -3972,31 +4670,37 @@ export {
 } from "./workspace/files.ts";
 export { treeFiles } from "./workspace/tree.ts";
 export type { TreeFilesOptions } from "./workspace/tree.ts";
-export { emitWorkspaceIr } from "./workspace/emit.ts";
 export type {
   BashBody,
-  CheckNode,
   CheckSpec,
-  EnvironmentNode,
+  CondaEnvironmentSource,
+  CondaEnvironmentSpec,
   EnvironmentSpec,
   ExecSpec,
-  HookNode,
   HookSpec,
-  ImageNode,
+  ImageConfig,
+  ImageDestination,
+  ImageOwner,
   ImageSpec,
   PackageLayout,
-  PackageNode,
   PackageSpec,
-  ProfileNode,
+  PixiLockSource,
+  PixiLockSpec,
   ProfileSpec,
   RecipeExecution,
-  RecipeNode,
   RecipeSpec,
+  FetchSource,
   RunBashSpec,
-  ScheduleNode,
   ScheduleSpec,
-  TaskNode,
   TaskSpec,
+  TaskContext,
+  WorkspaceAction,
+  WorkspaceStep,
+  WorkspaceStepValue,
+  WorkspaceInput,
+  WorkspaceInputRef,
+  WorkspaceMutationLock,
+  WorkspaceFileCheck,
   WorkspaceAbi,
   WorkspaceArg,
   WorkspaceArtifactRef,
@@ -4014,11 +4718,12 @@ export type {
   WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
-  WorkspaceOutputNode,
   WorkspacePackageCommand,
   WorkspacePath,
   WorkspacePlatform,
   WorkspaceProducer,
+  WorkspaceProductionPath,
+  WorkspaceSourceV6,
   WorkspaceRunBashCommand,
   WorkspaceSource,
   WorkspaceSpec,
@@ -4027,12 +4732,14 @@ export type {
 } from "./workspace/ir.ts";
 export {
   check,
+  condaEnvironment,
   daily,
   defineWorkspace,
   environment,
   hook,
   image,
   pkg,
+  pixiFromLock,
   profile,
   provider,
   recipe,
@@ -4042,10 +4749,18 @@ export {
   weekly,
   workspace,
 } from "./workspace/outputs.ts";
+
+import { condaEnvironment as condaEnvironmentImpl, pixiFromLock as pixiFromLockImpl } from "./workspace/outputs.ts";
+
+/** Conda acquisition namespace: `conda.environment({ channels, packages, platforms? })`. */
+export const conda = { environment: condaEnvironmentImpl };
+/** Pixi acquisition namespace: `pixi.fromLock({ manifest, lock, environment })`. */
+export const pixi = { fromLock: pixiFromLockImpl };
 "#),
     ("deno.json", r#"{
   "imports": {
-    "@gripsack/core": "./src/pin.ts"
+    "@gripsack/core": "./src/pin.ts",
+    "@gripsack/core/advanced": "./src/pin-advanced.ts"
   },
   "tasks": {
     "test": "deno test --allow-read --allow-write --allow-run --allow-env test/"
@@ -4054,7 +4769,7 @@ export {
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.43.0",
+  "version": "0.44.0",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",
@@ -4064,6 +4779,10 @@ export {
     ".": {
       "types": "./src/index.ts",
       "import": "./dist/src/index.js"
+    },
+    "./advanced": {
+      "types": "./src/advanced.ts",
+      "import": "./dist/src/advanced.js"
     }
   },
   "files": [

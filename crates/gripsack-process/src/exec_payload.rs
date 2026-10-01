@@ -1,9 +1,12 @@
 //! Exec exactly the admitted image. std::Command's Unix execvp fallback may
 //! interpret ENOEXEC through an unadmitted shell; this path deliberately uses
 //! execve after the shared supervisor has configured stdio/process groups.
-use super::{ActivationEnvironment, OperatorEnvironment, ProcessRole, image::SelectedProgram};
+use super::{
+    ActivationEnvironment, OperatorEnvironment, ProcessRole, image::SelectedProgram,
+    overlay::EnvironmentOverlay,
+};
 use std::{
-    ffi::{CString, OsStr},
+    ffi::{CString, OsStr, OsString},
     io,
     os::unix::ffi::OsStrExt,
 };
@@ -50,8 +53,10 @@ impl ExecPayload {
         operator: &OperatorEnvironment,
         role: ProcessRole,
         activation: Option<&ActivationEnvironment>,
+        overlay: Option<&EnvironmentOverlay>,
     ) -> io::Result<(Self, Vec<String>)> {
-        let arguments = std::iter::once(program.argument_zero.as_os_str())
+        let arguments = std::iter::once(program.execution_argument_zero())
+            .chain(program.loader_arguments())
             .chain(program.interpreter_argument.as_deref())
             .chain(
                 program
@@ -76,11 +81,24 @@ impl ExecPayload {
                     .as_deref()
                     .map(|value| (OsStr::new("GRIPSACK_ACTIVATION_ATTEMPT"), OsStr::new(value))),
             );
-        let environment = operator.entries(role).chain(reserved);
+        let operator_entries: Vec<(OsString, OsString)> = match overlay {
+            Some(overlay) => overlay
+                .merge(operator.entries(role))
+                .into_iter()
+                .collect(),
+            None => operator
+                .entries(role)
+                .map(|(key, value)| (key.to_os_string(), value.to_os_string()))
+                .collect(),
+        };
+        let environment = operator_entries
+            .iter()
+            .map(|(key, value)| (key.as_os_str(), value.as_os_str()))
+            .chain(reserved);
         let mut budget = VectorBudget {
             bytes: 2 * std::mem::size_of::<*const libc::c_char>(),
         };
-        budget.admit(program.executable.path.as_os_str().as_bytes().len())?;
+        budget.admit(program.execution_image().path.as_os_str().as_bytes().len())?;
         let mut argument_count = 0;
         for argument in arguments.clone() {
             budget.admit(argument.as_bytes().len())?;
@@ -125,7 +143,7 @@ impl ExecPayload {
         environment.push(std::ptr::null());
         Ok((
             Self {
-                program: c_string(program.executable.path.as_os_str().as_bytes())?,
+                program: c_string(program.execution_image().path.as_os_str().as_bytes())?,
                 _arguments: owned_arguments,
                 _environment: owned_environment,
                 arguments,

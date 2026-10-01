@@ -16,7 +16,7 @@
 //! their inherited pipes are closed at the deadline instead.
 
 mod deadline;
-pub use deadline::OperationDeadline;
+pub use deadline::{OperationDeadline, execution_deadline};
 mod digest;
 mod exchange;
 pub use digest::Sha256Digest;
@@ -26,12 +26,18 @@ mod receipt;
 pub use receipt::{ByteBinding, Enforcement, ProcessDisposition, ProcessReceipt};
 mod environment;
 pub use environment::{OperatorEnvironment, ProcessRole};
+mod overlay;
+pub use overlay::EnvironmentOverlay;
+mod interactive;
+pub mod executable;
 mod descriptors;
 mod exec_payload;
 mod image;
 pub use image::{ProgramIdentity, SelectedProgram};
 mod invocation;
 pub use invocation::{ActivationEnvironment, Invocation, NativeInput, NativeOutcome};
+mod leases;
+pub use leases::ProcessLeases;
 mod confinement;
 pub use confinement::{Boundary, Ruleset, runtime_read_roots};
 mod input;
@@ -49,8 +55,6 @@ use std::io;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
-
-const MAX_CLEANUP_RESERVE: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
@@ -186,9 +190,7 @@ fn supervise(
     let end = limits
         .operation_deadline
         .map_or(end, |deadline| deadline.min(end));
-    let remaining = end.saturating_duration_since(start);
-    let reserve = (remaining / 4).min(MAX_CLEANUP_RESERVE);
-    let mut active_deadline = OperationDeadline::at(end - reserve);
+    let mut active_deadline = OperationDeadline::at(execution_deadline(start, end));
     if active_deadline.remaining().is_none() {
         return Ok(empty(StopReason::Deadline));
     }

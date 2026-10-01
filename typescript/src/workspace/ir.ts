@@ -1,4 +1,4 @@
-/** v5 workspace wire types (schema/ir/v5.json); v4 is read-only in core. */
+/** v6 workspace wire types; the core retains strict historical readers. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
@@ -34,10 +34,22 @@ export interface WorkspacePackageCommand {
   kind: "package_command";
   package: string;
   command: string;
+  sha256?: string;
 }
 
-export type WorkspacePath = WorkspaceLiteral | WorkspaceArtifactRef | WorkspaceHostPath;
-export type WorkspaceArg = WorkspaceLiteral | WorkspaceArtifactRef | WorkspacePackageCommand;
+export interface WorkspaceInputRef { kind: "input"; input: string }
+/** Source/output paths belong to the enclosing production operation. */
+export interface WorkspaceProductionPath { kind: "source" | "output"; selector: string }
+export interface WorkspaceInput {
+  name: string;
+  span: Span;
+  origin:
+    | { kind: "repo_file"; path: string }
+    | { kind: "repo_directory"; path: string; include: string[]; exclude?: string[] };
+}
+export interface WorkspaceMutationLock { scope: "user" | "store"; key: string; span: Span }
+export type WorkspacePath = WorkspaceLiteral | WorkspaceArtifactRef | WorkspaceHostPath | WorkspaceProductionPath;
+export type WorkspaceArg = WorkspaceLiteral | WorkspaceArtifactRef | WorkspacePackageCommand | WorkspaceInputRef | WorkspaceProductionPath;
 
 /** Per-output requirements — never inherited from the evaluating host. */
 export interface WorkspaceOsVersion {
@@ -57,11 +69,41 @@ export interface WorkspacePlatform {
  *  Linux worker; no implicit native or ambient-host fallback. */
 export type RecipeExecution =
   | { kind: "host"; access: "unconfined" }
-  | { kind: "isolated_linux"; worker: "buildkit" };
+  | { kind: "isolated_linux"; worker: "buildkit"; platform: WorkspacePlatform; toolchain: { reference: string } };
 
 export type PackageLayout =
   | { kind: "relocatable" }
-  | { kind: "fixed_prefix"; prefix: string };
+  | { kind: "fixed_prefix"; prefix: string }
+  | { kind: "prefix_materialized" };
+
+// ---------------------------------------------------------------------------
+// v6 acquisition sources (wire shape: schema/ir/v6.json $defs/workspaceSourceV6)
+// ---------------------------------------------------------------------------
+
+/** Existing archive/git/github/file/plugin acquisition, wrapped with its
+ *  provenance span. The legacy brew/pixi fetch kinds are rejected in v6 —
+ *  superseded by conda_environment/pixi_lock sources. */
+export interface FetchSource { kind: "fetch"; fetch: Fetch; span: Span }
+/** A coherent binary Conda environment solved through Rattler. `platforms`
+ *  omitted means resolved per requesting consumer platform. */
+export interface CondaEnvironmentSource {
+  kind: "conda_environment";
+  channels: string[];
+  packages: Record<string, string>;
+  platforms?: WorkspacePlatform[];
+  span: Span;
+}
+/** An explicit Pixi lock import: `manifest`/`lock` are workspace INPUT
+ *  names, never host paths. */
+export interface PixiLockSource {
+  kind: "pixi_lock";
+  manifest: string;
+  lock: string;
+  environment: string;
+  span: Span;
+}
+/** How a v6 recipe or provider package obtains its payload. */
+export type WorkspaceSourceV6 = FetchSource | CondaEnvironmentSource | PixiLockSource;
 
 export interface WorkspaceExecCommand {
   kind: "exec";
@@ -75,6 +117,7 @@ export interface WorkspaceRunBashCommand {
   kind: "run_bash";
   span: Span;
   interpreter: WorkspaceArg;
+  options: ["-e", "-u", "-o", "pipefail"];
   body: string;
   env?: Record<string, WorkspaceArg>;
   cwd?: WorkspacePath;
@@ -84,19 +127,32 @@ export interface WorkspaceRunBashCommand {
 
 export type WorkspaceCommand = WorkspaceExecCommand | WorkspaceRunBashCommand;
 
+export interface WorkspaceAction { kind: "ensure_artifact"; output: string; span: Span }
+export type WorkspaceStep = { command: WorkspaceCommand } | { action: WorkspaceAction };
+export type WorkspaceStepValue = WorkspaceCommand | WorkspaceAction | WorkspaceStep;
+export interface TaskContext { kind: "host"; mutable_paths: string[] }
+
 export type WorkspaceSource =
   | { kind: "repo_file"; path: string }
-  | { kind: "artifact_file"; output: string; selector: string };
+  | { kind: "artifact_file"; output: string; selector: string }
+  | { kind: "tree"; output: string; include: string[]; exclude?: string[] };
 
 export type WorkspaceContent =
   | { kind: "identity" }
   | { kind: "literal"; text: string }
-  | { kind: "template"; template: string; variables: Record<string, string> };
+  | { kind: "template"; template: string; variables: Record<string, string>; result_digest?: string };
 
 export type WorkspaceDestination =
   | { kind: "symlink"; path: string }
   | { kind: "tracked_copy"; path: string }
   | { kind: "managed_block"; path: string; marker: string };
+
+export interface WorkspaceFileCheck {
+  check: string;
+  subject: "source" | "rendered" | "deployed";
+  stage: "pre_flip" | "post_link" | "post_activate";
+  span: Span;
+}
 
 /** One profile file: origin, content and destination policy are
  *  orthogonal axes (A1-11). `source` may be omitted only when the
@@ -106,6 +162,7 @@ export interface WorkspaceFile {
   source?: WorkspaceSource;
   content: WorkspaceContent;
   destination: WorkspaceDestination;
+  checks?: WorkspaceFileCheck[];
 }
 
 export type WorkspaceWeekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
@@ -125,13 +182,13 @@ export interface RecipeNode {
   name: string;
   span: Span;
   kind: "recipe";
-  /** The recipe's fetch carries mandatory provenance in the v5
-   *  workspaceFetch wrapper; legacy modules keep the bare shape. */
-  source: { fetch: Fetch; span: Span };
+  /** The recipe's acquisition source — the v6 tagged union
+   *  (`workspaceSourceV6`); the legacy bare `{fetch,span}` shape is gone. */
+  source: WorkspaceSourceV6;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
-  steps?: WorkspaceCommand[];
+  steps?: WorkspaceStep[];
   checks?: string[];
 }
 
@@ -140,7 +197,7 @@ export interface RecipeNode {
  *  acquisition carrying its own provenance — no synthetic recipe. */
 export type WorkspaceProducer =
   | { kind: "recipe"; recipe: string }
-  | { kind: "provider"; provider: { fetch: Fetch; span: Span } };
+  | { kind: "provider"; provider: WorkspaceSourceV6 };
 
 export interface PackageNode {
   name: string;
@@ -167,7 +224,9 @@ export interface TaskNode {
   name: string;
   span: Span;
   kind: "task";
-  run: WorkspaceCommand;
+  steps: WorkspaceStep[];
+  context: TaskContext;
+  mutation_locks?: WorkspaceMutationLock[];
   deps?: string[];
   environment?: string;
   checks?: string[];
@@ -190,12 +249,34 @@ export interface CheckNode {
   subject: string;
 }
 
+export interface ImageOwner {
+  uid: number;
+  gid: number;
+}
+
+export interface ImageDestination {
+  /** Absolute installation prefix inside the image, never a host destination. */
+  path: string;
+  owner?: ImageOwner;
+}
+
+export interface ImageConfig {
+  entrypoint?: Extract<WorkspaceArg, { kind: "literal" | "package_command" }>[];
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  user?: ImageOwner;
+}
+
 export interface ImageNode {
   name: string;
   span: Span;
   kind: "image";
   packages: string[];
   target: WorkspacePlatform;
+  base?: string;
+  destinations?: Record<string, ImageDestination>;
+  config: Required<ImageConfig>;
 }
 
 export interface ProfileNode {
@@ -247,19 +328,42 @@ export interface WorkspaceValue {
   readonly __gripsack: "workspace";
   readonly ir: {
     span: Span;
+    name?: string;
+    inputs?: WorkspaceInput[];
+    mutation_locks?: WorkspaceMutationLock[];
     outputs: WorkspaceOutputNode[];
   };
 }
 
 export interface RecipeSpec {
-  source: Fetch;
+  /** A `Fetch` (wrapped as `{"kind":"fetch",…}`), a plain
+   *  {@link CondaEnvironmentSpec}/{@link PixiLockSpec}, or a pre-built
+   *  `condaEnvironment(...)`/`pixiFromLock(...)` source value. */
+  source: Fetch | CondaEnvironmentSpec | PixiLockSpec | WorkspaceSourceV6;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
-  steps?: WorkspaceCommand[];
+  steps?: readonly WorkspaceStepValue[];
   /** Publication gates — names of `check` outputs. */
   checks?: string[];
   span?: Span;
+}
+
+/** Authoring spec for a Conda environment source — see
+ *  `condaEnvironment(...)`. Channels are names/URLs in priority order;
+ *  packages map a lowercase name to a version MatchSpec (`"*"` allowed). */
+export interface CondaEnvironmentSpec {
+  channels: string[];
+  packages: Record<string, string>;
+  platforms?: WorkspacePlatform[];
+}
+
+/** Authoring spec for an explicit Pixi lock import — see
+ *  `pixiFromLock(...)`. `manifest`/`lock` are workspace input names. */
+export interface PixiLockSpec {
+  manifest: string;
+  lock: string;
+  environment: string;
 }
 
 export interface PackageSpec {
@@ -285,7 +389,9 @@ export interface EnvironmentSpec {
 }
 
 export interface TaskSpec {
-  run: WorkspaceCommand;
+  steps: readonly WorkspaceStepValue[];
+  context?: TaskContext;
+  locks?: readonly WorkspaceMutationLock[];
   /** Unordered prerequisites — names of `task` outputs, verified
    *  successful within one invocation. */
   deps?: string[];
@@ -315,6 +421,10 @@ export interface CheckSpec {
 export interface ImageSpec {
   packages: string[];
   target: WorkspacePlatform;
+  /** Digest-pinned registry image; omitted means scratch. Base config is not inherited. */
+  base?: string;
+  destinations?: Record<string, ImageDestination>;
+  config?: ImageConfig;
   span?: Span;
 }
 
@@ -369,11 +479,14 @@ export interface WorkspaceFileSpec {
   source?: WorkspaceSource;
   content: WorkspaceContent;
   destination: WorkspaceDestination;
+  checks?: readonly (Omit<WorkspaceFileCheck, "span"> & { span?: Span })[];
   span?: Span;
 }
 
 export interface WorkspaceSpec {
   outputs: ReadonlyArray<WorkspaceOutput | false | null | undefined>;
+  name?: string;
+  inputs?: readonly WorkspaceInput[];
   span?: Span;
 }
 

@@ -1,0 +1,53 @@
+[package]
+name = "gripsack-conda"
+description = "Canonical Conda lock admission and an optional Rattler resolver/installer helper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# The core shares Rattler's canonical MatchSpec/record parser, not a second
+# partial grammar. Solver, networking and installation stay helper-only.
+[features]
+default = []
+helper = [
+    "dep:rattler",
+    "dep:rattler_lock",
+    "dep:rattler_networking",
+    "dep:rattler_package_streaming",
+    "dep:rattler_repodata_gateway",
+    "dep:rattler_solve",
+    "dep:reqwest",
+    "dep:sha2",
+    "dep:tokio",
+]
+
+[dependencies]
+gripsack-ir.workspace = true
+gripsack-fetch.workspace = true
+gripsack-fs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rattler_conda_types = { version = "0.55", default-features = false }
+rattler_digest = { version = "=2.0.0", default-features = false }
+jiff = { version = "0.2", default-features = false, features = ["std"] }
+url = "2"
+
+# --- helper-only (feature `helper`) ---------------------------------------
+# rustls only; anonymous HTTPS only (userinfo credentials are a strict error).
+rattler = { version = "0.51", optional = true, default-features = false, features = ["rustls"] }
+rattler_lock = { version = "0.34", optional = true }
+rattler_networking = { version = "0.31", optional = true, default-features = false, features = ["rustls"] }
+rattler_package_streaming = { version = "0.27", optional = true, default-features = false, features = ["rustls"] }
+rattler_repodata_gateway = { version = "0.34", optional = true, default-features = false, features = ["rustls", "gateway"] }
+rattler_solve = { version = "10", optional = true }
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls", "json", "gzip", "stream", "http2"] }
+sha2.workspace = true
+sha2.optional = true
+tokio = { version = "1", optional = true, features = ["rt", "macros"] }
+
+[[bin]]
+name = "gripsack-conda"
+path = "src/bin/gripsack-conda.rs"
+required-features = ["helper"]

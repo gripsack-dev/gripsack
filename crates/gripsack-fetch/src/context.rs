@@ -45,6 +45,13 @@ impl FetchContext {
         }
     }
 
+    /// The context for grip's OWN tool downloads (pixi, the BuildKit
+    /// bridge helper): bound to operator env only, never the
+    /// repo-declared build env this context may carry.
+    pub fn provisioning(&self) -> &FetchContext {
+        self.provisioning.as_deref().unwrap_or(self)
+    }
+
     /// The platform facts bottle selection runs on (A0-01).
     pub fn host_platform(&self) -> &crate::bottle::HostPlatform {
         &self.host_platform
@@ -150,7 +157,7 @@ impl FetchContext {
         // Provisioning can itself acquire an archive. Do not hold a permit
         // while recursively provisioning pixi, including when the cap is one.
         let pixi_executable = if matches!(spec, FetchSpec::Pixi { .. }) {
-            Some(pixi::ensure(self.provisioning.as_deref().unwrap_or(self))?)
+            Some(pixi::ensure(self.provisioning())?)
         } else {
             None
         };
@@ -228,6 +235,27 @@ impl FetchContext {
             archive::validate_tree(dest, self.limits)?;
         }
         Ok(outcome)
+    }
+
+    /// One immutable artifact as RAW verified bytes (A3): no archive
+    /// interpretation — Conda package archives are retained as opaque
+    /// store objects. The shared bounded transport spools and hashes the
+    /// payload; a digest mismatch is a hard failure, never a warning.
+    pub fn download_verified(
+        &self,
+        url: &str,
+        sha256: &str,
+    ) -> Result<crate::spool::Download, FetchError> {
+        let _permit = self.acquisitions.acquire();
+        let download = tarball::download(self, url, None)?;
+        if sha256 != download.hash.as_str() {
+            return Err(FetchError::HashMismatch {
+                url: url.into(),
+                expected: sha256.into(),
+                actual: download.hash.into(),
+            });
+        }
+        Ok(download)
     }
 
     pub fn payload_hash(&self, spec: &FetchSpec) -> Result<Option<FetchIdentity>, FetchError> {

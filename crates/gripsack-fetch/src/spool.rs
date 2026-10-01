@@ -57,7 +57,7 @@ impl<R: Read> Read for Limited<R> {
     }
 }
 
-pub(crate) struct Download {
+pub struct Download {
     pub file: tempfile::NamedTempFile,
     pub hash: DownloadHash,
 }

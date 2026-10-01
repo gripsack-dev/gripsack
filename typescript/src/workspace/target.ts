@@ -53,12 +53,26 @@ export function asExecution(value: unknown, where: string): RecipeExecution {
       throw new Error(`${where}.access must explicitly be "unconfined" (host filesystem/kernel/network access)`);
     }
   } else if (execution.kind === "isolated_linux") {
-    rejectUnknownFields(where, execution, ["kind", "worker"]);
+    rejectUnknownFields(where, execution, ["kind", "worker", "platform", "toolchain"]);
     if (execution.worker !== "buildkit") throw new Error(`${where}.worker must be "buildkit"`);
+    const platform = asPlatform(execution.platform, `${where}.platform`);
+    if (platform.os !== "linux") throw new Error(`${where}.platform must be Linux`);
+    const toolchain = asRecord(execution.toolchain, `${where}.toolchain`);
+    rejectUnknownFields(`${where}.toolchain`, toolchain, ["reference"]);
+    asImageReference(toolchain.reference, `${where}.toolchain.reference`);
   } else {
     throw new Error(`${where}.kind must be "host" or "isolated_linux"; native acquisition uses a provider-backed package`);
   }
   return value as RecipeExecution;
+}
+
+export function asImageReference(value: unknown, where: string): string {
+  if (typeof value !== "string" ||
+    !/^[a-z0-9][a-z0-9._:/-]*\/[a-z0-9._:/-]+@sha256:[a-f0-9]{64}$/.test(value) ||
+    value.includes("//")) {
+    throw new Error(`${where} must be a normalized digest-pinned OCI image`);
+  }
+  return value;
 }
 
 export function asInstallPrefix(value: unknown, where: string): string {
@@ -77,8 +91,10 @@ export function asLayout(value: unknown, where: string): PackageLayout {
   } else if (layout.kind === "fixed_prefix") {
     rejectUnknownFields(where, layout, ["kind", "prefix"]);
     asInstallPrefix(layout.prefix, `${where}.prefix`);
+  } else if (layout.kind === "prefix_materialized") {
+    rejectUnknownFields(where, layout, ["kind"]);
   } else {
-    throw new Error(`${where}.kind must be "relocatable" or "fixed_prefix"`);
+    throw new Error(`${where}.kind must be "relocatable", "fixed_prefix" or "prefix_materialized"`);
   }
   return value as PackageLayout;
 }
@@ -155,15 +171,14 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
         const selected = catalog.get(name)!;
         if (selected.kind !== "package") continue; // reference pass rejected this
         requireCompatibleTarget(`${node.kind} '${node.name}' package selection target mismatch`, node, selected);
-        if (selected.layout.kind === "fixed_prefix" &&
-          (node.kind === "image" || node.prefix !== selected.layout.prefix)) {
+        const prefix = node.kind === "image" ? node.destinations?.[name]?.path : node.prefix;
+        if (selected.layout.kind === "fixed_prefix" && prefix !== selected.layout.prefix) {
           throw new DiagnosticError({
             code: diagnosticCodes.unknownWorkspaceRef,
             severity: "error",
             message:
               `workspace: ${node.kind} '${node.name}' selects package '${selected.name}' with ` +
-              `layout fixed_prefix at '${selected.layout.prefix}' but declares no matching ` +
-              `install prefix (image prefix materialization is unavailable until B4)`,
+              `layout fixed_prefix at '${selected.layout.prefix}' but declares no matching install prefix`,
             labels: [
               { span: node.span, note: `'${node.name}' declared here` },
               { span: selected.span, note: `'${selected.name}' declared here` },

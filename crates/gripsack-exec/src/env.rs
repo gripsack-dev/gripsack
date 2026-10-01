@@ -59,37 +59,44 @@ fn render_lines(modules: &BTreeMap<String, store::ModuleState>) -> Option<Vec<St
     let mut any = false;
     for state in modules.values() {
         for var in &state.env {
+            let name = var.name();
+            let operation = var.operation();
             // manifests are disk state: a name that is not a shell
             // identifier would inject into every shell that sources
             // this profile. sema rejects these at eval; this guard is
             // for the hand-edited manifest.
-            if !is_identifier(&var.name) {
+            if !is_identifier(name) {
                 // data up, rendering at the edge: lower crates never
                 // print — this surfaces in the run log instead
-                tracing::warn!(name = %var.name, "skipping env var with an invalid name");
+                tracing::warn!(name, "skipping env var with an invalid name");
                 continue;
             }
-            let resolved = var
-                .value
-                .replace("{store}", &state.store_path.to_string_lossy());
-            if !seen.insert((&var.name, var.op, resolved.clone())) {
+            let (resolved, literal): (std::borrow::Cow<'_, str>, bool) = match var {
+                store::EnvironmentContribution::LegacyExpression(value) => (
+                    value.value.replace("{store}", &state.store_path.to_string_lossy()).into(), false,
+                ),
+                store::EnvironmentContribution::Structured(store::StructuredEnvironment::Literal { value, .. }) => (value.as_str().into(), true),
+                store::EnvironmentContribution::Structured(store::StructuredEnvironment::StorePath { path, .. }) => (
+                    format!("{}/{path}", state.store_path.display()).into(), true,
+                ),
+            };
+            if !seen.insert((name, operation, literal, resolved.clone())) {
                 continue;
             }
             any = true;
-            let line = match var.op {
-                EnvOp::Set => format!("export {}=\"{}\"", var.name, shell_quote(&resolved)),
-                EnvOp::Prepend => format!(
-                    "export {}=\"{}:${{{}}}\"",
-                    var.name,
-                    shell_quote(&resolved),
-                    var.name
-                ),
-                EnvOp::Append => format!(
-                    "export {}=\"${{{}}}:{}\"",
-                    var.name,
-                    var.name,
-                    shell_quote(&resolved)
-                ),
+            let line = if literal {
+                match operation {
+                    EnvOp::Set => format!("export {name}={}", ShellLiteral(&resolved)),
+                    EnvOp::Prepend => format!("export {name}={}${{{name}:+:}}\"${{{name}-}}\"", ShellLiteral(&resolved)),
+                    EnvOp::Append => format!("export {name}=\"${{{name}-}}\"${{{name}:+:}}{}", ShellLiteral(&resolved)),
+                }
+            } else {
+                // Historical generations retain expression expansion exactly.
+                match operation {
+                    EnvOp::Set => format!("export {name}=\"{}\"", shell_quote(&resolved)),
+                    EnvOp::Prepend => format!("export {name}=\"{}:${{{name}}}\"", shell_quote(&resolved)),
+                    EnvOp::Append => format!("export {name}=\"${{{name}}}:{}\"", shell_quote(&resolved)),
+                }
             };
             lines.push(line);
         }
@@ -102,7 +109,7 @@ fn render_lines(modules: &BTreeMap<String, store::ModuleState>) -> Option<Vec<St
 
 /// A shell-safe env var name: POSIX identifier rules. The value side
 /// is quoted; the name side cannot be, so it is validated instead.
-fn is_identifier(name: &str) -> bool {
+pub(crate) fn is_identifier(name: &str) -> bool {
     let mut chars = name.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -121,6 +128,18 @@ fn shell_quote(value: &str) -> String {
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('`', "\\`")
+}
+
+/// A shell word that can carry data but cannot grant expansion authority.
+pub(crate) struct ShellLiteral<'a>(pub &'a str);
+impl std::fmt::Display for ShellLiteral<'_> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("'")?;
+        let mut parts = self.0.split('\'');
+        if let Some(first) = parts.next() { out.write_str(first)?; }
+        for part in parts { out.write_str("'\\''")?; out.write_str(part)?; }
+        out.write_str("'")
+    }
 }
 
 #[cfg(test)]
@@ -146,7 +165,7 @@ mod tests {
                 prior: None,
                 preserved_drift: false,
             }],
-            env,
+            env: env.into_iter().map(Into::into).collect(),
             tree256: None,
             build_closure: vec![],
         }
@@ -160,33 +179,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn renders_set_prepend_append_with_store_resolution() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut modules = BTreeMap::new();
-        modules.insert(
-            "hx".to_string(),
-            state(
-                "/gs/store/abc-hx",
-                vec![
-                    var("EDITOR", EnvOp::Set, "hx"),
-                    var("PATH", EnvOp::Prepend, "{store}/bin"),
-                    var("MANPATH", EnvOp::Append, "{store}/man"),
-                ],
-            ),
-        );
-        let path = render_env_file(dir.path(), store::GenerationId::new(1), &modules).unwrap();
-        let out = std::fs::read_to_string(path).unwrap();
-        assert!(out.contains("export EDITOR=\"hx\""), "{out}");
-        assert!(
-            out.contains("export PATH=\"/gs/store/abc-hx/bin:${PATH}\""),
-            "{out}"
-        );
-        assert!(
-            out.contains("export MANPATH=\"${MANPATH}:/gs/store/abc-hx/man\""),
-            "{out}"
-        );
-    }
 
     #[test]
     fn empty_contributions_remove_the_file() {
@@ -207,17 +199,39 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_contributions_render_once() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut modules = BTreeMap::new();
-        let s = state(
-            "/gs/store/abc-hx",
-            vec![var("PATH", EnvOp::Prepend, "{store}/bin")],
+    fn retained_literal_values_do_not_gain_legacy_expansion_authority() {
+        use store::{EnvironmentContribution, StructuredEnvironment};
+        let temporary = tempfile::tempdir().unwrap();
+        let literal = "$HOME ${HOME} {store} $(tripwire) `tripwire` ' \\\nsecond line";
+        let mut module = state(
+            "/gs/store/profile with $HOME",
+            vec![var("LEGACY", EnvOp::Set, "$HOME/bin"), var("SAME", EnvOp::Set, "$HOME")],
         );
-        modules.insert("a".to_string(), s.clone());
-        modules.insert("b".to_string(), s);
-        let path = render_env_file(dir.path(), store::GenerationId::new(1), &modules).unwrap();
-        let out = std::fs::read_to_string(path).unwrap();
-        assert_eq!(out.matches("abc-hx/bin").count(), 1, "{out}");
+        for (name, op, value) in [
+            ("LITERAL", EnvOp::Set, literal),
+            ("SAME", EnvOp::Set, "$HOME"),
+            ("PATH", EnvOp::Prepend, "/declared"),
+        ] {
+            module.env.push(EnvironmentContribution::Structured(
+                StructuredEnvironment::Literal { name:name.into(), op, value:value.into() },
+            ));
+        }
+        module.env.push(EnvironmentContribution::Structured(
+            StructuredEnvironment::StorePath { name:"PATH".into(),op:EnvOp::Prepend,path:"commands".into() },
+        ));
+        let encoded = serde_json::to_vec(&module).unwrap();
+        let module = serde_json::from_slice::<store::ModuleState>(&encoded).unwrap();
+        let modules = BTreeMap::from([("profile".into(), module)]);
+        let profile = render_env_file(temporary.path(),store::GenerationId::new(1),&modules).unwrap();
+        let marker = temporary.path().join("unexpected-execution");
+        let output = std::process::Command::new("/bin/sh")
+            .args(["-c", r#"probe="$2"; tripwire() { : > "$probe"; }; . "$1"; printf '%s\0' "$LEGACY" "$LITERAL" "$SAME" "$PATH""#, "env-probe"])
+            .arg(profile).arg(&marker)
+            .env_clear().env("HOME","/operator-home").env("PATH","/operator-bin")
+            .output().unwrap();
+        assert!(output.status.success());
+        let expected = ["/operator-home/bin", literal, "$HOME", "/gs/store/profile with $HOME/commands:/declared:/operator-bin"].join("\0") + "\0";
+        assert_eq!(output.stdout, expected.as_bytes());
+        assert!(!marker.exists());
     }
 }

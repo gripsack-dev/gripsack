@@ -15,6 +15,7 @@ mod resources;
 mod steps;
 mod verify_paths;
 mod workspace;
+mod workspace_v6;
 
 use crate::diagnostic::{Diagnostic, Severity};
 use crate::model::Ir;

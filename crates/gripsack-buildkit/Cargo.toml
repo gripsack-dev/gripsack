@@ -10,6 +10,19 @@ repository.workspace = true
 base64 = "0.22"
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml = "0.9"
 thiserror.workspace = true
 sha2.workspace = true
 gripsack-process.workspace = true
+gripsack-policy.workspace = true
+gripsack-fs.workspace = true
+protobuf = "=3.7.2"
+getrandom = "0.4"
+libc = "0.2"
+tar = "0.4"
+flate2 = "1"
+tempfile = "3"
+
+[build-dependencies]
+protobuf-codegen = "=3.7.2"
+

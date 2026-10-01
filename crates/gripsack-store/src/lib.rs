@@ -40,6 +40,7 @@ pub mod trust;
 
 pub use generations::{
     CommittedSelection, DeployedEntry, Generation, IntentRecord, ModuleState,
+    EnvironmentContribution, StructuredEnvironment,
     current as current_generation, flip, list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{

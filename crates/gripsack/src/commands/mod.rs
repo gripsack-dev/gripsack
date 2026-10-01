@@ -4,6 +4,8 @@
 
 pub mod adopt;
 pub mod apply;
+pub mod build;
+mod builder;
 pub mod check;
 pub mod doctor;
 pub mod eval;
@@ -17,6 +19,7 @@ mod prepared;
 pub mod probe;
 pub mod repo;
 pub mod rollback;
+pub mod run;
 pub mod self_update;
 mod store_verify;
 pub mod trust;
@@ -25,6 +28,8 @@ pub mod why_owns;
 
 pub use adopt::adopt;
 pub use apply::{ApplyOptions, apply, apply_scoped};
+pub use build::{BuildArgs, build};
+pub use builder::{BuilderCommand, builder};
 pub use check::check;
 pub use doctor::doctor;
 pub use eval::{
@@ -38,6 +43,7 @@ pub use init::init;
 pub use plan::{plan_ir, plan_module};
 pub use repo::resolve as resolve_repo;
 pub use rollback::rollback;
+pub use run::{RunArgs, ShellArgs, TaskArgs, run, shell, task};
 pub use store_verify::store_verify;
 pub use trust::{TrustCommand, trust};
 pub use update::update;

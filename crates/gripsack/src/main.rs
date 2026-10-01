@@ -76,6 +76,14 @@ enum Command {
         #[arg(long)]
         jobs: Option<usize>,
     },
+    /// Realize named workspace recipes/packages into the native store.
+    /// Linux production is submitted as one checked BuildKit subgraph.
+    Build(commands::BuildArgs),
+    /// Inspect, stop or clean the recorded owned Linux builder.
+    Builder {
+        #[command(subcommand)]
+        command: commands::BuilderCommand,
+    },
     /// Validate a workspace catalog or legacy env without host activation.
     /// The provisioned frontend may be prepared; no builder starts.
     Check {
@@ -107,6 +115,12 @@ enum Command {
         /// Generation number (default: the previous one)
         generation: Option<gripsack_store::GenerationId>,
     },
+    /// Run one command inside a named project environment (no generation)
+    Run(commands::RunArgs),
+    /// Open an interactive shell inside a named project environment
+    Shell(commands::ShellArgs),
+    /// Invoke a named development task once (no generation)
+    Task(commands::TaskArgs),
     /// Update grip itself: tarball installs self-update in place;
     /// brew/cargo/mise installs get their manager's command
     SelfUpdate {
@@ -185,9 +199,14 @@ fn main() -> ExitCode {
     let command_name = match &command {
         Command::Adopt { .. } => "Adopt",
         Command::Apply { .. } => "Apply",
+        Command::Build(_) => "Build",
+        Command::Builder { .. } => "Builder",
         Command::Check { .. } => "Check",
         Command::Plan { .. } => "Plan",
         Command::Rollback { .. } => "Rollback",
+        Command::Run(_) => "Run",
+        Command::Shell(_) => "Shell",
+        Command::Task(_) => "Task",
         Command::SelfUpdate { .. } => "SelfUpdate",
         Command::Update { .. } => "Update",
         Command::Generations => "Generations",
@@ -240,6 +259,11 @@ fn main() -> ExitCode {
             ),
             Err(code) => code,
         },
+        Command::Build(mut args) => match commands::resolve_repo(args.repo.take().as_deref()) {
+            Ok(repo) => commands::build(&repo, args, palette),
+            Err(code) => code,
+        },
+        Command::Builder { command } => commands::builder(command),
         Command::Check { host, repo, json } => match commands::resolve_repo(repo.as_deref()) {
             Ok(repo) => {
                 let sink = if json {
@@ -275,6 +299,18 @@ fn main() -> ExitCode {
             }
         },
         Command::Rollback { generation } => commands::rollback(generation, palette),
+        Command::Run(mut args) => match commands::resolve_repo(args.repo.take().as_deref()) {
+            Ok(repo) => commands::run(&repo, args, palette),
+            Err(code) => code,
+        },
+        Command::Shell(mut args) => match commands::resolve_repo(args.repo.take().as_deref()) {
+            Ok(repo) => commands::shell(&repo, args, palette),
+            Err(code) => code,
+        },
+        Command::Task(mut args) => match commands::resolve_repo(args.repo.take().as_deref()) {
+            Ok(repo) => commands::task(&repo, args, palette),
+            Err(code) => code,
+        },
         Command::Trust { command } => commands::trust(command, palette),
         Command::Hooks { command } => commands::hooks(command, palette),
         Command::Plan {
@@ -360,7 +396,7 @@ fn main() -> ExitCode {
                 palette.dim(&commands::render_host_inputs(&outcome.host_inputs))
             );
             let waves = gripsack_exec::waves(&ir).unwrap_or_default();
-            if modules.is_empty() || ir.workspace.is_some() {
+            if modules.is_empty() || ir.has_workspace() {
                 match render::diff_section(
                     &ir,
                     &repository,
@@ -381,12 +417,12 @@ fn main() -> ExitCode {
                     }
                 }
             }
-            if let Some(workspace) = &ir.workspace {
-                let selected = workspace.outputs.iter().filter(|output| {
-                    modules.is_empty() || modules.iter().any(|name| name == output.name())
+            if ir.has_workspace() {
+                let selected = ir.workspace_outputs().filter(|output| {
+                    modules.is_empty() || modules.iter().any(|name| name == output.name)
                 });
                 for output in selected {
-                    println!("  {:?} ({})", output.name(), output.kind());
+                    println!("  {:?} ({})", output.name, output.kind);
                 }
             } else {
                 match modules.first() {

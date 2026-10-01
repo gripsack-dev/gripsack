@@ -107,6 +107,59 @@ fn native_child_cannot_read_ungranted_environment_or_inherited_descriptor() {
 }
 
 #[test]
+fn explicit_coordination_descriptor_survives_while_ambient_descriptor_closes() {
+    let temporary = tempfile::tempdir().unwrap();
+    let lease_path = temporary.path().join("lease");
+    let ambient_path = temporary.path().join("ambient");
+    fs::write(&lease_path, b"retained lease").unwrap();
+    fs::write(&ambient_path, b"ungranted bytes").unwrap();
+    let lease = fs::File::open(&lease_path).unwrap();
+    let ambient = fs::File::open(&ambient_path).unwrap();
+    let lease_fd = lease.as_raw_fd();
+    let ambient_fd = ambient.as_raw_fd();
+    let environment = operator(&[("PATH", "/usr/bin:/bin")]);
+    let deadline = std::time::Instant::now() + limits().timeout;
+    let selected =
+        SelectedProgram::select(&environment, Path::new("/bin/sh"), None, deadline).unwrap();
+    let invocation = Invocation::admit(
+        &environment,
+        ProcessRole::Build,
+        &selected,
+        temporary.path(),
+        Limits {
+            operation_deadline: Some(deadline),
+            ..limits()
+        },
+    )
+    .unwrap()
+    .retain_leases(ProcessLeases {
+        worker: Some(lease),
+        retention: None,
+    })
+    .unwrap();
+    let script = format!(
+        "set -eu\ncat /dev/fd/{lease_fd} > retained\nif cat /dev/fd/{ambient_fd} > stolen 2>/dev/null; then exit 91; fi\n"
+    );
+    let outcome = invocation
+        .run(
+            &[OsStr::new("-s")],
+            NativeInput::Script(&script),
+            None,
+            |_| Control::Continue,
+        )
+        .unwrap();
+    assert!(outcome.success, "{:?}", outcome.receipt);
+    assert_eq!(
+        fs::read(temporary.path().join("retained")).unwrap(),
+        b"retained lease"
+    );
+    assert_ne!(
+        fs::read(temporary.path().join("stolen")).unwrap(),
+        b"ungranted bytes"
+    );
+}
+
+#[test]
 fn raw_bytes_have_no_line_limit_but_keep_the_total_output_limit() {
     let mut raw = Vec::new();
     let outcome = run_raw(
@@ -171,6 +224,171 @@ fn spawn_failure_keeps_the_kernel_error_and_does_not_report_success() {
     );
     assert_eq!(outcome.receipt.error.unwrap().os_code, Some(libc::ENOEXEC));
     assert_eq!(outcome.receipt.exit_code, None);
+}
+
+#[test]
+fn task_overlay_reaches_child_with_search_prefix_precedence() {
+    let temporary = tempfile::tempdir().unwrap();
+    let effect = temporary.path().join("effect");
+    let environment = operator(&[
+        ("PATH", "/usr/bin:/bin"),
+        ("LANG", "operator"),
+        ("HOME", temporary.path().to_str().unwrap()),
+    ]);
+    let overlay = EnvironmentOverlay::admit(
+        [
+            (OsString::from("GREETING"), OsString::from("from-repo")),
+            (OsString::from("LANG"), OsString::from("declared")),
+        ],
+        [Path::new("/pkg/bin").to_path_buf()],
+        [],
+    )
+    .unwrap();
+    let deadline = std::time::Instant::now() + limits().timeout;
+    let selected =
+        SelectedProgram::select(&environment, Path::new("/bin/sh"), None, deadline).unwrap();
+    let invocation = Invocation::admit(
+        &environment,
+        ProcessRole::Task,
+        &selected,
+        temporary.path(),
+        Limits {
+            operation_deadline: Some(deadline),
+            ..limits()
+        },
+    )
+    .unwrap()
+    .with_overlay(overlay);
+    let body = "env > effect";
+    let outcome = invocation
+        .run(
+            &[OsStr::new("-c"), OsStr::new(body)],
+            NativeInput::Bytes(b""),
+            None,
+            |_| Control::Continue,
+        )
+        .unwrap();
+    assert!(outcome.success, "{:?}", outcome.receipt);
+    let environment = fs::read_to_string(effect).unwrap();
+    assert!(environment.contains("GREETING=from-repo\n"), "{environment}");
+    assert!(environment.contains("LANG=declared\n"), "{environment}");
+    assert!(
+        environment.contains("PATH=/pkg/bin:/usr/bin:/bin\n"),
+        "{environment}"
+    );
+}
+
+#[test]
+fn interactive_is_restricted_to_the_task_role() {
+    let temporary = tempfile::tempdir().unwrap();
+    let environment = operator(&[("PATH", "/usr/bin:/bin")]);
+    let deadline = std::time::Instant::now() + limits().timeout;
+    let selected =
+        SelectedProgram::select(&environment, Path::new("/bin/sh"), None, deadline).unwrap();
+    let invocation = Invocation::admit(
+        &environment,
+        ProcessRole::Hook,
+        &selected,
+        temporary.path(),
+        Limits {
+            operation_deadline: Some(deadline),
+            ..limits()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        invocation.run_interactive(&[]).map(|_| ()).unwrap_err().kind(),
+        std::io::ErrorKind::InvalidInput
+    );
+}
+
+#[test]
+fn interactive_preserves_exact_argv_and_reports_exit_and_signal() {
+    let temporary = tempfile::tempdir().unwrap();
+    let path = temporary.path().join("probe");
+    fs::write(
+        &path,
+        "#!/bin/sh\n{\nprintf '%s\\n' \"$#\"\nfor arg in \"$@\"; do printf '<%s>\\n' \"$arg\"; done\npwd\n} > effect\nexit \"${3:-0}\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+    let environment = operator(&[("PATH", "/usr/bin:/bin")]);
+    let deadline = std::time::Instant::now() + limits().timeout;
+    let selected = SelectedProgram::select(&environment, &path, None, deadline).unwrap();
+    let admit = || {
+        Invocation::admit(
+            &environment,
+            ProcessRole::Task,
+            &selected,
+            temporary.path(),
+            Limits {
+                operation_deadline: Some(deadline),
+                ..limits()
+            },
+        )
+        .unwrap()
+    };
+    let outcome = admit()
+        .run_interactive(&[OsStr::new(""), OsStr::new("a b"), OsStr::new("7")])
+        .unwrap();
+    assert!(!outcome.success);
+    assert_eq!(outcome.receipt.exit_code, Some(7));
+    assert_eq!(outcome.receipt.signal, None);
+    assert_eq!(outcome.receipt.disposition, ProcessDisposition::Exited);
+    let recorded = fs::read_to_string(temporary.path().join("effect")).unwrap();
+    let expected = format!("3\n<>\n<a b>\n<7>\n{}\n", temporary.path().canonicalize().unwrap().display());
+    assert_eq!(recorded, expected);
+
+    fs::write(&path, "#!/bin/sh\nkill -TERM $$\n").unwrap();
+    // Selection binds bytes: the suicide script needs its own selection.
+    let selected = SelectedProgram::select(&environment, &path, None, deadline).unwrap();
+    let outcome = Invocation::admit(
+        &environment,
+        ProcessRole::Task,
+        &selected,
+        temporary.path(),
+        Limits {
+            operation_deadline: Some(deadline),
+            ..limits()
+        },
+    )
+    .unwrap()
+    .run_interactive(&[])
+    .unwrap();
+    assert!(!outcome.success);
+    assert_eq!(outcome.receipt.exit_code, None);
+    assert_eq!(outcome.receipt.signal, Some(libc::SIGTERM));
+    assert_eq!(outcome.receipt.disposition, ProcessDisposition::Exited);
+}
+
+#[test]
+fn consumer_role_admits_retention_lease_but_hook_does_not() {
+    let temporary = tempfile::tempdir().unwrap();
+    let lease_path = temporary.path().join("lease");
+    fs::write(&lease_path, b"retained root").unwrap();
+    let environment = operator(&[("PATH", "/usr/bin:/bin")]);
+    let deadline = std::time::Instant::now() + limits().timeout;
+    let selected =
+        SelectedProgram::select(&environment, Path::new("/bin/sh"), None, deadline).unwrap();
+    let admit = |role| {
+        Invocation::admit(
+            &environment,
+            role,
+            &selected,
+            temporary.path(),
+            Limits {
+                operation_deadline: Some(deadline),
+                ..limits()
+            },
+        )
+        .unwrap()
+    };
+    let leases = || ProcessLeases {
+        worker: None,
+        retention: Some(fs::File::open(&lease_path).unwrap()),
+    };
+    assert!(admit(ProcessRole::Task).retain_leases(leases()).is_ok());
+    assert!(admit(ProcessRole::Hook).retain_leases(leases()).is_err());
 }
 
 #[test]

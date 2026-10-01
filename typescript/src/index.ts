@@ -20,18 +20,15 @@ export { brew, fileFetch, git, githubRelease, pixi, pluginFetch, tarball } from 
 export type { Fetch } from "./fetch.ts";
 export { hasTag, when } from "./conditions.ts";
 export type { Condition, FactView } from "./conditions.ts";
-export { defineEnv, emitIr, IR_VERSION, mergeTags } from "./graph.ts";
+export { defineEnv } from "./graph.ts";
 export type { Env, EnvContext, EnvFn } from "./graph.ts";
 export { tree } from "./tree.ts";
 export { module } from "./module.ts";
-export type { IrEntry, IrModule, ModuleSpec, ModuleValue, Span } from "./module.ts";
+export type { ModuleSpec, ModuleValue, Span } from "./module.ts";
 export { customHook, desktopEntry, fonts, service } from "./intents.ts";
 export type { Intent, Trigger } from "./intents.ts";
-export { parseInputs } from "./inputs.ts";
-export type { Inputs } from "./inputs.ts";
-export { createProbeBuilder } from "./probe.ts";
-export type { ProbeBuilder, ProbeKind, ProbeRequest } from "./probe.ts";
-export { CORE_RESOURCES, clearResources, resource } from "./resources.ts";
+export type { ProbeBuilder, ProbeKind } from "./probe.ts";
+export { resource } from "./resources.ts";
 export type { Resource } from "./resources.ts";
 export { buildStep, configStep, fetchStep, installStep, runStep, shellStep, step } from "./steps.ts";
 export type { Build, Phase, Step, StepAction, StepOpts } from "./steps.ts";
@@ -40,12 +37,20 @@ export type { Verify } from "./verify.ts";
 export {
   artifact,
   artifactFile,
+  artifactTree,
+  ensureArtifact,
+  input,
+  inputDirectory,
+  inputFile,
+  lock,
   bash,
   bashBody,
+  cargoPackage,
   check,
+  conda,
+  condaEnvironment,
   daily,
   defineWorkspace,
-  emitWorkspaceIr,
   environment,
   exec,
   file,
@@ -57,7 +62,10 @@ export {
   literalText,
   managedBlock,
   packageCommand,
+  sourcePath,
+  outputPath,
   pkg,
+  pixiFromLock,
   profile,
   provider,
   recipe,
@@ -77,20 +85,37 @@ export type {
   BashBody,
   BashBuilder,
   BashCommandBuilder,
+  CargoPackageSpec,
   CheckSpec,
+  CondaEnvironmentSource,
+  CondaEnvironmentSpec,
   EnvironmentSpec,
   ExecBuilder,
   ExecSpec,
   HookSpec,
+  ImageConfig,
+  ImageDestination,
+  ImageOwner,
   ImageSpec,
   PackageLayout,
   PackageSpec,
+  PixiLockSource,
+  PixiLockSpec,
   ProfileSpec,
   RecipeExecution,
   RecipeSpec,
+  FetchSource,
   RunBashSpec,
   ScheduleSpec,
   TaskSpec,
+  TaskContext,
+  WorkspaceAction,
+  WorkspaceStep,
+  WorkspaceStepValue,
+  WorkspaceInput,
+  WorkspaceInputRef,
+  WorkspaceMutationLock,
+  WorkspaceFileCheck,
   TreeFilesOptions,
   WorkspaceAbi,
   WorkspaceArg,
@@ -109,11 +134,12 @@ export type {
   WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
-  WorkspaceOutputNode,
   WorkspacePackageCommand,
   WorkspacePath,
   WorkspacePlatform,
   WorkspaceProducer,
+  WorkspaceProductionPath,
+  WorkspaceSourceV6,
   WorkspaceRunBashCommand,
   WorkspaceSource,
   WorkspaceSpec,
