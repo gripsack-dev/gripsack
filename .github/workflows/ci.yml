@@ -20,12 +20,18 @@ jobs:
       - name: Native worker ownership and identity admission
         run: |
           cargo test --locked -p gripsack-buildkit --lib worker::lima::tests -- --nocapture
+      - name: Provision the exact native Go compiler
+        run: |
+          curl -fsSL --max-time 180 https://go.dev/dl/go1.26.3.darwin-arm64.tar.gz -o "$RUNNER_TEMP/go.tar.gz"
+          printf '%s  %s\n' 875cf54a15311eee2c99b9dd67c68c4a49351d489ab622bf2cfd28c8f2078d3c "$RUNNER_TEMP/go.tar.gz" | shasum -a 256 -c -
+          tar -xzf "$RUNNER_TEMP/go.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/go/bin" >> "$GITHUB_PATH"
       - name: Build the exact pinned native bridge
         working-directory: tools/buildkit-bridge
         env:
           CGO_ENABLED: "0"
           GOFLAGS: "-mod=readonly"
-          GOTOOLCHAIN: "go1.26.3"
+          GOTOOLCHAIN: "local"
         run: |
           go version
           go build -trimpath -buildvcs=false -ldflags="-buildid=" -o "$RUNNER_TEMP/grip-buildkit-bridge" .
