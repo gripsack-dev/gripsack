@@ -118,6 +118,14 @@ fn live_edits_and_link_retargets_cannot_change_captured_code_or_pin() {
 #[test]
 fn root_aliases_bind_native_paths_and_diagnostics_without_changing_trust_identity() {
     let fixture = Fixture::new();
+    // Keep the fixture's absolute link within the canonical admitted root;
+    // this case selects the repository through a separate declared alias.
+    fs::remove_file(fixture.repo.join("absolute.ts")).unwrap();
+    symlink(
+        fixture.repo.canonicalize().unwrap().join("ignored.ts"),
+        fixture.repo.join("absolute.ts"),
+    )
+    .unwrap();
     let alias = fixture._temporary.path().join("declared-repo");
     symlink(&fixture.repo, &alias).unwrap();
     let captured =

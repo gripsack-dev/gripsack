@@ -109,7 +109,7 @@ impl CaptureBudget {
 #[derive(Debug)]
 struct OwnedDirectory {
     directory: Dir,
-    temporary: tempfile::TempDir,
+    _temporary: tempfile::TempDir,
 }
 
 impl Drop for OwnedDirectory {
@@ -175,7 +175,7 @@ impl SourceBundle {
         let mut capture_root = temporary.path().canonicalize()?;
         let owned = OwnedDirectory {
             directory: gripsack_fs::open(temporary.path())?,
-            temporary,
+            _temporary: temporary,
         };
         if roots
             .iter()
