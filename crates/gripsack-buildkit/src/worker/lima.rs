@@ -48,6 +48,10 @@ pub(super) fn validate_options(options: &WorkerOptions) -> Result<(), WorkerErro
     Ok(())
 }
 
+pub(super) fn preflight(options: &WorkerOptions, deadline: Instant) -> Result<(), WorkerError> {
+    capabilities::preflight(options, deadline)
+}
+
 pub(super) struct Provider<'a> {
     environment: &'a OperatorEnvironment,
     home: WorkerHome,
@@ -77,7 +81,7 @@ impl<'a> Provider<'a> {
         })
     }
     pub(super) fn preflight(&self, options: &WorkerOptions) -> Result<(), WorkerError> {
-        capabilities::preflight(options, self.deadline)
+        preflight(options, self.deadline)
     }
     fn assets_path(&self) -> PathBuf {
         self.home.root.join(&self.assets_relative)

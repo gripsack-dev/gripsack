@@ -39,6 +39,7 @@ pub(super) fn execute(
     retention: &RetentionSet,
     session: LifecycleSession,
 ) -> Result<(LifecycleSession, CompletedSolve), ExecError> {
+    OwnedWorker::preflight(&options.worker, options.deadline).map_err(operational)?;
     let mut nonce = [0; 32];
     getrandom::fill(&mut nonce).map_err(std::io::Error::other)?;
     let identity = AttemptIdentity {

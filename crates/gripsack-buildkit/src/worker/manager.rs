@@ -81,6 +81,19 @@ pub struct OwnedWorker<'a> {
     deadline: Instant,
 }
 impl<'a> OwnedWorker<'a> {
+    /// Admit native host availability and resource policy before roots, staging,
+    /// or optional helper acquisition. This never opens a worker home, downloads
+    /// builder inputs, or starts a VM. Acquisition rechecks native admission.
+    pub fn preflight(options: &WorkerOptions, deadline: Instant) -> Result<(), WorkerError> {
+        if !cfg!(any(
+            all(target_os = "linux", target_arch = "x86_64"),
+            all(target_os = "macos", target_arch = "aarch64")
+        )) {
+            return Err(WorkerError::UnsupportedPlatform);
+        }
+        provider::preflight(options, deadline)
+    }
+
     pub fn open(
         home: &Path,
         profile: WorkerProfile,

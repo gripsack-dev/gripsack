@@ -26,6 +26,18 @@ const OWNER_LABEL: &str = "dev.gripsack.owner";
 const HOME_LABEL: &str = "dev.gripsack.home";
 const PROFILE_LABEL: &str = "dev.gripsack.profile";
 
+pub(super) fn preflight(
+    _options: &super::WorkerOptions,
+    deadline: Instant,
+) -> Result<(), WorkerError> {
+    // CPU/memory value domains were admitted at construction. Preserve the
+    // existing Linux local-Docker capability boundary at acquisition.
+    if Instant::now() >= deadline {
+        return Err(WorkerError::Deadline);
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VolumeObservation {
