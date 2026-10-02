@@ -181,6 +181,7 @@ class Mutant:
     function: str
     before: str
     after: str
+    also_fails: tuple[str, ...] = ()
 
 
 MUTANTS = (
@@ -395,17 +396,19 @@ MUTANTS = (
            "        if j < result.len() && entry_equal(entry, result[j]) {",
            "        if j < result.len() && !entry_equal(entry, result[j]) {"),
     # semantic normalization: ignore the secondary key (lock scope conflation)
-    Mutant("semantic-pair-order", "semantic.rs", "semantic::lemma_leq_pair_antisymmetric",
-           "    first < 0 || (first == 0 && compare_bytes(x.1, y.1) <= 0)",
-           "    first <= 0"),
+    Mutant("semantic-pair-order", "semantic.rs", "semantic::entry_leq",
+           "        bytes_leq(a.1, b.1)",
+           "        true"),
     # identity boundary: provenance enters identity (A1-04 calibration)
     Mutant("semantic-provenance-boundary", "semantic.rs", "semantic::lemma_provenance_cannot_change_identity",
            "    encode_frames(view.semantics)",
-           "    encode_frames(view.semantics) + encode_frames(view.provenance)"),
+           "    encode_frames(view.semantics) + encode_frames(view.provenance)",
+           also_fails=("semantic::lemma_semantic_change_invalidates_identity",)),
     # label/module/import order becomes observable (A1-03/A1-04 calibration)
     Mutant("semantic-unordered-canonical", "semantic.rs", "semantic::lemma_unordered_presentation_invariant",
            "    seq![le64(canonical_form(values).len() as u64)] + entry_frames(canonical_form(values))",
-           "    seq![le64(values.len() as u64)] + entry_frames(values)"),
+           "    seq![le64(values.len() as u64)] + entry_frames(values)",
+           also_fails=("semantic::lemma_unordered_content_injective",)),
     # projection coverage: reversed witness path (dropped-coverage calibration)
     Mutant("graph-projection-coverage", "graph.rs", "graph::lemma_projected_build_edge_in_closure",
            "    assert(is_path(adjacency, seq![from, to], from, to));",
@@ -467,8 +470,9 @@ def main() -> None:
                 raise EvidenceError(f"{mutation.name}: source mutation does not uniquely match")
             path.write_text(source.replace(mutation.before, mutation.after))
             status, evidence = verify(crate, temporary / (mutation.name + "-target"))
-            evidence.mutant(status, path, mutation.function, crate.parent.parent)
-            print(f"calibration: {mutation.name} rejected in {mutation.function}", flush=True)
+            expected = (mutation.function, *mutation.also_fails)
+            evidence.mutant(status, path, expected, crate.parent.parent)
+            print(f"calibration: {mutation.name} rejected in {','.join(expected)}", flush=True)
         # A real unrelated failing lemma in the same source file cannot
         # impersonate the classifier mutant's named production failure.
         crate = copy_crate(temporary / "unrelated-lemma")
@@ -477,9 +481,9 @@ def main() -> None:
         prefix, suffix = source.rsplit("}", 1)
         path.write_text(prefix + "pub proof fn unrelated_calibration_failure() ensures false {}\n}" + suffix)
         status, evidence = verify(crate, temporary / "unrelated-target")
-        evidence.mutant(status, path, "selection::unrelated_calibration_failure", crate.parent.parent)
+        evidence.mutant(status, path, ("selection::unrelated_calibration_failure",), crate.parent.parent)
         try:
-            evidence.mutant(status, path, "selection::classify", crate.parent.parent)
+            evidence.mutant(status, path, ("selection::classify",), crate.parent.parent)
         except EvidenceError:
             print("calibration: unrelated lemma refused as classifier evidence", flush=True)
         else:

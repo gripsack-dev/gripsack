@@ -2,6 +2,11 @@ name: native-integration-044
 
 on:
   workflow_dispatch:
+    inputs:
+      mac_runtime_qualification:
+        type: boolean
+        default: false
+        description: 'Resume deferred Mac VZ and coherent Conda runtime qualification'
 
 permissions:
   contents: read
@@ -10,7 +15,7 @@ jobs:
   helpers-and-native-consumers:
     uses: ./.github/workflows/qualify-conda-helper.yml
     with:
-      check_pins: false
+      check_pins: true
       include_intel: false
       macos_smoke: |
         cargo build --locked -p gripsack --bin grip
@@ -18,9 +23,13 @@ jobs:
         cargo test --locked -p gripsack-store source_bundle -- --nocapture
         cargo test --locked -p gripsack-buildkit --lib worker:: -- --nocapture
         cargo test --locked -p gripsack-exec native_sealed_macho_launch_preserves_origin_and_extension_closure -- --nocapture
-        export GRIP_RUNTIME_BIN="$PWD/target/debug/grip"
-        python3 scripts/qualify_conda_native.py
+        if [ '${{ inputs.mac_runtime_qualification }}' = true ]; then
+          export GRIP_RUNTIME_BIN="$PWD/target/debug/grip"
+          python3 scripts/qualify_conda_native.py
+        fi
   native-vz-lifecycle:
+    # Owner exception MAC-NATIVE-QUAL-2026-10-02; skipped is not qualified.
+    if: ${{ inputs.mac_runtime_qualification }}
     runs-on: macos-14
     timeout-minutes: 90
     steps:

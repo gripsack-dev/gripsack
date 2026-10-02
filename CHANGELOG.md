@@ -10,7 +10,7 @@ User-visible changes per release. Design archaeology lives in
 - The workspace SDK exports `pixi.fromLock` for explicit captured-manifest/lock
   imports and `conda.environment` for a coherent solve. The old single-package
   `pixi(package)` constructor is removed; historical IR readers keep their
-  versioned meaning. Full native and image qualification remains open.
+  versioned meaning. Full all-platform qualification remains open.
 - Coherent Conda admission independently checks declared roots, channel order
   and policy, canonical package uniqueness and transitive MatchSpecs before
   archive acquisition. Frozen selections reject missing or unrelated packages;
@@ -69,6 +69,11 @@ User-visible changes per release. Design archaeology lives in
   single invalid `env` token, instead of publishing an unlaunchable script.
 - Native artifacts statically link bundled XZ rather than inheriting a
   Homebrew `liblzma` dependency from the macOS build host.
+- The standalone Conda helper also bundles bzip2 and has measured Linux x64,
+  Linux ARM64 and Mac ARM64 release pins. Native Mac VM and full coherent Conda
+  runtime qualification are temporarily deferred by the owner for Linux
+  integration: unavailable hosted VZ and a fail-closed `libgcc_s.1.1.dylib`
+  format refusal remain recorded, not counted as passing tests.
 - Abandoned builds retain their source roots and staging until an owned-worker
   stop establishes a matching owner/epoch fence and inherited native leases have
   drained. Recovery removes staging before retiring the root and lock records.

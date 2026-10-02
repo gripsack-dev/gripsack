@@ -295,7 +295,7 @@ claim or new config guidance.
 |---|---|
 | B0-04 inventory | implemented_unverified (binds at B1/B2) |
 | B0-01 harness | **verified historically** in `linux-amd64` and `container-gates` at `ce3c7e0`: 6/6 real Linux and required Docker28 CI with three real-worker negatives and four loaded-image mutants. The rotated identical-leaf manifest reran 6/6 on Linux at `80b50a3`, but protected Docker28/negative evidence has not been rebound to this source; qualification only, no production backend |
-| B0-02 Mac VM | blocked (no Mac) |
+| B0-02 Mac VM | deferred-authorized for the 0.44 Linux integration only (`MAC-NATIVE-QUAL-2026-10-02`); native SDK tests passed, hosted VZ preflight refused unavailable virtualization; no successful VM qualification |
 | B0-03 footprint | in_progress: Linux measurements + zero-builder baseline recorded; VM lane and full budgets at B1 |
 | B1-01 Linux worker | **in_progress** at `80b50a3`: isolated Docker provider with 2/2 real Linux cases and 7/7 unit cases in the source-bound receipt above; no `grip` caller, private socket, full daemon handshake, Mac VM or B2 path |
 | B1-02/04 kernels | **in_progress**: the pure lease kernel + CleanupSet landed at `80b7738` with a two-client TLC model and two attributed early-stop/crash-wipes mutants (receipt `2026-09-26-b1-worker-leases-80b7738.log`). Follow-up `db51101` corrected B0 baseline dependency admission without allowing upstream builder packages. The Linux prototype at `80b50a3` calls the lease kernel for single-client stop and retained-cache teardown; no real two-client recovery/upgrade, `grip` caller, TLAPS or worker Verus proof yet |
@@ -341,3 +341,11 @@ after an actual process-ready event. The receipt excludes an earlier invalid
 network oracle and records the disposable daemon service's nonzero stop exit.
 Rust-checker/CLI integration, managed lifecycle, store publication and the
 formal/native/CI matrices are still unverified; no delivery row is closed.
+
+The owner authorized temporary deferral of blocking native Mac runtime
+qualification on 2026-10-02; plan/0048 §9 records exact scope, failures, risks and
+resumption requirements under `MAC-NATIVE-QUAL-2026-10-02`. Linux delivery may
+continue without claiming Mac VM qualification. The VZ lifecycle test remains
+available for explicit execution; the diagnostic workflow disables that lane by
+default. Hosted Mac builds and non-VM tests remain enabled. No source/runtime
+refusal is bypassed.

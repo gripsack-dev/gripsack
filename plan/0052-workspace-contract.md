@@ -1968,6 +1968,30 @@ Observed working-tree development checks:
   repair. The real CLI now selects the admitted nested command; real helper
   materialization is refused with the offending script path before publication
   when those interpreter arguments cannot be preserved.
+- The Linux x64 Conda helper passed two independent pinned-container release
+  builds with identical bytes, static ELF dependency admission and a real
+  protocol-v2 invocation. Its measured SHA256 is
+  `dbb6f931709cc208c950e1041db884d6ac5b1246c45fb8775cd5bea9c1cf4a7a`.
+  The real CLI used that default pin from an operator file mirror: cold
+  bootstrap, warm use with the mirror absent, corruption refusal, matching-byte
+  repair and retained-prefix use after deleting the helper all passed:
+  `CONDA_DEFAULT_PINNED_HELPER_COLD_WARM_CORRUPTION_REPAIR_AND_RETAINED_ZERO_BOOTSTRAP=passed`.
+  Independent GitHub Linux x64 builds reproduced the same bytes. Native Linux
+  ARM64 and Mac ARM64 helpers also passed two-build reproducibility, dependency
+  admission and protocol execution, yielding respectively
+  `e49559705e38de0f19f2030f3d88142db6715ff0df71f9a514f27f54459b8b51` and
+  `87b76df9c477657d18ef83eac8e533603af09ddc1b0ddcb332c373aa7df0eeb9`.
+  All three measured pins are populated; complete-table rebuild checks remain
+  required before release. This is not a publication claim.
+- Native ARM source `b7fbd041300080a219fc546df8ff1eb1a1c2ddcb` in
+  [run 36953073512](https://github.com/gripsack-dev/gripsack/actions/runs/36953073512)
+  built the core, passed **50** process tests, **5** source-capture tests,
+  **24** worker tests and the actual sealed Mach-O/extension closure fixture.
+  The VZ lifecycle refused unavailable virtualization before downloads.
+  Coherent Conda materialization refused `lib/libgcc_s.1.1.dylib` as an
+  unrecognized executable format before publication. Plan/0048 §9 records the
+  owner's temporary Mac runtime deferral `MAC-NATIVE-QUAL-2026-10-02`; neither
+  failed path is qualified, and Linux results cannot stand in for them.
 
 These development checks do not replace full Compose or source-bound release
 evidence. Required normalization/refinement, publication/retention, recovery,

@@ -66,8 +66,9 @@ def check(temporary: Path) -> None:
             raise EvidenceError(f"{mutation.name}: source mutation does not uniquely match")
         path.write_text(source.replace(mutation.before, mutation.after))
         status, evidence = verify(crate, temporary / (mutation.name + "-target"))
-        evidence.mutant(status, path, mutation.function, crate.parent.parent)
-        print(f"calibration: {mutation.name} rejected in {mutation.function}", flush=True)
+        expected = (mutation.function, *mutation.also_fails)
+        evidence.mutant(status, path, expected, crate.parent.parent)
+        print(f"calibration: {mutation.name} rejected in {','.join(expected)}", flush=True)
     print(f"VERUS_COLLECTOR_CALIBRATIONS={len(MUTANTS)}", flush=True)
 
 

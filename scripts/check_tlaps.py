@@ -16,7 +16,10 @@ from tlaps_source import SourceError, theorem_ranges
 ROOT = Path(__file__).resolve().parent.parent
 TLAPM = os.environ.get('TLAPM', 'tlapm')
 TLC_JAR = os.environ.get('TLC_JAR', '/tla/tla2tools.jar')
-VERSION = '7824dab'
+# Upstream re-published the mutable 1.6.0-pre release on 2026-10-01
+# (7824dab → bfa9468); see the Dockerfile tlaps stage for provenance. The
+# full induction and every calibration below must pass under this revision.
+VERSION = 'bfa9468'
 MIN_OBLIGATIONS = 301
 THEOREMS = (
     'EntryType', 'RecordImage', 'CompletedStepDurability', 'RecoveryOfEntry', 'UndoIntended',

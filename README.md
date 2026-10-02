@@ -115,10 +115,14 @@ retained and inspected, not sealed executable images. Images use the fixed OCI
 exporter profile and are independently checked for content, configuration and
 image-local runtime closure; deleting the builder cache does not delete them.
 
-Full Conda/Pixi integration, Mac-worker qualification and the remaining
-source-bound release gates are still open. Development evidence is recorded in
-[plan/0052 §33](plan/0052-workspace-contract.md#33-unreleased-v6-integration-2026-10-01),
-not a public support or release claim.
+Linux Conda/Pixi native and OCI journeys have development runtime evidence.
+The Mac VM backend and full coherent Mac Conda journey remain unqualified:
+hosted VZ is unavailable, and the native Conda fixture currently refuses a
+`libgcc_s.1.1.dylib` format before publication. The owner temporarily deferred
+those blocking Mac runtime campaigns so Linux integration can continue; Mac
+build/package checks remain enabled. Remaining source-bound release gates are
+still open. [Plan/0052 §33](plan/0052-workspace-contract.md#33-unreleased-v6-integration-2026-10-01)
+records evidence, not a public all-platform support or release claim.
 
 ## Source approval and migration
 

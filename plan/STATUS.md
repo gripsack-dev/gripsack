@@ -416,6 +416,13 @@ The root/deliberate-pin SDK cutover now exposes `pixi.fromLock` consistently
 with `conda.environment`; the old single-package constructor is removed.
 Its real isolated Deno authoring smoke passed. Coherent Conda materialization,
 native/image consumers and native Mac qualification remain separate gates.
+Subsequent §33 evidence now includes real native project/task/shell/profile
+consumers, retained Python/NumPy generations, independent read-only OCI
+execution and clean image reproduction. The Linux x64 Conda helper has a
+measured two-build pin and passed cold/warm/corruption/retained-use CLI checks.
+The complete rebuilt Rust/helper gate and TLC model gate passed; native ARM
+assets, macOS execution, the real VZ worker and remaining full proof/flow gates
+still block all-platform qualification. No raw prover output was added.
 
 ## Settled rejections (all eras)
 
