@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed on non-static ELF or non-system Mach-O dependencies."""
+"""Reject dynamic Linux dependencies and non-system macOS dependencies."""
 import argparse
 from pathlib import Path
 import platform

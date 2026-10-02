@@ -2913,3 +2913,90 @@ approved/resume flow and their modules pass 29/29. See
 tree is still required, and the macOS lane will fail by design until the
 seatbelt leaf lands.
 
+
+### R1 Mac confinement completion — launch responsibility map
+
+- `confinement` owns admitted roots; the Seatbelt leaf assembles the deny-default
+  profile and grants only each launch's private image directories.
+- `exec_payload` constructs a bounded, data-only platform launch prefix while
+  allocation is permitted. macOS enters `/usr/bin/sandbox-exec` after `execve`,
+  then a fixed `/bin/bash` exec bridge preserves the admitted argv0 and arguments.
+  These fixed OS executables are part of the trusted platform boundary; repository
+  PATH cannot select them and repository data is never interpolated as shell code.
+- `invocation` owns supervision, descriptor closure and launch ordering. Its forked
+  child does only the existing async-signal-safe syscall path. Seatbelt parsing,
+  allocation and error formatting must not run between fork and exec.
+
+The prior draft called `sandbox_init_with_parameters` and allocated Rust error
+strings inside `pre_exec`; a malloc atfork handler is not an async-signal-safety
+contract for the complete library call. The completion removes that path, not the
+required Mac ARM lane. Native Mac positive execution and credential/descriptor
+denial evidence remain required before release.
+
+Native Mac ARM startup qualification (2026-10-01):
+
+- Candidate `19ca6a0`, required CI run
+  [36906254878](https://github.com/gripsack-dev/gripsack/actions/runs/36906254878),
+  reached the native process gate but three confined launches aborted.
+  [Crash diagnosis](https://github.com/gripsack-dev/gripsack/actions/runs/36918264900)
+  identified `/bin/bash` and a kernel denial of `file-read-data /`.
+- A literal root-directory grant, not a recursive filesystem grant, fixes startup:
+  [source `18b80bd`](https://github.com/gripsack-dev/gripsack/actions/runs/36918823659)
+  passed all four confinement cases, including outside-file/APFS-alias read denial
+  and outside-scratch write denial. The
+  [broader native authority job](https://github.com/gripsack-dev/gripsack/actions/runs/36919381180/job/110561319514)
+  also passed process and journal qualification with calibration.
+- The broader run exposed `SourceBundle::capture` permission failure before
+  evaluator execution. A native filesystem probe confirmed that macOS rejects
+  renaming a read-only directory (`EACCES`). Capture now finalizes its private
+  name before sealing, publishes canonical captured paths, and keeps declared
+  source spelling separate from canonical trust identity. Native paths through
+  either admitted spelling bind captured bytes, not a later live edit.
+- [Source `e7841e3`](https://github.com/gripsack-dev/gripsack/actions/runs/36923313515)
+  passed **5/5 source-capture cases** and **60/60 real-Deno source-approval/eval
+  cases** on macOS 14.8.9 ARM64, with no skips. The complete candidate CI,
+  persistence matrix and release gates remain required; the earlier full run
+  also exposed a positive TLAPS induction timeout, not an authorized deferral.
+- Compact CI references replace another committed console dump; existing
+  checksum-bound reports are unchanged.
+
+### M-V6 CI proof stability (2026-10-01)
+
+Run `36906254878` correctly rejected the positive
+`BeginEpochPreservesControl` obligation on an internal 20-second SMT timeout.
+It was not the deliberately failing `UnrelatedCalibration` obligation.
+The proof now separates action projections, durable reservation binding,
+freshness, destination typing and empty reconstructed entries with `BY ONLY`
+contexts. The theorem, assumptions and destination domain are unchanged.
+
+Fresh pinned `bfa9468` qualification under a two-CPU container passed **40
+modules / 443 named theorems / 4,645 generalized obligations**, plus **301**
+pilot and **13/7** cleanup/restore-witness obligations and all existing
+calibrations. The repaired module discharged **117** obligations; its six SMT
+steps used **0.4–5.4 seconds** under the unchanged 20-second limit.
+Proof source SHA-256:
+`34db9e66703ee412ccdbda7156cc4d937356efd8ad3b0ce9482ab4e4603ad5e9`.
+No theorem/catalog floor, checker, timeout or attribution rule was relaxed.
+Exact-candidate CI remains required; full raw output stays outside the repository.
+
+### Complete persistence partitions (2026-10-01)
+
+Eight Linux apply scenario/fault jobs in run `36906254878` reached their
+120-minute job limit. Real pytest inventories measured **440/448/290/302/458/460**
+cuts for apply-deploy, apply-prune, rollback-deploy, rollback-prune and the two
+apply-copy cases. Each cut runs both drift states and repeated real recovery.
+
+CI now uses eight deterministic disjoint cut partitions per scenario/fault/platform
+(**192 jobs**), without changing the job limit or dropping a boundary. Default
+local execution remains unpartitioned. The required aggregate admits only a
+complete, source-bound set of partition receipts with matching per-platform
+inventories, exact cut ownership, both drift states and native Mac ARM.
+Missing, duplicate, failed, cancelled, skipped or vacuous required work fails.
+
+Observed after the change: Linux apply-prune-copy partition 7/8 passed **57/460
+cuts × two drift states**, separately for error and kill, in **1084.4/1032.2 s**.
+All six actual inventories had nonempty disjoint partitions with full union;
+these inventory measurements do not claim complete recovery execution.
+Gate calibration passed **6 positive / 294 negative** admissions, and partition
+configuration rejected **11** invalid/vacuous cases. Full candidate CI remains
+required. Receipts live in CI artifacts; their checkout directory is ignored.

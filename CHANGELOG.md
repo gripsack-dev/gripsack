@@ -174,6 +174,15 @@ User-visible changes per release. Design archaeology lives in
 
 ### Fixed
 
+- Native macOS release binaries statically link bundled XZ rather than depending
+  on the builder's Homebrew installation. Artifact verification distinguishes
+  `otool` headers from actual dependencies and admits only explicit system paths.
+- macOS's confined launcher can open the root directory required for startup
+  without granting recursive reads; unrelated file contents remain denied.
+- Source captures finalize their private directory name before read-only sealing
+  on macOS. Canonical and declared root aliases select captured native bytes;
+  diagnostics retain the declared source spelling without exposing temp paths.
+
 - Evaluated repository aliases materialize their captured target objects into
   native overlays, with matching preview/store identity, rather than retaining
   dangling links or references to a mutable worktree. Takeover cannot replace a

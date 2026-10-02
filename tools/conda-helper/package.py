@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import tempfile
 import tomllib
-from verify_native import verify
 
 COMPILER = "1.98.0"
 LINUX_IMAGE = "rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce"
@@ -68,9 +67,10 @@ def smoke(binary):
     if len(frame) < 8 or int.from_bytes(frame[:8], "little") != len(frame) - 8:
         raise SystemExit("native helper did not return one complete protocol frame")
     message = json.loads(frame[8:])
-    if result.returncode != 1 or message != {
-        "protocol": 2, "payload": {"kind": "error", "attempt": None,
-                                   "code": "protocol", "message": "missing request frame"}
+    payload = message.get("payload") if isinstance(message, dict) else None
+    detail = payload.pop("message", None) if isinstance(payload, dict) else None
+    if result.returncode != 1 or not isinstance(detail, str) or message != {
+        "protocol": 2, "payload": {"kind": "error", "attempt": None, "code": "protocol"}
     }:
         raise SystemExit(f"unexpected native helper smoke result: {message}")
 
@@ -139,7 +139,8 @@ def main():
         digest = sha(binaries[0])
         if digest != sha(binaries[1]):
             raise SystemExit("independent helper builds differ; refusing artifact publication")
-        verify(binaries[0])
+        subprocess.run(["python3", str(repo / "scripts/check_native_binary.py"),
+                        str(binaries[0])], check=True)
         smoke(binaries[0])
         if committed is not None:
             check_pin(version, args.target, digest, committed)

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       fuzz_waiver:
-        description: "Explicit owner-approved feedback waiver; all other gates remain mandatory"
+        description: "Explicit owner-approved fuzz/corpus-replay waiver; all other gates remain mandatory"
         type: choice
         default: none
         options:

@@ -114,12 +114,30 @@ MUTANTS = (
            'if error.raw_os_error() == Some(libc::ESRCH) {',
            'if matches!(error.raw_os_error(), Some(libc::ESRCH) | Some(libc::EPERM)) {',
            'permission', 'denied_group_signal_was_reported_successfully'),
+)
+# Linux records the FIRST denied signal in terminate() before finish(); the
+# retained receipt is the clone made from the raw errno. Darwin's first
+# permission denial instead surfaces inside Guard::finish, which records the
+# original error directly, so the clone mutant is inert there: each platform
+# gets the mutant that targets its actual errno-retention branch, observed by
+# the same raw-errno fixture assertion (cleanup_errno_was_lost).
+LINUX_MUTANTS = (
     Mutant('signal-errno-receipt', LIFECYCLE,
            'Some(code) => io::Error::from_raw_os_error(code),',
            'Some(_) => io::Error::new(error.kind(), error.to_string()),',
            'permission', 'cleanup_errno_was_lost'),
 )
 DARWIN_MUTANTS = (
+    Mutant('darwin-cleanup-errno-receipt', LIFECYCLE,
+           '                && e.kind() != io::ErrorKind::Interrupted\n'
+           '            {\n'
+           '                record(&mut error, e);\n'
+           '            }',
+           '                && e.kind() != io::ErrorKind::Interrupted\n'
+           '            {\n'
+           '                record(&mut error, io::Error::new(e.kind(), e.to_string()));\n'
+           '            }',
+           'permission', 'cleanup_errno_was_lost'),
     Mutant('darwin-live-group-observer', PROCESS / 'sys/macos.rs',
            'if info.pbi_status != libc::SZOMB {',
            'if info.pbi_status == libc::SZOMB {',
@@ -219,7 +237,7 @@ def main():
             if result.returncode or f'SIGNAL_DENIAL_PROPERTY=passed live={str(live).lower()}' not in result.stdout:
                 raise SystemExit('FAIL: real signal permission boundary did not pass')
         print(f'PROCESS_BOUNDS_PROPERTIES={len(expected) + len(modes)}', flush=True)
-        mutants = MUTANTS + (DARWIN_MUTANTS if sys.platform == 'darwin' else ())
+        mutants = MUTANTS + (DARWIN_MUTANTS if sys.platform == 'darwin' else LINUX_MUTANTS)
         for mutant in mutants:
             source = tree / mutant.source
             original = source.read_text()
