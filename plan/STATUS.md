@@ -111,6 +111,16 @@ Focused error/kill recovery passed **57/460 cuts × both drift states** per mode
 all-inventory union and **6 positive / 294 negative** gate checks passed.
 The complete new candidate run, not these focused observations, qualifies release.
 
+**0.43 artifact preflight (2026-10-02):** The real Mac ARM release build exposed
+an ambient Homebrew `liblzma.5.dylib` dependency. Explicit bundled static XZ
+linkage repaired it without expanding the runtime allowlist. Native ARM source
+`56bf0c8` passed the corrected dependency gate and actual `grip 0.43.0` execution
+([preflight](https://github.com/gripsack-dev/gripsack/actions/runs/36949997654)).
+The old `otool` pipeline's filename-header failure was reproduced separately.
+The release workflow now uses a structured ELF/Mach-O verifier and a valid
+attestation-action commit. These artifact checks do not replace required
+candidate CI, and no tag/publication is implied.
+
 **0051 source update (`80b50a3`, 2026-09-26):** The retired
 BuildKit v0.33.0 manifest-list digest was replaced by a resolvable
 digest with the same qualified amd64 leaf. The pinned Go bridge was
