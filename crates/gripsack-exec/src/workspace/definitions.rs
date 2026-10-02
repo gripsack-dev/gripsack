@@ -1,8 +1,8 @@
-//! Definition identities use approved inventory metadata, not today's files or
-//! the whole application checkout. Aliases include their captured target bytes.
+//! Definition identities bind captured code, not today's files or cache umask.
+//! Original permissions remain in source approval; capture preserves executability.
 use crate::{ExecError, Repository};
 use gripsack_ir::workspace_v6::{identity::DefinitionDigest, lock::DefinitionPins};
-use gripsack_store::source_bundle::{SourceEntry, SourceObject};
+use gripsack_store::source_bundle::{SourceEntry, SourceFileBytes, SourceObject};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -69,6 +69,20 @@ impl Write for Fingerprint {
     }
 }
 
+#[derive(serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum CapturedDefinitionObject<'a> {
+    Directory,
+    File {
+        bytes: &'a SourceFileBytes,
+        sha256: &'a gripsack_process::Sha256Digest,
+        executable: bool,
+    },
+    Alias {
+        target: &'a str,
+    },
+}
+
 fn subtree(entries: &[SourceEntry], root: &str) -> Result<DefinitionDigest, ExecError> {
     // The admitted inventory is sorted and globally bounded. A bit set avoids
     // copying metadata or allocating a tree node for every selected source.
@@ -105,7 +119,7 @@ fn subtree(entries: &[SourceEntry], root: &str) -> Result<DefinitionDigest, Exec
         }
     }
     let mut fingerprint = Fingerprint(Sha256::new());
-    fingerprint.write_all(b"gripsack-definition-inventory-v1\0")?;
+    fingerprint.write_all(b"gripsack-definition-inventory-v2\0")?;
     for (entry, included) in entries.iter().zip(included) {
         if !included {
             continue;
@@ -114,15 +128,26 @@ fn subtree(entries: &[SourceEntry], root: &str) -> Result<DefinitionDigest, Exec
             .path
             .strip_prefix(root)
             .filter(|suffix| suffix.is_empty() || suffix.starts_with('/'));
+        let object = match &entry.object {
+            SourceObject::Directory => CapturedDefinitionObject::Directory,
+            SourceObject::File {
+                bytes,
+                sha256,
+                mode,
+            } => CapturedDefinitionObject::File {
+                bytes,
+                sha256,
+                // source_bundle::capture makes files 0400 or 0500. Other
+                // original permission bits cannot affect captured code.
+                executable: mode.bits() & 0o111 != 0,
+            },
+            SourceObject::Alias { target } => CapturedDefinitionObject::Alias { target },
+        };
         // A role tag separates selected-root paths from out-of-root alias
         // targets; adjacent serialized tuples have unambiguous boundaries.
         serde_json::to_writer(
             &mut fingerprint,
-            &(
-                relative.is_some(),
-                relative.unwrap_or(&entry.path),
-                &entry.object,
-            ),
+            &(relative.is_some(), relative.unwrap_or(&entry.path), object),
         )?;
     }
     Ok(DefinitionDigest::from_bytes(
@@ -133,7 +158,7 @@ fn subtree(entries: &[SourceEntry], root: &str) -> Result<DefinitionDigest, Exec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gripsack_store::{prior::FileMode, source_bundle::SourceFileBytes};
+    use gripsack_store::prior::FileMode;
 
     fn file(path: &str, content: &[u8]) -> SourceEntry {
         SourceEntry {
@@ -204,5 +229,35 @@ mod tests {
             original,
             "unrelated source invalidated a definition pin"
         );
+    }
+
+    #[test]
+    fn definition_identity_binds_captured_executability_not_ambient_umask() {
+        let mut entries = vec![
+            SourceEntry {
+                path: "frontend".into(),
+                object: SourceObject::Directory,
+            },
+            file("frontend/driver.ts", b"unchanged code"),
+        ];
+        let readonly = subtree(&entries, "frontend").unwrap();
+        for bits in [0o600, 0o640, 0o664, 0o400] {
+            let SourceObject::File { mode, .. } = &mut entries[1].object else {
+                unreachable!();
+            };
+            *mode = FileMode::try_from(bits).unwrap();
+            assert_eq!(subtree(&entries, "frontend").unwrap(), readonly);
+        }
+        let SourceObject::File { mode, .. } = &mut entries[1].object else {
+            unreachable!();
+        };
+        *mode = FileMode::try_from(0o700).unwrap();
+        let executable = subtree(&entries, "frontend").unwrap();
+        assert_ne!(executable, readonly);
+        let SourceObject::File { mode, .. } = &mut entries[1].object else {
+            unreachable!();
+        };
+        *mode = FileMode::try_from(0o755).unwrap();
+        assert_eq!(subtree(&entries, "frontend").unwrap(), executable);
     }
 }

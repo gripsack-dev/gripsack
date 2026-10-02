@@ -444,7 +444,7 @@ gates export, native execution survives builder cache removal/GC, and a second
 build reuses retained outputs without a helper. No generation was created.
 This does not close A1/B, optional-helper provisioning, retained-build recovery,
 native package/image consumers, Mac workers or proof/platform/release gates.
-No fuzz or corpus replay was run.
+Those initial development smokes did not run fuzz or corpus replay.
 The root/deliberate-pin SDK cutover now exposes `pixi.fromLock` consistently
 with `conda.environment`; the old single-package constructor is removed.
 Its real isolated Deno authoring smoke passed. Coherent Conda materialization,
@@ -462,6 +462,12 @@ The Mac runtime gaps remain unqualified, not blocking Linux integration under
 that exception. The complete rebuilt Verus gate also passed: **444/0** policy,
 **30/0** actual collector, **92+4** calibrated mutations and **19** evidence
 negatives. Full flow and release gates remain open. No raw prover output was added.
+The external caller migration exposed and repaired ambient-umask definition
+identity drift and cache-only frozen Conda acquisition. A distinct HOME with
+the original differing-mode frontend cache now builds/runs/applies the committed
+lock without update or lock mutation. Fresh Rust/flow checks cover these repairs.
+One superseded local flow invocation accidentally included golden replay before
+cancellation; §33 records that exception, not a passing qualification claim.
 
 ## Settled rejections (all eras)
 

@@ -2015,8 +2015,28 @@ Observed working-tree development checks:
 - Rebuilding the Linux x64 helper twice with all three final pins populated
   passed `dist.sh --check`, with the identical measured hash. This rules out
   pin-table self-reference changing that asset's bytes.
+- The external example migration kept its Brew/GitHub/apt/local/patch consumers
+  and moved only the removed callable Pixi example into an independent coherent
+  Conda workspace. Real legacy cold/satisfied apply and the new
+  update/build/run/task/profile/GC journeys passed, including project-shell
+  execution and unchanged retained prefix/lock bytes.
+- A fresh-HOME frozen run exposed two real omissions. Definition pins hashed
+  original `0600`/`0644` cache modes even though source capture materializes both
+  as `0400`; a failing-before regression now binds the captured object view
+  (bytes, logical paths, alias targets and executability) under a new unreleased
+  definition domain. Source approval retains its full original-mode inventory.
+  Then cold Conda materialization refused absent original archives. New prefixes
+  now use native verified acquisition of the frozen URL/SHA records, while
+  retained-prefix and read-only inspection paths still refuse missing/corrupt
+  evidence. The original differing-mode HOME successfully built, ran and applied
+  ripgrep from the same frozen lock **without update** or lock mutation:
+  `FROZEN_EXTERNAL_CONDA_COLD_ARCHIVES_AND_DIFFERENT_UMASK_WITHOUT_UPDATE=passed`.
 
 These development checks do not replace full Compose or source-bound release
 evidence. Required normalization/refinement, publication/retention, recovery,
-platform and release gates remain open. No fuzz or corpus replay was run.
+platform and release gates remain open. No fuzz-engine campaign was run.
+A superseded local flow invocation accidentally included `test_golden.py`
+(four failures and one pass observed) before cancellation; it is not accepted
+as qualification. Subsequent flow invocations explicitly exclude the
+owner-waived golden replay and keep the complete persistence shard campaign.
 

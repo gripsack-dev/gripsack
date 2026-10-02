@@ -178,6 +178,23 @@ fn retained_archives(
         .collect()
 }
 
+fn acquire_locked_archives(
+    output: &str,
+    ctx: &Ctx,
+    locked: &LockedCondaEnvironment,
+) -> Result<BTreeMap<String, PathBuf>, ExecError> {
+    gripsack_conda::virtuals::validate_frozen_environment(locked, None)
+        .map_err(|error| failure(output, error.to_string()))?;
+    locked
+        .packages
+        .iter()
+        .map(|record| {
+            let object = retain_archive(output, ctx, record)?;
+            Ok((record.sha256.clone(), object.join("archive")))
+        })
+        .collect()
+}
+
 fn admitted_materialization(
     locked: &LockedCondaEnvironment,
     key: String,
@@ -452,8 +469,13 @@ fn retain_archive(
     record: &LockedCondaPackage,
 ) -> Result<PathBuf, ExecError> {
     let object = archive_object(&ctx.home, &record.sha256);
-    if object.is_dir() {
-        return verify_archive(output, &ctx.home, &record.sha256).map(|_| object);
+    match std::fs::symlink_metadata(&object) {
+        Ok(metadata) if metadata.is_dir() => {
+            return verify_archive(output, &ctx.home, &record.sha256).map(|_| object);
+        }
+        Ok(_) => return Err(failure(output, "retained Conda archive is not a directory")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
     }
     let download = ctx
         .fetch
@@ -472,9 +494,9 @@ fn retain_archive(
 }
 
 /// Materialize a frozen closure — the common native/image service.
-/// Never solves. Archive presence and digests are verified first; the
-/// staged tree is independently validated from the original archives
-/// before it is admitted anywhere.
+/// Never solves. New prefixes acquire missing archives by locked URL/digest;
+/// retained prefixes require their existing evidence. The staged tree is
+/// independently validated from original archives before admission.
 pub(super) fn materialize_locked(
     ctx: &Ctx,
     session: &LifecycleSession,
@@ -502,11 +524,16 @@ pub(super) fn materialize_locked(
         .to_str()
         .ok_or_else(|| failure(output, "materialization prefix is not UTF-8"))?
         .to_owned();
-    // 1. Verify every retained archive before any helper runs.
-    let archives = retained_archives(output, &ctx.home, locked)?;
-    // 2. Idempotent native reuse: an existing prefix is re-validated
-    //    from the original archives, exactly like retained sources.
-    if image_staging.is_none() && retained_prefix_exists(output, &final_prefix)? {
+    // 1. Retained prefixes must keep their original evidence; cold prefixes
+    //    reconstruct only the frozen archive bytes, without solving or repodata.
+    let reuse = image_staging.is_none() && retained_prefix_exists(output, &final_prefix)?;
+    let archives = if reuse {
+        retained_archives(output, &ctx.home, locked)?
+    } else {
+        acquire_locked_archives(output, ctx, locked)?
+    };
+    // 2. Idempotent native reuse validates the prefix from original archives.
+    if reuse {
         let validated = validate::validate_tree(
             output,
             locked,

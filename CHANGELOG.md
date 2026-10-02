@@ -18,6 +18,14 @@ User-visible changes per release. Design archaeology lives in
   against physical capabilities. Imported missing solve facts cannot silently
   disable conditional dependencies, while images report unresolved external
   kernel/CPU/GPU requirements rather than treating them as image capabilities.
+- Frozen Conda builds in a fresh home acquire the exact archive URLs and hashes
+  already recorded in the lock. They never solve again or refresh repodata;
+  corrupt retained archives/prefix evidence still fail rather than being repaired.
+- Frontend/import definition pins bind the effective captured code permissions
+  (read-only plus executability), not incidental cache umask bits. Code bytes,
+  aliases and execution-bit changes remain identity-bearing; source approval
+  still records full original permissions. Earlier unreleased v6 definition
+  pins require an explicit `grip update` for this corrected derivation.
 - Native command admission measures Linux kernel/macOS product versions before
   comparing declared OS floors. A future or incompatible floor is refused rather
   than being accepted from a declaration or left permanently unmeasurable.
