@@ -52,10 +52,10 @@ impl<'a> SourceMap<'a> {
             .and_then(|node| self.nodes.get_mut(node.index()))
             .and_then(|sources| sources.line_parser.observe(chunk));
         for node in nodes {
-            if let Some(sources) = self.nodes.get_mut(node.index()) {
-                if generated.is_some() {
-                    sources.generated_line = generated;
-                }
+            if let Some(sources) = self.nodes.get_mut(node.index())
+                && generated.is_some()
+            {
+                sources.generated_line = generated;
             }
         }
         let Some(progress) = progress else {

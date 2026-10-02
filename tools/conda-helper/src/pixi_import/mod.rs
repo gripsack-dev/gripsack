@@ -457,14 +457,14 @@ fn parse_manifest(bytes: &str) -> HResult<(WorkspaceManifest, RawRequirements)> 
         toml::{ExternalWorkspaceProperties, FromTomlStr, PackageDefaults, TomlManifest},
     };
     // Both entry points parse captured strings; neither discovers a workspace.
-    if let Ok(pyproject) = PyProjectManifest::from_toml_str(bytes) {
-        if let Some(raw) = pyproject.tool.as_ref().and_then(|tool| tool.pixi.as_ref()) {
-            let requirements = raw_requirements(raw);
-            return pyproject
-                .into_workspace_manifest(Path::new("/"))
-                .map(|parsed| (parsed.0, requirements))
-                .map_err(invalid_manifest);
-        }
+    if let Ok(pyproject) = PyProjectManifest::from_toml_str(bytes)
+        && let Some(raw) = pyproject.tool.as_ref().and_then(|tool| tool.pixi.as_ref())
+    {
+        let requirements = raw_requirements(raw);
+        return pyproject
+            .into_workspace_manifest(Path::new("/"))
+            .map(|parsed| (parsed.0, requirements))
+            .map_err(invalid_manifest);
     }
     let raw = TomlManifest::from_toml_str(bytes).map_err(invalid_manifest)?;
     let requirements = raw_requirements(&raw);
@@ -595,10 +595,10 @@ fn validate_closure(
     let mut reached = BTreeSet::new();
     let mut extras = BTreeSet::new();
     while let Some((spec, constraint)) = pending.pop_front() {
-        if let Some(condition) = &spec.condition {
-            if !condition_holds(condition, records, virtuals)? {
-                continue;
-            }
+        if let Some(condition) = &spec.condition
+            && !condition_holds(condition, records, virtuals)?
+        {
+            continue;
         }
         let name = spec.name.as_exact().ok_or_else(|| {
             fail(

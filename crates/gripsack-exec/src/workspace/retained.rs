@@ -12,10 +12,7 @@ use crate::{ExecError, Repository};
 use gripsack_ir::{
     FetchSpec, Ir,
     workspace::RecipeOutputKind,
-    workspace_v6::{
-        WorkspaceOutput, WorkspaceProducer, WorkspaceSourceV6, identity::CommandPins,
-        lock::ResolvedPinFields,
-    },
+    workspace_v6::{WorkspaceOutput, WorkspaceProducer, WorkspaceSourceV6, identity::CommandPins},
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -258,16 +255,7 @@ fn retained_source(
                     )
                     .into());
                 }
-                resolved
-                    .get_or_insert_with(|| ResolvedPinFields {
-                        url: None,
-                        version: None,
-                        sha256: None,
-                        tree256: None,
-                        repo256: None,
-                        api_url: None,
-                    })
-                    .tree256 = Some(checked.tree_hash().to_string());
+                resolved.get_or_insert_default().tree256 = Some(checked.tree_hash().to_string());
             } else if let Some(expected) = resolved.as_ref().and_then(|pin| pin.sha256.as_ref()) {
                 use sha2::{Digest, Sha256};
                 use std::io::Read;

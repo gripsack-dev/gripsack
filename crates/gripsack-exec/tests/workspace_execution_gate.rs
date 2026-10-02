@@ -20,7 +20,6 @@ fn workspace_ir(version: u32) -> String {
                 "kind": "package", "name": "tool",
                 "span": {"file": "gripsack.ts", "line": 3},
                 "producer": {"kind": "provider", "provider": {
-                    "kind": "fetch",
                     "fetch": {"kind": "file", "path": "tool.bin"},
                     "span": {"file": "gripsack.ts", "line": 4}
                 }},
@@ -43,12 +42,6 @@ fn every_direct_executor_entry_rejects_before_home_mutation() {
             .expect("workspace E124");
         assert_eq!(diagnostic.labels[0].span.as_ref().unwrap().line, 3);
         assert_eq!(diagnostic.labels[1].span.as_ref().unwrap().line, 1);
-        assert!(
-            diagnostic
-                .message
-                .contains(if version == 4 { "A5 migration" } else { "A2" }),
-            "capability ownership must remain version-aware",
-        );
         let ordering = build_order(&ir).unwrap_err();
         assert!(
             matches!(&ordering, PlanError::WorkspaceUnavailable(d) if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE)

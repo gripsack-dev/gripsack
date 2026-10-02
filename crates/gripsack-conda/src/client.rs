@@ -212,12 +212,12 @@ impl CondaHelper {
     /// Validates an `error` response's attempt echo and converts it into a
     /// typed [`CondaError::Helper`] with `code`/`message` preserved verbatim.
     fn helper_error(&self, sent: u64, error: ErrorResponse) -> Result<CondaError, CondaError> {
-        if let Some(echoed) = error.attempt {
-            if echoed != sent {
-                return Err(CondaError::Echo(format!(
-                    "stale attempt echo in error response: sent {sent}, got {echoed}"
-                )));
-            }
+        if let Some(echoed) = error.attempt
+            && echoed != sent
+        {
+            return Err(CondaError::Echo(format!(
+                "stale attempt echo in error response: sent {sent}, got {echoed}"
+            )));
         }
         Ok(CondaError::Helper {
             code: error.code,

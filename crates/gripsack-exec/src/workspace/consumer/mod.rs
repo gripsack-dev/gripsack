@@ -155,21 +155,18 @@ pub fn consume(
         session,
         ..
     } = held;
-    let checkout = live_checkout(ctx)?;
     match request {
         ConsumerRequest::Run { argv, .. } => run_launch(
             ctx,
             session,
             &plan,
             &environment_span,
-            &host,
-            &realization,
             argv,
-            &checkout,
+            &live_checkout(ctx)?,
             options,
         ),
         ConsumerRequest::Shell { shell, .. } => {
-            shell_launch(ctx, session, &plan, shell, &checkout, options)
+            shell_launch(ctx, session, &plan, shell, &live_checkout(ctx)?, options)
         }
         ConsumerRequest::Task { task } => {
             let WorkspaceOutput::Task(declaration) = outputs[task] else {
@@ -182,7 +179,6 @@ pub fn consume(
                 &plan,
                 &realization,
                 &host,
-                &checkout,
                 options,
             )
         }
@@ -214,14 +210,11 @@ fn admit_task_shape(task: &TaskOutput) -> Result<(), ExecError> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_launch(
     ctx: &Ctx,
     session: LifecycleSession,
     plan: &admit::EnvironmentPlan,
     span: &Span,
-    host: &admit::NativeContext<'_>,
-    realization: &Realization,
     argv: &[OsString],
     checkout: &Path,
     options: &super::BuildOptions<'_>,
@@ -229,8 +222,7 @@ fn run_launch(
     let Some((program, arguments)) = argv.split_first() else {
         return Err(failure("run requires a command after `--`"));
     };
-    let (program, admitted) = resolve_program(plan, realization, host, program, span, options)?;
-    let arguments: Vec<OsString> = arguments.to_vec();
+    let (program, admitted) = resolve_program(plan, program, span, options)?;
     with_process_root(ctx, session, plan.closure().clone(), |bin, leases| {
         let overlay = plan.materialize(bin, admitted).map_err(operational)?;
         let invocation = Invocation::admit(
@@ -290,9 +282,9 @@ fn task_launch(
     plan: &admit::EnvironmentPlan,
     realization: &Realization,
     host: &admit::NativeContext<'_>,
-    checkout: &Path,
     options: &super::BuildOptions<'_>,
 ) -> Result<ConsumerOutcome, ExecError> {
+    let checkout = live_checkout(ctx)?;
     let mut completed = 0usize;
     let outcome = with_process_root(ctx, session, plan.closure().clone(), |bin, leases| {
         let base_overlay = plan.materialize(bin, None).map_err(operational)?;
@@ -319,7 +311,7 @@ fn task_launch(
                         plan,
                         realization,
                         host,
-                        checkout,
+                        &checkout,
                         options,
                         &base_overlay,
                         &leases,
@@ -393,7 +385,12 @@ fn task_command(
     let mut library: Vec<PathBuf> = base_overlay.library_prefix().to_vec();
     // Command-declared PATH dirs precede the environment's declared segment
     // and the operator PATH, after the exported-commands bin directory.
-    let mut search: Vec<PathBuf> = Vec::new();
+    let mut search: Vec<PathBuf> = base_overlay
+        .search_prefix()
+        .iter()
+        .take(1)
+        .cloned()
+        .collect();
     for (key, argument) in declared_env {
         let value = task_argument(argument, realization, host, &span)?;
         let text = value
@@ -408,7 +405,7 @@ fn task_command(
             _ => entries.push((OsString::from(key), value)),
         }
     }
-    search.extend(base_overlay.search_prefix().iter().cloned());
+    search.extend(base_overlay.search_prefix().iter().skip(1).cloned());
     let explicit = match program_binding {
         WorkspaceArg::PackageCommand {
             package,
@@ -428,7 +425,7 @@ fn task_command(
         (bind_admitted_program(command, options)?, Some(command))
     } else {
         let program_arg = task_argument(program_binding, realization, host, &span)?;
-        resolve_program(plan, realization, host, &program_arg, &span, options)?
+        resolve_program(plan, &program_arg, &span, options)?
     };
     if let Some(admitted) = admitted {
         let mut dirs = admitted.library_dirs.clone();
@@ -656,8 +653,6 @@ fn task_cwd(
 /// run as-is; only package commands carry layout admission.
 fn resolve_program<'p>(
     plan: &'p admit::EnvironmentPlan,
-    realization: &Realization,
-    host: &admit::NativeContext<'_>,
     program: &OsStr,
     span: &Span,
     options: &super::BuildOptions<'_>,
@@ -668,8 +663,6 @@ fn resolve_program<'p>(
     if let Some(command) = plan.commands.get(text) {
         return Ok((bind_admitted_program(command, options)?, Some(command)));
     }
-    let _ = realization;
-    let _ = host;
     let selected = SelectedProgram::select(
         options.environment,
         Path::new(program),
@@ -728,13 +721,8 @@ fn with_process_root(
         },
     );
     let session = LifecycleSession::acquire(&ctx.home)?;
-    let mut outcome = match result {
-        Ok(outcome) => outcome,
-        // Admission or launch failure before a confirmed exit cannot release
-        // the root honestly; the recovery lane retires it once no holder
-        // remains. The original error surfaces unchanged.
-        Err(error) => return Err(error),
-    };
+    // An unconfirmed launch failure leaves the root for lease-aware recovery.
+    let mut outcome = result?;
     let lease_id = lease.id().as_str().to_owned();
     match lease.release(&session, &outcome.receipt) {
         Ok(()) => {

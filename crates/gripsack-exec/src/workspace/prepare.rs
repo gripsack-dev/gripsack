@@ -410,14 +410,14 @@ impl<'a> Prepared<'a> {
             if let Some(source) = self.sources.get(name) {
                 roots.extend(source.artifact.retention.iter().cloned());
             }
-            if name != recipe {
-                if let Some(recipe) = self.recipes.get(name) {
-                    roots.insert(gripsack_store::content_path(
-                        home,
-                        "workspace-recipe",
-                        &recipe.to_string(),
-                    ));
-                }
+            if name != recipe
+                && let Some(recipe) = self.recipes.get(name)
+            {
+                roots.insert(gripsack_store::content_path(
+                    home,
+                    "workspace-recipe",
+                    &recipe.to_string(),
+                ));
             }
             if let Some(package) = self.packages.get(name) {
                 roots.insert(gripsack_store::content_path(

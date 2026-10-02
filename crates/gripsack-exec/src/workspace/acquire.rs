@@ -153,32 +153,32 @@ pub(super) fn acquire(
             Some(pin)
         }
     };
-    if let Some(pin) = locked.filter(|_| !local) {
-        if let Some(tree) = &pin.resolved.tree256 {
-            let path = store::content_path(&ctx.home, "workspace-source", tree);
-            match std::fs::symlink_metadata(&path) {
-                Ok(metadata) if metadata.is_dir() => {
-                    let checked = super::stage::validate_output_tree(
-                        &path,
-                        RecipeOutputKind::Tree,
-                        name,
-                        ctx.fetch.limits(),
-                    )?;
-                    if checked.tree_hash().as_str() != tree {
-                        return Err(failure(
-                            "retained source differs from its frozen tree identity".into(),
-                        ));
-                    }
-                    return Ok(PreparedSource {
-                        storage: SourceStorage::Retained(path),
-                        tree: checked.tree_hash().clone(),
-                        resolved: pin.resolved.clone(),
-                    });
+    if let Some(pin) = locked.filter(|_| !local)
+        && let Some(tree) = &pin.resolved.tree256
+    {
+        let path = store::content_path(&ctx.home, "workspace-source", tree);
+        match std::fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_dir() => {
+                let checked = super::stage::validate_output_tree(
+                    &path,
+                    RecipeOutputKind::Tree,
+                    name,
+                    ctx.fetch.limits(),
+                )?;
+                if checked.tree_hash().as_str() != tree {
+                    return Err(failure(
+                        "retained source differs from its frozen tree identity".into(),
+                    ));
                 }
-                Ok(_) => return Err(failure("retained source is not a real directory".into())),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error.into()),
+                return Ok(PreparedSource {
+                    storage: SourceStorage::Retained(path),
+                    tree: checked.tree_hash().clone(),
+                    resolved: pin.resolved.clone(),
+                });
             }
+            Ok(_) => return Err(failure("retained source is not a real directory".into())),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
     }
     let resolver_pin = locked.map(|pin| LockEntry {
@@ -221,8 +221,8 @@ pub(super) fn acquire(
         ),
         FetchIdentity::Tree(tree) => (None, tree),
     };
-    if let Some(pin) = locked {
-        if pin
+    if let Some(pin) = locked
+        && (pin
             .resolved
             .sha256
             .as_ref()
@@ -231,12 +231,11 @@ pub(super) fn acquire(
                 .resolved
                 .tree256
                 .as_ref()
-                .is_some_and(|expected| expected != tree.as_str())
-        {
-            return Err(failure(
-                "acquired source differs from its frozen byte/tree identity".into(),
-            ));
-        }
+                .is_some_and(|expected| expected != tree.as_str()))
+    {
+        return Err(failure(
+            "acquired source differs from its frozen byte/tree identity".into(),
+        ));
     }
     // Frozen metadata is retained rather than replaced by a transport's newer
     // discovery/version claims. The independently measured tree binds extraction.

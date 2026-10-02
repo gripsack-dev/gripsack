@@ -216,7 +216,10 @@ pub(super) fn publish_recipe(
 
 pub(super) enum ProducerIdentity<'a> {
     Recipe(RecipeDigest),
-    Provider(&'a ResolvedPinFields),
+    Provider {
+        pin: &'a ResolvedPinFields,
+        conda: Option<&'a super::conda::CondaRuntimeReceipt>,
+    },
 }
 pub(super) fn publish_package(
     ctx: &Ctx,
@@ -226,18 +229,19 @@ pub(super) fn publish_package(
     identity: ProducerIdentity<'_>,
     runtime: Vec<Arc<Package>>,
     runtime_names: &BTreeMap<String, PackageDigest>,
-    conda: Option<super::conda::CondaRuntimeReceipt>,
 ) -> Result<Arc<Package>, ExecError> {
     authority(ctx, session)?;
-    let identity = match identity {
-        ProducerIdentity::Recipe(recipe) => {
-            identity::recipe_package_digest(declaration, recipe, runtime_names)
-        }
-        ProducerIdentity::Provider(pin) => {
-            identity::provider_package_digest(declaration, pin, runtime_names)
-        }
-    }
-    .map_err(|error| failure(error.to_string()))?;
+    let (identity, conda) = match identity {
+        ProducerIdentity::Recipe(recipe) => (
+            identity::recipe_package_digest(declaration, recipe, runtime_names),
+            None,
+        ),
+        ProducerIdentity::Provider { pin, conda } => (
+            identity::provider_package_digest(declaration, pin, runtime_names),
+            conda,
+        ),
+    };
+    let identity = identity.map_err(|error| failure(error.to_string()))?;
     let commands = inspect_commands(declaration, &producer.payload)?;
     let root = store::content_path(&ctx.home, "workspace-package", &identity.to_string());
     let receipt = PackageReceipt {
@@ -253,7 +257,7 @@ pub(super) fn publish_package(
             .collect(),
         target: declaration.target.clone(),
         layout: declaration.layout.clone(),
-        conda,
+        conda: conda.cloned(),
     };
     match read_receipt::<PackageReceipt>(ctx, &root, PACKAGE_RECEIPT)? {
         Some(existing) if existing != receipt => {

@@ -37,7 +37,7 @@ jobs:
           printf '%s  %s\n' 875cf54a15311eee2c99b9dd67c68c4a49351d489ab622bf2cfd28c8f2078d3c "$RUNNER_TEMP/go.tar.gz" | shasum -a 256 -c -
           tar -xzf "$RUNNER_TEMP/go.tar.gz" -C "$RUNNER_TEMP"
           export PATH="$RUNNER_TEMP/go/bin:$PATH" GOTOOLCHAIN=local GOFLAGS=-mod=readonly CGO_ENABLED=0
-          (cd tools/buildkit-bridge && go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/bridge" .)
+          (cd tools/buildkit-bridge && go build -trimpath -buildvcs=false -ldflags="-buildid=" -o "$RUNNER_TEMP/bridge" .)
           printf '%s  %s\n' c6d08934df6da46f9681796a8487f78f074440c35db442a3e9ac49af7dff41bb "$RUNNER_TEMP/bridge" | shasum -a 256 -c -
       - name: Require actual owned VZ solve and lifecycle
         env:

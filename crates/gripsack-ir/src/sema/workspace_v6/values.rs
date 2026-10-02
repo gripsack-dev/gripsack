@@ -381,7 +381,8 @@ fn profile_file(file: &WorkspaceFile, out: &mut Vec<Diagnostic>) {
     if let WorkspaceContent::Template {
         result_digest: Some(digest),
         ..
-    } = &file.content && !hash(digest)
+    } = &file.content
+        && !hash(digest)
     {
         invalid(
             out,
@@ -402,7 +403,9 @@ fn profile_file(file: &WorkspaceFile, out: &mut Vec<Diagnostic>) {
             "destination must be a normalized absolute or ~/ path",
         );
     }
-    if let WorkspaceDestination::ManagedBlock { marker, .. } = &file.destination && (marker.is_empty() || marker.chars().any(char::is_control)) {
+    if let WorkspaceDestination::ManagedBlock { marker, .. } = &file.destination
+        && (marker.is_empty() || marker.chars().any(char::is_control))
+    {
         invalid(
             out,
             &file.span,

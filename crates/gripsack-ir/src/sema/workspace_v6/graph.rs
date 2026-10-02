@@ -52,7 +52,9 @@ pub(super) fn check<'a>(
             );
             continue;
         }
-        if let (Some(command), WorkspaceOutput::Package(package)) = (edge.command, *target) && !package.commands.contains_key(command) {
+        if let (Some(command), WorkspaceOutput::Package(package)) = (edge.command, *target)
+            && !package.commands.contains_key(command)
+        {
             fail(
                 out,
                 codes::UNKNOWN_WORKSPACE_REF,
@@ -236,7 +238,9 @@ fn check_inputs_and_context(
                 );
             }
             if let (Some(required), WorkspaceArg::PackageCommand { package, .. }) =
-                (check_target, argument) && let Some(WorkspaceOutput::Package(provider)) = catalog.get(package.as_str()) && !supports_target(
+                (check_target, argument)
+                && let Some(WorkspaceOutput::Package(provider)) = catalog.get(package.as_str())
+                && !supports_target(
                     &provider.target.policy_requirement(),
                     &required.policy_requirement(),
                 )

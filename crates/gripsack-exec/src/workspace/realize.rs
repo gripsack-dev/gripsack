@@ -250,7 +250,7 @@ pub(super) fn realize_held<'a>(
         let output = completed.output();
         // Validate the aggregate as well: exporter debris cannot evade limits by
         // living outside the named candidate directories.
-        gripsack_fetch::fetch::validate_tree(&output, ctx.fetch.limits())?;
+        gripsack_fetch::fetch::validate_tree(output, ctx.fetch.limits())?;
         let mut candidates = BTreeMap::new();
         for (name, relative) in outputs {
             let WorkspaceOutput::Recipe(recipe) = prepared.selection.outputs[name] else {
@@ -347,14 +347,12 @@ fn validate_commands(
                 command,
                 sha256: Some(claim),
             } = argument
-            {
-                if ExecutableDigest::parse(claim).map_err(operational)?
+                && ExecutableDigest::parse(claim).map_err(operational)?
                     != provided[package.as_str()][command].executable
-                {
-                    return Err(failure(format!(
-                        "executable claim for {package:?}/{command:?} differs from the produced bytes"
-                    )));
-                }
+            {
+                return Err(failure(format!(
+                    "executable claim for {package:?}/{command:?} differs from the produced bytes"
+                )));
             }
         }
         Ok(())
@@ -409,7 +407,10 @@ fn publish_packages<'a>(
             let (producer, identity) = match &package.producer {
                 WorkspaceProducer::Provider { .. } => (
                     Arc::clone(&prepared.sources[name].artifact),
-                    ProducerIdentity::Provider(&prepared.sources[name].resolved),
+                    ProducerIdentity::Provider {
+                        pin: &prepared.sources[name].resolved,
+                        conda: prepared.sources[name].conda.as_ref(),
+                    },
                 ),
                 WorkspaceProducer::Recipe { recipe } => (
                     Arc::clone(&recipes[recipe.as_str()]),
@@ -431,10 +432,6 @@ fn publish_packages<'a>(
                     identity,
                     runtime,
                     &prepared.packages,
-                    match &package.producer {
-                        WorkspaceProducer::Provider { .. } => prepared.sources[name].conda.clone(),
-                        WorkspaceProducer::Recipe { .. } => None,
-                    },
                 )?,
             );
             pending.remove(name);

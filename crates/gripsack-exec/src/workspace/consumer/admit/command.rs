@@ -55,10 +55,10 @@ pub(in crate::workspace::consumer) fn admit_command(
             "exported command bytes differ from their publication receipt",
         ));
     }
-    let (runtime, interpreter, macho_library_dirs) = match metadata.format {
+    let runtime = match metadata.format {
         Some(ExecutableFormat::Script) => admit_script(&metadata, package, context, span)?,
-        Some(ExecutableFormat::Elf) => (
-            elf::admit(
+        Some(ExecutableFormat::Elf) => CommandRuntime {
+            elf: elf::admit(
                 &metadata,
                 &canonical,
                 &payload,
@@ -67,13 +67,10 @@ pub(in crate::workspace::consumer) fn admit_command(
                 host,
                 span,
             )?,
-            None,
-            None,
-        ),
-        Some(ExecutableFormat::MachO) => (
-            elf::Runtime::default(),
-            None,
-            Some(macho::admit(
+            ..CommandRuntime::default()
+        },
+        Some(ExecutableFormat::MachO) => CommandRuntime {
+            macho_library_dirs: Some(macho::admit(
                 &metadata,
                 &canonical,
                 package,
@@ -81,18 +78,26 @@ pub(in crate::workspace::consumer) fn admit_command(
                 host,
                 span,
             )?),
-        ),
+            ..CommandRuntime::default()
+        },
         None => return Err(gate(span, "unrecognized executable format")),
     };
     Ok(AdmittedCommand {
         path,
         executable: *executable,
-        library_dirs: runtime.directories,
-        gnu_loader: runtime.gnu_loader,
-        macho_library_dirs,
-        interpreter,
+        library_dirs: runtime.elf.directories,
+        gnu_loader: runtime.elf.gnu_loader,
+        macho_library_dirs: runtime.macho_library_dirs,
+        interpreter: runtime.interpreter,
         bytecode,
     })
+}
+
+#[derive(Default)]
+struct CommandRuntime {
+    elf: elf::Runtime,
+    interpreter: Option<PinnedInterpreter>,
+    macho_library_dirs: Option<Vec<std::path::PathBuf>>,
 }
 
 fn admit_script(
@@ -100,14 +105,7 @@ fn admit_script(
     package: &Package,
     context: &NativeContext<'_>,
     span: &Span,
-) -> Result<
-    (
-        elf::Runtime,
-        Option<PinnedInterpreter>,
-        Option<Vec<std::path::PathBuf>>,
-    ),
-    ExecError,
-> {
+) -> Result<CommandRuntime, ExecError> {
     let host = &context.target;
     let Some(Interpreter::Shebang { program, argument }) = &metadata.interpreter else {
         return Err(gate(span, "script command has no interpreter line"));
@@ -156,15 +154,15 @@ fn admit_script(
                     ));
                 }
             };
-            return Ok((
-                runtime,
-                Some(PinnedInterpreter {
+            return Ok(CommandRuntime {
+                elf: runtime,
+                interpreter: Some(PinnedInterpreter {
                     path: program.to_owned(),
                     argument: argument.clone(),
                     executable,
                 }),
                 macho_library_dirs,
-            ));
+            });
         }
         packages.extend(owner.runtime.iter().map(std::sync::Arc::as_ref));
     }
@@ -182,7 +180,7 @@ fn admit_script(
     }
     // An absolute platform interpreter remains explicit host authority. Only
     // retained package interpreters carry package-closure and byte-pin claims.
-    Ok((elf::Runtime::default(), None, None))
+    Ok(CommandRuntime::default())
 }
 
 fn read_executable(

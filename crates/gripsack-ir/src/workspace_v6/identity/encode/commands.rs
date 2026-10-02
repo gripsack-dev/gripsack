@@ -129,8 +129,10 @@ fn argument(writer: &mut Encoder, value: &WorkspaceArg, pins: &CommandPins) -> R
             writer.text(&pin.selector);
             match pin.executable {
                 crate::workspace_v6::identity::ToolExecutable::Captured(executable) => {
-                    if let Some(claim) = sha256 && crate::workspace_v6::identity::ExecutableDigest::parse(claim)?
-                            != executable {
+                    if let Some(claim) = sha256
+                        && crate::workspace_v6::identity::ExecutableDigest::parse(claim)?
+                            != executable
+                    {
                         return Err(PinGap::ToolMismatch);
                     }
                     writer.field(b"captured-executable");

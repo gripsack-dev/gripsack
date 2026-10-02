@@ -16,6 +16,8 @@ path = "src/main.rs"
 [dependencies]
 gripsack-conda = { version = "0.44.0", path = "../../crates/gripsack-conda" }
 gripsack-ir = { version = "0.44.0", path = "../../crates/gripsack-ir" }
+# async-compression's 0.5 backend must not inherit pkg-config's dynamic bzip2.
+bzip2 = { version = "0.5.2", features = ["static"] }
 serde_json = "1"
 sha2 = "0.11"
 pixi_manifest = { git = "https://github.com/prefix-dev/pixi", rev = "6f71156de33ac6420522a77f21437ff0a331cb09" }

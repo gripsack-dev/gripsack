@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from conftest import grip, make_tarball
+from conftest import grip, make_tarball, make_toolchain_tarball
 
 
 def test_native_provider_survey_and_frozen_acquisition(sandbox, monkeypatch):
@@ -97,3 +97,36 @@ def test_selected_output_roots_do_not_retain_an_unrelated_old_package(sandbox):
     assert not original["left"].exists(), "right's selection retained unrelated old left bytes"
     assert (original["right"] / "value").read_text() == "right original\n"
     assert (current["left"] / "value").read_text() == "left changed\n"
+
+
+def test_task_declared_path_cannot_shadow_selected_environment_commands(sandbox):
+    archive = make_toolchain_tarball(
+        sandbox / "commands.tar.gz", {"bin/probe": b"#!/bin/sh\nprintf admitted-probe\n"}
+    )
+    shadow = sandbox / "shadow"
+    shadow.mkdir()
+    (shadow / "probe").write_text("#!/bin/sh\nprintf shadow-probe\n")
+    (shadow / "probe").chmod(0o755)
+    repo = sandbox / "task-path"
+    repo.mkdir()
+    (repo / "gripsack.ts").write_text('''import {
+      defineWorkspace, workspace, pkg, provider, tarball, environment, task, exec, lit,
+    } from "@gripsack/core";
+    export default defineWorkspace((ctx) => {
+      const target = {os: ctx.facts.os, arch: ctx.facts.arch};
+      return workspace({outputs: [
+        pkg("tools", {producer:provider(tarball(''' + json.dumps(archive.as_uri()) + ''')),
+          commands:{probe:"bin/probe"},target,layout:{kind:"relocatable"}}),
+        environment("dev", {packages:["tools"],target}),
+        task("nested", {environment:"dev",steps:[exec({
+          argv:[lit("/bin/sh"),lit("-c"),lit("exec probe")],
+          env:{PATH:lit(''' + json.dumps(str(shadow)) + ''')}
+        })]})
+      ]});
+    });
+    ''')
+    updated = grip("update", "tools", cwd=repo)
+    assert updated.returncode == 0, updated.stdout + updated.stderr
+    result = grip("task", "nested", cwd=repo)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout == "admitted-probe"

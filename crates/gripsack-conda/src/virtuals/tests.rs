@@ -215,7 +215,7 @@ fn environment(packages: Vec<LockedCondaPackage>) -> LockedCondaEnvironment {
 fn ordinary_transitive_requirements_match_version_build_and_channel() {
     let numpy = named("numpy", &["python >=3.12,<3.13 fixture_*"], &[]);
     assert!(matches!(
-        evaluate_requirements(&[numpy.clone()], &[]),
+        evaluate_requirements(std::slice::from_ref(&numpy), &[]),
         Err(VirtualConstraintError::Missing { .. })
     ));
     let python = package(&[], &[]);
@@ -239,7 +239,7 @@ fn ordinary_transitive_requirements_match_version_build_and_channel() {
 #[test]
 fn ordinary_constraints_are_optional_but_bind_selected_records() {
     let numpy = named("numpy", &[], &["python <3.12"]);
-    assert!(evaluate_requirements(&[numpy.clone()], &[]).is_ok());
+    assert!(evaluate_requirements(std::slice::from_ref(&numpy), &[]).is_ok());
     assert!(matches!(
         evaluate_requirements(&[numpy, package(&[], &[])], &[]),
         Err(VirtualConstraintError::Unsatisfied { .. })
@@ -249,9 +249,9 @@ fn ordinary_constraints_are_optional_but_bind_selected_records() {
 #[test]
 fn ordinary_conditional_closure_uses_actual_native_facts() {
     let numpy = named("numpy", &[r#"python >=3.12[when="__cuda >=12"]"#], &[]);
-    assert!(evaluate_requirements(&[numpy.clone()], &[]).is_ok());
+    assert!(evaluate_requirements(std::slice::from_ref(&numpy), &[]).is_ok());
     assert!(matches!(
-        evaluate_requirements(&[numpy.clone()], &[fact("__cuda", "12", "0")]),
+        evaluate_requirements(std::slice::from_ref(&numpy), &[fact("__cuda", "12", "0")]),
         Err(VirtualConstraintError::Missing { .. })
     ));
     assert!(

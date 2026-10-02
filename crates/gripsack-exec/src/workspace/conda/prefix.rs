@@ -56,17 +56,21 @@ fn python(name: &str) -> bool {
         && components.next().is_none()
 }
 
-fn shebang_wrapper(line: &str) -> Cow<'_, str> {
+fn shebang_wrapper(line: &str) -> Result<Cow<'_, str>, String> {
     let Some((path, arguments)) = interpreter(line) else {
-        return Cow::Borrowed(line);
+        return Ok(Cow::Borrowed(line));
     };
     let name = path.rsplit('/').next().unwrap_or(path);
     if python(name) {
-        Cow::Owned(format!(
+        Ok(Cow::Owned(format!(
             "#!/bin/sh\n'''exec' \"{path}\"{arguments} \"$0\" \"$@\" #'''"
+        )))
+    } else if !arguments.trim().is_empty() {
+        Err(format!(
+            "non-Python interpreter {name:?} has arguments that cannot be preserved by env shebang relocation"
         ))
     } else {
-        Cow::Owned(format!("#!/usr/bin/env {name}{arguments}"))
+        Ok(Cow::Owned(format!("#!/usr/bin/env {name}")))
     }
 }
 
@@ -85,7 +89,7 @@ fn shebang<'a>(
     };
     if new.contains(' ') {
         return Ok(if line.contains(old) {
-            Cow::Owned(shebang_wrapper(line).replace(old, new))
+            Cow::Owned(shebang_wrapper(line)?.replace(old, new))
         } else {
             Cow::Borrowed(line)
         });
@@ -98,7 +102,7 @@ fn shebang<'a>(
     if replaced.len() <= limit {
         return Ok(replaced);
     }
-    Ok(match shebang_wrapper(&replaced) {
+    Ok(match shebang_wrapper(&replaced)? {
         Cow::Owned(wrapper) => Cow::Owned(wrapper),
         Cow::Borrowed(_) => replaced,
     })
@@ -302,6 +306,28 @@ mod tests {
                     prefix,
                     false,
                     "linux-64"
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn non_python_interpreter_arguments_cannot_become_one_env_token() {
+        let long_prefix = format!("/{}", "a".repeat(140));
+        for (prefix, platform) in [
+            (long_prefix.as_str(), "linux-64"),
+            ("/with space", "osx-arm64"),
+        ] {
+            let mut output = Vec::new();
+            assert!(
+                super::emit(
+                    b"#!/placeholder/bin/perl -w\nprint 'ok';\n",
+                    &mut output,
+                    "/placeholder",
+                    prefix,
+                    false,
+                    platform,
                 )
                 .is_err()
             );

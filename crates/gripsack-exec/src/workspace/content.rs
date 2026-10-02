@@ -243,16 +243,15 @@ fn prepare_file(
                     variables,
                     &file.span.file,
                 )?;
-                if let Some(expected) = result_digest {
-                    if gripsack_process::Sha256Digest::of(&rendered)
+                if let Some(expected) = result_digest
+                    && gripsack_process::Sha256Digest::of(&rendered)
                         != gripsack_process::Sha256Digest::parse(expected)?
-                    {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            "rendered content does not match its declared result digest",
-                        )
-                        .into());
-                    }
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "rendered content does not match its declared result digest",
+                    )
+                    .into());
                 }
                 write_private(&output, &rendered, executable)?;
             }

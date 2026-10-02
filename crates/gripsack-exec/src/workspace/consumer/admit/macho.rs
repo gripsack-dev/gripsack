@@ -597,7 +597,7 @@ fn controls(
             if size < 72 {
                 return Err(gate(span, "truncated Mach-O segment command"));
             }
-            if (size - 72) / 80 != word(command, 64) as usize || (size - 72) % 80 != 0 {
+            if (size - 72) / 80 != word(command, 64) as usize || !(size - 72).is_multiple_of(80) {
                 return Err(gate(
                     span,
                     "Mach-O sections exceed their segment command region",

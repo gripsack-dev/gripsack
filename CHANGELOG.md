@@ -63,6 +63,12 @@ User-visible changes per release. Design archaeology lives in
   translation rejects changed library selection and requires glibc >=2.33.
   OCI admission checks image-local ELF/interpreter/library closure, including
   RPATH versus RUNPATH, before publishing the archive.
+- Task-declared PATH directories cannot shadow the selected environment's
+  exported commands in nested child lookups. Long/spaced Conda relocation
+  refuses non-Python interpreter argument combinations that would become a
+  single invalid `env` token, instead of publishing an unlaunchable script.
+- Native artifacts statically link bundled XZ rather than inheriting a
+  Homebrew `liblzma` dependency from the macOS build host.
 - Abandoned builds retain their source roots and staging until an owned-worker
   stop establishes a matching owner/epoch fence and inherited native leases have
   drained. Recovery removes staging before retiring the root and lock records.

@@ -1330,6 +1330,7 @@ dependencies = [
 name = "gripsack-conda-helper"
 version = "0.44.0"
 dependencies = [
+ "bzip2 0.5.2",
  "gripsack-conda",
  "gripsack-ir",
  "pixi_manifest",

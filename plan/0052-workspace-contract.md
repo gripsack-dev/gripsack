@@ -1934,6 +1934,40 @@ Observed working-tree development checks:
   Linux CLI launched a minimum-1 environment and refused a future-65535 floor
   without running the requested program:
   `NATIVE_OS_FLOOR_MEASUREMENT_AND_REFUSAL=passed`.
+- The real Linux coherent Conda flow now launches Python/NumPy, native extensions
+  and the noarch `wheel` entrypoint through project run, direct package-command
+  tasks, shell and personal profile from a long, spaced prefix. Frozen consumers
+  worked with the helper unavailable and left prefix bytes/modes/links and the
+  lock unchanged. After Python 3.12→3.13 update and GC, the retained old profile
+  still launched 3.12 while the current project launched 3.13:
+  `CONDA_NATIVE_RUN_TASK_SHELL_PROFILE_LONG_SPACED_UNCHANGED=passed`,
+  `CONDA_COHERENT_UPDATE_RETAINED_PROFILE_AND_GC=passed`.
+- Conda OCI consumers independently re-materialize original archives at the image
+  prefix. A separate read-only, network-disabled Docker run imported NumPy 2.5.3
+  at `/opt/science` and ran wheel 0.48.0 after worker/cache removal. Two clean
+  native homes/workers with identical frozen archives and frontend bytes produced
+  manifest `sha256:0872f8f780c19e0509dca45b2dc45eae84c3ba5e77fb635428958f114c10e173`.
+  Native prefixes remained unchanged; image witnesses contained no native prefix.
+  Image libc is measured from verified OCI bytes; external kernel/CPU/GPU
+  requirements remain explicit requirements, not inferred capabilities.
+- Both native and OCI ELF lookup now skip nonexistent contained search-directory
+  candidates while retaining required-library and escape rejection. The native
+  regression failed before the fix; an actual ELF program then loaded its
+  private library after an absent RPATH candidate:
+  `ACTUAL_ELF_MISSING_RPATH_CANDIDATE_THEN_PRIVATE_LIBRARY=passed`.
+- The standalone helper audit exposed vulnerable unrelated Pixi utility/auth
+  dependencies. A complete pinned upstream Git implementation with its existing
+  guard localized preserves canonical Pixi behavior while removing that edge:
+  825→570 locked packages, no RSA/tracing-subscriber/native-TLS/OpenSSL in the
+  helper lock. The pinned-container audit reported zero vulnerabilities and no
+  warnings without new ignores. Source and binary distribution retain the
+  upstream BSD and UV MIT notices.
+- Native authority review found two concrete cases: a task PATH contribution
+  shadowed its environment's exported commands, and non-Python relocation could
+  collapse interpreter arguments into one invalid `env` token. Both failed before
+  repair. The real CLI now selects the admitted nested command; real helper
+  materialization is refused with the offending script path before publication
+  when those interpreter arguments cannot be preserved.
 
 These development checks do not replace full Compose or source-bound release
 evidence. Required normalization/refinement, publication/retention, recovery,

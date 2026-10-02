@@ -809,15 +809,15 @@ async fn materialize(request: MaterializeRequest<'_>) -> HResult<MaterializedRes
     for (path, name) in &owners {
         let mut ancestor = path.as_str();
         while let Some((parent, _)) = ancestor.rsplit_once('/') {
-            if !directory_paths.contains(parent) {
-                if let Some(previous) = owners.get(parent) {
-                    return Err(fail(
-                        "clobber",
-                        format!(
-                            "package '{name}' path '{path}' traverses path '{parent}' owned by '{previous}'"
-                        ),
-                    ));
-                }
+            if !directory_paths.contains(parent)
+                && let Some(previous) = owners.get(parent)
+            {
+                return Err(fail(
+                    "clobber",
+                    format!(
+                        "package '{name}' path '{path}' traverses path '{parent}' owned by '{previous}'"
+                    ),
+                ));
             }
             ancestor = parent;
         }

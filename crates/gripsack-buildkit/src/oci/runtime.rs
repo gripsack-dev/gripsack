@@ -225,7 +225,9 @@ impl<'a> Namespace<'a> {
                 continue;
             };
             if let Ok((path, entry)) = resolve(self.files, &format!("{directory}/{program}"))
-                && matches!(entry.kind, FileKind::File { .. }) && entry.mode & 0o111 != 0 {
+                && matches!(entry.kind, FileKind::File { .. })
+                && entry.mode & 0o111 != 0
+            {
                 return Ok(path);
             }
         }
