@@ -14,7 +14,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { asDiagnostic, authoringDiagnostic } from "./diagnostic.ts";
-import { core, coreUrl } from "./pin.ts";
+import { core, coreUrl } from "./pin-selection.ts";
 import type { Env } from "./graph.ts";
 
 function die(msg: string): never {

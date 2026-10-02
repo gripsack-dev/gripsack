@@ -70,6 +70,12 @@ impl RequestBudget {
         })
     }
 
+    pub fn until(now: Instant, deadline: Instant) -> io::Result<Self> {
+        let mut budget = Self::new(now)?;
+        budget.deadline = budget.deadline.min(deadline);
+        Ok(budget)
+    }
+
     pub fn started(&self) -> Instant {
         self.started
     }
@@ -85,14 +91,20 @@ impl RequestBudget {
 
     pub fn begin(&mut self, mut now: Instant) -> Result<Duration, RetryStopReason> {
         loop {
+            if now >= self.deadline {
+                return Err(self.stop(policy::RetryRefusal::Deadline));
+            }
             match self
                 .state
                 .begin(now.saturating_duration_since(self.started).as_nanos())
             {
                 policy::AttemptAdmission::Start { remaining_ns, .. } => {
-                    return Ok(Duration::from_nanos(remaining_ns));
+                    return Ok(Duration::from_nanos(remaining_ns).min(self.deadline - now));
                 }
                 policy::AttemptAdmission::Wait { nanoseconds } => {
+                    if Duration::from_nanos(nanoseconds) >= self.deadline - now {
+                        return Err(self.stop(policy::RetryRefusal::Deadline));
+                    }
                     std::thread::sleep(Duration::from_nanos(nanoseconds));
                     now = Instant::now();
                 }
@@ -107,12 +119,18 @@ impl RequestBudget {
         kind: HttpFailureKind,
         server_wait: Option<Duration>,
     ) -> RetryDecision {
+        if now >= self.deadline {
+            return RetryDecision::Stop(self.stop(policy::RetryRefusal::Deadline));
+        }
         match self.state.decide(
             now.saturating_duration_since(self.started).as_nanos(),
             kind.retryable(),
             server_wait.map(|wait| wait.as_nanos()),
         ) {
             policy::RetryDecision::RetryAfter { nanoseconds } => {
+                if Duration::from_nanos(nanoseconds) >= self.deadline - now {
+                    return RetryDecision::Stop(self.stop(policy::RetryRefusal::Deadline));
+                }
                 RetryDecision::RetryAfter(Duration::from_nanos(nanoseconds))
             }
             policy::RetryDecision::Stop(reason) => RetryDecision::Stop(reason.into()),
@@ -120,6 +138,9 @@ impl RequestBudget {
     }
 
     pub fn complete(&mut self, now: Instant) -> Result<(), RetryStopReason> {
+        if now >= self.deadline {
+            return Err(self.stop(policy::RetryRefusal::Deadline));
+        }
         self.state
             .complete(now.saturating_duration_since(self.started).as_nanos())
             .map_err(Into::into)
@@ -133,6 +154,29 @@ impl RequestBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn caller_deadline_bounds_attempt_completion_and_retry_wait() {
+        let now = Instant::now();
+        let end = now + Duration::from_millis(1);
+        let mut budget = RequestBudget::until(now, end).unwrap();
+        assert_eq!(budget.begin(now), Ok(Duration::from_millis(1)));
+        assert_eq!(
+            budget.decide(
+                now,
+                HttpFailureKind::Status(503),
+                Some(Duration::from_secs(1))
+            ),
+            RetryDecision::Stop(RetryStopReason::Deadline),
+        );
+        let mut budget = RequestBudget::until(now, end).unwrap();
+        budget.begin(now).unwrap();
+        assert_eq!(budget.complete(end), Err(RetryStopReason::Deadline));
+        let mut expired = RequestBudget::until(now, now).unwrap();
+        assert_eq!(expired.begin(now), Err(RetryStopReason::Deadline));
+        let extended = RequestBudget::until(now, now + OPERATION_TIMEOUT * 2).unwrap();
+        assert_eq!(extended.deadline(), now + OPERATION_TIMEOUT);
+    }
 
     #[test]
     fn an_expired_clock_observation_cannot_admit_an_attempt() {

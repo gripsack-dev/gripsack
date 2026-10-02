@@ -116,7 +116,13 @@ pub fn update(
         }
     } else {
         if summary.publishes_lock(mode) {
-            println!("lockfile updated — run `grip apply` to deploy");
+            if ir.workspace_v6.is_some() {
+                println!(
+                    "workspace lock updated — select an output with `grip build` or its native consumer"
+                );
+            } else {
+                println!("lockfile updated — run `grip apply` to deploy");
+            }
         }
         ExitCode::SUCCESS
     }

@@ -20,6 +20,7 @@ fn workspace_ir(version: u32) -> String {
                 "kind": "package", "name": "tool",
                 "span": {"file": "gripsack.ts", "line": 3},
                 "producer": {"kind": "provider", "provider": {
+                    "kind": "fetch",
                     "fetch": {"kind": "file", "path": "tool.bin"},
                     "span": {"file": "gripsack.ts", "line": 4}
                 }},

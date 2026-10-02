@@ -301,3 +301,43 @@ claim or new config guidance.
 | B1-02/04 kernels | **in_progress**: the pure lease kernel + CleanupSet landed at `80b7738` with a two-client TLC model and two attributed early-stop/crash-wipes mutants (receipt `2026-09-26-b1-worker-leases-80b7738.log`). Follow-up `db51101` corrected B0 baseline dependency admission without allowing upstream builder packages. The Linux prototype at `80b50a3` calls the lease kernel for single-client stop and retained-cache teardown; no real two-client recovery/upgrade, `grip` caller, TLAPS or worker Verus proof yet |
 | B1-03 protocol | **in_progress**: wire contract + fence kernel (`d656075`), Go mirror (`1d43f0d`), stdio transport + Rust driver (`50b829c`), with receipts `2026-09-26-b1-protocol-d656075.log`, `-bridge-go-d0d0a4a.log`, `-transport-50b829c.log`; no BuildKit Go client/LLB submission or `grip` worker caller, and Submit still fails closed |
 | Next | Connect a private, capability-checked owned worker to the Go BuildKit client and `grip`, then B2 lowering/store export; Mac VM and release proofs remain open |
+
+## Active workspace/backend integration (2026-09-30)
+
+Integration branch: `feat/workspace-buildkit`, based on `5a50fba`.
+The separate 0.43 candidate is not changed by this work.
+
+The next implementation boundary is the real two-phase path required by
+B1-03/B2-01/B2-02: admitted workspace production graph → Go LLB lowering →
+independent Rust validation of actual bytes/options → exact-byte solve →
+validated host-store publication. The existing standalone Submit refusal
+and the blocking, identity-incomplete transport are not production backends.
+
+Responsibility map: the IR crate owns workspace semantics and recipe
+identity; the adapter owns the admitted lowering projection, byte checker,
+bounded bridge process and worker leases; the Go bridge owns upstream LLB
+construction, RPC/session effects and export; exec/store retain acquisition,
+publication, consumer roots and activation. Native acquisition and host
+effects do not become LLB vertices. No second store or per-vertex scheduler
+is introduced.
+
+Required evidence remains the B1/B2 protocol, lease and lowering matrices,
+production-used Verus decisions, TLC/TLAPS safety, exact-byte substitution
+negatives, real worker cancellation/cache/check/export cases, and the
+applicable native lanes. B3–B5 consumers and their prerequisites remain
+part of the requested backend delivery, not silently satisfied by a bridge.
+Fuzz testing and corpus replay are not run, per owner instruction; that
+exception is not a substitute for any other required evidence. All new
+integration claims are pending until the corresponding effects and gates
+have actually run.
+
+The first integration development receipt is
+`verification/reports/2026-10-01-buildkit-bridge-development.log`.
+The actual Go bridge now lowers through upstream LLB and executes received,
+digest-checked definitions against the pinned real daemon. Its pinned Go
+format/vet/race/build gate passed. Three standalone real-program scenarios
+observed exact file export, a fail-fast isolated process, and cancellation
+after an actual process-ready event. The receipt excludes an earlier invalid
+network oracle and records the disposable daemon service's nonzero stop exit.
+Rust-checker/CLI integration, managed lifecycle, store publication and the
+formal/native/CI matrices are still unverified; no delivery row is closed.

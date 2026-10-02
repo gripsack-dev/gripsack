@@ -1,6 +1,7 @@
 {
   "imports": {
-    "@gripsack/core": "./src/pin.ts"
+    "@gripsack/core": "./src/pin.ts",
+    "@gripsack/core/advanced": "./src/pin-advanced.ts"
   },
   "tasks": {
     "test": "deno test --allow-read --allow-write --allow-run --allow-env test/"

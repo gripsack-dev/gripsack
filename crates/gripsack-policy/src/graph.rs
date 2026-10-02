@@ -12,6 +12,7 @@
 //! they join the closure but have no out-edges, the pre-0047
 //! semantics.
 
+pub mod collector;
 pub mod name_index;
 pub mod roles;
 
@@ -349,6 +350,50 @@ pub proof fn lemma_reachable_visited(
     }
 }
 
+
+/// Projection coverage (plan/0052 §5.1): every declared
+/// Production/BuildInput reference whose role the admission adapter
+/// projected into the build adjacency lands in the admitted build
+/// closure — a one-step path witnesses reachability and the closure is
+/// complete. This is the theorem behind the v6 admission check that
+/// fails REQUIRED_WORKSPACE_EDGE_MISSING when a declared producer/input
+/// is absent (gripsack-ir/src/sema/workspace_v6/graph.rs).
+pub proof fn lemma_projected_build_edge_in_closure(
+    n_nodes: nat,
+    adjacency: Seq<Seq<int>>,
+    role: roles::GraphRole,
+    from: int,
+    to: int,
+    closure: Seq<usize>,
+)
+    requires
+        adjacency.len() == n_nodes,
+        0 <= from < n_nodes,
+        0 <= to < n_nodes,
+        from != to,
+        roles::role_decision(role).build,
+        adjacency[from].contains(to),
+        forall|j: int|
+            0 <= j < n_nodes && j != from && #[trigger] reachable(adjacency, from, j)
+                ==> closure.contains(j as usize),
+    ensures
+        closure.contains(to as usize),
+{
+    assert(is_path(adjacency, seq![from, to], from, to));
+    assert(reachable(adjacency, from, to));
+}
+
+/// A projected validation edge is retained as a mandatory publication
+/// gate — never dropped, never a build edge (the v6 adapter's
+/// REQUIRED_WORKSPACE_EDGE_MISSING guard for lost validation roles).
+pub proof fn lemma_projected_validation_edge_retained(role: roles::GraphRole)
+    requires
+        role == roles::GraphRole::Validation,
+    ensures
+        roles::role_decision(role).required_validation,
+        !roles::role_decision(role).build,
+{
+}
 
 /// build-only membership: incoming build edge and no incoming runtime
 /// edge. (A trivial loop — the contract is the point.)

@@ -17,11 +17,48 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  conda:
+    uses: ./.github/workflows/qualify-conda-helper.yml
+    with:
+      check_pins: true
+      # Intel is intentionally not shipped until its optional native lane is qualified.
+      include_intel: false
+
+  # The BuildKit bridge helper the pinned core provisions lazily:
+  # deterministic per-platform artifacts from the pinned Go image,
+  # verified byte-exact against the committed pins the core embeds
+  # (crates/gripsack-fetch/src/bridge_pins.rs). Drift — or an empty pin
+  # table — fails HERE, before any core binary is built: a release can
+  # never pair core bytes with unverified helper bytes.
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build and pin-check helper artifacts
+        run: VERSION="${GITHUB_REF_NAME#core-v}" tools/buildkit-bridge/dist.sh --check --dist dist
+      # The linux/x86_64 artifact is the qualified lane's helper:
+      # execute it natively (it must reject a bare invocation with its
+      # usage error, proving the static binary runs).
+      - name: Smoke the native linux artifact
+        run: |
+          bin="dist/grip-buildkit-bridge-${GITHUB_REF_NAME#core-v}-x86_64-unknown-linux-musl"
+          test -x "$bin"
+          set +e
+          output="$("$bin" 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          printf '%s\n' "$output" | grep -q "expected lower or execute"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: dist-bridge
+          path: dist/*
   # Per-platform binaries (linux + macOS, both arch variants — Windows
   # is out by design, WSL is the story there). The docker musl path
   # needs no cross config: rust:alpine is multi-arch, so the same
   # build produces aarch64 musl natively on the arm runner.
   build:
+    needs: [bridge, conda]
     strategy:
       fail-fast: false
       matrix:
@@ -86,7 +123,7 @@ jobs:
           tar -xzf gripsack-*-${{ matrix.target }}.tar.gz -C "$tmp"
           bin="$(find "$tmp" -type f -name grip | head -1)"
           file "$bin"
-          ! ldd "$bin" 2>&1 | grep -q "=>"
+          python3 ../tools/conda-helper/verify_native.py "$bin"
           "$bin" --version
           # fails the release if the SBOM embed is missing or the
           # shipped tree hits an advisory (plan/0022 §2)
@@ -102,7 +139,7 @@ jobs:
           bin="$(find "$tmp" -type f -name grip | head -1)"
           file "$bin"
           otool -L "$bin"
-          ! otool -L "$bin" | grep -qvE "libSystem|libiconv|CoreFoundation|Security|SystemConfiguration"
+          python3 ../tools/conda-helper/verify_native.py "$bin"
           "$bin" --version
           cargo audit bin "$bin"
 
@@ -132,13 +169,50 @@ jobs:
           count="$(ls dist/gripsack-*.tar.gz | wc -l)"
           test "$count" -eq 4 || {
             echo "::error::expected 4 platform tarballs, got $count"; exit 1; }
+          # the helper assets the pinned core provisions lazily — one
+          # per platform, each exactly matching a compiled-in pin
+          # (proven byte-exact in the bridge job above)
+          count="$(ls dist/grip-buildkit-bridge-* | grep -vc '\.sha256$')"
+          test "$count" -eq 4 || {
+            echo "::error::expected 4 bridge helper artifacts, got $count"; exit 1; }
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("core-v")
+          targets = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "aarch64-apple-darwin"}
+          dist = Path("dist")
+          expected = {f"gripsack-conda-{version}-{target}" for target in targets}
+          actual = {path.name for path in dist.glob("gripsack-conda-*") if not path.name.endswith((".sha256", ".manifest.json", ".LICENSE-pixi", ".LICENSE-UV-MIT"))}
+          if actual != expected:
+              raise SystemExit(f"Conda assets differ: expected {expected}, got {actual}")
+          for name in sorted(expected):
+              digest = hashlib.sha256((dist / name).read_bytes()).hexdigest()
+              manifest = json.loads((dist / f"{name}.manifest.json").read_text())
+              if manifest["asset"] != name or manifest["sha256"] != digest or manifest["reproducible_rounds"] != 2:
+                  raise SystemExit(f"Conda measurement manifest mismatch: {name}")
+              if (dist / f"{name}.sha256").read_text() != f"{digest}  {name}\n":
+                  raise SystemExit(f"Conda sidecar mismatch: {name}")
+              for suffix, source in (("LICENSE-pixi", "LICENSE"), ("LICENSE-UV-MIT", "LICENSE-UV-MIT")):
+                  notice = f"{name}.{suffix}"
+                  contents = (dist / notice).read_bytes()
+                  if contents != (Path("tools/conda-helper/vendor/pixi_git") / source).read_bytes() or manifest["licenses"].get(notice) != hashlib.sha256(contents).hexdigest():
+                      raise SystemExit(f"Conda license notice mismatch: {notice}")
+          PY
 
       # signed build provenance for every tarball (plan/0020 §5.8):
       # verifiable with `gh attestation verify <file> -R gripsack-dev/gripsack`
-      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: dist/gripsack-*.tar.gz
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: dist/grip-buildkit-bridge-*
 
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            dist/gripsack-conda-*-unknown-linux-musl
+            dist/gripsack-conda-*-apple-darwin
       # crates.io before the GitHub release: it is the irreversible
       # artifact. The guard fails a mistagged release instead of
       # publishing the wrong version.

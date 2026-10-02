@@ -39,8 +39,9 @@ pub mod source_bundle;
 pub mod trust;
 
 pub use generations::{
-    CommittedSelection, DeployedEntry, Generation, IntentRecord, ModuleState,
-    current as current_generation, flip, list as list_generations, read_manifest, write_manifest,
+    CommittedSelection, DeployedEntry, EnvironmentContribution, Generation, IntentRecord,
+    ModuleState, StructuredEnvironment, current as current_generation, flip,
+    list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{
     canonical_bytes_hash, canonical_bytes_identity, canonical_file_hash, canonical_file_hash_in,

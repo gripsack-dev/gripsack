@@ -1,4 +1,4 @@
-# 0052 — A1 workspace contract: v4 history and v5 typed admission
+# 0052 — A1 workspace contract: v4/v5 history and current v6 admission
 
 Status: **A1-01 implemented_unverified; A1-02 in progress; full A1/release unverified** · Owner: implementation agent · Date: 2026-09-24
 Scope: Epic A / A1 (rows A1-01…A1-12; A1-07 partial in plan/0049)
@@ -1696,4 +1696,246 @@ before/after and fingerprint
 A2-06 claims only its first named composition case from that runner;
 artifact origins/check staging, remaining proof families, native
 platform lanes and the rest of A2 stay open. Fuzz was not run.
+
+## 33. Unreleased v6 integration (2026-10-01)
+
+Worktree `feat/workspace-buildkit` is separate from the 0.43 release candidate.
+The v6 schema/Rust/TypeScript writer adds required strict Bash options, optional
+executable-byte claims, ordered command/action steps, captured input references,
+pure scoped mutation locks, explicit isolated execution platform/toolchain pins,
+artifact-tree origins and file-check/result bindings. Strict v3/v4/v5 readers
+retain their versioned meanings. A claimed executable digest is never acquisition
+or execution authority.
+
+Recipe identity uses explicit length-delimited semantic fields rather than
+blind JSON key stripping. Resolved source/tool/input/check identities and captured
+frontend/import pins participate; declaration names, source spans and line maps
+do not. Commands stay ordered. Portable lock partitions normalize an omitted OS
+patch to zero; duplicate platform/output/transitive identities, missing byte/tree
+pins and unknown fetch fields fail closed. Native portable-lock update now uses
+the same acquisition preparation as frozen realization, with publication requiring
+separate lifecycle authority. Check mode drops private survey bytes without store
+or lock publication. Captured repository sources are not frozen to an old checkout.
+
+Current file-only profiles now use the existing native lifecycle through borrowed
+v5/v6 declaration views, not an IR rewrite or duplicated renderer/deployer.
+Template result-digest claims are checked against rendered bytes before any
+destination mutation. Current catalog inspection/preview/apply/update dispatch
+no longer falls into an empty legacy-module path.
+
+`sourcePath(selector)` and `outputPath(selector)` are typed production bindings.
+For a recipe they select its immutable acquired source and writable staging
+output; for a required check, the source is its immutable subject. Tasks, hooks
+and task postconditions cannot acquire these bindings. A check identity binds
+its inherited execution policy as well as subject/command pins. The recipe key
+also binds the finite transitive validation closure, without recursive self-hashes.
+
+The native selected-output service now acquires sources/inputs, emits one whole
+compatible production graph, executes it once, validates all candidate exports
+and command claims, then publishes recipe/package objects. Process roots cover
+inputs and pending store roots while the global lifecycle lock is released during
+the solve. Build roots bind the attempt, worker namespace/owner incarnation and
+epoch; a native exit receipt alone cannot release them. Lowering and execution
+inherit the root lease. Each selected project output has an independent
+retention root. Unknown cleanup retains its root and staging. Explicit builder
+stop produces a scoped quiescence receipt; recovery also requires the exclusive
+native root lock before deleting staging and then its root/lock records.
+
+The development CLI exposes `grip build <output> --bridge <matching-helper>` and
+owned `builder status|stop|cache-clean`. The helper override is explicit operator
+authority, not repository-selected code. Automatic optional-helper provisioning,
+native environment/profile consumers, OCI export and Mac worker qualification
+are not implied by this path.
+
+The installed SDK and embedded import map now have separate ordinary and
+`@gripsack/core/advanced` entries. Both resolve from the same deliberate pin.
+Compiler DTOs/emission/input/probe-driver functions moved to the advanced entry;
+registry resets are internal. Historical package pins keep their original root
+compiler ABI. Legacy authoring retirement remains the separately inventoried A5
+parity obligation, not a claim that moving compiler exports removed its runtime.
+
+Observed working-tree development checks:
+
+- Pinned Deno 2.9.6 container: **57/57** focused frontend/driver tests passed.
+- Pinned Rust container: **11/11** v6 command/catalog/portable-lock tests passed.
+- A compiled, copied installed SDK was consumed through package exports and then
+  selected by the real TypeScript driver. It preserved quoted/empty argv, strict
+  Bash options, captured input references and reachable-only scope/key lock
+  interning; ordinary imports exposed no compiler/reset utilities.
+  `INSTALLED_SDK_AND_PINNED_DRIVER=passed`. The throwaway runner was removed.
+- The current compiled CLI passed **9/9** native workspace file flows, including
+  rendered-digest failure before host mutation, shared blocks, scoped selection,
+  rollback and recovery. A separate real CLI smoke exercised check/plan/apply,
+  destination-only content reuse, digest rejection, rollback and store verification:
+  `NATIVE_V6_CHECK_PLAN_APPLY_REUSE_DIGEST_GATE_ROLLBACK=passed`.
+  Its temporary HOME/repository and runner were removed.
+
+- The real Linux CLI compiled a static C tool, used that newly produced package
+  in a dependent recipe, executed the required check and exported both outputs
+  through one checked solve. Builder cache removal and GC did not remove the
+  native executable; it ran directly, and a second build reused identical native
+  paths with no bridge selected. No personal generation was created:
+  `WHOLE_GRAPH_NATIVE_TOOL_CHECK_EXPORT_GC_CACHE_REMOVAL_REUSE=passed`.
+- **3 context and 5 identity regressions** passed, including production-binding
+  rejection in task postconditions and context-bound/transitive check identities.
+- The native provider CLI surveyed without source/lock publication, published
+  portable pins, built and executed a static tool without a worker, reused its
+  warm frozen bytes, rejected changed archive bytes in a cold home, and advanced
+  only after explicit update. The previous retained executable still ran:
+  `NATIVE_PIN_SURVEY_FROZEN_HASH_GATE_UPDATE_AND_RETAINED_EXECUTION=passed`.
+  The native provider regression and prior native file flows passed **10/10**
+  in the pinned E2E image. The survey also observed that the captured lock change
+  requires renewed source approval, not an implicit trust grant.
+- Abandoned-build cleanup failed before the recovery cutover: a confirmed worker
+  stop left the failed attempt's staging/root live indefinitely. After the fix,
+  both a failed required check and an abort after completed export preserved
+  inputs through GC, published no candidate, and were retired only after the
+  owned worker stop. Subsequent GC collected the now-unconsumed sources:
+  `FAILED_CHECK_AND_EXPORT_CRASH_ROOT_RECOVERY=passed`.
+  Worker initialization/upgrade crash windows, live-client/new-epoch races,
+  native process-root recovery and platform/model correspondence remain open.
+- Checked witness bindings now carry backend logs/failures back to every
+  requesting declaration. The real pinned Bash path reports the original
+  template line in both terminal and JSON diagnostics, without a fabricated
+  inherited tag column. A split-frame line-mapping regression failed before
+  the streaming parser and passed afterward:
+  `PINNED_BASH_FAILURE_MAPS_TO_ORIGINAL_TEMPLATE_LINE=passed`.
+- Consumer roots now use each realized package's actual runtime closure rather
+  than the union of unrelated selections. A regression failed before the change
+  and passed afterward: updating the left package lets GC remove its old bytes
+  without losing the independently selected right package. Both native package
+  flows passed, and the whole-subgraph/cache-removal smoke passed again.
+- The source-frozen focused Verus campaign passed **378 obligations, 0 errors**,
+  rejected all **16** command/checker/worker semantic mutants in their named
+  production functions, and rejected an unrelated failing lemma as substitute
+  evidence. The source-bound floor and required function catalog were updated.
+- The worker-bound session model passed **792 reachable states**. Stale call and
+  worker identities, premature Done and conflicting terminal replays produced
+  their named counterexamples; success, cancellation and exact replay witnesses
+  were reachable. Fresh TLAPS proved **16 induction obligations** and **11**
+  explicit unsafe-transition witness obligations. These modules and calibrations
+  are registered in the existing model and TLAPS gates.
+- The formatted Rust integration passed **161** IR, backend and executor tests.
+  This is not the full repository gate; unconsumed native-consumer fields still
+  produce warnings and the remaining consumer/module cutover is not complete.
+- The exported `cargoPackage` helper was exercised with pinned Rust and a real
+  vendored `itoa` dependency. Cargo tests and the offline release build passed;
+  the exported musl executable preserved empty/spaced arguments and ran after
+  worker cache deletion plus native GC. Changing a vendored source without its
+  checksum caused source-labelled E301 before publication, while the previous
+  retained executable still ran. Owned recovery retired the failed attempt:
+  `OFFLINE_CARGO_TEST_BUILD_VENDOR_CHECKSUM_AND_RETAINED_RUNTIME=passed`.
+  Dynamic/interpreter runtime layouts and native project/profile consumers are
+  separate remaining B3 gates, not established by this static fixture.
+- The checked backend now supports explicit image ownership and one fixed OCI
+  exporter profile: compatibility 30, OCI media types, forced gzip level 6,
+  epoch 0 and rewritten layer timestamps. The real worker built a static
+  service, exported it, then stopped and removed its cache. Independent Python
+  intake checked every descriptor size/SHA, layer DiffID, configuration,
+  timestamp and executable UID/GID/mode. Docker loaded the OCI archive and ran
+  it read-only with no network or capabilities; output was
+  `owned-image<><two words>`, preserving empty/spaced default arguments.
+  The Rust decoder independently accepted that same archive:
+  `NATIVE_OCI_VALIDATION=sha256:864a14787c9bb1d218769c117dbe5a0422466867ef4973d67dd29c6d15148868 FILES=4`.
+  Three OCI boundary regressions passed for rehashed configuration/DiffID
+  substitution, byte corruption, whiteouts/hardlink cycles, traversal,
+  symlink parents and expansion limits. The shared recipe/image solve-lifecycle
+  extraction also passed executor compilation. This is backend-level evidence:
+  image CLI/publication, loader closure, Conda and clean-reproduction integration
+  are not established by this probe.
+- The real CLI now builds a static source package and its image, retains both,
+  removes the worker cache, runs GC, and reuses both without a bridge. The same
+  package runs through `grip run --env dev`; Docker executes the retained image
+  read-only/no-network/no-capabilities with its declared argv/environment/user.
+  Initial image admission exposed a stale v6 tagged-field allowlist, which was
+  fixed without extending retained readers. The complete flow then passed:
+  `NATIVE_PACKAGE_PROJECT_AND_OCI_REUSE_AFTER_BUILDER_CACHE_REMOVAL=passed`.
+  Repeating from a distinct clean HOME and worker cache produced the same OCI
+  manifest: `CLEAN_OCI_REPRODUCTION=sha256:a84ba8b284355e1f732f9319516fa9a0c50c1b77a22cd18dc9dc170714f2c18a`.
+  This static fixture does not qualify dynamic-loader, Conda or profile reuse.
+- Bridge release artifacts for all four host slots were built twice with
+  independent compiler caches in the pinned Go image and matched byte-for-byte;
+  the format/vet/race gate passed before measured pins were generated. The real
+  default `grip build` path provisioned and executed the pinned Linux helper
+  from an operator file mirror, reused it for a new solve with the mirror absent,
+  refused corrupted bytes with a missing origin, repaired them from the matching
+  mirror, and skipped bootstrap for retained output after deleting the helper:
+  `LAZY_PINNED_HELPER_COLD_WARM_CORRUPTION_AND_NATIVE_ZERO_BOOTSTRAP=passed`.
+  These assets are not a claim that the unreleased GitHub tag already exists.
+- Two helper namespace regressions failed before capability-relative cache
+  publication: ancestor aliases redirected provisioning and a prefix sweep
+  erased unrelated files. Both now pass with six other helper behavior cases;
+  the existing streamed atomic-write primitive checks copied bytes before
+  publication and unknown remnants stay untouched. Worker startup also had a
+  reproduced pre-marker staging-name collision: a fresh private staging nonce
+  fixes retry without adopting the old directory. Twelve worker cases and a
+  fresh checked export with two actual clients passed after that correction.
+- Native host admission reused the exact target kernel after a regression showed
+  that an explicit matching ABI could bypass an unknown minimum-OS floor.
+  The failing regression now passes; the real CLI refused both the unproven
+  floor and a foreign OS before running a marker script, while the compatible
+  case executed without builder/generation state:
+  `NATIVE_ABI_FLOOR_AND_PLATFORM_REFUSAL_PRECEDES_EXECUTION=passed`.
+- A cold profile apply built its package through the common protected solve,
+  deployed an artifact file and exported the declared command alias. Generation
+  environment data preserved literal `$(...)`, `$HOME`, `{store}` and quotes,
+  even under a HOME containing spaces/quotes/dollar text. Project invocation used
+  the same package. After update, worker-cache removal and GC, rollback restored
+  the earlier file, environment and runnable command:
+  `COLD_PROFILE_PACKAGE_ARTIFACT_LITERAL_ENV_ALIAS_AND_RETAINED_ROLLBACK=passed`.
+  New tagged stored contributions preserve historical untagged expression
+  semantics; the actual shell regression verifies both after serialization.
+- Artifact-tree execution failed before the ownership cutover because the draft
+  implementation claimed a directory symlink and refused tracked-copy entries.
+  Core-side bounded expansion now selects nested files, applies exclusions,
+  preserves foreign children/drift, prunes unchanged removed files and rejects
+  expanded physical collisions with both source labels before generation change:
+  `ARTIFACT_TREE_PER_FILE_EXPANSION_DRIFT_PRUNE_AND_COLLISION=passed`.
+- A real GNU package with a shared library and runtime data ran through project
+  invocation, project shell and a retained profile. Its scratch image was refused
+  for the missing ELF loader; the pinned Debian runtime-base image ran read-only,
+  without network/capabilities, after worker-cache removal and GC:
+  `REAL_SHARED_LIBRARY_DATA_PROJECT_SHELL_PROFILE_AND_OCI_CLOSURE=passed`.
+  Two clean builds produced OCI manifest
+  `sha256:89995d41583b8946f98b7b0be2deca7faa51d3dd2ff7d0e9c0f8b6007af367bf`.
+  This first fixture used the package's `lib/` directory. A subsequent private
+  `$ORIGIN` directory exposed loss of origin in the sealed native copy (exit127).
+  The corrected current CLI now passes that whole project/shell/profile/image
+  flow too, including cache removal and GC; its OCI manifest is
+  `sha256:c1b728969ac7aeab78e78609aed140b99dcc966a4a56cbcf9e4831f0c96b8c3e`.
+- Native library admission now traverses DT_NEEDED, checks object format, machine,
+  byte order and closure containment, and distinguishes inherited RPATH from
+  non-inherited RUNPATH. The wrong-machine regression failed before the fix.
+  The real Debian image also exposed leading-space shebang parsing; the corrected
+  classifier preserves kernel whitespace/CR semantics and six classifier cases
+  passed. Five OCI cases pass, including inherited-path resolution and preservation
+  of non-executed interpreter-template data instead of treating it as a program.
+- GNU dynamic native execution now binds the loader and main executable
+  separately, preserves the original argv0, and translates main-image origin
+  paths only when every dependency still resolves to the same admitted file.
+  A real legacy-RPATH fixture first loaded the host's `libm.so.6` from the copied
+  image and failed with an undefined symbol; explicit loader controls selected
+  the intended package library. The process probe also executed a script through
+  a separately sealed ELF interpreter and loader, asserting all three hashes.
+  The process suite passed **49/49**; GNU loader controls require measured
+  glibc >=2.33. No shared-library byte-binding guarantee is inferred.
+- A real CLI fixture reproduced canonicalized multicall argv0, alias-dependent
+  profile behavior and an explicit package-command task losing its runtime plan.
+  The corrected run/task/shell/profile paths now preserve the selected name,
+  empty/spaced arguments and the pinned package's library closure:
+  `NATIVE_MULTICALL_SELECTOR_AND_TYPED_PACKAGE_COMMAND_CLOSURE=passed`.
+- The root and deliberate-pin SDK now expose the same `pixi.fromLock`
+  namespace; the obsolete single-package authoring constructor is removed.
+  A real isolated Deno invocation checked captured-input validation, immutable
+  source provenance and both entrypoints:
+  `ROOT_PIXI_FROM_LOCK_WITH_SOURCE_PROVENANCE=passed`.
+- Native runtime context now measures the Linux kernel/macOS product release
+  once and uses the existing typed target comparator for OS floors. The real
+  Linux CLI launched a minimum-1 environment and refused a future-65535 floor
+  without running the requested program:
+  `NATIVE_OS_FLOOR_MEASUREMENT_AND_REFUSAL=passed`.
+
+These development checks do not replace full Compose or source-bound release
+evidence. Required normalization/refinement, publication/retention, recovery,
+platform and release gates remain open. No fuzz or corpus replay was run.
 

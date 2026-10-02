@@ -363,7 +363,7 @@ impl<'a> ModuleRun<'a> {
                 env: if self.build_only {
                     Vec::new()
                 } else {
-                    self.module.env.clone()
+                    self.module.env.iter().cloned().map(Into::into).collect()
                 },
                 tree256: self.tree256,
                 build_closure: self.build_env.into_paths(),

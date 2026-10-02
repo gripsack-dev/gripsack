@@ -64,9 +64,3 @@ export function brew(formula: string, version?: string): Fetch {
     : { kind: "brew", formula, version };
 }
 
-/** A conda package via pixi, isolated PIXI_HOME, harvested to store. */
-export function pixi(pkg: string, version?: string): Fetch {
-  return version === undefined
-    ? { kind: "pixi", package: pkg }
-    : { kind: "pixi", package: pkg, version };
-}

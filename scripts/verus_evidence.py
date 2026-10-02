@@ -16,8 +16,9 @@ class Evidence:
     diagnostics: tuple[dict, ...]
 
     @classmethod
-    def parse(cls, output: str) -> "Evidence":
+    def parse(cls, output: str, crate: str = "gripsack_policy") -> "Evidence":
         reports, diagnostics = [], []
+        prefix = crate + "::"
         decoder = json.JSONDecoder()
         for start in re.finditer(r"(?m)^\{", output):
             try:
@@ -27,14 +28,14 @@ class Evidence:
             if not isinstance(value, dict):
                 continue
             if value.get("reason") == "compiler-message":
-                if value.get("target", {}).get("name") == "gripsack_policy":
+                if value.get("target", {}).get("name") == crate:
                     diagnostics.append(value["message"])
             if "verification-results" in value and any(
-                name.startswith("gripsack_policy::") for name in value.get("func-details", {})
+                name.startswith(prefix) for name in value.get("func-details", {})
             ):
                 reports.append(value)
         if len(reports) != 1:
-            raise EvidenceError("expected exactly one fresh gripsack_policy verifier report")
+            raise EvidenceError(f"expected exactly one fresh {crate} verifier report")
         report = reports[0]
         results = report["verification-results"]
         if results.get("is-verifying-entire-crate") is not True:
@@ -46,11 +47,11 @@ class Evidence:
         for module in modules:
             for function in module.get("function-breakdown", []):
                 name = function["function"]
-                if not name.startswith("gripsack_policy::"):
+                if not name.startswith(prefix):
                     raise EvidenceError("foreign function in production verification report")
                 if type(function.get("success")) is not bool:
                     raise EvidenceError("function has no actual solver verdict")
-                name = name.removeprefix("gripsack_policy::")
+                name = name.removeprefix(prefix)
                 functions[name] = functions.get(name, True) and function["success"]
         if not functions:
             raise EvidenceError("no production function obligations executed")

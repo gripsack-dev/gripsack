@@ -1,68 +1,42 @@
-//! Bounded bridge-protocol fuzzing through the REAL production
-//! decoder (`gripsack_buildkit::protocol`). Arbitrary bytes are wire
-//! input only: every decode must either reject or yield a message
-//! that re-encodes and re-decodes to the identical value, and feeding
-//! decoded events through the fence gate can never panic or let a
-//! stale/duplicate terminal flip an outcome. No I/O, no second
-//! implementation.
-
+//! Decode the same bounded v2 messages used by production. This target is
+//! retained for the separately authorized fuzz lane; integration does not run
+//! fuzzing or corpus replay under the owner's current instruction.
 use gripsack_buildkit::protocol::{
-    BridgeEvent, EventGate, Frame, FromBridge, Terminal, ToBridge, decode_frame, encode_frame,
+    ExecuteRequest, Frame, FromBridge, LowerRequest, decode_frame, encode_frame,
 };
 use serde::{Deserialize, Serialize};
 
 pub(crate) fn exercise(input: &[u8]) {
-    // First byte picks the decode target, the rest is the wire
-    // candidate — deterministic per input, both families covered.
-    let (target, wire) = input.split_first().unwrap_or((&0u8, &[][..]));
-    match target % 2 {
+    let (target, wire) = input.split_first().unwrap_or((&0, &[]));
+    match target % 3 {
         0 => {
-            let Ok(Frame { body }) = decode_frame::<FromBridge>(wire) else {
-                return;
-            };
-            assert_reencode(&body);
-            gate_feed(&body);
+            if let Ok(Frame { body }) = decode_frame::<FromBridge>(wire) {
+                round_trip(&body);
+            }
+        }
+        1 => {
+            if let Ok(Frame { body }) = decode_frame::<LowerRequest>(wire) {
+                round_trip(&body);
+            }
         }
         _ => {
-            let Ok(Frame { body }) = decode_frame::<ToBridge>(wire) else {
-                return;
-            };
-            assert_reencode(&body);
+            if let Ok(Frame { body }) = decode_frame::<ExecuteRequest>(wire) {
+                round_trip(&body);
+            }
         }
     }
 }
 
-/// The round-trip law: a decoded message must re-encode into a frame
-/// that decodes to the identical value — decode/encode asymmetry
-/// cannot hide state from either side of the bridge.
-fn assert_reencode<M>(body: &M)
+fn round_trip<M>(body: &M)
 where
-    M: Serialize + for<'de> Deserialize<'de> + std::fmt::Debug,
+    M: Serialize + for<'de> Deserialize<'de> + std::fmt::Debug + PartialEq,
 {
+    // Canonical encoding can introduce omitted nullable fields. The production
+    // encoder must still refuse a resulting request exceeding the frame budget.
+    let Ok(encoded) = encode_frame(body) else {
+        return;
+    };
     let Frame { body: again } =
-        decode_frame::<M>(&encode_frame(body)).expect("re-encoding a decoded message decodes");
-    assert_eq!(
-        serde_json::to_vec(body).expect("serialize"),
-        serde_json::to_vec(&again).expect("serialize"),
-        "re-encode changed the message"
-    );
-}
-
-/// Whatever the decoded event says, driving the fence gate must stay
-/// inside its rules: stale/future epochs and post-terminal events
-/// reject, never panic, and exactly one terminal wins.
-fn gate_feed(message: &FromBridge) {
-    let mut gate = EventGate::new(1);
-    if let FromBridge::Event { epoch, kind, .. } = message {
-        match kind {
-            BridgeEvent::Log { .. } => {
-                let _ = gate.log(*epoch);
-            }
-            BridgeEvent::Progress { .. } => {
-                let _ = gate.observe(*epoch);
-            }
-        }
-    }
-    let _ = gate.terminal(1, Terminal::Done);
-    assert_eq!(gate.terminal_state(), Some(Terminal::Done));
+        decode_frame::<M>(&encoded).expect("encoded admitted message decodes");
+    assert_eq!(body, &again, "bridge canonicalization changed semantics");
 }

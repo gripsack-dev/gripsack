@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+exclude = ["vendor/pixi_git"]
+
+[package]
+name = "gripsack-conda-helper"
+version = "0.44.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "gripsack-conda"
+path = "src/main.rs"
+
+[dependencies]
+gripsack-conda = { version = "0.44.0", path = "../../crates/gripsack-conda" }
+gripsack-ir = { version = "0.44.0", path = "../../crates/gripsack-ir" }
+serde_json = "1"
+sha2 = "0.11"
+pixi_manifest = { git = "https://github.com/prefix-dev/pixi", rev = "6f71156de33ac6420522a77f21437ff0a331cb09" }
+rattler_conda_types = { version = "0.55", default-features = false }
+rattler = { version = "0.51", default-features = false, features = ["rustls"] }
+rattler_lock = { version = "0.34", default-features = false }
+rattler_networking = { version = "0.31", default-features = false, features = ["rustls"] }
+rattler_package_streaming = { version = "0.27", default-features = false, features = ["rustls"] }
+rattler_repodata_gateway = { version = "0.34", default-features = false, features = ["rustls", "gateway"] }
+rattler_solve = { version = "10", default-features = false, features = ["resolvo"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "gzip", "stream", "http2"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+
+# Preserve the complete pinned Git implementation while isolating its prefix
+# guard from pixi_utils' unused CLI/Python authentication dependencies.
+[patch."https://github.com/prefix-dev/pixi"]
+pixi_git = { path = "vendor/pixi_git" }

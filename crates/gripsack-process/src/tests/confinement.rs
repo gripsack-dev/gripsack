@@ -1,22 +1,54 @@
-//! Landlock boundary oracles: the OS denies reads outside the assembled
-//! boundary while granted reads and scratch writes keep working. These run on
-//! Linux only; other platforms fail closed at assembly and are exercised by
-//! the evaluator's operational error instead.
-use super::*;
-use crate::confinement::{Boundary, Ruleset, runtime_read_roots};
-use std::path::Path;
-use std::path::PathBuf;
+//! Real invocation oracles: granted bytes remain accessible, actual canaries
+//! are denied, and confinement preserves argv0/argument data. The unconfined
+//! controls establish that a missing path cannot masquerade as kernel denial.
+use crate::{
+    Boundary, Control, Invocation, Limits, NativeInput, NativeOutcome, OperatorEnvironment,
+    ProcessRole, Ruleset, SelectedProgram, runtime_read_roots,
+};
+use std::{
+    ffi::OsStr,
+    path::Path,
+    time::{Duration, Instant},
+};
 
-fn confine_command(body: &str, boundary: Boundary) -> Command {
-    let ruleset = Ruleset::assemble(&boundary, false).expect("landlock ruleset assembles");
-    let mut command = command(body);
-    // SAFETY: the closure only performs the raw restriction syscalls.
-    unsafe {
-        command.pre_exec(move || ruleset.restrict());
+fn invoke<const N: usize>(
+    arguments: [&str; N],
+    cwd: &Path,
+    boundary: Option<Boundary>,
+) -> (NativeOutcome, Vec<u8>) {
+    let environment = OperatorEnvironment::capture().unwrap();
+    let selected = SelectedProgram::select(
+        &environment,
+        Path::new("/bin/sh"),
+        None,
+        Instant::now() + Duration::from_secs(15),
+    )
+    .unwrap();
+    let mut invocation = Invocation::admit(
+        &environment,
+        ProcessRole::Evaluator,
+        &selected,
+        cwd,
+        Limits::default(),
+    )
+    .unwrap();
+    if let Some(boundary) = boundary {
+        invocation = invocation.confine(Ruleset::assemble(&boundary, false).unwrap());
     }
-    command
+    let mut bytes = Vec::new();
+    let outcome = invocation
+        .run(
+            &arguments.map(OsStr::new),
+            NativeInput::Bytes(b""),
+            None,
+            |chunk| {
+                bytes.extend_from_slice(chunk);
+                Control::Continue
+            },
+        )
+        .unwrap();
+    (outcome, bytes)
 }
-
 fn sh_boundary(extra_read: &Path) -> Boundary {
     let environment = OperatorEnvironment::capture().unwrap();
     let mut boundary = Boundary::new();
@@ -30,35 +62,59 @@ fn sh_boundary(extra_read: &Path) -> Boundary {
 fn confined_process_reads_granted_paths_but_not_outside_them() {
     let root = tempfile::tempdir().unwrap();
     let inside = root.path().join("inside");
-    std::fs::create_dir(&inside).unwrap();
-    std::fs::write(inside.join("file"), b"granted\n").unwrap();
     let outside = root.path().join("outside");
+    std::fs::create_dir(&inside).unwrap();
     std::fs::create_dir(&outside).unwrap();
-    std::fs::write(outside.join("secret"), b"denied\n").unwrap();
-
-    let boundary = sh_boundary(&inside);
-    let (outcome, lines) = peer_of(
-        confine_command(
-            "cat <(printf x) 2>/dev/null; cat 'inside/file'; test ! -r '../outside/secret'",
-            boundary,
-        ),
+    std::fs::write(inside.join("file"), b"granted\n").unwrap();
+    std::fs::write(outside.join("secret"), b"credential-canary\n").unwrap();
+    let (control, bytes) = invoke(["-c", "cat outside/secret"], root.path(), None);
+    assert!(control.success, "{:?}", control.receipt);
+    assert_eq!(bytes, b"credential-canary\n");
+    #[cfg(target_os = "macos")]
+    {
+        let original = outside.join("secret").canonicalize().unwrap();
+        let data_volume = Path::new("/System/Volumes/Data");
+        let alias = if original.starts_with(data_volume) {
+            original
+        } else {
+            data_volume.join(original.strip_prefix("/").unwrap())
+        };
+        let arguments = ["-c", "cat \"$1\"", "reader", alias.to_str().unwrap()];
+        let (control, bytes) = invoke(arguments, root.path(), None);
+        assert!(
+            control.success,
+            "the APFS data alias must reach the actual canary"
+        );
+        assert_eq!(bytes, b"credential-canary\n");
+        let (denied, bytes) = invoke(arguments, root.path(), Some(sh_boundary(&inside)));
+        assert!(
+            !denied.success,
+            "a broad /System grant exposed the data volume"
+        );
+        assert!(
+            bytes.is_empty(),
+            "canary escaped through its APFS data alias"
+        );
+    }
+    let (allowed, bytes) = invoke(
+        ["-c", "cat inside/file"],
         root.path(),
+        Some(sh_boundary(&inside)),
     );
-    assert!(outcome.status.unwrap().success(), "{lines:?}");
-    assert_eq!(lines, [b"granted".to_vec()]);
-
-    // The same command with the outside path referenced by content fails: the
-    // kernel denies the read regardless of the shell's own permissions.
-    let boundary = sh_boundary(&inside);
-    let (outcome, _) = peer_of(
-        confine_command("cat '../outside/secret'", boundary),
-        root.path(),
-    );
-    let status = outcome.status.unwrap();
     assert!(
-        !status.success(),
-        "ambient read must be denied, got {status}"
+        allowed.success,
+        "{:?} {}",
+        allowed.receipt,
+        String::from_utf8_lossy(&allowed.stderr)
     );
+    assert_eq!(bytes, b"granted\n");
+    let (denied, bytes) = invoke(
+        ["-c", "cat outside/secret"],
+        root.path(),
+        Some(sh_boundary(&inside)),
+    );
+    assert!(!denied.success, "{:?}", denied.receipt);
+    assert!(bytes.is_empty(), "denied content reached stdout");
 }
 
 #[test]
@@ -66,41 +122,68 @@ fn confined_process_writes_only_within_scratch_roots() {
     let root = tempfile::tempdir().unwrap();
     let scratch = root.path().join("scratch");
     std::fs::create_dir(&scratch).unwrap();
+    let (control, _) = invoke(["-c", "printf control > outside"], root.path(), None);
+    assert!(control.success);
     let boundary = sh_boundary(&scratch).read_write_beneath(&scratch).unwrap();
-    let (outcome, _) = peer_of(
-        confine_command(
-            "printf written > 'scratch/file'; (printf x > '../denied') 2>/dev/null; test ! -e '../denied'",
-            boundary,
-        ),
+    let (denied, _) = invoke(
+        [
+            "-c",
+            "printf written > scratch/file; printf changed > outside",
+        ],
         root.path(),
+        Some(boundary),
     );
-    assert!(outcome.status.unwrap().success());
+    assert!(!denied.success, "{:?}", denied.receipt);
     assert_eq!(std::fs::read(scratch.join("file")).unwrap(), b"written");
+    assert_eq!(
+        std::fs::read(root.path().join("outside")).unwrap(),
+        b"control"
+    );
 }
 
 #[test]
-fn boundary_roots_must_exist_and_runtime_roots_are_real_directories() {
-    let missing = PathBuf::from("/nonexistent-confinement-root");
-    assert!(Boundary::new().read_beneath(&missing).is_err());
-
-    let environment = OperatorEnvironment::capture().unwrap();
-    let roots = runtime_read_roots(&environment, Path::new("/bin/sh")).unwrap();
-    assert!(
-        !roots.is_empty(),
-        "the runtime must name at least its own directory"
+fn confined_launch_preserves_argv_zero_and_argument_data() {
+    let root = tempfile::tempdir().unwrap();
+    let (outcome, bytes) = invoke(
+        ["-c", "printf '%s' \"$0\""],
+        root.path(),
+        Some(sh_boundary(root.path())),
     );
-    for root in &roots {
-        assert!(root.is_dir(), "{root:?} is not a directory");
-    }
+    assert!(
+        outcome.success,
+        "{:?} {}",
+        outcome.receipt,
+        String::from_utf8_lossy(&outcome.stderr)
+    );
+    assert_eq!(bytes, b"/bin/sh");
+    let (outcome, bytes) = invoke(
+        [
+            "-c",
+            "printf '<%s>' \"$1\" \"$2\" \"$3\"",
+            "body",
+            "",
+            "two words",
+            "$(printf injected)",
+        ],
+        root.path(),
+        Some(sh_boundary(root.path())),
+    );
+    assert!(
+        outcome.success,
+        "{:?} {}",
+        outcome.receipt,
+        String::from_utf8_lossy(&outcome.stderr)
+    );
+    assert_eq!(bytes, b"<><two words><$(printf injected)>");
 }
 
-fn peer_of(mut command: Command, cwd: &Path) -> (Outcome, Vec<Vec<u8>>) {
-    command.current_dir(cwd);
-    let mut lines = Vec::new();
-    let outcome = run(&mut command, b"", limits(), |line| {
-        lines.push(line.to_vec());
-        Control::Continue
-    })
-    .expect("supervision");
-    (outcome, lines)
+#[test]
+fn boundary_rejects_missing_or_non_directory_roots() {
+    let root = tempfile::tempdir().unwrap();
+    let missing = root.path().join("missing");
+    assert!(Boundary::new().read_beneath(&missing).is_err());
+    assert!(!missing.exists());
+    let file = root.path().join("file");
+    std::fs::write(&file, b"data").unwrap();
+    assert!(Boundary::new().read_beneath(&file).is_err());
 }

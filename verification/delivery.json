@@ -2833,6 +2833,11 @@
     "real crossprocess positive/negative wire fixtures and actual decoder fuzz seeds/campaigns exercise length and identity admission",
     "production-used Verus terminal/admission decision kernel and semantic mutant tie helper success to the live attempt rather than an untrusted success flag"
    ],
+   "proof_obligation_inventory": [
+    "conda_admission::terminal_succeeded",
+    "conda_admission::admit_response"
+   ],
+   "proof_expected_minimum": 2,
    "evidence_kinds": [
     "runner",
     "formal"

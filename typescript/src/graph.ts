@@ -10,10 +10,9 @@ import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
 /** One current frontend version (0052 §1): workspace and legacy
- *  module entrypoints both emit v5. Strict v3 module and v4 workspace
- *  documents retain their versioned core readers; only v5 is written
- *  by this frontend. */
-export const IR_VERSION = 5;
+ *  module entrypoints both emit v6. Strict historical documents keep
+ *  their versioned core readers; only v6 is written by this frontend. */
+export const IR_VERSION = 6;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,

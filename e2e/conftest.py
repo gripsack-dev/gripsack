@@ -197,7 +197,7 @@ def approve_fixture(command, *, cwd=None, env=None):
     if _fixture_root is None or len(command) < 2:
         return
     arguments = list(map(str, command[1:]))
-    if arguments[0] not in {"check", "plan", "apply", "update", "adopt"} or "--ir" in arguments:
+    if arguments[0] not in {"check", "plan", "apply", "update", "adopt", "build"} or "--ir" in arguments:
         return
     environment = dict(os.environ if env is None else env)
     home = Path(environment["HOME"]).resolve()

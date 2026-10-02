@@ -33,6 +33,15 @@ impl FetchContext {
         Self::with_build_env(limits, BuildProcessEnv::default())
     }
 
+    /// Trusted-tool acquisition from an already admitted operator snapshot.
+    /// Missing proxy/CA settings never fall back to a later ambient environment.
+    pub fn from_operator(
+        limits: FetchLimits,
+        environment: &gripsack_process::OperatorEnvironment,
+    ) -> Self {
+        Self::with_build_env(limits, BuildProcessEnv::from_operator(environment))
+    }
+
     fn with_build_env(limits: FetchLimits, build_env: BuildProcessEnv) -> Self {
         let network = crate::http::Client::from_env(&build_env);
         Self {
@@ -43,6 +52,13 @@ impl FetchContext {
             provisioning: None,
             host_platform: crate::bottle::HostPlatform::detect(),
         }
+    }
+
+    /// The context for grip's OWN tool downloads (pixi, the BuildKit
+    /// bridge helper): bound to operator env only, never the
+    /// repo-declared build env this context may carry.
+    pub fn provisioning(&self) -> &FetchContext {
+        self.provisioning.as_deref().unwrap_or(self)
     }
 
     /// The platform facts bottle selection runs on (A0-01).
@@ -150,7 +166,7 @@ impl FetchContext {
         // Provisioning can itself acquire an archive. Do not hold a permit
         // while recursively provisioning pixi, including when the cap is one.
         let pixi_executable = if matches!(spec, FetchSpec::Pixi { .. }) {
-            Some(pixi::ensure(self.provisioning.as_deref().unwrap_or(self))?)
+            Some(pixi::ensure(self.provisioning())?)
         } else {
             None
         };
@@ -230,6 +246,112 @@ impl FetchContext {
         Ok(outcome)
     }
 
+    /// One immutable artifact as RAW verified bytes (A3): no archive
+    /// interpretation — Conda package archives are retained as opaque
+    /// store objects. The shared bounded transport spools and hashes the
+    /// payload; a digest mismatch is a hard failure, never a warning.
+    pub fn download_verified(
+        &self,
+        url: &str,
+        sha256: &str,
+    ) -> Result<crate::spool::Download, FetchError> {
+        let _permit = self.acquisitions.acquire();
+        let download = tarball::download(self, url, None)?;
+        if sha256 != download.hash.as_str() {
+            return Err(FetchError::HashMismatch {
+                url: url.into(),
+                expected: sha256.into(),
+                actual: download.hash.into(),
+            });
+        }
+        Ok(download)
+    }
+
+    /// Pinned bootstrap bytes with caller-bounded acquisition and transfer.
+    /// Network URLs and every redirect must use HTTPS; ambient GitHub/API
+    /// credentials are never attached. Explicit file:// mirrors are accepted,
+    /// so callers must pass only their trusted bootstrap manifest/mirror URL.
+    /// Artifact contexts delegate to their operator-only provisioning context.
+    pub fn download_tool(
+        &self,
+        url: &str,
+        sha256: &str,
+        max_bytes: std::num::NonZeroU64,
+        deadline: std::time::Instant,
+    ) -> Result<crate::spool::Download, FetchError> {
+        if let Some(provisioning) = &self.provisioning {
+            return provisioning.download_tool(url, sha256, max_bytes, deadline);
+        }
+        let operation_deadline = std::time::Instant::now()
+            .checked_add(crate::http::OPERATION_TIMEOUT)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "tool operation timeout exceeds Instant range",
+                )
+            })?;
+        let deadline = deadline.min(operation_deadline);
+        let expected = DownloadHash::parse(sha256)?;
+        let _permit = self.acquisitions.acquire_until(deadline)?;
+        let limit = max_bytes.get().min(self.limits.download_bytes.get());
+        let parsed = url::Url::parse(url).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid tool acquisition URL",
+            )
+        })?;
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "tool acquisition URLs cannot carry credentials",
+            )
+            .into());
+        }
+        let download = match parsed.scheme() {
+            "file" => {
+                let path = parsed.to_file_path().map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "tool mirror must name an absolute local file",
+                    )
+                })?;
+                crate::spool::download(
+                    crate::spool::DeadlineReader {
+                        reader: tarball::regular_file(&path)?,
+                        deadline,
+                    },
+                    limit,
+                )?
+            }
+            "https" => {
+                self.network
+                    .download(url, crate::http::RequestKind::Tool { deadline }, limit)?
+            }
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "tool acquisition requires HTTPS or an explicit local file mirror",
+                )
+                .into());
+            }
+        };
+        if std::time::Instant::now() >= deadline {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "tool acquisition deadline expired",
+            )
+            .into());
+        }
+        if expected != download.hash {
+            return Err(FetchError::HashMismatch {
+                url: crate::http::safe_location(url).into_owned(),
+                expected: expected.into(),
+                actual: download.hash.into(),
+            });
+        }
+        Ok(download)
+    }
+
     pub fn payload_hash(&self, spec: &FetchSpec) -> Result<Option<FetchIdentity>, FetchError> {
         let _permit = self.acquisitions.acquire();
         match spec {
@@ -273,4 +395,112 @@ pub(crate) fn check_hash(
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tool_tests {
+    use super::*;
+    use std::{
+        io::{Read, Seek, Write},
+        num::{NonZeroU64, NonZeroUsize},
+        time::{Duration, Instant},
+    };
+    const ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    fn mirror() -> (tempfile::NamedTempFile, String) {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"abc").unwrap();
+        let url = url::Url::from_file_path(file.path()).unwrap().to_string();
+        (file, url)
+    }
+    fn context(limit: u64) -> FetchContext {
+        let operator = gripsack_process::OperatorEnvironment::admit([]).unwrap();
+        FetchContext::from_operator(
+            FetchLimits {
+                download_bytes: NonZeroU64::new(limit).unwrap(),
+                concurrent: NonZeroUsize::new(1).unwrap(),
+                ..FetchLimits::default()
+            },
+            &operator,
+        )
+    }
+    #[test]
+    fn verified_tool_mirror_preserves_bytes_and_enforces_both_caps() {
+        let (_file, url) = mirror();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut download = context(3)
+            .download_tool(&url, ABC, NonZeroU64::new(3).unwrap(), deadline)
+            .unwrap();
+        download.file.rewind().unwrap();
+        let mut bytes = Vec::new();
+        download.file.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"abc");
+        for (generic, requested) in [(3, 2), (2, 3)] {
+            assert!(matches!(
+                context(generic).download_tool(
+                    &url,
+                    ABC,
+                    NonZeroU64::new(requested).unwrap(),
+                    deadline
+                ),
+                Err(FetchError::PayloadTooLarge { limit: 2, .. })
+            ));
+        }
+        assert!(matches!(
+            context(3).download_tool(&url, &"0".repeat(64), NonZeroU64::new(3).unwrap(), deadline),
+            Err(FetchError::HashMismatch { .. })
+        ));
+    }
+    #[test]
+    fn queued_tool_acquisition_expires_without_reading_the_mirror() {
+        let context = context(3);
+        let held = context.acquisitions.acquire();
+        let deadline = Instant::now() + Duration::from_millis(10);
+        let result = context.download_tool(
+            "file:///does-not-exist",
+            ABC,
+            NonZeroU64::new(3).unwrap(),
+            deadline,
+        );
+        drop(held);
+        assert!(
+            matches!(result, Err(FetchError::Io(error)) if error.kind() == std::io::ErrorKind::TimedOut)
+        );
+    }
+    #[test]
+    fn tool_urls_reject_cleartext_and_embedded_credentials_without_connecting() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        for url in [
+            format!("http://{}/tool", listener.local_addr().unwrap()),
+            format!(
+                "https://secret:password@{}/tool",
+                listener.local_addr().unwrap()
+            ),
+        ] {
+            let error = context(3)
+                .download_tool(
+                    &url,
+                    ABC,
+                    NonZeroU64::new(3).unwrap(),
+                    Instant::now() + Duration::from_secs(5),
+                )
+                .err()
+                .expect("unsafe tool URL was admitted");
+            assert!(
+                matches!(&error, FetchError::Io(error) if error.kind() == std::io::ErrorKind::InvalidInput)
+            );
+            assert!(!error.to_string().contains("secret"));
+            assert!(!error.to_string().contains("password"));
+        }
+        assert!(
+            matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+        );
+    }
+    #[test]
+    fn operator_snapshot_does_not_inherit_missing_ambient_keys() {
+        let context = context(3);
+        assert_eq!(context.build_env.var_os("HOME"), None);
+        assert_eq!(context.build_env.var_os("SSL_CERT_FILE"), None);
+        assert_eq!(context.build_env.var_os("HTTPS_PROXY"), None);
+    }
 }
