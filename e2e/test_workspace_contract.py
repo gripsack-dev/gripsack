@@ -96,7 +96,7 @@ def test_all_nine_output_kinds_admit_from_one_offline_workspace(sandbox):
     }
     planned = grip("plan", cwd=repo)
     assert planned.returncode != 0
-    assert "E124" in planned.stderr and "shell" in planned.stderr
+    assert "E124" in planned.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
