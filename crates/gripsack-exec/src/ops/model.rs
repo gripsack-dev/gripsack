@@ -13,7 +13,7 @@ mod tests {
     use crate::ops::{
         Authority, DestView, ModeInput, OpKind, execute_op, plan_entry_op, preview_ops,
     };
-    use gripsack_ir::{Entry, Ownership};
+    use gripsack_ir::{Entry, HostName, Ownership};
     use gripsack_store as store;
     use std::path::{Path, PathBuf};
 
@@ -102,7 +102,7 @@ mod tests {
             from: "payload".into(),
             to: String::new(),
             key: None,
-            mode: Ownership::TrackedCopy,
+            ownership: store::StoredOwnership::Legacy(Ownership::TrackedCopy),
             vars: Default::default(),
             file_mode: None,
             source_executable: None,
@@ -228,12 +228,16 @@ mod tests {
         // nothing
         let before = store::journal::live_identity(&dest_dir, &dest_name).unwrap();
         let ctx = model_ctx(home);
-        let (_report, _prior) = execute_op(
-            ctx.home_dir().unwrap(),
-            &ctx.home,
-            op.as_executable().unwrap(),
+        let capability = ctx.home_dir().unwrap();
+        let run = store::journal::begin_run(
+            capability,
+            home,
+            None,
+            store::GenerationId::new(1),
+            store::journal::RunOp::Apply,
         )
         .unwrap();
+        let (_report, _prior) = execute_op(&run, op.as_executable().unwrap()).unwrap();
         let after = store::journal::live_identity(&dest_dir, &dest_name).unwrap();
         match op.kind() {
             OpKind::Write { .. } | OpKind::Link { .. } | OpKind::MergeUpsert { .. } => {
@@ -280,6 +284,15 @@ mod tests {
         let tilde = home.join("dest");
         let entry_tilde = entry(Ownership::TrackedCopy, &tilde);
         let ctx = model_ctx(home);
+        let capability = ctx.home_dir().unwrap();
+        let run = store::journal::begin_run(
+            capability,
+            home,
+            None,
+            store::GenerationId::new(1),
+            store::journal::RunOp::Apply,
+        )
+        .unwrap();
         let (dest_dir, dest_name) = crate::deploy::dest_capability(&tilde).unwrap();
         let observed = crate::deploy::observe(&dest_dir, &dest_name).unwrap();
         let view = DestView {
@@ -300,12 +313,7 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(op.kind(), OpKind::Write { .. }));
-        let _ = execute_op(
-            ctx.home_dir().unwrap(),
-            &ctx.home,
-            op.as_executable().unwrap(),
-        )
-        .unwrap();
+        let _ = execute_op(&run, op.as_executable().unwrap()).unwrap();
         let produced = op.produces().expect("a write produces an entry");
 
         // the same file declared by its absolute spelling: prev's key
@@ -320,7 +328,7 @@ mod tests {
             // declares the same file differently
             to: "~/dest".into(),
             key: None, // pre-0.32 shape: the read path canonicalizes
-            mode: Ownership::TrackedCopy,
+            ownership: store::StoredOwnership::Legacy(Ownership::TrackedCopy),
             vars: Default::default(),
             file_mode: produced.file_mode,
             source_executable: produced.source_executable,
@@ -371,6 +379,8 @@ mod tests {
                 ir_version: gripsack_ir::IR_VERSION,
                 host: Default::default(),
                 resources: vec![],
+                workspace: None,
+                workspace_v4: None,
                 modules: [
                     (
                         "consumer".into(),
@@ -395,7 +405,17 @@ mod tests {
             };
             let lock = crate::lockfile::Lockfile::default();
             let adopting = Default::default();
-            let runtime = preview_ops(&ir, repo, None, &adopting, &lock).unwrap();
+            let repository = crate::Repository::direct(repo.to_path_buf());
+            let runtime = preview_ops(
+                &ir,
+                &repository,
+                None,
+                &adopting,
+                &lock,
+                Default::default(),
+                &[],
+            )
+            .unwrap();
             ir.modules
                 .get_mut("consumer")
                 .unwrap()
@@ -405,7 +425,16 @@ mod tests {
                     edge: gripsack_ir::EdgeKind::Build,
                     span: None,
                 });
-            let build = preview_ops(&ir, repo, None, &adopting, &lock).unwrap();
+            let build = preview_ops(
+                &ir,
+                &repository,
+                None,
+                &adopting,
+                &lock,
+                Default::default(),
+                &[],
+            )
+            .unwrap();
             let compiler: Vec<_> = build.iter().filter(|o| o.module == "compiler").collect();
             assert_eq!(
                 compiler.len(),
@@ -435,9 +464,9 @@ mod tests {
     fn model_ctx(home: &Path) -> Ctx {
         Ctx {
             home: home.to_path_buf(),
-            repo: home.to_path_buf(),
+            repository: crate::Repository::direct(home.to_path_buf()),
             only: vec![],
-            host: "test".into(),
+            host: HostName::parse("test").unwrap(),
             on_progress: None,
             take_over: false,
             take_over_entries: Default::default(),

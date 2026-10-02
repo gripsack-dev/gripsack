@@ -10,6 +10,7 @@ from conftest import (
     make_tarball,
     remove_module,
 )
+from test_adopt import approved_adoption
 
 
 
@@ -398,7 +399,7 @@ def test_adoption_origin_survives_generations_and_gc(sandbox):
     original.parent.mkdir(parents=True)
     original.write_text("ORIGINAL\n")
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip(
+    approved_adoption(
         "adopt", "~/.config/demo/a.toml", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
     )

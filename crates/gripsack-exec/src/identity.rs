@@ -55,7 +55,7 @@ pub(crate) struct IdentityInputs<'a> {
     pub recipes: &'a RecipeGraph,
     pub plan: &'a PreparedModule,
     pub home: &'a std::path::Path,
-    pub repo: &'a std::path::Path,
+    pub repo: &'a crate::Repository,
     pub locked: Option<&'a lockfile::LockEntry>,
     pub lock: &'a lockfile::Lockfile,
 }
@@ -119,7 +119,7 @@ pub(crate) fn resolve(inputs: IdentityInputs<'_>) -> Result<ModuleIdentity, Exec
                 // config-only: content is the repo's payload sources,
                 // computable without staging (overlay == staged tree)
                 let froms: Vec<String> = plan.entries().map(|e| e.from.clone()).collect();
-                let tree = store::canonical_overlay_hash(repo, &froms)?.to_string();
+                let tree = String::from(repo.overlay_hash(&froms)?);
                 (store::content_path(home, name, &tree), false, Some(tree))
             }
             None => {

@@ -1,12 +1,12 @@
 //! Module → pinned tool version, from the host lockfile (0011 §3).
 
+use gripsack_ir::HostName;
 use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Module → pinned tool version, from the host lockfile (0011 §3).
-pub(crate) fn tool_versions(repo: &Path, host: Option<&str>) -> BTreeMap<String, String> {
+pub(crate) fn tool_versions(repo: &Path, host: &HostName) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    let Some(host) = host else { return out };
     let Ok(text) = std::fs::read_to_string(repo.join("locks").join(format!("{host}.lock"))) else {
         return out;
     };

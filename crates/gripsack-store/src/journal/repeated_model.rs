@@ -19,6 +19,8 @@
 //! No concurrent edits occur under the lifecycle lock. A new edit can occur
 //! after EACH crash, including after one destination has been recovered.
 
+use gripsack_policy::selection::SelectionIdentity;
+
 use super::{Classification, RecoveryFacts, classify};
 use crate::journal::recover::{RecoveryDecision, decide_from};
 use crate::journal::{Intended, ObjectIdentity};
@@ -39,8 +41,8 @@ const MAX_CRASHES: u8 = 2;
 
 #[derive(Clone, Copy, Debug)]
 struct Scenario {
-    previous: Option<u64>,
-    target: u64,
+    previous: Option<crate::GenerationId>,
+    target: crate::GenerationId,
     prior: [Content; 2],
     intended: [Content; 2],
 }
@@ -55,7 +57,7 @@ struct Entry {
 struct Disk {
     dest: [Content; 2],
     entries: [Option<Entry>; 2],
-    current: Option<u64>,
+    current: Option<crate::GenerationId>,
     marker: bool,
 }
 
@@ -120,10 +122,13 @@ fn classification(d: Disk, s: Scenario, policy: Policy) -> Classification {
     if !d.marker {
         return Classification::Uncommitted;
     }
+    let previous = s.previous.map(SelectionIdentity::legacy);
+    let target = SelectionIdentity::legacy(s.target);
+    let current = d.current.map(SelectionIdentity::legacy);
     let facts = RecoveryFacts {
-        previous: s.previous,
-        target: s.target,
-        current: d.current,
+        previous: previous.as_ref(),
+        target: &target,
+        current: current.as_ref(),
     };
     let shipped = classify(&facts);
     match policy {
@@ -221,6 +226,7 @@ fn successors(n: Node, s: Scenario, policy: Policy) -> Vec<Node> {
                         d.dest[i].map(ident).as_ref(),
                         &intended,
                         entry.prior.map(ident).as_ref(),
+                        None,
                     ) {
                         RecoveryDecision::Restore => next.dest[i] = entry.prior,
                         RecoveryDecision::Keep | RecoveryDecision::Unchanged => {}
@@ -385,8 +391,8 @@ fn exhaustive_independent_destinations_and_two_crashes() {
             ([Some("old-a"), Some("old-b")], [Some("new-a"), None]),
         ] {
             let s = Scenario {
-                previous,
-                target,
+                previous: previous.map(crate::GenerationId::new),
+                target: crate::GenerationId::new(target),
                 prior,
                 intended,
             };
@@ -400,8 +406,8 @@ fn exhaustive_independent_destinations_and_two_crashes() {
 #[test]
 fn numeric_commit_mutant_fails_the_identical_oracle() {
     let s = Scenario {
-        previous: Some(1),
-        target: 2,
+        previous: Some(crate::GenerationId::new(1)),
+        target: crate::GenerationId::new(2),
         prior: [Some("old-a"), Some("old-b")],
         intended: [Some("new-a"), None],
     };
@@ -413,8 +419,8 @@ fn numeric_commit_mutant_fails_the_identical_oracle() {
 #[test]
 fn partial_restore_then_second_crash_keeps_new_edit_and_restores_other_dest() {
     let s = Scenario {
-        previous: Some(2),
-        target: 1,
+        previous: Some(crate::GenerationId::new(2)),
+        target: crate::GenerationId::new(1),
         prior: [Some("old-a"), Some("old-b")],
         intended: [Some("new-a"), None],
     };
@@ -450,13 +456,13 @@ fn partial_restore_then_second_crash_keeps_new_edit_and_restores_other_dest() {
 #[test]
 fn ambiguous_current_retains_partial_journal_without_touching_destinations() {
     let s = Scenario {
-        previous: Some(1),
-        target: 2,
+        previous: Some(crate::GenerationId::new(1)),
+        target: crate::GenerationId::new(2),
         prior: [Some("a"), Some("b")],
         intended: [None, None],
     };
     let mut n = Node::initial(s);
-    n.volatile.current = Some(99);
+    n.volatile.current = Some(crate::GenerationId::new(99));
     n.volatile.marker = true;
     n.volatile.entries[1] = Some(Entry {
         prior: s.prior[1],

@@ -45,8 +45,11 @@ rootle:
 
 ```
 docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
-docker compose run --build --rm pytest    # python frontend tests
+docker compose run --build --rm ts-test   # TypeScript frontend tests and examples
 docker compose run --build --rm e2e       # flow tests (real binary + real frontend)
+docker compose run --build --rm model     # finite protocol models + counterexamples
+docker compose run --build --rm tlaps     # transaction induction pilot + calibration (amd64)
+docker compose run --build --rm verify    # production Verus kernels + calibration (amd64)
 docker compose run --build --rm -e VERSION=x.y.z release   # musl tarball → ./dist/
 ```
 
@@ -70,7 +73,7 @@ the compose gates. `./dist/` and `target/` may contain root-owned files.
 | layer | what | where |
 |---|---|---|
 | unit | IR validation, store hashing, topo order, fetcher discovery | per crate, in `test` gate |
-| frontend | emit shape, provenance capture, IR round-trip | `python/tests`, in `pytest` gate |
+| frontend | emit shape, provenance capture, IR round-trip | `typescript/test`, in `ts-test` gate |
 | e2e flow | the product working | `e2e/`, in `e2e` gate |
 
 E2E drives the real binary + real frontend against a **fixture env repo**
@@ -86,22 +89,23 @@ The contract it defends:
 4. `grip rollback` → previous generation restored exactly.
 5. `tracked-copy` drift is detected and reported.
 
-Scaffolded and skipped until `apply` lands (0004+); the gate runs them
-from day one so the harness itself is never allowed to rot.
+These flows execute against the real binary and sandboxed frontend.
+The protocol/induction/kernel gates complement them; they do not prove
+the filesystem or replace the concrete persistence campaigns.
 
 ## 6. Workflows
 
 | workflow | trigger | job |
 |---|---|---|
-| `ci` | push/PR | `test` — compose test + pytest + e2e (required check) |
+| `ci` | main push / PR / dispatch | required `test`: Rust + TypeScript + real e2e + TLC + TLAPS + Verus; native Mac, fuzz, docs and audit have separate jobs |
 | `release-core` | tag `core-v*` | musl tarball → verify (sha, static, `--version`) → **crates.io first** (irreversible) → GitHub release |
-| `release-python` | tag `py-v*` | version guard → `uv build` → PyPI (`PYPI_API_TOKEN` secret) |
+| `release-typescript` | tag `ts-v*` | package-version guard → npm tests/build/dual-form pack → npm → GitHub release (`NPM_TOKEN`) |
 | `demo` | dispatch (+ paths once `apply` lands) | VHS render → `demo/artifacts` bot PR |
 | `audit` | weekly | cargo audit |
 
 Version guards fail mistagged releases instead of publishing the wrong
 version: `core-vX.Y.Z` must equal the `gripsack` crate version;
-`py-vX.Y.Z` must equal `python/pyproject.toml`'s.
+`ts-vX.Y.Z` must equal `typescript/package.json`'s.
 
 ## 7. Demo automation
 
@@ -116,11 +120,23 @@ until `apply` exists; the placeholder tape exercises `--version` and
 ## 8. Versioning and IR compatibility
 
 - Package versions are independent; the **IR version** is the real
-  contract. The core declares the IR range it accepts; the frontend
-  declares what it emits; `grip doctor` flags mismatches.
+  contract. The core accepts an explicit version range: v3 module
+  maps, strict historical v4 workspaces/module maps, and current v5
+  typed workspaces/module maps. The frontend emits only v5. v4
+  workspaces remain read-only; no legacy `native` execution or
+  prefixless layout acquires a v5 meaning. `grip doctor` reports
+  incompatible pins.
 - Pre-1.0: keep package versions loosely synced to spare confusion.
-- IR readers MUST tolerate unknown fields (forward compatibility);
-  writers never emit fields the schema doesn't describe.
+- The actual v3/v4/v5 readers reject unknown structural fields (serde
+  `deny_unknown_fields` plus a versioned tagged-field pre-pass). The old
+  unknown-field-tolerance sentence was not implemented and MUST NOT be
+  used to justify an unversioned schema change. A new field is
+  backwards-compatible only if the older declared reader explicitly
+  supports that extension point; otherwise bump `ir_version` and
+  retain a versioned reader. Writers emit only schema-described fields.
+  Persisted generation/lock formats are separate contracts; changing
+  their IR-derived serde values requires a compatible reader or tested
+  migration, never an implicit reinterpretation.
 
 ## 9. Branch protection
 

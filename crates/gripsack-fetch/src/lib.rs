@@ -13,6 +13,8 @@
 //!
 //! Command-owned acquisition combines bounded transports with reusable clients.
 
+mod bottle;
+mod build_env;
 mod context;
 pub mod fetch;
 pub mod host;
@@ -25,6 +27,7 @@ pub mod resolve;
 mod spool;
 pub mod throttle;
 
+pub use bottle::{HostPlatform, MacOsVersion};
 pub use context::FetchContext;
 pub use fetch::{FetchError, FetchOutcome, resolve_git_head};
 pub use host::{AssetTarget, DENO_RELEASE, PIXI_RELEASE, resolve as resolve_host_asset};
@@ -60,6 +63,13 @@ pub fn register_fetcher_path(name: &str, path: PathBuf) {
 }
 
 pub fn find_fetcher(name: &str) -> Option<PathBuf> {
+    find_fetcher_on_path(name, std::env::var_os("PATH"))
+}
+
+pub(crate) fn find_fetcher_on_path(
+    name: &str,
+    path_var: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
     let exe = fetcher_exe(name);
     if let Some(path) = REGISTERED.lock().expect("fetcher registry").get(name)
         && path.is_file()
@@ -72,7 +82,7 @@ pub fn find_fetcher(name: &str) -> Option<PathBuf> {
     if let Some(bin) = store.current_binary(&exe) {
         return Some(bin);
     }
-    find_on_path(&exe, std::env::var_os("PATH")?)
+    find_on_path(&exe, path_var?)
 }
 
 /// The PATH half of plugin discovery — split out so tests exercise it

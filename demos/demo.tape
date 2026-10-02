@@ -18,6 +18,9 @@ Sleep 2s
 Type@40ms "grip apply --host demo"
 Enter
 Sleep 4s
+Type@40ms "y"
+Enter
+Sleep 4s
 Type@40ms "# run the deployed binary"
 Enter
 Sleep 2s
@@ -28,6 +31,9 @@ Type@40ms "# a second apply is a satisfied no-op"
 Enter
 Sleep 2s
 Type@40ms "grip apply --host demo"
+Enter
+Sleep 4s
+Type@40ms "y"
 Enter
 Sleep 4s
 Type@40ms "# the flip history"

@@ -23,7 +23,7 @@ impl PreparedUpdate {
             },
         )?;
         let pin = entry.resolved.as_mut().expect("acquisition creates a pin");
-        let overlay = crate::source::Overlay::capture(plan, &ctx.repo, stage.path())?;
+        let overlay = crate::source::Overlay::capture(plan, &ctx.repository, stage.path())?;
         pin.repo256 = if plan.has_recipe() {
             overlay.into_hash()
         } else {

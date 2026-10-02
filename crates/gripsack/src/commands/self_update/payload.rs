@@ -48,11 +48,12 @@ pub(super) fn version(executable: &Path) -> Result<String, String> {
     command.arg("--version");
     let limits = Limits {
         timeout: Duration::from_secs(10),
-        input_bytes: 0,
-        line_bytes: 1024,
-        stdout_bytes: 4096,
-        stderr_bytes: 4096,
-        retained_stderr_bytes: 1024,
+        operation_deadline: None,
+        input_bytes: gripsack_process::InputByteLimit::new(0),
+        line_bytes: gripsack_process::FrameByteLimit::new(1024),
+        stdout_bytes: gripsack_process::StdoutByteLimit::new(4096),
+        stderr_bytes: gripsack_process::StderrByteLimit::new(4096),
+        retained_stderr_bytes: gripsack_process::RetainedStderrLimit::new(1024),
     };
     let mut lines = Vec::new();
     let outcome = gripsack_process::run(&mut command, &[], limits, |line| {
@@ -93,6 +94,16 @@ fn parse_output(lines: &[Vec<u8>]) -> Option<String> {
 mod tests {
     use super::*;
 
+    // A script published for execution must no longer share an inode
+    // with its writer. Replace the fixture by rename, just as a release
+    // payload is published, rather than rewriting an executable in place.
+    fn publish_script(path: &Path, body: &[u8], mode: u32) {
+        let staging = path.with_extension("staging");
+        std::fs::write(&staging, body).unwrap();
+        std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(mode)).unwrap();
+        std::fs::rename(staging, path).unwrap();
+    }
+
     #[test]
     fn root_and_nested_candidates_are_ambiguous() {
         let root = tempfile::tempdir().unwrap();
@@ -121,11 +132,11 @@ mod tests {
     fn probe_requires_success_and_a_single_grip_version() {
         let root = tempfile::tempdir().unwrap();
         let exe = root.path().join("grip");
-        std::fs::write(&exe, b"#!/bin/sh\nprintf 'grip 0.37.0\\n'\n").unwrap();
+        publish_script(&exe, b"#!/bin/sh\nprintf 'grip 0.37.0\\n'\n", 0o644);
         assert!(version(&exe).is_err());
         std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(version(&exe).unwrap(), "0.37.0");
-        std::fs::write(&exe, b"#!/bin/sh\nprintf 'grip 0.37.0\\n'\nexit 1\n").unwrap();
+        publish_script(&exe, b"#!/bin/sh\nprintf 'grip 0.37.0\\n'\nexit 1\n", 0o755);
         assert!(version(&exe).is_err());
         assert!(parse_output(&[b"grip 0.37.0".to_vec(), b"extra".to_vec()]).is_none());
         assert!(parse_output(&[b"other 0.37.0".to_vec()]).is_none());
@@ -135,8 +146,11 @@ mod tests {
     fn flooding_version_peer_is_rejected() {
         let root = tempfile::tempdir().unwrap();
         let exe = root.path().join("grip");
-        std::fs::write(&exe, b"#!/bin/sh\nprintf 'grip 0.37.0\\n'\nwhile :; do printf 'unexpected output\\n'; done\n").unwrap();
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        publish_script(
+            &exe,
+            b"#!/bin/sh\nprintf 'grip 0.37.0\\n'\nwhile :; do printf 'unexpected output\\n'; done\n",
+            0o755,
+        );
         assert!(version(&exe).is_err());
     }
 }

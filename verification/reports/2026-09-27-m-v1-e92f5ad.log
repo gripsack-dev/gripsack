@@ -1,0 +1,5712 @@
+COMMIT=e92f5ad5eb64646faa6695d9ffdc0b5c67354988
+SOURCE_FINGERPRINT=933b11eaae5e43342e60378e325560ee21ab08d9fa272ca86267bd4ad14727e9
+SOURCE_CLEAN_BEFORE=true
+FUZZ=not_run_owner_instruction
+SCOPE=local Linux amd64; M-V1 pilot only; no M-V6, OS refinement, native Mac or release closure
+RUNNER_COMMAND=docker compose run --build --rm tlaps python3 scripts/check_tlaps.py
+ Image gripsack-tlaps Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 587B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 11.00kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#7 DONE 0.0s
+
+#8 [tlaps 2/5] ADD --checksum=sha256:a2860384bc89c4c5b2c73ec367e29f44d829e4d4a2698ab295139f829219331c https://github.com/tlaplus/tlapm/releases/download/1.6.0-pre/tlapm-1.6.0-pre-x86_64-linux-gnu.tar.gz /tmp/tlapm.tar.gz
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 DONE 0.0s
+
+#10 [model 1/6] FROM docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#10 resolve docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 0.0s done
+#10 DONE 0.0s
+
+#9 [internal] load build context
+#9 transferring context: 4.83kB done
+#9 DONE 0.0s
+
+#11 [model 3/6] WORKDIR /work
+#11 CACHED
+
+#12 [model 6/6] RUN sh scripts/check_models.sh /tla/tla2tools.jar
+#12 CACHED
+
+#13 [tlaps 3/5] RUN mkdir -p /opt/tlapm && tar -xzf /tmp/tlapm.tar.gz -C /opt/tlapm --strip-components=1     && rm /tmp/tlapm.tar.gz
+#13 CACHED
+
+#14 [tlaps 4/5] COPY scripts/check_tlaps.py scripts/tlaps_evidence.py ./scripts/
+#14 CACHED
+
+#15 [model 4/6] COPY specs ./specs
+#15 CACHED
+
+#16 [model 5/6] COPY scripts/check_models.sh ./scripts/check_models.sh
+#16 CACHED
+
+#17 [tlaps 1/5] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends     python3 libgmp10     && rm -rf /var/lib/apt/lists/*
+#17 CACHED
+
+#18 [tlaps 2/5] ADD --checksum=sha256:a2860384bc89c4c5b2c73ec367e29f44d829e4d4a2698ab295139f829219331c https://github.com/tlaplus/tlapm/releases/download/1.6.0-pre/tlapm-1.6.0-pre-x86_64-linux-gnu.tar.gz /tmp/tlapm.tar.gz
+#18 CACHED
+
+#19 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#19 CACHED
+
+#20 [tlaps 5/5] RUN python3 scripts/check_tlaps.py
+#20 CACHED
+
+#21 exporting to image
+#21 exporting layers done
+#21 exporting manifest sha256:751b48ab8bd371d69569653e3ed4bc0320a985d142164ae67bb719aa56e4e752 done
+#21 exporting config sha256:38279ba7055c1791a64483247fc0e88f5a1605a9e68162b820d9bb2f5b49edc4 done
+#21 exporting attestation manifest sha256:c79136bf1a142503839f4ecc66214827cff79483439594669fb7bcbba232322e 0.0s done
+#21 exporting manifest list sha256:14431fb60945838ebcf22be5e30340a548f47609bcb1e3971335fccab511d755 0.0s done
+#21 naming to docker.io/library/gripsack-tlaps:latest done
+#21 unpacking to docker.io/library/gripsack-tlaps:latest 0.0s done
+#21 DONE 0.1s
+
+#22 resolving provenance for metadata file
+#22 DONE 0.0s
+ Image gripsack-tlaps Built 
+ Container gripsack-tlaps-run-e575825c61b9 Creating 
+ Container gripsack-tlaps-run-e575825c61b9 Created 
+TLAPS_REVISION=7824dab
+RUNNER_COMMAND=tlapm --strict --prefer-stdlib --nofp --toolbox 1 282 --threads 2 --cache-dir /tmp/gripsack-tlaps-dtp5ti5e/positive-cache TransactionProofs.tla
+
+\* TLAPM version 7824dab
+\* launched at 2026-09-27 09:04:05 with command line:
+\* tlapm --strict --prefer-stdlib --nofp --toolbox 1 282 --threads 2 --cache-dir /tmp/gripsack-tlaps-dtp5ti5e/positive-cache TransactionProofs.tla
+
+@!!BEGIN
+@!!type:obligation
+@!!id:1
+@!!loc:34:3:34:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:2
+@!!loc:34:6:34:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:3
+@!!loc:37:3:37:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:4
+@!!loc:37:6:37:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:5
+@!!loc:42:3:42:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:6
+@!!loc:42:6:42:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:7
+@!!loc:66:3:66:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:8
+@!!loc:66:6:66:14
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:9
+@!!loc:71:3:71:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:10
+@!!loc:71:6:71:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:11
+@!!loc:117:3:117:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:12
+@!!loc:117:6:117:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:13
+@!!loc:117:11:117:15
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:14
+@!!loc:117:17:117:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:15
+@!!loc:117:23:117:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:16
+@!!loc:117:29:117:33
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:17
+@!!loc:117:35:117:39
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:18
+@!!loc:117:41:117:45
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:19
+@!!loc:117:47:117:51
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:20
+@!!loc:77:1:77:43
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:21
+@!!loc:77:1:77:43
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:22
+@!!loc:83:3:83:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:23
+@!!loc:83:6:83:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:24
+@!!loc:83:11:83:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:25
+@!!loc:83:23:83:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:26
+@!!loc:85:3:85:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:27
+@!!loc:85:6:85:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:28
+@!!loc:85:11:85:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:29
+@!!loc:85:23:85:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:30
+@!!loc:87:3:87:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:31
+@!!loc:87:6:87:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:32
+@!!loc:87:11:87:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:33
+@!!loc:87:23:87:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:34
+@!!loc:109:5:109:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:35
+@!!loc:109:8:109:12
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:36
+@!!loc:109:14:109:18
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:37
+@!!loc:90:5:90:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:38
+@!!loc:90:8:90:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:39
+@!!loc:90:13:90:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:40
+@!!loc:90:25:90:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:41
+@!!loc:90:31:90:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:42
+@!!loc:107:7:107:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:43
+@!!loc:107:10:107:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:44
+@!!loc:107:15:107:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:45
+@!!loc:107:27:107:31
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:46
+@!!loc:107:33:107:37
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:47
+@!!loc:107:39:107:43
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:48
+@!!loc:107:45:107:49
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:49
+@!!loc:107:51:107:55
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:50
+@!!loc:107:57:107:69
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:51
+@!!loc:95:7:95:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:52
+@!!loc:95:10:95:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:53
+@!!loc:95:15:95:19
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:54
+@!!loc:95:21:95:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:55
+@!!loc:97:7:97:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:56
+@!!loc:97:10:97:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:57
+@!!loc:97:15:97:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:58
+@!!loc:97:27:97:31
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:59
+@!!loc:97:33:97:37
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:60
+@!!loc:104:9:104:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:61
+@!!loc:104:17:104:20
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:62
+@!!loc:104:22:104:32
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:63
+@!!loc:104:34:104:49
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:64
+@!!loc:104:51:104:55
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:65
+@!!loc:111:3:111:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:66
+@!!loc:111:6:111:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:67
+@!!loc:111:11:111:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:68
+@!!loc:111:23:111:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:69
+@!!loc:113:3:113:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:70
+@!!loc:113:6:113:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:71
+@!!loc:113:11:113:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:72
+@!!loc:113:23:113:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:73
+@!!loc:115:3:115:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:74
+@!!loc:115:6:115:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:75
+@!!loc:115:11:115:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:76
+@!!loc:115:23:115:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:77
+@!!loc:145:3:145:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:78
+@!!loc:145:6:145:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:79
+@!!loc:145:11:145:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:80
+@!!loc:270:3:270:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:81
+@!!loc:270:6:270:10
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:82
+@!!loc:270:12:270:16
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:83
+@!!loc:270:18:270:22
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:84
+@!!loc:270:24:270:28
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:85
+@!!loc:270:30:270:34
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:86
+@!!loc:270:36:270:40
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:87
+@!!loc:270:42:270:46
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:88
+@!!loc:270:48:270:52
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:89
+@!!loc:152:3:152:10
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:90
+@!!loc:153:9:153:18
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:91
+@!!loc:153:20:153:31
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:92
+@!!loc:198:5:198:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:93
+@!!loc:198:8:198:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:94
+@!!loc:198:13:198:17
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:95
+@!!loc:198:19:198:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:96
+@!!loc:198:25:198:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:97
+@!!loc:198:31:198:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:98
+@!!loc:198:37:198:41
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:99
+@!!loc:198:43:198:47
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:100
+@!!loc:198:49:198:53
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:101
+@!!loc:161:5:161:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:102
+@!!loc:161:8:161:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:103
+@!!loc:161:13:161:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:104
+@!!loc:161:25:161:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:105
+@!!loc:161:31:161:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:106
+@!!loc:188:7:188:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:107
+@!!loc:188:10:188:14
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:108
+@!!loc:188:16:188:20
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:109
+@!!loc:188:22:188:26
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:110
+@!!loc:188:28:188:32
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:111
+@!!loc:188:34:188:38
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:112
+@!!loc:164:7:164:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:113
+@!!loc:164:10:164:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:114
+@!!loc:164:15:164:19
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:115
+@!!loc:164:21:164:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:116
+@!!loc:170:9:170:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:117
+@!!loc:170:17:170:20
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:118
+@!!loc:170:22:170:26
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:119
+@!!loc:170:28:170:32
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:120
+@!!loc:170:34:170:38
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:121
+@!!loc:170:40:170:51
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:122
+@!!loc:172:7:172:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:123
+@!!loc:172:10:172:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:124
+@!!loc:172:15:172:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:125
+@!!loc:172:27:172:31
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:126
+@!!loc:172:33:172:37
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:127
+@!!loc:172:39:172:43
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:128
+@!!loc:174:7:174:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:129
+@!!loc:174:10:174:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:130
+@!!loc:174:15:174:19
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:131
+@!!loc:176:7:176:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:132
+@!!loc:176:10:176:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:133
+@!!loc:176:15:176:19
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:134
+@!!loc:184:7:184:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:135
+@!!loc:184:10:184:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:136
+@!!loc:184:15:184:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:137
+@!!loc:184:27:184:31
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:138
+@!!loc:184:33:184:37
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:139
+@!!loc:186:7:186:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:140
+@!!loc:186:10:186:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:141
+@!!loc:186:15:186:19
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:142
+@!!loc:190:5:190:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:143
+@!!loc:190:8:190:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:144
+@!!loc:190:13:190:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:145
+@!!loc:190:25:190:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:146
+@!!loc:190:31:190:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:147
+@!!loc:192:5:192:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:148
+@!!loc:192:8:192:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:149
+@!!loc:192:13:192:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:150
+@!!loc:192:25:192:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:151
+@!!loc:192:31:192:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:152
+@!!loc:194:5:194:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:153
+@!!loc:194:8:194:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:154
+@!!loc:194:13:194:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:155
+@!!loc:194:25:194:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:156
+@!!loc:194:31:194:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:157
+@!!loc:196:5:196:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:158
+@!!loc:196:8:196:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:159
+@!!loc:196:13:196:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:160
+@!!loc:196:25:196:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:161
+@!!loc:196:31:196:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:162
+@!!loc:200:3:200:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:163
+@!!loc:200:6:200:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:164
+@!!loc:200:11:200:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:165
+@!!loc:200:23:200:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:166
+@!!loc:224:5:224:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:167
+@!!loc:224:8:224:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:168
+@!!loc:224:13:224:17
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:169
+@!!loc:224:19:224:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:170
+@!!loc:224:25:224:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:171
+@!!loc:224:31:224:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:172
+@!!loc:224:37:224:41
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:173
+@!!loc:224:43:224:47
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:174
+@!!loc:224:49:224:53
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:175
+@!!loc:204:5:204:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:176
+@!!loc:204:8:204:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:177
+@!!loc:204:13:204:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:178
+@!!loc:204:25:204:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:179
+@!!loc:204:31:204:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:180
+@!!loc:214:7:214:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:181
+@!!loc:214:10:214:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:182
+@!!loc:214:15:214:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:183
+@!!loc:214:27:214:31
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:184
+@!!loc:214:33:214:37
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:185
+@!!loc:214:39:214:43
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:186
+@!!loc:207:7:207:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:187
+@!!loc:207:10:207:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:188
+@!!loc:207:15:207:19
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:189
+@!!loc:207:21:207:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:190
+@!!loc:211:9:211:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:191
+@!!loc:211:17:211:20
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:192
+@!!loc:211:22:211:26
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:193
+@!!loc:211:28:211:32
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:194
+@!!loc:211:34:211:45
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:195
+@!!loc:216:5:216:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:196
+@!!loc:216:8:216:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:197
+@!!loc:216:13:216:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:198
+@!!loc:216:25:216:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:199
+@!!loc:216:31:216:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:200
+@!!loc:218:5:218:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:201
+@!!loc:218:8:218:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:202
+@!!loc:218:13:218:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:203
+@!!loc:218:25:218:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:204
+@!!loc:218:31:218:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:205
+@!!loc:220:5:220:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:206
+@!!loc:220:8:220:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:207
+@!!loc:220:13:220:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:208
+@!!loc:220:25:220:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:209
+@!!loc:220:31:220:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:210
+@!!loc:222:5:222:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:211
+@!!loc:222:8:222:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:212
+@!!loc:222:13:222:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:213
+@!!loc:222:25:222:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:214
+@!!loc:222:31:222:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:215
+@!!loc:226:3:226:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:216
+@!!loc:226:6:226:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:217
+@!!loc:226:11:226:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:218
+@!!loc:226:23:226:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:219
+@!!loc:250:5:250:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:220
+@!!loc:250:8:250:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:221
+@!!loc:250:13:250:17
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:222
+@!!loc:250:19:250:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:223
+@!!loc:250:25:250:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:224
+@!!loc:250:31:250:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:225
+@!!loc:250:37:250:41
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:226
+@!!loc:250:43:250:47
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:227
+@!!loc:250:49:250:53
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:228
+@!!loc:230:5:230:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:229
+@!!loc:230:8:230:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:230
+@!!loc:230:13:230:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:231
+@!!loc:230:25:230:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:232
+@!!loc:230:31:230:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:233
+@!!loc:240:7:240:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:234
+@!!loc:240:10:240:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:235
+@!!loc:240:15:240:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:236
+@!!loc:240:27:240:31
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:237
+@!!loc:240:33:240:37
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:238
+@!!loc:240:39:240:43
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:239
+@!!loc:233:7:233:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:240
+@!!loc:233:10:233:13
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:241
+@!!loc:233:15:233:19
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:242
+@!!loc:233:21:233:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:243
+@!!loc:237:9:237:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:244
+@!!loc:237:17:237:20
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:245
+@!!loc:237:22:237:26
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:246
+@!!loc:237:28:237:32
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:247
+@!!loc:237:34:237:45
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:248
+@!!loc:242:5:242:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:249
+@!!loc:242:8:242:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:250
+@!!loc:242:13:242:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:251
+@!!loc:242:25:242:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:252
+@!!loc:242:31:242:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:253
+@!!loc:244:5:244:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:254
+@!!loc:244:8:244:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:255
+@!!loc:244:13:244:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:256
+@!!loc:244:25:244:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:257
+@!!loc:244:31:244:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:258
+@!!loc:246:5:246:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:259
+@!!loc:246:8:246:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:260
+@!!loc:246:13:246:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:261
+@!!loc:246:25:246:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:262
+@!!loc:246:31:246:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:263
+@!!loc:248:5:248:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:264
+@!!loc:248:8:248:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:265
+@!!loc:248:13:248:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:266
+@!!loc:248:25:248:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:267
+@!!loc:248:31:248:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:268
+@!!loc:252:3:252:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:269
+@!!loc:252:6:252:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:270
+@!!loc:252:11:252:21
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:271
+@!!loc:252:23:252:27
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:272
+@!!loc:265:5:265:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:273
+@!!loc:265:8:265:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:274
+@!!loc:265:13:265:23
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:275
+@!!loc:265:25:265:29
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:276
+@!!loc:265:31:265:35
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:277
+@!!loc:265:37:265:41
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:278
+@!!loc:265:43:265:47
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:279
+@!!loc:255:5:255:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:280
+@!!loc:255:8:255:11
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:281
+@!!loc:255:13:255:17
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:283
+@!!loc:257:5:257:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:284
+@!!loc:263:7:263:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:285
+@!!loc:263:15:263:18
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:286
+@!!loc:263:20:263:24
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:287
+@!!loc:263:26:263:30
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:288
+@!!loc:263:32:263:36
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:289
+@!!loc:263:38:263:56
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:290
+@!!loc:268:3:268:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:291
+@!!loc:268:6:268:10
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:292
+@!!loc:273:3:273:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:293
+@!!loc:281:3:281:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:294
+@!!loc:281:6:281:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:295
+@!!loc:281:11:281:15
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:296
+@!!loc:281:17:281:33
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:297
+@!!loc:277:3:277:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:298
+@!!loc:279:3:279:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:299
+@!!loc:279:6:279:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:300
+@!!loc:279:11:279:25
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:301
+@!!loc:279:27:279:40
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:302
+@!!loc:279:42:279:46
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligationsnumber
+@!!count:301
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:2
+@!!loc:34:6:34:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:1
+@!!loc:34:3:34:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.3 (5%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:4
+@!!loc:37:6:37:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:3
+@!!loc:37:3:37:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:6
+@!!loc:42:6:42:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:5
+@!!loc:42:3:42:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:8
+@!!loc:66:6:66:14
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:9
+@!!loc:71:3:71:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:10
+@!!loc:71:6:71:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:7
+@!!loc:66:3:66:5
+@!!status:being proved
+@!!prover:isabelle
+@!!meth:auto; time-limit: 60
+@!!obl:
+ASSUME NEW CONSTANT PREV,
+       NEW CONSTANT TARGET,
+       NEW CONSTANT OP,
+       NEW CONSTANT KIND,
+       NEW CONSTANT CPRIOR,
+       NEW CONSTANT CDEPLOYED,
+       NEW CONSTANT CEDITED,
+       NEW CONSTANT NONE,
+       NEW VARIABLE volatile,
+       NEW VARIABLE durable,
+       NEW VARIABLE visible,
+       NEW VARIABLE phase,
+       NEW VARIABLE step,
+       NEW VARIABLE edited,
+       NEW VARIABLE klass,
+       NEW VARIABLE beforeRecover,
+       TRUE 
+PROVE  \A live, prior, intended :
+          (/\ NONE # [prior |-> prior, intended |-> intended]
+           /\ NONE # [prev |-> PREV, target |-> TARGET]
+           /\ PREV # TARGET)
+          => (CASE (IF
+                      [dest |-> live, current |-> PREV,
+                       entry |-> [prior |-> prior, intended |-> intended],
+                       marker |-> [prev |-> PREV, target |-> TARGET]].marker
+                      = NONE
+                      /\ [dest |-> live, current |-> PREV,
+                          entry |-> [prior |-> prior, intended |-> intended],
+                          marker |-> [prev |-> PREV, target |-> TARGET]].entry
+                         = NONE
+                      THEN "none"
+                      ELSE IF
+                             [dest |-> live, current |-> PREV,
+                              entry |-> [prior |-> prior,
+                                         intended |-> intended],
+                              marker |-> [prev |-> PREV, target |-> TARGET]].marker
+                             = NONE
+                             THEN "uncommitted"
+                             ELSE CASE [dest |-> live, current |-> PREV,
+                                        entry |-> [prior |-> prior,
+                                                   intended |-> intended],
+                                        marker |-> [prev |-> PREV,
+                                                    target |-> TARGET]].current
+                                       = [dest |-> live, current |-> PREV,
+                                          entry |-> [prior |-> prior,
+                                                     intended |-> intended],
+                                          marker |-> [prev |-> PREV,
+                                                      target |-> TARGET]].marker.target ->
+                                         "committed"
+                                    [] [dest |-> live, current |-> PREV,
+                                        entry |-> [prior |-> prior,
+                                                   intended |-> intended],
+                                        marker |-> [prev |-> PREV,
+                                                    target |-> TARGET]].current
+                                       = [dest |-> live, current |-> PREV,
+                                          entry |-> [prior |-> prior,
+                                                     intended |-> intended],
+                                          marker |-> [prev |-> PREV,
+                                                      target |-> TARGET]].marker.prev ->
+                                         "uncommitted"
+                                    [] OTHER -> "ambiguous")
+                   = "committed" ->
+                     [dest |-> [dest |-> live, current |-> PREV,
+                                entry |-> [prior |-> prior,
+                                           intended |-> intended],
+                                marker |-> [prev |-> PREV, target |-> TARGET]].dest,
+                      current |-> [dest |-> live, current |-> PREV,
+                                   entry |-> [prior |-> prior,
+                                              intended |-> intended],
+                                   marker |-> [prev |-> PREV,
+                                               target |-> TARGET]].current,
+                      entry |-> NONE, marker |-> NONE]
+                [] (IF
+                      [dest |-> live, current |-> PREV,
+                       entry |-> [prior |-> prior, intended |-> intended],
+                       marker |-> [prev |-> PREV, target |-> TARGET]].marker
+                      = NONE
+                      /\ [dest |-> live, current |-> PREV,
+                          entry |-> [prior |-> prior, intended |-> intended],
+                          marker |-> [prev |-> PREV, target |-> TARGET]].entry
+                         = NONE
+                      THEN "none"
+                      ELSE IF
+                             [dest |-> live, current |-> PREV,
+                              entry |-> [prior |-> prior,
+                                         intended |-> intended],
+                              marker |-> [prev |-> PREV, target |-> TARGET]].marker
+                             = NONE
+                             THEN "uncommitted"
+                             ELSE CASE [dest |-> live, current |-> PREV,
+                                        entry |-> [prior |-> prior,
+                                                   intended |-> intended],
+                                        marker |-> [prev |-> PREV,
+                                                    target |-> TARGET]].current
+                                       = [dest |-> live, current |-> PREV,
+                                          entry |-> [prior |-> prior,
+                                                     intended |-> intended],
+                                          marker |-> [prev |-> PREV,
+                                                      target |-> TARGET]].marker.target ->
+                                         "committed"
+                                    [] [dest |-> live, current |-> PREV,
+                                        entry |-> [prior |-> prior,
+                                                   intended |-> intended],
+                                        marker |-> [prev |-> PREV,
+                                                    target |-> TARGET]].current
+                                       = [dest |-> live, current |-> PREV,
+                                          entry |-> [prior |-> prior,
+                                                     intended |-> intended],
+                                          marker |-> [prev |-> PREV,
+                                                      target |-> TARGET]].marker.prev ->
+                                         "uncommitted"
+                                    [] OTHER -> "ambiguous")
+                   = "uncommitted" ->
+                     [dest |-> IF
+                                 [dest |-> live, current |-> PREV,
+                                  entry |-> [prior |-> prior,
+                                             intended |-> intended],
+                                  marker |-> [prev |-> PREV,
+                                              target |-> TARGET]].entry
+                                 = NONE
+                                 THEN [dest |-> live, current |-> PREV,
+                                       entry |-> [prior |-> prior,
+                                                  intended |-> intended],
+                                       marker |-> [prev |-> PREV,
+                                                   target |-> TARGET]].dest
+                                 ELSE IF
+                                        Decide([dest |-> live,
+                                                current |-> PREV,
+                                                entry |-> [prior |-> prior,
+                                                           intended |-> intended],
+                                                marker |-> [prev |-> PREV,
+                                                            target |-> TARGET]].dest,
+                                               [dest |-> live,
+                                                current |-> PREV,
+                                                entry |-> [prior |-> prior,
+                                                           intended |-> intended],
+                                                marker |-> [prev |-> PREV,
+                                                            target |-> TARGET]].entry.intended,
+                                               [dest |-> live,
+                                                current |-> PREV,
+                                                entry |-> [prior |-> prior,
+                                                           intended |-> intended],
+                                                marker |-> [prev |-> PREV,
+                                                            target |-> TARGET]].entry.prior)
+                                        = "restore"
+                                        THEN [dest |-> live,
+                                              current |-> PREV,
+                                              entry |-> [prior |-> prior,
+                                                         intended |-> intended],
+                                              marker |-> [prev |-> PREV,
+                                                          target |-> TARGET]].entry.prior
+                                        ELSE [dest |-> live,
+                                              current |-> PREV,
+                                              entry |-> [prior |-> prior,
+                                                         intended |-> intended],
+                                              marker |-> [prev |-> PREV,
+                                                          target |-> TARGET]].dest,
+                      current |-> [dest |-> live, current |-> PREV,
+                                   entry |-> [prior |-> prior,
+                                              intended |-> intended],
+                                   marker |-> [prev |-> PREV,
+                                               target |-> TARGET]].current,
+                      entry |-> NONE, marker |-> NONE]
+                [] OTHER ->
+                     [dest |-> live, current |-> PREV,
+                      entry |-> [prior |-> prior, intended |-> intended],
+                      marker |-> [prev |-> PREV, target |-> TARGET]])
+             = [dest |-> IF Decide(live, intended, prior) = "restore"
+                           THEN prior
+                           ELSE live,
+                current |-> PREV, entry |-> NONE, marker |-> NONE]
+
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:11
+@!!loc:117:3:117:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:12
+@!!loc:117:6:117:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:13
+@!!loc:117:11:117:15
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:14
+@!!loc:117:17:117:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:15
+@!!loc:117:23:117:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:16
+@!!loc:117:29:117:33
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:17
+@!!loc:117:35:117:39
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:18
+@!!loc:117:41:117:45
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:19
+@!!loc:117:47:117:51
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:20
+@!!loc:77:1:77:43
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:21
+@!!loc:77:1:77:43
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:22
+@!!loc:83:3:83:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:23
+@!!loc:83:6:83:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:24
+@!!loc:83:11:83:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:25
+@!!loc:83:23:83:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:26
+@!!loc:85:3:85:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:27
+@!!loc:85:6:85:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:28
+@!!loc:85:11:85:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:29
+@!!loc:85:23:85:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:30
+@!!loc:87:3:87:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:31
+@!!loc:87:6:87:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:32
+@!!loc:87:11:87:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:33
+@!!loc:87:23:87:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:34
+@!!loc:109:5:109:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:35
+@!!loc:109:8:109:12
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:36
+@!!loc:109:14:109:18
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:37
+@!!loc:90:5:90:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:38
+@!!loc:90:8:90:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:39
+@!!loc:90:13:90:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:40
+@!!loc:90:25:90:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:41
+@!!loc:90:31:90:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:42
+@!!loc:107:7:107:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:43
+@!!loc:107:10:107:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:44
+@!!loc:107:15:107:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:45
+@!!loc:107:27:107:31
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:46
+@!!loc:107:33:107:37
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:47
+@!!loc:107:39:107:43
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:48
+@!!loc:107:45:107:49
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:49
+@!!loc:107:51:107:55
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:50
+@!!loc:107:57:107:69
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:51
+@!!loc:95:7:95:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:52
+@!!loc:95:10:95:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:53
+@!!loc:95:15:95:19
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:54
+@!!loc:95:21:95:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:55
+@!!loc:97:7:97:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:56
+@!!loc:97:10:97:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:57
+@!!loc:97:15:97:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:58
+@!!loc:97:27:97:31
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:59
+@!!loc:97:33:97:37
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:60
+@!!loc:104:9:104:11
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:61
+@!!loc:104:17:104:20
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:62
+@!!loc:104:22:104:32
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:63
+@!!loc:104:34:104:49
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:64
+@!!loc:104:51:104:55
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:65
+@!!loc:111:3:111:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:66
+@!!loc:111:6:111:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:67
+@!!loc:111:11:111:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:68
+@!!loc:111:23:111:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:69
+@!!loc:113:3:113:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:70
+@!!loc:113:6:113:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:71
+@!!loc:113:11:113:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:72
+@!!loc:113:23:113:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:73
+@!!loc:115:3:115:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:74
+@!!loc:115:6:115:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:75
+@!!loc:115:11:115:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:76
+@!!loc:115:23:115:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:77
+@!!loc:145:3:145:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:78
+@!!loc:145:6:145:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:79
+@!!loc:145:11:145:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:80
+@!!loc:270:3:270:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:81
+@!!loc:270:6:270:10
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:82
+@!!loc:270:12:270:16
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:83
+@!!loc:270:18:270:22
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:84
+@!!loc:270:24:270:28
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:85
+@!!loc:270:30:270:34
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:86
+@!!loc:270:36:270:40
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:87
+@!!loc:270:42:270:46
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:88
+@!!loc:270:48:270:52
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:89
+@!!loc:152:3:152:10
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:90
+@!!loc:153:9:153:18
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:91
+@!!loc:153:20:153:31
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:92
+@!!loc:198:5:198:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (1%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:93
+@!!loc:198:8:198:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:94
+@!!loc:198:13:198:17
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:95
+@!!loc:198:19:198:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:96
+@!!loc:198:25:198:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:97
+@!!loc:198:31:198:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:98
+@!!loc:198:37:198:41
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:99
+@!!loc:198:43:198:47
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:100
+@!!loc:198:49:198:53
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:101
+@!!loc:161:5:161:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:102
+@!!loc:161:8:161:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:103
+@!!loc:161:13:161:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:104
+@!!loc:161:25:161:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:105
+@!!loc:161:31:161:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:106
+@!!loc:188:7:188:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:107
+@!!loc:188:10:188:14
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:108
+@!!loc:188:16:188:20
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:109
+@!!loc:188:22:188:26
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:110
+@!!loc:188:28:188:32
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:111
+@!!loc:188:34:188:38
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:112
+@!!loc:164:7:164:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:113
+@!!loc:164:10:164:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:114
+@!!loc:164:15:164:19
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:115
+@!!loc:164:21:164:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:116
+@!!loc:170:9:170:11
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:117
+@!!loc:170:17:170:20
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:118
+@!!loc:170:22:170:26
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:119
+@!!loc:170:28:170:32
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:120
+@!!loc:170:34:170:38
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:121
+@!!loc:170:40:170:51
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:122
+@!!loc:172:7:172:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:123
+@!!loc:172:10:172:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:124
+@!!loc:172:15:172:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:125
+@!!loc:172:27:172:31
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:126
+@!!loc:172:33:172:37
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:127
+@!!loc:172:39:172:43
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:7
+@!!loc:66:3:66:5
+@!!status:proved
+@!!prover:isabelle
+@!!meth:auto; time-limit: 60; time-used: 23.7 (39%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:129
+@!!loc:174:10:174:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:130
+@!!loc:174:15:174:19
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:128
+@!!loc:174:7:174:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.4 (8%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:132
+@!!loc:176:10:176:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:133
+@!!loc:176:15:176:19
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:131
+@!!loc:176:7:176:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.5 (10%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:135
+@!!loc:184:10:184:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:136
+@!!loc:184:15:184:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:137
+@!!loc:184:27:184:31
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:138
+@!!loc:184:33:184:37
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:134
+@!!loc:184:7:184:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.4 (8%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:140
+@!!loc:186:10:186:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:141
+@!!loc:186:15:186:19
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:139
+@!!loc:186:7:186:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.6 (11%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:143
+@!!loc:190:8:190:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:144
+@!!loc:190:13:190:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:145
+@!!loc:190:25:190:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:146
+@!!loc:190:31:190:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:142
+@!!loc:190:5:190:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.6 (12%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:148
+@!!loc:192:8:192:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:149
+@!!loc:192:13:192:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:150
+@!!loc:192:25:192:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:151
+@!!loc:192:31:192:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:147
+@!!loc:192:5:192:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.7 (14%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:153
+@!!loc:194:8:194:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:154
+@!!loc:194:13:194:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:155
+@!!loc:194:25:194:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:156
+@!!loc:194:31:194:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:152
+@!!loc:194:5:194:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.8 (15%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:158
+@!!loc:196:8:196:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:159
+@!!loc:196:13:196:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:160
+@!!loc:196:25:196:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:161
+@!!loc:196:31:196:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:157
+@!!loc:196:5:196:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.4 (8%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:163
+@!!loc:200:6:200:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:164
+@!!loc:200:11:200:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:165
+@!!loc:200:23:200:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:162
+@!!loc:200:3:200:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 1.6 (32%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:167
+@!!loc:224:8:224:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:168
+@!!loc:224:13:224:17
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:169
+@!!loc:224:19:224:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:170
+@!!loc:224:25:224:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:171
+@!!loc:224:31:224:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:172
+@!!loc:224:37:224:41
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:173
+@!!loc:224:43:224:47
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:174
+@!!loc:224:49:224:53
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:166
+@!!loc:224:5:224:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.6 (13%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:176
+@!!loc:204:8:204:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:177
+@!!loc:204:13:204:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:178
+@!!loc:204:25:204:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:179
+@!!loc:204:31:204:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:175
+@!!loc:204:5:204:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.6 (11%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:181
+@!!loc:214:10:214:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:182
+@!!loc:214:15:214:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:183
+@!!loc:214:27:214:31
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:184
+@!!loc:214:33:214:37
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:185
+@!!loc:214:39:214:43
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:180
+@!!loc:214:7:214:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.7 (13%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:187
+@!!loc:207:10:207:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:188
+@!!loc:207:15:207:19
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:189
+@!!loc:207:21:207:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:186
+@!!loc:207:7:207:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (1%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:191
+@!!loc:211:17:211:20
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:192
+@!!loc:211:22:211:26
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:193
+@!!loc:211:28:211:32
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:194
+@!!loc:211:34:211:45
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:190
+@!!loc:211:9:211:11
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.7 (15%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:196
+@!!loc:216:8:216:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:197
+@!!loc:216:13:216:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:198
+@!!loc:216:25:216:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:199
+@!!loc:216:31:216:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:195
+@!!loc:216:5:216:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.8 (15%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:201
+@!!loc:218:8:218:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:202
+@!!loc:218:13:218:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:203
+@!!loc:218:25:218:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:204
+@!!loc:218:31:218:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:200
+@!!loc:218:5:218:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.8 (17%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:206
+@!!loc:220:8:220:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:207
+@!!loc:220:13:220:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:208
+@!!loc:220:25:220:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:209
+@!!loc:220:31:220:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:205
+@!!loc:220:5:220:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.9 (19%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:211
+@!!loc:222:8:222:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:212
+@!!loc:222:13:222:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:213
+@!!loc:222:25:222:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:214
+@!!loc:222:31:222:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:210
+@!!loc:222:5:222:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.5 (11%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:216
+@!!loc:226:6:226:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:217
+@!!loc:226:11:226:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:218
+@!!loc:226:23:226:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:215
+@!!loc:226:3:226:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 1.7 (34%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:220
+@!!loc:250:8:250:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:221
+@!!loc:250:13:250:17
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:222
+@!!loc:250:19:250:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:223
+@!!loc:250:25:250:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:224
+@!!loc:250:31:250:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:225
+@!!loc:250:37:250:41
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:226
+@!!loc:250:43:250:47
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:227
+@!!loc:250:49:250:53
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:219
+@!!loc:250:5:250:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.8 (16%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:229
+@!!loc:230:8:230:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:230
+@!!loc:230:13:230:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:231
+@!!loc:230:25:230:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:232
+@!!loc:230:31:230:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:228
+@!!loc:230:5:230:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.6 (13%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:234
+@!!loc:240:10:240:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:235
+@!!loc:240:15:240:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:236
+@!!loc:240:27:240:31
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:237
+@!!loc:240:33:240:37
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:238
+@!!loc:240:39:240:43
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:233
+@!!loc:240:7:240:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.7 (13%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:240
+@!!loc:233:10:233:13
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:241
+@!!loc:233:15:233:19
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:242
+@!!loc:233:21:233:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:239
+@!!loc:233:7:233:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.1 (1%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:244
+@!!loc:237:17:237:20
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:245
+@!!loc:237:22:237:26
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:246
+@!!loc:237:28:237:32
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:247
+@!!loc:237:34:237:45
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:243
+@!!loc:237:9:237:11
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.8 (17%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:249
+@!!loc:242:8:242:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:250
+@!!loc:242:13:242:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:251
+@!!loc:242:25:242:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:252
+@!!loc:242:31:242:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:248
+@!!loc:242:5:242:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.9 (19%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:254
+@!!loc:244:8:244:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:255
+@!!loc:244:13:244:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:256
+@!!loc:244:25:244:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:257
+@!!loc:244:31:244:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:253
+@!!loc:244:5:244:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 1.0 (21%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:259
+@!!loc:246:8:246:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:260
+@!!loc:246:13:246:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:261
+@!!loc:246:25:246:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:262
+@!!loc:246:31:246:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:258
+@!!loc:246:5:246:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 1.1 (22%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:264
+@!!loc:248:8:248:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:265
+@!!loc:248:13:248:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:266
+@!!loc:248:25:248:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:267
+@!!loc:248:31:248:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:263
+@!!loc:248:5:248:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.7 (14%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:269
+@!!loc:252:6:252:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:270
+@!!loc:252:11:252:21
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:271
+@!!loc:252:23:252:27
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:268
+@!!loc:252:3:252:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.7 (14%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:273
+@!!loc:265:8:265:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:274
+@!!loc:265:13:265:23
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:275
+@!!loc:265:25:265:29
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:276
+@!!loc:265:31:265:35
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:277
+@!!loc:265:37:265:41
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:278
+@!!loc:265:43:265:47
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:272
+@!!loc:265:5:265:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.6 (11%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:280
+@!!loc:255:8:255:11
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:281
+@!!loc:255:13:255:17
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:279
+@!!loc:255:5:255:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.6 (12%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:283
+@!!loc:257:5:257:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:285
+@!!loc:263:15:263:18
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:286
+@!!loc:263:20:263:24
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:287
+@!!loc:263:26:263:30
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:288
+@!!loc:263:32:263:36
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:289
+@!!loc:263:38:263:56
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:284
+@!!loc:263:7:263:9
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.7 (13%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:291
+@!!loc:268:6:268:10
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:290
+@!!loc:268:3:268:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:292
+@!!loc:273:3:273:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:294
+@!!loc:281:6:281:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:295
+@!!loc:281:11:281:15
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:296
+@!!loc:281:17:281:33
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:293
+@!!loc:281:3:281:5
+@!!status:proved
+@!!prover:ls4
+@!!meth:time-limit: 10; time-used: 0.1 (1%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:297
+@!!loc:277:3:277:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:299
+@!!loc:279:6:279:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:300
+@!!loc:279:11:279:25
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:301
+@!!loc:279:27:279:40
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:302
+@!!loc:279:42:279:46
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:298
+@!!loc:279:3:279:5
+@!!status:proved
+@!!prover:ls4
+@!!meth:time-limit: 10; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+(* created new "/tmp/gripsack-tlaps-dtp5ti5e/positive-cache/TransactionProofs.tlaps/TransactionProofs.thy" *)
+(* fingerprints written in "/tmp/gripsack-tlaps-dtp5ti5e/positive-cache/TransactionProofs.tlaps/fingerprints" *)
+File "./TransactionProofs.tla", line 1, character 1 to line 282, character 77:
+[INFO]: All 301 obligations proved.
+
+TLAPS_PILOT_OBLIGATIONS=301
+TLAPS_THEOREM=EntryType
+TLAPS_THEOREM=RecordImage
+TLAPS_THEOREM=CompletedStepDurability
+TLAPS_THEOREM=RecoveryOfEntry
+TLAPS_THEOREM=UndoIntended
+TLAPS_THEOREM=RecoveryProjection
+TLAPS_THEOREM=InitImpliesInv
+TLAPS_THEOREM=InductiveStep
+TLAPS_THEOREM=InvImpliesSafety
+TLAPS_THEOREM=TransactionSafety
+RUNNER_COMMAND=tlapm --strict --prefer-stdlib --nofp --toolbox 1 48 --threads 2 --cache-dir /tmp/gripsack-tlaps-dtp5ti5e/barrier-cache TransactionBarrierWitness.tla
+
+\* TLAPM version 7824dab
+\* launched at 2026-09-27 09:04:52 with command line:
+\* tlapm --strict --prefer-stdlib --nofp --toolbox 1 48 --threads 2 --cache-dir /tmp/gripsack-tlaps-dtp5ti5e/barrier-cache TransactionBarrierWitness.tla
+
+@!!BEGIN
+@!!type:obligation
+@!!id:1
+@!!loc:47:3:47:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:2
+@!!loc:47:6:47:10
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:3
+@!!loc:47:12:47:16
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:4
+@!!loc:37:3:37:10
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:5
+@!!loc:39:3:39:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:6
+@!!loc:39:6:39:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:7
+@!!loc:43:5:43:7
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:8
+@!!loc:43:13:43:16
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:9
+@!!loc:43:18:43:38
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:10
+@!!loc:43:40:43:44
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:11
+@!!loc:45:3:45:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:12
+@!!loc:45:6:45:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:13
+@!!loc:45:11:45:24
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligationsnumber
+@!!count:13
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:2
+@!!loc:47:6:47:10
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:3
+@!!loc:47:12:47:16
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:1
+@!!loc:47:3:47:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.2 (3%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:4
+@!!loc:37:3:37:10
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:6
+@!!loc:39:6:39:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:5
+@!!loc:39:3:39:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:8
+@!!loc:43:13:43:16
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:9
+@!!loc:43:18:43:38
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:10
+@!!loc:43:40:43:44
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:7
+@!!loc:43:5:43:7
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:12
+@!!loc:45:6:45:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:13
+@!!loc:45:11:45:24
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:11
+@!!loc:45:3:45:5
+@!!status:proved
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.0 (0%)
+@!!already:false
+@!!END
+
+(* created new "/tmp/gripsack-tlaps-dtp5ti5e/barrier-cache/TransactionBarrierWitness.tlaps/TransactionBarrierWitness.thy" *)
+(* fingerprints written in "/tmp/gripsack-tlaps-dtp5ti5e/barrier-cache/TransactionBarrierWitness.tlaps/fingerprints" *)
+File "./TransactionBarrierWitness.tla", line 1, character 1 to line 48, character 77:
+[INFO]: All 13 obligations proved.
+
+TLAPS_BARRIER_WITNESS=13
+RUNNER_COMMAND=java -Xmx1g -cp /tla/tla2tools.jar tlc2.TLC -cleanup -workers 1 -metadir /tmp/gripsack-tlaps-dtp5ti5e/tlc-states -config counterexample.cfg Transaction.tla
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 115 and seed -114460909979280464 with 1 worker on 32 cores with 1024MB heap and 64MB offheap memory [pid: 461] (Linux 6.18.33.2-microsoft-standard-WSL2 amd64, Eclipse Adoptium 21.0.12 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /tmp/gripsack-tlaps-dtp5ti5e/missing-entry-barrier/Transaction.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module Transaction
+Starting... (2026-09-27 09:04:52)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-09-27 09:04:53.
+Error: Invariant Oracle is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ volatile = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ step = 0
+/\ phase = "running"
+/\ durable = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ klass = "none"
+/\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ edited = FALSE
+
+State 2: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+/\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ volatile = [ dest |-> "prior",
+  current |-> 1,
+  entry |-> NONE,
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ step = 1
+/\ phase = "running"
+/\ durable = [ dest |-> "prior",
+  current |-> 1,
+  entry |-> NONE,
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ klass = "none"
+/\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ edited = FALSE
+
+State 3: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+/\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ volatile = [ dest |-> "prior",
+  current |-> 1,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ step = 2
+/\ phase = "running"
+/\ durable = [ dest |-> "prior",
+  current |-> 1,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ klass = "none"
+/\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ edited = FALSE
+
+State 4: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+/\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ volatile = [ dest |-> "deployed",
+  current |-> 1,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ step = 3
+/\ phase = "running"
+/\ durable = [ dest |-> "deployed",
+  current |-> 1,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ klass = "none"
+/\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ edited = FALSE
+
+State 5: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+/\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ volatile = [ dest |-> "deployed",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ step = 4
+/\ phase = "running"
+/\ durable = [ dest |-> "deployed",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ klass = "none"
+/\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ edited = FALSE
+
+State 6: <DoStep line 94, col 5 to line 100, col 58 of module Transaction>
+/\ beforeRecover = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ volatile = [ dest |-> "deployed",
+  current |-> 2,
+  entry |-> NONE,
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ step = 5
+/\ phase = "running"
+/\ durable = [ dest |-> "deployed",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ klass = "none"
+/\ visible = [dest |-> "prior", current |-> 1, entry |-> NONE, marker |-> NONE]
+/\ edited = FALSE
+
+State 7: <CrashMidStepPower line 134, col 5 to line 147, col 49 of module Transaction>
+/\ beforeRecover = [ dest |-> "deployed",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> NONE ]
+/\ volatile = [dest |-> "deployed", current |-> 2, entry |-> NONE, marker |-> NONE]
+/\ step = 5
+/\ phase = "crashed"
+/\ durable = [ dest |-> "deployed",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ klass = "none"
+/\ visible = [ dest |-> "deployed",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> NONE ]
+/\ edited = FALSE
+
+State 8: <MaybeUserEdit line 151, col 5 to line 157, col 51 of module Transaction>
+/\ beforeRecover = [ dest |-> "edited",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> NONE ]
+/\ volatile = [dest |-> "deployed", current |-> 2, entry |-> NONE, marker |-> NONE]
+/\ step = 5
+/\ phase = "recovering"
+/\ durable = [ dest |-> "deployed",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ klass = "none"
+/\ visible = [ dest |-> "edited",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> NONE ]
+/\ edited = TRUE
+
+State 9: <Recover line 196, col 5 to line 200, col 67 of module Transaction>
+/\ beforeRecover = [ dest |-> "edited",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> NONE ]
+/\ volatile = [dest |-> "deployed", current |-> 2, entry |-> NONE, marker |-> NONE]
+/\ step = 5
+/\ phase = "done"
+/\ durable = [ dest |-> "deployed",
+  current |-> 2,
+  entry |-> [prior |-> "prior", intended |-> "deployed"],
+  marker |-> [prev |-> 1, target |-> 2] ]
+/\ klass = "uncommitted"
+/\ visible = [dest |-> "edited", current |-> 2, entry |-> NONE, marker |-> NONE]
+/\ edited = TRUE
+
+142 states generated, 105 distinct states found, 17 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 7 and the 95th percentile is 4).
+Finished in 00s at (2026-09-27 09:04:53)
+
+calibration: missing entry-cleanup barrier has a proved violating step and an Oracle counterexample
+RUNNER_COMMAND=tlapm --strict --prefer-stdlib --nofp --toolbox 282 285 --threads 2 --cache-dir /tmp/gripsack-tlaps-dtp5ti5e/unrelated-cache TransactionProofs.tla
+
+\* TLAPM version 7824dab
+\* launched at 2026-09-27 09:04:53 with command line:
+\* tlapm --strict --prefer-stdlib --nofp --toolbox 282 285 --threads 2 --cache-dir /tmp/gripsack-tlaps-dtp5ti5e/unrelated-cache TransactionProofs.tla
+
+@!!BEGIN
+@!!type:obligation
+@!!id:1
+@!!loc:283:3:283:5
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:2
+@!!loc:283:6:283:9
+@!!status:to be proved
+@!!END
+
+@!!BEGIN
+@!!type:obligationsnumber
+@!!count:2
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:2
+@!!loc:283:6:283:9
+@!!status:trivial
+@!!prover:tlapm
+@!!already:false
+@!!END
+
+@!!BEGIN
+@!!type:obligation
+@!!id:1
+@!!loc:283:3:283:5
+@!!status:failed
+@!!prover:smt
+@!!meth:time-limit: 5; time-used: 0.1 (3%)
+@!!reason:false
+@!!already:false
+@!!obl:
+(* SMT failed with status = sat
+ *)
+ASSUME NEW CONSTANT PREV,
+       NEW CONSTANT TARGET,
+       NEW CONSTANT OP,
+       NEW CONSTANT KIND,
+       NEW CONSTANT CPRIOR,
+       NEW CONSTANT CDEPLOYED,
+       NEW CONSTANT CEDITED,
+       NEW CONSTANT NONE,
+       NEW VARIABLE volatile,
+       NEW VARIABLE durable,
+       NEW VARIABLE visible,
+       NEW VARIABLE phase,
+       NEW VARIABLE step,
+       NEW VARIABLE edited,
+       NEW VARIABLE klass,
+       NEW VARIABLE beforeRecover,
+       TRUE 
+PROVE  FALSE
+
+@!!END
+
+(* created new "/tmp/gripsack-tlaps-dtp5ti5e/unrelated-cache/TransactionProofs.tlaps/TransactionProofs.thy" *)
+(* fingerprints written in "/tmp/gripsack-tlaps-dtp5ti5e/unrelated-cache/TransactionProofs.tlaps/fingerprints" *)
+File "./TransactionProofs.tla", line 283, characters 3-4:
+[ERROR]: Could not prove or check:
+           ASSUME NEW CONSTANT PREV,
+                  NEW CONSTANT TARGET,
+                  NEW CONSTANT OP,
+                  NEW CONSTANT KIND,
+                  NEW CONSTANT CPRIOR,
+                  NEW CONSTANT CDEPLOYED,
+                  NEW CONSTANT CEDITED,
+                  NEW CONSTANT NONE,
+                  NEW VARIABLE volatile,
+                  NEW VARIABLE durable,
+                  NEW VARIABLE visible,
+                  NEW VARIABLE phase,
+                  NEW VARIABLE step,
+                  NEW VARIABLE edited,
+                  NEW VARIABLE klass,
+                  NEW VARIABLE beforeRecover,
+                  Parameters ==
+                    /\ PREV \in Nat
+                    /\ TARGET \in Nat
+                    /\ PREV # TARGET
+                    /\ NONE \notin Nat
+                    /\ NONE # SavedMarker
+                    /\ NONE # SavedEntry
+                    /\ KIND \in {"deploy", "prune"}
+                    /\ CEDITED
+                       \notin {StartContent, AfterMutate, Intended, ABSENT},
+                  SMT 
+           PROVE  FALSE
+File "./TransactionProofs.tla", line 1, character 1 to line 285, character 77:
+[ERROR]: 1/2 obligations failed.
+There were backend errors processing module `"TransactionProofs"`.
+
+calibration: unrelated theorem as barrier evidence refused
+RUNNER_COMMAND=tlapm --strict --prefer-stdlib --nofp --toolbox 1 3 --threads 2 --cache-dir /tmp/gripsack-tlaps-dtp5ti5e/empty-cache TransactionProofs.tla
+
+\* TLAPM version 7824dab
+\* launched at 2026-09-27 09:04:53 with command line:
+\* tlapm --strict --prefer-stdlib --nofp --toolbox 1 3 --threads 2 --cache-dir /tmp/gripsack-tlaps-dtp5ti5e/empty-cache TransactionProofs.tla
+
+@!!BEGIN
+@!!type:obligationsnumber
+@!!count:0
+@!!END
+
+File "./TransactionProofs.tla", line 1, character 1 to line 3, character 4:
+[ERROR]: No proof obligation found for the selected target.
+(* created new "/tmp/gripsack-tlaps-dtp5ti5e/empty-cache/TransactionProofs.tlaps/TransactionProofs.thy" *)
+(* fingerprints written in "/tmp/gripsack-tlaps-dtp5ti5e/empty-cache/TransactionProofs.tlaps/fingerprints" *)
+File "./TransactionProofs.tla", line 1, character 1 to line 3, character 4:
+[INFO]: All 0 obligation proved.
+
+calibration: empty proof as positive evidence refused
+TLAPS_PILOT_CALIBRATIONS=3
+tlaps gate: OK
+
+RUNNER_EXIT=0
+SOURCE_CLEAN_AFTER=true

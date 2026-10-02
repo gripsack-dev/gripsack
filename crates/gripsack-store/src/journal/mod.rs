@@ -10,35 +10,34 @@
 //!
 //! The journal closes that window:
 //!
-//! 1. **record** — before each mutation, the destination's prior
-//!    state is captured (file bytes into the prior blob store, or a
-//!    symlink target, or `Absent`) and an entry lands in
-//!    `$GRIPSACK_HOME/journal/`, fsync'd, marked uncommitted.
-//! 2. **after** — once the mutation lands, the entry gains the
-//!    post-mutation identity (content hash or link target).
-//! 3. **commit_run** — after the flip succeeds, every entry is
-//!    deleted: the generation now owns the truth.
-//! 4. **reconcile** — the next run (under the lifecycle lock, before
-//!    deploying anything) restores every uncommitted entry to its
-//!    prior state. The drift guard applies: when the entry knows the
-//!    post-mutation identity and the destination no longer matches
-//!    it, someone touched the file after the crash — their edit wins,
-//!    the entry is dropped with a warning. Never delete user edits.
-//!
-//! An entry without an `after` (crashed between record and mutation,
-//! or between mutation and the after-mark) restores unconditionally —
-//! the same choice the in-process rollback makes on failure.
-//! 4. **reconcile** — see `recover` (the drift guard lives there).
+//! 1. **record** — before a mutation, capture the immediate prior and
+//!    durably record it together with the intended post-state. Repeated
+//!    mutations retain the run's FIRST prior and the latest immediate
+//!    pre-state, so a crash before or after a later write restores the
+//!    original object, not a partly updated hosting file.
+//! 2. **mutate** — publish and sync the new object; the executor verifies
+//!    the intended identity before another mutation may extend the chain.
+//! 3. **commit_run** — after the generation flip, clean the journal.
+//! 4. **reconcile** — restore uncommitted known intermediate/final states;
+//!    preserve foreign edits. v1 entries retain their original three-way
+//!    interpretation; v2 adds an explicit immediate pre-state.
 
 pub mod marker;
+mod marker_wire;
+mod mutation;
+pub use mutation::{CapturedPrior, MutationPermit, capture, record};
 pub(crate) mod recover;
+mod storage;
+mod wire;
+pub use wire::{Entry, IntendedSerde, PriorSerde, WireRejection};
 
-pub use marker::{RunOp, begin_run, commit_run, end_run};
+pub use marker::{JournalRun, RunOp, begin_run, commit_run, end_run};
 pub use recover::{NoteSeverity, RecoveryNote, reconcile};
 
 use gripsack_fs::Dir;
 use std::io;
 use std::path::{Path, PathBuf};
+use storage::Journal;
 
 /// The journal-domain identity of a live destination object (0031):
 /// type + content identity from ONE observation. Files are
@@ -88,11 +87,9 @@ impl From<&IntendedSerde> for ObjectIdentity {
     }
 }
 
-/// What a journaled mutation intends the destination to become —
-/// the typed form of `Entry::after` (0026 §6's three-way decision:
-/// live == intended → restore prior; live == prior → never landed;
-/// else → someone's edit, keep it). Typed so a bytes-only template
-/// hash can never be journaled where a mode-aware identity belongs.
+/// The typed post-state a journaled mutation intends to create. Recovery
+/// compares it with the run-original prior and, for v2, the immediate
+/// pre-write state. A bytes-only hash cannot stand in for mode-aware identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Intended {
     Removed,
@@ -152,161 +149,12 @@ pub enum Prior {
     /// 0644&umask, an 0755 script must stay executable; also the
     /// file→symlink→crash path, where the live object at recovery is
     /// a link and mode preservation by copy is impossible).
-    File { hash: String, mode: u32 },
+    File {
+        hash: crate::prior::PriorBlobId,
+        mode: crate::prior::FileMode,
+    },
     /// A symlink; recovery recreates it pointing at `target`.
     Symlink { target: String },
-}
-
-/// One journal entry, one JSON file in the journal dir. Constructed
-/// by [`record`]; read back through [`Entry::from_wire`] only.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
-pub struct Entry {
-    /// Wire format version — always [`ENTRY_WIRE_VERSION`] on write.
-    v: u8,
-    /// The destination path, as written (post `~` expansion).
-    pub dest: String,
-    pub prior: PriorSerde,
-    /// The INTENDED post-mutation identity, TAGGED (0026 §6, 0045
-    /// F1): recorded BEFORE the mutation, so recovery makes a
-    /// three-way decision (live == intended → restore prior;
-    /// live == prior → the mutation never landed; else → someone's
-    /// edit, keep it). Tagged because the pre-0.40 bare string let a
-    /// symlink target spell a file identity or the removal sentinel.
-    pub after: IntendedSerde,
-}
-
-/// The journal entry wire version this binary writes and reads.
-pub(crate) const ENTRY_WIRE_VERSION: u8 = 1;
-
-/// Wire shape of [`Intended`] (0045 F1): tagged, so the three
-/// variants are disjoint by construction. `FileIdentity` rides as its
-/// transparent newtype — no naked hash strings.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum IntendedSerde {
-    Removed,
-    File { identity: crate::hash::FileIdentity },
-    Link { target: String },
-}
-
-/// Why a journal entry was refused at the wire boundary (0045 F1).
-/// Every rejection fails closed: the file is quarantined with its
-/// evidence intact, never reinterpreted.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WireRejection {
-    /// A pre-0.40 entry (bare-string `after`): the variant cannot be
-    /// proven from the string, so it is never guessed.
-    Legacy,
-    /// A wire version this binary does not understand.
-    UnsupportedVersion(u8),
-    /// Neither parseable nor a known format.
-    Malformed(String),
-}
-
-impl std::fmt::Display for WireRejection {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WireRejection::Legacy => f.write_str(
-                "pre-0.40 untagged entry — its intent cannot be proven from the \
-                 bare string, so it is retained for inspection instead of guessed",
-            ),
-            WireRejection::UnsupportedVersion(v) => {
-                write!(
-                    f,
-                    "journal entry wire version {v} is newer than this grip understands"
-                )
-            }
-            WireRejection::Malformed(why) => write!(f, "malformed journal entry: {why}"),
-        }
-    }
-}
-
-impl Entry {
-    /// A current-version entry (production writes go through
-    /// [`record`]; this constructor exists for tooling and fuzz).
-    pub fn new(dest: String, prior: PriorSerde, after: IntendedSerde) -> Entry {
-        Entry {
-            v: ENTRY_WIRE_VERSION,
-            dest,
-            prior,
-            after,
-        }
-    }
-
-    /// Decode a persisted entry into validated types BEFORE any
-    /// decision runs on it (0045 F1): legacy, foreign-version and
-    /// malformed entries are rejected here, never reinterpreted by
-    /// the recovery kernel.
-    pub fn from_wire(bytes: &[u8]) -> Result<Entry, WireRejection> {
-        let value: serde_json::Value =
-            serde_json::from_slice(bytes).map_err(|e| WireRejection::Malformed(e.to_string()))?;
-        let object = value
-            .as_object()
-            .ok_or_else(|| WireRejection::Malformed("not a JSON object".to_string()))?;
-        // The pre-0.40 shape had a bare-string `after` and no `v`.
-        if let Some(after) = object.get("after")
-            && after.is_string()
-        {
-            return Err(WireRejection::Legacy);
-        }
-        match object.get("v") {
-            None => Err(WireRejection::Malformed("no wire version `v`".to_string())),
-            Some(v) => {
-                let version = v
-                    .as_u64()
-                    .and_then(|n| u8::try_from(n).ok())
-                    .ok_or_else(|| WireRejection::Malformed("`v` is not a byte".to_string()))?;
-                if version != ENTRY_WIRE_VERSION {
-                    return Err(WireRejection::UnsupportedVersion(version));
-                }
-                #[derive(serde::Deserialize)]
-                struct Wire {
-                    dest: String,
-                    prior: PriorSerde,
-                    after: IntendedSerde,
-                }
-                let wire: Wire = serde_json::from_value(value.clone())
-                    .map_err(|e| WireRejection::Malformed(e.to_string()))?;
-                Ok(Entry {
-                    v: ENTRY_WIRE_VERSION,
-                    dest: wire.dest,
-                    prior: wire.prior,
-                    after: wire.after,
-                })
-            }
-        }
-    }
-}
-
-/// Wire shape of [`Prior`] — the blob-store hash rides along for
-/// files so recovery needs no re-derivation.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum PriorSerde {
-    Absent,
-    File {
-        hash: String,
-        /// Original Unix mode — restored exactly (0026 §7).
-        mode: u32,
-    },
-    Symlink {
-        target: String,
-    },
-}
-
-impl From<&Prior> for PriorSerde {
-    fn from(p: &Prior) -> Self {
-        match p {
-            Prior::Absent => PriorSerde::Absent,
-            Prior::File { hash, mode } => PriorSerde::File {
-                hash: hash.clone(),
-                mode: *mode,
-            },
-            Prior::Symlink { target } => PriorSerde::Symlink {
-                target: target.clone(),
-            },
-        }
-    }
 }
 
 // The pre-0.40 `after` identity for a journaled REMOVAL was the bare
@@ -319,191 +167,14 @@ pub fn dir(home: &Path) -> PathBuf {
     home.join("journal")
 }
 
-/// A prior blob's path relative to the home capability:
-/// `prior/<sha256>`.
-pub fn prior_blob_rel(sha: &str) -> PathBuf {
-    Path::new("prior").join(sha)
-}
-
-/// Store pre-take-over bytes content-addressed (0015 §4): returns the
-/// sha256 the manifest references. Dedup is the point — priors are
-/// small, and identical originals share one blob. Written through the
-/// home capability (plan/0021).
-pub fn store_prior_blob_in(home: &Dir, bytes: &[u8]) -> io::Result<String> {
-    let sha = crate::hash::hex_sha256(bytes);
-    let rel = prior_blob_rel(&sha);
-    // symlink_metadata does not follow links: a planted `prior/<sha>`
-    // symlink would skip the write and later restore THROUGH it. Skip
-    // only a real regular file; anything else is replaced by the
-    // atomic rename.
-    let present = home
-        .symlink_metadata(&rel)
-        .map(|m| m.is_file())
-        .unwrap_or(false);
-    // prior blobs are user file bytes — secrets by nature (0033 R2):
-    // they land 0600 and the directory is 0700, regardless of umask
-    tighten_prior_dir(home)?;
-    if present {
-        // trust nothing by name (0029 §8): the blob exists — prove the
-        // bytes or quarantine the impostor aside and write the truth
-        let existing = home.read(&rel)?;
-        if crate::hash::hex_sha256(&existing) != sha {
-            let aside = Path::new("prior").join(format!("{sha}.corrupt"));
-            gripsack_fs::rename(home, &rel, home, &aside)?;
-            gripsack_fs::atomic_write_with_mode(home, &rel, bytes, 0o600)?;
-        } else {
-            // a pre-0.29 blob may sit at 0644 — tighten in place
-            tighten_blob(home, &rel)?;
-        }
-    } else {
-        gripsack_fs::atomic_write_with_mode(home, &rel, bytes, 0o600)?;
-    }
-    Ok(sha)
-}
-
-/// The prior directory is 0700 — blob names are content hashes, but
-/// the listing itself leaks what files were ever adopted.
-fn tighten_prior_dir(home: &Dir) -> io::Result<()> {
-    home.create_dir_all(Path::new("prior"))?;
-    #[cfg(unix)]
-    {
-        use gripsack_fs::cap_std::fs::MetadataExt as _;
-        use std::os::unix::fs::PermissionsExt as _;
-        let meta = home.symlink_metadata(Path::new("prior"))?;
-        if meta.mode() & 0o777 != 0o700 {
-            home.set_permissions(
-                Path::new("prior"),
-                gripsack_fs::cap_std::fs::Permissions::from_std(std::fs::Permissions::from_mode(
-                    0o700,
-                )),
-            )?;
-        }
-    }
-    Ok(())
-}
-
-/// A blob is 0600 — tighten a pre-0.29 one in place.
-#[cfg(unix)]
-fn tighten_blob(home: &Dir, rel: &Path) -> io::Result<()> {
-    use gripsack_fs::cap_std::fs::MetadataExt as _;
-    let meta = home.symlink_metadata(rel)?;
-    if meta.mode() & 0o777 != 0o600 {
-        use std::os::unix::fs::PermissionsExt as _;
-        home.set_permissions(
-            rel,
-            gripsack_fs::cap_std::fs::Permissions::from_std(std::fs::Permissions::from_mode(0o600)),
-        )?;
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn tighten_blob(_home: &Dir, _rel: &Path) -> io::Result<()> {
-    Ok(())
-}
-
-/// An entry's path relative to the home capability: the journal's
-/// own files (entries, run marker, quarantine, prior blobs) never
-/// leave `$GRIPSACK_HOME`, so they are named relative to the `Dir`
-/// every journal function takes (plan/0021).
-fn entry_rel(dest: &Path) -> PathBuf {
-    Path::new("journal").join(format!(
+/// Entry name relative to the pinned journal directory.
+fn entry_name(dest: &Path) -> PathBuf {
+    PathBuf::from(format!(
         "{}.json",
         // the OS bytes, not a lossy spelling: two destinations may
         // never share an entry file because one was undecodable
         crate::hash::hex_sha256(dest.as_os_str().as_encoded_bytes())
     ))
-}
-
-fn run_marker_rel() -> PathBuf {
-    Path::new("journal").join("run.json")
-}
-
-/// Capture a destination's current state through its pinned parent
-/// capability (plan/0021): the capture, the journaled write, and the
-/// mark-after all name the SAME parent inode — a swapped path
-/// component cannot redirect the mutation the journal is protecting.
-/// File bytes back up into the prior blob store under `home`.
-/// `dest` is the display/record form (absolute); `dest_dir` +
-/// `dest_name` are the access path. Call immediately before the
-/// mutation; the capture and the write race nothing (the lifecycle
-/// lock serializes runs).
-pub fn capture(dest_dir: &Dir, dest_name: &Path, dest: &Path, home: &Dir) -> io::Result<Prior> {
-    let meta = match dest_dir.symlink_metadata(dest_name) {
-        Ok(meta) => meta,
-        // only NotFound means absent — a permission error or I/O
-        // failure recorded as Absent would make recovery REMOVE a
-        // destination it could not even read (review finding)
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Prior::Absent),
-        Err(e) => {
-            return Err(io::Error::other(format!(
-                "cannot inspect {} to journal its prior state: {e}",
-                dest.display()
-            )));
-        }
-    };
-    if meta.file_type().is_symlink() {
-        let target = dest_dir.read_link_contents(dest_name)?;
-        let Some(target) = target.to_str() else {
-            // a non-UTF-8 target lossily recorded would re-create a
-            // DIFFERENT link on recovery — refuse the mutation
-            // instead of corrupting it on undo
-            return Err(io::Error::other(format!(
-                "{} is a symlink with a non-UTF-8 target ({} bytes) — gripsack \
-                 cannot journal it for recovery; remove or adopt it by hand",
-                dest.display(),
-                target.as_os_str().len()
-            )));
-        };
-        return Ok(Prior::Symlink {
-            target: target.to_string(),
-        });
-    }
-    if meta.is_file() {
-        let bytes = dest_dir.read(dest_name)?;
-        let hash = store_prior_blob_in(home, &bytes)?;
-        #[cfg(unix)]
-        let mode = {
-            use gripsack_fs::cap_std::fs::MetadataExt;
-            meta.mode() & 0o7777
-        };
-        #[cfg(not(unix))]
-        let mode = 0o644;
-        return Ok(Prior::File { hash, mode });
-    }
-    // directories/fifos/devices are refused by deploy's guards; if
-    // one is here anyway, treat it as absent — recovery will not
-    // delete a directory through this path (remove_file only)
-    Ok(Prior::Absent)
-}
-
-/// Record the intent to mutate `dest`: prior state AND the intended
-/// post-mutation identity, durable BEFORE the mutation lands
-pub fn record(home: &Dir, dest: &Path, prior: &Prior, after: &Intended) -> io::Result<()> {
-    // 0045 F1: a lossy destination spelling would be restored to a
-    // DIFFERENT path after a crash — refuse to journal it. The object
-    // is untouched (record runs before the mutation) and the failed
-    // run compensates. Destinations originate in the UTF-8 IR, so
-    // this is defense in depth, not a user-facing rule.
-    let dest_str = dest.to_str().ok_or_else(|| {
-        io::Error::other(format!(
-            "destination {} is not valid UTF-8 — refusing to journal it (the object is untouched)",
-            dest.display()
-        ))
-    })?;
-    let entry = Entry {
-        v: ENTRY_WIRE_VERSION,
-        dest: dest_str.to_string(),
-        prior: prior.into(),
-        after: after.to_serde(),
-    };
-    gripsack_fs::atomic_write(
-        home,
-        &entry_rel(dest),
-        serde_json::to_string(&entry)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-            .as_bytes(),
-    )
 }
 
 /// Open a destination's parent as a capability, returning it with the
@@ -522,25 +193,28 @@ fn dest_capability(dest: &Path) -> io::Result<(Dir, PathBuf)> {
 /// recovering user files must never be shrugged off as archaeology
 /// (review finding 5.2). Inspect and delete the quarantine to
 /// proceed.
-fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
-    let entries = match home.read_dir("journal") {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e),
-    };
+fn read_uncommitted(journal: &Journal) -> io::Result<Vec<(PathBuf, Entry)>> {
+    journal.restrict()?;
+    let pending = journal.secure_quarantine()?;
+    if pending != 0 {
+        return Err(io::Error::other(format!(
+            "{pending} quarantined journal entries remain; inspect $GRIPSACK_HOME/journal/quarantine before recovery"
+        )));
+    }
+    let entries = journal.directory.read_dir(".")?;
     let mut out = Vec::new();
     let mut quarantined: Vec<String> = Vec::new();
     for entry in entries {
         let name = entry?.file_name();
-        if name == "run.json" {
+        if name == storage::RUN_MARKER || name == "quarantine" {
             continue;
         }
-        let rel = Path::new("journal").join(&name);
+        let rel = PathBuf::from(&name);
         // An unpublished atomic-write sibling is not recovery metadata.
         // Current siblings have a .tmp suffix; clean them durably on resume.
         if name.to_string_lossy().starts_with(".tmp-write-") {
-            gripsack_fs::remove_file(home, &rel)?;
-            gripsack_fs::fsync_dir(home, Path::new("journal"))?;
+            gripsack_fs::remove_file(&journal.directory, &rel)?;
+            gripsack_fs::fsync_dir(&journal.directory, Path::new("."))?;
             continue;
         }
         if rel.extension().is_some_and(|e| e != "json") {
@@ -550,16 +224,20 @@ fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
         // here or not at all — legacy, unsupported-version and
         // malformed entries are quarantined with their reason, never
         // reinterpreted.
-        match home
-            .read(&rel)
-            .map_err(|e| WireRejection::Malformed(e.to_string()))
-            .and_then(|b| Entry::from_wire(&b))
-        {
+        // An IO failure is not evidence of malformed bytes. Retain the record
+        // for another explicit recovery attempt instead of quarantining it.
+        let bytes = journal.read(&rel).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "cannot read journal record {rel:?}; metadata retained for recovery: {error}"
+                ),
+            )
+        })?;
+        match Entry::from_wire(&bytes) {
             Ok(parsed) => out.push((rel, parsed)),
             Err(rejection) => {
-                let quarantine = Path::new("journal").join("quarantine");
-                gripsack_fs::create_dir_all(home, &quarantine)?;
-                let _ = home.rename(&rel, home, quarantine.join(&name));
+                journal.quarantine(&rel)?;
                 quarantined.push(format!("{}: {rejection}", name.to_string_lossy()));
             }
         }
@@ -574,7 +252,7 @@ fn read_uncommitted(home: &Dir) -> io::Result<Option<Vec<(PathBuf, Entry)>>> {
             quarantined.join("\n  "),
         )));
     }
-    Ok(Some(out))
+    Ok(out)
 }
 
 /// Unfinished recovery state, for GC admission (0045 F3): a run
@@ -625,29 +303,25 @@ pub fn pending_recovery(home: &Dir) -> io::Result<Option<PendingRecovery>> {
         entries: 0,
         quarantined: 0,
     };
-    match home.read_dir("journal") {
-        Ok(entries) => {
-            for entry in entries {
-                let name = entry?.file_name();
-                if name == "run.json" {
-                    pending.run_marker = true;
-                } else if name == "quarantine" {
-                    // an unreadable quarantine fails closed like any
-                    // other unreadable recovery metadata
-                    match home.read_dir("journal/quarantine") {
-                        Ok(quarantined) => pending.quarantined = quarantined.count(),
-                        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                        Err(e) => return Err(e),
-                    }
-                } else if Path::new(&name).extension().is_some_and(|e| e == "json")
-                    && !name.to_string_lossy().starts_with(".tmp-write-")
-                {
-                    pending.entries += 1;
+    let Some(journal) = Journal::open(home)? else {
+        return Ok(None);
+    };
+    for entry in journal.directory.read_dir(".")? {
+        let name = entry?.file_name();
+        if name == storage::RUN_MARKER {
+            pending.run_marker = true;
+        } else if name == "quarantine" {
+            if let Some(quarantine) = journal.quarantine_directory()? {
+                for entry in quarantine.read_dir(".")? {
+                    entry?;
+                    pending.quarantined += 1;
                 }
             }
+        } else if Path::new(&name).extension().is_some_and(|e| e == "json")
+            && !name.to_string_lossy().starts_with(".tmp-write-")
+        {
+            pending.entries += 1;
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
     }
     Ok((pending.run_marker || pending.entries > 0 || pending.quarantined > 0).then_some(pending))
 }
@@ -703,10 +377,19 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<ObjectIde
         PriorSerde::Absent => Ok(None),
         PriorSerde::Symlink { target } => Ok(Some(ObjectIdentity::Link(target.clone()))),
         PriorSerde::File { hash, mode } => Ok(Some(ObjectIdentity::File(
-            crate::hash::canonical_bytes_identity(&home.read(prior_blob_rel(hash))?, *mode),
+            crate::hash::canonical_bytes_identity(
+                &crate::prior::read_blob(home, hash)?,
+                mode.bits(),
+            ),
         ))),
     }
 }
+
+#[cfg(test)]
+mod admission_tests;
+
+#[cfg(test)]
+mod protocol_tests;
 
 #[cfg(test)]
 mod tests;

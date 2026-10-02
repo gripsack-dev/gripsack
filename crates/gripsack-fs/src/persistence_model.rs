@@ -29,6 +29,8 @@ fn check(trace: &[Event], complete: bool) -> Result<(), String> {
             continue;
         }
         match event.boundary {
+            // Source-read observation does not mutate payload or namespace state.
+            B::Read => continue,
             B::Write => {
                 dirty_files.insert(event.path.clone());
                 dirty_dirs.insert(parent(&event.path));
@@ -213,4 +215,74 @@ fn streamed_executable_publication_is_ordered_at_every_cut() {
         check(&premature_rename, true).is_err(),
         "premature-rename mutation escaped the model"
     );
+}
+
+#[test]
+fn observed_directory_birth_is_sealed_before_nested_publication_returns() {
+    let home = tempfile::tempdir().unwrap();
+    let cap = open(home.path()).unwrap();
+    let (result, trace) = fault::capture(false, || {
+        // Actual mkdir calls without their later syncs: the visible state an
+        // interrupted parent-creation attempt can leave for its successor.
+        operation(B::Mkdir, Path::new("first"), || cap.create_dir("first"))?;
+        operation(B::Mkdir, Path::new("first/second"), || {
+            cap.create_dir("first/second")
+        })?;
+        atomic_write(&cap, Path::new("first/second/receipt"), b"admitted payload")
+    });
+    result.unwrap();
+    assert_eq!(
+        std::fs::read(home.path().join("first/second/receipt")).unwrap(),
+        b"admitted payload"
+    );
+    every_cut(&trace);
+}
+
+#[cfg(unix)]
+#[test]
+fn ambient_directory_sync_failure_prevents_consumer_effect() -> io::Result<()> {
+    const CHILD_ROOT: &str = "GRIPSACK_DIRECTORY_ADMISSION_CHILD";
+    const TEST: &str = "persistence_model::ambient_directory_sync_failure_prevents_consumer_effect";
+    if let Some(root) = std::env::var_os(CHILD_ROOT) {
+        let directory = open_or_create(Path::new(&root))?;
+        directory.write("effect", b"authorized after sealing")?;
+        return Ok(());
+    }
+
+    let sandbox = tempfile::tempdir()?;
+    let root = sandbox.path().join("first/second");
+    std::fs::create_dir_all(&root)?;
+    for fault in ["error", "kill"] {
+        let result = std::process::Command::new(std::env::current_exe()?)
+            .args(["--exact", TEST, "--nocapture"])
+            .env_clear()
+            .env(CHILD_ROOT, &root)
+            .env("GRIPSACK_FS_CUT", "1")
+            .env("GRIPSACK_FS_FAULT", fault)
+            .output()?;
+        assert!(
+            !result.status.success(),
+            "unsealed root granted effect authority"
+        );
+        if fault == "kill" {
+            use std::os::unix::process::ExitStatusExt;
+            assert_eq!(result.status.signal(), Some(9));
+        }
+        assert!(!root.join("effect").exists());
+    }
+    let result = std::process::Command::new(std::env::current_exe()?)
+        .args(["--exact", TEST, "--nocapture"])
+        .env_clear()
+        .env(CHILD_ROOT, &root)
+        .output()?;
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        std::fs::read(root.join("effect"))?,
+        b"authorized after sealing"
+    );
+    Ok(())
 }

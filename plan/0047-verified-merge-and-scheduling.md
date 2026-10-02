@@ -76,14 +76,18 @@ The worker threads translate names↔indices at the boundary; the
 mutex/condvar bridge stays tested (journeys, e2e), never wrapped and
 claimed verified (handoff §5.6).
 
-### 4. Merge parser range invariants (Layer 2, time-boxed)
+### 4. Merge parser range invariants (Layer 2; 0048 M-V3)
 
-`scan`'s ranges are sorted, non-overlapping, in-bounds and
-line-aligned by construction — the loop invariant is small. Prove
-that parse output satisfies `splice_bytes`' `requires` for all
-inputs, malformed markers included (typed errors, never garbage
-ranges). Time-boxed: if the marker grammar fights the solver, land
-with the bound recorded in the ledger.
+Plan 0048 made the original time-boxed follow-on a mandatory release
+obligation. The production line walk and open/close state now live in
+`gripsack-policy::merge::scanner`: successful scans prove ordered,
+disjoint, in-bounds and UTF-8-aligned spans, and `scan_admits_splice`
+proves their projection satisfies the existing byte kernel's predicate.
+Exec retains lexical recognition and diagnostic rendering; the structural
+theorem holds for any returned classification, not an assumed safe parser
+result. Malformed-marker and foreign-byte flows remain real runtime checks.
+The range-start mutant fails the scanner's named invariant. See 0048 §14
+and `MERGE-SCAN-001` for evidence and the remaining release/platform gates.
 
 ## Tooling decisions
 

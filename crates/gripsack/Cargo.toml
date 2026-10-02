@@ -22,6 +22,7 @@ gripsack-fs.workspace = true
 gripsack-lint.workspace = true
 gripsack-ir.workspace = true
 gripsack-store.workspace = true
+gripsack-policy.workspace = true
 gripsack-trace.workspace = true
 tracing = "0.1"
 gripsack-exec.workspace = true

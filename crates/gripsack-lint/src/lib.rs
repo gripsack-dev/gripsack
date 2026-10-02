@@ -16,7 +16,7 @@ mod resolve;
 mod versions;
 
 use gripsack_config::LinterSection;
-use gripsack_ir::{Diagnostic, Ir};
+use gripsack_ir::{Diagnostic, HostName, Ir};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -30,7 +30,7 @@ pub fn run(
     ir: &Ir,
     linters: &BTreeMap<String, LinterSection>,
     repo: &Path,
-    host: Option<&str>,
+    host: &HostName,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let versions = versions::tool_versions(repo, host);

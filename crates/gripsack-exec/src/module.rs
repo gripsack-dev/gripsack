@@ -13,7 +13,7 @@ mod produce;
 mod verify;
 
 use crate::ctx::{Ctx, ExecError};
-use crate::deploy::deploy_entry;
+use crate::deploy::{DeploymentInput, deploy_entry};
 use crate::lockfile;
 use crate::report::{ReportKind, StepReport};
 use crate::util::{fresh_staging, progress};
@@ -42,7 +42,8 @@ struct ModuleRun<'a> {
     recipes: &'a crate::resolve::RecipeGraph,
     plan: &'a PreparedModule,
     ctx: &'a Ctx,
-    prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
+    journal: &'a store::journal::JournalRun<'a>,
+    prev_map: &'a std::collections::BTreeMap<store::OwnershipKey, &'a store::DeployedEntry>,
     /// The previous generation's record for THIS module — the
     /// verification receipt lives there (0035 F2)
     prev_module: Option<&'a store::ModuleState>,
@@ -96,11 +97,12 @@ struct ModuleRun<'a> {
 /// lineage records, and the lock. A struct, not nine positional
 /// arguments — the signature says what a run consumes.
 pub(crate) struct ModuleInputs<'a> {
+    pub journal: &'a store::journal::JournalRun<'a>,
     pub name: &'a str,
     pub module: &'a gripsack_ir::Module,
     pub recipes: &'a crate::resolve::RecipeGraph,
     pub plan: &'a PreparedModule,
-    pub prev_map: &'a std::collections::BTreeMap<std::path::PathBuf, &'a store::DeployedEntry>,
+    pub prev_map: &'a std::collections::BTreeMap<store::OwnershipKey, &'a store::DeployedEntry>,
     pub prev_module: Option<&'a store::ModuleState>,
     pub locked: Option<&'a lockfile::LockEntry>,
     pub lock: &'a lockfile::Lockfile,
@@ -137,6 +139,7 @@ impl<'a> ModuleRun<'a> {
     /// compute the same path (0008 §5).
     fn new(inputs: ModuleInputs<'a>, ctx: &'a Ctx) -> Result<Self, ExecError> {
         let ModuleInputs {
+            journal,
             name,
             module,
             recipes,
@@ -155,7 +158,7 @@ impl<'a> ModuleRun<'a> {
             recipes,
             plan,
             home: &ctx.home,
-            repo: &ctx.repo,
+            repo: &ctx.repository,
             locked,
             lock,
         })?;
@@ -164,6 +167,7 @@ impl<'a> ModuleRun<'a> {
             .into_iter()
             .collect::<Vec<_>>();
         Ok(ModuleRun {
+            journal,
             name,
             module,
             recipes,
@@ -235,7 +239,7 @@ impl<'a> ModuleRun<'a> {
         // last file was dropped) must create it explicitly or the
         // publish rename fails with ENOENT.
         std::fs::create_dir_all(&stage)?;
-        let overlay = crate::source::Overlay::capture(self.plan, &self.ctx.repo, &stage)?;
+        let overlay = crate::source::Overlay::capture(self.plan, &self.ctx.repository, &stage)?;
         let repo256 = overlay.merge(&stage)?;
         if let Some(entry) = &mut self.lock_entry
             && let Some(pin) = &mut entry.resolved
@@ -301,12 +305,16 @@ impl<'a> ModuleRun<'a> {
                     for entry in entries {
                         let (summary, kind) = deploy_entry(
                             &mut self.deployed,
-                            self.name,
-                            &self.store_path,
-                            entry,
                             self.ctx,
-                            self.prev_map,
-                            self.version.as_deref(),
+                            DeploymentInput {
+                                journal: self.journal,
+                                owner: self.name,
+                                store_path: &self.store_path,
+                                entry,
+                                previous: self.prev_map,
+                                version: self.version.as_deref(),
+                                block_id: None,
+                            },
                         )?;
                         self.reports.push(StepReport {
                             module: self.name.to_string(),
@@ -316,10 +324,15 @@ impl<'a> ModuleRun<'a> {
                     }
                 }
                 StepAction::Intent { action, .. } => {
-                    // step-form intents run through the activation
-                    // adapters after the flip (routed by kind —
-                    // activate.rs step_intents)
-                    info!(?action, "intent declared (runs via activation adapters)");
+                    // Action/script identity belongs in the private activation
+                    // receipt, not raw script or argument fields in trace logs.
+                    let kind = match action.as_ref() {
+                        gripsack_ir::Action::Fonts => "fonts",
+                        gripsack_ir::Action::DesktopEntry => "desktop_entry",
+                        gripsack_ir::Action::Service { .. } => "service",
+                        gripsack_ir::Action::CustomShell { .. } => "custom_shell",
+                    };
+                    info!(kind, "intent declared (runs via activation adapters)");
                 }
                 _ => {}
             }

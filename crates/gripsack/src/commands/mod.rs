@@ -10,8 +10,10 @@ pub mod eval;
 pub mod frontend;
 pub mod gc;
 pub mod generations;
+pub mod hooks;
 pub mod init;
 pub mod plan;
+mod prepared;
 pub mod probe;
 pub mod repo;
 pub mod rollback;
@@ -25,9 +27,13 @@ pub use adopt::adopt;
 pub use apply::{ApplyOptions, apply, apply_scoped};
 pub use check::check;
 pub use doctor::doctor;
-pub use eval::{check_ir, eval_repo, render_host_inputs, validate_sources, validated_ir};
+pub use eval::{
+    check_ir, eval_repo, reject_workspace_execution, render_host_inputs, validate_sources,
+    validated_ir,
+};
 pub use gc::gc;
 pub use generations::generations;
+pub use hooks::{HooksCommand, hooks};
 pub use init::init;
 pub use plan::{plan_ir, plan_module};
 pub use repo::resolve as resolve_repo;
@@ -36,20 +42,6 @@ pub use store_verify::store_verify;
 pub use trust::{TrustCommand, trust};
 pub use update::update;
 pub use why_owns::why_owns;
-
-/// The trust gate (0013 D7): call before the first frontend eval of a
-/// repo. `Some(code)` = untrusted and the user declined (or there is
-/// no TTY to ask) — the message is printed here, the caller returns
-/// the code.
-pub fn trust_gate(repo: &Path) -> Option<ExitCode> {
-    match gripsack_store::trust::ensure_trusted(repo) {
-        Ok(()) => None,
-        Err(e) => {
-            eprintln!("{}", Palette::detect().error(&format!("error: {e}")));
-            Some(ExitCode::FAILURE)
-        }
-    }
-}
 
 /// The machine's hostname — $HOSTNAME, else the `hostname` command.
 /// init and eval MUST agree on this (a mismatch means init writes
@@ -69,8 +61,8 @@ pub fn hostname() -> String {
         .unwrap_or_else(|| "default".into())
 }
 
-/// A valid host FILE name: alnum, dash, underscore — everything else
-/// (macOS hostnames carry dots) becomes a dash. The single
+/// A valid host FILE name: ASCII alnum, dash, underscore — everything
+/// else (macOS hostnames carry dots) becomes a dash. The single
 /// sanitization for BOTH the file `grip init` writes and the default
 /// host every command resolves: init wrote `foo-bar.ts` while eval
 /// looked up raw `foo.bar` — `init && check` failed on every Mac
@@ -79,7 +71,7 @@ pub fn sanitize_hostname(raw: &str) -> String {
     let clean: String = raw
         .chars()
         .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
                 c
             } else {
                 '-'
@@ -102,6 +94,4 @@ pub fn default_host() -> String {
 pub fn expand_home(to: &str) -> PathBuf {
     gripsack_store::expand_home(to)
 }
-use crate::render::Palette;
-use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::path::PathBuf;

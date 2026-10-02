@@ -55,9 +55,6 @@ jobs:
         env:
           HOME: /tmp/example-home-ts
           GRIPSACK_HOME: /tmp/example-home-ts/.gs
-          # the checkout is not a trusted repo and CI has no TTY for
-          # the prompt; the repo is reviewed here instead
-          GRIPSACK_TRUST_ALL: "1"
           # authenticated api.github.com — anonymous rate limits 403
           # the gripfetch-apt release lookup on shared runners
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,6 +65,15 @@ jobs:
           # deliberate-pin rule; that's what makes a pre-release PR
           # exercise the in-repo frontend
           cd example
+          approve_fixture() {
+            source="$("$GRIP" trust inspect --json)"
+            "$GRIP" trust add \
+              --bundle "$(printf '%s' "$source" | jq -r .bundle_digest)" \
+              --policy "$(printf '%s' "$source" | jq -r .policy_digest)"
+          }
+          approve_fixture
           "$GRIP" check --host laptop
           "$GRIP" apply --host laptop
+          # Apply may publish a lockfile inside the captured read set.
+          approve_fixture
           "$GRIP" apply --host laptop   # satisfied

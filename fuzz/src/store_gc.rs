@@ -1,5 +1,5 @@
 use crate::sandbox::Sandbox;
-use gripsack_store::{Generation, ModuleState};
+use gripsack_store::{Generation, GenerationId, ModuleState};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -34,17 +34,17 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         gripsack_store::write_manifest(
             s.cap(),
             &Generation {
-                number,
+                number: GenerationId::new(number),
                 modules: BTreeMap::from([("m".to_owned(), state)]),
             },
         )
         .unwrap();
     }
-    gripsack_store::flip(s.cap(), s.home(), 3).unwrap();
+    std::os::unix::fs::symlink("generations/3", s.home().join("current")).unwrap();
     let keep = input.first().map(|n| u32::from(*n % 5));
     let session = gripsack_exec::LifecycleSession::acquire(s.home()).unwrap();
     let report = gripsack_exec::gc(&session, keep, true).unwrap();
-    assert!(!report.generations_removed.contains(&3));
+    assert!(!report.generations_removed.contains(&GenerationId::new(3)));
     assert!(
         !report.store_removed.contains(&s.fixed("store/a")),
         "retained build closure must pin a"
@@ -60,8 +60,12 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         assert_eq!(std::fs::read(s.fixed(rel)).unwrap(), b"bounded payload");
     }
     assert_eq!(
-        gripsack_store::list_generations(s.home()).unwrap(),
-        vec![1, 2, 3]
+        &*gripsack_store::list_generations(s.home()).unwrap(),
+        &[
+            GenerationId::new(1),
+            GenerationId::new(2),
+            GenerationId::new(3)
+        ]
     );
     // Corrupt even a prunable manifest: real GC must fail closed.
     s.write(

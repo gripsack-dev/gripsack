@@ -13,11 +13,22 @@
 //! rendering stays out of the kernels.
 use vstd::prelude::*;
 
+pub mod activation;
+pub mod generation;
+pub use generation::{GenerationId, GenerationInventory, GenerationList};
 pub mod graph;
+pub mod journal_protocol;
 pub mod merge;
+pub mod operation_budget;
 pub mod ownership;
+pub mod process_budget;
+pub mod rate_limit;
 pub mod retention;
+pub mod retry_budget;
 pub mod schedule;
+pub mod selection;
+pub mod target;
+pub mod update_survey;
 
 verus! {
 
@@ -36,58 +47,6 @@ pub enum Classification {
     /// Neither: corruption or tampering — recovery changes nothing
     /// and keeps the journal intact (fail closed).
     Ambiguous,
-}
-
-/// The classifier's whole input, named: the facts a run marker
-/// carries, plus the live `current` read at recovery time. (A struct,
-/// not positional `Option<u64>`-flavored arguments.)
-#[derive(Debug, Clone, Copy)]
-pub struct RecoveryFacts {
-    /// The generation the run started from — None is a fresh
-    /// machine's first run.
-    pub previous: Option<u64>,
-    /// The generation the run was building toward.
-    pub target: u64,
-    /// `current` on disk when recovery ran.
-    pub current: Option<u64>,
-}
-
-/// The commit classifier as a pure function (0028), exact equality
-/// only. The ensures clauses ARE the specification — derived from the
-/// commit rule, not the branch structure: target precedence on an
-/// equal previous/target is stated explicitly (handoff 5.1: never
-/// silently assume distinctness), and the absence of any inequality
-/// in the postconditions is the machine-checked form of "numeric
-/// ordering and Apply/Rollback labels do not decide commitment".
-pub fn classify(facts: &RecoveryFacts) -> (result: Classification)
-    ensures
-        // committed exactly when current sits at the target
-        (result == Classification::Committed) <==> facts.current == Some(facts.target),
-        // uncommitted exactly on a fresh machine with no current, or
-        // current back at the previous generation (and NOT also the
-        // target — target precedence, 0045)
-        (result == Classification::Uncommitted) <==> (
-            (facts.current.is_none() && facts.previous.is_none())
-            || (facts.previous.is_some() && facts.current == facts.previous
-                && facts.current != Some(facts.target))
-        ),
-        // everything else blocks
-        (result == Classification::Ambiguous) <==> (
-            facts.current != Some(facts.target)
-            && !(facts.current.is_none() && facts.previous.is_none())
-            && !(facts.previous.is_some() && facts.current == facts.previous)
-        ),
-{
-    match (facts.previous, facts.current) {
-        (Some(_), Some(c)) if c == facts.target => Classification::Committed,
-        (Some(prev), Some(c)) if c == prev => Classification::Uncommitted,
-        (Some(_), _) => Classification::Ambiguous,
-        // a fresh machine's first run: current at the target means the
-        // flip landed; absent means it never did
-        (None, Some(c)) if c == facts.target => Classification::Committed,
-        (None, None) => Classification::Uncommitted,
-        (None, Some(_)) => Classification::Ambiguous,
-    }
 }
 
 }

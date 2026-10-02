@@ -1,0 +1,161 @@
+RUNNER_SOURCE_COMMIT=530ae7db0e4ccc1df7e63e3ddf76597454110e95
+RUNNER_SOURCE_ROOTS_DIRTY=clean (git status --porcelain -- SOURCE_ROOTS checked before and after direct cargo unit runner; both empty)
+RUNNER_COMMAND=docker compose run --build --rm test cargo test --locked -p gripsack-ir sema::workspace::policy::tests
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; digest-pinned rust:alpine test image
+RUNNER_INPUTS=committed production v5 graph role/target and artifact selector/exported-command equality; valid and substituted same-target payload fixtures in Linux/amd64
+
+530ae7db0e4ccc1df7e63e3ddf76597454110e95
+ Image gripsack-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 530B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 9.77kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 DONE 0.0s
+
+#8 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#8 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#8 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 74.79kB 0.0s done
+#7 DONE 0.1s
+
+#9 [builder  7/10] COPY fuzz ./fuzz
+#9 CACHED
+
+#10 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#10 CACHED
+
+#11 [builder 10/10] COPY scripts ./scripts
+#11 CACHED
+
+#12 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#12 CACHED
+
+#13 [builder  8/10] COPY schema ./schema
+#13 CACHED
+
+#14 [builder  6/10] COPY crates ./crates
+#14 CACHED
+
+#15 [builder  9/10] COPY typescript ./typescript
+#15 CACHED
+
+#16 [builder  4/10] WORKDIR /app
+#16 CACHED
+
+#17 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#17 CACHED
+
+#18 [test 1/2] RUN cargo fmt --check     && cargo clippy --locked --workspace --all-targets -- -D warnings     && cargo test --locked
+#18 CACHED
+
+#19 [test 2/2] RUN apk add --no-cache python3     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs"     && python3 scripts/gen_frontend_embed.py --check
+#19 CACHED
+
+#20 exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:4b12f7a120c4bae8517cccc75e9036f930c9883c4375c6da2f4ff9f383165a86 done
+#20 exporting config sha256:15c961277e18212a9fc2e227104bc0b75f73d6a008f7da9ea61c7b52fc216e3a done
+#20 exporting attestation manifest sha256:578bd7fe632d5bcdde757649d096dcd0c371d16e931b2ce16cdff88f1e3521bb
+#20 exporting attestation manifest sha256:578bd7fe632d5bcdde757649d096dcd0c371d16e931b2ce16cdff88f1e3521bb 0.0s done
+#20 exporting manifest list sha256:8701f51007347765344e0d5b00ce776da08318badd8c7b56eb5e1694c75fafb3 0.0s done
+#20 naming to docker.io/library/gripsack-test:latest done
+#20 unpacking to docker.io/library/gripsack-test:latest 0.0s done
+#20 DONE 0.2s
+
+#21 resolving provenance for metadata file
+#21 DONE 0.1s
+ Image gripsack-test Built 
+ Container gripsack-test-run-fe9e71a4fe3b Creating 
+ Container gripsack-test-run-fe9e71a4fe3b Created 
+   Compiling memchr v2.8.3
+   Compiling serde_json v1.0.151
+   Compiling once_cell v1.21.4
+   Compiling smallvec v1.15.2
+   Compiling indexmap v2.14.0
+   Compiling syn v3.0.4
+   Compiling syn v2.0.119
+   Compiling parking_lot_core v0.9.12
+   Compiling parking_lot v0.12.5
+   Compiling aho-corasick v1.1.5
+   Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+   Compiling regex-automata v0.4.18
+   Compiling serde_derive v1.0.229
+   Compiling ref-cast-impl v1.0.27
+   Compiling thiserror-impl v2.0.20
+   Compiling ref-cast v1.0.27
+   Compiling thiserror v2.0.20
+   Compiling synstructure v0.13.2
+   Compiling fancy-regex v0.19.1
+   Compiling regex v1.13.1
+   Compiling serde v1.0.229
+   Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+   Compiling strum_macros v0.28.0
+   Compiling ahash v0.8.12
+   Compiling fluent-uri v0.4.1
+   Compiling email_address v0.2.9
+   Compiling jsonschema-value v0.55.0
+   Compiling referencing v0.55.0
+   Compiling strum v0.28.0
+   Compiling jsonschema v0.55.0
+   Compiling vstd v0.0.0-2026-09-06-0133
+   Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+   Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 32.16s
+     Running unittests src/lib.rs (target/debug/deps/gripsack_ir-eab45e62e10ebf28)
+
+running 5 tests
+test sema::workspace::policy::tests::omitted_required_validation_and_producer_fail_closed_with_both_sites ... ok
+test sema::workspace::policy::tests::production_closure_excludes_runtime_and_preserves_validation ... ok
+test sema::workspace::policy::tests::omitted_build_input_and_runtime_edges_fail_admission ... ok
+test sema::workspace::policy::tests::adjacent_local_steps_lower_to_ordering_not_build_edges ... ok
+test sema::workspace::policy::tests::substituted_graph_references_fail_closed_at_declaration ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 51 filtered out; finished in 0.00s
+
+     Running tests/schema_acceptance.rs (target/debug/deps/schema_acceptance-e26e17c43a31f47c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/workspace_admission.rs (target/debug/deps/workspace_admission-7e484dace91cfc16)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/workspace_v4_compat.rs (target/debug/deps/workspace_v4_compat-c35c9f811f359518)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/workspace_v5_acceptance.rs (target/debug/deps/workspace_v5_acceptance-72a6444be37192ed)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+
+A1_POLICY_REFERENCES=5 (5 policy unit cases executed; 0 failed, 0 skipped; not a name/index refinement proof)

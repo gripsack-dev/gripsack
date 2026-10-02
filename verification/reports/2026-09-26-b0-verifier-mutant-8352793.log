@@ -1,0 +1,15 @@
+RUNNER_SOURCE_COMMIT=8352793611c9d197ad8b86053d91c1c16221b979
+RUNNER_SOURCE_FINGERPRINT=14f0153f38343774be869c1a73268ba5ea2dbca01b4d64eab9e1b7a98c4721e4
+RUNNER_SOURCE_ROOTS_DIRTY=clean before/after; only ignored isolated probe output differs
+RUNNER_COMMAND=env PATH=<temporary verify-fault/python3 wrapper before real verify_oci.py>:PATH sh probes.sh
+RUNNER_EXIT=1 (expected intended negative, not a missing verifier)
+RUNNER_ENVIRONMENT=WSL2 linux/amd64, same pinned real BuildKit daemon and Go bridge as positive report; three disposable workers; Python 3.12.3 present
+RUNNER_INPUTS=two exported OCI tarballs from separate fresh workers; one actual blob byte in first tar flipped immediately before running the real independent python verify_oci.py; modified OCI-1 SHA-256 4ab4f7fc954d74e99a777b68cc4938c7bc03d19e989685f1da7bf754559afa23
+INTENDED_PROPERTY=every exported blob must match its content-addressed digest before independent Docker-engine load
+OBSERVED_REJECTION=blob digest mismatch at blobs/sha256/; real verifier exited 1; harness stopped before runtime promotion
+
+===== real verify_oci.py stderr captured by B0 driver =====
+blob digest mismatch at blobs/sha256/1fee06575c910c43cc52f376442266d5229dcf0671d5c389a6d749b7925deeba: sha256:102a3af83f6c1aab68498d9795b320562864be5038ee3933dd8d86df7deca46c != sha256:1fee06575c910c43cc52f376442266d5229dcf0671d5c389a6d749b7925deeba
+
+B0_VERIFIER_MUTANT=1
+RUNNER_COUNTS=1 calibrated expected-failure execution, 1 pass by intended digest mismatch, zero skipped/missing tools. Historical source 6542fc9 would have swallowed the verifier exit through tee.

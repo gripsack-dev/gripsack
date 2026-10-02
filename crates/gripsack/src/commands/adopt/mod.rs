@@ -10,9 +10,10 @@ mod generate;
 mod inspect;
 mod prompt;
 
-use crate::commands::{default_host, eval_repo, expand_home, trust_gate};
+use crate::commands::{default_host, eval_repo, expand_home};
 use crate::render::{self, Palette};
 
+use gripsack_ir::HostName;
 use gripsack_store as store;
 use std::io::IsTerminal as _;
 use std::path::{Path, PathBuf};
@@ -24,15 +25,56 @@ pub fn adopt(
     mode: Option<&str>,
     host: Option<&str>,
     yes: bool,
+    resume: bool,
     palette: Palette,
 ) -> ExitCode {
     let repo = std::env::current_dir().unwrap_or_else(|_| ".".into());
+    if repo.join("gripsack.ts").is_file() {
+        let diagnostic = gripsack_ir::Diagnostic::error(
+            gripsack_ir::codes::WORKSPACE_EXEC_UNAVAILABLE,
+            "grip adopt cannot modify a workspace profile yet",
+        )
+        .with_help("declare profile files in gripsack.ts and use grip apply --take-over for reversible adoption; automatic workspace authoring edits are not available");
+        eprintln!(
+            "{}",
+            render::render_diagnostics_bounded(&[diagnostic], palette, &repo)
+        );
+        return ExitCode::FAILURE;
+    }
     if !repo.join("env.toml").is_file() {
         eprintln!(
             "grip: {} is not an env repo (no env.toml) — run `grip init` first",
             repo.display()
         );
         return ExitCode::FAILURE;
+    }
+    // Adopt writes files before its later eval. Admit the selected host
+    // now so neither a generated path nor the host-file lookup can be
+    // redirected outside the repo by an explicit --host value.
+    let host_name = match HostName::parse(host.map(str::to_owned).unwrap_or_else(default_host)) {
+        Ok(host_name) => host_name,
+        Err(diagnostic) => {
+            eprintln!(
+                "{}",
+                render::render_diagnostics_bounded(&[diagnostic], palette, &repo)
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    // Refuse an untrusted repo before inspecting the target or reading
+    // managed state, and before generating any payload, module or host
+    // source. --yes bypasses confirmation, not trust admission.
+    let mut sink = crate::render::DiagnosticSink::terminal(palette, &repo);
+    let prepared = match super::prepared::PreparedEvaluation::capture(
+        &repo,
+        Some(host_name.as_str().to_owned()),
+        &mut sink,
+    ) {
+        Ok(prepared) => prepared,
+        Err(code) => return code,
+    };
+    if let Err(code) = prepared.authorize(true) {
+        return code;
     }
     let dest = expand_home(target);
     let home_dir = std::env::var_os("HOME")
@@ -71,6 +113,15 @@ pub fn adopt(
         eprintln!("grip: {target} is already managed by module \"{owner}\" — nothing to adopt");
         return ExitCode::FAILURE;
     }
+    if resume {
+        let outcome = match super::eval::eval_prepared(prepared, &mut sink) {
+            Ok(outcome) => outcome,
+            Err(code) => return code,
+        };
+        return finish_adoption(outcome, &dest, is_dir, &name, yes, palette);
+    }
+    drop(prepared);
+    drop(sink);
     // §7 S4: the repo gets the same never-clobber rule as $HOME
     for artifact in [
         repo.join("modules").join(format!("{name}.ts")),
@@ -138,11 +189,9 @@ pub fn adopt(
     let written = [
         format!("configs/{name}/"),
         format!("modules/{name}.ts"),
-        format!(
-            "hosts/{}.ts",
-            host.map(str::to_string).unwrap_or_else(default_host)
-        ),
+        format!("hosts/{host_name}.ts"),
     ];
+    let host_rel = &written[2];
     let revert = |why: &str| {
         eprintln!("grip: {why}");
         eprintln!(
@@ -166,9 +215,7 @@ pub fn adopt(
     if let Err(e) = std::fs::write(repo.join("modules").join(format!("{name}.ts")), &module_ts) {
         return revert(&format!("cannot write modules/{name}.ts: {e}"));
     }
-    let host_name = host.map(str::to_string).unwrap_or_else(default_host);
-    let host_rel = format!("hosts/{host_name}.ts");
-    let host_path = repo.join(&host_rel);
+    let host_path = repo.join(host_rel.as_str());
     if !host_path.is_file() {
         eprintln!("grip: no {host_rel} — create it (or run `grip init`) and add:\n");
         eprintln!("{}", generate::host_snippet(&name));
@@ -194,34 +241,95 @@ pub fn adopt(
         palette.good("wrote")
     );
 
-    // ── plan ───────────────────────────────────────────────────────
-    if let Some(code) = trust_gate(&repo) {
-        return code;
-    }
-    let outcome = match eval_repo(&repo, Some(&host_name), palette) {
+    let mut sink = crate::render::DiagnosticSink::terminal(palette, &repo);
+    let outcome = match eval_repo(&repo, Some(host_name.into_string()), &mut sink) {
         Ok(o) => o,
         Err(code) => {
-            let _ = revert("generated files don't eval — inspect modules/{name}.ts");
+            let _ = revert(
+                "inspect and approve the generated snapshot, then rerun with --resume (omit --mode)",
+            );
             return code;
         }
     };
-    let ir = match crate::commands::check_ir(&outcome.ir_json, palette) {
+    finish_adoption(outcome, &dest, is_dir, &name, yes, palette)
+}
+
+fn finish_adoption(
+    outcome: super::eval::EvalOutcome,
+    dest: &Path,
+    is_dir: bool,
+    name: &str,
+    yes: bool,
+    palette: Palette,
+) -> ExitCode {
+    let repo = outcome.sources.repository_identity();
+    let mut sink = crate::render::DiagnosticSink::terminal(palette, repo);
+    sink.bind_captured_source(std::sync::Arc::clone(&outcome.sources));
+    let ir = match crate::commands::check_ir(&outcome.ir_json, &mut sink) {
         Ok(ir) => ir,
         Err(code) => return code,
+    };
+    let Some(module) = ir.modules.get(name) else {
+        eprintln!("grip: no module {name:?} in the approved host entrypoint");
+        return ExitCode::FAILURE;
+    };
+    let module = match gripsack_ir::prepared::PreparedModule::new(module) {
+        Ok(module) => module,
+        Err(diagnostic) => {
+            sink.report(&[diagnostic]);
+            return ExitCode::FAILURE;
+        }
+    };
+    let target = match store::canonical_dest(&generate::tilde(dest)) {
+        Ok(target) => target,
+        Err(error) => {
+            eprintln!("grip: cannot resolve adoption target: {error}");
+            return ExitCode::FAILURE;
+        }
     };
     // the scoped take-over set names the DESTINATIONS (0029: a file
     // adopt must not re-join its own file name — `dest.join(rel)`
     // doubled it, so the set never matched and the origin was never
     // captured when the content already matched)
-    let adopting: std::collections::BTreeSet<String> = if is_dir {
-        rel_files
-            .iter()
-            .map(|rel| generate::tilde(&dest.join(rel)))
-            .collect()
-    } else {
-        std::iter::once(generate::tilde(&dest)).collect()
-    };
-    match render::diff_section(&ir, &repo, &host_name, &adopting, palette) {
+    let mut adopting = std::collections::BTreeSet::new();
+    for entry in module.entries() {
+        let destination = match store::canonical_dest(&entry.to) {
+            Ok(destination) => destination,
+            Err(error) => {
+                eprintln!("grip: cannot resolve adoption destination: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let inside = if is_dir {
+            destination != target && destination.starts_with(&target)
+        } else {
+            destination == target
+        };
+        if !inside {
+            eprintln!(
+                "grip: module {name:?} declares a destination outside the requested adoption target"
+            );
+            return ExitCode::FAILURE;
+        }
+        adopting.insert(entry.to.clone());
+    }
+    if adopting.is_empty() {
+        eprintln!("grip: module {name:?} has no destinations to adopt");
+        return ExitCode::FAILURE;
+    }
+    let repository = gripsack_exec::Repository::evaluated(
+        std::sync::Arc::clone(&outcome.sources),
+        outcome.receipt,
+    );
+    match render::diff_section(
+        &ir,
+        &repository,
+        &outcome.host,
+        &adopting,
+        palette,
+        &[],
+        outcome.fetch.limits(),
+    ) {
         Ok(section) => println!("{section}"),
         Err(error) => {
             eprintln!("grip: cannot compute the preview: {error}");
@@ -241,7 +349,7 @@ pub fn adopt(
         }
         if !prompt::confirm_apply(palette) {
             eprintln!(
-                "not applied — repo files stay; remove configs/{name}, modules/{name}.ts and the {host_rel} entry to abandon"
+                "not applied — repo files stay; review them and rerun with --resume to continue"
             );
             return ExitCode::FAILURE;
         }
@@ -258,7 +366,7 @@ pub fn adopt(
             store::write_manifest(
                 &cap,
                 &store::Generation {
-                    number: 0,
+                    number: store::GenerationId::new(0),
                     modules: Default::default(),
                 },
             )
@@ -267,7 +375,7 @@ pub fn adopt(
         eprintln!("grip: cannot record the baseline generation: {e}");
         return ExitCode::FAILURE;
     }
-    crate::commands::apply_scoped(&repo, adopting, Some(&host_name), None, palette)
+    crate::commands::apply_scoped(outcome, adopting, None, palette)
 }
 
 /// Which module already manages a destination under this path.

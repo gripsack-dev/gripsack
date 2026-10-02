@@ -2,6 +2,12 @@ use crate::render::{self, Palette};
 use std::path::Path;
 use std::process::ExitCode;
 
+fn ir_source_root(path: &Path) -> &Path {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."))
+}
+
 /// Validate an IR file and show the execution waves (0004 §4, 0007 §5).
 #[tracing::instrument(name = "plan", skip(palette), fields(file = %path.display()))]
 pub fn plan_ir(path: &Path, palette: Palette) -> ExitCode {
@@ -18,10 +24,23 @@ pub fn plan_ir(path: &Path, palette: Palette) -> ExitCode {
             for d in &diagnostics {
                 tracing::error!(code = d.code.as_ref(), "{}", d.message);
             }
-            eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+            eprintln!(
+                "{}",
+                render::render_diagnostics_bounded(&diagnostics, palette, ir_source_root(path))
+            );
             return ExitCode::FAILURE;
         }
     };
+    if let Err(code) = crate::commands::reject_workspace_execution(
+        &ir,
+        gripsack_ir::workspace::WorkspaceOperation::Plan,
+        &mut crate::render::DiagnosticSink::terminal(palette, ir_source_root(path)),
+    ) {
+        return code;
+    }
+    if ir.workspace.is_some() {
+        return native_preview(&ir, ir_source_root(path), &[], palette);
+    }
     tracing::info!(modules = ir.modules.len(), "ir parsed and validated");
     let host = &ir.host;
     println!(
@@ -66,10 +85,23 @@ pub fn plan_module(path: &Path, name: &str, palette: Palette) -> ExitCode {
     let ir = match gripsack_ir::check(&json) {
         Ok(ir) => ir,
         Err(diagnostics) => {
-            eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+            eprintln!(
+                "{}",
+                render::render_diagnostics_bounded(&diagnostics, palette, ir_source_root(path))
+            );
             return ExitCode::FAILURE;
         }
     };
+    if let Err(code) = crate::commands::reject_workspace_execution(
+        &ir,
+        gripsack_ir::workspace::WorkspaceOperation::Plan,
+        &mut crate::render::DiagnosticSink::terminal(palette, ir_source_root(path)),
+    ) {
+        return code;
+    }
+    if ir.workspace.is_some() {
+        return native_preview(&ir, ir_source_root(path), &[name.to_owned()], palette);
+    }
     if !ir.modules.contains_key(name) {
         eprintln!(
             "grip: no module {name:?} in the graph (have: {})",
@@ -80,4 +112,38 @@ pub fn plan_module(path: &Path, name: &str, palette: Palette) -> ExitCode {
     let waves = gripsack_exec::waves(&ir).unwrap_or_default();
     println!("{}", render::render_module(&ir, name, &waves, palette));
     ExitCode::SUCCESS
+}
+
+fn native_preview(
+    ir: &gripsack_ir::Ir,
+    repo: &Path,
+    selected: &[String],
+    palette: Palette,
+) -> ExitCode {
+    let host = gripsack_ir::HostName::parse("workspace").expect("constant host identifier");
+    match render::diff_section(
+        ir,
+        &gripsack_exec::Repository::direct(repo.to_path_buf()),
+        &host,
+        &Default::default(),
+        palette,
+        selected,
+        Default::default(),
+    ) {
+        Ok(section) => {
+            println!("{section}");
+            ExitCode::SUCCESS
+        }
+        Err(gripsack_exec::ExecError::Gate(diagnostic)) => {
+            eprintln!(
+                "{}",
+                render::render_diagnostics_bounded(&[diagnostic], palette, repo)
+            );
+            ExitCode::FAILURE
+        }
+        Err(error) => {
+            eprintln!("grip: cannot compute the preview: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }

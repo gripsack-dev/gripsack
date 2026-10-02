@@ -103,7 +103,7 @@ Deno.test("driver evaluates a host into an envelope under the sandbox flags", ()
       tags: ["gui", "work"],
       libc: "glibc-2.36",
     });
-    assert.equal(envelope.ir.ir_version, 3);
+    assert.equal(envelope.ir.ir_version, 5);
     assert.ok(envelope.ir.modules.helix);
     assert.ok(envelope.ir.modules.demo, "facts-conditional module present");
     assert.equal(envelope.ir.modules.cuda, undefined, "unbound probe gates cuda out");
@@ -278,6 +278,101 @@ Deno.test("a stale pin predating defineEnv errors with the fix", () => {
       assert.equal(r.status, 1);
       assert.match(r.stderr, /predates the defineEnv frontend/);
       assert.match(r.stderr, /node_modules\/@gripsack\/core/);
+    },
+  );
+});
+
+const WORKSPACE = `import { defineWorkspace, workspace, recipe, pkg, targetPlatform, githubRelease } from "@gripsack/core";
+
+const tools = recipe("tools", {
+  source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
+  execution: { kind: "host", access: "unconfined" },
+  output_kind: "tree",
+  target: targetPlatform({ os: "linux", arch: "x86_64" }),
+});
+const bin = pkg("tools-bin", {
+  producer: "tools",
+  commands: { tools: "bin/tools" },
+  target: targetPlatform({ os: "linux", arch: "x86_64" }),
+  layout: { kind: "relocatable" },
+});
+
+export default defineWorkspace((ctx) => workspace({
+  outputs: [tools, ctx.probe.executable("ninja") && bin],
+}));
+`;
+
+Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () => {
+  // inputs.host stays "lap" but there is no hosts/ dir at all — the
+  // workspace entry needs no hostname selection
+  withRepo({ "gripsack.ts": WORKSPACE }, (repo) => {
+    const r = runDriver(repo, baseInputs);
+    assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
+    const envelope = JSON.parse(r.stdout);
+    assert.deepEqual(Object.keys(envelope.ir), ["ir_version", "host", "workspace"]);
+    assert.equal(envelope.ir.ir_version, 5);
+    assert.equal(envelope.ir.modules, undefined, "workspace envelope never carries modules");
+    assert.equal(envelope.ir.host.os, "linux");
+    assert.equal("hostname" in envelope.ir.host, false);
+    assert.deepEqual(envelope.ir.host.tags, ["work"]);
+
+    const outputs = envelope.ir.workspace.outputs;
+    assert.equal(outputs.length, 1, "unbound probe gates tools-bin out");
+    assert.equal(outputs[0].kind, "recipe");
+    assert.equal(outputs[0].source.fetch.kind, "github_release");
+    assert.match(outputs[0].span.file, /gripsack\.ts$/);
+    assert.match(envelope.ir.workspace.span.file, /gripsack\.ts$/);
+    assert.deepEqual(
+      envelope.probe_requests.map((p: { kind: string; name: string }) => [p.kind, p.name]),
+      [["executable", "ninja"]],
+    );
+
+    const bound = runDriver(repo, { ...baseInputs, probes: { "executable:ninja": true } });
+    assert.equal(bound.status, 0, bound.stderr);
+    const env2 = JSON.parse(bound.stdout);
+    assert.deepEqual(
+      env2.ir.workspace.outputs.map((o: { name: string }) => o.name),
+      ["tools", "tools-bin"],
+    );
+    assert.deepEqual(env2.probe_requests, []);
+  });
+});
+
+Deno.test("a root gripsack.ts wins over hosts/<host>.ts", () => {
+  withRepo({ "gripsack.ts": WORKSPACE, "hosts/lap.ts": HOST }, (repo) => {
+    const r = runDriver(repo, { ...baseInputs, probes: { "executable:ninja": true } });
+    assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
+    const envelope = JSON.parse(r.stdout);
+    assert.ok(envelope.ir.workspace, "workspace envelope emitted");
+    assert.equal(envelope.ir.modules, undefined, "never both envelopes");
+  });
+});
+
+Deno.test("a gripsack.ts without a defineWorkspace default export errors clearly", () => {
+  withRepo({ "gripsack.ts": "export const outputs = [];\n" }, (repo) => {
+    const r = runDriver(repo, baseInputs);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /must default-export defineWorkspace/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A1-06 classification boundary: a syntax error in the workspace file
+// is an engine failure — the import rethrows to the traceback path
+// (0005 §4), never a synthetic E130 envelope.
+
+Deno.test("a syntax error in gripsack.ts stays a traceback", () => {
+  withRepo(
+    {
+      "gripsack.ts": 'import { defineWorkspace } from "@gripsack/core";\n' +
+        "export default defineWorkspace(() => {\n",
+    },
+    (repo) => {
+      const r = runDriver(repo, baseInputs);
+      assert.equal(r.status, 1);
+      assert.equal(r.stdout, "");
+      assert.match(r.stderr, /gripsack\.ts/);
+      assert.doesNotMatch(r.stderr, /E130/);
     },
   );
 });

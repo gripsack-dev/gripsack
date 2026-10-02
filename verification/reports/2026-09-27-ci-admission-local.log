@@ -1,0 +1,9 @@
+SCOPE=local CI admission policy calibration; no actual GitHub job/protection qualification
+OWNER_WAIVER=REL-FUZZ-2026-09-27; fuzz remains not run
+RUNNER_COMMAND=python3 scripts/check_ci_gate.py --self-check
+CI_GATE_POSITIVES=4
+CI_GATE_NEGATIVES=64
+CI gate calibration: OK
+
+ENTRYPOINT_SMOKES=[["feedback-waiver", 0, "{\"format\": \"gripsack-ci-gate\", \"fuzz\": \"not_run_owner_waived\", \"owner_waiver\": \"REL-FUZZ-2026-09-27\", \"required_jobs\": [\"test\", \"e2e-macos\", \"docs\", \"audit\", \"fuzz\"], \"source\": \"c92e84e60c31f13a544e00f7d2f6f3c8b94ce4cd\", \"version\": 1}\n", ""], ["missing-results", 1, "", "CI gate refused: required-job inventory mismatch: missing=['audit', 'docs', 'e2e-macos', 'fuzz', 'test'], unexpected=[]\n"], ["unapproved-skip", 1, "", "CI gate refused: fuzz: expected success, got 'skipped'\n"], ["automatic-waiver", 1, "", "CI gate refused: the feedback waiver requires an explicit manual dispatch\n"]]
+WORKFLOW_PARSE=Bun.YAML accepted actual workflow; required needs and explicit waiver configured

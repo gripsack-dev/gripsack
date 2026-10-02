@@ -25,23 +25,31 @@
 //! activation is a single indivisible rename.
 
 pub mod activation;
+mod generation_wire;
 pub mod generations;
+pub use gripsack_policy::{GenerationId, GenerationInventory, GenerationList};
 pub mod hash;
 pub mod journal;
+pub mod ownership;
 pub mod paths;
+pub mod prior;
+mod private_state;
+mod selection_wire;
+pub mod source_bundle;
 pub mod trust;
 
 pub use generations::{
-    DeployedEntry, Generation, IntentRecord, ModuleState, Prior, current as current_generation,
-    flip, list as list_generations, read_manifest, write_manifest,
+    CommittedSelection, DeployedEntry, Generation, IntentRecord, ModuleState,
+    current as current_generation, flip, list as list_generations, read_manifest, write_manifest,
 };
 pub use hash::{
     canonical_bytes_hash, canonical_bytes_identity, canonical_file_hash, canonical_file_hash_in,
     canonical_overlay_hash, canonical_tree_hash,
 };
 pub use journal::{Entry as JournalEntry, Prior as JournalPrior, reconcile, record};
+pub use ownership::{ManagedBlockId, OwnershipKey, StoredOwnership};
 pub use paths::{
     GENERATIONS_DIR, HASH_LEN, STORE_DIR, canonical_dest, content_path, current_link, expand_home,
-    generation_dir, gripsack_home, input_hash, prior_blob_path, store_path,
+    generation_dir, gripsack_home, input_hash, store_path,
 };
-pub use trust::{TrustedRepo, ensure_trusted};
+pub use prior::Prior;

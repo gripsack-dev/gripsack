@@ -1,0 +1,99 @@
+EXAMPLE_SMOKE={
+  "date": "2026-09-27",
+  "kind": "actual standalone CLI/script execution",
+  "command": "docker run --rm --volume /home/tarek/workspace/gripsack/examples/hooks:/examples:ro --volume /tmp/gripsack-hook-examples-smoke.py:/tmp/smoke.py:ro gripsack-e2e python /tmp/smoke.py",
+  "result": "pass",
+  "source_sha256": {
+    "examples/hooks/atomic_replace.py": "9e8969b8e6039d8f17913082eb79b9babb9011511a0ce92b3c4d2c71f63c1362",
+    "examples/hooks/counter_store.py": "fdb8dcf26c44035d09df8766afd98973e3b792249428f01c11d0e332f579ab02",
+    "examples/hooks/keyed_increment.py": "78640185d90671b256a20b1ea8342d8d622565180864abe1fb4b3102917bfa44",
+    "examples/hooks/receiver.py": "057f720e0b5bfd4a97a96292f9d1d73f8463fad31dea1134c02c695f1fb257bc",
+    "examples/hooks/notify.py": "d1a2c57d972d8abaf756b661b261f1210a29ae5ea679f86f1aeaebcbc47855cd"
+  },
+  "script_sha256": "506c010a59c71aca2aa178842cedbde2168c26e92bd6a4338b04bf8c9fb81257",
+  "observed": {
+    "repeated_atomic_replace": "stable bytes, mode 0600",
+    "local_first": {
+      "applied": true,
+      "value": 1
+    },
+    "local_duplicate": {
+      "applied": false,
+      "value": 1
+    },
+    "local_distinct": {
+      "applied": true,
+      "value": 2
+    },
+    "conflicting_payload": "exit 1, counter unchanged at 2",
+    "private_state": "directory 0700 and SQLite file 0600",
+    "receiver_first": {
+      "applied": true,
+      "value": 1
+    },
+    "receiver_after_kill_restart": {
+      "applied": false,
+      "value": 1
+    }
+  },
+  "limits": "Software process restart, not physical power loss, authentication, arbitrary-script sandboxing or release qualification"
+}
+
+EXACT DISPOSABLE DRIVER
+import json
+import os
+from pathlib import Path
+import sqlite3
+import subprocess
+import tempfile
+
+examples = Path('/examples')
+with tempfile.TemporaryDirectory(prefix='gripsack-example-smoke-') as temporary:
+    root = Path(temporary)
+    environment = dict(os.environ, HOME=str(root), NO_PROXY='127.0.0.1,localhost', no_proxy='127.0.0.1,localhost')
+    def invoke(script, *args, token='a'*64, success=True):
+        result = subprocess.run(['python', str(examples/script), *map(str,args)],
+            env={**environment, 'GRIPSACK_ACTIVATION_INTENT_ID':token}, capture_output=True, text=True, timeout=15)
+        print('$', script, *args, 'exit='+str(result.returncode))
+        print(result.stdout or result.stderr)
+        assert (result.returncode == 0) == success
+        return json.loads(result.stdout) if result.stdout.strip() else None
+    output = root/'derived'
+    invoke('atomic_replace.py', output, '--value', 'stable bytes')
+    invoke('atomic_replace.py', output, '--value', 'stable bytes')
+    assert output.read_bytes() == b'stable bytes'
+    assert output.stat().st_mode & 0o777 == 0o600
+    state = root/'local'
+    first = invoke('keyed_increment.py','--state-dir',state)
+    repeated = invoke('keyed_increment.py','--state-dir',state)
+    second = invoke('keyed_increment.py','--state-dir',state,token='b'*64)
+    assert (first['value'],first['applied'],repeated['value'],repeated['applied'],second['value']) == (1,True,1,False,2)
+    invoke('keyed_increment.py','--state-dir',state,'--counter','wrong-payload',success=False)
+    assert state.stat().st_mode & 0o777 == 0o700
+    assert (state/'counter.sqlite').stat().st_mode & 0o777 == 0o600
+    with sqlite3.connect(state/'counter.sqlite') as connection:
+        assert connection.execute('SELECT name,value FROM counters').fetchall() == [('example',2)]
+    remote = root/'remote'
+    def server():
+        process = subprocess.Popen(['python',str(examples/'receiver.py'),'--state-dir',str(remote),'--port','0'],
+            env=environment,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        line = process.stdout.readline().strip()
+        assert line.startswith('LISTEN_PORT='), line
+        return process, 'http://127.0.0.1:'+line.split('=',1)[1]+'/increment'
+    process, endpoint = server()
+    try:
+        before = invoke('notify.py','--endpoint',endpoint,token='c'*64)
+        assert before['value'] == 1 and before['applied']
+    finally:
+        process.kill(); process.wait(timeout=5)
+    process, endpoint = server()
+    try:
+        after = invoke('notify.py','--endpoint',endpoint,token='c'*64)
+        assert after['value'] == 1 and not after['applied']
+    finally:
+        process.terminate(); process.wait(timeout=5)
+    with sqlite3.connect(remote/'counter.sqlite') as connection:
+        assert connection.execute('SELECT value FROM counters').fetchall() == [(1,)]
+        assert connection.execute('SELECT COUNT(*) FROM receipts').fetchone() == (1,)
+    print('HOOK_EXAMPLE_SMOKE='+json.dumps({'atomic_replace':'same bytes', 'local_distinct_effects':2,
+        'local_duplicate_effects':1, 'payload_reuse':'refused', 'receiver_after_process_restart':1},sort_keys=True))

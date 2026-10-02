@@ -1,0 +1,781 @@
+GITHUB_RUN=https://github.com/gripsack-dev/gripsack/actions/runs/36227812302/job/108365100726
+GITHUB_SOURCE_COMMIT=1c693efbfc8335f52888a77efa68ba266132b1ed
+GITHUB_PLATFORM=macos-14-arm64; macOS 14.8.9; Python 3.12.10; Rust 1.98.0; Deno 2.9.6
+GITHUB_RESULT=319 passed, 0 failed/skipped (native full real-binary flow)
+LOG_PROVENANCE=GitHub job log from gh run view --job --log assembled through bounded raw artifact ranges; page footers removed; no Mac-VM/launchd capability inferred.
+
+e2e-macos	Set up job	﻿2026-09-26T07:46:53.2055110Z Current runner version: '2.337.0'
+e2e-macos	Set up job	2026-09-26T07:46:53.2075570Z ##[group]Runner Image Provisioner
+e2e-macos	Set up job	2026-09-26T07:46:53.2076180Z Hosted Compute Agent
+e2e-macos	Set up job	2026-09-26T07:46:53.2076560Z Version: 20260828.587
+e2e-macos	Set up job	2026-09-26T07:46:53.2076970Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+e2e-macos	Set up job	2026-09-26T07:46:53.2077450Z Build Date: 2026-08-28T16:44:25Z
+e2e-macos	Set up job	2026-09-26T07:46:53.2078010Z Worker ID: {d81dd030-5884-448a-a21d-62d5f9b2d30c}
+e2e-macos	Set up job	2026-09-26T07:46:53.2078580Z Azure Region: westus
+e2e-macos	Set up job	2026-09-26T07:46:53.2078950Z ##[endgroup]
+e2e-macos	Set up job	2026-09-26T07:46:53.2079840Z ##[group]Operating System
+e2e-macos	Set up job	2026-09-26T07:46:53.2080230Z macOS
+e2e-macos	Set up job	2026-09-26T07:46:53.2080550Z 14.8.9
+e2e-macos	Set up job	2026-09-26T07:46:53.2080880Z 23J631
+e2e-macos	Set up job	2026-09-26T07:46:53.2081220Z ##[endgroup]
+e2e-macos	Set up job	2026-09-26T07:46:53.2081630Z ##[group]Runner Image
+e2e-macos	Set up job	2026-09-26T07:46:53.2082050Z Image: macos-14-arm64
+e2e-macos	Set up job	2026-09-26T07:46:53.2082430Z Version: 20260831.0302.1
+e2e-macos	Set up job	2026-09-26T07:46:53.2083170Z Included Software: https://github.com/actions/runner-images/blob/macos-14-arm64/20260831.0302/images/macos/macos-14-arm64-Readme.md
+e2e-macos	Set up job	2026-09-26T07:46:53.2087050Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-14-arm64%2F20260831.0302
+e2e-macos	Set up job	2026-09-26T07:46:53.2089050Z ##[endgroup]
+e2e-macos	Set up job	2026-09-26T07:46:53.2090840Z ##[group]GITHUB_TOKEN Permissions
+e2e-macos	Set up job	2026-09-26T07:46:53.2092820Z Contents: read
+e2e-macos	Set up job	2026-09-26T07:46:53.2093210Z Metadata: read
+e2e-macos	Set up job	2026-09-26T07:46:53.2093580Z Packages: read
+e2e-macos	Set up job	2026-09-26T07:46:53.2093940Z ##[endgroup]
+e2e-macos	Set up job	2026-09-26T07:46:53.2095570Z Secret source: Actions
+e2e-macos	Set up job	2026-09-26T07:46:53.2096250Z Cache mode: write
+e2e-macos	Set up job	2026-09-26T07:46:53.2096700Z Prepare workflow directory
+e2e-macos	Set up job	2026-09-26T07:46:53.2439190Z Prepare all required actions
+e2e-macos	Set up job	2026-09-26T07:46:53.2493630Z Getting action download info
+e2e-macos	Set up job	2026-09-26T07:46:53.6711430Z Download action repository 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+e2e-macos	Set up job	2026-09-26T07:46:54.0210650Z Download action repository 'dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87' (SHA:6bed0761d98439e5a578e2877258200ad565ba87)
+e2e-macos	Set up job	2026-09-26T07:46:54.2685330Z Download action repository 'actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065' (SHA:a26af69be951a213d495a4c3e4e4022e16d87065)
+e2e-macos	Set up job	2026-09-26T07:46:54.4462680Z Complete job name: e2e-macos
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	﻿2026-09-26T07:46:54.4975330Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4976240Z with:
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4976680Z   repository: gripsack-dev/gripsack
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4979760Z   token: ***
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4980170Z   ssh-strict: true
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4980540Z   ssh-user: git
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4980910Z   persist-credentials: true
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4981310Z   clean: true
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4981770Z   sparse-checkout-cone-mode: true
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4982220Z   fetch-depth: 1
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4982580Z   fetch-tags: false
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4983100Z   show-progress: true
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4983550Z   lfs: false
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4983940Z   submodules: false
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4984390Z   set-safe-directory: true
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4984840Z   allow-unsafe-pr-checkout: false
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.4985430Z ##[endgroup]
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9137260Z Syncing repository: gripsack-dev/gripsack
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9139590Z ##[group]Getting Git version info
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9140530Z Working directory is '/Users/runner/work/gripsack/gripsack'
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9141710Z [command]/opt/homebrew/bin/git version
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9517890Z git version 2.55.0
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9533530Z ##[endgroup]
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9548140Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/d46d43ac-af1c-424c-985d-7d2d8ad5621c/.gitconfig'
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9556400Z Temporarily overriding HOME='/Users/runner/work/_temp/d46d43ac-af1c-424c-985d-7d2d8ad5621c' before making global git config changes
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9558580Z Adding repository directory to the temporary git global config as a safe directory
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9560270Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/gripsack/gripsack
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9688080Z Deleting the contents of '/Users/runner/work/gripsack/gripsack'
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9691350Z ##[group]Determining repository object format
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9695870Z ##[endgroup]
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9698460Z ##[group]Initializing the repository
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9702580Z [command]/opt/homebrew/bin/git init /Users/runner/work/gripsack/gripsack
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9926580Z hint: Using 'master' as the name for the initial branch. This default branch name
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9933680Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9938410Z hint: to use in all of your new repositories, which will suppress this warning,
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9942280Z hint: call:
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9944350Z hint:
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9946780Z hint: 	git config --global init.defaultBranch <name>
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9950050Z hint:
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9951530Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9953510Z hint: 'development'. The just-created branch can be renamed via this command:
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9955180Z hint:
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9956210Z hint: 	git branch -m <name>
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9957430Z hint:
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9958930Z hint: Disable this message with "git config set advice.defaultBranchName false"
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9961310Z Initialized empty Git repository in /Users/runner/work/gripsack/gripsack/.git/
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:54.9965080Z [command]/opt/homebrew/bin/git remote add origin https://github.com/gripsack-dev/gripsack
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0000990Z ##[endgroup]
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0002920Z ##[group]Disabling automatic garbage collection
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0004210Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0053600Z ##[endgroup]
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0054980Z ##[group]Setting up auth
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0055870Z Removing SSH command configuration
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0057420Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0106960Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0860670Z Removing HTTP extra header
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0866170Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.0915770Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.1542860Z Removing includeIf entries pointing to credentials config files
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.1545330Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.1603170Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.3030010Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.3062630Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/gripsack/gripsack/.git.path /Users/runner/work/_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.3068440Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/gripsack/gripsack/.git/worktrees/*.path /Users/runner/work/_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.3073910Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.3079080Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.3146100Z ##[endgroup]
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.3149260Z ##[group]Fetching the repository
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:55.3155830Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +1c693efbfc8335f52888a77efa68ba266132b1ed:refs/remotes/origin/handover/h0-bundle-import
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9520220Z From https://github.com/gripsack-dev/gripsack
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9523740Z  * [new ref]         1c693efbfc8335f52888a77efa68ba266132b1ed -> origin/handover/h0-bundle-import
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9527570Z [command]/opt/homebrew/bin/git branch --list --remote origin/handover/h0-bundle-import
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9611190Z   origin/handover/h0-bundle-import
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9636170Z [command]/opt/homebrew/bin/git rev-parse refs/remotes/origin/handover/h0-bundle-import
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9714510Z 1c693efbfc8335f52888a77efa68ba266132b1ed
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9720010Z ##[endgroup]
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9722950Z ##[group]Determining the checkout info
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9725920Z ##[endgroup]
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9726890Z [command]/opt/homebrew/bin/git sparse-checkout disable
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9801670Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9878320Z ##[group]Checking out the ref
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:56.9883360Z [command]/opt/homebrew/bin/git checkout --progress --force -B handover/h0-bundle-import refs/remotes/origin/handover/h0-bundle-import
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:57.6550810Z Switched to a new branch 'handover/h0-bundle-import'
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:57.6566370Z branch 'handover/h0-bundle-import' set up to track 'origin/handover/h0-bundle-import'.
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:57.6584260Z ##[endgroup]
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:57.6697050Z [command]/opt/homebrew/bin/git log -1 --format=%H
+e2e-macos	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T07:46:57.6775120Z 1c693efbfc8335f52888a77efa68ba266132b1ed
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	﻿2026-09-26T07:46:57.7139680Z ##[group]Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7140160Z with:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7140320Z   toolchain: 1.98.0
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7140470Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7215480Z ##[start-action display=Parse toolchain version;id=__dtolnay_rust-toolchain.parse]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7270670Z ##[group]Run if [[ -z $toolchain ]]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7271030Z if [[ -z $toolchain ]]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7271550Z   # GitHub does not enforce `required: true` inputs itself. https://github.com/actions/runner/issues/1070
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7272040Z   echo "'toolchain' is a required input" >&2
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7272280Z   exit 1
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7273020Z elif [[ $toolchain =~ ^stable' '[0-9]+' '(year|month|week|day)s?' 'ago$ ]]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7273370Z   if [[ macOS == macOS ]]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7273810Z     echo "toolchain=1.$((($(date -v-$(sed 's/stable \([0-9]*\) \(.\).*/\1\2/' <<< $toolchain) +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7274330Z   else
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7274720Z     echo "toolchain=1.$((($(date --date "${toolchain#stable }" +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7275100Z   fi
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7275340Z elif [[ $toolchain =~ ^stable' 'minus' '[0-9]+' 'releases?$ ]]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7275900Z   echo "toolchain=1.$((($(date +%s)/60/60/24-16569)/7/6-${toolchain//[^0-9]/}))" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7276310Z elif [[ $toolchain =~ ^1\.[0-9]+$ ]]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7276770Z   echo "toolchain=1.$((i=${toolchain#1.}, c=($(date +%s)/60/60/24-16569)/7/6, i+9*i*(10*i<=c)+90*i*(100*i<=c)))" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7277280Z else
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7277490Z   echo "toolchain=$toolchain" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7277830Z fi
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7373160Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7374380Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7374570Z   toolchain: 1.98.0
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7374740Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7919100Z ##[end-action id=__dtolnay_rust-toolchain.parse;outcome=success;conclusion=success;duration_ms=70]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7938560Z ##[start-action display=Construct rustup command line;id=__dtolnay_rust-toolchain.flags]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7984220Z ##[group]Run echo "targets=$(for t in ${targets//,/ }; do echo -n ' --target' $t; done)" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7985060Z echo "targets=$(for t in ${targets//,/ }; do echo -n ' --target' $t; done)" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7985630Z echo "components=$(for c in ${components//,/ }; do echo -n ' --component' $c; done)" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.7986070Z echo "downgrade=" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8058590Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8058980Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8059160Z   targets: 
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8059360Z   components: 
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8059530Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8520970Z ##[end-action id=__dtolnay_rust-toolchain.flags;outcome=success;conclusion=success;duration_ms=58]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8523350Z ##[start-action display=Set $CARGO_HOME;id=__dtolnay_rust-toolchain.__run]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8557900Z ##[group]Run echo CARGO_HOME=${CARGO_HOME:-"$HOME/.cargo"} >> $GITHUB_ENV
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8559060Z echo CARGO_HOME=${CARGO_HOME:-"$HOME/.cargo"} >> $GITHUB_ENV
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8642620Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.8642970Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9089770Z ##[end-action id=__dtolnay_rust-toolchain.__run;outcome=success;conclusion=success;duration_ms=56]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9092740Z ##[start-action display=Install rustup if needed;id=__dtolnay_rust-toolchain.__run_2]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9123100Z ##[group]Run if ! command -v rustup &>/dev/null; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9124060Z if ! command -v rustup &>/dev/null; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9124810Z   curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail https://sh.rustup.rs | sh -s -- --default-toolchain none -y
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9125450Z   echo "$CARGO_HOME/bin" >> $GITHUB_PATH
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9125700Z fi
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9198160Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9198550Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9198750Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9198960Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9595660Z ##[end-action id=__dtolnay_rust-toolchain.__run_2;outcome=success;conclusion=success;duration_ms=50]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9599640Z ##[start-action display=Install rustup if needed on windows;id=__dtolnay_rust-toolchain.__run_3]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9609630Z ##[end-action id=__dtolnay_rust-toolchain.__run_3;outcome=skipped;conclusion=skipped;duration_ms=0]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9621800Z ##[start-action display=rustup toolchain install 1.98.0;id=__dtolnay_rust-toolchain.__run_4]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9644380Z ##[group]Run rustup toolchain install 1.98.0 --profile minimal --no-self-update
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9644890Z rustup toolchain install 1.98.0 --profile minimal --no-self-update
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9710520Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9710880Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9711070Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9711290Z   RUSTUP_PERMIT_COPY_RENAME: 1
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:57.9711520Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:58.0617970Z info: syncing channel updates for 1.98.0-aarch64-apple-darwin
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:58.1938690Z info: latest update on 2026-08-20 for version 1.98.0 (88d9e12ae 2026-08-18)
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:46:58.1945860Z info: downloading 3 components
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:05.9365350Z 
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:05.9770180Z info: self-update is disabled for this build of rustup
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:05.9772000Z   1.98.0-aarch64-apple-darwin installed - rustc 1.98.0 (88d9e12ae 2026-08-18)
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:05.9944620Z info: any updates to rustup will need to be fetched with your system package manager
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:05.9945130Z 
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:05.9964540Z ##[end-action id=__dtolnay_rust-toolchain.__run_4;outcome=success;conclusion=success;duration_ms=8030]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:05.9976030Z ##[start-action display=rustup default 1.98.0;id=__dtolnay_rust-toolchain.__run_5]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0001230Z ##[group]Run rustup default 1.98.0
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0001570Z rustup default 1.98.0
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0084110Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0084480Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0084690Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0084920Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0684930Z info: using existing install for 1.98.0-aarch64-apple-darwin
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0716610Z info: default toolchain set to 1.98.0-aarch64-apple-darwin
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0717370Z 
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0877220Z   1.98.0-aarch64-apple-darwin unchanged - rustc 1.98.0 (88d9e12ae 2026-08-18)
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0880000Z 
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0898770Z ##[end-action id=__dtolnay_rust-toolchain.__run_5;outcome=success;conclusion=success;duration_ms=92]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0901930Z ##[start-action display=Create cachekey;id=__dtolnay_rust-toolchain.rustc-version]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0932060Z ##[group]Run DATE=$(rustc +1.98.0 --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0933000Z DATE=$(rustc +1.98.0 --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0933550Z HASH=$(rustc +1.98.0 --version --verbose | sed -ne 's/^commit-hash: //p')
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.0934320Z echo "cachekey=$(echo $DATE$HASH | head -c12)" >> $GITHUB_OUTPUT
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.1014990Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.1015890Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.1016080Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.1016300Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2109320Z ##[end-action id=__dtolnay_rust-toolchain.rustc-version;outcome=success;conclusion=success;duration_ms=120]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2112900Z ##[start-action display=Disable incremental compilation;id=__dtolnay_rust-toolchain.__run_6]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2144100Z ##[group]Run if [ -z "${CARGO_INCREMENTAL+set}" ]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2145030Z if [ -z "${CARGO_INCREMENTAL+set}" ]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2145750Z   echo CARGO_INCREMENTAL=0 >> $GITHUB_ENV
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2146390Z fi
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2215550Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2215860Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2216050Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2216320Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2605360Z ##[end-action id=__dtolnay_rust-toolchain.__run_6;outcome=success;conclusion=success;duration_ms=49]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2610120Z ##[start-action display=Enable colors in Cargo output;id=__dtolnay_rust-toolchain.__run_7]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2633630Z ##[group]Run if [ -z "${CARGO_TERM_COLOR+set}" ]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2634030Z if [ -z "${CARGO_TERM_COLOR+set}" ]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2634330Z   echo CARGO_TERM_COLOR=always >> $GITHUB_ENV
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2634560Z fi
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2725920Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2726630Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2727080Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2727690Z   CARGO_INCREMENTAL: 0
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.2728170Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3131410Z ##[end-action id=__dtolnay_rust-toolchain.__run_7;outcome=success;conclusion=success;duration_ms=51]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3134850Z ##[start-action display=Enable Cargo sparse registry;id=__dtolnay_rust-toolchain.__run_8]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3153820Z ##[group]Run # implemented in 1.66, stabilized in 1.68, made default in 1.70
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3154570Z # implemented in 1.66, stabilized in 1.68, made default in 1.70
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3155230Z if [ -z "${CARGO_REGISTRIES_CRATES_IO_PROTOCOL+set}" -o -f "/Users/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol ]; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3155940Z   if rustc +1.98.0 --version --verbose | grep -q '^release: 1\.6[89]\.'; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3156470Z     touch "/Users/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3156960Z     echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse >> $GITHUB_ENV
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3157460Z   elif rustc +1.98.0 --version --verbose | grep -q '^release: 1\.6[67]\.'; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3158020Z     touch "/Users/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3158470Z     echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git >> $GITHUB_ENV
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3158770Z   fi
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3158930Z fi
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3217890Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3218200Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3218380Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3218620Z   CARGO_INCREMENTAL: 0
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3218800Z   CARGO_TERM_COLOR: always
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.3218980Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4167950Z ##[end-action id=__dtolnay_rust-toolchain.__run_8;outcome=success;conclusion=success;duration_ms=103]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4170430Z ##[start-action display=Work around spurious network errors in curl 8.0;id=__dtolnay_rust-toolchain.__run_9]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4186500Z ##[group]Run # https://rust-lang.zulipchat.com/#narrow/stream/246057-t-cargo/topic/timeout.20investigation
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4187140Z # https://rust-lang.zulipchat.com/#narrow/stream/246057-t-cargo/topic/timeout.20investigation
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4187640Z if rustc +1.98.0 --version --verbose | grep -q '^release: 1\.7[01]\.'; then
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4188290Z   echo CARGO_HTTP_MULTIPLEXING=false >> $GITHUB_ENV
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4188540Z fi
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4243150Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4243440Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4243620Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4243830Z   CARGO_INCREMENTAL: 0
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4244030Z   CARGO_TERM_COLOR: always
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4244210Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4802610Z ##[end-action id=__dtolnay_rust-toolchain.__run_9;outcome=success;conclusion=success;duration_ms=63]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4808610Z ##[start-action display=rustc +1.98.0 --version --verbose;id=__dtolnay_rust-toolchain.__run_10]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4824950Z ##[group]Run rustc +1.98.0 --version --verbose
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4825270Z rustc +1.98.0 --version --verbose
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4874200Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4874590Z env:
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4874830Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4875050Z   CARGO_INCREMENTAL: 0
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4875250Z   CARGO_TERM_COLOR: always
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.4875480Z ##[endgroup]
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.5355250Z rustc 1.98.0 (88d9e12ae 2026-08-18)
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.5355620Z binary: rustc
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.5355880Z commit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.5356210Z commit-date: 2026-08-18
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.5356420Z host: aarch64-apple-darwin
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.5356660Z release: 1.98.0
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.5357530Z LLVM version: 22.1.8
+e2e-macos	Run dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87	2026-09-26T07:47:06.5381070Z ##[end-action id=__dtolnay_rust-toolchain.__run_10;outcome=success;conclusion=success;duration_ms=56]
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	﻿2026-09-26T07:47:06.5478920Z ##[group]Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5479290Z with:
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5479450Z   python-version: 3.12
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5479630Z   check-latest: false
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5481480Z   token: ***
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5481940Z   update-environment: true
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5482130Z   allow-prereleases: false
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5482320Z   freethreaded: false
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5482480Z env:
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5482610Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5482800Z   CARGO_INCREMENTAL: 0
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5482960Z   CARGO_TERM_COLOR: always
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.5483110Z ##[endgroup]
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.7234470Z ##[group]Installed versions
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.7331500Z (node:3958) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.7332120Z (Use `node --trace-deprecation ...` to show where the warning was created)
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.7332450Z Successfully set up CPython (3.12.10)
+e2e-macos	Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T07:47:06.7333310Z ##[endgroup]
+e2e-macos	Build grip (debug — the suite's contract)	﻿2026-09-26T07:47:06.7400540Z ##[group]Run cargo build
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7400780Z cargo build
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7457090Z shell: /bin/bash -e {0}
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7457360Z env:
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7457590Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7457840Z   CARGO_INCREMENTAL: 0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7458050Z   CARGO_TERM_COLOR: always
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7458320Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7458800Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.12.10/arm64/lib/pkgconfig
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7459210Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7459600Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7459970Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.7460300Z ##[endgroup]
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:06.8734950Z     Updating crates.io index
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.2450850Z  Downloading crates ...
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.3315000Z   Downloaded anstyle v1.0.14
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.4278870Z   Downloaded block-buffer v0.12.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.4297920Z   Downloaded cap-primitives v4.0.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.4541280Z   Downloaded cfg-if v1.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5091600Z   Downloaded colorchoice v1.0.5
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5126190Z   Downloaded heck v0.5.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5149880Z   Downloaded idna_adapter v1.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5165540Z   Downloaded cpufeatures v0.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5200160Z   Downloaded httpdate v1.0.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5279600Z   Downloaded convert_case v0.4.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5280470Z   Downloaded fs-set-times v0.20.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5283170Z   Downloaded yoke-derive v0.8.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5318130Z   Downloaded form_urlencoded v1.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5341420Z   Downloaded equivalent v1.0.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5372520Z   Downloaded errno v0.3.14
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5402380Z   Downloaded is_terminal_polyfill v1.70.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5423230Z   Downloaded itoa v1.0.18
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5450520Z   Downloaded matchers v0.2.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5470060Z   Downloaded percent-encoding v2.3.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5485520Z   Downloaded lazy_static v1.5.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5514310Z   Downloaded potential_utf v0.1.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5541190Z   Downloaded maybe-owned v0.3.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5972180Z   Downloaded ambient-authority v0.0.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.5995290Z   Downloaded adler2 v2.0.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6013910Z   Downloaded anstyle-query v1.1.5
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6029880Z   Downloaded clap_lex v1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6048980Z   Downloaded crypto-common v0.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6081460Z   Downloaded dialoguer v0.12.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6171730Z   Downloaded filetime v0.2.29
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6207290Z   Downloaded foldhash v0.2.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6230740Z   Downloaded serde_spanned v1.1.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6256200Z   Downloaded digest v0.11.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6362950Z   Downloaded displaydoc v0.2.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6374360Z   Downloaded fastrand v2.5.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6409490Z   Downloaded find-msvc-tools v0.1.11
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6860280Z   Downloaded io-lifetimes v2.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6894900Z   Downloaded shell-words v1.1.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6945060Z   Downloaded ipnet v2.12.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6961220Z   Downloaded jobserver v0.1.35
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.6994800Z   Downloaded owo-colors v4.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.7025340Z   Downloaded pin-project-lite v0.2.17
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.7139770Z   Downloaded pkg-config v0.3.34
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.7167510Z   Downloaded rustls-native-certs v0.8.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.7189310Z   Downloaded security-framework-sys v2.17.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.7542490Z   Downloaded anstyle-parse v1.0.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.7793820Z   Downloaded clap_derive v4.6.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.7834150Z   Downloaded console v0.16.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.7887580Z   Downloaded core-foundation v0.10.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.7937750Z   Downloaded io-lifetimes v3.0.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8008420Z   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8032380Z   Downloaded anstream v1.0.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8081420Z   Downloaded bzip2 v0.6.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8143920Z   Downloaded cap-std v4.0.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8235830Z   Downloaded io-extras v0.19.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8283050Z   Downloaded core-foundation-sys v0.8.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8825680Z   Downloaded hybrid-array v0.4.14
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8868450Z   Downloaded nu-ansi-term v0.50.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8918850Z   Downloaded quote v1.0.47
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.8973350Z   Downloaded stable_deref_trait v1.2.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9014740Z   Downloaded thread_local v1.1.10
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9037120Z   Downloaded getrandom v0.2.17
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9097890Z   Downloaded once_cell v1.21.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9141870Z   Downloaded allocator-api2 v0.2.21
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9188380Z   Downloaded bitflags v2.13.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9603810Z   Downloaded crc32fast v1.5.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9658130Z   Downloaded const-oid v0.10.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9697350Z   Downloaded getrandom v0.4.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9763920Z   Downloaded icu_provider v2.3.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9810520Z   Downloaded litemap v0.8.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9852110Z   Downloaded log v0.4.34
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9900110Z   Downloaded proc-macro2 v1.0.107
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:07.9963490Z   Downloaded rustls-pki-types v1.15.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.0328680Z   Downloaded ryu v1.0.23
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.0396230Z   Downloaded serde_derive v1.0.229
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.0450250Z   Downloaded subtle v2.6.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.0471180Z   Downloaded base64 v0.22.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.0543890Z   Downloaded clap v4.6.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.1036760Z   Downloaded icu_locale_core v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.1307560Z   Downloaded libbz2-rs-sys v0.2.5
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.1320700Z   Downloaded miniz_oxide v0.8.9
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.1380010Z   Downloaded serde_core v1.0.229
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.1436740Z   Downloaded flate2 v1.1.9
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.1882090Z   Downloaded icu_collections v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.2519730Z   Downloaded indicatif v0.18.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.2589250Z   Downloaded rustls-webpki v0.103.15
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.2650310Z   Downloaded security-framework v3.7.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.2724320Z   Downloaded serde v1.0.229
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.2779330Z   Downloaded bumpalo v3.20.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3082380Z   Downloaded cc v1.4.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3137600Z   Downloaded icu_normalizer_data v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3170670Z   Downloaded icu_properties v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3224210Z   Downloaded indexmap v2.14.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3295070Z   Downloaded memchr v2.8.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3389600Z   Downloaded tracing-serde v0.2.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3404400Z   Downloaded unit-prefix v0.5.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3423500Z   Downloaded webpki-roots v0.26.11
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3442220Z   Downloaded xattr v1.6.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3780700Z   Downloaded zerofrom v0.1.8
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3793820Z   Downloaded tempfile v3.27.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3831320Z   Downloaded thiserror v2.0.20
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3958200Z   Downloaded utf8parse v0.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.3971520Z   Downloaded zstd v0.13.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.4017040Z   Downloaded idna v1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.4061830Z   Downloaded simd-adler32 v0.3.10
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.4092000Z   Downloaded smallvec v1.15.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.4433860Z   Downloaded hashbrown v0.17.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.4545120Z   Downloaded clap_builder v4.6.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.4677080Z   Downloaded icu_properties_data v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.4943770Z   Downloaded utf8_iter v1.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5215070Z   Downloaded zerofrom-derive v0.1.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5330850Z   Downloaded aho-corasick v1.1.5
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5436050Z   Downloaded portable-atomic v1.15.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5566270Z   Downloaded shlex v2.0.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5588000Z   Downloaded strsim v0.11.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5612480Z   Downloaded synstructure v0.13.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5630170Z   Downloaded tinystr v0.8.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5677150Z   Downloaded toml_datetime v0.7.5+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5697490Z   Downloaded toml_datetime v1.1.1+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5719030Z   Downloaded tracing-log v0.2.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.5748780Z   Downloaded untrusted v0.9.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6092390Z   Downloaded writeable v0.6.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6126890Z   Downloaded xz2 v0.1.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6157240Z   Downloaded zeroize v1.9.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6188230Z   Downloaded zerovec-derive v0.11.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6219380Z   Downloaded zmij v1.0.23
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6248330Z   Downloaded thiserror-impl v2.0.20
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6271330Z   Downloaded toml_parser v1.1.3+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6323840Z   Downloaded toml_writer v1.1.2+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6349290Z   Downloaded yoke v0.8.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6379920Z   Downloaded zstd-safe v7.2.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6424920Z   Downloaded sha2 v0.11.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6761150Z   Downloaded toml v0.9.12+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6860990Z   Downloaded toml v1.1.4+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.6978100Z   Downloaded tracing-attributes v0.1.31
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7055660Z   Downloaded unicode-ident v1.0.24
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7111470Z   Downloaded zopfli v0.8.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7150750Z   Downloaded serde_yaml v0.9.34+deprecated
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7212000Z   Downloaded sharded-slab v0.1.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7595610Z   Downloaded tar v0.4.46
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7673570Z   Downloaded toml_edit v0.25.13+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7753060Z   Downloaded tracing-core v0.1.36
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7802150Z   Downloaded unsafe-libyaml v0.2.11
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7859480Z   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.7919650Z   Downloaded zerotrie v0.2.5
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.8036400Z   Downloaded url v2.5.8
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.8344250Z   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.8397230Z   Downloaded typenum v1.20.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.8450670Z   Downloaded zerovec v0.11.8
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.8546790Z   Downloaded serde_json v1.0.151
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.8784810Z   Downloaded typed-path v0.12.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.9155530Z   Downloaded ureq v2.12.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.9254320Z   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.9314540Z   Downloaded zip v8.6.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.9390540Z   Downloaded winnow v1.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:08.9865300Z   Downloaded regex-syntax v0.8.11
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.0002140Z   Downloaded rustls v0.23.45
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.0191920Z   Downloaded webpki-roots v1.0.9
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.0232660Z   Downloaded winnow v0.7.15
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.0681140Z   Downloaded zlib-rs v0.6.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.0771180Z   Downloaded rustix v1.1.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.1619190Z   Downloaded tracing-subscriber v0.3.23
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.2080370Z   Downloaded unicode-width v0.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.2183580Z   Downloaded syn v2.0.119
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.2419820Z   Downloaded vstd v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.2989440Z   Downloaded syn v3.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.3220540Z   Downloaded verus_syn v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.3480020Z   Downloaded icu_normalizer v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.3948180Z   Downloaded regex-automata v0.4.18
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.4243630Z   Downloaded tracing v0.1.44
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.4575030Z   Downloaded lzma-sys v0.1.20
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.6035530Z   Downloaded libc v0.2.189
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.7545380Z   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:09.7882300Z   Downloaded ring v0.17.14
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:10.0249340Z    Compiling proc-macro2 v1.0.107
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:10.0250080Z    Compiling unicode-ident v1.0.24
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:10.0250560Z    Compiling quote v1.0.47
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:10.2479540Z    Compiling libc v0.2.189
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:13.5409070Z    Compiling find-msvc-tools v0.1.11
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:13.8245650Z    Compiling serde_core v1.0.229
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:14.0592620Z    Compiling jobserver v0.1.35
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:14.0825770Z    Compiling shlex v2.0.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:14.3486430Z    Compiling cfg-if v1.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:14.3819640Z    Compiling syn v3.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:14.4227300Z    Compiling syn v2.0.119
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:14.4488840Z    Compiling cc v1.4.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:18.5105970Z    Compiling synstructure v0.13.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:18.8503560Z    Compiling hashbrown v0.17.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:19.0963430Z    Compiling equivalent v1.0.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:19.1515170Z    Compiling stable_deref_trait v1.2.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:19.2034740Z    Compiling bitflags v2.13.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:19.4018420Z    Compiling zerovec-derive v0.11.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:19.4546800Z    Compiling indexmap v2.14.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:19.5688060Z    Compiling zerofrom-derive v0.1.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:20.0657890Z    Compiling yoke-derive v0.8.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:20.3897420Z    Compiling rustix v1.1.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:20.7742040Z    Compiling zerofrom v0.1.8
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:20.8475080Z    Compiling displaydoc v0.2.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:20.8608140Z    Compiling errno v0.3.14
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:20.9614850Z    Compiling pkg-config v0.3.34
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:21.1497290Z    Compiling yoke v0.8.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:21.2715240Z    Compiling zerovec v0.11.8
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:21.4026740Z    Compiling serde v1.0.229
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:21.4062760Z    Compiling once_cell v1.21.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:21.5896400Z    Compiling serde_derive v1.0.229
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:21.7863920Z    Compiling verus_syn v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:23.2276970Z    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:23.4088630Z    Compiling zmij v1.0.23
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:23.7759130Z    Compiling itoa v1.0.18
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:23.9571800Z    Compiling memchr v2.8.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:24.5359400Z    Compiling serde_json v1.0.151
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:24.7042480Z    Compiling tinystr v0.8.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:24.8208150Z    Compiling zeroize v1.9.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:24.9076040Z    Compiling winnow v1.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:24.9402650Z    Compiling litemap v0.8.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:25.0960300Z    Compiling io-lifetimes v2.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:25.2934660Z    Compiling writeable v0.6.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:25.4738880Z    Compiling io-lifetimes v3.0.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:25.6584970Z    Compiling vstd v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:25.7966150Z    Compiling convert_case v0.4.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:26.0690300Z    Compiling toml_parser v1.1.3+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:26.1132730Z    Compiling icu_locale_core v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:27.7540060Z    Compiling potential_utf v0.1.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:27.8602010Z    Compiling zerotrie v0.2.5
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:28.1234410Z    Compiling verus_builtin v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:28.2211400Z    Compiling toml_writer v1.1.2+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:28.3896950Z    Compiling smallvec v1.15.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:28.5280680Z    Compiling icu_properties_data v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:28.6498680Z    Compiling io-extras v0.19.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:28.6687360Z    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:28.7652470Z    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:28.8170600Z    Compiling thiserror v2.0.20
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:29.0480740Z    Compiling icu_normalizer_data v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:29.1779130Z    Compiling utf8_iter v1.0.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:29.2924070Z    Compiling typenum v1.20.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:29.9867960Z    Compiling log v0.4.34
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:30.1333570Z    Compiling hybrid-array v0.4.14
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:30.5302700Z    Compiling icu_collections v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:30.9734690Z    Compiling icu_provider v2.3.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:31.2834440Z    Compiling rustls-pki-types v1.15.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:31.7050190Z    Compiling zstd-sys v2.0.16+zstd.1.5.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:32.0332760Z    Compiling thiserror-impl v2.0.20
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:32.5957470Z    Compiling serde_spanned v1.1.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:32.6861880Z    Compiling ring v0.17.14
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:33.0460350Z    Compiling getrandom v0.4.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:33.0778950Z    Compiling cap-primitives v4.0.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:37.4924390Z    Compiling gripsack-policy v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-policy)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:37.8704330Z    Compiling fs-set-times v0.20.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:38.1237100Z    Compiling tracing-core v0.1.36
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:38.6108730Z    Compiling ipnet v2.12.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:39.0649960Z    Compiling ambient-authority v0.0.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:39.1069620Z    Compiling crc32fast v1.5.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:39.2679070Z    Compiling cap-std v4.0.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:39.4209640Z    Compiling maybe-owned v0.3.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:40.2029720Z    Compiling icu_normalizer v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:40.3678100Z    Compiling icu_properties v2.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:40.8240680Z    Compiling gripsack-ir v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-ir)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:41.7120300Z    Compiling crypto-common v0.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:42.9237420Z    Compiling block-buffer v0.12.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:43.0384340Z    Compiling toml_datetime v0.7.5+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:43.3154810Z    Compiling getrandom v0.2.17
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:43.4218230Z    Compiling simd-adler32 v0.3.10
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:43.5919470Z    Compiling zstd-safe v7.2.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:43.7358910Z    Compiling winnow v0.7.15
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:45.1803340Z    Compiling fastrand v2.5.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:45.3794190Z    Compiling untrusted v0.9.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:45.4477030Z    Compiling const-oid v0.10.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:45.6294160Z    Compiling core-foundation-sys v0.8.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:45.7941640Z    Compiling digest v0.11.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:48.4461400Z    Compiling tempfile v3.27.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:48.6272870Z    Compiling toml v0.9.12+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:48.8000360Z    Compiling idna_adapter v1.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:49.0232450Z    Compiling lzma-sys v0.1.20
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:49.2504460Z    Compiling tracing-attributes v0.1.31
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:49.2621900Z    Compiling toml_datetime v1.1.1+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:49.5081310Z    Compiling cpufeatures v0.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:49.5792810Z    Compiling percent-encoding v2.3.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:49.7773070Z    Compiling pin-project-lite v0.2.17
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:49.8178320Z    Compiling rustls v0.23.45
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:49.9444650Z    Compiling adler2 v2.0.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:50.0106590Z    Compiling miniz_oxide v0.8.9
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:50.2162900Z    Compiling form_urlencoded v1.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:50.2312300Z    Compiling tracing v0.1.44
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:50.2999520Z    Compiling sha2 v0.11.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:50.4161610Z    Compiling gripsack-fs v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-fs)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:50.5795070Z    Compiling idna v1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:50.8227830Z    Compiling rustls-webpki v0.103.15
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:50.9176880Z    Compiling security-framework-sys v2.17.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:51.0448260Z    Compiling core-foundation v0.10.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:51.3720740Z    Compiling webpki-roots v1.0.9
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:51.4076140Z    Compiling subtle v2.6.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:51.4264730Z    Compiling bumpalo v3.20.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:51.4938320Z    Compiling libbz2-rs-sys v0.2.5
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:51.6685210Z    Compiling zlib-rs v0.6.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:51.8887460Z    Compiling bzip2 v0.6.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:52.0249820Z    Compiling zopfli v0.8.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:52.8166860Z    Compiling webpki-roots v0.26.11
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:52.8677020Z    Compiling security-framework v3.7.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:54.6246900Z    Compiling url v2.5.8
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:55.4986050Z    Compiling zstd v0.13.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:55.7971300Z    Compiling flate2 v1.1.9
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:56.2057710Z    Compiling gripsack-store v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-store)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:56.4668770Z    Compiling xattr v1.6.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:56.7749000Z    Compiling filetime v0.2.29
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:56.9484600Z    Compiling typed-path v0.12.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:58.3415620Z    Compiling base64 v0.22.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:58.5730820Z    Compiling zip v8.6.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:58.6817850Z    Compiling ureq v2.12.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:59.4811680Z    Compiling tar v0.4.46
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:47:59.9270490Z    Compiling xz2 v0.1.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:00.1694700Z    Compiling rustls-native-certs v0.8.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:00.2067430Z    Compiling toml v1.1.4+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:00.5642950Z    Compiling gripsack-process v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-process)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:00.5982400Z    Compiling httpdate v1.0.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:00.7764940Z    Compiling gripsack-fetch v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-fetch)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:00.8434760Z    Compiling utf8parse v0.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:00.9021730Z    Compiling regex-syntax v0.8.11
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:01.9327900Z    Compiling gripsack-config v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-config)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:02.8501620Z    Compiling regex-automata v0.4.18
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:03.3462710Z    Compiling anstyle-parse v1.0.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:03.4819230Z    Compiling portable-atomic v1.15.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:03.8547700Z    Compiling lazy_static v1.5.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:03.8873660Z    Compiling is_terminal_polyfill v1.70.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:03.9233450Z    Compiling anstyle-query v1.1.5
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:03.9742990Z    Compiling ryu v1.0.23
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:04.1295780Z    Compiling anstyle v1.0.14
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:04.2947980Z    Compiling unicode-width v0.2.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:04.5060550Z    Compiling colorchoice v1.0.5
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:04.5809090Z    Compiling unsafe-libyaml v0.2.11
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:04.7967530Z    Compiling matchers v0.2.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:04.8932250Z    Compiling anstream v1.0.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:05.1703190Z    Compiling serde_yaml v0.9.34+deprecated
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:05.4988930Z    Compiling console v0.16.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:06.2085560Z    Compiling sharded-slab v0.1.7
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:06.6558460Z    Compiling gripsack-exec v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-exec)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:06.6564570Z    Compiling toml_edit v0.25.13+spec-1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:06.9993590Z    Compiling tracing-log v0.2.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:07.2300250Z    Compiling tracing-serde v0.2.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:07.3371150Z    Compiling thread_local v1.1.10
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:07.5579940Z    Compiling nu-ansi-term v0.50.3
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:07.8294040Z    Compiling owo-colors v4.3.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:08.0597690Z    Compiling clap_lex v1.1.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:08.2574470Z    Compiling heck v0.5.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:08.3987100Z    Compiling strsim v0.11.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:08.6230550Z    Compiling clap_builder v4.6.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:08.7658280Z    Compiling clap_derive v4.6.4
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:10.7058020Z    Compiling tracing-subscriber v0.3.23
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:12.3356540Z    Compiling griplint v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/griplint)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:13.8374730Z    Compiling shell-words v1.1.1
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:13.9102170Z    Compiling unit-prefix v0.5.2
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:13.9743530Z    Compiling dialoguer v0.12.0
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:13.9913830Z    Compiling indicatif v0.18.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:14.4892620Z    Compiling gripsack-lint v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-lint)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:14.7333760Z    Compiling gripsack-trace v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack-trace)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:14.8949180Z    Compiling clap v4.6.6
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:15.0132030Z    Compiling gripsack-fuzz v0.0.0 (/Users/runner/work/gripsack/gripsack/fuzz)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:15.5771210Z    Compiling gripsack v0.42.0 (/Users/runner/work/gripsack/gripsack/crates/gripsack)
+e2e-macos	Build grip (debug — the suite's contract)	2026-09-26T07:48:18.0791470Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 11s
+e2e-macos	Prefetch the pinned Deno	﻿2026-09-26T07:48:18.2781980Z ##[group]Run curl -fsSL https://github.com/denoland/deno/releases/download/v2.9.6/deno-aarch64-apple-darwin.zip -o /tmp/deno.zip
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2785450Z curl -fsSL https://github.com/denoland/deno/releases/download/v2.9.6/deno-aarch64-apple-darwin.zip -o /tmp/deno.zip
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2786520Z echo "213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472  /tmp/deno.zip" | shasum -a 256 --check
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2787990Z unzip -q /tmp/deno.zip -d "$HOME/.deno-bin"
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2790360Z echo "$HOME/.deno-bin" >> "$GITHUB_PATH"
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2791690Z echo "GRIPSACK_DENO=$HOME/.deno-bin/deno" >> "$GITHUB_ENV"
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2980270Z shell: /bin/bash -e {0}
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2980610Z env:
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2980840Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2981180Z   CARGO_INCREMENTAL: 0
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2981540Z   CARGO_TERM_COLOR: always
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2981910Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2982540Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.12.10/arm64/lib/pkgconfig
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2982980Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2983510Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2983960Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:18.2984370Z ##[endgroup]
+e2e-macos	Prefetch the pinned Deno	2026-09-26T07:48:19.1841890Z /tmp/deno.zip: OK
+e2e-macos	E2E (flow suite, native macOS)	﻿2026-09-26T07:48:19.8669130Z ##[group]Run python -m pip install pytest
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8669550Z python -m pip install pytest
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8669820Z python -m pytest -q
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8731150Z shell: /bin/bash -e {0}
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8731430Z env:
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8731720Z   CARGO_HOME: /Users/runner/.cargo
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8731990Z   CARGO_INCREMENTAL: 0
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8732230Z   CARGO_TERM_COLOR: always
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8732610Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8733190Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.12.10/arm64/lib/pkgconfig
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8733920Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8734460Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8735130Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8735500Z   GRIPSACK_DENO: /Users/runner/.deno-bin/deno
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:19.8735940Z ##[endgroup]
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.1508060Z Collecting pytest
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.1956360Z   Downloading pytest-9.1.1-py3-none-any.whl.metadata (7.6 kB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.2312780Z Collecting iniconfig>=1.0.1 (from pytest)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.2347750Z   Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.3156780Z Collecting packaging>=22 (from pytest)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.3199830Z   Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.3561290Z Collecting pluggy<2,>=1.5 (from pytest)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.3601300Z   Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.3989840Z Collecting pygments>=2.7.2 (from pytest)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.4030880Z   Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.4150730Z Downloading pytest-9.1.1-py3-none-any.whl (386 kB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.4321300Z Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.4406580Z Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.4473540Z Downloading packaging-26.3-py3-none-any.whl (129 kB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.4571780Z Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.4818020Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 47.3 MB/s  0:00:00
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:21.5210540Z Installing collected packages: pygments, pluggy, packaging, iniconfig, pytest
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:22.8129550Z 
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:48:22.8138130Z Successfully installed iniconfig-2.3.0 packaging-26.3 pluggy-1.6.0 pygments-2.21.0 pytest-9.1.1
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:49:04.5542260Z ........................................................................ [ 22%]
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:49:46.4262990Z ........................................................................ [ 45%]
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T07:51:14.9164630Z ........................................................................ [ 67%]
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T08:10:10.7161690Z ........................................................................ [ 90%]
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T08:10:15.3215850Z ...............................                                          [100%]
+e2e-macos	E2E (flow suite, native macOS)	2026-09-26T08:10:15.3216690Z 319 passed in 1311.95s (0:21:51)
+e2e-macos	Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	﻿2026-09-26T08:10:15.4086300Z Post job cleanup.
+e2e-macos	Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T08:10:15.9645660Z (node:82455) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+e2e-macos	Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065	2026-09-26T08:10:15.9650320Z (Use `node --trace-deprecation ...` to show where the warning was created)
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	﻿2026-09-26T08:10:15.9837880Z Post job cleanup.
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.1384490Z [command]/opt/homebrew/bin/git version
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.1692540Z git version 2.55.0
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.1719520Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/bc353970-6609-43b6-b4ad-48cc5464a521/.gitconfig'
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.1729610Z Temporarily overriding HOME='/Users/runner/work/_temp/bc353970-6609-43b6-b4ad-48cc5464a521' before making global git config changes
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.1730900Z Adding repository directory to the temporary git global config as a safe directory
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.1737510Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/gripsack/gripsack
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.1887010Z Removing SSH command configuration
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.1894720Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.1972380Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.3000210Z Removing HTTP extra header
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.3007540Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.3051290Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4477500Z Removing includeIf entries pointing to credentials config files
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4584970Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4686930Z includeif.gitdir:/Users/runner/work/gripsack/gripsack/.git.path
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4757160Z includeif.gitdir:/Users/runner/work/gripsack/gripsack/.git/worktrees/*.path
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4793140Z includeif.gitdir:/github/workspace/.git.path
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4800110Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4850760Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/gripsack/gripsack/.git.path
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4869100Z /Users/runner/work/_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4893030Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/gripsack/gripsack/.git.path \/Users\/runner\/work\/_temp\/git\-credentials\-05249148\-43e2\-4839\-8a71\-facf88fe25ac\.config
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4926430Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/gripsack/gripsack/.git/worktrees/*.path
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4934900Z /Users/runner/work/_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4941490Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/gripsack/gripsack/.git/worktrees/*.path \/Users\/runner\/work\/_temp\/git\-credentials\-05249148\-43e2\-4839\-8a71\-facf88fe25ac\.config
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4992230Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.4996980Z /github/runner_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.5019790Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-05249148\-43e2\-4839\-8a71\-facf88fe25ac\.config
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.5027090Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.5040170Z /github/runner_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.5077860Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-05249148\-43e2\-4839\-8a71\-facf88fe25ac\.config
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.5111040Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+e2e-macos	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-09-26T08:10:16.6237590Z Removing credentials config '/Users/runner/work/_temp/git-credentials-05249148-43e2-4839-8a71-facf88fe25ac.config'
+e2e-macos	Complete job	﻿2026-09-26T08:10:16.6349410Z Cleaning up orphan processes
+e2e-macos	Complete job	2026-09-26T08:10:19.0577480Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

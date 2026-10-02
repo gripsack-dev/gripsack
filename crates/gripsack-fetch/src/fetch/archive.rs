@@ -2,6 +2,7 @@
 //! Decoder output is streamed to a private spool so metadata can be admitted
 //! before tar's allocator or extraction sees it; payload size never becomes RAM.
 
+mod links;
 mod paths;
 mod pour;
 mod tar;

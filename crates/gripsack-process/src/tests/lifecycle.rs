@@ -74,3 +74,47 @@ fn callback_panic_kills_and_reaps_the_leader() {
     let error = sys::observe(pid.unwrap()).unwrap_err();
     assert_eq!(error.raw_os_error(), Some(libc::ECHILD));
 }
+
+#[test]
+fn completed_cleanup_cannot_erase_an_expired_operation() {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let child = command("exec sleep 60")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let pid = child.id() as libc::pid_t;
+    let (mut guard, _pipes) = crate::lifecycle::Guard::new(child, deadline);
+    // Establish successful signalling while the group is live. Darwin may
+    // legitimately return EPERM for a zombie-only group; with an already
+    // expired budget the classifier cannot prove that EPERM benign. That
+    // earlier syscall error must remain observable, not be hidden by a timeout.
+    guard.terminate().unwrap();
+    let observation_deadline = Instant::now() + Duration::from_secs(2);
+    while !guard.observe().unwrap() {
+        assert!(Instant::now() < observation_deadline, "child did not exit");
+        std::thread::yield_now();
+    }
+    // The original operation allowance expires after successful termination.
+    // There are no pipes to drain; only otherwise-complete cleanup is tested.
+    // Loop rather than one sleep: an early wake must never let the deadline
+    // look unexpired to the guard.
+    while Instant::now() < deadline {
+        std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+    }
+    let (status, error) = guard.finish(|_| Ok(true));
+    assert_eq!(status.unwrap().signal(), Some(libc::SIGKILL));
+    assert!(
+        matches!(
+            error.as_ref().map(io::Error::kind),
+            Some(io::ErrorKind::TimedOut)
+        ),
+        "expired_cleanup_was_reported_successfully: {error:?}",
+    );
+    assert_eq!(
+        sys::observe(pid).unwrap_err().raw_os_error(),
+        Some(libc::ECHILD),
+    );
+}

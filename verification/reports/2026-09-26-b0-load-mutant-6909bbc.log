@@ -1,0 +1,36 @@
+RUNNER_SOURCE_COMMIT=6909bbc55226f917238e31c189f7be29e42c41c9
+RUNNER_SOURCE_FINGERPRINT=b222d2c04acc479eb2d852cf5bf96d5d8dfc11fc70b71d8f3f5a18c26873c0b0
+RUNNER_SOURCE_ROOTS_DIRTY=clean before/after; ignored isolated result files only
+RUNNER_COMMAND=env PATH=<temporary load-fault/docker wrapper delegating all other calls to real daemon>:PATH sh probes.sh
+RUNNER_EXIT=1 expected; B0 six-case success marker absent
+RUNNER_TOOL_VERSIONS=Python 3.12.3, Docker 29.7.2, actual pinned BuildKit v0.33.0 and Go 1.26.3
+RUNNER_INPUTS=two fresh valid OCI exports verified independently, then one intentional Docker load exit 47; injector SHA-256 a73b6691e341c8262659135fda32d76b0aa34a4133c6d3da55bc493a4499a75d; no named worker/cache remains
+INTENDED_PROPERTY=passing OCI verification alone cannot qualify an output Docker engine refuses to load and run
+OBSERVED_REJECTION=FAIL: separate-runtime docker load rejected the OCI layout; driver exited 1
+
+===== passing independent OCI verdict before refusal =====
+{
+  "verdicts": [
+    "/tmp/gripsack-b0-lane-l5u_ww3o/checkout/verification/buildkit-qualification/results/oci-1.tar: all blob digests, DiffIDs, media types and platform verified",
+    "two fresh-worker exports reproduce (DiffIDs, normalized config, file digests)"
+  ],
+  "reproduction": {
+    "diff-ids-match": true,
+    "config-normalized-match": true,
+    "files-match": true,
+    "manifest-digests": [
+      "sha256:ba80985e766387c2406d3f6191293e33653d3111de3d1a00fa631a7145df3c5f",
+      "sha256:aaea51984c06008f85a48faf4623f57634407b368987bbaafb38afa10c2e7984"
+    ],
+    "verdict": "reproduced from two clean workers"
+  }
+}
+
+===== actual refused Docker load =====
+calibration: deliberate Docker engine load rejection
+
+===== B0 driver rejection =====
+FAIL: separate-runtime docker load rejected the OCI layout (see probe4-load.txt)
+
+B0_LOAD_MUTANT=1
+RUNNER_COUNTS=1 calibrated expected-failure execution, 1 passing mandatory independent-runtime refusal, zero skipped/missing tools.

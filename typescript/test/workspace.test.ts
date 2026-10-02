@@ -1,0 +1,883 @@
+/** Workspace v5 contract: named outputs, immutable command authoring,
+ *  reference admission, literal Bash and pure deterministic emission. */
+
+import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { chdir } from "node:process";
+import { emitIr, module } from "../src/index.ts";
+import {
+  artifact,
+  artifactFile,
+  bash,
+  bashBody,
+  check,
+  daily,
+  emitWorkspaceIr,
+  environment,
+  exec,
+  file,
+  hook,
+  hostPath,
+  identity,
+  image,
+  lit,
+  literalText,
+  managedBlock,
+  packageCommand,
+  pkg,
+  profile,
+  provider,
+  recipe,
+  repoFile,
+  runBash,
+  schedule,
+  symlinkTo,
+  targetPlatform,
+  task,
+  templateText,
+  treeFiles,
+  trackedCopyTo,
+  weekly,
+  workspace,
+} from "../src/workspace.ts";
+import type { WorkspaceArg, WorkspaceFile, WorkspaceValue } from "../src/workspace.ts";
+import { githubRelease, tarball } from "../src/fetch.ts";
+import type { HostFacts } from "../src/index.ts";
+import { thrownDiagnostic } from "./diagnostic.ts";
+import { fileURLToPath } from "node:url";
+
+const facts: HostFacts = { os: "linux", arch: "x86_64", libc: "glibc-2.36", hostname: "box" };
+const linux = { os: "linux", arch: "x86_64" } as const;
+const hostExecution = { kind: "host", access: "unconfined" } as const;
+const relocatable = { kind: "relocatable" } as const;
+const fixedTools = { kind: "fixed_prefix", prefix: "/opt/tools" } as const;
+
+const emit = (value: WorkspaceValue, tags: string[] = []) =>
+  JSON.parse(emitWorkspaceIr(value, facts, tags));
+
+/** The full kitchen sink: every output kind wired through typed refs. */
+function kitchenSink(): WorkspaceValue {
+  const bashSrc = recipe("bash-src", {
+    source: tarball("https://example.invalid/bash.tar.gz"),
+    execution: hostExecution,
+    output_kind: "tree",
+    target: linux,
+  });
+  const bash = pkg("bash", {
+    producer: "bash-src",
+    commands: { bash: "bin/bash" },
+    target: linux,
+    layout: relocatable,
+  });
+  const tools = recipe("tools", {
+    source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
+    execution: hostExecution,
+    output_kind: "tree",
+    target: linux,
+    steps: [
+      runBash({
+        interpreter: packageCommand("bash", "bash"),
+        body: "make install",
+        env: { PREFIX: lit("/usr") },
+        cwd: hostPath("/tmp"),
+      }),
+      exec({ argv: [lit("cp"), artifact("bash", "share/doc"), lit("share/doc")] }),
+    ],
+    checks: ["tools-ok"],
+  });
+  const toolsBin = pkg("tools-bin", {
+    producer: "tools",
+    commands: { tools: "bin/tools" },
+    runtime: ["bash"],
+    target: linux,
+    layout: fixedTools,
+  });
+  const toolsOk = check("tools-ok", {
+    run: exec({ argv: [packageCommand("tools-bin", "tools"), lit("--version")] }),
+    subject: "tools-bin",
+  });
+  // This environment selects relocatable Bash. A fixed-prefix
+  // package needs a matching environment prefix; images cannot
+  // materialize one until B4 owns their location contract.
+  const dev = environment("dev", {
+    packages: ["bash"],
+    target: linux,
+    env: { TOOLS_HOME: artifact("tools-bin", ".") },
+  });
+  const build = task("build", {
+    run: exec({
+      argv: [packageCommand("tools-bin", "tools"), lit("build")],
+      cwd: { kind: "literal", value: "." },
+    }),
+    deps: ["lint"],
+    environment: "dev",
+    checks: ["tools-ok"],
+  });
+  const lint = task("lint", {
+    run: exec({ argv: [packageCommand("tools-bin", "tools"), lit("lint")] }),
+    environment: "dev",
+  });
+  const nightly = schedule("nightly", { task: "build", trigger: weekly("fri", "03:30") });
+  const reload = hook("reload", {
+    run: exec({ argv: [lit("true")] }),
+    trigger: "post_activate",
+  });
+  const me = profile("me", {
+    files: [
+      file({ content: literalText("x=1\n"), destination: symlinkTo("~/.xrc") }),
+      file({
+        source: repoFile("dotfiles/bashrc.sh"),
+        content: identity(),
+        destination: managedBlock("~/.bashrc", "#"),
+      }),
+      file({
+        source: artifactFile("tools-bin", "share/tools.toml"),
+        content: templateText("editor = {{ editor }}", { editor: "hx" }),
+        destination: trackedCopyTo("~/.config/tools.toml"),
+      }),
+    ],
+    environment: "dev",
+    schedules: ["nightly"],
+    hooks: ["reload"],
+  });
+  const ci = image("ci", { packages: ["bash"], target: linux });
+  return workspace({
+    outputs: [
+      bashSrc,
+      bash,
+      tools,
+      toolsBin,
+      toolsOk,
+      dev,
+      build,
+      lint,
+      nightly,
+      reload,
+      me,
+      ci,
+    ],
+  });
+}
+
+Deno.test("emitWorkspaceIr emits the v5 workspace envelope", () => {
+  const ir = emit(kitchenSink(), ["work"]);
+
+  assert.deepEqual(Object.keys(ir), ["ir_version", "host", "workspace"]);
+  assert.equal(ir.ir_version, 5);
+  assert.equal(ir.modules, undefined, "workspace envelope never carries modules");
+  assert.equal(ir.resources, undefined);
+  assert.deepEqual(Object.keys(ir.host), ["os", "arch", "tags", "libc"]);
+  assert.equal("hostname" in ir.host, false, "hostname never crosses into the IR");
+  assert.deepEqual(ir.host.tags, ["work"]);
+
+  assert.deepEqual(Object.keys(ir.workspace), ["span", "outputs"]);
+  assert.match(ir.workspace.span.file, /workspace\.test\.ts$/);
+  assert.ok(ir.workspace.span.line >= 1);
+
+  const byName = Object.fromEntries(
+    ir.workspace.outputs.map((o: { name: string }) => [o.name, o]),
+  );
+  assert.deepEqual(Object.keys(byName), [
+    "bash-src",
+    "bash",
+    "tools",
+    "tools-bin",
+    "tools-ok",
+    "dev",
+    "build",
+    "lint",
+    "nightly",
+    "reload",
+    "me",
+    "ci",
+  ]);
+
+  // every output carries name/kind/span with a real provenance
+  for (const o of ir.workspace.outputs) {
+    assert.ok(o.name.length > 0);
+    assert.match(o.span.file, /workspace\.test\.ts$/);
+    assert.ok(o.span.line >= 1, `${o.name} span.line`);
+  }
+  assert.deepEqual(
+    ir.workspace.outputs.map((o: { kind: string }) => o.kind),
+    [
+      "recipe",
+      "package",
+      "recipe",
+      "package",
+      "check",
+      "environment",
+      "task",
+      "task",
+      "schedule",
+      "hook",
+      "profile",
+      "image",
+    ],
+  );
+
+  // recipe: workspaceFetch wrapper carries its own mandatory span
+  assert.deepEqual(Object.keys(byName.tools.source), ["fetch", "span"]);
+  assert.equal(byName.tools.source.fetch.kind, "github_release");
+  assert.ok(byName.tools.source.span.line >= 1);
+  assert.deepEqual(byName.tools.execution, hostExecution);
+  assert.deepEqual(byName.tools.checks, ["tools-ok"]);
+
+  // run_bash: pinned package_command interpreter, literal body, no line_map
+  const rb = byName.tools.steps[0];
+  assert.equal(rb.kind, "run_bash");
+  assert.deepEqual(rb.interpreter, { kind: "package_command", package: "bash", command: "bash" });
+  assert.equal(rb.body, "make install");
+  assert.equal(rb.line_map, undefined, "single-line body emits no line_map");
+  assert.deepEqual(rb.env, { PREFIX: { kind: "literal", value: "/usr" } });
+  assert.deepEqual(rb.cwd, { kind: "host", path: "/tmp" });
+  assert.ok(rb.span.line >= 1, "command span");
+
+  // exec: typed argv refs
+  const ex = byName.tools.steps[1];
+  assert.deepEqual(ex.argv, [
+    { kind: "literal", value: "cp" },
+    { kind: "artifact", output: "bash", selector: "share/doc" },
+    { kind: "literal", value: "share/doc" },
+  ]);
+
+  // package: recipe-ref producer in the tagged wire form
+  assert.deepEqual(byName["tools-bin"].producer, { kind: "recipe", recipe: "tools" });
+  assert.deepEqual(byName["tools-bin"].commands, { tools: "bin/tools" });
+  assert.deepEqual(byName["tools-bin"].runtime, ["bash"]);
+  assert.deepEqual(byName["tools-bin"].layout, fixedTools);
+
+  // task / schedule / hook
+  assert.deepEqual(byName.build.deps, ["lint"]);
+  assert.equal(byName.build.environment, "dev");
+  assert.deepEqual(byName.nightly.trigger, { kind: "weekly", weekday: "fri", time: "03:30" });
+  assert.equal(byName.nightly.scope, "user");
+  assert.equal(byName.reload.trigger, "post_activate");
+
+  // profile files: origin optional only for literal content
+  const [rc, bashrc, toolsToml] = byName.me.files;
+  assert.equal(rc.source, undefined, "literal content needs no origin");
+  assert.deepEqual(rc.content, { kind: "literal", text: "x=1\n" });
+  assert.deepEqual(rc.destination, { kind: "symlink", path: "~/.xrc" });
+  assert.deepEqual(bashrc.source, { kind: "repo_file", path: "dotfiles/bashrc.sh" });
+  assert.deepEqual(bashrc.content, { kind: "identity" });
+  assert.deepEqual(bashrc.destination, { kind: "managed_block", path: "~/.bashrc", marker: "#" });
+  assert.deepEqual(toolsToml.source, {
+    kind: "artifact_file",
+    output: "tools-bin",
+    selector: "share/tools.toml",
+  });
+  assert.deepEqual(toolsToml.content, {
+    kind: "template",
+    template: "editor = {{ editor }}",
+    variables: { editor: "hx" },
+  });
+  assert.ok(rc.span.line >= 1, "file span");
+  assert.deepEqual(byName.me.schedules, ["nightly"]);
+  assert.deepEqual(byName.me.hooks, ["reload"]);
+
+  // image / environment / check
+  assert.deepEqual(byName.ci.packages, ["bash"]);
+  assert.deepEqual(byName.dev.packages, ["bash"]);
+  assert.deepEqual(byName.dev.env, {
+    TOOLS_HOME: { kind: "artifact", output: "tools-bin", selector: "." },
+  });
+  assert.equal(byName["tools-ok"].subject, "tools-bin");
+});
+
+Deno.test("emitIr legacy path emits the v5 modules envelope, never a workspace", () => {
+  const ir = JSON.parse(emitIr({ modules: [module("m", { lint: "toml" })] }, facts, []));
+  assert.deepEqual(Object.keys(ir), ["ir_version", "host", "modules"]);
+  assert.equal(ir.ir_version, 5);
+  assert.equal(ir.workspace, undefined);
+  assert.equal(ir.modules.m.lint, "toml");
+});
+
+Deno.test("duplicate output names throw at declaration with both sites", () => {
+  const a = recipe("same", {
+    source: tarball("https://example.invalid/a.tar.gz"),
+    execution: hostExecution,
+    output_kind: "file",
+    target: linux,
+  });
+  const b = image("same", { packages: [], target: linux });
+  const diagnostic = thrownDiagnostic(
+    () => workspace({ outputs: [a, b] }),
+    "E125",
+  );
+  assert.equal(diagnostic.labels.length, 2);
+  assert.notEqual(diagnostic.labels[0]?.note, diagnostic.labels[1]?.note);
+  const [first, again] = diagnostic.labels.map((label) => label.span);
+  assert.ok(first?.file.endsWith("workspace.test.ts"));
+  assert.ok(first && again, "both labels carry spans");
+  assert.ok(again?.file.endsWith("workspace.test.ts"));
+  assert.ok(first.line !== again.line, "both declaration lines labeled");
+});
+
+Deno.test("duplicate output names throw at emit for hand-built values", () => {
+  const a = recipe("same", {
+    source: tarball("https://example.invalid/a.tar.gz"),
+    execution: hostExecution,
+    output_kind: "file",
+    target: linux,
+  });
+  const node = JSON.parse(JSON.stringify(a.ir));
+  const fake = {
+    __gripsack: "workspace",
+    ir: { span: { file: "fake.ts", line: 1 }, outputs: [node, node] },
+  } as unknown as WorkspaceValue;
+  const diagnostic = thrownDiagnostic(
+    () => emitWorkspaceIr(fake, facts),
+    "E125",
+  );
+  assert.equal(diagnostic.labels.length, 2, "both declaration spans labeled");
+});
+
+Deno.test("Bash body interpolation rejects the literal at its source line", async () => {
+  const file = (await Deno.readTextFile(new URL(import.meta.url))).split("\n");
+  const site = file.findIndex((line) => line.trim() === "echo \\${HOME} && true") + 1;
+  assert.ok(site > 0);
+  const tagged = thrownDiagnostic(
+    () => bashBody`
+      echo before
+      echo \${HOME} && true
+    `,
+    "E130",
+  );
+  assert.equal(tagged.labels[0]?.span?.file, fileURLToPath(import.meta.url));
+  assert.equal(tagged.labels[0]?.span?.line, site, "label points at the interpolation line");
+  // a REAL evaluated interpolation is rejected at its own source line
+  const evaluated = thrownDiagnostic(
+    () => bashBody`echo ${"dynamic"}`,
+    "E130",
+  );
+  const evaluatedSite =
+    file.findIndex((line) => line.includes('() => bashBody`echo ${"dynamic"}`')) + 1;
+  assert.ok(evaluatedSite > 0);
+  assert.equal(evaluated.labels[0]?.span?.line, evaluatedSite);
+  const inline = thrownDiagnostic(
+    () => runBash({ interpreter: packageCommand("bash", "bash"), body: "echo ${HOME}" }),
+    "E130",
+  );
+  assert.ok(inline.labels[0]?.span?.file.endsWith("workspace.test.ts"));
+});
+
+Deno.test("run_bash requires a declared package interpreter", () => {
+  if (false) {
+    // @ts-expect-error Ambient shell names are not valid authoring interpreters.
+    runBash({ interpreter: lit("bash"), body: "true" });
+  }
+  for (const interpreter of [lit("bash"), artifact("tools", "bin/bash")]) {
+    const diagnostic = thrownDiagnostic(
+      () => runBash({ interpreter: interpreter as never, body: "true" }),
+      "E128",
+    );
+    assert.ok(diagnostic.labels[0]?.span?.file.endsWith("workspace.test.ts"));
+  }
+});
+
+Deno.test("run_bash maps dedented lines to the original template, not the call", async () => {
+  const body = bashBody`
+      echo one
+      echo two
+    `;
+  const cmd = runBash({ interpreter: packageCommand("bash", "bash"), body });
+  assert.equal(cmd.body, "echo one\necho two");
+  const file = (await Deno.readTextFile(new URL(import.meta.url))).split("\n");
+  const originalLine = (text: string) => file.findIndex((line) => line.trim() === text) + 1;
+  assert.deepEqual(cmd.line_map, [originalLine("echo one"), originalLine("echo two")]);
+  assert.ok(cmd.line_map![0]! < cmd.span.line, "body location precedes command construction");
+  assert.match(cmd.span.file, /workspace\.test\.ts$/);
+  const withoutDedent = bashBody`echo top
+echo bottom`;
+  const raw = runBash({ interpreter: packageCommand("bash", "bash"), body: withoutDedent });
+  const openingLine = file.findIndex((line) => line.trim().startsWith("const withoutDedent = bashBody`echo top")) + 1;
+  assert.ok(openingLine > 0 && file[openingLine]!.trim().startsWith("echo bottom"));
+  assert.deepEqual(raw.line_map, [openingLine, openingLine + 1]);
+  assert.throws(
+    () => runBash({ interpreter: packageCommand("bash", "bash"), body: "\n  echo one" }),
+    /multiline body needs bashBody/,
+  );
+  assert.throws(
+    () => runBash({ interpreter: packageCommand("bash", "bash"), body: "echo one\necho two" }),
+    /multiline body needs bashBody/,
+  );
+});
+
+Deno.test("Bash fluent and object forms normalize without sharing mutable state", () => {
+  const source = bashBody`echo "ready"`;
+  const base = bash(packageCommand("bash", "bash")).body(source);
+  const fluent = base
+    .env("Z", lit("two words"))
+    .env("A", artifact("payload", "src"))
+    .cwd(hostPath("/tmp/build"))
+    .build();
+  const object = runBash({
+    interpreter: packageCommand("bash", "bash"),
+    body: source,
+    env: { Z: lit("two words"), A: artifact("payload", "src") },
+    cwd: hostPath("/tmp/build"),
+    span: fluent.span,
+  });
+  assert.equal(JSON.stringify(fluent), JSON.stringify(object));
+  assert.equal(base.build().env, undefined);
+  assert.deepEqual(Object.keys(fluent.env ?? {}), ["A", "Z"]);
+  const ambient = thrownDiagnostic(() => bash(lit("bash") as never), "E128");
+  assert.ok(ambient.labels[0]?.span?.file.endsWith("workspace.test.ts"));
+});
+
+Deno.test("fluent exec and object form emit the same command, preserving branches", () => {
+  const base = exec(packageCommand("tools", "jq"));
+  const withArg = base.arg(artifact("input", "data/file name.txt"));
+  const fluent = withArg
+    .env("Z_OUTPUT", lit("two words"))
+    .env("A_INPUT", artifact("input", "."))
+    .cwd(hostPath("/tmp/build"))
+    .build();
+  const object = exec({
+    argv: [packageCommand("tools", "jq"), artifact("input", "data/file name.txt")],
+    env: { Z_OUTPUT: lit("two words"), A_INPUT: artifact("input", ".") },
+    cwd: hostPath("/tmp/build"),
+    span: fluent.span,
+  });
+  assert.equal(JSON.stringify(fluent), JSON.stringify(object));
+  assert.deepEqual(Object.keys(fluent.env ?? {}), ["A_INPUT", "Z_OUTPUT"]);
+  assert.deepEqual(base.build().argv, [packageCommand("tools", "jq")]);
+  assert.equal(withArg.build().env, undefined);
+  assert.ok(Object.isFrozen(fluent));
+  assert.throws(() => (fluent.argv as WorkspaceArg[]).push(lit("changed")), TypeError);
+  assert.throws(() => base.env("COMMAND", packageCommand("tools", "jq")), /environment values are/);
+  assert.throws(() => exec(hostPath("/bin/jq") as never), /kind must be/);
+});
+
+Deno.test("environment names survive cloning even when shadowing a prototype key", () => {
+  const env = Object.fromEntries([["__proto__", lit("literal value")]]);
+  const fromFluent = exec(lit("env")).env("__proto__", lit("literal value")).build();
+  const fromObject = exec({ argv: [lit("env")], env, span: fromFluent.span });
+  assert.equal(JSON.stringify(fromObject), JSON.stringify(fromFluent));
+  assert.deepEqual(JSON.parse(JSON.stringify(fromObject)).env["__proto__"], lit("literal value"));
+});
+
+Deno.test("file origin is optional only for literal content", () => {
+  assert.throws(
+    () => file({ content: identity(), destination: symlinkTo("~/.x") }),
+    /source is required unless content is literalText/,
+  );
+  assert.throws(
+    () =>
+      file({
+        content: templateText("{{ v }}", { v: "1" }),
+        destination: symlinkTo("~/.x"),
+      }),
+    /source is required unless content is literalText/,
+  );
+  const literal = file({ content: literalText("x"), destination: symlinkTo("~/.x") });
+  assert.equal(literal.source, undefined);
+  const templated = file({
+    source: repoFile("t/x.tmpl"),
+    content: templateText("{{ v }}", { v: "1" }),
+    destination: trackedCopyTo("~/.x"),
+  });
+  assert.equal(templated.source?.kind, "repo_file");
+});
+
+Deno.test("repository file origins reject path escapes before file admission", () => {
+  for (const path of [
+    "../outside", "/etc/passwd", "cfg/./settings", "cfg//settings",
+    "cfg/", ".", "cfg\\..\\private", "cfg/\0private",
+  ]) {
+    assert.throws(() => repoFile(path), /normalized relative POSIX file path/);
+    assert.throws(
+      () => file({
+        source: { kind: "repo_file", path },
+        content: identity(),
+        destination: trackedCopyTo("~/.config/tool"),
+      }),
+      /normalized relative POSIX file path/,
+    );
+  }
+});
+
+Deno.test("file destinations reject escapes at authoring, not just in decoded IR", () => {
+  for (const destination of [
+    trackedCopyTo("../escape"),
+    symlinkTo("~"),
+    managedBlock("~/a/../b", "gripsack"),
+    trackedCopyTo("/trailing/"),
+  ]) {
+    assert.throws(
+      () => file({ content: literalText("x"), destination }),
+      /must be absolute or start with ~\//,
+    );
+  }
+  // The same shape admits across every destination policy.
+  file({ content: literalText("x"), destination: symlinkTo("~/.vimrc") });
+  file({ content: literalText("x"), destination: trackedCopyTo("/etc/gripsack/tool.conf") });
+  file({
+    content: literalText("x"),
+    destination: managedBlock("~/.shellrc", "gripsack:block"),
+  });
+});
+
+Deno.test("emit rejects unknown output references with the reference span", () => {
+  const t = task("build", {
+    run: exec({ argv: [lit("true")] }),
+    deps: ["ghost"],
+  });
+  const unknown = thrownDiagnostic(
+    () => emitWorkspaceIr(workspace({ outputs: [t] }), facts),
+    "E126",
+  );
+  assert.ok(unknown.labels[0]?.span?.file.endsWith("workspace.test.ts"));
+});
+
+Deno.test("emit rejects wrong-kind references naming both sites", () => {
+  const dev = environment("dev", { packages: [], target: linux });
+  const p = pkg("p", {
+    producer: "dev",
+    commands: { p: "bin/p" },
+    target: linux,
+    layout: relocatable,
+  });
+  const diagnostic = thrownDiagnostic(
+    () => emitWorkspaceIr(workspace({ outputs: [dev, p] }), facts),
+    "E126",
+  );
+  assert.equal(diagnostic.labels.length, 2, "reference and declaration spans labeled");
+  assert.equal(diagnostic.labels[0]?.note, "referenced here");
+  assert.match(diagnostic.labels[1]?.note ?? "", /'dev' declared here/);
+  assert.ok(diagnostic.labels[0]?.span?.line !== diagnostic.labels[1]?.span?.line);
+});
+
+
+Deno.test("emit rejects package_command refs to unknown commands", () => {
+  const src = recipe("src", {
+    source: tarball("https://example.invalid/x.tar.gz"),
+    execution: hostExecution,
+    output_kind: "tree",
+    target: linux,
+  });
+  const p = pkg("p", {
+    producer: "src",
+    commands: { tool: "bin/tool" },
+    target: linux,
+    layout: relocatable,
+  });
+  const c = check("c", {
+    run: exec({ argv: [packageCommand("p", "nope")] }),
+    subject: "p",
+  });
+  const noCommand = thrownDiagnostic(
+    () => emitWorkspaceIr(workspace({ outputs: [src, p, c] }), facts),
+    "E126",
+  );
+  assert.match(noCommand.help ?? "", /provides: tool/);
+  assert.ok(noCommand.labels[0]?.span?.file.endsWith("workspace.test.ts"));
+});
+
+Deno.test("emit rejects task dependency cycles", () => {
+  const a = task("a", { run: exec({ argv: [lit("true")] }), deps: ["b"] });
+  const b = task("b", { run: exec({ argv: [lit("true")] }), deps: ["a"] });
+  const cycle = thrownDiagnostic(
+    () => emitWorkspaceIr(workspace({ outputs: [a, b] }), facts),
+    "E127",
+  );
+  assert.deepEqual(
+    cycle.labels.map((label) => label.span?.line),
+    [a.ir.span.line, b.ir.span.line],
+  );
+  assert.ok(cycle.labels.every((label) => label.span?.file.endsWith("workspace.test.ts")));
+});
+
+Deno.test("emit rejects producer/artifact cycles but admits validation loops", () => {
+  // recipe artifact-refs the package it produces: a real cycle
+  const cyc = recipe("cyc", {
+    source: tarball("https://example.invalid/x.tar.gz"),
+    execution: hostExecution,
+    output_kind: "tree",
+    target: linux,
+    steps: [exec({ argv: [artifact("p", "bin/p")] })],
+  });
+  const p = pkg("p", {
+    producer: "cyc",
+    commands: { p: "bin/p" },
+    target: linux,
+    layout: relocatable,
+  });
+  const failure = thrownDiagnostic(
+    () => emitWorkspaceIr(workspace({ outputs: [cyc, p] }), facts),
+    "E127",
+  );
+  assert.equal(failure.labels.length, 2);
+
+  // a recipe gated by a check on the package it produces is legitimate
+  const tools = recipe("tools", {
+    source: tarball("https://example.invalid/t.tar.gz"),
+    execution: hostExecution,
+    output_kind: "tree",
+    target: linux,
+    checks: ["ok"],
+  });
+  const bin = pkg("bin", {
+    producer: "tools",
+    commands: { t: "bin/t" },
+    target: linux,
+    layout: relocatable,
+  });
+  const ok = check("ok", { run: exec({ argv: [lit("true")] }), subject: "bin" });
+  const ir = emit(workspace({ outputs: [tools, bin, ok] }));
+  assert.equal(ir.workspace.outputs.length, 3);
+});
+
+Deno.test("a provider-backed package needs no synthetic recipe", () => {
+  const jq = pkg("jq", {
+    producer: provider(githubRelease({ repo: "jqlang/jq", asset: "jq-{version}.tar.gz" })),
+    commands: { jq: "bin/jq" },
+    target: linux,
+    layout: relocatable,
+  });
+  const ir = emit(workspace({ outputs: [jq] }));
+  const producer = ir.workspace.outputs[0].producer;
+  assert.equal(producer.kind, "provider");
+  assert.equal(producer.provider.fetch.kind, "github_release");
+  assert.equal(producer.provider.fetch.repo, "jqlang/jq");
+  assert.ok(producer.provider.span.line >= 1, "provider fetch provenance");
+  assert.match(producer.provider.span.file, /workspace\.test\.ts$/);
+});
+
+Deno.test("no import-order registry: repeated evals in one process emit identical IR", () => {
+  function build(): WorkspaceValue {
+    const tools = recipe("tools", {
+      source: tarball("https://example.invalid/t.tar.gz"),
+      execution: hostExecution,
+      output_kind: "tree",
+      target: linux,
+    });
+    const bin = pkg("bin", {
+      producer: "tools",
+      commands: { t: "bin/t" },
+      target: linux,
+      layout: relocatable,
+    });
+    return workspace({ outputs: [tools, bin] });
+  }
+  const first = emitWorkspaceIr(build(), facts);
+  // interleave unrelated constructions and a second, different workspace
+  kitchenSink();
+  image("unrelated", { packages: [], target: linux });
+  const second = emitWorkspaceIr(build(), facts);
+  assert.equal(second, first, "same declarations, same bytes — no registry state");
+});
+
+Deno.test("constructed values are deeply frozen", () => {
+  const out = recipe("tools", {
+    source: tarball("https://example.invalid/t.tar.gz"),
+    execution: hostExecution,
+    output_kind: "tree",
+    target: linux,
+    steps: [exec({ argv: [lit("make")] })],
+  });
+  assert.ok(Object.isFrozen(out));
+  assert.ok(Object.isFrozen(out.ir));
+  assert.ok(Object.isFrozen(out.ir.source));
+  assert.ok(Object.isFrozen(out.ir.source.fetch));
+  assert.ok(Object.isFrozen(out.ir.steps));
+  assert.ok(Object.isFrozen(out.ir.steps![0]));
+  assert.ok(Object.isFrozen((out.ir.steps![0] as { argv: unknown[] }).argv));
+  assert.throws(() => {
+    (out.ir as { name: string }).name = "other";
+  }, TypeError);
+  assert.throws(() => {
+    ((out.ir.steps![0] as { argv: unknown[] }).argv as unknown[]).push(lit("x"));
+  }, TypeError);
+
+  const ws = kitchenSink();
+  assert.ok(Object.isFrozen(ws));
+  assert.ok(Object.isFrozen(ws.ir.outputs));
+  assert.throws(() => {
+    (ws.ir.outputs as unknown[]).push(out.ir);
+  }, TypeError);
+});
+
+Deno.test("stray objects and empty catalogs are rejected", () => {
+  const tools = recipe("tools", {
+    source: tarball("https://example.invalid/t.tar.gz"),
+    execution: hostExecution,
+    output_kind: "tree",
+    target: linux,
+  });
+  assert.throws(
+    () => workspace({ outputs: [tools, {} as never] }),
+    /outputs entries must be recipe\(\)\/pkg\(\).* values — got "object"/,
+  );
+  assert.throws(
+    () => workspace({ outputs: [false, null, undefined] }),
+    /outputs must declare at least one output/,
+  );
+  assert.throws(
+    () => emitWorkspaceIr({ __gripsack: "nope" } as never, facts),
+    /emitWorkspaceIr expects a workspace\(\{\.\.\.\}\) value/,
+  );
+});
+
+Deno.test("spans are mandatory: hand-built nodes without one are rejected", () => {
+  const node = {
+    name: "x",
+    kind: "image",
+    packages: [],
+    target: { os: "linux", arch: "x86_64" },
+  };
+  const fake = {
+    __gripsack: "workspace",
+    ir: { span: { file: "fake.ts", line: 1 }, outputs: [node] },
+  } as unknown as WorkspaceValue;
+  assert.throws(() => emitWorkspaceIr(fake, facts), /span/);
+
+  // explicit span override works for factory wrappers
+  const out = image("x", {
+    packages: [],
+    target: linux,
+    span: { file: "factory.ts", line: 7 },
+  });
+  const ir = emit(workspace({ outputs: [out], span: { file: "factory.ts", line: 3 } }));
+  assert.equal(ir.workspace.span.file, "factory.ts");
+  assert.equal(ir.workspace.outputs[0].span.line, 7);
+});
+
+Deno.test("enum and calendar boundaries reject out-of-grammar values", () => {
+  assert.throws(() => daily("25:00"), /local "HH:MM"/);
+  assert.throws(() => weekly("funday" as never, "10:00"), /weekday/);
+  assert.throws(
+    () => targetPlatform({ os: "windows" } as never),
+    /os must be "linux" or "macos"/,
+  );
+  assert.throws(
+    () =>
+      recipe("x", {
+        source: tarball("https://example.invalid/x.tar.gz"),
+        execution: { kind: "quantum" } as never,
+        output_kind: "tree",
+        target: linux,
+      }),
+    /execution\.kind must be "host" or "isolated_linux"/,
+  );
+  // isolated_linux is admitted explicitly — the core owns the
+  // unavailable-capability rejection, the frontend never reinterprets
+  const iso = recipe("iso", {
+    source: tarball("https://example.invalid/x.tar.gz"),
+    execution: { kind: "isolated_linux", worker: "buildkit" },
+    output_kind: "tree",
+    target: linux,
+  });
+  assert.deepEqual(emit(workspace({ outputs: [iso] })).workspace.outputs[0].execution, { kind: "isolated_linux", worker: "buildkit" });
+});
+
+function treeFixture(files: Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), "gripsack-tree-"));
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), content);
+  }
+  return root;
+}
+
+function repoPath(entry: WorkspaceFile): string {
+  if (!entry.source || entry.source.kind !== "repo_file") {
+    throw new Error("expected a repo_file source");
+  }
+  return entry.source.path;
+}
+
+function destPath(entry: WorkspaceFile): string {
+  if (entry.destination.kind === "managed_block") {
+    throw new Error("expected a path-only destination");
+  }
+  return entry.destination.path;
+}
+
+Deno.test("treeFiles expands a captured repo directory to explicit per-file entries", () => {
+  const previous = Deno.cwd();
+  const root = treeFixture({
+    "b.conf": "b",
+    "a.conf": "a",
+    "nested/deep/y.conf": "y",
+    "nested/x.conf": "x",
+    "other/z.conf": "z",
+  });
+  const boundary = treeFixture({ "s/z": "1", "s/zebra": "2" });
+  try {
+    chdir(root);
+    const files = treeFiles("nested", "~/.config/nested");
+    assert.deepEqual(
+      files.map((entry) => [repoPath(entry), destPath(entry)]),
+      [
+        ["nested/deep/y.conf", "~/.config/nested/deep/y.conf"],
+        ["nested/x.conf", "~/.config/nested/x.conf"],
+      ],
+    );
+    assert.ok(files.every((entry) => entry.content.kind === "identity"));
+    assert.ok(files.every((entry) => entry.destination.kind === "tracked_copy"));
+    assert.ok(files.every((entry) => entry.span.file.endsWith("workspace.test.ts")));
+
+    const linked = treeFiles("nested", "/etc/gripsack/nested", { mode: "symlink" });
+    assert.ok(linked.every((entry) => entry.destination.kind === "symlink"));
+
+    const included = treeFiles(".", "~/.config/all", { include: ["nested"] });
+    assert.deepEqual(
+      included.map(repoPath),
+      ["nested/deep/y.conf", "nested/x.conf"],
+    );
+    const withoutDeep = treeFiles(".", "~/.config/all", { exclude: ["nested/deep"] });
+    assert.deepEqual(
+      withoutDeep.map(repoPath),
+      ["a.conf", "b.conf", "nested/x.conf", "other/z.conf"],
+    );
+    // segment-boundary: excluding "s/z" must not drop the sibling "s/zebra"
+    chdir(boundary);
+    assert.deepEqual(
+      treeFiles("s", "~/.config/s", { exclude: ["z"] }).map(repoPath),
+      ["s/zebra"],
+    );
+
+    chdir(root);
+    assert.throws(() => treeFiles("../outside", "~/.x"), /normalized relative POSIX path/);
+    assert.throws(() => treeFiles("/etc", "~/.x"), /normalized relative POSIX path/);
+    assert.throws(() => treeFiles("nested", "relative"), /must be absolute or start with ~/);
+    assert.throws(
+      () => treeFiles(".", "~/.config/all", { maxEntries: 1 }),
+      /exceeded the 1 entry cap/,
+    );
+    // an invalid destination rejects even when the tree is empty
+    assert.throws(() => treeFiles("nested/empty-missing", "relative"), /must be absolute/);
+    // a missing or non-directory source is an authoring error, not a silent empty tree
+    assert.throws(
+      () => treeFiles("nested/empty-missing", "~/.config/missing"),
+      /must be an existing directory/,
+    );
+  } finally {
+    chdir(previous);
+    rmSync(root, { recursive: true, force: true });
+    rmSync(boundary, { recursive: true, force: true });
+  }
+});
+
+Deno.test("treeFiles never follows symlinks or special entries out of the captured tree", () => {
+  const previous = Deno.cwd();
+  const root = treeFixture({ "real.conf": "x" });
+  const outside = treeFixture({ "secret.conf": "outside" });
+  try {
+    symlinkSync(`${outside}/secret.conf`, `${root}/leak.conf`);
+    chdir(root);
+    assert.throws(() => treeFiles(".", "~/.config/leak"), /is not a regular file or directory/);
+    // a directory symlink is rejected just the same
+    rmSync(`${root}/leak.conf`);
+    symlinkSync(outside, `${root}/leak-dir`);
+    assert.throws(() => treeFiles(".", "~/.config/leak"), /is not a regular file or directory/);
+  } finally {
+    chdir(previous);
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});

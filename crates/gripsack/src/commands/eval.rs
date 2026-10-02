@@ -1,7 +1,9 @@
 use super::frontend::Frontend;
+use super::prepared::{PreparedEvaluation, operational};
 use super::probe::InputsFile;
-use crate::render::{self, Palette};
-use gripsack_ir::{Ir, Severity};
+use crate::render::DiagnosticSink;
+use gripsack_ir::{HostName, Ir, Severity};
+use gripsack_store::trust::evaluation::{EvaluationId, EvaluationOutcome, EvaluationSession};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::ExitCode;
@@ -60,155 +62,129 @@ pub struct EvalOutcome {
     /// Commands used to re-derive it with drifting rules (`update`
     /// read $HOSTNAME, a bash-ism POSIX sh does not export) and pick
     /// a different lockfile than the eval that preceded them.
-    pub host: String,
+    pub host: HostName,
+    /// Keeps every captured source alive through downstream materialization.
+    pub sources: std::sync::Arc<gripsack_store::source_bundle::SourceBundle>,
+    pub receipt: EvaluationId,
 }
 
 /// Evaluate an env repo's frontend into IR JSON (0005 §4). The core
 /// never embeds a runtime — this is a deno subprocess, sandboxed
 /// deny-by-default (0013 D2): no env, no network, no subprocesses,
-/// reads limited to the repo, the inputs dir, and the materialized
-/// frontend. Effects the frontend wants arrive as symbolic probe
+/// reads limited to the approved captured roots and one immutable input file.
+/// Effects the frontend wants arrive as symbolic probe
 /// requests; the core binds them and re-runs (two-stage eval, D6).
-#[tracing::instrument(name = "eval", skip(palette), fields(host))]
+#[tracing::instrument(name = "eval", skip(sink), fields(host))]
 pub fn eval_repo(
     repo: &Path,
-    host: Option<&str>,
-    palette: Palette,
+    host: Option<String>,
+    sink: &mut DiagnosticSink,
 ) -> Result<EvalOutcome, ExitCode> {
-    let env_path = repo.join("env.toml");
-    if !env_path.exists() {
-        eprintln!(
-            "grip: no env.toml in {} — is this an env repo?",
-            repo.display()
-        );
-        return Err(ExitCode::FAILURE);
-    }
-    let env = match gripsack_config::load_env(&env_path) {
-        Ok(env) => env,
-        Err(diagnostics) => {
-            eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
-            return Err(ExitCode::FAILURE);
-        }
-    };
-    let user = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .map(|home| gripsack_config::load_user(&home.join(".config/gripsack/config.toml")))
-        .transpose()
-        .map_err(|diagnostics| {
-            eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
-            ExitCode::FAILURE
-        })?;
-    let config = gripsack_config::merge(user.as_ref(), &env);
-    let limits = acquisition_limits(&config.settings);
-    let provisioning = std::sync::Arc::new(gripsack_fetch::FetchContext::new(limits));
-    // Rate budgets (0002 §throttle): [throttle] in env.toml overrides
-    // fetcher-declared budgets; buckets persist across runs so
-    // back-to-back applies share one budget.
-    gripsack_fetch::throttle::install(
-        &env.throttle,
-        Some(gripsack_store::gripsack_home().join("throttle.json")),
-    );
-    provision_plugins(&config.fetchers, &env.linters, &provisioning)?;
-    let host = host
-        .map(str::to_string)
-        .or_else(|| env.env.default_host.clone())
-        .unwrap_or_else(crate::commands::default_host);
-    tracing::Span::current().record("host", &host);
+    let prepared = PreparedEvaluation::capture(repo, host, sink)?;
+    eval_prepared(prepared, sink)
+}
 
-    let home = gripsack_store::gripsack_home();
-    let deno = match gripsack_exec::ensure_deno(&home, &provisioning) {
-        Ok(deno) => deno,
-        Err(e) => {
-            eprintln!("grip: deno provisioning failed: {e}");
-            eprintln!("hint: set GRIPSACK_DENO to a deno binary to bypass provisioning");
-            return Err(ExitCode::FAILURE);
+/// Continue with the exact prepared source selected by a compound command.
+pub(super) fn eval_prepared(
+    prepared: PreparedEvaluation,
+    sink: &mut DiagnosticSink,
+) -> Result<EvalOutcome, ExitCode> {
+    tracing::Span::current().record("host", prepared.host.as_str());
+    let mut receipt = EvaluationSession::begin(
+        prepared.home(),
+        prepared.sources(),
+        prepared.policy(),
+        prepared.provenance(),
+    )
+    .map_err(operational)?;
+    let receipt_id = receipt.id();
+    let approved = match prepared.authorize(!sink.is_json()) {
+        Ok(approved) => approved,
+        Err(code) => {
+            receipt
+                .finish(EvaluationOutcome::Rejected)
+                .map_err(operational)?;
+            return Err(code);
         }
     };
-    let frontend_dir = match gripsack_exec::ensure_ts_frontend(&home, env!("CARGO_PKG_VERSION")) {
-        Ok(Some(dir)) => dir,
-        Ok(None) => {
-            eprintln!(
-                "grip: this grip binary carries no embedded TypeScript frontend — \
-                 install a release build (plan/0013 D3)"
-            );
-            return Err(ExitCode::FAILURE);
-        }
-        Err(e) => {
-            eprintln!("grip: frontend materialization failed: {e}");
-            return Err(ExitCode::FAILURE);
-        }
-    };
-    // Build-time env (0001 §3.10 build side) — AFTER runtime
-    // selection and provisioning (0035 F10): repo-declared env rides
-    // build/fetch subprocesses, never the evaluator choice. The
-    // GRIPSACK_* namespace is rejected at config parse.
-    for (name, value) in &env.eval.env {
-        unsafe { std::env::set_var(name, value) };
-    }
-    let fetch = std::sync::Arc::new(gripsack_fetch::FetchContext::artifacts(
-        limits,
-        provisioning,
-    ));
-    let driver = frontend_dir.join("src/cli.ts");
-    // the allow-read grant and the driver's import base must be the
-    // same path the child sees — canonical, not CWD-relative
-    let repo = repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf());
-    let repo = &repo;
-
-    let facts = gripsack_exec::facts::detect();
-    let inputs = InputsFile::create(&home).map_err(|e| {
-        eprintln!(
-            "grip: cannot prepare inputs dir under {}: {e}",
-            home.display()
+    let result: Result<_, ExitCode> = (|| {
+        // Host facts precede the artifact/build overlay and are not part of
+        // source approval. Only the core binds subsequent explicit probes.
+        let facts = gripsack_exec::facts::detect();
+        gripsack_fetch::throttle::install(
+            &prepared.env.throttle,
+            Some(prepared.home().join("throttle.json")),
         );
-        ExitCode::FAILURE
-    })?;
-    let frontend = Frontend {
-        deno: &deno,
-        repo,
-        driver: &driver,
-        frontend_dir: &frontend_dir,
-        home: &home,
-    };
-    let (envelope, bound) =
-        super::probe::eval_to_fixpoint(&frontend, &host, facts, &inputs, palette)?;
-    if !envelope.diagnostics.is_empty() {
-        eprintln!(
-            "{}",
-            render::render_diagnostics(&envelope.diagnostics, palette)
-        );
-    }
+        provision_plugins(
+            &prepared.config.fetchers,
+            &prepared.env.linters,
+            &prepared.provisioning,
+        )?;
+        let fetch = std::sync::Arc::new(gripsack_fetch::FetchContext::artifacts(
+            acquisition_limits(&prepared.config.settings),
+            std::sync::Arc::clone(&prepared.provisioning),
+            prepared.env.eval.env.clone(),
+        ));
+        let inputs = InputsFile::create().map_err(operational)?;
+        let frontend = Frontend::new(&approved);
+        let (envelope, bound) = super::probe::eval_to_fixpoint(
+            &frontend,
+            prepared.host.as_str(),
+            facts,
+            &inputs,
+            sink,
+            &mut receipt,
+        )?;
+        sink.report(&envelope.diagnostics);
+        Ok((
+            envelope.ir.to_string(),
+            fetch,
+            HostInputs {
+                facts: facts.clone(),
+                probes: bound,
+            },
+        ))
+    })();
+    receipt
+        .finish(if result.is_ok() {
+            EvaluationOutcome::Completed
+        } else {
+            EvaluationOutcome::Failed
+        })
+        .map_err(operational)?;
+    let (ir_json, fetch, host_inputs) = result?;
+    tracing::info!(evaluation = %receipt_id, source = %prepared.sources().digest(), "evaluation source and inputs recorded");
+    let sources = std::sync::Arc::clone(prepared.sources());
     Ok(EvalOutcome {
-        ir_json: envelope.ir.to_string(),
-        env,
+        ir_json,
+        env: prepared.env,
         fetch,
-        host,
-        host_inputs: HostInputs {
-            facts: facts.clone(),
-            probes: bound,
-        },
+        host_inputs,
+        host: prepared.host,
+        sources,
+        receipt: receipt_id,
     })
 }
 
-/// Bind one probe request (0013 D6): the closed enum lives in the
-/// core on purpose — binding here, on the frontend's side of the
-/// boundary with core-supplied data, is what keeps the emitted IR
-/// fully concrete.
-/// Run registered linters against the IR's modules (0012 §move-1) and
-/// render what comes back; error severity fails the command.
+/// Linter configuration and source reads belong to the evaluated snapshot.
 pub fn run_lints(
     ir: &Ir,
     outcome: &EvalOutcome,
-    repo: &Path,
-    host: Option<&str>,
-    palette: Palette,
+    sink: &mut DiagnosticSink,
 ) -> Result<(), ExitCode> {
-    let diagnostics = gripsack_lint::run(ir, &outcome.env.linters, repo, host);
+    let mut diagnostics = gripsack_lint::run(
+        ir,
+        &outcome.env.linters,
+        outcome.sources.repository(),
+        &outcome.host,
+    );
+    super::prepared::map_diagnostics(&outcome.sources, &mut diagnostics);
     if diagnostics.is_empty() {
         return Ok(());
     }
-    eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
-    if diagnostics.iter().any(|d| d.severity == Severity::Error) {
+    let failed = diagnostics.iter().any(|d| d.severity == Severity::Error);
+    sink.report(&diagnostics);
+    if failed {
         return Err(ExitCode::FAILURE);
     }
     Ok(())
@@ -218,54 +194,63 @@ pub fn run_lints(
 /// IR sema → module source validation → linters (0011 §9). One
 /// implementation — check and apply used to carry identical
 /// and_then chains that could drift.
-pub fn validated_ir(
-    outcome: &EvalOutcome,
-    repo: &Path,
-    host: Option<&str>,
-    palette: Palette,
-) -> Result<Ir, ExitCode> {
-    let ir = check_ir(&outcome.ir_json, palette)?;
-    crate::commands::validate_sources(&ir, repo, palette)?;
-    run_lints(&ir, outcome, repo, host, palette)?;
+pub fn validated_ir(outcome: &EvalOutcome, sink: &mut DiagnosticSink) -> Result<Ir, ExitCode> {
+    let ir = check_ir(&outcome.ir_json, sink)?;
+    crate::commands::validate_sources(&ir, outcome.sources.repository(), sink)?;
+    run_lints(&ir, outcome, sink)?;
     Ok(ir)
 }
 
 /// Parse + validate IR, rendering diagnostics on failure.
-pub fn check_ir(json: &str, palette: Palette) -> Result<Ir, ExitCode> {
+pub fn check_ir(json: &str, sink: &mut DiagnosticSink) -> Result<Ir, ExitCode> {
     gripsack_ir::check(json).map_err(|diagnostics| {
         for d in &diagnostics {
             tracing::error!(code = d.code.as_ref(), "{}", d.message);
         }
-        eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+        sink.report(&diagnostics);
         ExitCode::FAILURE
     })
 }
 
-/// E110: a fetch-less module can only deploy repo files — a missing
-/// source is statically knowable and must fail at eval/check time,
-/// not mid-deploy (review finding E2). Modules with a payload (fetch
-/// or a fetch step) legitimately reference into it.
-pub fn validate_sources(ir: &Ir, repo: &Path, palette: Palette) -> Result<(), ExitCode> {
+/// Native file profiles execute; unsupported catalog capabilities must never
+/// fall through to an empty legacy apply or an alternate fallback executor.
+pub fn reject_workspace_execution(
+    ir: &Ir,
+    operation: gripsack_ir::workspace::WorkspaceOperation,
+    sink: &mut DiagnosticSink,
+) -> Result<(), ExitCode> {
+    let Some(diagnostic) = ir.workspace_execution_error(operation) else {
+        return Ok(());
+    };
+    sink.report(&[diagnostic]);
+    Err(ExitCode::FAILURE)
+}
+
+/// E110: entries sourced only from the repo must exist at check time.
+/// Fetches and producer recipes supply a staged payload instead; a fetch-less
+/// shell/run build may legitimately create files that do not exist yet.
+pub fn validate_sources(ir: &Ir, repo: &Path, sink: &mut DiagnosticSink) -> Result<(), ExitCode> {
     let mut diagnostics = Vec::new();
     for (name, module) in &ir.modules {
-        let has_payload = module.fetch.is_some()
-            || module.steps.as_ref().is_some_and(|steps| {
-                steps
-                    .iter()
-                    .any(|s| matches!(s.action, gripsack_ir::StepAction::Fetch { .. }))
-            });
-        if has_payload {
+        let prepared = match gripsack_ir::prepared::PreparedModule::new(module) {
+            Ok(prepared) => prepared,
+            Err(diagnostic) => {
+                diagnostics.push(diagnostic);
+                continue;
+            }
+        };
+        if prepared.fetch().is_some() || prepared.has_recipe() {
             continue;
         }
-        for entry in module.install.iter().chain(module.config.iter()) {
+        for entry in prepared.entries() {
             if !repo.join(&entry.from).exists() {
                 diagnostics.push(
                     gripsack_ir::Diagnostic::error(
                         gripsack_ir::codes::MISSING_SOURCE,
                         format!("module {name:?}: no payload or repo file at {}", entry.from),
                     )
-                    .with_label(module.span.clone(), "module declared here")
-                    .with_help("fix the path, or add a fetch if the source is a payload"),
+                    .with_label(entry.span.clone().or_else(|| module.span.clone()), "source declared here")
+                    .with_help("fix the repository path, or declare the producer that supplies this payload"),
                 );
             }
         }
@@ -273,13 +258,15 @@ pub fn validate_sources(ir: &Ir, repo: &Path, palette: Palette) -> Result<(), Ex
     if diagnostics.is_empty() {
         Ok(())
     } else {
-        eprintln!("{}", render::render_diagnostics(&diagnostics, palette));
+        sink.report(&diagnostics);
         Err(ExitCode::FAILURE)
     }
 }
 
 /// Named nonzero config limits become one command-owned acquisition policy.
-fn acquisition_limits(settings: &gripsack_config::Settings) -> gripsack_fetch::FetchLimits {
+pub(super) fn acquisition_limits(
+    settings: &gripsack_config::Settings,
+) -> gripsack_fetch::FetchLimits {
     let defaults = gripsack_fetch::FetchLimits::default();
     gripsack_fetch::FetchLimits {
         concurrent: settings.acquisition_jobs.unwrap_or(defaults.concurrent),

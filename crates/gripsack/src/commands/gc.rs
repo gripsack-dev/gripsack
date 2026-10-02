@@ -9,10 +9,11 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
     let keep = match retention_policy() {
         Ok(keep) => keep,
         Err(diagnostics) => {
-            eprintln!(
-                "{}",
-                crate::render::render_diagnostics(&diagnostics, palette)
-            );
+            let rendered = match std::env::current_dir() {
+                Ok(repo) => crate::render::render_diagnostics_bounded(&diagnostics, palette, &repo),
+                Err(_) => crate::render::render_diagnostics(&diagnostics, palette),
+            };
+            eprintln!("{rendered}");
             return ExitCode::FAILURE;
         }
     };
@@ -41,7 +42,7 @@ pub fn gc(palette: Palette, dry_run: bool) -> ExitCode {
                         report
                             .generations_removed
                             .iter()
-                            .map(u64::to_string)
+                            .map(ToString::to_string)
                             .collect::<Vec<_>>()
                             .join(", ")
                     );

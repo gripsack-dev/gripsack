@@ -1,6 +1,6 @@
-use crate::commands::{check_ir, eval_repo, trust_gate};
+use crate::commands::{check_ir, eval_repo};
 use crate::render::Palette;
-use gripsack_exec::{Ctx, UpdateCheckOutcome, UpdateMode, UpdateStatus, UpdateSummary};
+use gripsack_exec::{Ctx, UpdateCheckOutcome, UpdateMode, UpdateStatus};
 use gripsack_store as store;
 use owo_colors::OwoColorize;
 use std::path::Path;
@@ -9,7 +9,7 @@ use std::process::ExitCode;
 /// Survey failures are data; setup failures abort with the distinct error exit.
 pub fn update(
     repo: &Path,
-    host: Option<&str>,
+    host: Option<String>,
     modules: Vec<String>,
     palette: Palette,
     check: bool,
@@ -19,21 +19,31 @@ pub fn update(
     } else {
         ExitCode::FAILURE
     };
-    if trust_gate(repo).is_some() {
-        return failed;
-    }
-    let outcome = match eval_repo(repo, host, palette) {
+    let mut sink = crate::render::DiagnosticSink::terminal(palette, repo);
+    let outcome = match eval_repo(repo, host, &mut sink) {
         Ok(outcome) => outcome,
         Err(_) => return failed,
     };
-    let ir = match check_ir(&outcome.ir_json, palette) {
+    let ir = match check_ir(&outcome.ir_json, &mut sink) {
         Ok(ir) => ir,
         Err(_) => return failed,
     };
+    if crate::commands::reject_workspace_execution(
+        &ir,
+        gripsack_ir::workspace::WorkspaceOperation::Update,
+        &mut sink,
+    )
+    .is_err()
+    {
+        return failed;
+    }
     let ctx = Ctx {
         home: store::gripsack_home(),
         home_dir: Default::default(),
-        repo: repo.into(),
+        repository: gripsack_exec::Repository::evaluated(
+            std::sync::Arc::clone(&outcome.sources),
+            outcome.receipt,
+        ),
         only: modules,
         host: outcome.host.clone(),
         on_progress: None,
@@ -49,17 +59,17 @@ pub fn update(
     };
     let result = gripsack_exec::update(&ir, &ctx, mode);
     gripsack_fetch::throttle::save_global();
-    let reports = match result {
+    let survey = match result {
         Ok(reports) => reports,
         Err(error) => {
             eprintln!("error: {error}");
             return failed;
         }
     };
-    if reports.is_empty() {
+    if survey.reports().is_empty() {
         println!("nothing to resolve — no selected modules");
     }
-    for report in &reports {
+    for report in survey.reports() {
         let status = match &report.status {
             UpdateStatus::Unchanged => "unchanged".to_string(),
             UpdateStatus::Bumped { old, new } => format!(
@@ -84,7 +94,7 @@ pub fn update(
             println!("    {layout}");
         }
     }
-    let summary = UpdateSummary::from_reports(&reports);
+    let summary = survey.summary();
     if check {
         let disposition = summary.outcome();
         println!(
@@ -94,10 +104,10 @@ pub fn update(
             } else {
                 "complete"
             },
-            summary.unchanged,
-            summary.changed,
-            summary.skipped,
-            summary.failed
+            summary.unchanged(),
+            summary.changed(),
+            summary.skipped(),
+            summary.failed()
         );
         match disposition {
             UpdateCheckOutcome::Current => ExitCode::SUCCESS,
@@ -105,7 +115,7 @@ pub fn update(
             UpdateCheckOutcome::Incomplete => ExitCode::from(2),
         }
     } else {
-        if summary.changed != 0 {
+        if summary.publishes_lock(mode) {
             println!("lockfile updated — run `grip apply` to deploy");
         }
         ExitCode::SUCCESS

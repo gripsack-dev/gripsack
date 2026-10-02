@@ -1,5 +1,6 @@
 """Destination admission, permission identity and ownership lineage."""
 
+from test_adopt import approved_adoption
 from conftest import grip, make_env_repo, refresh_host, remove_module
 
 
@@ -67,11 +68,11 @@ export default module("two", {{
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "E119" in out.stderr, out.stderr
-    assert "resolve to the same path" in out.stderr, out.stderr
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "E119" in out.stderr
-    assert "resolve to the same path" in out.stderr
+    assert not alias.exists()
+    assert not (sandbox / ".local/share/gripsack/current").exists()
 
     # and a symlinked ancestor: ~/config-link -> ~/.config
     (home / "config-link").symlink_to(home / ".config")
@@ -100,13 +101,12 @@ export default module("two", {
     out = grip("check", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
     assert "E119" in out.stderr
-    assert "resolve to the same path" in out.stderr, out.stderr
+    assert not alias.exists()
 
 
 def test_same_module_duplicate_destination_is_e111(sandbox):
-    """0030 §P0-1: E111's same-module suppression is gone — two
-    declarations of one destination in ONE module would double-journal
-    it, the second entry overwriting the first's true prior."""
+    """Legacy modules retain one ownership unit per physical destination;
+    sharing requires explicit workspace block identities."""
     confdir = sandbox / "myenv" / "configs" / "x"
     confdir.mkdir(parents=True)
     (confdir / "a.conf").write_text("a\n")
@@ -249,7 +249,7 @@ def test_rename_keeps_full_lineage_authority(sandbox):
     original.parent.mkdir(parents=True)
     original.write_text("ORIGINAL\n")
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip(
+    out = approved_adoption(
         "adopt", "~/.config/demo/a.toml", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
     )
@@ -291,7 +291,7 @@ def test_double_takeover_keeps_the_first_origin(sandbox):
     original.parent.mkdir(parents=True)
     original.write_text("ORIGINAL\n")
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip(
+    out = approved_adoption(
         "adopt", "~/.config/demo/a.toml", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
     )
@@ -357,7 +357,7 @@ def test_takeover_preserves_a_private_files_mode(sandbox):
     secret.write_text("token=hunter2\n")
     secret.chmod(0o600)
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip(
+    out = approved_adoption(
         "adopt", "~/.config/demo/secret.conf", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
     )
@@ -387,7 +387,7 @@ def test_preserved_copy_blocks_a_mode_switch_to_owned(sandbox):
     dest.parent.mkdir(parents=True)
     dest.write_text("original\n")
     repo = make_env_repo(sandbox / "myenv", {})
-    out = grip(
+    out = approved_adoption(
         "adopt", "~/.config/demo/a.conf", "--mode", "tracked_copy",
         "--host", "testhost", "--yes", cwd=repo,
     )

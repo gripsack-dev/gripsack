@@ -7,7 +7,7 @@ use crate::ops::{
     DestView, ModeInput, Op, OpKind, WritePermissions, execute_op, plan_entry_op, plan_remove_op,
     plan_restore_op,
 };
-use gripsack_ir::{Entry, Ownership};
+use gripsack_ir::{Entry, HostName, Ownership};
 use gripsack_store as store;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -17,9 +17,9 @@ const MODES: [u32; 3] = [0o644, 0o755, 0o600];
 fn context(home: &Path) -> Ctx {
     Ctx {
         home: home.into(),
-        repo: home.into(),
+        repository: crate::Repository::direct(home.into()),
         only: vec![],
-        host: "model".into(),
+        host: HostName::parse("model").unwrap(),
         on_progress: None,
         take_over: false,
         take_over_entries: None,
@@ -60,6 +60,7 @@ fn plan(
     let observed = crate::deploy::observe_readonly(dest).unwrap();
     let input = if entry.mode == Ownership::Merge {
         ModeInput::Merge {
+            block_id: None,
             payload: std::str::from_utf8(content).unwrap(),
             permissions: policy,
         }
@@ -84,19 +85,14 @@ fn plan(
     .unwrap()
 }
 
-fn execute(ctx: &Ctx, op: &Op) -> store::DeployedEntry {
-    execute_op(
-        ctx.home_dir().unwrap(),
-        &ctx.home,
-        op.as_executable().unwrap(),
-    )
-    .unwrap();
+fn execute(run: &store::journal::JournalRun<'_>, op: &Op) -> store::DeployedEntry {
+    execute_op(run, op.as_executable().unwrap()).unwrap();
     let p = op.produces().unwrap();
     store::DeployedEntry {
         from: p.from.clone(),
         to: op.declared_to().to_string(),
         key: Some(op.dest().to_path_buf()),
-        mode: p.mode.clone(),
+        ownership: store::StoredOwnership::Legacy(p.mode.clone()),
         vars: p.vars.clone(),
         hash: p.hash.clone(),
         file_mode: p.file_mode,
@@ -114,6 +110,14 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
             for acquired in [None, Some(0o600), Some(0o644), Some(0o755)] {
                 let dir = tempfile::tempdir().unwrap();
                 let ctx = context(dir.path());
+                let run = store::journal::begin_run(
+                    ctx.home_dir().unwrap(),
+                    &ctx.home,
+                    None,
+                    store::GenerationId::new(1),
+                    store::journal::RunOp::Apply,
+                )
+                .unwrap();
                 let entry = entry(dir.path(), ownership.clone());
                 let dest = Path::new(&entry.to);
                 let payload_dir = dir.path().join("store-payload");
@@ -128,7 +132,7 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
                 let source = WritePermissions::Source { executable };
                 let expected = acquired.unwrap_or(if executable { 0o755 } else { 0o644 });
                 let first = execute(
-                    &ctx,
+                    &run,
                     &plan(&ctx, &entry, None, b"one", source, acquired.is_some()),
                 );
                 assert_eq!(
@@ -139,13 +143,13 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
                 let unchanged = plan(&ctx, &entry, Some(&first), b"one", source, false);
                 assert!(matches!(unchanged.kind(), OpKind::Satisfied));
                 let updated = execute(
-                    &ctx,
+                    &run,
                     &plan(&ctx, &entry, Some(&first), b"two", source, false),
                 );
                 assert_eq!(std::fs::read(dest).unwrap(), b"two");
                 assert_eq!(permissions(dest), expected);
                 let toggled = execute(
-                    &ctx,
+                    &run,
                     &plan(
                         &ctx,
                         &entry,
@@ -170,7 +174,7 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
                 let restore = plan_restore_op("m", &first, &payload_dir, Some(&toggled), &ctx.home)
                     .unwrap()
                     .unwrap();
-                let restored = execute(&ctx, &restore);
+                let restored = execute(&run, &restore);
                 assert_eq!(std::fs::read(dest).unwrap(), b"one");
                 assert_eq!(
                     permissions(dest),
@@ -186,21 +190,16 @@ fn whole_file_modes_survive_update_restore_drift_and_prune() {
                         matches!(drift.kind(), OpKind::Preserved),
                         "chmod must not be satisfied"
                     );
-                    prev = execute(&ctx, &drift);
+                    prev = execute(&run, &drift);
                     assert_eq!(permissions(dest), changed_mode);
-                    let prune = plan_remove_op("m", &prev, &payload_dir, &ctx.home)
+                    let prune = plan_remove_op("m", &prev, &payload_dir, ctx.home_dir().unwrap())
                         .unwrap()
                         .unwrap();
                     assert!(
                         matches!(prune.kind(), OpKind::Preserved),
                         "observation became delete authority"
                     );
-                    execute_op(
-                        ctx.home_dir().unwrap(),
-                        &ctx.home,
-                        prune.as_executable().unwrap(),
-                    )
-                    .unwrap();
+                    execute_op(&run, prune.as_executable().unwrap()).unwrap();
                     assert_eq!(std::fs::read(dest).unwrap(), b"one");
                 }
                 cases += 1;
@@ -217,6 +216,14 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
     for initial in [None, Some(0o600), Some(0o644), Some(0o755)] {
         let dir = tempfile::tempdir().unwrap();
         let ctx = context(dir.path());
+        let run = store::journal::begin_run(
+            ctx.home_dir().unwrap(),
+            &ctx.home,
+            None,
+            store::GenerationId::new(1),
+            store::journal::RunOp::Apply,
+        )
+        .unwrap();
         let entry = entry(dir.path(), Ownership::Merge);
         let dest = Path::new(&entry.to);
         if let Some(mode) = initial {
@@ -225,7 +232,7 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
         }
         let expected = initial.unwrap_or(0o644);
         let first = execute(
-            &ctx,
+            &run,
             &plan(
                 &ctx,
                 &entry,
@@ -269,23 +276,18 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
                 false,
             );
             assert!(matches!(drift.kind(), OpKind::Preserved));
-            prev = execute(&ctx, &drift);
-            let prune = plan_remove_op("m", &prev, dir.path(), &ctx.home)
+            prev = execute(&run, &drift);
+            let prune = plan_remove_op("m", &prev, dir.path(), ctx.home_dir().unwrap())
                 .unwrap()
                 .unwrap();
             assert!(matches!(prune.kind(), OpKind::Preserved));
-            execute_op(
-                ctx.home_dir().unwrap(),
-                &ctx.home,
-                prune.as_executable().unwrap(),
-            )
-            .unwrap();
+            execute_op(&run, prune.as_executable().unwrap()).unwrap();
             assert_eq!(std::fs::read(dest).unwrap(), original);
             assert_eq!(permissions(dest), drift_mode);
         }
         chmod(dest, expected);
         let converged = execute(
-            &ctx,
+            &run,
             &plan(
                 &ctx,
                 &entry,
@@ -295,15 +297,10 @@ fn merge_host_modes_are_planned_and_drift_never_authorizes_prune() {
                 false,
             ),
         );
-        let prune = plan_remove_op("m", &converged, dir.path(), &ctx.home)
+        let prune = plan_remove_op("m", &converged, dir.path(), ctx.home_dir().unwrap())
             .unwrap()
             .unwrap();
-        execute_op(
-            ctx.home_dir().unwrap(),
-            &ctx.home,
-            prune.as_executable().unwrap(),
-        )
-        .unwrap();
+        execute_op(&run, prune.as_executable().unwrap()).unwrap();
         if initial.is_some() {
             assert_eq!(std::fs::read(dest).unwrap(), b"foreign\n");
             assert_eq!(permissions(dest), expected);
@@ -318,6 +315,14 @@ fn links_carry_the_payload_mode_without_normalizing_it() {
     for mode in MODES {
         let dir = tempfile::tempdir().unwrap();
         let ctx = context(dir.path());
+        let run = store::journal::begin_run(
+            ctx.home_dir().unwrap(),
+            &ctx.home,
+            None,
+            store::GenerationId::new(1),
+            store::journal::RunOp::Apply,
+        )
+        .unwrap();
         let entry = entry(dir.path(), Ownership::Owned);
         let source = dir.path().join("payload");
         std::fs::write(&source, b"payload").unwrap();
@@ -339,12 +344,7 @@ fn links_carry_the_payload_mode_without_normalizing_it() {
             },
         )
         .unwrap();
-        execute_op(
-            ctx.home_dir().unwrap(),
-            &ctx.home,
-            op.as_executable().unwrap(),
-        )
-        .unwrap();
+        execute_op(&run, op.as_executable().unwrap()).unwrap();
         assert_eq!(std::fs::read_link(&entry.to).unwrap(), source);
         assert_eq!(permissions(Path::new(&entry.to)), mode);
     }

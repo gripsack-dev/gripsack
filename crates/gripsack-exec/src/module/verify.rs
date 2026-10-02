@@ -59,7 +59,7 @@ impl<'a> ModuleRun<'a> {
                     // produced state, just as it is for deploying modules.
                     a.from == b.from
                         && a.to == b.to
-                        && a.mode == b.mode
+                        && a.ownership == b.ownership
                         && a.hash == b.hash
                         && a.file_mode == b.file_mode
                         && a.preserved_drift == b.preserved_drift
@@ -69,7 +69,13 @@ impl<'a> ModuleRun<'a> {
             for verify in checks {
                 let _step = tracing::info_span!("step", step = "verify").entered();
                 progress(self.ctx, self.name, "verifying");
-                run_verify(self.name, verify, &self.store_path, self.version.as_deref())?;
+                run_verify(
+                    self.name,
+                    verify,
+                    &self.store_path,
+                    self.version.as_deref(),
+                    &self.ctx.fetch,
+                )?;
                 self.reports.push(StepReport {
                     module: self.name.to_owned(),
                     summary: describe_verify(verify, self.version.as_deref()).map_err(|error| {

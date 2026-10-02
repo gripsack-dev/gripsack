@@ -32,6 +32,8 @@ pub mod managed_blocks;
 pub mod module;
 pub mod ops;
 pub mod report;
+mod repository;
+pub use repository::Repository;
 pub mod resolve;
 pub mod rollback;
 pub mod schedule;
@@ -41,15 +43,16 @@ pub mod update;
 pub mod util;
 pub mod verify;
 pub mod verify_store;
+mod workspace;
 
 pub use apply::apply;
 pub use ctx::{Ctx, ExecError, Outcome, ProgressCallback};
 pub use env::render_env_file;
 pub use frontend::{ensure_deno, ensure_ts_frontend};
-pub use gc::{GcReport, gc, why_owns};
+pub use gc::{GcReport, PathOwner, gc, why_owns};
 pub use report::{
     ApplyResult, ReportKind, StepReport, UpdateCheckOutcome, UpdateReport, UpdateStatus,
-    UpdateSummary,
+    UpdateSummary, UpdateSurvey,
 };
 pub use rollback::rollback_generation;
 pub use source::preflight::{
@@ -67,11 +70,27 @@ pub enum PlanError {
     Cycle(Vec<String>),
     #[error("module {0:?} depends on unknown module {1:?}")]
     UnknownDep(String, String),
+    #[error("{0}")]
+    WorkspaceUnavailable(gripsack_ir::Diagnostic),
 }
 
 /// Module names in dependency-first order. Deterministic: among modules
 /// with equal priority, alphabetical — plans are diffable and stable.
 pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
+    if let Some(diagnostic) =
+        ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
+    {
+        return Err(PlanError::WorkspaceUnavailable(diagnostic));
+    }
+    if let Some(workspace) = &ir.workspace {
+        let mut names: Vec<String> = workspace
+            .outputs
+            .iter()
+            .map(|output| output.name().to_owned())
+            .collect();
+        names.sort();
+        return Ok(names);
+    }
     // Kahn's algorithm with ordered sets for determinism.
     let mut indegree: BTreeMap<&str, usize> = ir.modules.keys().map(|k| (k.as_str(), 0)).collect();
     let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
@@ -122,6 +141,9 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
 /// dependencies, wave k = everything whose deps finished in waves < k.
 pub fn waves(ir: &Ir) -> Result<Vec<Vec<String>>, PlanError> {
     let order = build_order(ir)?;
+    if ir.workspace.is_some() {
+        return Ok(vec![order]);
+    }
     let mut level: BTreeMap<&str, usize> = BTreeMap::new();
     for name in &order {
         let module = &ir.modules[name.as_str()];
@@ -176,6 +198,8 @@ mod tests {
             ir_version: gripsack_ir::IR_VERSION,
             host: Default::default(),
             resources: vec![],
+            workspace: None,
+            workspace_v4: None,
             modules: entries
                 .iter()
                 .map(|(name, deps)| (name.to_string(), module_with_deps(deps)))

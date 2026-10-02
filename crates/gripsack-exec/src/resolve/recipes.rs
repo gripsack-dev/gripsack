@@ -26,7 +26,7 @@ pub(crate) struct RecipeGraph {
 impl RecipeGraph {
     pub(crate) fn new<'a>(
         ir: &Ir,
-        repo: &Path,
+        repo: &crate::Repository,
         plans: &BTreeMap<String, PreparedModule>,
         names: impl IntoIterator<Item = &'a str>,
     ) -> Result<Self, ExecError> {
@@ -37,7 +37,7 @@ impl RecipeGraph {
             let module = &ir.modules[name];
             let mut base = serde_json::to_string(&super::input::without_spans(module))?;
             for entry in plans[name].entries() {
-                let path = repo.join(&entry.from);
+                let path = repo.contents().join(&entry.from);
                 match path.symlink_metadata() {
                     Ok(_) => {}
                     Err(error)
@@ -50,6 +50,7 @@ impl RecipeGraph {
                     }
                     Err(error) => return Err(error.into()),
                 }
+                let path = repo.materialization_path(Path::new(&entry.from))?;
                 let hash = match files.entry(path) {
                     std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
                     std::collections::btree_map::Entry::Vacant(entry) => {

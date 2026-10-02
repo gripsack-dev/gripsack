@@ -1,0 +1,183 @@
+SCOPE=failing-before actual CLI, private sandbox only; not passing qualification
+BASE_COMMIT=c92e84e60c31f13a544e00f7d2f6f3c8b94ce4cd plus recorded current working tree
+FUZZ=not_run
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 0.6s
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.7s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#9 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 3.65MB 0.2s done
+#11 DONE 0.2s
+
+#12 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#12 CACHED
+
+#13 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#13 CACHED
+
+#14 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#14 CACHED
+
+#15 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#15 CACHED
+
+#16 [builder  7/10] COPY fuzz ./fuzz
+#16 CACHED
+
+#17 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#17 CACHED
+
+#18 [builder 10/10] COPY scripts ./scripts
+#18 CACHED
+
+#19 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#19 CACHED
+
+#20 [e2e  2/12] WORKDIR /app
+#20 CACHED
+
+#21 [e2e 11/12] COPY examples ./examples
+#21 CACHED
+
+#22 [builder  6/10] COPY crates ./crates
+#22 CACHED
+
+#23 [builder  4/10] WORKDIR /app
+#23 CACHED
+
+#24 [e2e  9/12] RUN cd e2e && uv sync --locked
+#24 CACHED
+
+#25 [builder  8/10] COPY schema ./schema
+#25 CACHED
+
+#26 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#26 CACHED
+
+#27 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#27 CACHED
+
+#28 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#28 CACHED
+
+#29 [bin 1/1] RUN cargo build --locked -p gripsack
+#29 CACHED
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 CACHED
+
+#31 [builder  9/10] COPY typescript ./typescript
+#31 CACHED
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 CACHED
+
+#33 exporting to image
+#33 exporting layers done
+#33 exporting manifest sha256:0ae3564c0556d2ed1575038090e8d49103754e9273404dee8b29b82ec2401c65 done
+#33 exporting config sha256:fc008d775a990c64b285446a6a574e7b73f40ec94f2f08502cefa11a2b92b017 done
+#33 exporting attestation manifest sha256:443f50a3fd0999d3a8106769589c98d38e13d189da6ead421dc5f01df39aec9c 0.0s done
+#33 exporting manifest list sha256:2c678cc7d7dd56b69b426c38711a78fb4418aa6fcb496450adbb3c77328d7fe5
+#33 exporting manifest list sha256:2c678cc7d7dd56b69b426c38711a78fb4418aa6fcb496450adbb3c77328d7fe5 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.0s done
+#33 DONE 0.1s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-043ad11c497a Creating 
+ Container gripsack-e2e-run-043ad11c497a Created 
+$ grip apply --host testhost exit=0
+  demo ✓ linked demo → ~/.a
+  demo ✓ linked demo → ~/.b
+[1m[32mapplied —[39m[0m generation 1 active ([2m0.1s[0m)
+
+$ grip rollback 1 exit=0
+rolled back to generation 1
+
+$ grip rollback 1 exit=-9
+
+$ grip apply --host testhost exit=0
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation 1, [2m0.0s[0m)
+2026-09-27T17:17:33.198267Z  WARN gripsack_exec::apply: interrupted run's generation had already activated — journal cleared, deployed state stands
+
+SAME_GENERATION_WITNESS={"after_crash": [true, false], "after_recovery": [true, false], "before": [false, false], "journal_empty": true, "partial_state_survives": true}
+
+SCRIPT_BYTES_BEGIN
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import tempfile
+
+with tempfile.TemporaryDirectory(prefix="gripsack-same-generation-") as temporary:
+    root = Path(temporary)
+    repo = root / "repo"
+    home = root / "state"
+    (repo / "hosts").mkdir(parents=True)
+    (repo / "env.toml").write_text('[env]\nname="same-generation"\n')
+    (repo / "hosts/testhost.ts").write_text('import { defineEnv, module, symlink } from "@gripsack/core";\nexport default defineEnv(() => ({ modules: [module("demo", {config:{a:symlink("~/.a"),b:symlink("~/.b")}})] }));\n')
+    (repo / "a").write_text("a")
+    (repo / "b").write_text("b")
+    env = dict(os.environ, HOME=str(root), GRIPSACK_HOME=str(home), GRIPSACK_TRUST_ALL="1", NO_COLOR="1")
+    def run(args, extra=None):
+        result = subprocess.run(["grip", *args], cwd=repo, env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30)
+        print("$ grip " + " ".join(args), "exit="+str(result.returncode))
+        print(result.stdout + result.stderr)
+        return result
+    assert run(["apply","--host","testhost"]).returncode == 0
+    links = [root / ".a", root / ".b"]
+    for path in links:
+        path.unlink()
+    trace = root / "boundaries.tsv"
+    assert run(["rollback","1"], {"GRIPSACK_FS_TRACE":str(trace)}).returncode == 0
+    rows = [line.split("\t",3) for line in trace.read_text().splitlines()]
+    cut = next(int(row[0]) for row in rows if row[1:] == ["Before","Symlink",'".b"'])
+    for path in links:
+        path.unlink()
+    trace.unlink()
+    interrupted = run(["rollback","1"], {"GRIPSACK_FS_CUT":str(cut), "GRIPSACK_FS_FAULT":"kill"})
+    assert interrupted.returncode == -signal.SIGKILL
+    after_crash = [path.is_symlink() for path in links]
+    assert after_crash == [True, False], after_crash
+    assert run(["apply","--host","testhost"], {"GRIPSACK_FS_RECOVER_ONLY":"1"}).returncode == 0
+    after_recovery = [path.is_symlink() for path in links]
+    print("SAME_GENERATION_WITNESS="+json.dumps({"before":[False,False],"after_crash":after_crash,"after_recovery":after_recovery,"journal_empty":not list((home / "journal").glob("*.json")),"partial_state_survives":after_recovery == [True,False]}, sort_keys=True))
+
+SCRIPT_BYTES_END

@@ -8,12 +8,13 @@
 
 mod deps;
 mod destinations;
-mod names;
+pub(crate) mod names;
 mod paths;
 mod placeholders;
 mod resources;
 mod steps;
 mod verify_paths;
+mod workspace;
 
 use crate::diagnostic::{Diagnostic, Severity};
 use crate::model::Ir;
@@ -28,6 +29,7 @@ const PASSES: &[fn(&Ir, &mut Vec<Diagnostic>)] = &[
     verify_paths::check,
     placeholders::check,
     paths::check,
+    workspace::check,
 ];
 
 /// Pass 2 — run every sema pass, collecting all diagnostics.
@@ -80,7 +82,7 @@ mod tests {
     #[test]
     fn parses_and_validates_example() {
         let ir = check(EXAMPLE).unwrap();
-        assert_eq!(ir.ir_version, crate::IR_VERSION);
+        assert_eq!(ir.ir_version, crate::LEGACY_IR_VERSION);
         assert_eq!(ir.modules.len(), 2);
         let helix = &ir.modules["helix"];
         assert!(matches!(helix.fetch, Some(FetchSpec::GithubRelease { .. })));

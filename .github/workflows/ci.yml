@@ -2,15 +2,46 @@ name: ci
 
 on:
   workflow_dispatch:
+    inputs:
+      fuzz_waiver:
+        description: "Explicit owner-approved fuzz/corpus-replay waiver; all other gates remain mandatory"
+        type: choice
+        default: none
+        options:
+          - none
+          - REL-FUZZ-2026-09-27
   push:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+
+  # 0.43 repair: the old single `test` job ran Rust, TS, B0, the full E2E
+  # suite and every formal gate SERIALLY — run 36774936349 died at the 6h
+  # job timeout inside E2E (~66%, before the persistence matrix finished and
+  # before model/TLAPS/Verus ever started). The lanes below run in parallel;
+  # `test` remains the protected required check as an aggregate that cannot
+  # go green unless every lane succeeded (never skipped/failed/cancelled).
+  core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Delivery validation and calibration live in a lane the required
+      # `test` aggregate admits — never only in an optional sibling job.
+      - name: Delivery inventory and closure calibration
+        run: |
+          python3 scripts/check_delivery.py --validate
+          python3 scripts/delivery_checker_calibration.py
+
+      - name: A1 dependency direction (calibrated)
+        run: python3 scripts/check_architecture.py --self-check
 
       - name: Rust gate (fmt, clippy, tests)
         run: docker compose run --build --rm test
@@ -18,29 +49,146 @@ jobs:
       - name: TypeScript frontend tests (deno)
         run: docker compose run --build --rm ts-test
 
-      # Flow tests: real binary + real frontend against fixture env
-      # repos, offline (file:// fixtures only).
+      # B0's qualification is a real Go client against disposable
+      # digest-pinned BuildKit workers. Keep it in the required core lane,
+      # not an optional docs/probe job; any failed verifier/load aborts.
+      - name: B0 Linux BuildKit qualification
+        run: |
+          sh verification/buildkit-qualification/bridge/build.sh
+          sh verification/buildkit-qualification/probes.sh
+
+  # Flow tests: real binary + real frontend against fixture env
+  # repos, offline (file:// fixtures only). The persistence matrix has
+  # its own sharded lane below; this lane runs every other flow test.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: E2E (flow suite)
-        run: docker compose run --build --rm e2e
+        env:
+          GRIPSACK_CORPUS_WAIVED: ${{ github.event_name == 'workflow_dispatch' && inputs.fuzz_waiver == 'REL-FUZZ-2026-09-27' }}
+        run: |
+          extra=()
+          if [ "$GRIPSACK_CORPUS_WAIVED" = true ]; then
+            extra+=(--ignore=test_golden.py)
+            echo "Owner-waived: golden IR corpus replay not run"
+          fi
+          docker compose run --build --rm e2e uv run --locked --no-sync pytest --ignore=test_persistence_matrix.py "${extra[@]}"
 
-      # the TLA+ spec of the journal protocol, model-checked (0028)
-      - name: Transaction model (TLC)
-        run: docker compose run --build --rm model
+  # Every scenario x fault x platform runs eight disjoint round-robin cut
+  # partitions. Each partition retains both drift states and real recovery;
+  # the required aggregate checks their complete measured inventory union.
+  e2e-persistence:
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, macos-14]
+        scenario: [apply-deploy, apply-prune, rollback-deploy, rollback-prune, apply-deploy-copy, apply-prune-copy]
+        fault: [error, kill]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      GRIPSACK_PERSISTENCE_SHARD: ${{ matrix.shard }}
+      GRIPSACK_PERSISTENCE_SHARDS: "8"
+      GRIPSACK_PERSISTENCE_REPORTS: ${{ github.workspace }}/persistence-reports
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: E2E (Linux persistence shard)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p "$GRIPSACK_PERSISTENCE_REPORTS"
+          docker compose run --build --rm \
+            -e GRIPSACK_PERSISTENCE_SHARD -e GRIPSACK_PERSISTENCE_SHARDS \
+            -e GRIPSACK_PERSISTENCE_REPORTS=/persistence-reports -e GITHUB_SHA \
+            -v "$GRIPSACK_PERSISTENCE_REPORTS:/persistence-reports" \
+            e2e uv run --locked --no-sync pytest -s "test_persistence_matrix.py::test_every_reachable_persistence_boundary[${{ matrix.scenario }}-${{ matrix.fault }}]"
+      - name: Require native Mac ARM
+        if: runner.os == 'macOS'
+        run: test "$(uname -m)" = arm64
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        if: runner.os == 'macOS'
+        with:
+          toolchain: "1.98.0"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        if: runner.os == 'macOS'
+        with:
+          python-version: "3.12"
+      - name: Build grip (native Mac shard)
+        if: runner.os == 'macOS'
+        run: cargo build --locked -p gripsack
+      - name: Prefetch pinned Mac ARM Deno
+        if: runner.os == 'macOS'
+        run: |
+          curl -fsSL https://github.com/denoland/deno/releases/download/v2.9.6/deno-aarch64-apple-darwin.zip -o /tmp/deno.zip
+          echo "213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472  /tmp/deno.zip" | shasum -a 256 --check
+          unzip -q /tmp/deno.zip -d "$HOME/.deno-bin"
+          echo "$HOME/.deno-bin" >> "$GITHUB_PATH"
+          echo "GRIPSACK_DENO=$HOME/.deno-bin/deno" >> "$GITHUB_ENV"
+      - name: E2E (native Mac persistence shard)
+        if: runner.os == 'macOS'
+        working-directory: e2e
+        run: |
+          python -m pip install pytest
+          python -m pytest -q -s "test_persistence_matrix.py::test_every_reachable_persistence_boundary[${{ matrix.scenario }}-${{ matrix.fault }}]"
+      - name: Publish completed persistence partition
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: persistence-${{ matrix.platform }}-${{ matrix.scenario }}-${{ matrix.fault }}-${{ matrix.shard }}
+          path: persistence-reports/*.json
+          if-no-files-found: error
 
-      # the policy kernels, machine-proven + mutant-calibrated (0046);
-      # part of the REQUIRED gate so proofs cannot fail optionally
-      - name: Policy kernels (Verus)
-        run: docker compose run --build --rm verify
+  formal:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [model, tlaps, verify]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Required formal gate (${{ matrix.gate }})
+        run: docker compose run --build --rm "${{ matrix.gate }}"
 
-  # macOS behavioral round (plan/0020's queued item): the release
-  # matrix builds on macOS; this RUNS the full flow suite there —
-  # APFS semantics, case-insensitivity, symlink topology, Gatekeeper
-  # quarantine on provisioned runtimes. Native, not docker: macOS
-  # runners have no compose story worth the latency.
+  # Protected required check: pure aggregate over the parallel lanes.
+  # if: always() plus an explicit per-lane result admission — a failed,
+  # cancelled or skipped lane can never let this go green.
+  test:
+    if: always()
+    needs: [core, e2e, e2e-persistence, formal, e2e-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: persistence-*
+          path: persistence-reports
+      - name: Calibrate complete required-work admission
+        run: python3 scripts/check_ci_gate.py --self-check
+      - name: Admit every required lane
+        env:
+          GRIPSACK_TEST_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/check_ci_gate.py --test-lanes --persistence-reports persistence-reports
+
+  # Native macOS round (plan/0020's queued item): real build plus the
+  # native process/journal authority gates AND the full flow suite on APFS —
+  # case-insensitivity, symlink topology, Gatekeeper quarantine on
+  # provisioned runtimes. Native, not docker: macOS runners have no compose
+  # story worth the latency.
+  #
+  # The suite runs CONFINED: 0.43 ships a real macOS Seatbelt boundary
+  # (gripsack-process assembles the approved roots into an SBPL profile;
+  # the fixed platform launcher applies it after exec, before the admitted
+  # evaluator starts). The R1 native Mac qualification remains mandatory.
+  # An earlier revision set GRIPSACK_EVAL_UNCONFINED=1 — that bypass was never
+  # authorized and is removed along with the escape hatch itself; if the
+  # sandbox cannot be installed the evaluator still fails closed and this
+  # required lane goes red.
   e2e-macos:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Require native Mac ARM
+        run: test "$(uname -m)" = arm64
 
       # Exact toolchain pin (plan/0042 F): the same rustc the
       # digest-pinned rust:alpine builder compiles with — 1.98.0
@@ -54,7 +202,13 @@ jobs:
           python-version: "3.12"
 
       - name: Build grip (debug — the suite's contract)
-        run: cargo build
+        run: cargo build --locked
+
+      - name: Native process authority and lifecycle
+        run: python3 scripts/check_process_bounds.py
+
+      - name: Native journal authority and publication
+        run: python3 scripts/check_journal_protocol.py
 
       - name: Prefetch the pinned Deno
         # GRIPSACK_DENO points the suite at one shared runtime, the
@@ -67,17 +221,31 @@ jobs:
           echo "$HOME/.deno-bin" >> "$GITHUB_PATH"
           echo "GRIPSACK_DENO=$HOME/.deno-bin/deno" >> "$GITHUB_ENV"
 
-      - name: E2E (flow suite, native macOS)
+      # Full flow suite, natively confined by the Seatbelt boundary. There
+      # is no unconfined mode: the confinement regression cases (ambient
+      # node_modules, round-file parent directory) assert kernel denial.
+      - name: E2E (flow suite, native macOS, seatbelt-confined)
         working-directory: e2e
+        env:
+          GRIPSACK_CORPUS_WAIVED: ${{ github.event_name == 'workflow_dispatch' && inputs.fuzz_waiver == 'REL-FUZZ-2026-09-27' }}
         run: |
           python -m pip install pytest
-          python -m pytest -q
+          extra=()
+          if [ "$GRIPSACK_CORPUS_WAIVED" = true ]; then
+            extra+=(--ignore=test_golden.py)
+            echo "Owner-waived: golden IR corpus replay not run"
+          fi
+          python -m pytest -q --ignore=test_persistence_matrix.py "${extra[@]}"
+
 
   # Bounded, deterministic fuzz replay (plan/0042 E): the checked-in
   # seed corpus through the real targets, OS-contained by bubblewrap —
   # fail-closed, no uncontained fallback. Longer coverage-guided runs
   # are scheduled in fuzz.yml, not here.
   fuzz:
+    # Only explicit manual feedback dispatches may omit this lane. Unknown
+    # waiver inputs also omit execution, but the final gate rejects them.
+    if: github.event_name != 'workflow_dispatch' || inputs.fuzz_waiver == 'none'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -134,10 +302,6 @@ jobs:
 
   audit:
     runs-on: ubuntu-latest
-    # rustsec/audit-check publishes its findings as a Check run
-    permissions:
-      contents: read
-      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # prebuilt binary, not a from-source install: cargo-audit's own
@@ -148,3 +312,18 @@ jobs:
         with:
           tool: cargo-audit
       - run: cargo audit
+
+  gate:
+    if: always()
+    needs: [test, e2e-macos, docs, audit, fuzz]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Calibrate required-result admission
+        run: python3 scripts/check_ci_gate.py --self-check
+      - name: Admit every required lane
+        env:
+          GRIPSACK_CI_RESULTS: ${{ toJSON(needs) }}
+          GRIPSACK_CI_EVENT: ${{ github.event_name }}
+          GRIPSACK_FUZZ_WAIVER: ${{ github.event_name == 'workflow_dispatch' && inputs.fuzz_waiver || 'none' }}
+        run: python3 scripts/check_ci_gate.py

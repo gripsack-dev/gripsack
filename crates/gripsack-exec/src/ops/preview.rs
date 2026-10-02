@@ -13,11 +13,26 @@ use store::journal::Intended;
 /// take-over to the adopt flow's destinations (0015 §7 S6).
 pub fn preview_ops(
     ir: &gripsack_ir::Ir,
-    repo: &Path,
+    repository: &crate::Repository,
     prev: Option<&store::Generation>,
     adopting: &std::collections::BTreeSet<String>,
     lock: &crate::lockfile::Lockfile,
+    limits: gripsack_fetch::FetchLimits,
+    selected: &[String],
 ) -> Result<Vec<Op>, ExecError> {
+    if let Some(diagnostic) =
+        ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
+    {
+        return Err(ExecError::Gate(diagnostic));
+    }
+    let repo = repository.contents();
+    if let Some(workspace) = &ir.workspace {
+        let home = store::gripsack_home();
+        return crate::workspace::NativeProfiles::prepare(
+            workspace, repo, &home, selected, limits,
+        )?
+        .preview(&home, prev, adopting);
+    }
     let mut ops = Vec::new();
     // the destination-global lineage map (0030 §H4): the previous
     // generation's entry per physical destination
@@ -36,7 +51,7 @@ pub fn preview_ops(
     let steps_by_module = crate::expand::expand_all(&ir.modules)?;
     let recipes = crate::resolve::RecipeGraph::new(
         ir,
-        repo,
+        repository,
         &steps_by_module,
         ir.modules.keys().map(String::as_str),
     )?;
@@ -85,7 +100,7 @@ pub fn preview_ops(
             recipes: &recipes,
             plan: steps,
             home: &home,
-            repo,
+            repo: repository,
             locked,
             lock,
         })?;
@@ -183,6 +198,7 @@ pub fn preview_ops(
                             ops.push(plan_entry_op(
                                 &view,
                                 ModeInput::Merge {
+                                    block_id: None,
                                     payload: &payload,
                                     permissions: WritePermissions::Preserve,
                                 },
@@ -272,6 +288,7 @@ pub fn preview_ops(
     // prunes: recorded destinations no longer declared (the remove
     // planner's gates — merge block intactness, drift — apply)
     if let Some(prev) = prev {
+        let home_cap = gripsack_fs::open(&home)?;
         // declared = the CANONICAL keys (0035 F1 + the deferred-prune
         // fix: a deferred op IS declared — its spelling just isn't
         // decided yet). Only marker ops (RunEffect) carry no dest.
@@ -287,7 +304,7 @@ pub fn preview_ops(
                 {
                     continue;
                 }
-                if let Some(op) = plan_remove_op(name, entry, &state.store_path, &home)? {
+                if let Some(op) = plan_remove_op(name, entry, &state.store_path, &home_cap)? {
                     ops.push(op);
                 }
             }

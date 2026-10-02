@@ -55,16 +55,19 @@ enum Command {
         /// Apply without the confirmation prompt
         #[arg(long)]
         yes: bool,
+        /// Apply an already-generated, newly approved module without writing repo files
+        #[arg(long, conflicts_with = "mode")]
+        resume: bool,
     },
-    /// Fetch, build, and deploy modules — one new generation per run
+    /// Deploy native workspace file profiles or fetch/build/deploy legacy modules
     Apply {
-        /// Host entrypoint (default: this machine's hostname)
+        /// Legacy host entrypoint (workspace uses gripsack.ts instead)
         #[arg(long)]
         host: Option<String>,
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
-        /// Restrict to these modules (default: the whole graph)
+        /// Restrict to these profiles or modules (default: the whole graph)
         modules: Vec<String>,
         /// Overwrite foreign/drifted tracked_copy destinations
         #[arg(long)]
@@ -73,18 +76,21 @@ enum Command {
         #[arg(long)]
         jobs: Option<usize>,
     },
-    /// Validate the env — eval, IR sema, linters — and stop (0011 §9).
-    /// Zero side effects; exit code is the CI signal.
+    /// Validate a workspace catalog or legacy env without host activation.
+    /// The provisioned frontend may be prepared; no builder starts.
     Check {
-        /// Host entrypoint (default: this machine's hostname)
+        /// Legacy host entrypoint (ignored for gripsack.ts workspaces)
         #[arg(long)]
         host: Option<String>,
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
+        /// Emit the check report as one JSON document on stdout — the
+        /// same diagnostics the terminal renders (0052 A1-06)
+        #[arg(long)]
+        json: bool,
     },
-    /// Show what an apply would change, without changing anything.
-    /// For now: validate IR and show the execution waves.
+    /// Prepare native files or legacy module operations without deployment
     Plan {
         #[arg(long)]
         host: Option<String>,
@@ -99,7 +105,7 @@ enum Command {
     /// Flip `current` back to a previous generation
     Rollback {
         /// Generation number (default: the previous one)
-        generation: Option<u64>,
+        generation: Option<gripsack_store::GenerationId>,
     },
     /// Update grip itself: tarball installs self-update in place;
     /// brew/cargo/mise installs get their manager's command
@@ -108,7 +114,7 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
-    /// Re-resolve and rewrite the lockfile (never deploys — apply after)
+    /// Re-resolve legacy pins or validate native file profiles
     Update {
         #[arg(long)]
         host: Option<String>,
@@ -143,9 +149,13 @@ enum Command {
     },
     /// Check the frontend environment (deno + the embedded frontend)
     Doctor,
-    /// Manage the repo trust list — the gate before any eval (0013 D7).
-    /// The first eval of an untrusted repo prompts; `GRIPSACK_TRUST_ALL=1`
-    /// is the CI bypass.
+    /// Inspect durable hook identities, attempts and outcomes
+    Hooks {
+        #[command(subcommand)]
+        command: commands::HooksCommand,
+    },
+    /// Inspect and approve captured source bytes and their evaluation policy.
+    /// Source or grant changes require renewed digest-bound approval.
     Trust {
         #[command(subcommand)]
         command: commands::TrustCommand,
@@ -164,16 +174,35 @@ fn main() -> ExitCode {
         }
         return ExitCode::SUCCESS;
     }
-    let cli = Cli::parse();
-    let command_name = format!("{:?}", cli.command)
-        .split([' ', '('])
-        .next()
-        .unwrap_or("unknown")
-        .to_string();
+    let command = match Cli::parse().command {
+        // Fixture simulations must not even create a diagnostic run in the
+        // user's real home; their workers also start before any tracing thread.
+        Command::Hooks { command } if command.fixture_only() => {
+            return commands::hooks(command, palette);
+        }
+        command => command,
+    };
+    let command_name = match &command {
+        Command::Adopt { .. } => "Adopt",
+        Command::Apply { .. } => "Apply",
+        Command::Check { .. } => "Check",
+        Command::Plan { .. } => "Plan",
+        Command::Rollback { .. } => "Rollback",
+        Command::SelfUpdate { .. } => "SelfUpdate",
+        Command::Update { .. } => "Update",
+        Command::Generations => "Generations",
+        Command::Gc { .. } => "Gc",
+        Command::WhyOwns { .. } => "WhyOwns",
+        Command::StoreVerify { .. } => "StoreVerify",
+        Command::Init { .. } => "Init",
+        Command::Doctor => "Doctor",
+        Command::Trust { .. } => "Trust",
+        Command::Hooks { .. } => "Hooks",
+    };
     let home = gripsack_store::gripsack_home();
     let run = gripsack_trace::init(&home).ok();
     let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());
-    match cli.command {
+    match command {
         Command::Doctor => commands::doctor(palette),
         Command::Adopt {
             path,
@@ -181,12 +210,14 @@ fn main() -> ExitCode {
             mode,
             host,
             yes,
+            resume,
         } => commands::adopt(
             &path,
             name.as_deref(),
             mode.as_deref(),
             host.as_deref(),
             yes,
+            resume,
             palette,
         ),
         Command::Apply {
@@ -209,8 +240,15 @@ fn main() -> ExitCode {
             ),
             Err(code) => code,
         },
-        Command::Check { host, repo } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::check(&repo, host.as_deref(), palette),
+        Command::Check { host, repo, json } => match commands::resolve_repo(repo.as_deref()) {
+            Ok(repo) => {
+                let sink = if json {
+                    render::DiagnosticSink::json()
+                } else {
+                    render::DiagnosticSink::terminal(palette, &repo)
+                };
+                commands::check(&repo, host, sink)
+            }
             Err(code) => code,
         },
         Command::Gc { dry_run } => commands::gc(palette, dry_run),
@@ -227,7 +265,7 @@ fn main() -> ExitCode {
             modules,
             check,
         } => match commands::resolve_repo(repo.as_deref()) {
-            Ok(repo) => commands::update(&repo, host.as_deref(), modules, palette, check),
+            Ok(repo) => commands::update(&repo, host, modules, palette, check),
             Err(code) => {
                 if check {
                     ExitCode::from(2)
@@ -238,6 +276,7 @@ fn main() -> ExitCode {
         },
         Command::Rollback { generation } => commands::rollback(generation, palette),
         Command::Trust { command } => commands::trust(command, palette),
+        Command::Hooks { command } => commands::hooks(command, palette),
         Command::Plan {
             ir: Some(path),
             modules,
@@ -256,26 +295,35 @@ fn main() -> ExitCode {
                 Ok(r) => r,
                 Err(code) => return code,
             };
-            if let Some(code) = commands::trust_gate(&repo) {
-                return code;
-            }
-            let outcome = match commands::eval_repo(&repo, host.as_deref(), palette) {
+            let mut sink = render::DiagnosticSink::terminal(palette, &repo);
+            let outcome = match commands::eval_repo(&repo, host, &mut sink) {
                 Ok(o) => o,
                 Err(code) => return code,
             };
+            let repository = gripsack_exec::Repository::evaluated(
+                std::sync::Arc::clone(&outcome.sources),
+                outcome.receipt,
+            );
             // the same validation pipeline check/apply run (0033 R5):
             // a plan that succeeds where apply would fail is a lie
-            let ir = match commands::validated_ir(&outcome, &repo, host.as_deref(), palette) {
+            let ir = match commands::validated_ir(&outcome, &mut sink) {
                 Ok(ir) => ir,
                 Err(code) => return code,
             };
+            if let Err(code) = commands::reject_workspace_execution(
+                &ir,
+                gripsack_ir::workspace::WorkspaceOperation::Plan,
+                &mut sink,
+            ) {
+                return code;
+            }
             {
                 match gripsack_exec::expand::expand_all(&ir.modules).and_then(|plans| {
                     gripsack_exec::expand::check_physical_uniqueness(&ir.modules, &plans)
                 }) {
                     Ok(()) => {}
                     Err(gripsack_exec::ctx::ExecError::Gate(d)) => {
-                        eprintln!("{}", render::render_diagnostics(&[d], palette));
+                        sink.report(&[d]);
                         return ExitCode::FAILURE;
                     }
                     Err(e) => {
@@ -284,17 +332,24 @@ fn main() -> ExitCode {
                     }
                 }
             }
-            match gripsack_exec::inspect_known_layouts(&ir, &repo, &outcome.host) {
-                Ok(layouts) => {
-                    for (module, evidence) in layouts {
-                        if let Some(summary) = evidence.summary() {
-                            println!("  {module}: {summary}");
+            if !ir.has_workspace() {
+                match gripsack_exec::inspect_known_layouts(
+                    &ir,
+                    &repository,
+                    &outcome.host,
+                    outcome.fetch.limits(),
+                ) {
+                    Ok(layouts) => {
+                        for (module, evidence) in layouts {
+                            if let Some(summary) = evidence.summary() {
+                                println!("  {module}: {summary}");
+                            }
                         }
                     }
-                }
-                Err(error) => {
-                    eprintln!("grip: {error}");
-                    return ExitCode::FAILURE;
+                    Err(error) => {
+                        eprintln!("grip: {error}");
+                        return ExitCode::FAILURE;
+                    }
                 }
             }
             // host-inputs header (0013 D6): the facts that went in and
@@ -305,28 +360,48 @@ fn main() -> ExitCode {
                 palette.dim(&commands::render_host_inputs(&outcome.host_inputs))
             );
             let waves = gripsack_exec::waves(&ir).unwrap_or_default();
-            if modules.is_empty() {
-                match render::diff_section(&ir, &repo, &outcome.host, &Default::default(), palette)
-                {
+            if modules.is_empty() || ir.workspace.is_some() {
+                match render::diff_section(
+                    &ir,
+                    &repository,
+                    &outcome.host,
+                    &Default::default(),
+                    palette,
+                    &modules,
+                    outcome.fetch.limits(),
+                ) {
                     Ok(section) => println!("{section}"),
+                    Err(gripsack_exec::ExecError::Gate(diagnostic)) => {
+                        sink.report(&[diagnostic]);
+                        return ExitCode::FAILURE;
+                    }
                     Err(error) => {
                         eprintln!("grip: cannot compute the preview: {error}");
                         return ExitCode::FAILURE;
                     }
                 }
             }
-            match modules.first() {
-                Some(name) => {
-                    println!("{}", render::render_module(&ir, name, &waves, palette))
+            if let Some(workspace) = &ir.workspace {
+                let selected = workspace.outputs.iter().filter(|output| {
+                    modules.is_empty() || modules.iter().any(|name| name == output.name())
+                });
+                for output in selected {
+                    println!("  {:?} ({})", output.name(), output.kind());
                 }
-                None => {
-                    println!("{} {} modules", palette.good("plan:"), ir.modules.len());
-                    for (i, wave) in waves.iter().enumerate() {
-                        println!(
-                            "  {} {}",
-                            palette.badge(&format!("wave {i}")),
-                            wave.join(", ")
-                        );
+            } else {
+                match modules.first() {
+                    Some(name) => {
+                        println!("{}", render::render_module(&ir, name, &waves, palette))
+                    }
+                    None => {
+                        println!("{} {} modules", palette.good("plan:"), ir.modules.len());
+                        for (i, wave) in waves.iter().enumerate() {
+                            println!(
+                                "  {} {}",
+                                palette.badge(&format!("wave {i}")),
+                                wave.join(", ")
+                            );
+                        }
                     }
                 }
             }

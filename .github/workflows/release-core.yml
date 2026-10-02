@@ -86,7 +86,7 @@ jobs:
           tar -xzf gripsack-*-${{ matrix.target }}.tar.gz -C "$tmp"
           bin="$(find "$tmp" -type f -name grip | head -1)"
           file "$bin"
-          ! ldd "$bin" 2>&1 | grep -q "=>"
+          python3 scripts/check_native_binary.py "$bin"
           "$bin" --version
           # fails the release if the SBOM embed is missing or the
           # shipped tree hits an advisory (plan/0022 §2)
@@ -102,7 +102,7 @@ jobs:
           bin="$(find "$tmp" -type f -name grip | head -1)"
           file "$bin"
           otool -L "$bin"
-          ! otool -L "$bin" | grep -qvE "libSystem|libiconv|CoreFoundation|Security|SystemConfiguration"
+          python3 scripts/check_native_binary.py "$bin"
           "$bin" --version
           cargo audit bin "$bin"
 
@@ -135,7 +135,7 @@ jobs:
 
       # signed build provenance for every tarball (plan/0020 §5.8):
       # verifiable with `gh attestation verify <file> -R gripsack-dev/gripsack`
-      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: dist/gripsack-*.tar.gz
 

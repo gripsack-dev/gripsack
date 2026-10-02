@@ -113,6 +113,18 @@ Rules you must hold:
 
 ## 4. Prove it
 
+Review `grip trust inspect --json` before evaluating a new or edited repository.
+Approval binds its captured bytes and actual policy, not just its path or Git
+commit. Interactive commands show both fingerprints; automation must use
+`grip trust add --bundle <expected> --policy <expected>`. Never set
+`GRIPSACK_TRUST_ALL`: it no longer grants authority. Lockfile changes can require
+renewed approval too, because locks inside the repository remain in its read set.
+
+For the built-in `grip adopt` flow, generation of a module creates new source
+that needs its own approval. `--yes` skips confirmation only. In non-interactive
+use, inspect and approve the generated snapshot, then repeat with `--resume`
+and without `--mode`; this preserves generated files and target-scoped takeover.
+
 ```bash
 grip plan                    # must be clean — no E1xx
 grip apply <tool>            # subset apply, just this module

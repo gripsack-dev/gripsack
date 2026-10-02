@@ -15,9 +15,11 @@ sandboxed Deno eval (plan/0013) — no mocks of either side.
 - Everything under a `tmp_path`: `HOME` is redirected there (plus
   `GRIPSACK_HOME`), so a test can never touch the developer's real
   profile. Assert against the filesystem, not stdout snapshots.
-- **Trust gate**: `conftest.sandbox` sets `GRIPSACK_TRUST_ALL=1` so
-  fixture repos never prompt (0013 D7). Tests OF the gate delenv it
-  and assert the closed failure (`grip trust add` hint).
+- **Trust gate**: `grip`, `run_grip` and `start_grip` explicitly inspect and
+  approve the source/policy digests of disposable fixtures under the sandbox.
+  They never infer authority from CI or use an application bypass. Gate tests
+  pass `approve=False` and perform their own inspect/add steps. Fault controls
+  are stripped only from fixture approval, not the command under test.
 - **Offline only.** Sources are `file://` fixture tarballs built in the
   test (`tarfile` module) or tiny local git repos (`git init`). Network
   in e2e is a bug — CI has no credentials and flakes are unacceptable.
@@ -36,13 +38,16 @@ sandboxed Deno eval (plan/0013) — no mocks of either side.
 
 The old dual-frontend parity corpus died with the Python frontend
 (0013 D1); its replacement is a snapshot corpus: every fixture env in
-`fixtures/envs/` is evaluated by the exact Deno invocation the core
-uses, with a FIXED inputs file (deterministic facts), and the emitted
-envelope (ir + diagnostics + probe_requests) is diffed byte-exact
-against `fixtures/golden/<env>.ir.json`.
+`fixtures/envs/` is evaluated by the SDK driver with a fixed inputs file
+(deterministic facts) and the core's deny-by-default grant profile. This direct
+SDK harness does not claim captured-source approval or process receipts; those
+are real-CLI acceptance cases. Its envelope is compared against
+`fixtures/golden/<env>.ir.json`.
 
-- Spans are stripped (the only normalization): `span` keys move when a
-  fixture is edited without changing the IR's meaning.
+- Diagnostic source locations are stripped (the only normalization):
+  `span` and dedented Bash `line_map` change when a fixture moves
+  without changing the workspace's meaning. Dedicated CLI diagnostics
+  tests still check exact original-source line mapping.
 - Add a fixture env = drop the directory under `fixtures/envs/`, then
   regenerate: `REGEN_GOLDEN=1 pytest e2e/test_golden.py`. Review the
   snapshot diff like any generated artifact.

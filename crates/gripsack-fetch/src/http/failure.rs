@@ -12,6 +12,7 @@ pub enum HttpFailureKind {
     Tls,
     Dns,
     InvalidRequest,
+    InsecureCredential,
     InvalidResponse,
     InvalidMetadata,
     LoginPage,
@@ -46,6 +47,7 @@ impl std::fmt::Display for HttpFailureKind {
                 Self::Tls => "TLS validation failed; check trusted CA configuration",
                 Self::Dns => "DNS lookup failed",
                 Self::InvalidRequest => "invalid URL, proxy or request configuration",
+                Self::InsecureCredential => "refusing bearer credentials over non-HTTPS URL",
                 Self::InvalidResponse => "invalid HTTP response or redirect",
                 Self::InvalidMetadata => "invalid JSON metadata",
                 Self::LoginPage => {
@@ -93,9 +95,9 @@ impl HttpFailure {
             url: safe_url(url),
             effective_url: None,
             kind,
-            attempts: budget.attempts,
-            elapsed: Instant::now().saturating_duration_since(budget.started),
-            waited: budget.waited,
+            attempts: budget.attempts(),
+            elapsed: Instant::now().saturating_duration_since(budget.started()),
+            waited: budget.waited(),
             stop,
             server_wait: None,
             authentication,
@@ -257,9 +259,9 @@ pub(super) fn transport_kind(error: &ureq::Transport) -> HttpFailureKind {
 mod tests {
     use super::*;
     #[test]
-    fn rate_limit_advice_is_evidence_based_and_locations_are_redacted() {
+    fn failure_locations_redact_credentials_and_queries() {
         let now = Instant::now();
-        let mut budget = RequestBudget::new(now);
+        let mut budget = RequestBudget::new(now).unwrap();
         budget.begin(now).unwrap();
         let url = "https://user:PRIVATE-CANARY@api.github.com/repos/a/b?secret=PRIVATE-CANARY";
         let quota = HttpFailure::new(
@@ -270,16 +272,7 @@ mod tests {
             AuthenticationDisposition::Absent,
         );
         let text = quota.to_string();
-        assert!(text.contains("GH_TOKEN/GITHUB_TOKEN") && text.contains("60 requests/hour"));
         assert!(!text.contains("PRIVATE-CANARY"));
-        let forbidden = HttpFailure::new(
-            url,
-            HttpFailureKind::Status(403),
-            &budget,
-            RetryStopReason::NonRetryable,
-            AuthenticationDisposition::Absent,
-        );
-        assert!(!forbidden.to_string().contains("60 requests/hour"));
         let mismatch = crate::FetchError::HashMismatch {
             url: url.into(),
             expected: "expected".into(),

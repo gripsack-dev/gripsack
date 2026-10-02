@@ -4,9 +4,10 @@ from conftest import grip, make_env_repo, make_tarball, refresh_host
 
 
 def test_torn_run_marker_fails_closed(sandbox):
-    """A run marker missing `previous_generation` is torn or corrupt
-    (the field is required on the wire) — recovery fails closed and
-    retains the journal, never guessing a commit state."""
+    """Missing previous state must not gain explicit-null recovery authority."""
+    import json
+    from pathlib import Path
+
     confdir = sandbox / "myenv" / "configs" / "demo"
     confdir.mkdir(parents=True)
     (confdir / "a.toml").write_text("a\n")
@@ -20,20 +21,34 @@ export default module("demo", {
 });
 """,
     )
-    out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode == 0, out.stderr
-
     home = sandbox / ".local/share/gripsack"
     journal = home / "journal"
-    journal.mkdir(exist_ok=True)
-    (journal / "run.json").write_text('{"target_generation": 2, "op": "apply"}')
-
+    journal.mkdir(parents=True)
+    destination = sandbox / "interrupted-link"
+    destination.symlink_to("installed")
+    entry = {
+        "v": 2, "dest": str(destination),
+        "prior": {"kind": "absent"}, "before": {"kind": "absent"},
+        "after": {"kind": "link", "target": "installed"},
+    }
+    (journal / "intent.json").write_text(json.dumps(entry))
+    malformed = b'{"target_generation": 1, "op": "apply"}'
+    marker = journal / "run.json"
+    marker.write_bytes(malformed)
     out = grip("apply", "--host", "testhost", cwd=repo)
-    assert out.returncode != 0, "a torn marker must block"
-    # 0045 F2: the rejection is the PARSER's (the field is required on
-    # the wire), not a downstream classification accident
-    assert "previous_generation" in out.stderr, out.stderr
-    assert (journal / "run.json").exists(), "the journal is retained"
+    assert out.returncode != 0, out.stdout + out.stderr
+    assert destination.readlink() == Path("installed")
+    assert not (sandbox / ".config/demo/a.toml").exists()
+    assert marker.read_bytes() == malformed
+    assert json.loads((journal / "intent.json").read_text()) == entry
+
+    marker.write_text(json.dumps({
+        "previous_generation": None, "target_generation": 1, "op": "apply",
+    }))
+    out = grip("apply", "--host", "testhost", cwd=repo)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert not destination.is_symlink() and not destination.exists()
+    assert (sandbox / ".config/demo/a.toml").read_text() == "a\n"
 
 
 def test_failed_apply_rolls_back_this_runs_deployments(sandbox):
@@ -57,6 +72,8 @@ export default module("aaa", {
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode == 0, out.stderr
     assert (sandbox / ".out/a.conf").read_text() == "v1\n"
+    current = sandbox / ".local/share/gripsack/current"
+    previous_selection = current.readlink()
 
     # v2 of aaa + a module that fails at deploy (payload lacks the
     # entry — a deploy-time failure E110 can't catch)
@@ -75,12 +92,8 @@ export default module("bbb", {{
     refresh_host(repo)
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0
-    # the flip never happened…
-    generations = sandbox / ".local/share/gripsack/generations"
-    # generations/ also holds the durable high-water mark (0027 §9) —
-    # filter to actual generation directories
-    assert [p.name for p in generations.iterdir() if p.is_dir()] == ["1"]
-    # …and this run's deployments are rolled back exactly
+    assert current.readlink() == previous_selection, "failed apply must not select another transaction"
+    # This run's deployments are rolled back exactly.
     assert (sandbox / ".out/a.conf").read_text() == "v1\n"
     assert not (sandbox / ".out/b").exists()
 
@@ -496,12 +509,19 @@ export default module("a", {{
         "prior": {"kind": "file", "hash": prior_sha, "mode": 420},
         "after": canonical_sha(b"v=newer\n"),
     }
-    (journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")).write_text(
-        json.dumps(legacy)
-    )
+    rejected = journal / (hashlib.sha256(dest.encode()).hexdigest() + ".json")
+    rejected.write_text(json.dumps(legacy))
+    rejected.chmod(0o666)
+    journal.chmod(0o755)
 
     out = grip("apply", "--host", "testhost", cwd=repo)
     assert out.returncode != 0, "legacy entries block, never guessed"
     assert "pre-0.40" in out.stderr, out.stderr
     assert len(list((journal / "quarantine").glob("*.json"))) == 1
     assert conf.read_text() == "v=new\n", "the destination is untouched"
+    quarantine = journal / "quarantine"
+    assert journal.stat().st_mode & 0o7777 == 0o700
+    assert quarantine.stat().st_mode & 0o7777 == 0o700
+    saved = quarantine / rejected.name
+    assert saved.stat().st_mode & 0o7777 == 0o600
+    assert json.loads(saved.read_text()) == legacy

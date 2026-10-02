@@ -172,35 +172,38 @@ in a GPU changes the next plan with zero repo changes. That is the
 honest behavior for hardware; the plan header is what keeps it from
 reading as nondeterminism.
 
-### D7 — First eval of an unfamiliar repo is an explicit trust decision
+### D7 — Captured source and policy require explicit approval
 
-Before any eval, the core checks the repo against
-`$GRIPSACK_HOME/trust.toml`:
+**Superseded by [0048 R1](0048-review-response-0.42.0.md#r1--approve-and-evaluate-the-same-source-bundle).**
+The original path-only convenience rule and ambient CI bypass from this
+decision's first implementation no longer authorize current evaluation.
 
-```toml
-[[repos]]
-path = "/home/tarek/myenv"                 # canonical; the trust key
-remote = "git@github.com:tarek/myenv"      # informational
-commit = "54d91a1…"                        # recorded for audit
-trusted_at = "2026-08-28T12:00:00Z"
-```
+The approval key is canonical repository identity + copied source-bundle
+digest + actual evaluator/native-action/runtime policy. HEAD and credential-free
+remote metadata are informational only. Capture precedes prompting and every
+fixpoint round consumes those same copied bytes. The admitted read set includes
+ignored/untracked content, dirty submodules, configuration and explicit SDK pins;
+excluded Git/runtime state is unavailable, not an ambient read fallback.
 
-Untrusted → interactive prompt naming the path, remote, commit, and
-the exact capability set eval will get ("sandboxed TypeScript: no
-environment variables, no network, no subprocesses, read-only within
-the repo"); `y` records and proceeds. Non-TTY → hard error pointing at
-`grip trust add <path>` (also `list` / `remove`). `GRIPSACK_TRUST_ALL=1`
-is the documented CI escape hatch, same role as `GRIPSACK_DENO`.
+Private `trust.toml` v2 stores explicit source/policy approvals and retained
+legacy entries. Legacy entries require renewal; no invented digest or default
+grant upgrades them. `grip trust inspect --json` is non-evaluating and shows the
+inventory, changes and fingerprints. Non-TTY approval requires
+`grip trust add --bundle <expected> --policy <expected>`; changes between
+inspection and approval fail. `GRIPSACK_TRUST_ALL=1` is a migration error.
 
-Trust is keyed on the canonical path, **not** the commit: a per-commit
-key re-prompts on every commit to your own dotfiles repo, which trains
-users to bypass the gate. A moved or re-cloned repo re-prompts — that
-is the case that matters (the `git safe.directory` precedent).
+Check, plan, apply and update use the same prepared-evaluation owner, including
+cloned repos. Adopt approves before inspecting targets or generating source;
+generated source needs renewed approval, and `--resume` continues without
+rewriting it. `--yes` never grants trust. Doctor inspects operator runtime and
+package metadata without evaluating repo code or granting source authority.
 
-The gate wraps every command that evals: `apply`, `plan`, `check`,
-`update`, and the `--repo` bootstrap (after clone, before first eval).
-With D2's sandbox the residual risk of eval is small; the prompt is
-what makes the user *aware* a repo is code before it runs.
+Per-evaluation private v1 receipts bind source, policy, runtime, immutable
+round-input digests and process outcomes. Completion means frontend success,
+not IR validation, build, activation or source intent. Capture protects against
+live worktree edits and sandboxed repo code, not arbitrary privileged/same-UID
+mutation of trusted runtime storage. The digest covers copied bytes; it is not
+an atomic multi-file view of a concurrently edited original.
 
 ### D8 — Resolvers become executables (specified here, built next)
 

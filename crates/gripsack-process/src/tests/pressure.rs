@@ -44,11 +44,14 @@ fn huge_unterminated_line_is_stopped_incrementally() {
         "exec dd if=/dev/zero bs=8192 count=1024 2>/dev/null",
         b"",
         Limits {
-            line_bytes: 16384,
+            line_bytes: crate::FrameByteLimit::new(16384),
             ..limits()
         },
     );
-    assert!(matches!(o.reason, StopReason::LineLimit), "{o:?}");
+    assert!(
+        matches!(o.reason, StopReason::LineLimit),
+        "frame_limit_was_not_enforced: {o:?}"
+    );
     assert!(lines.is_empty());
     assert!(o.status.is_some());
 }
@@ -59,21 +62,27 @@ fn stdout_and_stderr_floods_are_cumulative() {
         "exec yes x",
         b"",
         Limits {
-            stdout_bytes: 32768,
+            stdout_bytes: crate::StdoutByteLimit::new(32768),
             ..limits()
         },
     );
-    assert!(matches!(o.reason, StopReason::StdoutLimit), "{o:?}");
+    assert!(
+        matches!(o.reason, StopReason::StdoutLimit),
+        "stdout_total_was_not_enforced: {o:?}"
+    );
     let (o, _) = peer(
         "exec yes diagnostic >&2",
         b"",
         Limits {
-            stderr_bytes: 32768,
-            retained_stderr_bytes: 1024,
+            stderr_bytes: crate::StderrByteLimit::new(32768),
+            retained_stderr_bytes: crate::RetainedStderrLimit::new(1024),
             ..limits()
         },
     );
-    assert!(matches!(o.reason, StopReason::StderrLimit), "{o:?}");
+    assert!(
+        matches!(o.reason, StopReason::StderrLimit),
+        "stderr_total_was_not_enforced: {o:?}"
+    );
     assert_eq!(o.stderr.len(), 1024);
 }
 
@@ -83,7 +92,7 @@ fn response_does_not_disable_any_output_bound() {
         (
             "printf 'ok\n'; exec yes x",
             Limits {
-                stdout_bytes: 32768,
+                stdout_bytes: crate::StdoutByteLimit::new(32768),
                 ..limits()
             },
             0,
@@ -91,7 +100,7 @@ fn response_does_not_disable_any_output_bound() {
         (
             "printf 'ok\n'; exec yes x >&2",
             Limits {
-                stderr_bytes: 32768,
+                stderr_bytes: crate::StderrByteLimit::new(32768),
                 ..limits()
             },
             1,
@@ -99,7 +108,7 @@ fn response_does_not_disable_any_output_bound() {
         (
             "printf 'ok\n'; exec dd if=/dev/zero bs=8192 count=100 2>/dev/null",
             Limits {
-                line_bytes: 16384,
+                line_bytes: crate::FrameByteLimit::new(16384),
                 ..limits()
             },
             2,
@@ -151,4 +160,30 @@ fn early_stdin_close_is_not_an_io_error() {
     );
     assert!(matches!(o.reason, StopReason::Exited), "{o:?}");
     assert_eq!(lines, [b"closed".to_vec()]);
+}
+
+#[test]
+fn binary_stderr_tail_is_exact_across_pipe_chunks() {
+    let input: Vec<u8> = (0..(3 * 8192 + 17))
+        .map(|index| (index % 251) as u8)
+        .collect();
+    for retained in [13, 8191, 8192, 8193] {
+        let (outcome, lines) = peer(
+            "cat >&2",
+            &input,
+            Limits {
+                retained_stderr_bytes: crate::RetainedStderrLimit::new(retained),
+                ..limits()
+            },
+        );
+        assert!(matches!(outcome.reason, StopReason::Exited), "{outcome:?}");
+        assert!(outcome.status.unwrap().success());
+        assert!(lines.is_empty());
+        assert_eq!(
+            outcome.stderr,
+            input[input.len() - retained..],
+            "stderr_tail_lost_exact_suffix",
+        );
+        assert!(outcome.stderr_truncated);
+    }
 }

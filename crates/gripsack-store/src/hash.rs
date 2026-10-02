@@ -209,7 +209,7 @@ pub fn canonical_tree_hash(root: &Path) -> std::io::Result<PayloadHash> {
 /// materializing it. Plan-time content identity for config-only
 /// modules.
 pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<PayloadHash> {
-    let dir_hash = hex(&Sha256::digest(b"dir\0"));
+    let dir_hash = directory_entry_hash();
     let mut entries: Vec<(String, String)> = Vec::new();
     for from in froms {
         let from = Path::new(from)
@@ -280,6 +280,17 @@ pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<
     }
     entries.sort();
     entries.dedup();
+    Ok(hash_sorted_entries(entries))
+}
+
+pub(crate) fn directory_entry_hash() -> String {
+    hex(&Sha256::digest(b"dir\0"))
+}
+
+/// Callers supply one sorted, duplicate-free row per logical tree entry.
+pub(crate) fn hash_sorted_entries(
+    entries: impl IntoIterator<Item = (String, String)>,
+) -> PayloadHash {
     let mut hasher = Sha256::new();
     for (rel, hash) in entries {
         hasher.update(rel.as_bytes());
@@ -287,7 +298,7 @@ pub fn canonical_overlay_hash(repo: &Path, froms: &[String]) -> std::io::Result<
         hasher.update(hash.as_bytes());
         hasher.update(b"\0");
     }
-    Ok(PayloadHash(hex(&hasher.finalize())))
+    PayloadHash(hex(&hasher.finalize()))
 }
 
 fn collect_entries(root: &Path, dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {

@@ -1,0 +1,89 @@
+ Network gripsack-baseline-wt_default Creating 
+ Network gripsack-baseline-wt_default Creating 
+ Network gripsack-baseline-wt_default Created 
+ Network gripsack-baseline-wt_default Created 
+ Image gripsack-baseline-wt-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 544B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 9.77kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 DONE 0.0s
+
+#8 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#8 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#8 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 2.07MB 0.2s done
+#7 DONE 0.3s
+
+#9 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#9 CACHED
+
+#10 [builder  6/10] COPY crates ./crates
+#10 CACHED
+
+#11 [test 1/2] RUN cargo fmt --check     && cargo clippy --locked --workspace --all-targets -- -D warnings     && cargo test --locked
+#11 CACHED
+
+#12 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#12 CACHED
+
+#13 [builder  4/10] WORKDIR /app
+#13 CACHED
+
+#14 [builder  7/10] COPY fuzz ./fuzz
+#14 CACHED
+
+#15 [builder  8/10] COPY schema ./schema
+#15 CACHED
+
+#16 [builder  9/10] COPY typescript ./typescript
+#16 CACHED
+
+#17 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#17 CACHED
+
+#18 [builder 10/10] COPY scripts ./scripts
+#18 CACHED
+
+#19 [test 2/2] RUN apk add --no-cache python3     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs"     && python3 scripts/gen_frontend_embed.py --check
+#19 CACHED
+
+#20 exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:48aa7940fa5e677b4f109dff1439e9774358551c03a495f4f45ef5b215e18513 0.0s done
+#20 exporting config sha256:a00af55ecf9f4772d8a0bf76d0438d569ef90bb572fa481ff39a009b446e6a53 0.0s done
+#20 exporting attestation manifest sha256:d31d0ecc8aadbf56c33cba3623c8f51817bc0e0031184a17a6a8acb1476b562a 0.0s done
+#20 exporting manifest list sha256:e6d76801cd5b95fdc7d58fc0d47a77fe8c79708742543f21b5e313bb86eb2755 0.0s done
+#20 naming to docker.io/library/gripsack-baseline-wt-test:latest
+#20 naming to docker.io/library/gripsack-baseline-wt-test:latest done
+#20 unpacking to docker.io/library/gripsack-baseline-wt-test:latest 0.0s done
+#20 DONE 0.2s
+
+#21 resolving provenance for metadata file
+#21 DONE 0.0s
+ Image gripsack-baseline-wt-test Built 
+ Container gripsack-baseline-wt-test-run-9ac186ee9c46 Creating 
+ Container gripsack-baseline-wt-test-run-9ac186ee9c46 Created 
+gate passed: fmt + clippy -D warnings + cargo test

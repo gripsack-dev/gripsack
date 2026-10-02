@@ -155,9 +155,30 @@ Concurrency caps (resources) don't solve rate. Throttle domains do:
 - Token-bucket domains in the core; conservative built-in budget for
   `api.github.com`; primitives auto-attach to their domain. Custom
   domains in `env.toml`: `[throttle] "api.corp.com" = "5/s"`.
+  A rate is finite and its bucket capacity is at least one token; `NaN`,
+  infinity and capacities below one are invalid. Invalid declarations
+  follow the existing unparseable-budget policy (ignored; operator
+  overrides warn), not an unfillable or unbounded numeric bucket.
+  Fractional and scientific spellings remain valid across the entire admitted
+  finite `f64` range; admission does not narrow rates to machine integers.
+  `gripsack-policy::rate_limit` converts the observed IEEE-754 bits into exact,
+  allocation-free credits and checks refill, spending and the least positive
+  nanosecond wait. Rate/unit changes preserve the existing token balance
+  (rounded down only when a finer fractional credit cannot be represented).
+  Version-1 credit checkpoints retain the period and nanosecond timestamp;
+  old unversioned floating checkpoints migrate explicitly. Invalid stored
+  formats retain the existing advisory-state ignore policy. These are local
+  pacing buckets, not authenticated upstream quota or cross-process rate locks.
 - 429 handling honors `Retry-After` (bounded) within the step's retry
   budget before failing.
 - Fetcher plugins declare their budget in `capabilities` (0002 §4).
+  Declared-domain waits consume the same absolute deadline as capability
+  negotiation and the fetch exchange. If the next token cannot arrive
+  within it, admission fails without launching that fetch.
+  The shared mutex wait is bounded by that same deadline. A failed wait is
+  terminal for its admission operation. Clock, timed-lock and scheduling
+  behavior remain external assumptions; no hard real-time guarantee is made.
+  Wall-clock rollback does not move a bucket's last-accounted time backwards.
 - Built-in resolution ("latest release") happens **in the core at
   lock/update time** (0002 §7) so built-in API traffic stays inside the
   throttle; eval-time resolvers are outside it by nature.

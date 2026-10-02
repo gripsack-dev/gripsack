@@ -26,7 +26,6 @@ import {
 } from "../src/index.ts";
 import type { Env, EnvContext, HostFacts } from "../src/index.ts";
 import * as index from "../src/index.ts";
-import * as pin from "../src/pin.ts";
 import type { ProbeRequest } from "../src/index.ts";
 import { createProbeBuilder } from "../src/probe.ts";
 
@@ -40,7 +39,7 @@ function view(over: Partial<EnvContext> = {}): EnvContext {
 // JSON.parse's inferred `any` is deliberate here: these tests assert
 // the wire shape of the emitted IR, field by field
 const emit = (env: Env, tags: string[] = []) => JSON.parse(emitIr(env, facts, tags));
-Deno.test("emitIr emits the IR v3 contract", () => {
+Deno.test("emitIr emits the IR v5 legacy-modules contract", () => {
   clearResources();
   const helix = module("helix", {
     fetch: githubRelease({
@@ -56,7 +55,7 @@ Deno.test("emitIr emits the IR v3 contract", () => {
 
   const ir = emit({ modules: [helix, git] }, ["gui"]);
 
-  assert.equal(ir.ir_version, 3);
+  assert.equal(ir.ir_version, 5);
   assert.deepEqual(ir.host.tags, ["gui"]);
 
   assert.equal(ir.modules.helix.fetch.kind, "github_release");
@@ -309,20 +308,6 @@ Deno.test("probes answer bound values and record unbound requests", () => {
   assert.equal(second.kind, "file_exists");
   assert.equal(second.name, "/opt/cuda");
   assert.throws(() => probe.executable(""), /must not be empty/);
-});
-
-Deno.test("pin re-exports the full index surface", () => {
-  for (const k of Object.keys(index)) {
-    assert.ok(k in pin, `pin.ts is missing export '${k}'`);
-    if (pin.coreUrl.endsWith("/src/index.ts")) {
-      // fallback instance: identity must hold (drift guard)
-      assert.strictEqual(
-        (pin as unknown as Record<string, unknown>)[k],
-        (index as unknown as Record<string, unknown>)[k],
-      );
-    }
-  }
-  assert.ok(Object.keys(index).length >= 40);
 });
 
 Deno.test("module() rejects unknown fields — a typo never lowers to an empty desired state", () => {

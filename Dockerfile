@@ -52,12 +52,22 @@ FROM builder AS test
 RUN cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
-# 0035 F6: the frontend is vendored INTO the crate — a crates.io
-# package must contain it, and a fresh regeneration must match the
-# checked-in file (staleness check). rust:alpine has no python3.
+# Published artifacts and coordinator/journal/GC admission boundaries
+# are checked and mutation-calibrated. Tool/build failures never qualify as
+# successful semantic negatives.
 RUN apk add --no-cache python3 \
     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs" \
-    && python3 scripts/gen_frontend_embed.py --check
+    && python3 scripts/gen_diagnostic_registry.py --check \
+    && python3 scripts/gen_diagnostic_registry.py --self-check \
+    && python3 scripts/gen_frontend_embed.py --check \
+    && python3 scripts/check_scheduler_loom.py \
+    && python3 scripts/check_journal_admission.py \
+    && python3 scripts/check_journal_protocol.py \
+    && python3 scripts/check_gc_roots.py \
+    && python3 scripts/check_rate_admission.py \
+    && python3 scripts/check_http_budget.py \
+    && python3 scripts/check_process_bounds.py \
+    && python3 scripts/check_update_survey.py
 
 # The debug binary for stages that need a runnable grip (e2e).
 FROM builder AS bin
@@ -78,6 +88,53 @@ COPY specs ./specs
 COPY scripts/check_models.sh ./scripts/check_models.sh
 RUN sh scripts/check_models.sh /tla/tla2tools.jar
 
+# The inductive pilot and generalized recovery proofs use the same pinned TLC.
+# The rolling upstream asset is byte-pinned: replacement fails the checksum,
+# never silently upgrades the prover or its bundled Isabelle/Z3/LS4 backends.
+# Provenance: upstream re-published the mutable `1.6.0-pre` tag on
+# 2026-10-01, replacing tlapm 7824dab (sha256 a2860384…9331c, no longer
+# served anywhere; no Wayback snapshot exists) with tlapm bfa9468. The new
+# digest below was fetched from the official release URL and verified by
+# hand on 2026-10-01 (46,747,327 bytes, `tlapm --version` = bfa9468). The
+# complete induction + mutant gate (check_tlaps.py) MUST pass under bfa9468
+# before this toolchain counts as qualified — no waiver, no checksum removal.
+FROM model AS tlaps
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+    python3 libgmp10 \
+    && rm -rf /var/lib/apt/lists/*
+ARG TLAPS_SHA256=0d6ce5b0536903995c524a5f9ae62a997b11f16663cb59d4860934965f45b4bd
+ADD --checksum=sha256:${TLAPS_SHA256} https://github.com/tlaplus/tlapm/releases/download/1.6.0-pre/tlapm-1.6.0-pre-x86_64-linux-gnu.tar.gz /tmp/tlapm.tar.gz
+# The bfa9468 slim bundle ships `Isabelle-install` without the Isabelle2025
+# component option files, and its pre-built heaps resolve their parent heaps
+# and those option files through the upstream CI build path baked into the
+# heap bytes (observed: Poly/ML loadState ENOENT / parent-mismatch without
+# them). Harvest ONLY the `*/etc/options` files from the official pinned
+# Isabelle2025 distribution (the same pin upstream's deps/isabelle/dune.mk
+# builds against) and place the heaps at their baked location. Any upstream
+# re-publish changes bytes and fails the checksums above — fail-closed.
+ARG ISABELLE_SHA256=3d1d66de371823fe31aa8ae66638f73575bac244f00b31aee1dcb62f38147c56
+ADD --checksum=sha256:${ISABELLE_SHA256} https://isabelle.in.tum.de/website-Isabelle2025/dist/Isabelle2025_linux.tar.gz /tmp/isabelle.tar.gz
+RUN set -e; \
+    mkdir -p /opt/tlapm; \
+    tar -xzf /tmp/tlapm.tar.gz -C /opt/tlapm --strip-components=1; \
+    rm /tmp/tlapm.tar.gz; \
+    N=/opt/tlapm/lib/tlapm/backends/Isabelle-install; \
+    B=/home/runner/work/tlapm/tlapm/_build/default/deps/isabelle/Isabelle; \
+    mkdir -p "$B/heaps/polyml-5.9.1_x86_64_32-linux"; \
+    cp "$N/heaps/Pure" "$N/heaps/TLA+" "$N/heaps/Options" \
+       "$B/heaps/polyml-5.9.1_x86_64_32-linux/"; \
+    mkdir -p /tmp/isabelle-opt; \
+    tar -xzf /tmp/isabelle.tar.gz -C /tmp/isabelle-opt --wildcards \
+        'Isabelle2025/etc/options' 'Isabelle2025/*/etc/options'; \
+    cd /tmp/isabelle-opt/Isabelle2025; \
+    find . -path '*/etc/options' | while read -r f; do \
+      mkdir -p "$B/$(dirname "$f")"; cp "$f" "$B/$f"; \
+    done; \
+    rm -rf /tmp/isabelle-opt /tmp/isabelle.tar.gz
+ENV PATH="/opt/tlapm/bin:$PATH"
+COPY scripts/check_tlaps.py scripts/tlaps_evidence.py scripts/tlaps_source.py scripts/tlaps_catalog.py ./scripts/
+RUN python3 scripts/check_tlaps.py
+
 # The verification gate (plan/0046): cargo-verus over the policy
 # kernels, positive proof + seeded-mutant calibration, via the
 # canonical runner scripts/check_verus.sh. Verus ships no musl or
@@ -88,7 +145,7 @@ RUN sh scripts/check_models.sh /tla/tla2tools.jar
 # repo's pinned toolchain.
 FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 AS verify
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-    curl ca-certificates unzip build-essential \
+    curl ca-certificates unzip build-essential python3 \
     && rm -rf /var/lib/apt/lists/*
 ARG VERUS_RELEASE=0.2026.09.06.8dea4a2
 ARG VERUS_SHA256=13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16
@@ -108,20 +165,22 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY fuzz ./fuzz
-COPY scripts/check_verus.sh ./scripts/check_verus.sh
+COPY scripts/check_verus.sh scripts/check_verus.py scripts/verus_evidence.py ./scripts/
 RUN sh scripts/check_verus.sh
 
-# TypeScript frontend tests (plan/0005 §1, plan/0013 D1): `deno test`
-# on the source tree — no transpile chain, no node_modules. The image
-# tag is the same version DENO_RELEASE pins in
-# crates/gripsack-fetch/src/host.rs; bump them together.
+# TypeScript frontend tests and strict type checking of the four
+# admission-only workspace examples (plan/0052 §5.4). The image tag
+# matches the DENO_RELEASE provisioned by gripsack-fetch/src/host.rs.
 FROM denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d AS ts-test
 WORKDIR /app
 COPY typescript ./typescript
+COPY examples ./examples
 # deno install materializes node_modules (@types/node) for the
 # type-checker; build-time network is fine — the runtime eval path
 # stays --cached-only --no-remote.
-RUN cd typescript && deno install && deno task test
+RUN cd typescript && deno install && deno task test \
+    && deno run --cached-only --no-remote --allow-all node_modules/typescript/bin/tsc \
+       --project tsconfig.examples.json --noEmit
 
 # E2E flow tests: the real (musl-static, runs-everywhere) binary
 # against fixture env repos in a sandboxed HOME (offline). Base is
@@ -156,6 +215,7 @@ COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
 COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
 RUN cd e2e && uv sync --locked
 COPY e2e ./e2e
+COPY examples ./examples
 ENV GRIPSACK_E2E_IN_DOCKER=1
 ENV GRIPSACK_BIN=/usr/local/bin/grip
 WORKDIR /app/e2e

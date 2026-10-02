@@ -20,12 +20,10 @@ pub enum ResolveError {
         asset: String,
         available: Vec<String>,
     },
-    #[error("no releases found for {0}")]
-    NoReleases(String),
-    #[error("json: {0}")]
-    Json(#[from] serde_json::Error),
     #[error(transparent)]
     Placeholder(#[from] crate::PlaceholderError),
+    #[error(transparent)]
+    Bottle(#[from] crate::bottle::SelectionFailure),
 }
 
 impl ResolveError {
@@ -479,31 +477,14 @@ pub struct BottleFile {
     pub sha256: String,
 }
 
-/// The bottle file key for this platform: linux is `x86_64_linux`;
-/// macOS keys are arm64_* / plain names (sonoma…) — take the newest.
-pub fn bottle_key(files: &std::collections::BTreeMap<String, BottleFile>) -> Option<&str> {
-    let (os, arch) = (std::env::consts::OS, std::env::consts::ARCH);
-    if os == "linux" {
-        return if arch == "x86_64" {
-            Some("x86_64_linux")
-        } else {
-            Some("arm64_linux")
-        }
-        .filter(|k| files.contains_key(*k));
-    }
-    if os == "macos" {
-        if arch == "aarch64" {
-            return files
-                .keys()
-                .rfind(|k| k.starts_with("arm64_"))
-                .map(String::as_str);
-        }
-        return files
-            .keys()
-            .rfind(|k| !k.starts_with("arm64") && *k != "all")
-            .map(String::as_str);
-    }
-    None
+/// Select the bottle tag for the acquiring host. Pure policy over the
+/// injected platform facts (A0-01): OS/architecture filter plus macOS
+/// codename chronology — never lexical tag ordering.
+pub fn bottle_key<'a>(
+    files: &'a std::collections::BTreeMap<String, BottleFile>,
+    host: &crate::bottle::HostPlatform,
+) -> Result<&'a str, crate::bottle::SelectionFailure> {
+    crate::bottle::select(files, host)
 }
 
 /// Resolve a brew formula to a bottle URL — the sha256 comes from the
@@ -514,11 +495,7 @@ pub(crate) fn resolve_brew(
 ) -> Result<ResolvedRelease, ResolveError> {
     let url = format!("https://formulae.brew.sh/api/formula/{formula}.json");
     let f: Formula = context.json(&url, RequestKind::Metadata)?;
-    let key = bottle_key(&f.bottle.stable.files).ok_or_else(|| ResolveError::NoAsset {
-        repo: formula.to_string(),
-        asset: "bottle for this platform".into(),
-        available: f.bottle.stable.files.keys().cloned().collect(),
-    })?;
+    let key = bottle_key(&f.bottle.stable.files, context.host_platform())?;
     let file = &f.bottle.stable.files[key];
     Ok(ResolvedRelease {
         version: f.versions.stable,

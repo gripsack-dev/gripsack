@@ -22,46 +22,66 @@ pub(crate) struct Overlay {
 impl Overlay {
     pub(crate) fn capture(
         plan: &PreparedModule,
-        repo: &Path,
+        repo: &crate::Repository,
         stage: &Path,
     ) -> Result<Self, ExecError> {
         let mut directory = None;
-        for entry in plan.entries() {
-            let source = repo.join(&entry.from);
-            match source.symlink_metadata() {
-                Ok(metadata) => {
-                    if metadata.is_dir()
-                        && stage.canonicalize()?.starts_with(source.canonicalize()?)
-                    {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            "overlay source contains its staging directory",
-                        )
-                        .into());
+        match repo {
+            crate::Repository::Evaluated { sources, .. } => {
+                sources.visit_materialized(
+                    plan.entries().map(|entry| entry.from.as_str()),
+                    |relative, source, object| {
+                        let captured = snapshot(&mut directory, stage)?;
+                        match object {
+                            gripsack_store::source_bundle::SourceObject::Directory => {
+                                real_directories(&captured.root, relative)
+                            }
+                            gripsack_store::source_bundle::SourceObject::File { .. } => {
+                                copy(repo, source, &captured.root, relative)
+                            }
+                            gripsack_store::source_bundle::SourceObject::Alias { .. } => {
+                                Err(io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    "captured materialization returned an unresolved alias",
+                                ))
+                            }
+                        }
+                    },
+                )?;
+            }
+            crate::Repository::Direct(root) => {
+                for entry in plan.entries() {
+                    let source = root.join(&entry.from);
+                    match source.symlink_metadata() {
+                        Ok(metadata) => {
+                            if metadata.is_dir()
+                                && stage.canonicalize()?.starts_with(source.canonicalize()?)
+                            {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::InvalidInput,
+                                    "overlay source contains its staging directory",
+                                )
+                                .into());
+                            }
+                        }
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                            ) =>
+                        {
+                            continue;
+                        }
+                        Err(error) => return Err(error.into()),
                     }
+                    copy(
+                        repo,
+                        &source,
+                        &snapshot(&mut directory, stage)?.root,
+                        Path::new(&entry.from),
+                    )?;
                 }
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
-                    ) =>
-                {
-                    continue;
-                }
-                Err(error) => return Err(error.into()),
             }
-            if directory.is_none() {
-                let temporary = tempfile::Builder::new()
-                    .prefix("grip-overlay-")
-                    .tempdir_in(stage.parent().unwrap_or(Path::new(".")))?;
-                let root = gripsack_fs::open(temporary.path())?;
-                directory = Some(Snapshot { root, temporary });
-            }
-            copy(
-                &source,
-                &directory.as_ref().expect("snapshot created").root,
-                Path::new(&entry.from),
-            )?;
         }
         let hash = directory
             .as_ref()
@@ -86,6 +106,17 @@ impl Overlay {
     }
 }
 
+fn snapshot<'a>(directory: &'a mut Option<Snapshot>, stage: &Path) -> io::Result<&'a Snapshot> {
+    if directory.is_none() {
+        let temporary = tempfile::Builder::new()
+            .prefix("grip-overlay-")
+            .tempdir_in(stage.parent().unwrap_or(Path::new(".")))?;
+        let root = gripsack_fs::open(temporary.path())?;
+        *directory = Some(Snapshot { root, temporary });
+    }
+    Ok(directory.as_ref().expect("snapshot created"))
+}
+
 fn real_directories(root: &gripsack_fs::Dir, relative: &Path) -> io::Result<()> {
     let mut path = std::path::PathBuf::new();
     for component in relative.components() {
@@ -108,13 +139,19 @@ fn real_directories(root: &gripsack_fs::Dir, relative: &Path) -> io::Result<()> 
     Ok(())
 }
 
-fn copy(source: &Path, destination: &gripsack_fs::Dir, relative: &Path) -> io::Result<()> {
+fn copy(
+    repository: &crate::Repository,
+    source: &Path,
+    destination: &gripsack_fs::Dir,
+    relative: &Path,
+) -> io::Result<()> {
     let metadata = source.symlink_metadata()?;
     if metadata.is_dir() {
         real_directories(destination, relative)?;
         for entry in std::fs::read_dir(source)? {
             let entry = entry?;
             copy(
+                repository,
                 &entry.path(),
                 destination,
                 &relative.join(entry.file_name()),
@@ -158,8 +195,10 @@ fn copy(source: &Path, destination: &gripsack_fs::Dir, relative: &Path) -> io::R
     options.write(true).create_new(true);
     let mut output = destination.open_with(relative, &options)?;
     io::copy(&mut input, &mut output)?;
+    use std::os::unix::fs::PermissionsExt;
+    let mode = repository.original_mode(relative, metadata.permissions().mode() & 0o7777)?;
     output.set_permissions(gripsack_fs::cap_std::fs::Permissions::from_std(
-        metadata.permissions(),
+        std::fs::Permissions::from_mode(mode.bits()),
     ))
 }
 

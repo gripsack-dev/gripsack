@@ -1,0 +1,1932 @@
+DEVELOPMENT_EVIDENCE={
+  "base_commit": "24c1f6c84f859bb759237b5f66a98bbd69058c37",
+  "candidate_commit": null,
+  "scope": "R3 runtime development; not full NEXT closure, platform qualification, or generalized M-V6",
+  "qualified_observation": {
+    "cli_cases": 37,
+    "duplicate": {
+      "append_effects": 2,
+      "receiver_effects": 1,
+      "attempt": 2
+    },
+    "crash_after_start": {
+      "append_effects": 1,
+      "receiver_effects": 1,
+      "attempt": 2
+    },
+    "clean": {
+      "append_effects": 1,
+      "receiver_effects": 1,
+      "attempt": 1
+    }
+  },
+  "fuzz": "not_run_owner_waived",
+  "notes": [
+    "Later native errno/FD/direct-exec and additional crash-window work changes the working tree; this is not exact-final-source qualification.",
+    "The formatter correctly escaped hook controls; trusted renderer SGR colours remain separate.",
+    "The actual same-generation/no-op replay bug was fixed by excluding prior recovery reports from the new deployment decision."
+  ]
+}
+
+===== false_new_generation_before =====
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.7s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 0.6s
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.6s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#9 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 3.75MB 0.2s done
+#11 DONE 0.3s
+
+#12 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#12 CACHED
+
+#13 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#13 CACHED
+
+#14 [builder  4/10] WORKDIR /app
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 DONE 0.1s
+
+#16 [builder  6/10] COPY crates ./crates
+#16 DONE 0.3s
+
+#17 [builder  7/10] COPY fuzz ./fuzz
+#17 DONE 0.1s
+
+#18 [builder  8/10] COPY schema ./schema
+#18 DONE 0.1s
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 DONE 0.1s
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.1s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.400     Updating crates.io index
+#21 7.608  Downloading crates ...
+#21 7.674   Downloaded adler2 v2.0.1
+#21 7.678   Downloaded anstyle v1.0.14
+#21 7.681   Downloaded anstyle-query v1.1.5
+#21 7.683   Downloaded block-buffer v0.12.1
+#21 7.693   Downloaded convert_case v0.4.0
+#21 7.695   Downloaded equivalent v1.0.2
+#21 7.697   Downloaded clap_lex v1.1.0
+#21 7.699   Downloaded cfg-if v1.0.4
+#21 7.702   Downloaded colorchoice v1.0.5
+#21 7.704   Downloaded httpdate v1.0.3
+#21 7.708   Downloaded errno v0.3.14
+#21 7.711   Downloaded heck v0.5.0
+#21 7.714   Downloaded itoa v1.0.18
+#21 7.717   Downloaded form_urlencoded v1.2.2
+#21 7.719   Downloaded idna_adapter v1.2.2
+#21 7.720   Downloaded fs-set-times v0.20.3
+#21 7.723   Downloaded ambient-authority v0.0.2
+#21 7.724   Downloaded cpufeatures v0.3.0
+#21 7.727   Downloaded crypto-common v0.2.2
+#21 7.729   Downloaded matchers v0.2.0
+#21 7.733   Downloaded is_terminal_polyfill v1.70.2
+#21 7.734   Downloaded serde_spanned v1.1.1
+#21 7.744   Downloaded percent-encoding v2.3.2
+#21 7.746   Downloaded potential_utf v0.1.6
+#21 7.759   Downloaded lazy_static v1.5.0
+#21 7.763   Downloaded anstream v1.0.0
+#21 7.767   Downloaded anstyle-parse v1.0.0
+#21 7.771   Downloaded openssl-probe v0.2.1
+#21 7.774   Downloaded digest v0.11.3
+#21 7.778   Downloaded ipnet v2.12.1
+#21 7.781   Downloaded displaydoc v0.2.7
+#21 7.784   Downloaded find-msvc-tools v0.1.11
+#21 7.786   Downloaded fastrand v2.5.0
+#21 7.790   Downloaded maybe-owned v0.3.4
+#21 7.792   Downloaded pkg-config v0.3.34
+#21 7.796   Downloaded pin-project-lite v0.2.17
+#21 7.807   Downloaded owo-colors v4.3.0
+#21 7.811   Downloaded rustix-linux-procfs v0.1.1
+#21 7.813   Downloaded quote v1.0.47
+#21 7.818   Downloaded io-lifetimes v2.0.4
+#21 7.821   Downloaded unit-prefix v0.5.2
+#21 7.824   Downloaded io-lifetimes v3.0.1
+#21 7.826   Downloaded jobserver v0.1.35
+#21 7.830   Downloaded nu-ansi-term v0.50.3
+#21 7.835   Downloaded clap_derive v4.6.4
+#21 7.838   Downloaded utf8parse v0.2.2
+#21 7.841   Downloaded simd-adler32 v0.3.10
+#21 7.845   Downloaded untrusted v0.9.0
+#21 7.850   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 7.852   Downloaded cap-std v4.0.3
+#21 7.858   Downloaded console v0.16.4
+#21 7.861   Downloaded bzip2 v0.6.1
+#21 7.866   Downloaded utf8_iter v1.0.4
+#21 7.868   Downloaded crc32fast v1.5.1
+#21 7.872   Downloaded tracing-serde v0.2.0
+#21 7.874   Downloaded getrandom v0.2.17
+#21 7.880   Downloaded hybrid-array v0.4.14
+#21 7.884   Downloaded io-extras v0.19.0
+#21 7.888   Downloaded once_cell v1.21.4
+#21 7.893   Downloaded litemap v0.8.3
+#21 7.898   Downloaded rustls-native-certs v0.8.4
+#21 7.900   Downloaded xattr v1.6.1
+#21 7.905   Downloaded tempfile v3.27.0
+#21 7.910   Downloaded getrandom v0.4.3
+#21 7.916   Downloaded zerofrom-derive v0.1.7
+#21 7.918   Downloaded zerofrom v0.1.8
+#21 7.920   Downloaded bitflags v2.13.1
+#21 7.927   Downloaded filetime v0.2.29
+#21 7.930   Downloaded yoke-derive v0.8.2
+#21 7.932   Downloaded serde_derive v1.0.229
+#21 7.937   Downloaded icu_provider v2.3.1
+#21 7.942   Downloaded log v0.4.34
+#21 7.946   Downloaded ryu v1.0.23
+#21 7.953   Downloaded rustls-pki-types v1.15.1
+#21 7.957   Downloaded serde_yaml v0.9.34+deprecated
+#21 7.963   Downloaded sharded-slab v0.1.7
+#21 7.970   Downloaded const-oid v0.10.2
+#21 7.973   Downloaded dialoguer v0.12.0
+#21 7.980   Downloaded smallvec v1.15.2
+#21 7.982   Downloaded base64 v0.22.1
+#21 7.990   Downloaded indicatif v0.18.6
+#21 7.995   Downloaded miniz_oxide v0.8.9
+#21 8.000   Downloaded serde_core v1.0.229
+#21 8.004   Downloaded libbz2-rs-sys v0.2.5
+#21 8.007   Downloaded cc v1.4.4
+#21 8.011   Downloaded webpki-roots v0.26.11
+#21 8.014   Downloaded icu_locale_core v2.3.0
+#21 8.029   Downloaded cap-primitives v4.0.3
+#21 8.046   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 8.049   Downloaded flate2 v1.1.9
+#21 8.057   Downloaded icu_collections v2.3.0
+#21 8.067   Downloaded icu_normalizer_data v2.3.0
+#21 8.071   Downloaded rustls-webpki v0.103.15
+#21 8.076   Downloaded tinystr v0.8.4
+#21 8.081   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 8.083   Downloaded clap v4.6.6
+#21 8.098   Downloaded proc-macro2 v1.0.107
+#21 8.103   Downloaded indexmap v2.14.0
+#21 8.111   Downloaded memchr v2.8.3
+#21 8.123   Downloaded shell-words v1.1.1
+#21 8.125   Downloaded serde v1.0.229
+#21 8.131   Downloaded bumpalo v3.20.3
+#21 8.134   Downloaded icu_properties v2.3.0
+#21 8.139   Downloaded subtle v2.6.1
+#21 8.142   Downloaded thread_local v1.1.10
+#21 8.145   Downloaded stable_deref_trait v1.2.1
+#21 8.147   Downloaded strsim v0.11.1
+#21 8.150   Downloaded idna v1.1.0
+#21 8.155   Downloaded hashbrown v0.17.1
+#21 8.163   Downloaded serde_json v1.0.151
+#21 8.174   Downloaded aho-corasick v1.1.5
+#21 8.182   Downloaded clap_builder v4.6.6
+#21 8.192   Downloaded icu_properties_data v2.3.0
+#21 8.205   Downloaded thiserror v2.0.20
+#21 8.214   Downloaded portable-atomic v1.15.0
+#21 8.226   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 8.228   Downloaded writeable v0.6.4
+#21 8.232   Downloaded zerovec-derive v0.11.6
+#21 8.236   Downloaded zeroize v1.9.0
+#21 8.238   Downloaded xz2 v0.1.7
+#21 8.243   Downloaded sha2 v0.11.0
+#21 8.251   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 8.255   Downloaded synstructure v0.13.2
+#21 8.257   Downloaded shlex v2.0.1
+#21 8.260   Downloaded zmij v1.0.23
+#21 8.264   Downloaded thiserror-impl v2.0.20
+#21 8.266   Downloaded zstd v0.13.3
+#21 8.273   Downloaded tracing-attributes v0.1.31
+#21 8.277   Downloaded regex-syntax v0.8.11
+#21 8.285   Downloaded rustls v0.23.45
+#21 8.304   Downloaded rustix v1.1.4
+#21 8.362   Downloaded toml v0.9.12+spec-1.1.0
+#21 8.369   Downloaded toml v1.1.4+spec-1.1.0
+#21 8.377   Downloaded icu_normalizer v2.3.0
+#21 8.388   Downloaded zstd-safe v7.2.4
+#21 8.390   Downloaded regex-automata v0.4.18
+#21 8.411   Downloaded lzma-sys v0.1.20
+#21 8.454   Downloaded unsafe-libyaml v0.2.11
+#21 8.460   Downloaded tracing-core v0.1.36
+#21 8.465   Downloaded unicode-ident v1.0.24
+#21 8.471   Downloaded tracing-log v0.2.0
+#21 8.473   Downloaded yoke v0.8.3
+#21 8.476   Downloaded libc v0.2.189
+#21 8.595   Downloaded zopfli v0.8.3
+#21 8.599   Downloaded ring v0.17.14
+#21 8.659   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 8.665   Downloaded tar v0.4.46
+#21 8.670   Downloaded url v2.5.8
+#21 8.673   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 8.679   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 8.682   Downloaded linux-raw-sys v0.12.1
+#21 8.744   Downloaded zerotrie v0.2.5
+#21 8.751   Downloaded ureq v2.12.1
+#21 8.759   Downloaded typenum v1.20.1
+#21 8.764   Downloaded typed-path v0.12.3
+#21 8.780   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 8.784   Downloaded zerovec v0.11.8
+#21 8.795   Downloaded zip v8.6.0
+#21 8.801   Downloaded winnow v1.0.4
+#21 8.817   Downloaded winnow v0.7.15
+#21 8.834   Downloaded tracing-subscriber v0.3.23
+#21 8.848   Downloaded webpki-roots v1.0.9
+#21 8.852   Downloaded zlib-rs v0.6.7
+#21 8.861   Downloaded unicode-width v0.2.2
+#21 8.868   Downloaded syn v3.0.4
+#21 8.883   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 8.898   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 8.913   Downloaded syn v2.0.119
+#21 8.928   Downloaded tracing v0.1.44
+#21 8.946   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 9.150    Compiling proc-macro2 v1.0.107
+#21 9.150    Compiling unicode-ident v1.0.24
+#21 9.150    Compiling quote v1.0.47
+#21 9.151    Compiling libc v0.2.189
+#21 9.151    Compiling serde_core v1.0.229
+#21 9.151    Compiling cfg-if v1.0.4
+#21 9.156    Compiling shlex v2.0.1
+#21 9.156    Compiling find-msvc-tools v0.1.11
+#21 9.157    Compiling once_cell v1.21.4
+#21 9.161    Compiling hashbrown v0.17.1
+#21 9.161    Compiling equivalent v1.0.2
+#21 9.161    Compiling stable_deref_trait v1.2.1
+#21 9.161    Compiling rustix v1.1.4
+#21 9.165    Compiling serde v1.0.229
+#21 9.165    Compiling bitflags v2.13.1
+#21 9.170    Compiling linux-raw-sys v0.12.1
+#21 9.173    Compiling pkg-config v0.3.34
+#21 9.176    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 9.177    Compiling zmij v1.0.23
+#21 9.177    Compiling itoa v1.0.18
+#21 9.185    Compiling serde_json v1.0.151
+#21 9.186    Compiling memchr v2.8.3
+#21 9.186    Compiling io-lifetimes v2.0.4
+#21 9.192    Compiling io-lifetimes v3.0.1
+#21 9.196    Compiling zeroize v1.9.0
+#21 9.199    Compiling typenum v1.20.1
+#21 9.199    Compiling convert_case v0.4.0
+#21 9.199    Compiling writeable v0.6.4
+#21 9.203    Compiling winnow v1.0.4
+#21 9.203    Compiling litemap v0.8.3
+#21 9.204    Compiling vstd v0.0.0-2026-09-06-0133
+#21 9.204    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 9.258    Compiling smallvec v1.15.2
+#21 9.263    Compiling thiserror v2.0.20
+#21 9.263    Compiling log v0.4.34
+#21 9.296    Compiling icu_normalizer_data v2.3.0
+#21 9.384    Compiling utf8_iter v1.0.4
+#21 9.434    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 9.457    Compiling io-extras v0.19.0
+#21 9.467    Compiling icu_properties_data v2.3.0
+#21 9.500    Compiling rustls-pki-types v1.15.1
+#21 9.512    Compiling getrandom v0.4.3
+#21 9.517    Compiling cap-primitives v4.0.3
+#21 9.567    Compiling tracing-core v0.1.36
+#21 9.567    Compiling ipnet v2.12.1
+#21 9.584    Compiling cap-std v4.0.3
+#21 9.585    Compiling ambient-authority v0.0.2
+#21 9.591    Compiling crc32fast v1.5.1
+#21 9.616    Compiling const-oid v0.10.2
+#21 9.616    Compiling maybe-owned v0.3.4
+#21 9.620    Compiling winnow v0.7.15
+#21 9.633    Compiling zstd-safe v7.2.4
+#21 9.654    Compiling fastrand v2.5.0
+#21 9.678    Compiling untrusted v0.9.0
+#21 9.682    Compiling simd-adler32 v0.3.10
+#21 9.721    Compiling cpufeatures v0.3.0
+#21 9.734    Compiling percent-encoding v2.3.2
+#21 9.784    Compiling rustls v0.23.45
+#21 9.809    Compiling adler2 v2.0.1
+#21 9.823    Compiling pin-project-lite v0.2.17
+#21 9.848    Compiling bumpalo v3.20.3
+#21 9.854    Compiling subtle v2.6.1
+#21 9.878    Compiling zlib-rs v0.6.7
+#21 9.892    Compiling libbz2-rs-sys v0.2.5
+#21 9.901    Compiling openssl-probe v0.2.1
+#21 9.920    Compiling form_urlencoded v1.2.2
+#21 9.932    Compiling utf8parse v0.2.2
+#21 9.947    Compiling base64 v0.22.1
+#21 9.957    Compiling regex-syntax v0.8.11
+#21 9.983    Compiling typed-path v0.12.3
+#21 10.000    Compiling miniz_oxide v0.8.9
+#21 10.01    Compiling anstyle-parse v1.0.0
+#21 10.01    Compiling lazy_static v1.5.0
+#21 10.04    Compiling ryu v1.0.23
+#21 10.05    Compiling webpki-roots v1.0.9
+#21 10.05    Compiling rustls-native-certs v0.8.4
+#21 10.10    Compiling portable-atomic v1.15.0
+#21 10.13    Compiling anstyle v1.0.14
+#21 10.16    Compiling httpdate v1.0.3
+#21 10.16    Compiling webpki-roots v0.26.11
+#21 10.18    Compiling is_terminal_polyfill v1.70.2
+#21 10.21    Compiling zopfli v0.8.3
+#21 10.23    Compiling unicode-width v0.2.2
+#21 10.24    Compiling colorchoice v1.0.5
+#21 10.27    Compiling anstyle-query v1.1.5
+#21 10.29    Compiling indexmap v2.14.0
+#21 10.30    Compiling unsafe-libyaml v0.2.11
+#21 10.30    Compiling tracing-log v0.2.0
+#21 10.31    Compiling sharded-slab v0.1.7
+#21 10.32    Compiling thread_local v1.1.10
+#21 10.33    Compiling heck v0.5.0
+#21 10.37    Compiling owo-colors v4.3.0
+#21 10.40    Compiling anstream v1.0.0
+#21 10.41    Compiling nu-ansi-term v0.50.3
+#21 10.43    Compiling strsim v0.11.1
+#21 10.48    Compiling clap_lex v1.1.0
+#21 10.50    Compiling shell-words v1.1.1
+#21 10.57    Compiling unit-prefix v0.5.2
+#21 10.67    Compiling hybrid-array v0.4.14
+#21 10.70    Compiling bzip2 v0.6.1
+#21 10.76    Compiling clap_builder v4.6.6
+#21 10.91    Compiling syn v3.0.4
+#21 10.91    Compiling syn v2.0.119
+#21 10.91    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 11.10    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 11.27    Compiling jobserver v0.1.35
+#21 11.27    Compiling getrandom v0.2.17
+#21 11.27    Compiling filetime v0.2.29
+#21 11.27    Compiling console v0.16.4
+#21 11.46    Compiling crypto-common v0.2.2
+#21 11.46    Compiling block-buffer v0.12.1
+#21 11.54    Compiling cc v1.4.4
+#21 11.71    Compiling regex-automata v0.4.18
+#21 11.75    Compiling indicatif v0.18.6
+#21 12.40    Compiling digest v0.11.3
+#21 12.54    Compiling sha2 v0.11.0
+#21 13.06    Compiling serde_spanned v1.1.1
+#21 13.06    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 13.06    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 13.17    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 13.17    Compiling ring v0.17.14
+#21 13.17    Compiling lzma-sys v0.1.20
+#21 13.26    Compiling toml v1.1.4+spec-1.1.0
+#21 13.26    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 13.27    Compiling toml v0.9.12+spec-1.1.0
+#21 13.27    Compiling flate2 v1.1.9
+#21 14.00    Compiling matchers v0.2.0
+#21 14.16    Compiling fs-set-times v0.20.3
+#21 14.16    Compiling rustix-linux-procfs v0.1.1
+#21 14.16    Compiling tempfile v3.27.0
+#21 14.16    Compiling xattr v1.6.1
+#21 14.52    Compiling tar v0.4.46
+#21 14.53    Compiling dialoguer v0.12.0
+#21 14.57    Compiling xz2 v0.1.7
+#21 15.57    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 16.26    Compiling synstructure v0.13.2
+#21 16.65    Compiling zstd v0.13.3
+#21 16.85    Compiling zip v8.6.0
+#21 16.86    Compiling zerovec-derive v0.11.6
+#21 16.86    Compiling displaydoc v0.2.7
+#21 16.86    Compiling serde_derive v1.0.229
+#21 16.86    Compiling thiserror-impl v2.0.20
+#21 16.86    Compiling clap_derive v4.6.4
+#21 17.54    Compiling rustls-webpki v0.103.15
+#21 17.67    Compiling zerofrom-derive v0.1.7
+#21 17.67    Compiling yoke-derive v0.8.2
+#21 17.67    Compiling tracing-attributes v0.1.31
+#21 19.04    Compiling clap v4.6.6
+#21 19.14    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 19.14    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 19.20    Compiling zerofrom v0.1.8
+#21 19.23    Compiling tracing v0.1.44
+#21 19.27    Compiling yoke v0.8.3
+#21 19.40    Compiling zerovec v0.11.8
+#21 19.40    Compiling zerotrie v0.2.5
+#21 19.92    Compiling tinystr v0.8.4
+#21 19.92    Compiling potential_utf v0.1.6
+#21 20.00    Compiling icu_collections v2.3.0
+#21 20.05    Compiling icu_locale_core v2.3.0
+#21 20.78    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 20.78    Compiling serde_yaml v0.9.34+deprecated
+#21 20.78    Compiling tracing-serde v0.2.0
+#21 20.82    Compiling icu_provider v2.3.1
+#21 20.88    Compiling tracing-subscriber v0.3.23
+#21 21.03    Compiling icu_properties v2.3.0
+#21 21.03    Compiling icu_normalizer v2.3.0
+#21 22.16    Compiling idna_adapter v1.2.2
+#21 22.23    Compiling idna v1.1.0
+#21 22.63    Compiling url v2.5.8
+#21 23.21    Compiling ureq v2.12.1
+#21 27.48    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 27.75    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 30.48    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 30.48    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 30.48    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 32.22    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 32.22    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 33.98    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 33.98    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 38.14    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 43.59     Finished `dev` profile [unoptimized + debuginfo] target(s) in 43.33s
+#21 DONE 44.0s
+
+#22 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#22 CACHED
+
+#23 [e2e  2/12] WORKDIR /app
+#23 CACHED
+
+#24 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#24 CACHED
+
+#25 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#27 DONE 0.1s
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 DONE 0.1s
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.285 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.285 Creating virtual environment at: .venv
+#29 0.293 Resolved 10 packages in 3ms
+#29 0.390 Downloading pygments (1.2MiB)
+#29 0.541  Downloaded pygments
+#29 0.541 Prepared 5 packages in 247ms
+#29 0.556 Installed 5 packages in 15ms
+#29 0.556  + iniconfig==2.3.0
+#29 0.556  + packaging==26.3
+#29 0.556  + pluggy==1.6.0
+#29 0.556  + pygments==2.21.0
+#29 0.556  + pytest==9.1.1
+#29 DONE 0.6s
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 2.8s done
+#33 exporting manifest sha256:8e480c00e08a6b56ff3f058dd322b76279b4db24f9905b4d024865b5b624847b 0.0s done
+#33 exporting config sha256:66392edbb942b4a9a321a5c1791a330cc02fb95e2a2e9a3e866d49e2e542ec80 0.0s done
+#33 exporting attestation manifest sha256:b2fcba4f0fe7a4b8527b3a4b71b83c0435430cede95c6cfaa6576682d47e012d 0.0s done
+#33 exporting manifest list sha256:d6a706714283a1763defec1d88b89853fd377e18de40c70781751d2a2d920c09 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.8s done
+#33 DONE 3.7s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-298e48e785ff Creating 
+ Container gripsack-e2e-run-298e48e785ff Created 
+FF..F.F...........................                                       [100%]
+=================================== FAILURES ===================================
+_ test_replay_preserves_token_and_skips_only_durable_terminal_results[hook-after-start-0-2-1] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_replay_preserves_token_an0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7610c10ab490>
+cut = 'hook-after-start', observed_before = 0, expected_attempt = 2
+expected_effects = 1
+
+    @pytest.mark.parametrize("cut,observed_before,expected_attempt,expected_effects", [
+        ("hook-after-start", 0, 2, 1),
+        ("hook-after-effect", 1, 2, 2),
+        ("hook-after-receipt", 1, 1, 1),
+        ("hooks-before-cleanup", 1, 1, 1),
+    ])
+    def test_replay_preserves_token_and_skips_only_durable_terminal_results(
+            sandbox, monkeypatch, cut, observed_before, expected_attempt, expected_effects):
+        effect = sandbox / "effects"
+        repo = fixture_repo(sandbox, append_script(effect))
+        monkeypatch.setenv("GRIPSACK_ACTIVATION_INTENT_ID", "forged-ambient-id")
+        monkeypatch.setenv("GRIPSACK_ACTIVATION_ATTEMPT", "999")
+        monkeypatch.setenv("GRIPSACK_CRASH_AFTER", cut)
+        interrupted = grip("apply", "--host", "testhost", cwd=repo)
+        assert interrupted.returncode != 0
+        before = effect.read_text().splitlines() if effect.exists() else []
+        assert len(before) == observed_before
+        first = outcomes(repo)
+        assert len(first) == 1 and first[0]["pending"]
+        identity = first[0]["intent"]
+        assert identity != "forged-ambient-id"
+        expected_state = "started" if cut in {"hook-after-start", "hook-after-effect"} else "succeeded"
+        assert first[0]["state"] == {"kind": expected_state, "attempt": 1}
+        for line in before:
+            assert line == f"{identity}:1"
+        monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+        recovered = grip("apply", "--host", "testhost", cwd=repo)
+        assert recovered.returncode == 0, recovered.stdout + recovered.stderr
+        after = effect.read_text().splitlines()
+>       assert len(after) == expected_effects
+E       AssertionError: assert 2 == 1
+E        +  where 2 = len(['eae22c09e52ab12dac59b98adf34d036cb6deac3988123b617bc0fc2bc4be055:2', '8859530333d2fdf4245853f7fcff9564c7ef64d958f9e467b6f37d88596301cd:1'])
+
+test_hook_outcomes.py:65: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790537255-4d8424.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T19:27:35.640699Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_replay_preserves_token_an0/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790537255-4d8424","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_replay_preserves_token_an0/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T19:27:35.712882Z","level":"INFO","fields":{"message":"intent declared (runs via activation adapters)","action":"CustomShell { script: \"printf '%s:%s\\\\n' \\\"$GRIPSACK_ACTIVATION_INTENT_ID\\\" \\\"$GRIPSACK_ACTIVATION_ATTEMPT\\\" >> /tmp/pytest-of-root/pytest-0/test_replay_preserves_token_an0/effects\" }"},"target":"gripsack_exec::module","span":{"module":"demo","name":"module"},"spans":[{"command":"Apply","run_id":"1790537255-4d8424","name":"run"},{"module":"demo","name":"module"}]}
+{"timestamp":"2026-09-27T19:27:35.784292Z","level":"INFO","fields":{"message":"activated","generation":"2"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790537255-4d8424","name":"run"},"spans":[{"command":"Apply","run_id":"1790537255-4d8424","name":"run"}]}
+_ test_replay_preserves_token_and_skips_only_durable_terminal_results[hook-after-effect-1-2-2] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_replay_preserves_token_an1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7610c10a9e00>
+cut = 'hook-after-effect', observed_before = 1, expected_attempt = 2
+expected_effects = 2
+
+    @pytest.mark.parametrize("cut,observed_before,expected_attempt,expected_effects", [
+        ("hook-after-start", 0, 2, 1),
+        ("hook-after-effect", 1, 2, 2),
+        ("hook-after-receipt", 1, 1, 1),
+        ("hooks-before-cleanup", 1, 1, 1),
+    ])
+    def test_replay_preserves_token_and_skips_only_durable_terminal_results(
+            sandbox, monkeypatch, cut, observed_before, expected_attempt, expected_effects):
+        effect = sandbox / "effects"
+        repo = fixture_repo(sandbox, append_script(effect))
+        monkeypatch.setenv("GRIPSACK_ACTIVATION_INTENT_ID", "forged-ambient-id")
+        monkeypatch.setenv("GRIPSACK_ACTIVATION_ATTEMPT", "999")
+        monkeypatch.setenv("GRIPSACK_CRASH_AFTER", cut)
+        interrupted = grip("apply", "--host", "testhost", cwd=repo)
+        assert interrupted.returncode != 0
+        before = effect.read_text().splitlines() if effect.exists() else []
+        assert len(before) == observed_before
+        first = outcomes(repo)
+        assert len(first) == 1 and first[0]["pending"]
+        identity = first[0]["intent"]
+        assert identity != "forged-ambient-id"
+        expected_state = "started" if cut in {"hook-after-start", "hook-after-effect"} else "succeeded"
+        assert first[0]["state"] == {"kind": expected_state, "attempt": 1}
+        for line in before:
+            assert line == f"{identity}:1"
+        monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+        recovered = grip("apply", "--host", "testhost", cwd=repo)
+        assert recovered.returncode == 0, recovered.stdout + recovered.stderr
+        after = effect.read_text().splitlines()
+>       assert len(after) == expected_effects
+E       AssertionError: assert 3 == 2
+E        +  where 3 = len(['0b8d763d344e167433d3f9c2d9fcde5fefa45a5eacf6c9c49414916688c6137e:1', '0b8d763d344e167433d3f9c2d9fcde5fefa45a5eacf6c9c49414916688c6137e:2', 'efa4d4d81f614e0e680ddad3ad733a2d0aee9e7e19a159e4e7f48c6b3a5bf70c:1'])
+
+test_hook_outcomes.py:65: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790537256-159550.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T19:27:36.196613Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_replay_preserves_token_an1/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790537256-159550","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_replay_preserves_token_an1/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T19:27:36.270288Z","level":"INFO","fields":{"message":"intent declared (runs via activation adapters)","action":"CustomShell { script: \"printf '%s:%s\\\\n' \\\"$GRIPSACK_ACTIVATION_INTENT_ID\\\" \\\"$GRIPSACK_ACTIVATION_ATTEMPT\\\" >> /tmp/pytest-of-root/pytest-0/test_replay_preserves_token_an1/effects\" }"},"target":"gripsack_exec::module","span":{"module":"demo","name":"module"},"spans":[{"command":"Apply","run_id":"1790537256-159550","name":"run"},{"module":"demo","name":"module"}]}
+{"timestamp":"2026-09-27T19:27:36.338729Z","level":"INFO","fields":{"message":"activated","generation":"2"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790537256-159550","name":"run"},"spans":[{"command":"Apply","run_id":"1790537256-159550","name":"run"}]}
+__________ test_crash_between_hooks_does_not_repeat_completed_effect ___________
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_crash_between_hooks_does_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7610c0e7c490>
+
+    def test_crash_between_hooks_does_not_repeat_completed_effect(sandbox, monkeypatch):
+        first, second = sandbox / "first", sandbox / "second"
+        repo = fixture_repo(sandbox, append_script(first), second=append_script(second))
+        monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "hook-after-receipt")
+        assert grip("apply", "--host", "testhost", cwd=repo).returncode != 0
+        assert first.exists() and not second.exists()
+        pending = outcomes(repo)
+        assert [row["state"]["kind"] for row in pending] == ["succeeded", "pending"]
+        first_bytes = first.read_bytes()
+        monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+        resumed = grip("apply", "--host", "testhost", cwd=repo)
+        assert resumed.returncode == 0, resumed.stdout + resumed.stderr
+>       assert first.read_bytes() == first_bytes
+E       AssertionError: assert b'709a6cf472e...6d7a60389:1\n' == b'709a6cf472e...7358acd13:1\n'
+E         
+E         Use -v to get more diff
+
+test_hook_outcomes.py:93: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790537257-d20e2b.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T19:27:37.803263Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_crash_between_hooks_does_0/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790537257-d20e2b","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_crash_between_hooks_does_0/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T19:27:37.882155Z","level":"INFO","fields":{"message":"intent declared (runs via activation adapters)","action":"CustomShell { script: \"printf '%s:%s\\\\n' \\\"$GRIPSACK_ACTIVATION_INTENT_ID\\\" \\\"$GRIPSACK_ACTIVATION_ATTEMPT\\\" >> /tmp/pytest-of-root/pytest-0/test_crash_between_hooks_does_0/first\" }"},"target":"gripsack_exec::module","span":{"module":"demo","name":"module"},"spans":[{"command":"Apply","run_id":"1790537257-d20e2b","name":"run"},{"module":"demo","name":"module"}]}
+{"timestamp":"2026-09-27T19:27:37.882240Z","level":"INFO","fields":{"message":"intent declared (runs via activation adapters)","action":"CustomShell { script: \"printf '%s:%s\\\\n' \\\"$GRIPSACK_ACTIVATION_INTENT_ID\\\" \\\"$GRIPSACK_ACTIVATION_ATTEMPT\\\" >> /tmp/pytest-of-root/pytest-0/test_crash_between_hooks_does_0/second\" }"},"target":"gripsack_exec::module","span":{"module":"demo","name":"module"},"spans":[{"command":"Apply","run_id":"1790537257-d20e2b","name":"run"},{"module":"demo","name":"module"}]}
+{"timestamp":"2026-09-27T19:27:37.965785Z","level":"INFO","fields":{"message":"activated","generation":"2"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790537257-d20e2b","name":"run"},"spans":[{"command":"Apply","run_id":"1790537257-d20e2b","name":"run"}]}
+______________ test_pending_hook_evidence_blocks_gc_in_both_modes ______________
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_pending_hook_evidence_blo0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7610c1263e50>
+
+    def test_pending_hook_evidence_blocks_gc_in_both_modes(sandbox, monkeypatch):
+        effect = sandbox / "effect"
+        repo = fixture_repo(sandbox, append_script(effect))
+        monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "hook-after-start")
+        assert grip("apply", "--host", "testhost", cwd=repo).returncode != 0
+        home = sandbox / ".local/share/gripsack"
+        before = (home / "activation.json").read_bytes()
+        for arguments in [[], ["--dry-run"]]:
+            refused = grip("gc", *arguments, cwd=repo)
+            assert refused.returncode != 0
+            assert (home / "activation.json").read_bytes() == before
+            assert (home / "generations/1/manifest.json").exists()
+            assert not effect.exists()
+        monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+        assert grip("apply", "--host", "testhost", cwd=repo).returncode == 0
+        collected = grip("gc", cwd=repo)
+        assert collected.returncode == 0, collected.stdout + collected.stderr
+>       assert len(effect.read_text().splitlines()) == 1
+E       AssertionError: assert 2 == 1
+E        +  where 2 = len(['0fd41b75e94018061dff904d9b74c87f74287e2488ed8bf0f05fbb815c712fc4:2', '11fb78fb9b125d55be3e182e911438152143f49df2b9496bad70034eae5e8239:1'])
+E        +    where ['0fd41b75e94018061dff904d9b74c87f74287e2488ed8bf0f05fbb815c712fc4:2', '11fb78fb9b125d55be3e182e911438152143f49df2b9496bad70034eae5e8239:1'] = <built-in method splitlines of str object at 0x7610c10ad630>()
+E        +      where <built-in method splitlines of str object at 0x7610c10ad630> = '0fd41b75e94018061dff904d9b74c87f74287e2488ed8bf0f05fbb815c712fc4:2\n11fb78fb9b125d55be3e182e911438152143f49df2b9496bad70034eae5e8239:1\n'.splitlines
+E        +        where '0fd41b75e94018061dff904d9b74c87f74287e2488ed8bf0f05fbb815c712fc4:2\n11fb78fb9b125d55be3e182e911438152143f49df2b9496bad70034eae5e8239:1\n' = read_text()
+E        +          where read_text = PosixPath('/tmp/pytest-of-root/pytest-0/test_pending_hook_evidence_blo0/effect').read_text
+
+test_hook_outcomes.py:140: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790537259-12fca2.jsonl), last 25 lines ---
+
+=========================== short test summary info ============================
+FAILED test_hook_outcomes.py::test_replay_preserves_token_and_skips_only_durable_terminal_results[hook-after-start-0-2-1]
+FAILED test_hook_outcomes.py::test_replay_preserves_token_and_skips_only_durable_terminal_results[hook-after-effect-1-2-2]
+FAILED test_hook_outcomes.py::test_crash_between_hooks_does_not_repeat_completed_effect
+FAILED test_hook_outcomes.py::test_pending_hook_evidence_blocks_gc_in_both_modes
+4 failed, 30 passed in 17.76s
+
+
+
+Wall time: 70.98 seconds
+
+Command exited with code 1
+
+===== fixture_admission_and_renderer_development =====
+    Checking gripsack v0.42.0 (/home/tarek/workspace/gripsack/crates/gripsack)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.80s
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.7s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 0.6s
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.6s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 DONE 0.0s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#11 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 263.65kB 0.1s done
+#8 DONE 0.1s
+
+#12 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#12 CACHED
+
+#13 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#13 CACHED
+
+#14 [builder  4/10] WORKDIR /app
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 DONE 0.0s
+
+#16 [builder  6/10] COPY crates ./crates
+#16 DONE 0.4s
+
+#17 [builder  7/10] COPY fuzz ./fuzz
+#17 DONE 0.1s
+
+#18 [builder  8/10] COPY schema ./schema
+#18 DONE 0.1s
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 DONE 0.1s
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.1s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.368     Updating crates.io index
+#21 3.043  Downloading crates ...
+#21 3.128   Downloaded ambient-authority v0.0.2
+#21 3.135   Downloaded block-buffer v0.12.1
+#21 3.138   Downloaded adler2 v2.0.1
+#21 3.140   Downloaded colorchoice v1.0.5
+#21 3.143   Downloaded anstyle-query v1.1.5
+#21 3.145   Downloaded clap_lex v1.1.0
+#21 3.147   Downloaded anstream v1.0.0
+#21 3.152   Downloaded convert_case v0.4.0
+#21 3.155   Downloaded stable_deref_trait v1.2.1
+#21 3.157   Downloaded strsim v0.11.1
+#21 3.160   Downloaded cpufeatures v0.3.0
+#21 3.165   Downloaded cfg-if v1.0.4
+#21 3.168   Downloaded httpdate v1.0.3
+#21 3.172   Downloaded thread_local v1.1.10
+#21 3.181   Downloaded lazy_static v1.5.0
+#21 3.189   Downloaded zmij v1.0.23
+#21 3.194   Downloaded maybe-owned v0.3.4
+#21 3.202   Downloaded idna_adapter v1.2.2
+#21 3.206   Downloaded serde_spanned v1.1.1
+#21 3.208   Downloaded fs-set-times v0.20.3
+#21 3.210   Downloaded errno v0.3.14
+#21 3.214   Downloaded is_terminal_polyfill v1.70.2
+#21 3.217   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 3.219   Downloaded yoke-derive v0.8.2
+#21 3.222   Downloaded form_urlencoded v1.2.2
+#21 3.224   Downloaded potential_utf v0.1.6
+#21 3.227   Downloaded matchers v0.2.0
+#21 3.231   Downloaded heck v0.5.0
+#21 3.234   Downloaded percent-encoding v2.3.2
+#21 3.236   Downloaded webpki-roots v0.26.11
+#21 3.240   Downloaded openssl-probe v0.2.1
+#21 3.244   Downloaded shell-words v1.1.1
+#21 3.247   Downloaded anstyle v1.0.14
+#21 3.250   Downloaded fastrand v2.5.0
+#21 3.254   Downloaded filetime v0.2.29
+#21 3.259   Downloaded ipnet v2.12.1
+#21 3.263   Downloaded equivalent v1.0.2
+#21 3.266   Downloaded cap-std v4.0.3
+#21 3.274   Downloaded clap_derive v4.6.4
+#21 3.278   Downloaded clap v4.6.6
+#21 3.293   Downloaded crypto-common v0.2.2
+#21 3.295   Downloaded anstyle-parse v1.0.0
+#21 3.298   Downloaded io-lifetimes v3.0.1
+#21 3.301   Downloaded itoa v1.0.18
+#21 3.305   Downloaded subtle v2.6.1
+#21 3.308   Downloaded nu-ansi-term v0.50.3
+#21 3.315   Downloaded quote v1.0.47
+#21 3.321   Downloaded displaydoc v0.2.7
+#21 3.326   Downloaded find-msvc-tools v0.1.11
+#21 3.329   Downloaded owo-colors v4.3.0
+#21 3.333   Downloaded dialoguer v0.12.0
+#21 3.340   Downloaded xattr v1.6.1
+#21 3.345   Downloaded pin-project-lite v0.2.17
+#21 3.357   Downloaded rustls-native-certs v0.8.4
+#21 3.359   Downloaded pkg-config v0.3.34
+#21 3.363   Downloaded console v0.16.4
+#21 3.366   Downloaded digest v0.11.3
+#21 3.372   Downloaded getrandom v0.2.17
+#21 3.377   Downloaded bzip2 v0.6.1
+#21 3.382   Downloaded jobserver v0.1.35
+#21 3.386   Downloaded utf8parse v0.2.2
+#21 3.388   Downloaded tracing-serde v0.2.0
+#21 3.390   Downloaded bitflags v2.13.1
+#21 3.397   Downloaded litemap v0.8.3
+#21 3.402   Downloaded io-extras v0.19.0
+#21 3.406   Downloaded hybrid-array v0.4.14
+#21 3.410   Downloaded rustls-pki-types v1.15.1
+#21 3.414   Downloaded io-lifetimes v2.0.4
+#21 3.416   Downloaded zerofrom v0.1.8
+#21 3.418   Downloaded once_cell v1.21.4
+#21 3.424   Downloaded zerovec-derive v0.11.6
+#21 3.427   Downloaded rustix-linux-procfs v0.1.1
+#21 3.429   Downloaded zerofrom-derive v0.1.7
+#21 3.431   Downloaded const-oid v0.10.2
+#21 3.435   Downloaded miniz_oxide v0.8.9
+#21 3.439   Downloaded unit-prefix v0.5.2
+#21 3.442   Downloaded log v0.4.34
+#21 3.447   Downloaded untrusted v0.9.0
+#21 3.452   Downloaded serde_derive v1.0.229
+#21 3.456   Downloaded utf8_iter v1.0.4
+#21 3.458   Downloaded proc-macro2 v1.0.107
+#21 3.464   Downloaded getrandom v0.4.3
+#21 3.471   Downloaded serde_core v1.0.229
+#21 3.476   Downloaded icu_locale_core v2.3.0
+#21 3.490   Downloaded ryu v1.0.23
+#21 3.497   Downloaded icu_provider v2.3.1
+#21 3.502   Downloaded icu_normalizer_data v2.3.0
+#21 3.505   Downloaded sharded-slab v0.1.7
+#21 3.512   Downloaded crc32fast v1.5.1
+#21 3.516   Downloaded libbz2-rs-sys v0.2.5
+#21 3.520   Downloaded serde_yaml v0.9.34+deprecated
+#21 3.525   Downloaded base64 v0.22.1
+#21 3.533   Downloaded indicatif v0.18.6
+#21 3.539   Downloaded zeroize v1.9.0
+#21 3.543   Downloaded rustls-webpki v0.103.15
+#21 3.549   Downloaded zstd v0.13.3
+#21 3.558   Downloaded thiserror-impl v2.0.20
+#21 3.560   Downloaded flate2 v1.1.9
+#21 3.571   Downloaded icu_collections v2.3.0
+#21 3.584   Downloaded tracing-log v0.2.0
+#21 3.588   Downloaded shlex v2.0.1
+#21 3.591   Downloaded serde v1.0.229
+#21 3.598   Downloaded bumpalo v3.20.3
+#21 3.604   Downloaded cap-primitives v4.0.3
+#21 3.628   Downloaded cc v1.4.4
+#21 3.634   Downloaded simd-adler32 v0.3.10
+#21 3.639   Downloaded memchr v2.8.3
+#21 3.655   Downloaded icu_properties v2.3.0
+#21 3.662   Downloaded xz2 v0.1.7
+#21 3.666   Downloaded indexmap v2.14.0
+#21 3.676   Downloaded writeable v0.6.4
+#21 3.682   Downloaded idna v1.1.0
+#21 3.688   Downloaded thiserror v2.0.20
+#21 3.702   Downloaded clap_builder v4.6.6
+#21 3.716   Downloaded serde_json v1.0.151
+#21 3.732   Downloaded hashbrown v0.17.1
+#21 3.744   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 3.748   Downloaded icu_properties_data v2.3.0
+#21 3.767   Downloaded aho-corasick v1.1.5
+#21 3.779   Downloaded portable-atomic v1.15.0
+#21 3.798   Downloaded url v2.5.8
+#21 3.803   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 3.806   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 3.809   Downloaded tempfile v3.27.0
+#21 3.817   Downloaded zstd-safe v7.2.4
+#21 3.822   Downloaded yoke v0.8.3
+#21 3.826   Downloaded tinystr v0.8.4
+#21 3.830   Downloaded sha2 v0.11.0
+#21 3.838   Downloaded rustls v0.23.45
+#21 3.857   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 3.861   Downloaded regex-syntax v0.8.11
+#21 3.869   Downloaded tracing-attributes v0.1.31
+#21 3.875   Downloaded unicode-ident v1.0.24
+#21 3.881   Downloaded rustix v1.1.4
+#21 3.934   Downloaded smallvec v1.15.2
+#21 3.937   Downloaded synstructure v0.13.2
+#21 3.939   Downloaded icu_normalizer v2.3.0
+#21 3.949   Downloaded toml v0.9.12+spec-1.1.0
+#21 3.956   Downloaded tracing-core v0.1.36
+#21 3.960   Downloaded zopfli v0.8.3
+#21 3.964   Downloaded regex-automata v0.4.18
+#21 3.984   Downloaded toml v1.1.4+spec-1.1.0
+#21 3.992   Downloaded lzma-sys v0.1.20
+#21 4.037   Downloaded unsafe-libyaml v0.2.11
+#21 4.043   Downloaded libc v0.2.189
+#21 4.156   Downloaded tar v0.4.46
+#21 4.161   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 4.167   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.174   Downloaded zerotrie v0.2.5
+#21 4.182   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 4.186   Downloaded ring v0.17.14
+#21 4.246   Downloaded ureq v2.12.1
+#21 4.255   Downloaded typed-path v0.12.3
+#21 4.272   Downloaded linux-raw-sys v0.12.1
+#21 4.337   Downloaded typenum v1.20.1
+#21 4.342   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 4.346   Downloaded zerovec v0.11.8
+#21 4.356   Downloaded zip v8.6.0
+#21 4.362   Downloaded winnow v0.7.15
+#21 4.379   Downloaded tracing-subscriber v0.3.23
+#21 4.394   Downloaded winnow v1.0.4
+#21 4.410   Downloaded zlib-rs v0.6.7
+#21 4.419   Downloaded webpki-roots v1.0.9
+#21 4.424   Downloaded syn v3.0.4
+#21 4.438   Downloaded unicode-width v0.2.2
+#21 4.445   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 4.460   Downloaded syn v2.0.119
+#21 4.474   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 4.489   Downloaded tracing v0.1.44
+#21 4.507   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 4.709    Compiling proc-macro2 v1.0.107
+#21 4.709    Compiling unicode-ident v1.0.24
+#21 4.709    Compiling quote v1.0.47
+#21 4.710    Compiling libc v0.2.189
+#21 4.715    Compiling serde_core v1.0.229
+#21 4.716    Compiling cfg-if v1.0.4
+#21 4.716    Compiling find-msvc-tools v0.1.11
+#21 4.716    Compiling shlex v2.0.1
+#21 4.718    Compiling equivalent v1.0.2
+#21 4.718    Compiling once_cell v1.21.4
+#21 4.719    Compiling hashbrown v0.17.1
+#21 4.726    Compiling stable_deref_trait v1.2.1
+#21 4.727    Compiling rustix v1.1.4
+#21 4.727    Compiling linux-raw-sys v0.12.1
+#21 4.734    Compiling bitflags v2.13.1
+#21 4.734    Compiling serde v1.0.229
+#21 4.734    Compiling pkg-config v0.3.34
+#21 4.741    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.744    Compiling zmij v1.0.23
+#21 4.744    Compiling itoa v1.0.18
+#21 4.745    Compiling memchr v2.8.3
+#21 4.748    Compiling serde_json v1.0.151
+#21 4.751    Compiling winnow v1.0.4
+#21 4.751    Compiling zeroize v1.9.0
+#21 4.752    Compiling io-lifetimes v2.0.4
+#21 4.752    Compiling io-lifetimes v3.0.1
+#21 4.752    Compiling writeable v0.6.4
+#21 4.752    Compiling convert_case v0.4.0
+#21 4.752    Compiling typenum v1.20.1
+#21 4.752    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.752    Compiling litemap v0.8.3
+#21 4.753    Compiling io-extras v0.19.0
+#21 4.834    Compiling log v0.4.34
+#21 4.838    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.840    Compiling icu_normalizer_data v2.3.0
+#21 4.850    Compiling utf8_iter v1.0.4
+#21 4.955    Compiling smallvec v1.15.2
+#21 4.992    Compiling thiserror v2.0.20
+#21 5.030    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 5.052    Compiling icu_properties_data v2.3.0
+#21 5.065    Compiling rustls-pki-types v1.15.1
+#21 5.078    Compiling cap-primitives v4.0.3
+#21 5.087    Compiling getrandom v0.4.3
+#21 5.094    Compiling tracing-core v0.1.36
+#21 5.104    Compiling ambient-authority v0.0.2
+#21 5.148    Compiling maybe-owned v0.3.4
+#21 5.162    Compiling cap-std v4.0.3
+#21 5.175    Compiling crc32fast v1.5.1
+#21 5.175    Compiling ipnet v2.12.1
+#21 5.175    Compiling const-oid v0.10.2
+#21 5.182    Compiling winnow v0.7.15
+#21 5.215    Compiling untrusted v0.9.0
+#21 5.220    Compiling fastrand v2.5.0
+#21 5.251    Compiling simd-adler32 v0.3.10
+#21 5.259    Compiling cpufeatures v0.3.0
+#21 5.264    Compiling zstd-safe v7.2.4
+#21 5.335    Compiling pin-project-lite v0.2.17
+#21 5.343    Compiling adler2 v2.0.1
+#21 5.359    Compiling percent-encoding v2.3.2
+#21 5.367    Compiling rustls v0.23.45
+#21 5.392    Compiling libbz2-rs-sys v0.2.5
+#21 5.398    Compiling zlib-rs v0.6.7
+#21 5.411    Compiling bumpalo v3.20.3
+#21 5.444    Compiling subtle v2.6.1
+#21 5.455    Compiling regex-syntax v0.8.11
+#21 5.484    Compiling openssl-probe v0.2.1
+#21 5.508    Compiling base64 v0.22.1
+#21 5.522    Compiling utf8parse v0.2.2
+#21 5.555    Compiling form_urlencoded v1.2.2
+#21 5.594    Compiling miniz_oxide v0.8.9
+#21 5.601    Compiling webpki-roots v1.0.9
+#21 5.607    Compiling typed-path v0.12.3
+#21 5.620    Compiling rustls-native-certs v0.8.4
+#21 5.627    Compiling anstyle-parse v1.0.0
+#21 5.633    Compiling is_terminal_polyfill v1.70.2
+#21 5.647    Compiling unsafe-libyaml v0.2.11
+#21 5.648    Compiling colorchoice v1.0.5
+#21 5.663    Compiling httpdate v1.0.3
+#21 5.708    Compiling anstyle-query v1.1.5
+#21 5.725    Compiling unicode-width v0.2.2
+#21 5.746    Compiling webpki-roots v0.26.11
+#21 5.764    Compiling indexmap v2.14.0
+#21 5.771    Compiling ryu v1.0.23
+#21 5.804    Compiling anstyle v1.0.14
+#21 5.812    Compiling lazy_static v1.5.0
+#21 5.813    Compiling portable-atomic v1.15.0
+#21 5.823    Compiling tracing-log v0.2.0
+#21 5.879    Compiling zopfli v0.8.3
+#21 5.899    Compiling sharded-slab v0.1.7
+#21 5.900    Compiling thread_local v1.1.10
+#21 5.919    Compiling owo-colors v4.3.0
+#21 5.925    Compiling heck v0.5.0
+#21 5.966    Compiling strsim v0.11.1
+#21 6.011    Compiling nu-ansi-term v0.50.3
+#21 6.046    Compiling clap_lex v1.1.0
+#21 6.061    Compiling shell-words v1.1.1
+#21 6.069    Compiling anstream v1.0.0
+#21 6.070    Compiling unit-prefix v0.5.2
+#21 6.191    Compiling bzip2 v0.6.1
+#21 6.299    Compiling hybrid-array v0.4.14
+#21 6.408    Compiling clap_builder v4.6.6
+#21 6.581    Compiling syn v3.0.4
+#21 6.581    Compiling syn v2.0.119
+#21 6.581    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 6.728    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 6.777    Compiling jobserver v0.1.35
+#21 6.777    Compiling getrandom v0.2.17
+#21 6.777    Compiling filetime v0.2.29
+#21 6.778    Compiling console v0.16.4
+#21 7.032    Compiling block-buffer v0.12.1
+#21 7.032    Compiling crypto-common v0.2.2
+#21 7.052    Compiling cc v1.4.4
+#21 7.386    Compiling regex-automata v0.4.18
+#21 7.423    Compiling indicatif v0.18.6
+#21 7.973    Compiling digest v0.11.3
+#21 8.078    Compiling sha2 v0.11.0
+#21 8.576    Compiling serde_spanned v1.1.1
+#21 8.576    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 8.579    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 8.593    Compiling ring v0.17.14
+#21 8.593    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 8.593    Compiling lzma-sys v0.1.20
+#21 8.808    Compiling toml v1.1.4+spec-1.1.0
+#21 8.808    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 8.817    Compiling toml v0.9.12+spec-1.1.0
+#21 8.912    Compiling flate2 v1.1.9
+#21 9.710    Compiling rustix-linux-procfs v0.1.1
+#21 9.710    Compiling fs-set-times v0.20.3
+#21 9.710    Compiling tempfile v3.27.0
+#21 9.711    Compiling xattr v1.6.1
+#21 9.711    Compiling matchers v0.2.0
+#21 9.888    Compiling tar v0.4.46
+#21 10.08    Compiling dialoguer v0.12.0
+#21 10.64    Compiling xz2 v0.1.7
+#21 11.15    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 11.73    Compiling synstructure v0.13.2
+#21 12.52    Compiling zstd v0.13.3
+#21 12.60    Compiling zerovec-derive v0.11.6
+#21 12.60    Compiling serde_derive v1.0.229
+#21 12.60    Compiling displaydoc v0.2.7
+#21 12.60    Compiling thiserror-impl v2.0.20
+#21 12.60    Compiling clap_derive v4.6.4
+#21 12.71    Compiling rustls-webpki v0.103.15
+#21 12.74    Compiling zip v8.6.0
+#21 13.17    Compiling zerofrom-derive v0.1.7
+#21 13.17    Compiling yoke-derive v0.8.2
+#21 13.17    Compiling tracing-attributes v0.1.31
+#21 14.74    Compiling zerofrom v0.1.8
+#21 14.76    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 14.76    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 14.79    Compiling tracing v0.1.44
+#21 14.81    Compiling yoke v0.8.3
+#21 14.86    Compiling clap v4.6.6
+#21 14.94    Compiling zerovec v0.11.8
+#21 14.94    Compiling zerotrie v0.2.5
+#21 15.43    Compiling tinystr v0.8.4
+#21 15.43    Compiling potential_utf v0.1.6
+#21 15.51    Compiling icu_collections v2.3.0
+#21 15.56    Compiling icu_locale_core v2.3.0
+#21 16.37    Compiling icu_provider v2.3.1
+#21 16.53    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 16.53    Compiling tracing-serde v0.2.0
+#21 16.53    Compiling serde_yaml v0.9.34+deprecated
+#21 16.57    Compiling icu_normalizer v2.3.0
+#21 16.57    Compiling icu_properties v2.3.0
+#21 16.63    Compiling tracing-subscriber v0.3.23
+#21 17.66    Compiling idna_adapter v1.2.2
+#21 17.73    Compiling idna v1.1.0
+#21 18.08    Compiling url v2.5.8
+#21 18.72    Compiling ureq v2.12.1
+#21 23.29    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 23.57    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 26.35    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 26.35    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 26.35    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 28.10    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 28.10    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 29.85    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 29.85    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 34.09    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 40.13     Finished `dev` profile [unoptimized + debuginfo] target(s) in 39.89s
+#21 DONE 40.4s
+
+#22 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#22 CACHED
+
+#23 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#23 CACHED
+
+#24 [e2e  2/12] WORKDIR /app
+#24 CACHED
+
+#25 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#27 DONE 0.1s
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 DONE 0.1s
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.307 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.307 Creating virtual environment at: .venv
+#29 0.315 Resolved 10 packages in 4ms
+#29 0.389 Downloading pygments (1.2MiB)
+#29 0.477  Downloaded pygments
+#29 0.477 Prepared 5 packages in 161ms
+#29 0.491 Installed 5 packages in 14ms
+#29 0.491  + iniconfig==2.3.0
+#29 0.491  + packaging==26.3
+#29 0.491  + pluggy==1.6.0
+#29 0.491  + pygments==2.21.0
+#29 0.491  + pytest==9.1.1
+#29 DONE 0.5s
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 2.8s done
+#33 exporting manifest sha256:ff0343a2e4004db9a80751d543ea652066fd69ee2e3b928b2b39a21585a49649 0.0s done
+#33 exporting config sha256:3700034f6ab6aaa683e303883f8b29259fda76c02ab4a19f698406ff74150990 0.0s done
+#33 exporting attestation manifest sha256:db3051e8c434f05bfc762b34bc9cd46fd34770aa37fb1c50d22af77bec08cbe1 0.0s done
+#33 exporting manifest list sha256:c73aa401445ed8d571a9c704847d31e71aa656d03be0cd4e12e0400ab468a3c6 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.9s done
+#33 DONE 3.9s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-e04432d4ee31 Creating 
+ Container gripsack-e2e-run-e04432d4ee31 Created 
+...........FFF.......................                                    [100%]
+=================================== FAILURES ===================================
+_ test_fixture_simulations_never_select_or_modify_live_hook_state[--duplicate-2] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_fixture_simulations_never0')
+option = '--duplicate', append_effects = 2
+
+    @pytest.mark.parametrize("option,append_effects", [("--duplicate", 2), ("--crash-after-start", 1)])
+    def test_fixture_simulations_never_select_or_modify_live_hook_state(sandbox, option, append_effects):
+        home = sandbox / ".local/share/gripsack"
+        generation = home / "generations/1"
+        generation.mkdir(parents=True)
+        (generation / "manifest.json").write_text('{"number":1,"modules":{}}')
+        (home / "current").symlink_to("generations/1")
+        sentinel = sandbox / "live-hook-must-not-run"
+        pending = home / "activation.json"
+        pending.write_text(json.dumps({"generation": 1, "intents": [{
+            "module": "live", "action": {"kind": "custom_shell", "script": f"touch {shlex.quote(str(sentinel))}"},
+        }]}))
+        before = pending.read_bytes()
+        result = grip("hooks", "test", option, cwd=sandbox)
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: hook command failed: fixture worker did not reach the intentional crash: ProcessReceipt { executable_sha256: Sha256Digest([153, 90, 155, 47, 106, 56, 13, 249, 204, 124, 123, 200, 114, 160, 196, 139, 101, 221, 203, 189, 93, 239, 139, 105, 140, 248, 243, 29, 188, 184, 92, 195]), script_sha256: None, byte_binding: ExecutableHandle, enforcement: ProcessGroup, environment_keys: ["HOME", "LANG", "PATH", "TMPDIR"], deadline_millis: 30000, stdout_limit: 16777216, stderr_limit: 16777216, exit_code: Some(1), signal: None, disposition: Exited }
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/usr/local/bin/grip', 'hooks', 'test', '--duplicate'], returncode=1, stdout='', stderr='hook c...lis: 30000, stdout_limit: 16777216, stderr_limit: 16777216, exit_code: Some(1), signal: None, disposition: Exited }\n').returncode
+
+test_hook_outcomes.py:231: AssertionError
+_ test_fixture_simulations_never_select_or_modify_live_hook_state[--crash-after-start-1] _
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_fixture_simulations_never1')
+option = '--crash-after-start', append_effects = 1
+
+    @pytest.mark.parametrize("option,append_effects", [("--duplicate", 2), ("--crash-after-start", 1)])
+    def test_fixture_simulations_never_select_or_modify_live_hook_state(sandbox, option, append_effects):
+        home = sandbox / ".local/share/gripsack"
+        generation = home / "generations/1"
+        generation.mkdir(parents=True)
+        (generation / "manifest.json").write_text('{"number":1,"modules":{}}')
+        (home / "current").symlink_to("generations/1")
+        sentinel = sandbox / "live-hook-must-not-run"
+        pending = home / "activation.json"
+        pending.write_text(json.dumps({"generation": 1, "intents": [{
+            "module": "live", "action": {"kind": "custom_shell", "script": f"touch {shlex.quote(str(sentinel))}"},
+        }]}))
+        before = pending.read_bytes()
+        result = grip("hooks", "test", option, cwd=sandbox)
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: hook command failed: fixture worker did not reach the intentional crash: ProcessReceipt { executable_sha256: Sha256Digest([153, 90, 155, 47, 106, 56, 13, 249, 204, 124, 123, 200, 114, 160, 196, 139, 101, 221, 203, 189, 93, 239, 139, 105, 140, 248, 243, 29, 188, 184, 92, 195]), script_sha256: None, byte_binding: ExecutableHandle, enforcement: ProcessGroup, environment_keys: ["HOME", "LANG", "PATH", "TMPDIR"], deadline_millis: 30000, stdout_limit: 16777216, stderr_limit: 16777216, exit_code: Some(1), signal: None, disposition: Exited }
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/usr/local/bin/grip', 'hooks', 'test', '--crash-after-start'], returncode=1, stdout='', stderr...lis: 30000, stdout_limit: 16777216, stderr_limit: 16777216, exit_code: Some(1), signal: None, disposition: Exited }\n').returncode
+
+test_hook_outcomes.py:231: AssertionError
+___ test_hook_output_controls_are_escaped_and_script_values_stay_out_of_logs ___
+
+sandbox = PosixPath('/tmp/pytest-of-root/pytest-0/test_hook_output_controls_are_0')
+
+    def test_hook_output_controls_are_escaped_and_script_values_stay_out_of_logs(sandbox):
+        script = "private='DUMMY_HOOK_SECRET'; printf '\\033]0;forged\\007\\rbody\\n'"
+        repo = fixture_repo(sandbox, script)
+        applied = grip("apply", "--host", "testhost", cwd=repo)
+        assert applied.returncode == 0, applied.stdout + applied.stderr
+        assert "body" in applied.stdout
+>       assert not any(control in applied.stdout + applied.stderr for control in ["\x1b", "\x07", "\r"])
+E       assert not True
+E        +  where True = any(<generator object test_hook_output_controls_are_escaped_and_script_values_stay_out_of_logs.<locals>.<genexpr> at 0x738ef7f858c0>)
+
+test_hook_outcomes.py:248: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+
+--- grip run log (1790538913-fe7f33.jsonl), last 25 lines ---
+{"timestamp":"2026-09-27T19:55:13.560901Z","level":"INFO","fields":{"message":"frontend eval","round":1,"probes_bound":0},"target":"grip::commands::probe","span":{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_hook_output_controls_are_0/env\"","name":"eval"},"spans":[{"command":"Apply","run_id":"1790538913-fe7f33","name":"run"},{"host":"testhost","repo":"\"/tmp/pytest-of-root/pytest-0/test_hook_output_controls_are_0/env\"","name":"eval"}]}
+{"timestamp":"2026-09-27T19:55:13.702640Z","level":"INFO","fields":{"message":"intent declared (runs via activation adapters)","kind":"custom_shell"},"target":"gripsack_exec::module","span":{"module":"demo","name":"module"},"spans":[{"command":"Apply","run_id":"1790538913-fe7f33","name":"run"},{"module":"demo","name":"module"}]}
+{"timestamp":"2026-09-27T19:55:13.778784Z","level":"INFO","fields":{"message":"activated","generation":"1"},"target":"gripsack_exec::apply","span":{"command":"Apply","run_id":"1790538913-fe7f33","name":"run"},"spans":[{"command":"Apply","run_id":"1790538913-fe7f33","name":"run"}]}
+=========================== short test summary info ============================
+FAILED test_hook_outcomes.py::test_fixture_simulations_never_select_or_modify_live_hook_state[--duplicate-2]
+FAILED test_hook_outcomes.py::test_fixture_simulations_never_select_or_modify_live_hook_state[--crash-after-start-1]
+FAILED test_hook_outcomes.py::test_hook_output_controls_are_escaped_and_script_values_stay_out_of_logs
+3 failed, 34 passed in 25.88s
+
+
+
+Wall time: 76.62 seconds
+
+Command exited with code 1
+
+===== qualified_cli_and_three_simulations =====
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.0s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#11 DONE 0.0s
+
+#9 [internal] load build context
+#9 transferring context: 118.89kB 0.1s done
+#9 DONE 0.1s
+
+#12 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#12 CACHED
+
+#13 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#13 CACHED
+
+#14 [builder  4/10] WORKDIR /app
+#14 CACHED
+
+#15 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#15 CACHED
+
+#16 [builder  6/10] COPY crates ./crates
+#16 DONE 0.4s
+
+#17 [builder  7/10] COPY fuzz ./fuzz
+#17 DONE 0.1s
+
+#18 [builder  8/10] COPY schema ./schema
+#18 DONE 0.0s
+
+#19 [builder  9/10] COPY typescript ./typescript
+#19 DONE 0.1s
+
+#20 [builder 10/10] COPY scripts ./scripts
+#20 DONE 0.1s
+
+#21 [bin 1/1] RUN cargo build --locked -p gripsack
+#21 0.357     Updating crates.io index
+#21 2.497  Downloading crates ...
+#21 2.580   Downloaded ambient-authority v0.0.2
+#21 2.584   Downloaded block-buffer v0.12.1
+#21 2.590   Downloaded adler2 v2.0.1
+#21 2.593   Downloaded tracing-serde v0.2.0
+#21 2.598   Downloaded convert_case v0.4.0
+#21 2.600   Downloaded cfg-if v1.0.4
+#21 2.607   Downloaded sha2 v0.11.0
+#21 2.615   Downloaded cpufeatures v0.3.0
+#21 2.619   Downloaded fs-set-times v0.20.3
+#21 2.622   Downloaded smallvec v1.15.2
+#21 2.624   Downloaded idna_adapter v1.2.2
+#21 2.626   Downloaded is_terminal_polyfill v1.70.2
+#21 2.628   Downloaded errno v0.3.14
+#21 2.631   Downloaded clap_lex v1.1.0
+#21 2.633   Downloaded form_urlencoded v1.2.2
+#21 2.635   Downloaded httpdate v1.0.3
+#21 2.638   Downloaded percent-encoding v2.3.2
+#21 2.640   Downloaded webpki-roots v0.26.11
+#21 2.643   Downloaded thread_local v1.1.10
+#21 2.646   Downloaded maybe-owned v0.3.4
+#21 2.648   Downloaded itoa v1.0.18
+#21 2.652   Downloaded matchers v0.2.0
+#21 2.655   Downloaded heck v0.5.0
+#21 2.657   Downloaded utf8_iter v1.0.4
+#21 2.659   Downloaded verus_builtin v0.0.0-2026-09-06-0133
+#21 2.660   Downloaded potential_utf v0.1.6
+#21 2.663   Downloaded serde_spanned v1.1.1
+#21 2.664   Downloaded lazy_static v1.5.0
+#21 2.668   Downloaded openssl-probe v0.2.1
+#21 2.671   Downloaded strsim v0.11.1
+#21 2.674   Downloaded toml_datetime v1.1.1+spec-1.1.0
+#21 2.676   Downloaded colorchoice v1.0.5
+#21 2.678   Downloaded equivalent v1.0.2
+#21 2.680   Downloaded anstyle-query v1.1.5
+#21 2.683   Downloaded filetime v0.2.29
+#21 2.688   Downloaded subtle v2.6.1
+#21 2.691   Downloaded unit-prefix v0.5.2
+#21 2.694   Downloaded crypto-common v0.2.2
+#21 2.696   Downloaded displaydoc v0.2.7
+#21 2.700   Downloaded dialoguer v0.12.0
+#21 2.707   Downloaded digest v0.11.3
+#21 2.712   Downloaded rustix-linux-procfs v0.1.1
+#21 2.715   Downloaded owo-colors v4.3.0
+#21 2.719   Downloaded shell-words v1.1.1
+#21 2.721   Downloaded pin-project-lite v0.2.17
+#21 2.733   Downloaded jobserver v0.1.35
+#21 2.737   Downloaded quote v1.0.47
+#21 2.742   Downloaded rustls-native-certs v0.8.4
+#21 2.744   Downloaded pkg-config v0.3.34
+#21 2.748   Downloaded anstream v1.0.0
+#21 2.752   Downloaded fastrand v2.5.0
+#21 2.755   Downloaded ipnet v2.12.1
+#21 2.757   Downloaded yoke-derive v0.8.2
+#21 2.760   Downloaded clap_derive v4.6.4
+#21 2.764   Downloaded nu-ansi-term v0.50.3
+#21 2.768   Downloaded anstyle v1.0.14
+#21 2.771   Downloaded tracing-log v0.2.0
+#21 2.774   Downloaded zeroize v1.9.0
+#21 2.777   Downloaded stable_deref_trait v1.2.1
+#21 2.778   Downloaded anstyle-parse v1.0.0
+#21 2.781   Downloaded io-lifetimes v3.0.1
+#21 2.784   Downloaded bzip2 v0.6.1
+#21 2.787   Downloaded xattr v1.6.1
+#21 2.791   Downloaded getrandom v0.2.17
+#21 2.796   Downloaded find-msvc-tools v0.1.11
+#21 2.798   Downloaded console v0.16.4
+#21 2.801   Downloaded hybrid-array v0.4.14
+#21 2.805   Downloaded zerofrom v0.1.8
+#21 2.807   Downloaded rustls-pki-types v1.15.1
+#21 2.811   Downloaded utf8parse v0.2.2
+#21 2.813   Downloaded untrusted v0.9.0
+#21 2.817   Downloaded once_cell v1.21.4
+#21 2.823   Downloaded io-lifetimes v2.0.4
+#21 2.825   Downloaded clap v4.6.6
+#21 2.840   Downloaded io-extras v0.19.0
+#21 2.845   Downloaded cap-std v4.0.3
+#21 2.853   Downloaded const-oid v0.10.2
+#21 2.857   Downloaded bitflags v2.13.1
+#21 2.866   Downloaded crc32fast v1.5.1
+#21 2.871   Downloaded icu_provider v2.3.1
+#21 2.876   Downloaded log v0.4.34
+#21 2.882   Downloaded ryu v1.0.23
+#21 2.889   Downloaded litemap v0.8.3
+#21 2.893   Downloaded serde_derive v1.0.229
+#21 2.898   Downloaded getrandom v0.4.3
+#21 2.906   Downloaded libbz2-rs-sys v0.2.5
+#21 2.909   Downloaded proc-macro2 v1.0.107
+#21 2.915   Downloaded serde_core v1.0.229
+#21 2.919   Downloaded shlex v2.0.1
+#21 2.922   Downloaded simd-adler32 v0.3.10
+#21 2.926   Downloaded thiserror-impl v2.0.20
+#21 2.928   Downloaded icu_normalizer_data v2.3.0
+#21 2.932   Downloaded icu_locale_core v2.3.0
+#21 2.948   Downloaded zstd v0.13.3
+#21 2.955   Downloaded serde_yaml v0.9.34+deprecated
+#21 2.961   Downloaded indicatif v0.18.6
+#21 2.967   Downloaded base64 v0.22.1
+#21 2.976   Downloaded cap-primitives v4.0.3
+#21 2.994   Downloaded icu_collections v2.3.0
+#21 3.005   Downloaded serde v1.0.229
+#21 3.011   Downloaded bumpalo v3.20.3
+#21 3.015   Downloaded cc v1.4.4
+#21 3.020   Downloaded miniz_oxide v0.8.9
+#21 3.024   Downloaded zmij v1.0.23
+#21 3.028   Downloaded toml_writer v1.1.2+spec-1.1.0
+#21 3.030   Downloaded flate2 v1.1.9
+#21 3.048   Downloaded memchr v2.8.3
+#21 3.061   Downloaded thiserror v2.0.20
+#21 3.071   Downloaded zstd-safe v7.2.4
+#21 3.073   Downloaded icu_properties v2.3.0
+#21 3.079   Downloaded indexmap v2.14.0
+#21 3.087   Downloaded rustls-webpki v0.103.15
+#21 3.092   Downloaded zerofrom-derive v0.1.7
+#21 3.094   Downloaded zerovec-derive v0.11.6
+#21 3.097   Downloaded hashbrown v0.17.1
+#21 3.105   Downloaded serde_json v1.0.151
+#21 3.119   Downloaded xz2 v0.1.7
+#21 3.123   Downloaded idna v1.1.0
+#21 3.128   Downloaded synstructure v0.13.2
+#21 3.130   Downloaded aho-corasick v1.1.5
+#21 3.139   Downloaded icu_properties_data v2.3.0
+#21 3.154   Downloaded clap_builder v4.6.6
+#21 3.164   Downloaded toml_datetime v0.7.5+spec-1.1.0
+#21 3.166   Downloaded portable-atomic v1.15.0
+#21 3.179   Downloaded writeable v0.6.4
+#21 3.184   Downloaded unicode-ident v1.0.24
+#21 3.191   Downloaded zopfli v0.8.3
+#21 3.194   Downloaded tracing-attributes v0.1.31
+#21 3.200   Downloaded tinystr v0.8.4
+#21 3.204   Downloaded toml_parser v1.1.3+spec-1.1.0
+#21 3.209   Downloaded rustls v0.23.45
+#21 3.228   Downloaded yoke v0.8.3
+#21 3.231   Downloaded regex-syntax v0.8.11
+#21 3.240   Downloaded sharded-slab v0.1.7
+#21 3.247   Downloaded rustix v1.1.4
+#21 3.304   Downloaded unsafe-libyaml v0.2.11
+#21 3.310   Downloaded tempfile v3.27.0
+#21 3.316   Downloaded tar v0.4.46
+#21 3.322   Downloaded icu_normalizer v2.3.0
+#21 3.332   Downloaded tracing-core v0.1.36
+#21 3.337   Downloaded toml v1.1.4+spec-1.1.0
+#21 3.345   Downloaded regex-automata v0.4.18
+#21 3.367   Downloaded verus_prettyplease v0.0.0-2026-09-06-0133
+#21 3.373   Downloaded lzma-sys v0.1.20
+#21 3.421   Downloaded toml v0.9.12+spec-1.1.0
+#21 3.429   Downloaded libc v0.2.189
+#21 3.552   Downloaded toml_edit v0.25.13+spec-1.1.0
+#21 3.558   Downloaded zerotrie v0.2.5
+#21 3.567   Downloaded verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 3.570   Downloaded url v2.5.8
+#21 3.574   Downloaded ring v0.17.14
+#21 3.638   Downloaded ureq v2.12.1
+#21 3.647   Downloaded typed-path v0.12.3
+#21 3.666   Downloaded typenum v1.20.1
+#21 3.671   Downloaded zerovec v0.11.8
+#21 3.681   Downloaded verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 3.686   Downloaded zip v8.6.0
+#21 3.693   Downloaded linux-raw-sys v0.12.1
+#21 3.759   Downloaded winnow v0.7.15
+#21 3.777   Downloaded tracing-subscriber v0.3.23
+#21 3.790   Downloaded winnow v1.0.4
+#21 3.808   Downloaded webpki-roots v1.0.9
+#21 3.812   Downloaded zlib-rs v0.6.7
+#21 3.823   Downloaded unicode-width v0.2.2
+#21 3.831   Downloaded syn v3.0.4
+#21 3.847   Downloaded syn v2.0.119
+#21 3.862   Downloaded vstd v0.0.0-2026-09-06-0133
+#21 3.877   Downloaded verus_syn v0.0.0-2026-09-06-0133
+#21 3.892   Downloaded tracing v0.1.44
+#21 3.908   Downloaded zstd-sys v2.0.16+zstd.1.5.7
+#21 4.119    Compiling proc-macro2 v1.0.107
+#21 4.119    Compiling quote v1.0.47
+#21 4.119    Compiling unicode-ident v1.0.24
+#21 4.123    Compiling libc v0.2.189
+#21 4.123    Compiling serde_core v1.0.229
+#21 4.123    Compiling cfg-if v1.0.4
+#21 4.126    Compiling find-msvc-tools v0.1.11
+#21 4.129    Compiling shlex v2.0.1
+#21 4.131    Compiling hashbrown v0.17.1
+#21 4.131    Compiling once_cell v1.21.4
+#21 4.134    Compiling equivalent v1.0.2
+#21 4.139    Compiling stable_deref_trait v1.2.1
+#21 4.139    Compiling rustix v1.1.4
+#21 4.139    Compiling bitflags v2.13.1
+#21 4.142    Compiling linux-raw-sys v0.12.1
+#21 4.142    Compiling serde v1.0.229
+#21 4.142    Compiling pkg-config v0.3.34
+#21 4.148    Compiling zmij v1.0.23
+#21 4.149    Compiling verus_prettyplease v0.0.0-2026-09-06-0133
+#21 4.152    Compiling itoa v1.0.18
+#21 4.159    Compiling serde_json v1.0.151
+#21 4.160    Compiling memchr v2.8.3
+#21 4.163    Compiling io-lifetimes v2.0.4
+#21 4.169    Compiling convert_case v0.4.0
+#21 4.172    Compiling winnow v1.0.4
+#21 4.173    Compiling litemap v0.8.3
+#21 4.174    Compiling typenum v1.20.1
+#21 4.174    Compiling writeable v0.6.4
+#21 4.174    Compiling vstd v0.0.0-2026-09-06-0133
+#21 4.178    Compiling zeroize v1.9.0
+#21 4.178    Compiling io-lifetimes v3.0.1
+#21 4.179    Compiling verus_builtin v0.0.0-2026-09-06-0133
+#21 4.179    Compiling thiserror v2.0.20
+#21 4.195    Compiling smallvec v1.15.2
+#21 4.203    Compiling icu_normalizer_data v2.3.0
+#21 4.221    Compiling icu_properties_data v2.3.0
+#21 4.344    Compiling utf8_iter v1.0.4
+#21 4.424    Compiling toml_writer v1.1.2+spec-1.1.0
+#21 4.460    Compiling log v0.4.34
+#21 4.477    Compiling io-extras v0.19.0
+#21 4.501    Compiling cap-primitives v4.0.3
+#21 4.529    Compiling getrandom v0.4.3
+#21 4.530    Compiling tracing-core v0.1.36
+#21 4.547    Compiling crc32fast v1.5.1
+#21 4.555    Compiling maybe-owned v0.3.4
+#21 4.575    Compiling rustls-pki-types v1.15.1
+#21 4.614    Compiling ambient-authority v0.0.2
+#21 4.638    Compiling const-oid v0.10.2
+#21 4.640    Compiling cap-std v4.0.3
+#21 4.665    Compiling ipnet v2.12.1
+#21 4.699    Compiling fastrand v2.5.0
+#21 4.702    Compiling winnow v0.7.15
+#21 4.702    Compiling zstd-safe v7.2.4
+#21 4.745    Compiling untrusted v0.9.0
+#21 4.757    Compiling cpufeatures v0.3.0
+#21 4.761    Compiling simd-adler32 v0.3.10
+#21 4.761    Compiling rustls v0.23.45
+#21 4.798    Compiling percent-encoding v2.3.2
+#21 4.829    Compiling adler2 v2.0.1
+#21 4.837    Compiling pin-project-lite v0.2.17
+#21 4.859    Compiling zlib-rs v0.6.7
+#21 4.886    Compiling libbz2-rs-sys v0.2.5
+#21 4.893    Compiling subtle v2.6.1
+#21 4.894    Compiling bumpalo v3.20.3
+#21 4.915    Compiling openssl-probe v0.2.1
+#21 4.938    Compiling utf8parse v0.2.2
+#21 4.956    Compiling typed-path v0.12.3
+#21 4.966    Compiling regex-syntax v0.8.11
+#21 4.987    Compiling form_urlencoded v1.2.2
+#21 5.025    Compiling base64 v0.22.1
+#21 5.042    Compiling anstyle-parse v1.0.0
+#21 5.061    Compiling unsafe-libyaml v0.2.11
+#21 5.067    Compiling is_terminal_polyfill v1.70.2
+#21 5.083    Compiling portable-atomic v1.15.0
+#21 5.098    Compiling httpdate v1.0.3
+#21 5.098    Compiling anstyle-query v1.1.5
+#21 5.157    Compiling webpki-roots v1.0.9
+#21 5.172    Compiling miniz_oxide v0.8.9
+#21 5.238    Compiling rustls-native-certs v0.8.4
+#21 5.258    Compiling zopfli v0.8.3
+#21 5.283    Compiling indexmap v2.14.0
+#21 5.304    Compiling webpki-roots v0.26.11
+#21 5.328    Compiling colorchoice v1.0.5
+#21 5.364    Compiling anstyle v1.0.14
+#21 5.375    Compiling lazy_static v1.5.0
+#21 5.396    Compiling ryu v1.0.23
+#21 5.402    Compiling unicode-width v0.2.2
+#21 5.427    Compiling tracing-log v0.2.0
+#21 5.440    Compiling thread_local v1.1.10
+#21 5.449    Compiling heck v0.5.0
+#21 5.459    Compiling clap_lex v1.1.0
+#21 5.478    Compiling sharded-slab v0.1.7
+#21 5.489    Compiling strsim v0.11.1
+#21 5.490    Compiling owo-colors v4.3.0
+#21 5.567    Compiling nu-ansi-term v0.50.3
+#21 5.601    Compiling unit-prefix v0.5.2
+#21 5.719    Compiling bzip2 v0.6.1
+#21 5.730    Compiling shell-words v1.1.1
+#21 5.819    Compiling anstream v1.0.0
+#21 5.837    Compiling hybrid-array v0.4.14
+#21 6.152    Compiling syn v3.0.4
+#21 6.153    Compiling syn v2.0.119
+#21 6.153    Compiling verus_syn v0.0.0-2026-09-06-0133
+#21 6.209    Compiling clap_builder v4.6.6
+#21 6.286    Compiling toml_parser v1.1.3+spec-1.1.0
+#21 6.436    Compiling jobserver v0.1.35
+#21 6.436    Compiling getrandom v0.2.17
+#21 6.436    Compiling filetime v0.2.29
+#21 6.436    Compiling console v0.16.4
+#21 6.762    Compiling block-buffer v0.12.1
+#21 6.762    Compiling cc v1.4.4
+#21 6.762    Compiling crypto-common v0.2.2
+#21 6.993    Compiling indicatif v0.18.6
+#21 7.137    Compiling regex-automata v0.4.18
+#21 7.881    Compiling digest v0.11.3
+#21 8.022    Compiling sha2 v0.11.0
+#21 8.298    Compiling serde_spanned v1.1.1
+#21 8.298    Compiling toml_datetime v0.7.5+spec-1.1.0
+#21 8.298    Compiling toml_datetime v1.1.1+spec-1.1.0
+#21 8.502    Compiling flate2 v1.1.9
+#21 8.521    Compiling toml v1.1.4+spec-1.1.0
+#21 8.521    Compiling toml_edit v0.25.13+spec-1.1.0
+#21 8.564    Compiling toml v0.9.12+spec-1.1.0
+#21 8.614    Compiling ring v0.17.14
+#21 8.614    Compiling zstd-sys v2.0.16+zstd.1.5.7
+#21 8.614    Compiling lzma-sys v0.1.20
+#21 9.574    Compiling rustix-linux-procfs v0.1.1
+#21 9.574    Compiling fs-set-times v0.20.3
+#21 9.574    Compiling tempfile v3.27.0
+#21 9.574    Compiling xattr v1.6.1
+#21 9.574    Compiling matchers v0.2.0
+#21 9.785    Compiling tar v0.4.46
+#21 9.949    Compiling dialoguer v0.12.0
+#21 10.94    Compiling xz2 v0.1.7
+#21 11.06    Compiling gripsack-fs v0.42.0 (/app/crates/gripsack-fs)
+#21 11.85    Compiling synstructure v0.13.2
+#21 12.56    Compiling zerovec-derive v0.11.6
+#21 12.56    Compiling displaydoc v0.2.7
+#21 12.56    Compiling serde_derive v1.0.229
+#21 12.56    Compiling thiserror-impl v2.0.20
+#21 12.56    Compiling clap_derive v4.6.4
+#21 12.75    Compiling rustls-webpki v0.103.15
+#21 13.05    Compiling zstd v0.13.3
+#21 13.35    Compiling zip v8.6.0
+#21 13.49    Compiling zerofrom-derive v0.1.7
+#21 13.49    Compiling yoke-derive v0.8.2
+#21 13.49    Compiling tracing-attributes v0.1.31
+#21 15.10    Compiling clap v4.6.6
+#21 15.12    Compiling zerofrom v0.1.8
+#21 15.22    Compiling yoke v0.8.3
+#21 15.26    Compiling tracing v0.1.44
+#21 15.37    Compiling zerovec v0.11.8
+#21 15.37    Compiling zerotrie v0.2.5
+#21 15.42    Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+#21 15.42    Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+#21 15.89    Compiling tinystr v0.8.4
+#21 15.89    Compiling potential_utf v0.1.6
+#21 15.96    Compiling icu_collections v2.3.0
+#21 16.02    Compiling icu_locale_core v2.3.0
+#21 16.61    Compiling gripsack-process v0.42.0 (/app/crates/gripsack-process)
+#21 16.61    Compiling serde_yaml v0.9.34+deprecated
+#21 16.61    Compiling tracing-serde v0.2.0
+#21 16.71    Compiling tracing-subscriber v0.3.23
+#21 16.82    Compiling icu_provider v2.3.1
+#21 17.02    Compiling icu_properties v2.3.0
+#21 17.02    Compiling icu_normalizer v2.3.0
+#21 18.18    Compiling idna_adapter v1.2.2
+#21 18.26    Compiling idna v1.1.0
+#21 18.66    Compiling url v2.5.8
+#21 19.29    Compiling ureq v2.12.1
+#21 24.85    Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+#21 25.18    Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+#21 28.37    Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+#21 28.37    Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+#21 28.37    Compiling griplint v0.42.0 (/app/crates/griplint)
+#21 30.29    Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+#21 30.29    Compiling gripsack-trace v0.42.0 (/app/crates/gripsack-trace)
+#21 32.08    Compiling gripsack-lint v0.42.0 (/app/crates/gripsack-lint)
+#21 32.08    Compiling gripsack-exec v0.42.0 (/app/crates/gripsack-exec)
+#21 36.53    Compiling gripsack v0.42.0 (/app/crates/gripsack)
+#21 42.98     Finished `dev` profile [unoptimized + debuginfo] target(s) in 42.73s
+#21 DONE 43.3s
+
+#22 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#22 CACHED
+
+#23 [e2e  2/12] WORKDIR /app
+#23 CACHED
+
+#24 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#24 CACHED
+
+#25 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#25 CACHED
+
+#26 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#26 CACHED
+
+#27 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#27 DONE 0.2s
+
+#28 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#28 DONE 0.1s
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 0.271 Using CPython 3.13.15 interpreter at: /usr/local/bin/python3
+#29 0.271 Creating virtual environment at: .venv
+#29 0.280 Resolved 10 packages in 5ms
+#29 0.366 Downloading pygments (1.2MiB)
+#29 0.489  Downloaded pygments
+#29 0.489 Prepared 5 packages in 208ms
+#29 0.505 Installed 5 packages in 16ms
+#29 0.505  + iniconfig==2.3.0
+#29 0.505  + packaging==26.3
+#29 0.505  + pluggy==1.6.0
+#29 0.505  + pygments==2.21.0
+#29 0.505  + pytest==9.1.1
+#29 DONE 0.5s
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.1s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 2.9s done
+#33 exporting manifest sha256:57eea10db8a902e35e50ae5e51573b1bac61c3f25579c3682074462cecd9fb61 0.0s done
+#33 exporting config sha256:476af373a142761bf8f426d07601c7679801cd78c783c588d0eb72d1d74054af 0.0s done
+#33 exporting attestation manifest sha256:550d627355d968635537d46077badda2f25a80a875d9e1275d84a2749fa100ed 0.0s done
+#33 exporting manifest list sha256:b93f91197381dee7e8aad8bba0edd4d15b7b3d6e46d2c263117ae673f014a806 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.8s done
+#33 DONE 3.9s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-018b26f01d3d Creating 
+ Container gripsack-e2e-run-018b26f01d3d Created 
+.....................................                                    [100%]
+37 passed in 65.88s (0:01:05)
+{
+  "version": 1,
+  "fixture_only": true,
+  "mode": "duplicate",
+  "delivery": "at_least_once",
+  "failure_policy": "warn_no_retry",
+  "append_effects": 2,
+  "receiver_effects": 1,
+  "outcomes": [
+    {
+      "case": "append",
+      "intent": "985f4ba7cfe0f34be157d706c6a34696fee10d65b53f82f59a7b50b71c1ec725",
+      "activation": "2ddb3c58326a9e39f777ac167b135f6ee858b01cdb57d95e357dd9ff8f0d4c43",
+      "attempt": 2,
+      "succeeded": true,
+      "ambiguous": false,
+      "pending": false,
+      "byte_binding": "executable_handle",
+      "enforcement": "process_group"
+    },
+    {
+      "case": "receiver",
+      "intent": "e7c7b8dd80d7d974318e89a08e77671f0f173e9d7f9f9b9a0bdb90e049800d35",
+      "activation": "5c6698d342972b6fd838a6caae509cd3ad5f46c050bb3a69d3846d669cb8de4c",
+      "attempt": 2,
+      "succeeded": true,
+      "ambiguous": false,
+      "pending": false,
+      "byte_binding": "executable_handle",
+      "enforcement": "process_group"
+    }
+  ]
+}
+{
+  "version": 1,
+  "fixture_only": true,
+  "mode": "crash_after_start",
+  "delivery": "at_least_once",
+  "failure_policy": "warn_no_retry",
+  "append_effects": 1,
+  "receiver_effects": 1,
+  "outcomes": [
+    {
+      "case": "append",
+      "intent": "e037f3a6ccb607efedb2c1bd3e7ec4c96106578129a830042f2ba3e593d84369",
+      "activation": "b5e531130398fba13d31221301ced20563743a8277b80e604f3a519e1e76a89f",
+      "attempt": 2,
+      "succeeded": true,
+      "ambiguous": false,
+      "pending": false,
+      "byte_binding": "executable_handle",
+      "enforcement": "process_group"
+    },
+    {
+      "case": "receiver",
+      "intent": "36e37baa54c25cfd5a887f234d09d8ffe8656b19f71bb5a0eca304395d2bde73",
+      "activation": "ad86aa12ea4d3bda57f69570379c47d9a65602c97c1b8a7e49bcc1703fdbce96",
+      "attempt": 2,
+      "succeeded": true,
+      "ambiguous": false,
+      "pending": false,
+      "byte_binding": "executable_handle",
+      "enforcement": "process_group"
+    }
+  ]
+}
+{
+  "version": 1,
+  "fixture_only": true,
+  "mode": "clean",
+  "delivery": "at_least_once",
+  "failure_policy": "warn_no_retry",
+  "append_effects": 1,
+  "receiver_effects": 1,
+  "outcomes": [
+    {
+      "case": "append",
+      "intent": "15c55a1bbc174acd184beb7fb20ab4f3503241f1671999be63c0f61279c98342",
+      "activation": "88f756f39fbef62dd544e3722cc14367f958bf1c198bf46061fd59e11f0f7bdb",
+      "attempt": 1,
+      "succeeded": true,
+      "ambiguous": false,
+      "pending": false,
+      "byte_binding": "executable_handle",
+      "enforcement": "process_group"
+    },
+    {
+      "case": "receiver",
+      "intent": "8a189d8b27053325b9b156bff448244d493a32481141f455f6e3e739a609c102",
+      "activation": "b8808f83dae8866df624e45e70e2f58ed8f70464953264e31557300f6987e9b4",
+      "attempt": 1,
+      "succeeded": true,
+      "ambiguous": false,
+      "pending": false,
+      "byte_binding": "executable_handle",
+      "enforcement": "process_group"
+    }
+  ]
+}
+
+
+===== native_supervision_regressions =====
+   Compiling gripsack-process v0.42.0 (/home/tarek/workspace/gripsack/crates/gripsack-process)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.57s
+     Running unittests src/lib.rs (target/debug/deps/gripsack_process-923a366f93244617)
+
+running 23 tests
+test tests::expired_operation_rejects_spawn_without_overriding_input_failure ... ok
+test tests::input_rejected_before_spawn ... ok
+test tests::lifecycle::no_response_is_a_normal_exit ... ok
+test tests::exact_line_limit_and_empty_lines ... ok
+test tests::framing_and_input_eof ... ok
+test tests::lifecycle::exit_and_signal_status_are_not_routing_policy ... ok
+test tests::empty_input_is_closed_immediately ... ok
+test tests::spawn_error_and_zero_budget ... ok
+test tests::pressure::response_still_sends_input_and_preserves_exit_failure ... ok
+test tests::native::native_child_cannot_read_ungranted_environment_or_inherited_descriptor ... ok
+test tests::native::selected_script_survives_source_replacement_and_stale_approval_refuses ... ok
+test tests::tail_is_exact_and_can_be_disabled ... ok
+test tests::lifecycle::callback_panic_kills_and_reaps_the_leader ... ok
+test tests::native::raw_bytes_have_no_line_limit_but_keep_the_total_output_limit ... ok
+test tests::lifecycle::inherited_pipes_are_killed_on_leader_exit_not_after_a_linger ... ok
+test tests::pressure::simultaneous_input_and_output_pressure ... ok
+test tests::pressure::huge_unterminated_line_is_stopped_incrementally ... ok
+test tests::pressure::stdout_and_stderr_floods_are_cumulative ... ok
+test tests::pressure::response_does_not_disable_any_output_bound ... ok
+test tests::pressure::early_stdin_close_is_not_an_io_error ... ok
+test tests::operation_and_exchange_deadlines_each_bound_cleanup ... ok
+test tests::lifecycle::silent_process_with_closed_pipes_still_has_a_deadline ... ok
+test tests::pressure::blocked_input_does_not_block_response_or_deadline ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.01s
+
+   Doc-tests gripsack_process
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+
+===== native_enoexec_failure_before =====
+   Compiling gripsack-process v0.42.0 (/home/tarek/workspace/gripsack/crates/gripsack-process)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.02s
+     Running unittests src/lib.rs (target/debug/deps/gripsack_process-923a366f93244617)
+
+running 6 tests
+
+thread 'tests::native::spawn_failure_keeps_the_kernel_error_and_does_not_report_success' (743997) panicked at crates/gripsack-process/src/tests/native.rs:83:5:
+assertion `left == right` failed
+  left: Exited
+ right: SpawnFailure
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tests::native::spawn_failure_keeps_the_kernel_error_and_does_not_report_success ... FAILED
+test tests::native::legacy_memfd_flag_support_keeps_sealed_execution ... ok
+test tests::native::selected_script_survives_source_replacement_and_stale_approval_refuses ... ok
+test tests::native::native_child_cannot_read_ungranted_environment_or_inherited_descriptor ... ok
+test tests::native::raw_bytes_have_no_line_limit_but_keep_the_total_output_limit ... ok
+test tests::native::retained_authority_survives_closed_standard_descriptors ... ok
+
+failures:
+
+failures:
+    tests::native::spawn_failure_keeps_the_kernel_error_and_does_not_report_success
+
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p gripsack-process --lib`
+

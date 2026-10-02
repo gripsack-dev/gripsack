@@ -15,7 +15,12 @@ use tracing::{info, info_span};
 /// locks/apply.flock` (finding A): two concurrent applies serialize,
 /// never lose a manifest update.
 pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
-    let _session = crate::util::LifecycleSession::acquire(&ctx.home)?;
+    if let Some(diagnostic) =
+        ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Apply)
+    {
+        return Err(ExecError::Gate(diagnostic));
+    }
+    let session = crate::util::LifecycleSession::acquire(&ctx.home)?;
     // crash recovery (0019): a previous run killed between a deploy
     // mutation and the flip left uncommitted journal entries — the
     // filesystem sits between generations. Restore the priors before
@@ -35,21 +40,25 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             tracing::warn!("{line}");
         }
     }
-    let mut lock = match crate::lockfile::read(&ctx.repo, &ctx.host) {
-        crate::lockfile::LockRead::Parsed(lock) => lock,
-        crate::lockfile::LockRead::Missing => Default::default(),
-        crate::lockfile::LockRead::Corrupt(why) => {
-            // never silently re-pin from a corrupt lock: the file is
-            // the tamper signal (lockfile.rs header). deleting it is
-            // the user's deliberate re-pin.
-            return Err(ExecError::Step {
-                module: "*".into(),
-                step: "lockfile".into(),
-                detail: format!(
-                    "{} is corrupt ({why}) — delete it to re-pin from scratch",
-                    crate::lockfile::path(&ctx.repo, &ctx.host).display()
-                ),
-            });
+    let mut lock = if ir.workspace.is_some() {
+        crate::lockfile::Lockfile::default()
+    } else {
+        match crate::lockfile::read(ctx.repository.identity(), &ctx.host) {
+            crate::lockfile::LockRead::Parsed(lock) => lock,
+            crate::lockfile::LockRead::Missing => Default::default(),
+            crate::lockfile::LockRead::Corrupt(why) => {
+                // never silently re-pin from a corrupt lock: the file is
+                // the tamper signal (lockfile.rs header). deleting it is
+                // the user's deliberate re-pin.
+                return Err(ExecError::Step {
+                    module: "*".into(),
+                    step: "lockfile".into(),
+                    detail: format!(
+                        "{} is corrupt ({why}) — delete it to re-pin from scratch",
+                        crate::lockfile::path(ctx.repository.identity(), &ctx.host).display()
+                    ),
+                });
+            }
         }
     };
     let mut lock_dirty = false;
@@ -64,12 +73,12 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // invalid pending metadata BLOCKS the run (0035 F5): mutating
     // over an unreadable activation record would strand the pending
     // generation's intents — same rule as the journal's quarantine
-    let resumed = crate::activate::resume_pending(ctx.home_dir()?, current_gen).map_err(|e| {
+    let resumed = crate::activate::resume_activation(&session).map_err(|e| {
         ExecError::Step {
             module: "*".into(),
             step: "activate".into(),
             detail: format!(
-                "the activation record is unreadable ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
+                "activation recovery is blocked ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
             ),
         }
     })?;
@@ -85,6 +94,19 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             reports,
         });
     }
+    let native = ir
+        .workspace
+        .as_ref()
+        .map(|workspace| {
+            crate::workspace::NativeProfiles::prepare(
+                workspace,
+                ctx.repository.contents(),
+                &ctx.home,
+                &ctx.only,
+                ctx.fetch.limits(),
+            )
+        })
+        .transpose()?;
     // the allocator is NOT current+1 (0026 §3): after a rollback,
     // current is lower than the highest generation on disk, and
     // reusing a number would rewrite immutable history. Allocate
@@ -98,7 +120,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // prunes and mis-plan ownership — block the mutation
     let prev_manifest: Option<store::Generation> = match current_gen {
         Some(n) => Some(
-            store::read_manifest(&ctx.home, n).map_err(|e| ExecError::Step {
+            store::generations::admit_manifest(&ctx.home, n).map_err(|e| ExecError::Step {
                 module: "*".into(),
                 step: "manifest".into(),
                 detail: format!(
@@ -124,7 +146,11 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // The ready-queue scheduler (0007 §5): modules run as their
     // dependencies finish, N = cores, resources via flock. The flip
     // below stays the single barrier.
-    let (order, missing) = scoped_order(ir, &ctx.only)?;
+    let (order, missing) = if native.is_some() {
+        (Vec::new(), Vec::new())
+    } else {
+        scoped_order(ir, &ctx.only)?
+    };
     if !missing.is_empty() {
         // a typo'd or host-gated name must not vanish — an apply that
         // "succeeded" while ignoring part of the request lies
@@ -145,14 +171,33 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // recovery compares the marker against `current` — a crash after
     // the flip but before journal cleanup must read as COMMITTED,
     // never restore priors the new generation owns (review 5.1)
-    store::journal::begin_run(
+    let selection = store::journal::begin_run(
         ctx.home_dir()?,
+        &ctx.home,
         current_gen,
         next_gen,
         store::journal::RunOp::Apply,
     )?;
-    let outcome =
-        crate::schedule::run_all(ir, &steps_by_module, &order, ctx, &prev_modules, &lock)?;
+    let execution = if let Some(native) = &native {
+        native.deploy(ctx, &selection, &prev_modules)
+    } else {
+        crate::schedule::run_all(
+            ir,
+            &steps_by_module,
+            &order,
+            ctx,
+            &selection,
+            &prev_modules,
+            &lock,
+        )
+    };
+    let outcome = match execution {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            compensate(ctx);
+            return Err(error);
+        }
+    };
     // An empty result set must be a deliberate empty declaration,
     // never a scheduling artifact — prune can't tell them apart (B).
     if outcome.modules.is_empty() && !ir.modules.is_empty() && outcome.failed.is_none() {
@@ -171,6 +216,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         compensate(ctx);
         return Err(error);
     }
+    // Recovery reports describe an earlier committed selection. They remain
+    // visible, but cannot manufacture a fresh deployment or hook instance.
+    let deployment_reports_start = reports.len();
     for (name, module_reports) in outcome.reports {
         let span = info_span!("module", name = name.as_str());
         let _entered = span.enter();
@@ -195,17 +243,18 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // error from it means nothing flipped, so it compensates too.
     match pre_flip(
         ctx,
+        &selection,
         &prev_manifest,
         &modules,
         next,
         lock_dirty.then_some(&lock),
-        &reports,
+        &reports[deployment_reports_start..],
     ) {
         Ok(Some(_generation)) => {}
         // vacuous run: nothing journaled, nothing flipped — the
         // marker begin_run wrote must not linger
         Ok(None) => {
-            store::journal::end_run(ctx.home_dir()?)?;
+            store::journal::end_run(selection)?;
             return Ok(ApplyResult {
                 outcome: Outcome::Satisfied {
                     generation: current_gen,
@@ -250,31 +299,27 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             }
         }
     }
-    if !intents.is_empty()
-        && let Err(e) = store::activation::write_pending(
-            ctx.home_dir()?,
-            &store::activation::PendingActivation {
-                generation: next,
-                intents: intents.clone(),
-            },
-        )
-    {
-        // inside the transaction boundary (0035 F5): a fallible write
-        // between the first mutation and the flip compensates like
-        // any other
-        compensate(ctx);
-        return Err(e.into());
-    }
-    if let Err(e) = store::flip(ctx.home_dir()?, &ctx.home, next) {
-        compensate(ctx);
-        return Err(e.into());
-    }
+    let activation = match store::activation::prepare(ctx.home_dir()?, &selection, intents) {
+        Ok(activation) => activation,
+        Err(error) => {
+            // The immutable plan/pointer is still inside the transaction.
+            compensate(ctx);
+            return Err(error.into());
+        }
+    };
+    let committed = match store::flip(selection) {
+        Ok(committed) => committed,
+        Err(error) => {
+            compensate(ctx);
+            return Err(error.into());
+        }
+    };
     // test-only kill switch: the flip→adapters crash window's e2e
     crate::util::crash_hook("before-adapters");
     // the flip is the run's commit point: everything the journal
     // recorded is now owned by the new generation — the crash window
     // closes here
-    if let Err(e) = store::journal::commit_run(ctx.home_dir()?) {
+    if let Err(e) = store::journal::commit_run(committed) {
         // the flip already committed — this is cleanup-pending, not a
         // failed apply (0029 §13); the next run's reconcile finishes it
         reports.push(crate::report::StepReport {
@@ -285,16 +330,17 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             kind: crate::report::ReportKind::Warned,
         });
     }
-    reports.extend(crate::activate::run(&intents));
-    // the record's work is done — clear it (a clear failure is
-    // cleanup-pending: the next run discards or re-runs harmlessly,
-    // the intents being idempotent)
-    if !intents.is_empty()
-        && let Err(e) = store::activation::clear_pending(ctx.home_dir()?)
-    {
-        tracing::warn!("activation record cleanup pending ({e}) — the next run finishes it");
+    if let Some(batch) = activation {
+        match crate::activate::run(batch, ctx.home_dir()?, &ctx.home) {
+            Ok(outcomes) => reports.extend(outcomes),
+            Err(error) => reports.push(crate::report::StepReport {
+                module: "*".into(),
+                summary: format!("generation {next} active; activation evidence retained ({error}) — inspect hooks before retrying"),
+                kind: crate::report::ReportKind::Warned,
+            }),
+        }
     }
-    info!(generation = next, "activated");
+    info!(generation = %next, "activated");
     Ok(ApplyResult {
         outcome: Outcome::Applied { generation: next },
         reports,
@@ -394,18 +440,19 @@ fn compensate(ctx: &Ctx) {
 /// is the vacuous (satisfied) run.
 fn pre_flip(
     ctx: &Ctx,
+    journal: &store::journal::JournalRun<'_>,
     prev_manifest: &Option<store::Generation>,
     modules: &BTreeMap<String, store::ModuleState>,
-    next: u64,
+    next: store::GenerationId,
     lock: Option<&crate::lockfile::Lockfile>,
-    reports: &[crate::report::StepReport],
+    deployment_reports: &[crate::report::StepReport],
 ) -> Result<Option<store::Generation>, ExecError> {
     // pins are fetch outcomes — they must land before anything can
     // short-circuit later (the satisfied early-return used to skip
     // the write, so a mirror-swap re-fetch never refreshed its pin
     // and every later apply re-resolved)
     if let Some(lock) = lock {
-        crate::lockfile::write(&ctx.repo, &ctx.host, lock)?;
+        crate::lockfile::write(ctx.repository.identity(), &ctx.host, lock)?;
     }
 
     // Prune-on-undeclare (0006 critique): destinations in the previous
@@ -413,7 +460,7 @@ fn pre_flip(
     // the recorded hash (user edits are never deleted). Every prune
     // mutation is journaled like a deploy (0025 §B).
     if let Some(prev) = prev_manifest {
-        prune_undeclared(prev, modules, &ctx.home, ctx.home_dir()?)?;
+        prune_undeclared(prev, modules, journal)?;
     }
     // test-only kill switch: the prune→flip crash window's e2e (0025)
     crate::util::crash_hook("after-prune");
@@ -427,7 +474,7 @@ fn pre_flip(
     // filesystem" must never both be true of one run (migration
     // report 0.18.1: a repaired symlink cut no generation, so
     // rollback could not undo it).
-    let touched_disk = reports.iter().any(|r| {
+    let touched_disk = deployment_reports.iter().any(|r| {
         matches!(
             r.kind,
             crate::report::ReportKind::Installed | crate::report::ReportKind::Configured
@@ -459,9 +506,9 @@ fn pre_flip(
 fn prune_undeclared(
     prev: &store::Generation,
     modules: &BTreeMap<String, store::ModuleState>,
-    home: &std::path::Path,
-    home_dir: &gripsack_fs::Dir,
+    journal: &store::journal::JournalRun<'_>,
 ) -> Result<(), ExecError> {
+    let home_dir = journal.home();
     let declared: BTreeSet<std::path::PathBuf> = modules
         .values()
         .flat_map(|m| m.entries.iter().map(|e| e.key()))
@@ -471,14 +518,13 @@ fn prune_undeclared(
     // its block behind as an unowned ghost (0026 §2). Non-merge
     // destinations are unique by E111, so a rename keeps the dest
     // deployed under the new module without a remove/redeploy churn.
-    let declared_merge: BTreeSet<(&str, std::path::PathBuf)> = modules
+    let declared_merge: BTreeSet<store::OwnershipKey> = modules
         .iter()
         .flat_map(|(name, m)| {
             m.entries
                 .iter()
-                .filter(|e| e.mode == gripsack_ir::Ownership::Merge)
-                .map(|e| (name.as_str(), e.key()))
-                .collect::<Vec<_>>()
+                .filter(|e| e.ownership.policy() == gripsack_ir::Ownership::Merge)
+                .map(move |entry| entry.ownership_key(name))
         })
         .collect();
     for (name, state) in &prev.modules {
@@ -490,8 +536,8 @@ fn prune_undeclared(
             if entry.preserved_drift {
                 continue;
             }
-            let declared_elsewhere = if entry.mode == gripsack_ir::Ownership::Merge {
-                declared_merge.contains(&(name.as_str(), entry.key()))
+            let declared_elsewhere = if entry.ownership.policy() == gripsack_ir::Ownership::Merge {
+                declared_merge.contains(&entry.ownership_key(name))
             } else {
                 declared.contains(&entry.key())
             };
@@ -501,13 +547,14 @@ fn prune_undeclared(
             // the ONE remove planner (0034): merge block-intactness,
             // the drift guard, and the journaled intent all live in
             // ops::plan — apply executes the same op rollback would
-            let Some(op) = crate::ops::plan_remove_op(name, entry, &state.store_path, home)? else {
+            let Some(op) = crate::ops::plan_remove_op(name, entry, &state.store_path, home_dir)?
+            else {
                 continue;
             };
             if matches!(op.kind(), crate::ops::OpKind::Preserved) {
                 continue; // plan_remove_op already warned
             }
-            crate::ops::execute_op(home_dir, home, op.as_executable()?)?;
+            crate::ops::execute_op(journal, op.as_executable()?)?;
             info!(
                 "{} {}",
                 if entry.prior.is_some() {

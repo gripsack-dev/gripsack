@@ -130,6 +130,7 @@ impl ModuleRun<'_> {
         let workdir = cwd.map(|c| dir.join(c)).unwrap_or_else(|| dir.clone());
         let mut command = std::process::Command::new(program);
         command.args(args).current_dir(&workdir);
+        self.ctx.fetch.apply_build_env(&mut command);
         command.envs(env);
         self.build_env.apply(&mut command).map_err(fail)?;
         let status = command
@@ -175,11 +176,13 @@ impl ModuleRun<'_> {
         std::fs::create_dir_all(&dir)?;
         // the build closure rides the step env (0039): PATH gains the
         // deps' bin dirs, GRIP_DEP_* names their store roots
-        run_shell(script, &dir, Some(&self.build_env)).map_err(|detail| ExecError::Step {
-            module: self.name.to_string(),
-            step: step.id.clone(),
-            detail,
-        })?;
+        run_shell(script, &dir, Some(&self.build_env), Some(&self.ctx.fetch)).map_err(
+            |detail| ExecError::Step {
+                module: self.name.to_string(),
+                step: step.id.clone(),
+                detail,
+            },
+        )?;
         self.check_outputs(step, &dir, outputs)
     }
 }

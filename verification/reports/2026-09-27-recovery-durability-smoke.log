@@ -1,0 +1,275 @@
+SCOPE=actual isolated CLI; software fault and recovery only; no hardware power-loss claim
+FUZZ=not_run
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 11.08kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.5s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.0s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 DONE 0.0s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#11 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#11 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 95.27kB 0.1s done
+#8 DONE 0.1s
+
+#12 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#12 CACHED
+
+#13 [builder 10/10] COPY scripts ./scripts
+#13 CACHED
+
+#14 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#14 CACHED
+
+#15 [builder  4/10] WORKDIR /app
+#15 CACHED
+
+#16 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#16 CACHED
+
+#17 [builder  6/10] COPY crates ./crates
+#17 CACHED
+
+#18 [builder  8/10] COPY schema ./schema
+#18 CACHED
+
+#19 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#19 CACHED
+
+#20 [builder  9/10] COPY typescript ./typescript
+#20 CACHED
+
+#21 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#21 CACHED
+
+#22 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#22 CACHED
+
+#23 [builder  7/10] COPY fuzz ./fuzz
+#23 CACHED
+
+#24 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#24 CACHED
+
+#25 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#25 CACHED
+
+#26 [e2e  2/12] WORKDIR /app
+#26 CACHED
+
+#27 [bin 1/1] RUN cargo build --locked -p gripsack
+#27 CACHED
+
+#28 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#28 CACHED
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 CACHED
+
+#30 [e2e 10/12] COPY e2e ./e2e
+#30 DONE 0.0s
+
+#31 [e2e 11/12] COPY examples ./examples
+#31 DONE 0.1s
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 DONE 0.0s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 0.2s done
+#33 exporting manifest sha256:0ae3564c0556d2ed1575038090e8d49103754e9273404dee8b29b82ec2401c65 0.0s done
+#33 exporting config sha256:fc008d775a990c64b285446a6a574e7b73f40ec94f2f08502cefa11a2b92b017 0.0s done
+#33 exporting attestation manifest sha256:59e3c3ea3f2087d9b88adba507d491b7df7297ad68a77df899544834e71525dc 0.0s done
+#33 exporting manifest list sha256:2468f9aedca3ba86451fe884adefd0a91458023be8c0b03c2275edb5caca7d66
+#33 exporting manifest list sha256:2468f9aedca3ba86451fe884adefd0a91458023be8c0b03c2275edb5caca7d66 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.1s done
+#33 DONE 0.4s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-5992d2b96c46 Creating 
+ Container gripsack-e2e-run-5992d2b96c46 Created 
+$ grip apply --host testhost [recovery only]
+[1m[32malready satisfied[39m[0m (generation —, [2m0.0s[0m)
+
+$ grip apply --host testhost [recovery only]
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation —, [2m0.0s[0m)
+2026-09-27T16:46:44.249979Z  WARN gripsack_exec::apply: recovered /tmp/gripsack-recovery-durability-ll9u85rv/interrupted: removed (was absent before the interrupted run)
+
+ABSENT_RESTORE_DURABLE_BEFORE_CLEANUP=true barrier=24
+$ grip apply --host testhost [recovery only]
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation —, [2m0.0s[0m)
+2026-09-27T16:46:44.329644Z  WARN gripsack_exec::apply: unchanged /tmp/gripsack-recovery-durability-ll9u85rv/interrupted: prior state is durable
+
+$ grip apply --host testhost [recovery only]
+error[E201]: io: injected Before DirSync
+
+OBSERVED_PRIOR_SYNC_FAILURE_RETAINS_EVIDENCE=true
+$ grip apply --host testhost [recovery only]
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation —, [2m0.0s[0m)
+2026-09-27T16:46:44.459757Z  WARN gripsack_exec::apply: unchanged /tmp/gripsack-recovery-durability-ll9u85rv/interrupted: prior state is durable
+
+$ grip apply --host testhost [recovery only]
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation 1, [2m0.0s[0m)
+2026-09-27T16:46:44.528619Z  WARN gripsack_exec::apply: interrupted run's generation had already activated — journal cleared, deployed state stands
+
+$ grip apply --host testhost [recovery only]
+error[E201]: io: injected Before DirSync
+
+$ grip apply --host testhost [recovery only]
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation 1, [2m0.0s[0m)
+2026-09-27T16:46:44.646097Z  WARN gripsack_exec::apply: interrupted run's generation had already activated — journal cleared, deployed state stands
+
+OBSERVED_CURRENT_SYNC_FAILURE_RETAINS_EVIDENCE=true
+$ grip apply --host testhost [recovery only]
+error[E201]: io: key must be a string at line 1 column 2
+
+$ grip apply --host testhost [recovery only]
+  * ⚠ recovered 1 destination(s) from an interrupted run
+[1m[32malready satisfied[39m[0m (generation 1, [2m0.0s[0m)
+2026-09-27T16:46:44.754288Z  WARN gripsack_exec::apply: interrupted run's generation had already activated — journal cleared, deployed state stands
+
+CORRUPT_CURRENT_REFUSED_BEFORE_CLEANUP=true
+RECOVERY_SMOKE_RESULT={"journeys":4,"passed":4,"failed":0,"power_loss_claim":false,"fuzz":"not_run"}
+
+SMOKE_SOURCE_BEGIN
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+
+with tempfile.TemporaryDirectory(prefix="gripsack-recovery-durability-") as temporary:
+    sandbox = Path(temporary)
+    home = sandbox / "state"
+    repo = sandbox / "repo"
+    (repo / "hosts").mkdir(parents=True)
+    (repo / "env.toml").write_text('[env]\nname="recovery-smoke"\n')
+    (repo / "hosts/testhost.ts").write_text('import { defineEnv, module } from "@gripsack/core";\nexport default defineEnv(() => ({ modules: [module("demo", {})] }));\n')
+    env = dict(os.environ, HOME=str(sandbox), GRIPSACK_HOME=str(home), GRIPSACK_TRUST_ALL="1", GRIPSACK_FS_RECOVER_ONLY="1", NO_COLOR="1")
+    trace = sandbox / "boundaries.tsv"
+    def run(extra=None, success=True):
+        result = subprocess.run(["grip", "apply", "--host", "testhost"], cwd=repo, env={**env, **(extra or {})}, capture_output=True, text=True, timeout=30)
+        print("$ grip apply --host testhost [recovery only]")
+        print(result.stdout + result.stderr)
+        assert (result.returncode == 0) == success, result.returncode
+        return result
+    run()
+    journal = home / "journal"
+    journal.mkdir(exist_ok=True, mode=0o700)
+    journal.chmod(0o700)
+    marker = journal / "run.json"
+    entry = journal / "intent.json"
+    dest = sandbox / "interrupted"
+    run_bytes = b'{"previous_generation":null,"target_generation":1,"op":"apply"}'
+    def record(prior):
+        marker.write_bytes(run_bytes)
+        marker.chmod(0o644)
+        entry.write_text(json.dumps({"v":2,"dest":str(dest),"prior":prior,"before":prior,"after":{"kind":"link","target":"installed"}}))
+        entry.chmod(0o600)
+        trace.unlink(missing_ok=True)
+    def restore_barrier():
+        rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
+        start = next(i for i,row in enumerate(rows) if row[1:] == ["After","FileSync",'"run.json"'])
+        cleanup = next(i for i,row in enumerate(rows) if row[1:] == ["Before","Unlink",'"intent.json"'])
+        return int(next(row[0] for row in rows[start+1:cleanup] if row[1:3] == ["Before","DirSync"]))
+    dest.symlink_to("installed")
+    record({"kind":"absent"})
+    run({"GRIPSACK_FS_TRACE":str(trace)})
+    absent_barrier = restore_barrier()
+    assert not dest.is_symlink() and not dest.exists() and not marker.exists() and not entry.exists()
+    print("ABSENT_RESTORE_DURABLE_BEFORE_CLEANUP=true barrier="+str(absent_barrier))
+    origin = b"original private bytes\n"
+    blob = home / "prior" / hashlib.sha256(origin).hexdigest()
+    blob.parent.mkdir(mode=0o700)
+    blob.write_bytes(origin)
+    blob.chmod(0o600)
+    dest.write_bytes(origin)
+    dest.chmod(0o600)
+    prior = {"kind":"file","hash":blob.name,"mode":0o600}
+    record(prior)
+    run({"GRIPSACK_FS_TRACE":str(trace)})
+    retry_cut = restore_barrier()
+    record(prior)
+    expected_entry = entry.read_bytes()
+    run({"GRIPSACK_FS_TRACE":str(trace),"GRIPSACK_FS_CUT":str(retry_cut),"GRIPSACK_FS_FAULT":"error"}, success=False)
+    assert entry.read_bytes() == expected_entry and marker.read_bytes() == run_bytes
+    assert dest.read_bytes() == origin and blob.read_bytes() == origin
+    print("OBSERVED_PRIOR_SYNC_FAILURE_RETAINS_EVIDENCE=true")
+    run()
+    assert not entry.exists() and not marker.exists()
+    assert dest.read_bytes() == origin and dest.stat().st_mode & 0o7777 == 0o600
+    generation = home / "generations/1"
+    generation.mkdir(parents=True)
+    manifest = generation / "manifest.json"
+    valid_manifest = b'{"number":1,"modules":{}}'
+    manifest.write_bytes(valid_manifest)
+    (home / "current").symlink_to("generations/1")
+    dest.unlink()
+    dest.symlink_to("installed")
+    record(prior)
+    run({"GRIPSACK_FS_TRACE":str(trace)})
+    commit_cut = restore_barrier()
+    record(prior)
+    expected_entry = entry.read_bytes()
+    run({"GRIPSACK_FS_TRACE":str(trace),"GRIPSACK_FS_CUT":str(commit_cut),"GRIPSACK_FS_FAULT":"error"}, success=False)
+    assert entry.read_bytes() == expected_entry and marker.read_bytes() == run_bytes
+    assert dest.readlink() == Path("installed")
+    run()
+    assert not marker.exists() and not entry.exists()
+    print("OBSERVED_CURRENT_SYNC_FAILURE_RETAINS_EVIDENCE=true")
+    record(prior)
+    expected_entry = entry.read_bytes()
+    manifest.write_bytes(b"{torn")
+    run(success=False)
+    assert entry.read_bytes() == expected_entry and marker.read_bytes() == run_bytes
+    assert dest.readlink() == Path("installed")
+    manifest.write_bytes(valid_manifest)
+    run()
+    assert not marker.exists() and not entry.exists()
+    print("CORRUPT_CURRENT_REFUSED_BEFORE_CLEANUP=true")
+    print('RECOVERY_SMOKE_RESULT={"journeys":4,"passed":4,"failed":0,"power_loss_claim":false,"fuzz":"not_run"}')
+
+SMOKE_SOURCE_END

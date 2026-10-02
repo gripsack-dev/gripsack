@@ -6,17 +6,22 @@
 //! [`PROBE_ROUNDS`]; a set that never settles is an authoring error.
 
 use super::eval::EvalEnvelope;
-use crate::render::{self, Palette};
+use super::frontend::FrontendRunError;
+use crate::render::DiagnosticSink;
 use gripsack_ir::diagnostic::codes;
 use gripsack_ir::{Diagnostic, Severity};
+use gripsack_process::{Limits, ProcessDisposition, Sha256Digest};
+use gripsack_store::trust::evaluation::EvaluationSession;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Instant;
 
 /// Two-stage eval's round cap (0013 D6): eval → bind → re-eval, at
 /// most this many frontend runs before the set is declared unstable.
-pub(super) const PROBE_ROUNDS: usize = 4;
+pub(super) const PROBE_ROUNDS: u32 = 4;
+pub(super) const INPUT_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 
 /// One symbolic probe request: the effect the frontend wants, the
 /// core's to answer (executable: PATH lookup; file_exists:
@@ -59,37 +64,66 @@ pub(super) struct InputsEnvelope<'a> {
     pub settings: &'a serde_json::Map<String, serde_json::Value>,
 }
 
-/// The inputs file: JSON under `$GRIPSACK_HOME/inputs/`, removed when
-/// the guard drops — the run log keeps the facts and probe bindings
-/// it carried, so a deleted file loses nothing.
+/// Each round has a distinct private read-only file. No later round can rewrite
+/// the bytes bound into an earlier process receipt.
 pub(super) struct InputsFile {
+    directory: tempfile::TempDir,
+    capability: gripsack_fs::Dir,
+}
+
+struct PreparedInput {
     path: PathBuf,
+    digest: Sha256Digest,
 }
 
 impl InputsFile {
-    pub(super) fn create(home: &Path) -> std::io::Result<Self> {
-        let dir = home.join("inputs");
-        std::fs::create_dir_all(&dir)?;
+    pub(super) fn create() -> std::io::Result<Self> {
+        let directory = tempfile::Builder::new()
+            .prefix("gripsack-inputs-")
+            .tempdir()?;
+        let capability = gripsack_fs::open(directory.path())?;
         Ok(Self {
-            path: dir.join(format!("{}.json", gripsack_trace::new_run_id())),
+            directory,
+            capability,
         })
     }
 
-    pub(super) fn write(&self, envelope: &InputsEnvelope<'_>) -> Result<(), ExitCode> {
-        let json = serde_json::to_string(envelope).map_err(|e| {
-            eprintln!("grip: cannot serialize host inputs: {e}");
-            ExitCode::FAILURE
-        })?;
-        gripsack_fs::atomic_write_at(&self.path, json.as_bytes()).map_err(|e| {
-            eprintln!("grip: cannot write {}: {e}", self.path.display());
-            ExitCode::FAILURE
+    fn write(&self, round: u32, envelope: &InputsEnvelope<'_>) -> Result<PreparedInput, ExitCode> {
+        struct Encoder(Vec<u8>);
+        impl std::io::Write for Encoder {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                if bytes.len() > INPUT_DOCUMENT_BYTES - self.0.len() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "host input envelope exceeds its byte budget",
+                    ));
+                }
+                self.0.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut encoded = Encoder(Vec::new());
+        serde_json::to_writer(&mut encoded, envelope).map_err(super::prepared::operational)?;
+        let name = format!("{round}.json");
+        // These bytes are command-owned, never recovery authority. Exclusive
+        // creation and read-only sealing suffice; only the receipt is durable.
+        let mut options = gripsack_fs::cap_std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        let mut file = self
+            .capability
+            .open_with(&name, &options)
+            .map_err(super::prepared::operational)?;
+        std::io::Write::write_all(&mut file, &encoded.0).map_err(super::prepared::operational)?;
+        use gripsack_fs::cap_std::fs::PermissionsExt;
+        file.set_permissions(gripsack_fs::cap_std::fs::Permissions::from_mode(0o400))
+            .map_err(super::prepared::operational)?;
+        Ok(PreparedInput {
+            path: self.directory.path().join(name),
+            digest: Sha256Digest::of(&encoded.0),
         })
-    }
-}
-
-impl Drop for InputsFile {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
     }
 }
 
@@ -102,62 +136,107 @@ pub(super) fn eval_to_fixpoint(
     host: &str,
     facts: &gripsack_exec::facts::HostFacts,
     inputs: &InputsFile,
-    palette: Palette,
+    sink: &mut DiagnosticSink,
+    receipt: &mut EvaluationSession,
 ) -> Result<(EvalEnvelope, BTreeMap<String, bool>), ExitCode> {
     let empty_settings = serde_json::Map::new();
     let no_tags: [String; 0] = [];
     let mut bound: BTreeMap<String, bool> = BTreeMap::new();
     let mut envelope: Option<EvalEnvelope> = None;
+    // One operation budget covers every probe round, including input
+    // materialization, not a fresh process deadline per re-evaluation.
+    let deadline = Instant::now() + Limits::default().timeout;
 
     for round in 1..=PROBE_ROUNDS {
-        inputs.write(&InputsEnvelope {
-            version: 1,
-            host,
-            facts,
-            tags: &no_tags,
-            probes: &bound,
-            settings: &empty_settings,
-        })?;
+        let input = inputs.write(
+            round,
+            &InputsEnvelope {
+                version: 1,
+                host,
+                facts,
+                tags: &no_tags,
+                probes: &bound,
+                settings: &empty_settings,
+            },
+        )?;
+        receipt
+            .record_input(input.digest)
+            .map_err(super::prepared::operational)?;
         tracing::info!(round, probes_bound = bound.len(), "frontend eval");
-        let out = frontend.command(&inputs.path).output().map_err(|e| {
-            eprintln!("grip: cannot spawn deno: {e} (see `grip doctor`)");
-            ExitCode::FAILURE
-        })?;
-        let stdout = String::from_utf8(out.stdout).map_err(|_| {
+        let execution = match frontend.run_bounded(&input.path, deadline) {
+            Ok(execution) => execution,
+            Err(FrontendRunError::Grant(mut diagnostic)) => {
+                frontend.map_diagnostics(std::slice::from_mut(&mut diagnostic));
+                sink.report(&[diagnostic]);
+                return Err(ExitCode::FAILURE);
+            }
+            Err(FrontendRunError::Process(error)) => {
+                eprintln!(
+                    "grip: cannot run deno: {} (see `grip doctor`)",
+                    frontend.logical_text(&error.to_string())
+                );
+                return Err(ExitCode::FAILURE);
+            }
+        };
+        let out = execution.outcome;
+        let exited = out.receipt.disposition == ProcessDisposition::Exited;
+        let reaped = out.receipt.exit_code.is_some() || out.receipt.signal.is_some();
+        let disposition = out.receipt.disposition.clone();
+        receipt
+            .record_process(out.receipt)
+            .map_err(super::prepared::operational)?;
+        if !exited {
+            eprintln!("grip: frontend eval stopped ({disposition:?})");
+            return Err(ExitCode::FAILURE);
+        }
+        if !reaped {
+            eprintln!("grip: frontend finished without a reaped process");
+            return Err(ExitCode::FAILURE);
+        }
+        let stdout = String::from_utf8(execution.stdout).map_err(|_| {
             eprintln!("grip: frontend emitted non-utf8 output — this is a frontend bug");
             ExitCode::FAILURE
         })?;
         let parsed = match serde_json::from_str::<EvalEnvelope>(&stdout) {
-            Ok(envelope) => envelope,
+            Ok(mut envelope) => {
+                frontend.map_diagnostics(&mut envelope.diagnostics);
+                envelope
+            }
             Err(_) => {
                 // frontend errors are the frontend's domain (0005 §4) —
                 // pass the stderr through untouched.
-                if !out.status.success() {
-                    eprint!("{}", String::from_utf8_lossy(&out.stderr));
+                if !out.success {
+                    eprint!(
+                        "{}",
+                        frontend.logical_text(&String::from_utf8_lossy(&out.stderr))
+                    );
                     eprintln!("grip: frontend eval failed ({host})");
                 } else {
                     eprintln!(
                         "grip: frontend emitted a malformed envelope — this is a frontend bug"
                     );
-                    eprintln!("hint: stdout was {} bytes, not JSON", stdout.len());
+                    eprintln!(
+                        "hint: reconstructed stdout was {} bytes, not JSON",
+                        stdout.len()
+                    );
                 }
                 return Err(ExitCode::FAILURE);
             }
         };
-        let failed = !out.status.success()
+        let failed = !out.success
             || parsed
                 .diagnostics
                 .iter()
                 .any(|d| d.severity == Severity::Error);
         if failed {
-            if !parsed.diagnostics.is_empty() {
-                eprintln!(
+            sink.report(&parsed.diagnostics);
+            // A structured envelope IS the failure report; the stderr
+            // pass-through and tail line are for the traceback path.
+            if !out.success && !out.stderr.is_empty() {
+                eprint!(
                     "{}",
-                    render::render_diagnostics(&parsed.diagnostics, palette)
+                    frontend.logical_text(&String::from_utf8_lossy(&out.stderr))
                 );
-            }
-            if !out.status.success() {
-                eprint!("{}", String::from_utf8_lossy(&out.stderr));
                 eprintln!("grip: frontend eval failed ({host})");
             }
             return Err(ExitCode::FAILURE);
@@ -193,7 +272,7 @@ pub(super) fn eval_to_fixpoint(
                  unconditionally, not behind another probe's result",
             );
             tracing::error!(code = codes::PROBE_UNSTABLE, "{names}");
-            eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+            sink.report(&[diagnostic]);
             return Err(ExitCode::FAILURE);
         }
         for req in &fresh {
@@ -206,7 +285,7 @@ pub(super) fn eval_to_fixpoint(
                     let diagnostic = Diagnostic::error(codes::PROBE_UNSUPPORTED, message)
                         .with_label(req.span.clone(), "probe requested here");
                     tracing::error!(code = codes::PROBE_UNSUPPORTED, "{}", req.key());
-                    eprintln!("{}", render::render_diagnostics(&[diagnostic], palette));
+                    sink.report(&[diagnostic]);
                     return Err(ExitCode::FAILURE);
                 }
             }

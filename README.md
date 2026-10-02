@@ -62,10 +62,10 @@ Your first eval downloads the pinned, hash-verified Deno runtime
   network, and no subprocesses; host facts arrive core-injected, and
   probes (`ctx.probe`) are explicit, inspectable requests the core
   binds ([plan/0013](plan/0013-constrained-evaluation.md)).
-- **A trust decision before code runs** — the first eval of an
-  unfamiliar env repo prompts: path, remote, commit, and the exact
-  capability set eval will get. `grip trust list|add|remove` manages
-  it; `GRIPSACK_TRUST_ALL=1` is the CI hatch.
+- **Approve the bytes that run** — approval binds the canonical repository,
+  a copied source-bundle digest, and the evaluator/runtime/native-action policy.
+  Edits, changed pins or expanded grants require renewed approval.
+  `grip trust inspect|add|list|remove` exposes that boundary; CI has no blanket bypass.
 - **Dotfiles, first-class** — per-file ownership: `owned` symlinks,
   `tracked-copy` with drift detection, `merge` blocks, `template` for
   per-machine values. Dotfiles-only modules are a first-class usage
@@ -79,12 +79,51 @@ Your first eval downloads the pinned, hash-verified Deno runtime
   diagnostics are structured with stable codes. An LSP is a shim away
   ([plan/0004](plan/0004-rich-ir-and-passes.md)).
 
+## Source approval and migration
+
+Evaluation reads one private, read-only snapshot, including ignored/untracked
+files, dirty submodules and the admitted frontend pin. Every probe round uses
+that same snapshot with a separate immutable host-input file. `.git` and the
+selected gripsack runtime-state subtree are excluded and unavailable to eval.
+Lockfiles inside the repository are source too: an apply/update that changes
+them can require renewed approval on the next command.
+
+Old path-only trust entries do not authorize execution. Unset
+`GRIPSACK_TRUST_ALL`; `=1` now fails with migration guidance. Interactive
+commands show the captured digest and policy before asking. For a reviewed
+disposable CI fixture, pass both expected fingerprints explicitly:
+
+```sh
+source=$(grip trust inspect --json)
+printf '%s\n' "$source"  # review the inventory, changes and actual policy
+grip trust add \
+  --bundle "$(printf '%s' "$source" | jq -r .bundle_digest)" \
+  --policy "$(printf '%s' "$source" | jq -r .policy_digest)"
+grip check
+```
+
+Inspection and approval do not evaluate repository code. A change between them
+fails approval rather than blessing newer bytes. Remote/HEAD are sanitized
+provenance, not trust keys. `grip trust inspect --receipt ID --json` inspects
+private source/input/process evidence; `completed` covers frontend evaluation,
+not a later build or deployment.
+
+`adopt --yes` skips only apply confirmation. Generated source needs its own
+approval. After reviewing and approving it, repeat adoption with `--resume`
+and omit `--mode`; the approved module supplies the mode, no repo files are
+rewritten, and takeover remains restricted to the requested target.
+
+Source capture is not a sandbox for native plugins or protection against a
+privileged/same-UID attacker modifying trusted runtime storage. It identifies
+the bytes actually copied, not an atomic Git checkout or proof of source intent.
+
 ## How it works
 
 ```
 your env repo (modules + env.toml + hosts/)
-  → core detects host facts, writes the inputs envelope
-  → frontend evaluates modules in sandboxed Deno → IR (JSON, span-annotated)
+  → capture source + select runtime → explicit source/policy approval
+  → core detects host facts, writes one immutable input per probe round
+  → frontend evaluates the captured bundle in sandboxed Deno → IR (JSON, span-annotated)
   → lockfile pins URLs + hashes per host
   → core passes: parse → validate → resolve → lower → plan
   → fetch & build as a DAG into /store/<hash>-<name>
@@ -114,12 +153,51 @@ export default defineEnv((ctx) => ({
 }));
 ```
 
-Evaluation runs in Deno, spawned deny-by-default: no env vars, no
-network, no subprocesses, read-only within the repo. Facts (os, arch,
-libc, hostname) are detected by the core and injected — the same repo
-on the same host always yields the same graph. The core never embeds a
-runtime ([plan/0005](plan/0005-frontends-and-configuration.md),
+`--host` and `[env] default_host` select one entrypoint and one
+`locks/<host>.lock` file. They must be single ASCII names (letters,
+digits, `_`, `-`, and `.` after the first character; no `..` or path
+separators). E132 rejects unsafe names **before** tool provisioning or
+host-derived file access. `grip init` sanitizes the detected machine
+hostname to this spelling; role-named hosts such as `work.dev` remain
+valid.
+
+The **unreleased v5 workspace path** also accepts a root `gripsack.ts`
+without a host shim. Native file-only profiles can be checked, planned,
+applied and rolled back with the matching development core/SDK; see the
+[dotfile workspace](examples/workspaces/01-dotfiles/gripsack.ts) and
+[current capability limits](typescript/README.md#a-workspace-is-a-function-unreleased-ir-v5).
+The published 0.42.0 pair predates this API. Package, project-command and
+worker integration remains tracked in the handover, not implied by
+native file deployment.
+
+Evaluation runs in Deno, spawned deny-by-default: no env vars,
+network, or subprocesses. Reads are limited to the repo, injected
+inputs, embedded frontend, and an explicitly detected
+`@gripsack/core` pin whose canonical target proves its package name
+(the pin may live outside the repo). E133 rejects a comma in **any**
+granted path before Deno starts: Deno treats commas in `--allow-read`
+as new path grants. Move a comma-named repo, Gripsack home, or pinned
+package to an unambiguous path rather than widening permission.
+Facts (os, arch, libc, hostname) are core-injected; the core never
+embeds a runtime ([plan/0005](plan/0005-frontends-and-configuration.md),
 [0013](plan/0013-constrained-evaluation.md)).
+
+`env.toml` `[eval].env` is a build/fetch-child environment, not grip's
+process environment: build steps, fetcher plugins and artifact
+proxy/CA configuration receive it, while host facts, tool provisioning
+and the Deno evaluator do not. Operator-only `GRIPSACK_*`,
+`GH_HOST`/`GITHUB_HOST` and GitHub token names are rejected with E400
+if declared there. Supply credentials and their host binding in the
+invoking environment; the HTTP client refuses to send a bound Bearer
+token to a non-HTTPS URL, including loopback. A repo may still declare
+`SSL_CERT_FILE` for an artifact server's CA.
+
+Frontend evaluation is supervised: one ten-minute budget covers all
+probe rounds; stdout and stderr are each limited to 16 MiB, and error
+output retains at most the final 64 KiB. Exceeding a limit fails the
+operation rather than parsing a partial envelope. `grip adopt` checks
+repo trust before inspecting the target or generating repo files;
+`--yes` skips confirmation, not trust.
 
 [npm]: https://www.npmjs.com/package/@gripsack/core
 
@@ -148,10 +226,14 @@ with the core verifying every byte against the lockfile.
 docker compose run --build --rm test     # fmt + clippy -D warnings + cargo test
 docker compose run --build --rm ts-test  # typescript frontend tests (deno)
 docker compose run --build --rm e2e      # flow tests (offline, fixture env repos)
+docker compose run --build --rm model    # finite protocol models and counterexamples
+docker compose run --build --rm tlaps    # transaction induction pilot (amd64)
+docker compose run --build --rm verify   # production Verus kernels and mutants (amd64)
 ```
 
-CI runs all three gates on every push. See [AGENTS.md](AGENTS.md) for
-working agreements (docker-first, rustls-only, IR changes touch all
-three sides).
+The required CI `test` job runs these gates for pull requests and pushes
+to `main`. The TLAPS pilot has one destination and one recovery; it is
+not the required generalized transaction theorem. See [AGENTS.md](AGENTS.md)
+for working agreements (docker-first, rustls-only, coordinated IR changes).
 
 MIT licensed.

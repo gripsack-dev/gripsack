@@ -3,129 +3,52 @@
 //! recovery classifies the interrupted run by EXACT transaction
 //! identity.
 
+use crate::{GenerationId, generations::SelectionReservation};
 use gripsack_fs::Dir;
+use gripsack_policy::journal_protocol::{
+    CleanupAction, CleanupProgress, CleanupScope, DurableRecord, RecordRole,
+};
+use gripsack_policy::selection::SelectionIdentity;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::run_marker_rel;
+pub(crate) use super::marker_wire::RunMarker;
+use super::storage::{Journal, RUN_MARKER};
 
-/// The run marker: which generation this journal's entries belong to.
-/// Written before the first mutation; the flip makes it true.
-#[derive(Debug, serde::Serialize)]
-pub(crate) struct RunMarker {
-    /// The generation current pointed at when the run began (0026 §4):
-    /// reconcile decides by EXACT equality — current == target is
-    /// committed, current == previous is uncommitted, anything else is
-    /// ambiguous and blocks. Numeric inequalities misclassify a
-    /// crashed roll-FORWARD (current < target before the flip).
-    /// Null is a fresh machine's first run. The KEY is required on
-    /// the wire (0045 F2): serde would silently read a missing key as
-    /// `None`, so deserialization is manual below — a marker missing
-    /// it is torn or corrupt and fails closed, never mistaken for a
-    /// fresh run.
-    pub(crate) previous_generation: Option<u64>,
-    pub(crate) target_generation: u64,
-    /// Apply builds a NEWER generation (committed once `current`
-    /// reaches the target); rollback returns to an OLDER one, so its
-    /// commit condition inverts (committed once `current` comes back
-    /// DOWN to the target) — 0025 §A.
-    pub(crate) op: RunOp,
+/// A transaction-specific selection whose run marker is durably published.
+/// New flips require this handle; generation equality alone is not authority.
+#[derive(Debug)]
+pub struct JournalRun<'a> {
+    home: &'a Dir,
+    home_path: &'a Path,
+    pub(super) journal: Journal,
+    pub(super) marker_record: DurableRecord,
+    reservation: SelectionReservation,
 }
 
-// Manual `Deserialize` (0045 F2): the derived impl cannot express
-// "key must be present, value may be null" — serde fills a missing
-// `Option` field with `None`, which would read a torn marker as a
-// fresh machine's first run and misclassify recovery. Unknown keys
-// stay tolerated (a newer grip's marker is inspected, not executed,
-// by an older one); duplicates, wrong types and oversized numbers are
-// rejected.
-impl<'de> serde::Deserialize<'de> for RunMarker {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::{Error, IgnoredAny, MapAccess, Visitor};
+impl JournalRun<'_> {
+    pub fn identity(&self) -> &SelectionIdentity {
+        self.reservation.identity()
+    }
 
-        enum Field {
-            PreviousGeneration,
-            TargetGeneration,
-            Op,
-            Unknown,
-        }
+    pub fn home(&self) -> &Dir {
+        self.home
+    }
 
-        impl<'de> serde::Deserialize<'de> for Field {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                Ok(match <&str>::deserialize(deserializer)? {
-                    "previous_generation" => Field::PreviousGeneration,
-                    "target_generation" => Field::TargetGeneration,
-                    "op" => Field::Op,
-                    _ => Field::Unknown,
-                })
-            }
-        }
+    pub fn home_path(&self) -> &Path {
+        self.home_path
+    }
 
-        struct MarkerVisitor;
+    pub(crate) fn journal_directory(&self) -> &Dir {
+        &self.journal.directory
+    }
 
-        impl<'de> Visitor<'de> for MarkerVisitor {
-            type Value = RunMarker;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("a run marker with previous_generation, target_generation and op")
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<RunMarker, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                // None = key not seen; Some(None) = seen, null (fresh
-                // machine); Some(Some(n)) = seen, a generation.
-                let mut previous: Option<Option<u64>> = None;
-                let mut target: Option<u64> = None;
-                let mut op: Option<RunOp> = None;
-                while let Some(field) = map.next_key()? {
-                    match field {
-                        Field::PreviousGeneration => {
-                            if previous.is_some() {
-                                return Err(A::Error::duplicate_field("previous_generation"));
-                            }
-                            previous = Some(map.next_value()?);
-                        }
-                        Field::TargetGeneration => {
-                            if target.is_some() {
-                                return Err(A::Error::duplicate_field("target_generation"));
-                            }
-                            target = Some(map.next_value()?);
-                        }
-                        Field::Op => {
-                            if op.is_some() {
-                                return Err(A::Error::duplicate_field("op"));
-                            }
-                            op = Some(map.next_value()?);
-                        }
-                        Field::Unknown => {
-                            let _ = map.next_value::<IgnoredAny>()?;
-                        }
-                    }
-                }
-                Ok(RunMarker {
-                    previous_generation: previous
-                        .ok_or_else(|| A::Error::missing_field("previous_generation"))?,
-                    target_generation: target
-                        .ok_or_else(|| A::Error::missing_field("target_generation"))?,
-                    op: op.ok_or_else(|| A::Error::missing_field("op"))?,
-                })
-            }
-        }
-
-        deserializer.deserialize_map(MarkerVisitor)
+    pub(crate) fn target(&self) -> &Path {
+        self.reservation.target()
     }
 }
 
-/// What the run is doing — the reconcile commit decision differs by
-/// direction (see RunMarker).
+/// What the run is doing, retained for inspection rather than classification.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunOp {
@@ -135,48 +58,67 @@ pub enum RunOp {
     Rollback,
 }
 
-/// Declare the generation this run is building, BEFORE any mutation:
-/// recovery compares it against `current` — a crash between the flip
-/// and journal cleanup must NOT restore priors the committed
-/// generation now owns (the post-commit window, review finding 5.1).
-pub fn begin_run(
-    home: &Dir,
-    previous_generation: Option<u64>,
-    target_generation: u64,
+/// Declare the transaction before any destination mutation. The observed
+/// predecessor must still select the caller's admitted generation; the newly
+/// reserved target distinguishes even a same-generation rollback.
+pub fn begin_run<'a>(
+    home: &'a Dir,
+    home_path: &'a Path,
+    previous_generation: Option<GenerationId>,
+    target_generation: GenerationId,
     op: RunOp,
-) -> io::Result<()> {
-    let marker = RunMarker {
-        previous_generation,
-        target_generation,
-        op,
-    };
-    gripsack_fs::atomic_write(
-        home,
-        &run_marker_rel(),
+) -> io::Result<JournalRun<'a>> {
+    if super::pending_recovery(home)?.is_some() {
+        return Err(io::Error::other(
+            "unfinished journal must be reconciled before a new transaction",
+        ));
+    }
+    let previous = crate::generations::current_selection_in(home_path, home)?;
+    if previous.as_ref().map(SelectionIdentity::generation) != previous_generation {
+        return Err(io::Error::other(
+            "current selection changed before transaction admission",
+        ));
+    }
+    let reservation = crate::generations::reserve_selection(home, target_generation)?;
+    let marker = RunMarker::transaction(previous, *reservation.identity(), op)?;
+    let journal = Journal::prepare(home)?;
+    let marker_record = journal.write(
+        Path::new(RUN_MARKER),
         serde_json::to_string(&marker)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
             .as_bytes(),
-    )
+        RecordRole::RunMarker,
+    )?;
+    Ok(JournalRun {
+        home,
+        home_path,
+        journal,
+        marker_record,
+        reservation,
+    })
 }
 
 /// The run completed and the generation flipped: nothing left to
 /// recover. Entries, stragglers, and the run marker are gone.
-pub fn commit_run(home: &Dir) -> io::Result<()> {
-    let entries = match home.read_dir("journal") {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(e),
-    };
+pub fn commit_run(committed: crate::CommittedSelection<'_>) -> io::Result<()> {
+    let directory = committed.journal_directory();
+    crate::private_state::restrict_directory(directory, Path::new("journal"))?;
+    let entries = directory.read_dir(".")?;
     let mut entry_paths = Vec::new();
     for entry in entries {
         let name = entry?.file_name();
-        let rel = Path::new("journal").join(&name);
+        let rel = PathBuf::from(&name);
         // the marker is NOT deleted here — cleanup deletes it last
-        if name != "run.json" && rel.extension().is_some_and(|e| e == "json") {
+        if name != RUN_MARKER && rel.extension().is_some_and(|e| e == "json") {
             entry_paths.push(rel);
         }
     }
-    cleanup(home, &entry_paths)
+    let progress = CleanupProgress::new(CleanupScope::Committed, entry_paths.len());
+    cleanup(
+        directory,
+        entry_paths.iter().map(PathBuf::as_path),
+        progress,
+    )
 }
 
 /// Two durability barriers (0026 §5): entries deleted and fsync'd
@@ -186,19 +128,65 @@ pub fn commit_run(home: &Dir) -> io::Result<()> {
 /// with no marker read as an uncommitted run and would restore a
 /// committed generation's priors (the 0.19.1 bug class, one level
 /// down).
-pub(crate) fn cleanup(home: &Dir, entry_paths: &[PathBuf]) -> io::Result<()> {
-    for path in entry_paths {
-        gripsack_fs::remove_file(home, path)?;
+pub(super) fn cleanup<'a>(
+    directory: &Dir,
+    entry_paths: impl IntoIterator<Item = &'a Path>,
+    mut progress: CleanupProgress,
+) -> io::Result<()> {
+    for (index, path) in entry_paths.into_iter().enumerate() {
+        cleanup_step(&mut progress, CleanupAction::RemoveEntry { index }, || {
+            gripsack_fs::remove_file(directory, path)
+        })?;
     }
-    gripsack_fs::fsync_dir(home, Path::new("journal"))?;
-    // a run that never mutated has no marker (end_run already
-    // removed it) — absent is fine, anything else is real
-    match gripsack_fs::remove_file(home, &run_marker_rel()) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
+    cleanup_step(&mut progress, CleanupAction::SyncEntries, || {
+        gripsack_fs::fsync_dir(directory, Path::new("."))
+    })?;
+    cleanup_step(
+        &mut progress,
+        CleanupAction::RemoveMarker,
+        || match gripsack_fs::remove_file(directory, Path::new(RUN_MARKER)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        },
+    )?;
+    cleanup_step(&mut progress, CleanupAction::SyncMarker, || {
+        gripsack_fs::fsync_dir(directory, Path::new("."))
+    })?;
+    if progress.action() != CleanupAction::Complete {
+        return Err(cleanup_order_error());
     }
-    gripsack_fs::fsync_dir(home, Path::new("journal"))
+    Ok(())
+}
+
+pub(super) fn cleanup_order_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "journal cleanup effect order is invalid",
+    )
+}
+
+fn cleanup_step(
+    progress: &mut CleanupProgress,
+    action: CleanupAction,
+    effect: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    if progress.action() != action {
+        return Err(cleanup_order_error());
+    }
+    match effect() {
+        Ok(()) => {
+            if progress.acknowledge(action, true) {
+                Ok(())
+            } else {
+                Err(cleanup_order_error())
+            }
+        }
+        Err(error) => {
+            progress.acknowledge(action, false);
+            Err(error)
+        }
+    }
 }
 
 /// The run ended without mutating anything (satisfied, empty graph):
@@ -206,19 +194,29 @@ pub(crate) fn cleanup(home: &Dir, entry_paths: &[PathBuf]) -> io::Result<()> {
 /// marker with no entries is harmless but noisy, and a marker whose
 /// target generation is later than `current` would misread the NEXT
 /// crash window.
-pub fn end_run(home: &Dir) -> io::Result<()> {
-    // a stale marker misleads the NEXT crash window — its deletion is
-    // a durability operation, never `let _ =` (0030 §12)
-    match gripsack_fs::remove_file(home, &run_marker_rel()) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
+pub fn end_run(run: JournalRun<'_>) -> io::Result<()> {
+    run.journal.restrict()?;
+    for entry in run.journal.directory.read_dir(".")? {
+        let name = entry?.file_name();
+        if name != RUN_MARKER
+            && Path::new(&name)
+                .extension()
+                .is_some_and(|value| value == "json")
+        {
+            return Err(io::Error::other(
+                "cannot end a journal run with outstanding destination entries",
+            ));
+        }
     }
-    gripsack_fs::fsync_dir(home, Path::new("journal"))
+    cleanup(
+        &run.journal.directory,
+        std::iter::empty(),
+        CleanupProgress::new(CleanupScope::Uncommitted, 0),
+    )
 }
 
-pub(crate) fn run_marker(home: &Dir) -> io::Result<Option<RunMarker>> {
-    match home.read(run_marker_rel()) {
+pub(super) fn run_marker(journal: &Journal) -> io::Result<Option<RunMarker>> {
+    match journal.read(Path::new(RUN_MARKER)) {
         Ok(bytes) => serde_json::from_slice::<RunMarker>(&bytes)
             .map(Some)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
@@ -230,14 +228,11 @@ pub(crate) fn run_marker(home: &Dir) -> io::Result<Option<RunMarker>> {
     }
 }
 
-/// The commit classifier is the production kernel in
-/// `gripsack-policy` (0046) — ONE implementation serves this
-/// recovery path, the Rust explorers, and the verifier
-/// (`cargo verus verify -p gripsack-policy` proves the exact
-/// classification table). A marker without `previous_generation`
-/// never reaches it — the field is required on the wire and a torn
-/// marker fails closed at parse.
-pub(crate) use gripsack_policy::{Classification, RecoveryFacts, classify};
+/// One exact-selection kernel serves recovery, concrete models and Verus.
+pub(crate) use gripsack_policy::{
+    Classification,
+    selection::{RecoveryFacts, classify},
+};
 
 #[cfg(test)]
 #[path = "repeated_model.rs"]

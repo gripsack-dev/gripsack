@@ -23,7 +23,7 @@ fn foreign_bytes_survive_reconcile_and_removal() {
         assert_eq!(again.blocks().len(), 1);
         assert!(again.satisfied(&content_hash("desired"), 0o600));
         assert_eq!(
-            again.remove().unwrap(),
+            again.remove().unwrap().unwrap(),
             format!(
                 "foreign-prefix{newline}foreign-between{newline}foreign-tail{newline}{newline}"
             )
@@ -90,6 +90,7 @@ fn later_hand_edits_are_classified_and_other_modules_stay_untouched() {
         ManagedBlockSet::parse(&output, "shell")
             .unwrap()
             .remove()
+            .unwrap()
             .unwrap(),
         other
     );
@@ -104,6 +105,7 @@ fn markers_roundtrip_across_comment_styles_and_legacy_metadata() {
         ("x.html", None, "<!--"),
         ("x.lua", None, "--"),
         ("rc", Some("#!"), "#!"),
+        ("rc", Some("\u{10437}"), "\u{10437}"),
     ] {
         let payload = "echo 'docs say <<< gripsack <<< ends a block'\n";
         let output = ManagedBlockSet::parse("user\n", "shell")
@@ -113,10 +115,48 @@ fn markers_roundtrip_across_comment_styles_and_legacy_metadata() {
         assert!(output.contains(&format!("{prefix} >>> gripsack module=shell")));
         let parsed = ManagedBlockSet::parse(&output, "shell").unwrap();
         assert!(parsed.satisfied(&content_hash(payload), 0o755));
-        assert_eq!(parsed.remove().unwrap(), "user\n");
+        assert_eq!(parsed.remove().unwrap().unwrap(), "user\n");
         let legacy = output.replace(" mode=0755", "");
         let legacy = ManagedBlockSet::parse(&legacy, "shell").unwrap();
         assert!(!legacy.satisfied(&content_hash(payload), 0o755));
         assert!(!legacy.mode_conflicts(0o755, None));
     }
+}
+
+#[test]
+fn only_the_first_body_line_can_be_a_legacy_header() {
+    let rendered = block("shell", "body", 0o644);
+    let header = rendered.lines().nth(1).unwrap();
+    let first = ManagedBlockSet::parse(&rendered, "shell").unwrap();
+    assert_eq!(first.blocks()[0].content, "body\n");
+    assert!(!first.blocks()[0].edited());
+
+    // An intervening empty body line makes the same text ordinary content.
+    let later = rendered.replacen(header, &format!("\n{header}"), 1);
+    let later = ManagedBlockSet::parse(&later, "shell").unwrap();
+    assert_eq!(later.blocks()[0].content, format!("\n{header}\nbody\n"));
+    assert!(later.blocks()[0].edited());
+}
+
+#[test]
+fn broken_scanner_utf8_boundary_returns_error_instead_of_panicking() {
+    // Deliberately bypass the checked scanner without violating byte-span
+    // ordering/bounds. The defensive wrapper must still classify an internal
+    // caller's invalid UTF-8 span instead of panicking during host mutation.
+    let blocks = ManagedBlockSet {
+        text: "é",
+        blocks: vec![ManagedBlock {
+            range: 1..2,
+            content: "",
+            recorded_hash: "",
+            mode: None,
+            content_hash: content_hash(""),
+        }],
+    };
+    assert!(blocks.remove().is_err());
+    assert!(
+        blocks
+            .upsert("m", Path::new("rc"), None, "new", 0o644)
+            .is_err()
+    );
 }

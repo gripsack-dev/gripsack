@@ -1,0 +1,36 @@
+RUNNER_SOURCE_COMMIT=8352793611c9d197ad8b86053d91c1c16221b979
+RUNNER_SOURCE_FINGERPRINT=14f0153f38343774be869c1a73268ba5ea2dbca01b4d64eab9e1b7a98c4721e4
+RUNNER_SOURCE_ROOTS_DIRTY=clean before/after; only ignored isolated probe output differs
+RUNNER_COMMAND=env PATH=<temporary load-fault/docker wrapper delegates every other invocation to real Docker>:PATH sh probes.sh
+RUNNER_EXIT=1 (expected failure after verified OCI export)
+RUNNER_ENVIRONMENT=WSL2 linux/amd64; three fresh real pinned BuildKit workers, Go bridge, real Python OCI verifier; actual Docker CLI present except deliberately rejected load; Docker container and cache volume absent after failure
+RUNNER_INPUTS=two clean OCI exports; independent verifier confirmed digests, DiffIDs, normalized config and file contents; Docker CLI load intentionally returned 47 while daemon and earlier solves were healthy
+INTENDED_PROPERTY=a passing independent OCI verification is insufficient unless the independent Docker engine can load and run the exported image
+OBSERVED_REJECTION=FAIL: separate-runtime docker load rejected the OCI layout; harness exited 1 instead of the old false-green zero
+
+===== actual independent OCI verdict before load =====
+{
+  "verdicts": [
+    "/tmp/gripsack-b0-fixed-l9th2awp/checkout/verification/buildkit-qualification/results/oci-1.tar: all blob digests, DiffIDs, media types and platform verified",
+    "two fresh-worker exports reproduce (DiffIDs, normalized config, file digests)"
+  ],
+  "reproduction": {
+    "diff-ids-match": true,
+    "config-normalized-match": true,
+    "files-match": true,
+    "manifest-digests": [
+      "sha256:32f0c08f457ab248fc2919ddd1b5ebf9cc6330f1035077490cee4b438db12760",
+      "sha256:97a411404ec3b1bd235da0024dcec99a46166ef2a2fc00315c1a987dd25f72f9"
+    ],
+    "verdict": "reproduced from two clean workers"
+  }
+}
+
+===== docker load output =====
+calibration: deliberate Docker engine load rejection
+
+===== driver failure =====
+FAIL: separate-runtime docker load rejected the OCI layout (see probe4-load.txt)
+
+B0_LOAD_MUTANT=1
+RUNNER_COUNTS=1 calibrated expected-failure execution, 1 pass by failed mandatory separate-runtime load, zero skipped; the actual Docker engine succeeded in the prior positive run at this exact source.

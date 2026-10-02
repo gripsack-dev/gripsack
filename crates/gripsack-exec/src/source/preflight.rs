@@ -1,6 +1,6 @@
 //! Layout evidence only: never execute recipes or verification programs.
 use crate::ctx::ExecError;
-use gripsack_ir::{Ownership, Verify, prepared::PreparedModule};
+use gripsack_ir::{HostName, Ownership, Verify, prepared::PreparedModule};
 use std::path::Path;
 
 #[derive(Debug, Default)]
@@ -156,10 +156,29 @@ pub(crate) fn inspect(
 /// Existing matching artifacts only. No resolver, download, build or publication.
 pub fn inspect_known(
     ir: &gripsack_ir::Ir,
-    repo: &Path,
-    host: &str,
+    repository: &crate::Repository,
+    host: &HostName,
+    limits: gripsack_fetch::FetchLimits,
 ) -> Result<Vec<(String, LayoutEvidence)>, ExecError> {
-    let lock = match crate::lockfile::read(repo, host) {
+    let repo = repository.contents();
+    if let Some(workspace) = &ir.workspace {
+        if ir
+            .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
+            .is_none()
+        {
+            return crate::workspace::NativeProfiles::prepare(
+                workspace,
+                repo,
+                &gripsack_store::gripsack_home(),
+                &[],
+                limits,
+            )
+            .map(|native| native.layout_evidence());
+        }
+        // Read-only catalog admission never realizes unsupported packages/tasks.
+        return Ok(Vec::new());
+    }
+    let lock = match crate::lockfile::read(repository.identity(), host) {
         crate::lockfile::LockRead::Parsed(lock) => lock,
         crate::lockfile::LockRead::Missing => Default::default(),
         crate::lockfile::LockRead::Corrupt(detail) => {
@@ -171,8 +190,12 @@ pub fn inspect_known(
         }
     };
     let plans = crate::expand::expand_all(&ir.modules)?;
-    let recipes =
-        crate::resolve::RecipeGraph::new(ir, repo, &plans, ir.modules.keys().map(String::as_str))?;
+    let recipes = crate::resolve::RecipeGraph::new(
+        ir,
+        repository,
+        &plans,
+        ir.modules.keys().map(String::as_str),
+    )?;
     let home = gripsack_store::gripsack_home();
     let mut reports = Vec::new();
     for (name, plan) in &plans {
@@ -185,7 +208,7 @@ pub fn inspect_known(
             recipes: &recipes,
             plan,
             home: &home,
-            repo,
+            repo: repository,
             locked,
             lock: &lock,
         })?;

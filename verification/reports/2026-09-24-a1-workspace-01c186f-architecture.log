@@ -1,0 +1,11 @@
+RUNNER_SOURCE_COMMIT=01c186fd821eee4a3c077c06ffb7aa53fe38bd7e
+RUNNER_SOURCE_ROOTS_DIRTY=clean (git status --porcelain -- SOURCE_ROOTS checked before and after architecture self-check; both empty)
+RUNNER_COMMAND=python3 scripts/check_architecture.py --self-check
+RUNNER_TOOL_VERSIONS=Python 3.12.3; stdlib tomllib parsed workspace and Cargo manifests
+RUNNER_INPUTS=committed Cargo workspace membership including fuzz; architecture self-check scratch manifests (aliased TLS and target-specific dependency/omission negatives)
+
+01c186fd821eee4a3c077c06ffb7aa53fe38bd7e
+Python 3.12.3
+ok: boundary, rustls-only, member-discovery and missing-crate negatives all rejected
+ok: policy, IR and store dependency boundaries are closed
+ARCHITECTURE_SELF_CHECK=1 (named boundary, rustls-only, member-discovery and missing-crate calibrations passed)

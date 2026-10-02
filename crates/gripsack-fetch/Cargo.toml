@@ -8,11 +8,12 @@ repository.workspace = true
 
 [dependencies]
 flate2 = "1"
-xz2 = "0.1"
+xz2 = { version = "0.1", features = ["static"] }
 zip = { version = "8", default-features = false, features = ["deflate", "bzip2", "zstd"] }
 gripsack-ir.workspace = true
 gripsack-fs.workspace = true
 gripsack-store.workspace = true
+gripsack-policy.workspace = true
 sha2.workspace = true
 tar = "0.4"
 thiserror.workspace = true
@@ -35,9 +36,8 @@ bzip2 = "0.6"
 zstd = "0.13"
 crc32fast = "1"
 libc = "0.2"
+parking_lot = "0.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
 
-[dev-dependencies]
-parking_lot = "0.12"

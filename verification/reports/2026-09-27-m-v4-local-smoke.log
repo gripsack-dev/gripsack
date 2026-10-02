@@ -1,0 +1,18 @@
+Gripsack M-V4: actual nullable recovery-authority smoke
+Date: 2026-09-27
+Source: pre-commit working tree; real CLI/Deno with sandboxed HOME and local inputs
+Scope: a cold-home interrupted link, missing previous identity versus explicit null; no serde theorem or release claim
+Fuzz: NOT RUN, owner instruction
+
+CASE=missing previous identity
+error[E201]: io: missing field `previous_generation` at line 1 column 39
+
+{"exit": 1, "interrupted_link_present": true, "declared_destination_present": false, "marker_retained": true, "entry_retained": true}
+CASE=explicit-null previous identity
+2026-09-27T11:15:47.717941Z  WARN gripsack_exec::apply: recovered /tmp/gripsack-journal-bytes-42pax8bh/interrupted-link: removed (was absent before the interrupted run)
+     * ⚠ recovered 1 destination(s) from an interrupted run
+  demo ✓ copied demo → ~/.config/demo
+[1m[32mapplied —[39m[0m generation 1 active ([2m0.1s[0m)
+
+{"exit": 0, "interrupted_link_present": false, "declared_destination_present": true, "marker_retained": false, "entry_retained": false}
+JOURNAL_BYTE_RUNTIME_SMOKE=passed

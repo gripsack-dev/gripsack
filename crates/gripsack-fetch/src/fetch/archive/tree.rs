@@ -1,4 +1,9 @@
+use super::{
+    links::{Graph, Kind},
+    paths,
+};
 use crate::{FetchError, FetchLimits};
+use gripsack_fs::cap_std::fs::{Dir, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -60,26 +65,65 @@ impl Budget {
     }
 }
 
-pub(crate) fn validate_tree(root: &Path, limits: FetchLimits) -> Result<(), FetchError> {
+fn admitted(root: &Dir, skip: &[&str], limits: FetchLimits) -> Result<Graph, FetchError> {
+    let mut graph = Graph::new(limits);
     let mut budget = Budget::new(limits);
-    let mut pending = vec![root.to_owned()];
+    let mut pending = vec![std::path::PathBuf::new()];
     while let Some(directory) = pending.pop() {
-        for child in std::fs::read_dir(directory)? {
+        let current = if directory.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            directory.as_path()
+        };
+        for child in root.read_dir(current)? {
             let child = child?;
-            budget.entry()?;
-            let kind = child.file_type()?;
-            if kind.is_dir() {
-                pending.push(child.path());
-            } else if kind.is_file() {
-                budget.bytes(child.metadata()?.len())?;
-            } else if !kind.is_symlink() {
-                return Err(super::paths::violation(
-                    &child.path(),
-                    "is not a regular file, directory or link",
-                ));
+            if directory.as_os_str().is_empty()
+                && skip.iter().any(|name| child.file_name() == *name)
+            {
+                continue;
             }
+            budget.entry()?;
+            let relative = directory.join(child.file_name());
+            if relative.as_os_str().len() > 4096 {
+                return Err(paths::violation(&relative, "name is too long"));
+            }
+            let kind = child.file_type()?;
+            let node = if kind.is_dir() {
+                pending.push(relative.clone());
+                Kind::Directory { explicit: true }
+            } else if kind.is_file() {
+                let meta = root.symlink_metadata(&relative)?;
+                if !meta.is_file() {
+                    return Err(paths::violation(
+                        &relative,
+                        "payload file changed during admission",
+                    ));
+                }
+                budget.bytes(meta.len())?;
+                Kind::Regular
+            } else if kind.is_symlink() {
+                #[cfg(unix)]
+                {
+                    Kind::Symlink(root.read_link_contents(&relative)?)
+                }
+                #[cfg(not(unix))]
+                return Err(paths::violation(&relative, "symlinks require Unix"));
+            } else {
+                return Err(paths::violation(
+                    &relative,
+                    "special payload entries are unsupported",
+                ));
+            };
+            graph.insert(relative, node)?;
         }
     }
+    graph.validate()?;
+    Ok(graph)
+}
+
+pub(crate) fn validate_tree(root: &Path, limits: FetchLimits) -> Result<(), FetchError> {
+    let source = paths::open_existing_root(root)?;
+    admitted(&source, &[], limits)?;
     Ok(())
 }
 
@@ -89,52 +133,49 @@ pub(crate) fn copy_tree_filtered(
     skip: &[&str],
     limits: FetchLimits,
 ) -> Result<(), FetchError> {
-    std::fs::create_dir_all(to)?;
-    if to.canonicalize()?.starts_with(from.canonicalize()?) {
-        return Err(super::paths::violation(
-            to,
-            "source contains its destination",
-        ));
+    let source = paths::open_existing_root(from)?;
+    let graph = admitted(&source, skip, limits)?;
+    let to_parent = to.parent().unwrap_or(Path::new(".")).canonicalize()?;
+    let to_name = to
+        .file_name()
+        .ok_or_else(|| paths::violation(to, "destination has no directory name"))?;
+    if to_parent.join(to_name).starts_with(from.canonicalize()?) {
+        return Err(paths::violation(to, "source contains its destination"));
     }
-    fn copy(
-        root: &Path,
-        destination: &Path,
-        relative: &Path,
-        skip: &[&str],
-        budget: &mut Budget,
-    ) -> Result<(), FetchError> {
-        std::fs::create_dir_all(destination.join(relative))?;
-        for child in std::fs::read_dir(root.join(relative))? {
-            let child = child?;
-            if relative.as_os_str().is_empty() && skip.iter().any(|name| child.file_name() == *name)
-            {
-                continue;
-            }
-            budget.entry()?;
-            let rel = relative.join(child.file_name());
-            let target = super::paths::destination(destination, &rel)?;
-            let kind = child.file_type()?;
-            if kind.is_dir() {
-                copy(root, destination, &rel, skip, budget)?;
-            } else if kind.is_symlink() {
+    let destination = paths::open_root(to)?;
+    let mut budget = Budget::new(limits);
+    for (relative, kind) in graph.entries() {
+        match kind {
+            Kind::Directory { .. } => paths::directories(&destination, relative)?,
+            Kind::Regular => {
+                let mut options = OpenOptions::new();
+                options.read(true);
                 #[cfg(unix)]
-                std::os::unix::fs::symlink(std::fs::read_link(child.path())?, target)?;
-                #[cfg(not(unix))]
-                return Err(super::paths::violation(&rel, "symlinks require Unix"));
-            } else if kind.is_file() {
-                let input = super::super::tarball::regular_file(&child.path())?;
-                let mode = input.metadata()?.permissions();
-                let output = std::fs::File::create(&target)?;
-                budget.copy(input, output, |_| {})?;
-                std::fs::set_permissions(target, mode)?;
-            } else {
-                return Err(super::paths::violation(
-                    &rel,
-                    "special payload entries are unsupported",
-                ));
+                {
+                    use gripsack_fs::cap_std::fs::OpenOptionsExt;
+                    options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+                }
+                let mut input = source.open_with(relative, &options)?;
+                let metadata = input.metadata()?;
+                if !metadata.is_file() {
+                    return Err(paths::violation(
+                        relative,
+                        "payload file changed during copy",
+                    ));
+                }
+                let mut output = paths::file(&destination, relative)?;
+                budget.copy(&mut input, &mut output, |_| {})?;
+                output.set_permissions(metadata.permissions())?;
             }
+            Kind::Symlink(_) => {}
+            Kind::HardLink(_) => unreachable!("filesystem trees enumerate hard links as files"),
         }
-        Ok(())
     }
-    copy(from, to, Path::new(""), skip, &mut Budget::new(limits))
+    #[cfg(unix)]
+    for (relative, kind) in graph.entries() {
+        if let Kind::Symlink(target) = kind {
+            paths::symlink(&destination, relative, target)?;
+        }
+    }
+    Ok(())
 }

@@ -1,42 +1,52 @@
-use super::lifecycle::Guard;
-use super::{Control, Limits, StopReason, sys};
+use super::lifecycle::{ChildPipes, Guard};
+use super::{Control, Limits, OutputMode, StopReason, sys};
+use gripsack_policy::process_budget::{
+    FrameAction, FrameBudget, IO_CHUNK_BYTES, InputTransfer, RetainedStderrLimit, StderrBudget,
+    StdoutBudget, retain_tail,
+};
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
-use std::process::{Child, ChildStderr, ChildStdin, ChildStdout};
-use std::time::{Duration, Instant};
-
-const CHUNK: usize = 8192;
+use std::process::{ChildStderr, ChildStdin, ChildStdout};
+use std::time::Duration;
 
 pub(super) struct Exchange<'a> {
     stdin: Option<ChildStdin>,
     stdout: Option<ChildStdout>,
     stderr: Option<ChildStderr>,
     input: &'a [u8],
-    sent: usize,
-    limits: Limits,
+    input_transfer: InputTransfer,
+    retained_stderr: RetainedStderrLimit,
+    output: OutputMode,
     line: Vec<u8>,
-    line_len: usize,
+    frame: FrameBudget,
     responded: bool,
-    out_total: u64,
-    err_total: u64,
+    stdout_budget: StdoutBudget,
+    stderr_budget: StderrBudget,
     tail: VecDeque<u8>,
 }
 
 impl<'a> Exchange<'a> {
-    pub fn new(child: &mut Child, input: &'a [u8], limits: Limits) -> Self {
+    pub fn new(
+        pipes: ChildPipes,
+        input: &'a [u8],
+        input_transfer: InputTransfer,
+        limits: Limits,
+        output: OutputMode,
+    ) -> Self {
         Self {
-            stdin: child.stdin.take(),
-            stdout: child.stdout.take(),
-            stderr: child.stderr.take(),
+            stdin: pipes.stdin,
+            stdout: pipes.stdout,
+            stderr: pipes.stderr,
             input,
-            sent: 0,
-            limits,
+            input_transfer,
+            retained_stderr: limits.retained_stderr_bytes,
+            output,
             line: Vec::new(),
-            line_len: 0,
+            frame: FrameBudget::new(limits.line_bytes),
             responded: false,
-            out_total: 0,
-            err_total: 0,
+            stdout_budget: StdoutBudget::new(limits.stdout_bytes),
+            stderr_budget: StderrBudget::new(limits.stderr_bytes),
             tail: VecDeque::new(),
         }
     }
@@ -50,7 +60,7 @@ impl<'a> Exchange<'a> {
         for fd in fds.into_iter().flatten() {
             sys::nonblocking(fd)?;
         }
-        if self.input.is_empty() {
+        if self.input_transfer.is_closed() {
             self.close_input();
         }
         Ok(())
@@ -58,19 +68,21 @@ impl<'a> Exchange<'a> {
 
     pub fn close_input(&mut self) {
         self.stdin = None;
+        self.input_transfer.close();
     }
-    pub fn into_tail(self) -> Vec<u8> {
-        self.tail.into_iter().collect()
+    pub fn into_tail(self) -> (Vec<u8>, bool) {
+        let truncated = self.stderr_budget.truncated(self.retained_stderr);
+        (self.tail.into_iter().collect(), truncated)
     }
 
     pub fn drive(
         &mut self,
         guard: &mut Guard,
-        active_end: Instant,
+        mut deadline: super::OperationDeadline,
         callback: &mut impl FnMut(&[u8]) -> Control,
     ) -> StopReason {
         loop {
-            if Instant::now() >= active_end {
+            if deadline.remaining().is_none() {
                 return StopReason::Deadline;
             }
             match guard.observe() {
@@ -89,7 +101,9 @@ impl<'a> Exchange<'a> {
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                 Err(error) => return StopReason::Io(error),
             }
-            let remaining = active_end.saturating_duration_since(Instant::now());
+            let Some(remaining) = deadline.remaining() else {
+                return StopReason::Deadline;
+            };
             if let Err(reason) = self.step(remaining, callback) {
                 return reason;
             }
@@ -130,16 +144,31 @@ impl<'a> Exchange<'a> {
         let Some(pipe) = &mut self.stdin else {
             return Ok(());
         };
-        let end = self.input.len().min(self.sent.saturating_add(CHUNK));
-        let result = sys::without_sigpipe(|| pipe.write(&self.input[self.sent..end]));
+        let Some(chunk) = self.input_transfer.begin() else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input write outside admitted transfer",
+            ));
+        };
+        let result = sys::without_sigpipe(|| pipe.write(&self.input[chunk.range()]));
         match result {
-            Ok(0) => return Err(io::Error::new(io::ErrorKind::WriteZero, "child stdin")),
-            Ok(n) => self.sent += n,
+            Ok(n) => {
+                if !self.input_transfer.complete(n) {
+                    return Err(io::Error::new(
+                        if n == 0 {
+                            io::ErrorKind::WriteZero
+                        } else {
+                            io::ErrorKind::InvalidData
+                        },
+                        "invalid child stdin write count",
+                    ));
+                }
+            }
             Err(e) if e.kind() == io::ErrorKind::BrokenPipe => self.close_input(),
-            Err(e) if transient(&e) => {}
+            Err(e) if transient(&e) => self.input_transfer.retry(),
             Err(e) => return Err(e),
         }
-        if self.sent == self.input.len() {
+        if self.input_transfer.is_closed() {
             self.close_input();
         }
         Ok(())
@@ -152,7 +181,7 @@ impl<'a> Exchange<'a> {
         let Some(pipe) = &mut self.stdout else {
             return Ok(());
         };
-        let mut buf = [0; CHUNK];
+        let mut buf = [0; IO_CHUNK_BYTES];
         let n = match pipe.read(&mut buf) {
             Ok(n) => n,
             Err(e) if transient(&e) => return Ok(()),
@@ -160,30 +189,35 @@ impl<'a> Exchange<'a> {
         };
         if n == 0 {
             self.stdout = None;
-            if self.line_len != 0 && !self.responded {
+            if self.frame.finish() && !self.responded {
                 self.responded = callback(&self.line) == Control::Response;
             }
             self.line.clear();
-            self.line_len = 0;
             return Ok(());
         }
-        count(&mut self.out_total, n, self.limits.stdout_bytes)
-            .map_err(|()| StopReason::StdoutLimit)?;
+        if !self.stdout_budget.observe(n as u64) {
+            return Err(StopReason::StdoutLimit);
+        }
+        if matches!(self.output, OutputMode::Raw) {
+            if !self.responded {
+                self.responded = callback(&buf[..n]) == Control::Response;
+            }
+            return Ok(());
+        }
         for &byte in &buf[..n] {
-            if byte == b'\n' {
-                if !self.responded {
-                    self.responded = callback(&self.line) == Control::Response;
+            match self.frame.observe(byte) {
+                FrameAction::Boundary => {
+                    if !self.responded {
+                        self.responded = callback(&self.line) == Control::Response;
+                    }
+                    self.line.clear();
                 }
-                self.line.clear();
-                self.line_len = 0;
-            } else {
-                if self.line_len == self.limits.line_bytes {
-                    return Err(StopReason::LineLimit);
+                FrameAction::Append => {
+                    if !self.responded {
+                        self.line.push(byte);
+                    }
                 }
-                self.line_len += 1;
-                if !self.responded {
-                    self.line.push(byte);
-                }
+                FrameAction::Limit => return Err(StopReason::LineLimit),
             }
         }
         Ok(())
@@ -193,7 +227,7 @@ impl<'a> Exchange<'a> {
         let Some(pipe) = &mut self.stderr else {
             return Ok(());
         };
-        let mut buf = [0; CHUNK];
+        let mut buf = [0; IO_CHUNK_BYTES];
         let n = match pipe.read(&mut buf) {
             Ok(n) => n,
             Err(e) if transient(&e) => return Ok(()),
@@ -204,21 +238,17 @@ impl<'a> Exchange<'a> {
             return Ok(());
         }
         self.retain(&buf[..n]);
-        count(&mut self.err_total, n, self.limits.stderr_bytes)
-            .map_err(|()| StopReason::StderrLimit)
+        if self.stderr_budget.observe(n as u64) {
+            Ok(())
+        } else {
+            Err(StopReason::StderrLimit)
+        }
     }
 
     fn retain(&mut self, bytes: &[u8]) {
-        let cap = self.limits.retained_stderr_bytes;
-        if cap == 0 {
-            return;
-        }
-        for &byte in bytes {
-            if self.tail.len() == cap {
-                self.tail.pop_front();
-            }
-            self.tail.push_back(byte);
-        }
+        let append = retain_tail(self.retained_stderr, self.tail.len(), bytes.len());
+        drop(self.tail.drain(..append.discard_bytes()));
+        self.tail.extend(&bytes[append.skip_bytes()..]);
     }
 
     /// After a stop, drain without callbacks. Accounting remains active; the
@@ -264,10 +294,4 @@ fn transient(error: &io::Error) -> bool {
         error.kind(),
         io::ErrorKind::Interrupted | io::ErrorKind::WouldBlock
     )
-}
-
-fn count(total: &mut u64, n: usize, cap: u64) -> Result<(), ()> {
-    let next = total.checked_add(n as u64).ok_or(())?;
-    *total = next;
-    if next > cap { Err(()) } else { Ok(()) }
 }

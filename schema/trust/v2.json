@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gripsack.dev/schema/trust/v2.json",
+  "title": "Gripsack source-bound approvals v2",
+  "description": "JSON projection of the authoritative trust.toml document. Rust additionally enforces unique canonical repository identities across both lists, a combined 1024-entry/4-MiB budget, matching source/frontend identities, and the canonical serialized policy digest. Legacy entries never authorize execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "approved", "legacy"],
+  "properties": {
+    "version": {"const": 2},
+    "approved": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/approval"}},
+    "legacy": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/legacy"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "optionalSha256": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]},
+    "u64": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+    "repository": {"type": "string", "pattern": "^/", "description": "Canonical absolute UTF-8 path, with no parent, dot, doubled separator or NUL components."},
+    "root": {"enum": ["repository", "frontend", "pinned_frontend"]},
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "remote": {"type": ["string", "null"], "description": "Sanitized informational remote, without credentials/query/fragment; never an approval key."},
+        "commit": {"type": ["string", "null"], "description": "Informational Git identity, not a claim that HEAD supplied evaluated bytes."}
+      }
+    },
+    "program": {
+      "type": "object", "additionalProperties": false,
+      "required": ["executable_sha256", "byte_binding"],
+      "properties": {
+        "executable_sha256": {"$ref": "#/$defs/sha256"},
+        "script_sha256": {"$ref": "#/$defs/optionalSha256"},
+        "byte_binding": {"enum": ["executable_handle", "private_copy_path"]}
+      }
+    },
+    "frontend": {
+      "type": "object", "additionalProperties": false,
+      "required": ["bundle", "implementation", "driver"],
+      "properties": {
+        "bundle": {"$ref": "#/$defs/sha256"},
+        "implementation": {"enum": ["frontend", "pinned_frontend"]},
+        "driver": {"const": "frontend"}
+      }
+    },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation_millis", "input_bytes", "input_document_bytes", "stdout_bytes", "stderr_bytes", "retained_stderr_bytes", "rounds"],
+      "properties": {
+        "operation_millis": {"$ref": "#/$defs/u64"},
+        "input_bytes": {"$ref": "#/$defs/u64"},
+        "input_document_bytes": {"$ref": "#/$defs/u64"},
+        "stdout_bytes": {"$ref": "#/$defs/u64"},
+        "stderr_bytes": {"$ref": "#/$defs/u64"},
+        "retained_stderr_bytes": {"$ref": "#/$defs/u64"},
+        "rounds": {"type": "integer", "minimum": 1, "maximum": 4294967295}
+      }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "profile", "read_roots", "frontend", "runtime", "probes", "native_declarations", "native_configuration_sha256", "budget"],
+      "properties": {
+        "version": {"const": 1},
+        "profile": {"const": "captured_read_only_v1"},
+        "read_roots": {"oneOf": [
+          {"const": ["repository", "frontend"]},
+          {"const": ["repository", "frontend", "pinned_frontend"]}
+        ]},
+        "frontend": {"$ref": "#/$defs/frontend"},
+        "runtime": {"$ref": "#/$defs/program"},
+        "probes": {"const": ["executable_lookup", "file_existence"]},
+        "native_declarations": {"const": "explicit_commands_v1"},
+        "native_configuration_sha256": {"$ref": "#/$defs/sha256"},
+        "budget": {"$ref": "#/$defs/budget"}
+      }
+    },
+    "approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "bundle", "policy_digest", "policy", "provenance", "approved_at"],
+      "properties": {
+        "repository": {"$ref": "#/$defs/repository"},
+        "bundle": {"$ref": "#/$defs/sha256"},
+        "policy_digest": {"$ref": "#/$defs/sha256"},
+        "policy": {"$ref": "#/$defs/policy"},
+        "provenance": {"$ref": "#/$defs/provenance"},
+        "approved_at": {"type": "string"}
+      }
+    },
+    "legacy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "trusted_at"],
+      "properties": {
+        "path": {"$ref": "#/$defs/repository"},
+        "remote": {"type": ["string", "null"]},
+        "commit": {"type": ["string", "null"]},
+        "trusted_at": {"type": "string"}
+      }
+    }
+  }
+}

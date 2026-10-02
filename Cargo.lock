@@ -516,6 +516,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "generator"
+version = "0.8.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54ade96dc9003043bce7c035c85a9df5a858bfb2039c5a2e6fdf00f324f6c551"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "log",
+ "rustversion",
+ "windows-link",
+ "windows-result",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -553,7 +568,7 @@ dependencies = [
 
 [[package]]
 name = "griplint"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -566,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "clap",
  "dialoguer",
@@ -576,6 +591,7 @@ dependencies = [
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-lint",
+ "gripsack-policy",
  "gripsack-process",
  "gripsack-store",
  "gripsack-trace",
@@ -590,8 +606,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "gripsack-buildkit"
+version = "0.43.0"
+dependencies = [
+ "base64",
+ "gripsack-process",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "gripsack-config"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-ir",
  "serde",
@@ -600,15 +628,17 @@ dependencies = [
 
 [[package]]
 name = "gripsack-exec"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-config",
  "gripsack-fetch",
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-policy",
+ "gripsack-process",
  "gripsack-store",
  "libc",
+ "loom",
  "serde",
  "serde_json",
  "tempfile",
@@ -618,13 +648,14 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fetch"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "bzip2",
  "crc32fast",
  "flate2",
  "gripsack-fs",
  "gripsack-ir",
+ "gripsack-policy",
  "gripsack-process",
  "gripsack-store",
  "httpdate",
@@ -651,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fs"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "cap-std",
  "libc",
@@ -663,19 +694,21 @@ dependencies = [
 name = "gripsack-fuzz"
 version = "0.0.0"
 dependencies = [
+ "gripsack-buildkit",
  "gripsack-exec",
  "gripsack-fetch",
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-store",
  "libfuzzer-sys",
+ "serde",
  "serde_json",
  "tempfile",
 ]
 
 [[package]]
 name = "gripsack-ir"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-policy",
  "jsonschema",
@@ -686,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-lint"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "griplint",
  "gripsack-config",
@@ -700,35 +733,43 @@ dependencies = [
 
 [[package]]
 name = "gripsack-policy"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "vstd",
 ]
 
 [[package]]
 name = "gripsack-process"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
+ "gripsack-policy",
  "libc",
+ "serde",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]
 name = "gripsack-store"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
+ "getrandom 0.4.3",
  "gripsack-fs",
  "gripsack-ir",
  "gripsack-policy",
+ "gripsack-process",
+ "jsonschema",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "toml 0.9.12+spec-1.1.0",
+ "url",
 ]
 
 [[package]]
 name = "gripsack-trace"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "gripsack-fs",
  "gripsack-store",
@@ -1064,6 +1105,19 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "loom"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "419e0dc8046cb947daa77eb95ae174acfbddb7673b4151f56d1eed8e93fbfaca"
+dependencies = [
+ "cfg-if",
+ "generator",
+ "scoped-tls",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "lzma-sys"
@@ -1495,6 +1549,12 @@ checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
 dependencies = [
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "scoped-tls"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
 
 [[package]]
 name = "scopeguard"
@@ -2201,6 +2261,15 @@ name = "windows-link"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+
+[[package]]
+name = "windows-result"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
+dependencies = [
+ "windows-link",
+]
 
 [[package]]
 name = "windows-sys"

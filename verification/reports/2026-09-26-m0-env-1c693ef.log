@@ -1,0 +1,570 @@
+RUNNER_SOURCE_COMMIT=1c693efbfc8335f52888a77efa68ba266132b1ed
+RUNNER_SOURCE_ROOTS_DIRTY=clean before direct tests
+RUNNER_SOURCE_FINGERPRINT=9a82d56b48bef69d8a57c831a3efa16638123279150689d277ecdd8a81447825
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Rust 1.98.0; Python 3.13.15; pytest 9.1.1; Deno 2.9.6; TLC 1.7.4
+RUNNER_INPUTS=Plan/0048 §1.2 on committed scoped env and rustls 0.23.45 source. Two Rust boundary tests, ten sandboxed real CLI build/credential/TLS/proxy tests, and four credential-routing TLC configurations (positive plus three named mutants). This local receipt does not prove native Mac, R5/M-V7, remaining NEXT work or any handover closure.
+
+RUNNER_COMMAND=docker compose run --build --rm test cargo test --locked -p gripsack-config repo_build_env_cannot_claim_operator_credential_routing
+ Image gripsack-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 530B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#7 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 75.75kB 0.1s done
+#8 DONE 0.1s
+
+#9 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#9 CACHED
+
+#10 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#10 CACHED
+
+#11 [builder  6/10] COPY crates ./crates
+#11 CACHED
+
+#12 [builder 10/10] COPY scripts ./scripts
+#12 CACHED
+
+#13 [builder  8/10] COPY schema ./schema
+#13 CACHED
+
+#14 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#14 CACHED
+
+#15 [builder  4/10] WORKDIR /app
+#15 CACHED
+
+#16 [builder  7/10] COPY fuzz ./fuzz
+#16 CACHED
+
+#17 [builder  9/10] COPY typescript ./typescript
+#17 CACHED
+
+#18 [test 1/2] RUN cargo fmt --check     && cargo clippy --locked --workspace --all-targets -- -D warnings     && cargo test --locked
+#18 CACHED
+
+#19 [test 2/2] RUN apk add --no-cache python3     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs"     && python3 scripts/gen_diagnostic_registry.py --check     && python3 scripts/gen_diagnostic_registry.py --self-check     && python3 scripts/gen_frontend_embed.py --check
+#19 CACHED
+
+#20 exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:30515b035b002c771a83f31553818eae74de8d54337adc50dcd42e5e8d65e37c done
+#20 exporting config sha256:afd48f046e1831632eec817699239cd8a6e80f054bbee767edf1e82444f1a921 done
+#20 exporting attestation manifest sha256:e2b530b63770124b5d82777ab38f8f471424afa07490ea74870e9a604817e30f 0.0s done
+#20 exporting manifest list sha256:e73e7bba87c035c7d416784f193dff2dfba23cc8e758602bfe5e24d012f236e6 0.0s done
+#20 naming to docker.io/library/gripsack-test:latest done
+#20 unpacking to docker.io/library/gripsack-test:latest 0.0s done
+#20 DONE 0.1s
+
+#21 resolving provenance for metadata file
+#21 DONE 0.0s
+ Image gripsack-test Built 
+ Container gripsack-test-run-60dfb91f896c Creating 
+ Container gripsack-test-run-60dfb91f896c Created 
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.151
+   Compiling memchr v2.8.3
+   Compiling winnow v1.0.4
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling syn v3.0.4
+   Compiling syn v2.0.119
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling toml v1.1.4+spec-1.1.0
+   Compiling thiserror-impl v2.0.20
+   Compiling serde_derive v1.0.229
+   Compiling thiserror v2.0.20
+   Compiling synstructure v0.13.2
+   Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+   Compiling vstd v0.0.0-2026-09-06-0133
+   Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+   Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+   Compiling gripsack-config v0.42.0 (/app/crates/gripsack-config)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.09s
+     Running unittests src/lib.rs (target/debug/deps/gripsack_config-0406004a648bd8ce)
+
+running 1 test
+test tests::repo_build_env_cannot_claim_operator_credential_routing ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+
+RUNNER_EXIT_CONFIG_BOUNDARY=0
+
+RUNNER_COMMAND=docker compose run --build --rm test cargo test --locked -p gripsack-fetch bound_credentials_require_tls_and_registry_artifact_refuses_cleartext
+ Image gripsack-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 530B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#7 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 75.75kB 0.1s done
+#8 DONE 0.1s
+
+#9 [builder  7/10] COPY fuzz ./fuzz
+#9 CACHED
+
+#10 [builder  8/10] COPY schema ./schema
+#10 CACHED
+
+#11 [test 1/2] RUN cargo fmt --check     && cargo clippy --locked --workspace --all-targets -- -D warnings     && cargo test --locked
+#11 CACHED
+
+#12 [builder  6/10] COPY crates ./crates
+#12 CACHED
+
+#13 [builder  9/10] COPY typescript ./typescript
+#13 CACHED
+
+#14 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#14 CACHED
+
+#15 [builder  4/10] WORKDIR /app
+#15 CACHED
+
+#16 [builder 10/10] COPY scripts ./scripts
+#16 CACHED
+
+#17 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#17 CACHED
+
+#18 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#18 CACHED
+
+#19 [test 2/2] RUN apk add --no-cache python3     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs"     && python3 scripts/gen_diagnostic_registry.py --check     && python3 scripts/gen_diagnostic_registry.py --self-check     && python3 scripts/gen_frontend_embed.py --check
+#19 CACHED
+
+#20 exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:30515b035b002c771a83f31553818eae74de8d54337adc50dcd42e5e8d65e37c done
+#20 exporting config sha256:afd48f046e1831632eec817699239cd8a6e80f054bbee767edf1e82444f1a921 done
+#20 exporting attestation manifest sha256:b2986a2f6499b464d05d454b95fd27cbf5ee6ae6ee054ffeb5eb138514d3f275 0.0s done
+#20 exporting manifest list sha256:aef039db1ab97d3b4e7032f7183444c4a310fc3fa1ec1f975cfa7cefd09c555c 0.0s done
+#20 naming to docker.io/library/gripsack-test:latest done
+#20 unpacking to docker.io/library/gripsack-test:latest 0.0s done
+#20 DONE 0.1s
+
+#21 resolving provenance for metadata file
+#21 DONE 0.0s
+ Image gripsack-test Built 
+ Container gripsack-test-run-0ed1a75f00f6 Creating 
+ Container gripsack-test-run-0ed1a75f00f6 Created 
+   Compiling hashbrown v0.17.1
+   Compiling serde_json v1.0.151
+   Compiling serde v1.0.229
+   Compiling log v0.4.34
+   Compiling percent-encoding v2.3.2
+   Compiling winnow v1.0.4
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling syn v3.0.4
+   Compiling tracing-core v0.1.36
+   Compiling form_urlencoded v1.2.2
+   Compiling zopfli v0.8.3
+   Compiling rustls v0.23.45
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling tracing v0.1.44
+   Compiling indexmap v2.14.0
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling zip v8.6.0
+   Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling zerotrie v0.2.5
+   Compiling zerovec v0.11.8
+   Compiling thiserror v2.0.20
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_locale_core v2.3.0
+   Compiling icu_provider v2.3.1
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling vstd v0.0.0-2026-09-06-0133
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling ureq v2.12.1
+   Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+   Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+   Compiling gripsack-store v0.42.0 (/app/crates/gripsack-store)
+   Compiling gripsack-fetch v0.42.0 (/app/crates/gripsack-fetch)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.31s
+     Running unittests src/lib.rs (target/debug/deps/gripsack_fetch-907356f916f7f6cb)
+
+running 1 test
+test http::tests::bound_credentials_require_tls_and_registry_artifact_refuses_cleartext ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 61 filtered out; finished in 0.00s
+
+
+RUNNER_EXIT_HTTP_BOUNDARY=0
+
+RUNNER_COMMAND=docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_eval_gate.py test_fetchers.py test_http_policy.py -k 'eval_env_reaches_build_steps or repo_build_path_selects_structured_run_command or repo_build_path_does_not_choose_core_fact_detector or repo_build_env_does_not_reach_frontend_runtime or repo_build_env_reaches_plugin_discovery_and_both_child_operations or repo_proxy_overlay_routes_artifact_without_mutating_process_env or explicit_host_binding_controls_resolution_and_locked_cold_api_fetch or repo_build_env_cannot_rebind_operator_enterprise_token or bound_enterprise_http_refuses_cleartext_before_request or enterprise_token_is_not_forwarded_to_same_host_tls_redirect'
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#6 DONE 0.9s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 139B done
+#7 DONE 0.0s
+
+#8 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#8 DONE 0.0s
+
+#9 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#9 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.0s done
+#10 DONE 0.0s
+
+#11 [internal] load build context
+#11 transferring context: 575.74kB 0.1s done
+#11 DONE 0.1s
+
+#12 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#12 CACHED
+
+#13 [bin 1/1] RUN cargo build --locked -p gripsack
+#13 CACHED
+
+#14 [builder  4/10] WORKDIR /app
+#14 CACHED
+
+#15 [builder 10/10] COPY scripts ./scripts
+#15 CACHED
+
+#16 [builder  7/10] COPY fuzz ./fuzz
+#16 CACHED
+
+#17 [e2e 11/12] COPY examples ./examples
+#17 CACHED
+
+#18 [e2e  5/12] RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno     && mkdir -p /root/.local/share/gripsack/tools/deno-2.9.6     && mv /tmp/deno/deno /root/.local/share/gripsack/tools/deno-2.9.6/deno     && chmod 755 /root/.local/share/gripsack/tools/deno-2.9.6/deno     && rm -rf /tmp/deno.zip /tmp/deno
+#18 CACHED
+
+#19 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#19 CACHED
+
+#20 [e2e  8/12] COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
+#20 CACHED
+
+#21 [e2e  7/12] COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+#21 CACHED
+
+#22 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#22 CACHED
+
+#23 [e2e  2/12] WORKDIR /app
+#23 CACHED
+
+#24 [e2e  6/12] RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "0.12.10" > /tmp/uv.req     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req     && uv --version     && rm -f /tmp/uv.req
+#24 CACHED
+
+#25 [e2e 10/12] COPY e2e ./e2e
+#25 CACHED
+
+#26 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#26 CACHED
+
+#27 [e2e  3/12] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git     && rm -rf /var/lib/apt/lists/*
+#27 CACHED
+
+#28 [builder  9/10] COPY typescript ./typescript
+#28 CACHED
+
+#29 [e2e  9/12] RUN cd e2e && uv sync --locked
+#29 CACHED
+
+#30 [builder  8/10] COPY schema ./schema
+#30 CACHED
+
+#31 [builder  6/10] COPY crates ./crates
+#31 CACHED
+
+#32 [e2e 12/12] WORKDIR /app/e2e
+#32 CACHED
+
+#33 exporting to image
+#33 exporting layers done
+#33 exporting manifest sha256:3152683d524e157dcae70544035ddf3ffbd822eeba6e660b2f2ecc200182d740 done
+#33 exporting config sha256:5ecaac5929c9f7c66858a0c8f21b4b28f9b695df85173001eeb60ddc40de7c70 done
+#33 exporting attestation manifest sha256:f95e732d6002c57ae982640ca3edd9b253afafd3dce1bc7cbcb41a144400c98b 0.0s done
+#33 exporting manifest list sha256:40070e5a08020af4ce233eacb4b4944a1cf449d20f2fc26b9c7528a4ae572921 0.0s done
+#33 naming to docker.io/library/gripsack-e2e:latest done
+#33 unpacking to docker.io/library/gripsack-e2e:latest 0.0s done
+#33 DONE 0.1s
+
+#34 resolving provenance for metadata file
+#34 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-dab40d114edd Creating 
+ Container gripsack-e2e-run-dab40d114edd Created 
+..........                                                               [100%]
+10 passed, 46 deselected in 5.72s
+
+RUNNER_EXIT_REAL_CLI_BOUNDARY=0
+
+RUNNER_COMMAND=docker compose run --build --rm model sh scripts/check_models.sh /tla/tla2tools.jar
+ Image gripsack-model Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 535B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#5 DONE 0.6s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#7 DONE 0.0s
+
+#8 [model 1/6] FROM docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037
+#8 resolve docker.io/library/eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 0.0s done
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 transferring context: 95.85kB 0.1s done
+#9 DONE 0.1s
+
+#10 [model 2/6] ADD --checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar /tla/tla2tools.jar
+#10 CACHED
+
+#11 [model 3/6] WORKDIR /work
+#11 CACHED
+
+#12 [model 4/6] COPY specs ./specs
+#12 DONE 0.0s
+
+#13 [model 5/6] COPY scripts/check_models.sh ./scripts/check_models.sh
+#13 DONE 0.1s
+
+#14 [model 6/6] RUN sh scripts/check_models.sh /tla/tla2tools.jar
+#14 1.249 cfg/ownership.cfg: clean
+#14 2.044 cfg/apply-deploy.cfg: clean
+#14 2.932 cfg/repeated-apply-deploy.cfg: clean
+#14 3.749 cfg/apply-prune.cfg: clean
+#14 4.632 cfg/repeated-apply-prune.cfg: clean
+#14 5.442 cfg/rollback-deploy.cfg: clean
+#14 6.360 cfg/repeated-rollback-deploy.cfg: clean
+#14 7.166 cfg/rollback-prune.cfg: clean
+#14 8.076 cfg/repeated-rollback-prune.cfg: clean
+#14 8.842 cfg/activation.cfg: clean
+#14 9.709 cfg/repeated-activation.cfg: clean
+#14 10.52 cfg/repeated-activation-repeated-generation.cfg: clean
+#14 11.33 cfg/repeated-transaction-premature-cleanup.cfg: RestoreBeforeCleanup
+#14 12.08 cfg/repeated-activation-lost-pending.cfg: NoSilentSkip
+#14 13.55 ProcessSupervision.cfg: clean
+#14 14.67 ProcessSupervision.ignore-deadline.cfg: temporal:Terminates
+#14 15.91 ProcessSupervision.inherited-pipe.cfg: temporal:Terminates
+#14 16.75 ProcessSupervision.reap-first.cfg: PidAuthority
+#14 17.57 ProcessSupervision.cleanup-failure-witness.cfg: NeverCleanupFailure
+#14 18.38 ProcessSupervision.inherited-witness.cfg: NeverInherited
+#14 19.18 ProcessSupervision.linger-witness.cfg: NeverLinger
+#14 20.18 UpdatePublication.cfg: clean
+#14 21.06 UpdatePublication.stale-recheck.cfg: NoDowngrade
+#14 21.86 UpdatePublication.premature-rename.cfg: AtomicReady
+#14 22.66 UpdatePublication.rollback.cfg: NoDowngrade
+#14 23.49 UpdatePublication.post-failure-witness.cfg: NeverPostFailure
+#14 24.27 UpdatePublication.concurrent-witness.cfg: NeverIndependentLocks
+#14 25.10 UpdatePublication.recheck-witness.cfg: NeverRecheckSkip
+#14 25.89 cfg/filemode-copy-m0644.cfg: clean
+#14 26.67 cfg/filemode-copy-m0755.cfg: clean
+#14 27.45 cfg/filemode-copy-m0600.cfg: clean
+#14 28.22 cfg/filemode-template-m0644.cfg: clean
+#14 29.04 cfg/filemode-template-m0755.cfg: clean
+#14 29.92 cfg/filemode-template-m0600.cfg: clean
+#14 30.76 cfg/filemode-merge-m0644.cfg: clean
+#14 31.46 cfg/filemode-merge-m0755.cfg: clean
+#14 32.18 cfg/filemode-merge-m0600.cfg: clean
+#14 32.94 cfg/filemode-link-m0644.cfg: clean
+#14 33.67 cfg/filemode-link-m0755.cfg: clean
+#14 34.37 cfg/filemode-link-m0600.cfg: clean
+#14 35.07 cfg/filemode-mutant-template-fixed0644.cfg: ExecSurvivesDeploy
+#14 35.76 cfg/filemode-mutant-bytes-only.cfg: ChmodIsDrift
+#14 36.52 cfg/filemode-mutant-prune.cfg: PruneRespectsDrift
+#14 37.23 cfg/filemode-mutant-rollback.cfg: RollbackIsExact
+#14 38.07 cfg/update-survey.cfg: clean
+#14 38.82 cfg/update-survey-empty.cfg: clean
+#14 39.57 cfg/update-survey-stop-first.cfg: CompleteSurvey
+#14 40.28 cfg/update-survey-exit-conflation.cfg: HonestExit
+#14 41.04 cfg/update-survey-publication.cfg: NoPublication
+#14 41.86 cfg/http-retry.cfg: clean
+#14 42.60 cfg/http-retry-terminal-replay.cfg: NoTerminalReplay
+#14 43.28 cfg/http-retry-deadline-reset.cfg: FixedDeadline
+#14 44.02 cfg/http-retry-attempt-overflow.cfg: BoundedAttempts
+#14 44.89 cfg/credential-routing.cfg: clean
+#14 45.64 cfg/credential-routing-base-authority.cfg: TokensStayBound
+#14 46.38 cfg/credential-routing-redirect-forwarding.cfg: NoRedirectDisclosure
+#14 47.12 cfg/credential-routing-repo-audience.cfg: TokensStayBound
+#14 47.94 cfg/merge-boundary.cfg: clean
+#14 48.68 cfg/merge-boundary-unclosed-marker.cfg: ForeignTextPreserved
+#14 49.44 cfg/merge-boundary-first-mode.cfg: AllModeEvidenceRequired
+#14 50.19 cfg/merge-boundary-first-prune.cfg: PruneNeedsWholeEvidence
+#14 DONE 50.2s
+
+#15 exporting to image
+#15 exporting layers
+#15 exporting layers 0.2s done
+#15 exporting manifest sha256:67c186dd0223e2f52791f0b5b700255af01ace56efd3ea6330327b78b556bb77 0.0s done
+#15 exporting config sha256:44713a1d7af29ea2a54644988dfc3c75e6751b7342119a06951f76ec517073f9 0.0s done
+#15 exporting attestation manifest sha256:b681300f34754a5e2eb47302160c9e06fde85dfccc2dbca963244d84203cc2de 0.0s done
+#15 exporting manifest list sha256:e902bdcff21b7e9284b11c50736aa8ce08b3e9ce970fe9ebf99bb9122af59b1a 0.0s done
+#15 naming to docker.io/library/gripsack-model:latest
+#15 naming to docker.io/library/gripsack-model:latest done
+#15 unpacking to docker.io/library/gripsack-model:latest 0.1s done
+#15 DONE 0.4s
+
+#16 resolving provenance for metadata file
+#16 DONE 0.0s
+ Image gripsack-model Built 
+ Container gripsack-model-run-b4584db48c49 Creating 
+ Container gripsack-model-run-b4584db48c49 Created 
+cfg/ownership.cfg: clean
+cfg/apply-deploy.cfg: clean
+cfg/repeated-apply-deploy.cfg: clean
+cfg/apply-prune.cfg: clean
+cfg/repeated-apply-prune.cfg: clean
+cfg/rollback-deploy.cfg: clean
+cfg/repeated-rollback-deploy.cfg: clean
+cfg/rollback-prune.cfg: clean
+cfg/repeated-rollback-prune.cfg: clean
+cfg/activation.cfg: clean
+cfg/repeated-activation.cfg: clean
+cfg/repeated-activation-repeated-generation.cfg: clean
+cfg/repeated-transaction-premature-cleanup.cfg: RestoreBeforeCleanup
+cfg/repeated-activation-lost-pending.cfg: NoSilentSkip
+ProcessSupervision.cfg: clean
+ProcessSupervision.ignore-deadline.cfg: temporal:Terminates
+ProcessSupervision.inherited-pipe.cfg: temporal:Terminates
+ProcessSupervision.reap-first.cfg: PidAuthority
+ProcessSupervision.cleanup-failure-witness.cfg: NeverCleanupFailure
+ProcessSupervision.inherited-witness.cfg: NeverInherited
+ProcessSupervision.linger-witness.cfg: NeverLinger
+UpdatePublication.cfg: clean
+UpdatePublication.stale-recheck.cfg: NoDowngrade
+UpdatePublication.premature-rename.cfg: AtomicReady
+UpdatePublication.rollback.cfg: NoDowngrade
+UpdatePublication.post-failure-witness.cfg: NeverPostFailure
+UpdatePublication.concurrent-witness.cfg: NeverIndependentLocks
+UpdatePublication.recheck-witness.cfg: NeverRecheckSkip
+cfg/filemode-copy-m0644.cfg: clean
+cfg/filemode-copy-m0755.cfg: clean
+cfg/filemode-copy-m0600.cfg: clean
+cfg/filemode-template-m0644.cfg: clean
+cfg/filemode-template-m0755.cfg: clean
+cfg/filemode-template-m0600.cfg: clean
+cfg/filemode-merge-m0644.cfg: clean
+cfg/filemode-merge-m0755.cfg: clean
+cfg/filemode-merge-m0600.cfg: clean
+cfg/filemode-link-m0644.cfg: clean
+cfg/filemode-link-m0755.cfg: clean
+cfg/filemode-link-m0600.cfg: clean
+cfg/filemode-mutant-template-fixed0644.cfg: ExecSurvivesDeploy
+cfg/filemode-mutant-bytes-only.cfg: ChmodIsDrift
+cfg/filemode-mutant-prune.cfg: PruneRespectsDrift
+cfg/filemode-mutant-rollback.cfg: RollbackIsExact
+cfg/update-survey.cfg: clean
+cfg/update-survey-empty.cfg: clean
+cfg/update-survey-stop-first.cfg: CompleteSurvey
+cfg/update-survey-exit-conflation.cfg: HonestExit
+cfg/update-survey-publication.cfg: NoPublication
+cfg/http-retry.cfg: clean
+cfg/http-retry-terminal-replay.cfg: NoTerminalReplay
+cfg/http-retry-deadline-reset.cfg: FixedDeadline
+cfg/http-retry-attempt-overflow.cfg: BoundedAttempts
+cfg/credential-routing.cfg: clean
+cfg/credential-routing-base-authority.cfg: TokensStayBound
+cfg/credential-routing-redirect-forwarding.cfg: NoRedirectDisclosure
+cfg/credential-routing-repo-audience.cfg: TokensStayBound
+cfg/merge-boundary.cfg: clean
+cfg/merge-boundary-unclosed-marker.cfg: ForeignTextPreserved
+cfg/merge-boundary-first-mode.cfg: AllModeEvidenceRequired
+cfg/merge-boundary-first-prune.cfg: PruneNeedsWholeEvidence
+
+RUNNER_EXIT_CREDENTIAL_TLC=0
+
+RUNNER_SOURCE_ROOTS_DIRTY_AFTER=clean
+RUNNER_COUNTS_TESTS=executed=12 passed=12 failed=0 skipped=0
+RUNNER_COUNTS_TLC=executed=4 passed=4 failed=0 skipped=0
+M0_ENV_BOUNDARY=12
+M0_CREDENTIAL_MODEL=4

@@ -1,6 +1,7 @@
 //! Executor context, outcomes, and errors.
 
 use gripsack_fetch::FetchError;
+use gripsack_ir::HostName;
 use std::io;
 use std::path::PathBuf;
 
@@ -12,13 +13,13 @@ pub type ProgressCallback = Box<dyn Fn(&str, &str) + Send + Sync>;
 pub struct Ctx {
     /// $GRIPSACK_HOME.
     pub home: PathBuf,
-    /// The env repo root (config `from` paths are repo-relative).
-    pub repo: PathBuf,
+    /// Repository publication identity and selected content are separate roles.
+    pub repository: crate::Repository,
     /// Subset apply: only these modules plus their dependencies (0001
     /// §3.6). Empty = the whole graph.
     pub only: Vec<String>,
     /// Host name — selects the lockfile (`locks/<host>.lock`).
-    pub host: String,
+    pub host: HostName,
     /// Progress events `(module, verb)` — the CLI renders spinners.
     pub on_progress: Option<ProgressCallback>,
     /// Overwrite foreign/drifted tracked_copy destinations (explicit
@@ -66,9 +67,13 @@ impl Ctx {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
     /// Nothing changed; no generation created.
-    Satisfied { generation: Option<u64> },
+    Satisfied {
+        generation: Option<gripsack_store::GenerationId>,
+    },
     /// A new generation was deployed and activated.
-    Applied { generation: u64 },
+    Applied {
+        generation: gripsack_store::GenerationId,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -91,6 +96,8 @@ pub enum ExecError {
         step: String,
         detail: String,
     },
+    #[error("worker panicked while executing {module}; the apply was not committed")]
+    WorkerPanicked { module: String },
     #[error("scheduling: {0}")]
     Plan(#[from] crate::PlanError),
     /// A pre-mutation validity gate failed (physical destination

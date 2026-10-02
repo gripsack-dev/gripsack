@@ -16,7 +16,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         let encoded = serde_json::to_vec(entry).unwrap();
         assert_eq!(&Entry::from_wire(&encoded).unwrap(), entry);
     }
-    let blob = gripsack_store::journal::store_prior_blob_in(s.cap(), b"bounded prior\n").unwrap();
+    let blob = gripsack_store::prior::store_blob(s.cap(), b"bounded prior\n").unwrap();
     s.write("objects/prior-target", b"fixed target\n");
     let target = s.fixed("objects/prior-target").to_str().unwrap().to_owned();
     let dest = s.fixed("objects/destination").to_str().unwrap().to_owned();
@@ -24,8 +24,8 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         Entry::new(
             String::new(),
             PriorSerde::File {
-                hash: String::new(),
-                mode: 0o600,
+                hash: blob.clone(),
+                mode: gripsack_store::prior::FileMode::try_from(0o600).unwrap(),
             },
             IntendedSerde::Removed,
         )
@@ -33,9 +33,8 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
     // This is the sole transition from readonly arbitrary data to mutation data.
     entry.dest = dest;
     match &mut entry.prior {
-        PriorSerde::File { hash, mode } => {
+        PriorSerde::File { hash, .. } => {
             *hash = blob;
-            *mode &= 0o7777;
         }
         PriorSerde::Symlink {
             target: prior_target,
@@ -50,7 +49,7 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
         gripsack_store::write_manifest(
             s.cap(),
             &gripsack_store::Generation {
-                number: n,
+                number: gripsack_store::GenerationId::new(n),
                 modules: Default::default(),
             },
         )
@@ -58,9 +57,9 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
     }
     match entry_bytes.first().copied().unwrap_or(0) % 4 {
         0 => {}
-        1 => gripsack_store::flip(s.cap(), s.home(), 1).unwrap(),
-        2 => gripsack_store::flip(s.cap(), s.home(), 2).unwrap(),
-        _ => gripsack_store::flip(s.cap(), s.home(), 3).unwrap(),
+        1 => std::os::unix::fs::symlink("generations/1", s.home().join("current")).unwrap(),
+        2 => std::os::unix::fs::symlink("generations/2", s.home().join("current")).unwrap(),
+        _ => std::os::unix::fs::symlink("generations/3", s.home().join("current")).unwrap(),
     }
     let _ = gripsack_store::reconcile(s.cap(), s.home());
     // The symlink referent is never a deployment destination.

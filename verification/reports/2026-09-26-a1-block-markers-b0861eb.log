@@ -1,0 +1,21 @@
+RUNNER_SOURCE_COMMIT=b0861ebe492cfe63ae8d4b48804ecbd1e97eeb6f
+RUNNER_SOURCE_DIRTY=clean at commit (all five gates ran on the identical pre-commit bytes)
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; Rust 1.98.0; Deno 2.9.6; TypeScript 7.0.2; Python 3.13.15; pytest 9.1.1; TLC 1.7.4; Verus 0.2026.09.06.8dea4a2
+RUNNER_INPUTS=A1-11 destination-ownership acceptance, managed-block half: "a named managed block in a shared file" (Epic A section 3.3). Failing-before: ANY two managed_block files over one host path rejected E111 (the fold keyed destinations by path alone and explicitly deferred per-block grammar). Post-fix: destination ownership groups fold by case-folded PATH first; a whole-file symlink/tracked_copy over a path still rejects every co-declaration, while all-managed-block groups subgroup by case-folded MARKER — distinct markers coexist as distinct per-block owners; the same marker twice (case-variant) rejects E111 labeling every declaration with a "managed block ... at destination ..." message. No wire/schema/TS change; module-grammar destinations unchanged.
+
+RUNNER_COMMAND=docker compose run --rm test cargo test --locked -p gripsack-ir workspace::destinations
+4 passed: duplicate case-fold labels; cross-profile + equal-name coexistence; mixed whole-file+block still collides; distinct markers coexist + duplicate case-variant marker rejects with both spans (3,7).
+RUNNER_EXIT=0
+
+RUNNER_COMMAND=docker compose run --rm e2e sh -c 'uv run --locked --no-sync pytest -q test_workspace_diagnostics.py -k managed_block'
+1 passed: real compiled grip on decoded v5 IR — distinct markers pass ownership and reach the E124 executor refusal; same marker (case-variant) rejects E111 at grip.ts:3 and grip.ts:9 before E124 with no selected generation.
+RUNNER_EXIT=0
+
+SAME-BYTES FULL GATES (pre-commit, identical tracked tree):
+  test    gate passed: fmt + clippy -D warnings + cargo test (67 in gripsack-ir; embedded frontend fresh)
+  ts-test gate passed: deno 67/67 + tsc examples (surface unchanged; cache-fresh)
+  e2e     322 passed in 931s, real musl grip, sandboxed HOME (new decoded marker case included)
+  model   gate passed: TLC positive + calibrated negatives
+  verify  72 verified, 0 errors; 7 named mutants rejected
+HONESTY=Admission-side ownership grammar only: no managed-block MERGE/deployment exists (workspace plan/apply still refuse E124; A2 owns the merge against the observed destination, foreign-byte preservation and journal policy). Merge-with-distinct-markers runtime behavior, rendered-result binding, ownership proofs, protected CI at this head and native Mac remain open. Development note: the duplicate-marker test initially chased a phantom because the fixture typo'd GRIPSAK vs gripsack (genuinely distinct markers); the real pre-landed defect found by these tests was single-declaration groups rejecting after a rewrite dropped the len<2 guard — fixed before commit.
+A1_BLOCK_MARKERS=2

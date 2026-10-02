@@ -1,7 +1,10 @@
 use super::*;
 use std::os::unix::process::ExitStatusExt;
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod confinement;
 mod lifecycle;
+mod native;
 mod pressure;
 
 fn command(body: &str) -> Command {
@@ -25,17 +28,6 @@ fn peer(body: &str, input: &[u8], limits: Limits) -> (Outcome, Vec<Vec<u8>>) {
     })
     .unwrap();
     (outcome, lines)
-}
-
-#[test]
-fn defaults_match_contract() {
-    let l = Limits::default();
-    assert_eq!(l.timeout, Duration::from_secs(600));
-    assert_eq!(l.input_bytes, 4 * 1024 * 1024);
-    assert_eq!(l.line_bytes, 1024 * 1024);
-    assert_eq!(l.stdout_bytes, 16 * 1024 * 1024);
-    assert_eq!(l.stderr_bytes, 16 * 1024 * 1024);
-    assert_eq!(l.retained_stderr_bytes, 64 * 1024);
 }
 
 #[test]
@@ -69,7 +61,7 @@ fn input_rejected_before_spawn() {
         &mut c,
         b"xx",
         Limits {
-            input_bytes: 1,
+            input_bytes: crate::InputByteLimit::new(1),
             ..limits()
         },
         |_| panic!(),
@@ -103,13 +95,54 @@ fn spawn_error_and_zero_budget() {
 }
 
 #[test]
+fn expired_operation_rejects_spawn_without_overriding_input_failure() {
+    let mut command = Command::new("/nonexistent/gripsack-test");
+    let limits = Limits {
+        operation_deadline: Some(Instant::now()),
+        input_bytes: crate::InputByteLimit::new(1),
+        ..limits()
+    };
+    let expired = run(&mut command, b"", limits, |_| panic!()).unwrap();
+    assert!(matches!(expired.reason, StopReason::Deadline));
+    assert!(expired.status.is_none());
+    let oversized = run(&mut command, b"xx", limits, |_| panic!()).unwrap();
+    assert!(matches!(oversized.reason, StopReason::InputLimit));
+    assert!(oversized.status.is_none());
+}
+
+#[test]
+fn operation_and_exchange_deadlines_each_bound_cleanup() {
+    for (timeout, operation_budget) in [
+        (Duration::from_secs(8), Duration::from_secs(1)),
+        (Duration::from_secs(1), Duration::from_secs(8)),
+    ] {
+        let start = Instant::now();
+        let (outcome, _) = peer(
+            "exec sleep 60",
+            b"",
+            Limits {
+                timeout,
+                operation_deadline: Some(start + operation_budget),
+                ..limits()
+            },
+        );
+        assert!(
+            matches!(outcome.reason, StopReason::Deadline),
+            "{outcome:?}"
+        );
+        assert!(outcome.status.is_some(), "the owned leader must be reaped");
+        assert!(start.elapsed() < Duration::from_secs(4));
+    }
+}
+
+#[test]
 fn tail_is_exact_and_can_be_disabled() {
     for cap in [0, 4, 100] {
         let (o, _) = peer(
             "printf 0123456789abc >&2",
             b"",
             Limits {
-                retained_stderr_bytes: cap,
+                retained_stderr_bytes: crate::RetainedStderrLimit::new(cap),
                 ..limits()
             },
         );
@@ -125,7 +158,7 @@ fn exact_line_limit_and_empty_lines() {
         "printf 'abcd\nlast'",
         b"",
         Limits {
-            line_bytes: 4,
+            line_bytes: crate::FrameByteLimit::new(4),
             ..limits()
         },
     );
@@ -135,7 +168,7 @@ fn exact_line_limit_and_empty_lines() {
         "printf '\n\n'",
         b"",
         Limits {
-            line_bytes: 0,
+            line_bytes: crate::FrameByteLimit::new(0),
             ..limits()
         },
     );

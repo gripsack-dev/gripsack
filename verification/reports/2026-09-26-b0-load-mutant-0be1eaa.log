@@ -1,0 +1,36 @@
+RUNNER_SOURCE_COMMIT=0be1eaa2d76b91152228fb124025e97389c028e6
+RUNNER_SOURCE_FINGERPRINT=32d73e886142cb8e758222128128faf9368f9ccf417a146437fa716cb0fcc31b
+RUNNER_SOURCE_ROOTS_DIRTY=clean before/after; only ignored isolated result files differ
+RUNNER_COMMAND=env PATH=<temporary load-fault/docker wrapper delegating every other call to actual Docker>:PATH sh probes.sh
+RUNNER_EXIT=1 expected; machine B0 six-case success marker absent on this failure
+RUNNER_TOOL_VERSIONS=Python 3.12.3, Docker 29.7.2, real pinned BuildKit v0.33.0 and Go 1.26.3; actual Docker engine succeeded on separate positive run at this exact source
+RUNNER_INPUTS=two fresh valid OCI exports verified by independent Python parser; Docker load deliberately returned 47 after valid digest/DiffID/config/file checks; injector SHA-256 a73b6691e341c8262659135fda32d76b0aa34a4133c6d3da55bc493a4499a75d
+INTENDED_PROPERTY=a passing independent OCI verifier cannot qualify an output that the independent Docker engine refuses to load and run
+OBSERVED_REJECTION=FAIL: separate-runtime docker load rejected the OCI layout; driver exited 1 and worker/cache volume absent
+
+===== independent OCI verdict before loader rejection =====
+{
+  "verdicts": [
+    "/tmp/gripsack-b0-final-r67_e3sp/checkout/verification/buildkit-qualification/results/oci-1.tar: all blob digests, DiffIDs, media types and platform verified",
+    "two fresh-worker exports reproduce (DiffIDs, normalized config, file digests)"
+  ],
+  "reproduction": {
+    "diff-ids-match": true,
+    "config-normalized-match": true,
+    "files-match": true,
+    "manifest-digests": [
+      "sha256:9e871a8281bb0b470354adc08d13e36d758330d79f8a5dd5f5bb58c1cdef3ce9",
+      "sha256:95e5b9a222aac0f6a0000a54e007b718595a0e45cb3a6bb076e7f38e2ca4128a"
+    ],
+    "verdict": "reproduced from two clean workers"
+  }
+}
+
+===== intentional Docker load failure =====
+calibration: deliberate Docker engine load rejection
+
+===== actual B0 driver rejection =====
+FAIL: separate-runtime docker load rejected the OCI layout (see probe4-load.txt)
+
+B0_LOAD_MUTANT=1
+RUNNER_COUNTS=1 calibrated expected-failure execution, 1 passing mandatory runtime-load rejection, zero skipped/missing tools.

@@ -1,0 +1,346 @@
+/** v5 workspace emission: named references, role admission and cycles. */
+
+import type { HostFacts } from "../facts.ts";
+import { IR_VERSION } from "../graph.ts";
+import type { Span } from "../module.ts";
+import type {
+  PackageNode,
+  WorkspaceArg,
+  WorkspaceArtifactRef,
+  WorkspaceCommand,
+  WorkspaceOutputKind,
+  WorkspaceOutputNode,
+  WorkspacePackageCommand,
+  WorkspacePath,
+  WorkspaceValue,
+} from "./ir.ts";
+import { asName, asRecord, asSelector, asSpan, duplicateError } from "./validate.ts";
+import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
+import { checkTargetsAndLayouts } from "./target.ts";
+
+/** Catalog roles never conflate publication checks or retention with
+ * production closure. Ordered local commands are intra-output and
+ * keep their list order; no catalog `ordering` edge is fabricated. */
+type EdgeRole = "production" | "build_input" | "runtime" | "task_prereq" | "validation" | "retention";
+
+interface Edge {
+  from: string;
+  to: string;
+  span: Span;
+  expected: readonly WorkspaceOutputKind[];
+  role: EdgeRole;
+}
+
+function isDependency(role: EdgeRole): boolean {
+  return role === "production" || role === "build_input" ||
+    role === "runtime" || role === "task_prereq";
+}
+
+/** Outputs whose artifacts an `artifact` reference may address —
+ *  recipes and packages carry artifacts; images (and every consumer
+ *  kind) do not (0052 §2.2). */
+const ARTIFACT_KINDS: readonly WorkspaceOutputKind[] = ["recipe", "package"];
+
+/** Selector admission at emit: constructors guard their own values,
+ *  but hand-built nodes reach the emitter unchecked — reject escapes
+ *  here too, labeling the source span (core E130). */
+function checkSelector(selector: string, span: Span, site: string): void {
+  try {
+    asSelector(selector, site);
+  } catch (error) {
+    throw errorAt(
+      diagnosticCodes.invalidWorkspaceValue,
+      `workspace: ${(error as Error).message}`,
+      span,
+      "referenced here",
+    );
+  }
+}
+
+/** Environment values are data — a package_command in a value
+ *  position would invoke a program where only bytes are admitted
+ *  (0052 §2.2, core E128). */
+function envValueError(from: string, key: string, span: Span): DiagnosticError {
+  return errorAt(
+    diagnosticCodes.badWorkspaceContext,
+    `workspace: output '${from}' environment variable '${key}' cannot be a package_command ` +
+      `reference; environment values are data (literal or artifact) — invoke package commands ` +
+      `from exec argv or a run_bash interpreter pin`,
+    span,
+    "referenced here",
+  );
+}
+
+function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges: Edge[]): void {
+  const artifactEdge = (a: WorkspaceArtifactRef): void => {
+    checkSelector(a.selector, cmd.span, `output '${from}' artifact reference`);
+    edges.push({ from, to: a.output, span: cmd.span, expected: ARTIFACT_KINDS, role });
+  };
+  const packageEdge = (a: WorkspacePackageCommand): void => {
+    edges.push({ from, to: a.package, span: cmd.span, expected: ["package"], role });
+  };
+  /** Command position (exec argv, run_bash interpreter pin, cwd): the
+   *  only places a tool invocation is legal. */
+  const argEdge = (a: WorkspaceArg | WorkspacePath): void => {
+    if (a.kind === "artifact") artifactEdge(a);
+    else if (a.kind === "package_command") packageEdge(a);
+  };
+  if (cmd.kind === "exec") {
+    cmd.argv.forEach(argEdge);
+  } else {
+    // a run_bash body runs under a pinned package interpreter only —
+    // a literal or artifact interpreter is ambient host discovery
+    if (cmd.interpreter.kind !== "package_command") {
+      throw errorAt(
+        diagnosticCodes.badWorkspaceContext,
+        `workspace: output '${from}' run_bash interpreter must be a package_command reference ` +
+          `pinning the tool through a declared package; a literal or artifact interpreter is ` +
+          `ambient host discovery, which workspace IR never admits`,
+        cmd.span,
+        "referenced here",
+      );
+    }
+    packageEdge(cmd.interpreter);
+  }
+  for (const [key, a] of Object.entries(cmd.env ?? {})) {
+    if (a.kind === "package_command") throw envValueError(from, key, cmd.span);
+    argEdge(a);
+  }
+  if (cmd.cwd) argEdge(cmd.cwd);
+}
+
+function outputEdges(node: WorkspaceOutputNode): Edge[] {
+  const edges: Edge[] = [];
+  const names = (
+    list: string[] | undefined,
+    expected: readonly WorkspaceOutputKind[],
+    role: EdgeRole,
+  ): void => {
+    for (const to of list ?? []) {
+      edges.push({ from: node.name, to, span: node.span, expected, role });
+    }
+  };
+  switch (node.kind) {
+    case "recipe":
+      for (const c of node.steps ?? []) commandEdges(c, node.name, "build_input", edges);
+      names(node.checks, ["check"], "validation");
+      break;
+    case "package":
+      if (node.producer.kind === "recipe") {
+        names([node.producer.recipe], ["recipe"], "production");
+      }
+      names(node.runtime, ["package"], "runtime");
+      break;
+    case "environment":
+      names(node.packages, ["package"], "runtime");
+      for (const [key, a] of Object.entries(node.env ?? {})) {
+        if (a.kind === "package_command") throw envValueError(node.name, key, node.span);
+        if (a.kind === "artifact") {
+          checkSelector(a.selector, node.span, `environment '${node.name}' variable '${key}'`);
+          edges.push({ from: node.name, to: a.output, span: node.span, expected: ARTIFACT_KINDS, role: "runtime" });
+        }
+      }
+      break;
+    case "task":
+      commandEdges(node.run, node.name, "runtime", edges);
+      names(node.deps, ["task"], "task_prereq");
+      names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "runtime");
+      names(node.checks, ["check"], "validation");
+      break;
+    case "schedule":
+      names([node.task], ["task"], "retention");
+      break;
+    case "check":
+      commandEdges(node.run, node.name, "runtime", edges);
+      names([node.subject], ["recipe", "package", "environment", "task", "schedule", "check", "image", "profile", "hook"], "validation");
+      break;
+    case "image":
+      names(node.packages, ["package"], "runtime");
+      break;
+    case "profile":
+      for (const f of node.files ?? []) {
+        if (f.source?.kind === "artifact_file") {
+          checkSelector(f.source.selector, f.span, `profile '${node.name}' file source`);
+          edges.push({ from: node.name, to: f.source.output, span: f.span, expected: ARTIFACT_KINDS, role: "runtime" });
+        }
+      }
+      names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "retention");
+      names(node.schedules, ["schedule"], "retention");
+      names(node.hooks, ["hook"], "retention");
+      break;
+    case "hook":
+      commandEdges(node.run, node.name, "runtime", edges);
+      break;
+  }
+  return edges;
+}
+
+function orList(kinds: readonly string[]): string {
+  return kinds.length === 1
+    ? `a ${kinds[0]}`
+    : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
+}
+
+/** Serialize a workspace value as the v5 workspace IR envelope —
+ *  `{ir_version: 5, host, workspace}`, never `modules` (the schema
+ *  admits exactly one of the two). Admission mirrors the decoded core:
+ *  every typed reference is checked against the catalog (unknown names,
+ *  wrong output kinds), artifact selectors must be normalized relative
+ *  paths, environment values are data only, producer/consumer OS,
+ *  architecture and ABI agree with compatible minimum OS floors;
+ *  fixed_prefix environment selections require a matching declared
+ *  prefix, and dependency cycles throw with declaration spans.
+ *  Host facts are injected for the envelope only, never used to select
+ *  target outputs; the hostname never crosses into the IR. */
+export function emitWorkspaceIr(
+  value: WorkspaceValue,
+  facts: HostFacts,
+  tags: string[] = [],
+): string {
+  if (
+    typeof value !== "object" || value === null ||
+    (value as WorkspaceValue).__gripsack !== "workspace"
+  ) {
+    throw new Error(
+      `emitWorkspaceIr expects a workspace({...}) value — got ${
+        JSON.stringify(value instanceof Promise ? "a promise" : typeof value)
+      }`,
+    );
+  }
+  const ir = value.ir;
+  if (
+    typeof ir !== "object" || ir === null || !Array.isArray(ir.outputs) ||
+    ir.outputs.length === 0
+  ) {
+    throw new Error("emitWorkspaceIr: workspace value must carry at least one output");
+  }
+  asSpan(ir.span, "emitWorkspaceIr: workspace");
+
+  const catalog = new Map<string, WorkspaceOutputNode>();
+  for (const node of ir.outputs) {
+    const rec = asRecord(node, "emitWorkspaceIr: output");
+    const name = asName(rec.name, "emitWorkspaceIr: output name");
+    asSpan(rec.span, `emitWorkspaceIr: output '${name}'`);
+    const prev = catalog.get(name);
+    if (prev) throw duplicateError(name, prev.span, node.span);
+    catalog.set(name, node);
+  }
+
+  // typed references: existence + expected kinds
+  const depEdges: Edge[] = [];
+  const commandKeys: { pkg: PackageNode; command: string; span: Span }[] = [];
+  const collectArgKeys = (args: Iterable<WorkspaceArg | WorkspacePath>, span: Span): void => {
+    for (const a of args) {
+      if (a.kind === "package_command") {
+        const target = catalog.get(a.package);
+        if (target?.kind === "package") {
+          commandKeys.push({ pkg: target, command: a.command, span });
+        }
+      }
+    }
+  };
+  const collectCommandKeys = (cmd: WorkspaceCommand): void => {
+    const args: (WorkspaceArg | WorkspacePath)[] = cmd.kind === "exec"
+      ? [...cmd.argv, ...Object.values(cmd.env ?? {})]
+      : [cmd.interpreter, ...Object.values(cmd.env ?? {})];
+    if (cmd.cwd) args.push(cmd.cwd);
+    collectArgKeys(args, cmd.span);
+  };
+  for (const node of catalog.values()) {
+    for (const e of outputEdges(node)) {
+      const target = catalog.get(e.to);
+      if (!target) {
+        throw errorAt(
+          diagnosticCodes.unknownWorkspaceRef,
+          `workspace: output '${e.from}' references unknown output '${e.to}'`,
+          e.span,
+          "referenced here",
+        );
+      }
+      if (!e.expected.includes(target.kind)) {
+        throw new DiagnosticError({
+          code: diagnosticCodes.unknownWorkspaceRef,
+          severity: "error",
+          message:
+            `workspace: output '${e.from}' expects '${e.to}' to be ${orList(e.expected)} — ` +
+            `it is a '${target.kind}'`,
+          labels: [
+            { span: e.span, note: "referenced here" },
+            { span: target.span, note: `'${e.to}' declared here as a '${target.kind}'` },
+          ],
+        });
+      }
+      if (isDependency(e.role)) depEdges.push(e);
+    }
+    if (node.kind === "recipe") for (const c of node.steps ?? []) collectCommandKeys(c);
+    if (node.kind === "task" || node.kind === "check" || node.kind === "hook") {
+      collectCommandKeys(node.run);
+    }
+    if (node.kind === "environment") collectArgKeys(Object.values(node.env ?? {}), node.span);
+  }
+  for (const { pkg: target, command, span } of commandKeys) {
+    if (!(command in target.commands)) {
+      const have = Object.keys(target.commands).join(", ");
+      throw new DiagnosticError({
+        code: diagnosticCodes.unknownWorkspaceRef,
+        severity: "error",
+        message: `workspace: package '${target.name}' has no command '${command}'`,
+        labels: [{ span, note: "referenced here" }],
+        ...(have ? { help: `package '${target.name}' provides: ${have}` } : {}),
+      });
+    }
+  }
+  checkTargetsAndLayouts(catalog);
+
+  // dependency cycles over production/build edges only — validation
+  // edges (a recipe gated by a check on the package it produces) may
+  // legitimately close a loop
+  const adj = new Map<string, Edge[]>();
+  for (const e of depEdges) {
+    const list = adj.get(e.from) ?? [];
+    list.push(e);
+    adj.set(e.from, list);
+  }
+  const state = new Map<string, "visiting" | "done">();
+  const stack: string[] = [];
+  const visit = (n: string): void => {
+    state.set(n, "visiting");
+    stack.push(n);
+    for (const e of adj.get(n) ?? []) {
+      const s = state.get(e.to);
+      if (s === undefined) visit(e.to);
+      else if (s === "visiting") {
+        const cycle = [...stack.slice(stack.indexOf(e.to)), e.to];
+        throw new DiagnosticError({
+          code: diagnosticCodes.workspaceCycle,
+          severity: "error",
+          message: `workspace: dependency cycle ${cycle.join(" -> ")}`,
+          labels: cycle.slice(0, -1).map((name) => ({
+            span: catalog.get(name)!.span,
+            note: `'${name}' declared here`,
+          })),
+        });
+      }
+    }
+    stack.pop();
+    state.set(n, "done");
+  };
+  for (const n of catalog.keys()) {
+    if (!state.has(n)) visit(n);
+  }
+
+  return JSON.stringify(
+    {
+      ir_version: IR_VERSION,
+      host: {
+        os: facts.os,
+        arch: facts.arch,
+        tags,
+        ...(facts.libc !== null ? { libc: facts.libc } : {}),
+      },
+      workspace: { span: ir.span, outputs: ir.outputs },
+    },
+    null,
+    2,
+  );
+}

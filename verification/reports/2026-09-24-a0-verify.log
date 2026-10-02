@@ -1,0 +1,93 @@
+ Image gripsack-verify Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 540B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 9.77kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+#5 DONE 0.7s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [verify  4/11] ADD --checksum=sha256:7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip /tmp/z3.zip
+#7 DONE 0.0s
+
+#8 [verify  3/11] ADD --checksum=sha256:13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16 https://github.com/verus-lang/verus/releases/download/release/0.2026.09.06.8dea4a2/verus-0.2026.09.06.8dea4a2-x86-linux.zip /tmp/verus.zip
+#8 DONE 0.0s
+
+#9 [verify  1/11] FROM docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+#9 resolve docker.io/library/ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 0.0s done
+#9 DONE 0.0s
+
+#10 [internal] load build context
+#10 transferring context: 1.84MB 0.2s done
+#10 DONE 0.2s
+
+#11 [verify  6/11] WORKDIR /app
+#11 CACHED
+
+#12 [verify  2/11] RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends     curl ca-certificates unzip build-essential     && rm -rf /var/lib/apt/lists/*
+#12 CACHED
+
+#13 [verify  3/11] ADD --checksum=sha256:13d01e134c0620c3b29770874707d16c33b3d227c843a489c8ceb744d43c0a16 https://github.com/verus-lang/verus/releases/download/release/0.2026.09.06.8dea4a2/verus-0.2026.09.06.8dea4a2-x86-linux.zip /tmp/verus.zip
+#13 CACHED
+
+#14 [verify  4/11] ADD --checksum=sha256:7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip /tmp/z3.zip
+#14 CACHED
+
+#15 [verify  5/11] RUN unzip -q /tmp/verus.zip -d /opt && unzip -q /tmp/z3.zip -d /opt     && rm /tmp/verus.zip /tmp/z3.zip     && curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.98.0        --component rustc-dev --component llvm-tools --component rustfmt
+#15 CACHED
+
+#16 [verify  7/11] COPY Cargo.toml Cargo.lock ./
+#16 CACHED
+
+#17 [verify  8/11] COPY crates ./crates
+#17 DONE 0.2s
+
+#18 [verify  9/11] COPY fuzz ./fuzz
+#18 DONE 0.1s
+
+#19 [verify 10/11] COPY scripts/check_verus.sh ./scripts/check_verus.sh
+#19 DONE 0.1s
+
+#20 [verify 11/11] RUN sh scripts/check_verus.sh
+#20 0.199 == positive: cargo verus verify -p gripsack-policy --locked
+#20 34.53 positive: verification results:: 56 verified, 0 errors
+#20 34.53 == calibration: semantic mutants must fail their postconditions
+#20 62.88 calibration: classifier mutant rejected on its contract
+#20 91.33 calibration: merge-splice mutant rejected on its contract
+#20 117.7 calibration: graph-closure mutant rejected on its contract
+#20 144.2 calibration: scheduler-latch mutant rejected on its contract
+#20 144.2 verify gate: OK
+#20 DONE 144.8s
+
+#21 exporting to image
+#21 exporting layers
+#21 exporting layers 5.1s done
+#21 exporting manifest sha256:749d083260f5aca3792b4911a08593e0c4616fd4b8351c76368c521c3a9d9106 0.0s done
+#21 exporting config sha256:52a154d9eb5f71ff22f9a63b2bcf547e3179101e23b3f844443a2a7548bde388 0.0s done
+#21 exporting attestation manifest sha256:4288ba1ca19fde4a3b7357743d6834657b9356f36352c9fd47e5a6368ab7ed9c 0.0s done
+#21 exporting manifest list sha256:e45e988dd5c39be5d4a7fa7a55f4cfec32ee0a8c02d0bbccf4baa4f1821b0e14 0.0s done
+#21 naming to docker.io/library/gripsack-verify:latest done
+#21 unpacking to docker.io/library/gripsack-verify:latest
+#21 unpacking to docker.io/library/gripsack-verify:latest 3.9s done
+#21 DONE 9.2s
+
+#22 resolving provenance for metadata file
+#22 DONE 0.0s
+ Image gripsack-verify Built 
+ Container gripsack-verify-run-7b82ed805a09 Creating 
+ Container gripsack-verify-run-7b82ed805a09 Created 
+gate passed: cargo verus verify -p gripsack-policy + seeded-mutant calibration (scripts/check_verus.sh)

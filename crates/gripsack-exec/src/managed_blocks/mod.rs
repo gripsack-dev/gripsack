@@ -2,6 +2,7 @@
 mod parse;
 use gripsack_store as store;
 pub use parse::MergeParseError;
+pub(crate) use parse::validate_payload;
 use std::borrow::Cow;
 use std::ops::Range;
 use std::path::Path;
@@ -46,7 +47,7 @@ impl<'a> ManagedBlockSet<'a> {
             .into_iter()
             .map(|block| ManagedBlock {
                 content_hash: content_hash(block.content),
-                range: block.range,
+                range: block.span.start..block.span.end,
                 content: block.content,
                 recorded_hash: block.recorded_hash,
                 mode: block.mode,
@@ -86,11 +87,11 @@ impl<'a> ManagedBlockSet<'a> {
     }
 
     /// No bytes outside complete owned spans are discarded or normalized.
-    pub fn remove(&self) -> Option<String> {
+    pub fn remove(&self) -> Result<Option<String>, MergeParseError> {
         if self.is_empty() {
-            return None;
+            return Ok(None);
         }
-        Some(self.splice(""))
+        self.splice("").map(Some)
     }
 
     pub fn upsert(
@@ -131,15 +132,14 @@ impl<'a> ManagedBlockSet<'a> {
             output.push_str(&generated);
             Ok(output)
         } else {
-            Ok(self.splice(&generated))
+            self.splice(&generated)
         }
     }
 
-    fn splice(&self, replacement: &str) -> String {
-        // the verified kernel (0047): byte-exact contract over spans —
-        // ranges arrive line-aligned from the parser, so the output is
-        // valid UTF-8; from_utf8 failing would be a parser bug, not a
-        // user error
+    fn splice(&self, replacement: &str) -> Result<String, MergeParseError> {
+        // The production scanner proves span order, bounds and UTF-8
+        // alignment. Keep the final conversion fallible as a defensive
+        // boundary for callers that bypass that construction.
         let spans: Vec<gripsack_policy::merge::Span> = self
             .blocks
             .iter()
@@ -153,7 +153,10 @@ impl<'a> ManagedBlockSet<'a> {
             &spans,
             replacement.as_bytes(),
         );
-        String::from_utf8(bytes).expect("block ranges are line-aligned and replacement is UTF-8")
+        String::from_utf8(bytes).map_err(|_| MergeParseError {
+            line: 1,
+            reason: "splice output violates the scanner's UTF-8 boundary invariant",
+        })
     }
 
     pub fn report_note(&self) -> Option<String> {

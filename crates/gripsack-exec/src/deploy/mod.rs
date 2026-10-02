@@ -1,14 +1,16 @@
 //! Deploy: ownership modes, drift, destinations (0001 §3.7).
 
+mod entry;
+pub(crate) use entry::{DeploymentInput, deploy_entry};
 pub(crate) mod remove;
 pub(crate) mod restore;
 
 pub use remove::{remove_entry_deployed, remove_or_restore_prior};
 pub(crate) use restore::intact_deployed;
 
-use crate::ctx::{Ctx, ExecError};
-use crate::report::ReportKind;
-use gripsack_ir::{Entry, Ownership};
+#[cfg(test)]
+use gripsack_ir::Ownership;
+#[cfg(test)]
 use gripsack_store as store;
 use std::path::Path;
 
@@ -56,63 +58,6 @@ pub(crate) fn observe(
 /// agreement with the last managed write; explicit take-over always
 /// absorbs, capturing the origin even when the bytes already match.
 pub(crate) use gripsack_policy::ownership::{CopyPlan, LinkPlan, plan_copy, plan_link};
-
-/// What the precondition expects of the live object before the
-/// mutation — None: the destination must be ABSENT, anything
-/// appearing aborts the run. (The 0031 typed form of the old
-/// `Expect` enum: `Option<ObjectIdentity>`, no stringly `Is`.)
-pub(crate) type Expect = Option<store::journal::ObjectIdentity>;
-
-pub(crate) fn journaled(
-    home: &gripsack_fs::Dir,
-    dest_dir: &gripsack_fs::Dir,
-    dest_name: &Path,
-    dest: &Path,
-    intended: store::journal::Intended,
-    expected_before: Expect,
-    mutate: impl FnOnce() -> std::io::Result<()>,
-) -> std::io::Result<()> {
-    use store::journal::Intended;
-    // the live object must still be the one the drift decision was
-    // made against — a write between decision and capture aborts
-    // instead of clobbering it. (There is no portable content-CAS:
-    // renameat2 RENAME_EXCHANGE is Linux-only. Capture and mutation
-    // are back-to-back; the residual window is documented on the
-    // safety page.)
-    let live = gripsack_store::journal::live_identity(dest_dir, dest_name)?;
-    if live != expected_before {
-        return Err(std::io::Error::other(format!(
-            "{} changed between the drift decision and the mutation — aborting; re-run to retry",
-            dest.display()
-        )));
-    }
-    // prior AND intended post-state are durable BEFORE the mutation
-    // (0026 §6): reconcile's three-way decision never confuses a
-    // post-crash user edit with the mutation
-    let prior = gripsack_store::journal::capture(dest_dir, dest_name, dest, home)?;
-    gripsack_store::journal::record(home, dest, &prior, &intended)?;
-    mutate()?;
-    // the transaction postcondition (0027 §1): a helper that returns
-    // Ok without producing the intended state fails the run HERE, and
-    // compensation restores the prior — the flip never commits an
-    // unverified destination
-    let live = gripsack_store::journal::live_identity(dest_dir, dest_name)?;
-    let landed = match &intended {
-        Intended::Removed => live.is_none(),
-        Intended::Object(id) => live.as_ref() == Some(id),
-    };
-    if !landed {
-        return Err(std::io::Error::other(format!(
-            "{} did not reach its intended state (expected {}, found {})",
-            dest.display(),
-            intended,
-            live.as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "absent".into())
-        )));
-    }
-    Ok(())
-}
 
 /// A read-only observation by plain path (0035 F7): the preview's
 /// eyes — no capability, NO directory creation. Mutation paths use
@@ -163,230 +108,6 @@ pub(crate) fn dest_capability(
         std::path::PathBuf::from(dest.file_name().unwrap_or_default()),
     ))
 }
-/// never silently overwrite.
-pub(crate) fn deploy_entry(
-    out: &mut Vec<store::DeployedEntry>,
-    module: &str,
-    store_path: &Path,
-    entry: &Entry,
-    ctx: &Ctx,
-    prev_map: &std::collections::BTreeMap<std::path::PathBuf, &store::DeployedEntry>,
-    version: Option<&str>,
-) -> Result<(String, ReportKind), ExecError> {
-    let prepared =
-        crate::source::payload_source(store_path, &entry.from, version).map_err(|error| {
-            ExecError::Step {
-                module: module.into(),
-                step: "deploy".into(),
-                detail: error.to_string(),
-            }
-        })?;
-    let from = prepared.relative;
-    // Entry content is the store payload — always. The publish step
-    // stages every repo-referenced `from` into the store, so a store
-    // miss means a stale store (e.g. a config tree that gained a file
-    // under an unmoved pin): that is an integrity failure, never a
-    // reason to reach into the repo checkout and deploy a path the
-    // store never published.
-    let source = prepared.path;
-    // the canonical physical key (0030 §P0-1): one observation, one
-    // transition, one journal key per physical object
-    let dest = store::canonical_dest(&entry.to).map_err(|e| ExecError::Step {
-        module: module.to_string(),
-        step: "deploy".into(),
-        detail: format!("destination {:?}: {e}", entry.to),
-    })?;
-    // lineage is destination-global: the previous generation's entry
-    // for THIS physical destination, whichever module owned it
-    let prev = prev_map.get(&dest).copied();
-    let fail = |detail: String| ExecError::Step {
-        module: module.to_string(),
-        step: "deploy".into(),
-        detail,
-    };
-    // A destination resolving INTO the env repo turns a deploy into a
-    // delete: a symlinked ancestor dir (a leftover from another
-    // provisioner) lands the write inside the checkout and the module
-    // eats its own source. The repo is never a legitimate target.
-    //
-    // One exception: an `owned` destination that is ITSELF a symlink
-    // into the repo — almost certainly an artifact an older gripsack
-    // wrote when config deployed straight from the checkout. Owned
-    // semantics replace the link (nothing is ever written THROUGH
-    // it), so swapping it for a store link is safe and is the only
-    // migration path forward; refusing here stranded every config
-    // module that predates the store (first apply after upgrade,
-    // forever, with an error that pointed at the module instead of
-    // the stale link).
-    let dest_is_symlink = dest
-        .symlink_metadata()
-        .is_ok_and(|m| m.file_type().is_symlink());
-    let owned_replace_ok = matches!(entry.mode, Ownership::Owned) && dest_is_symlink;
-    if dest_resolves_into(&dest, &ctx.repo) && !owned_replace_ok {
-        let hint = if dest_is_symlink {
-            "\n  hint: the destination is a symlink into the repo — likely left by an \
-             older gripsack that deployed config from the checkout; remove it and \
-             re-apply, or declare the entry `owned` so gripsack replaces it"
-        } else {
-            ""
-        };
-        return Err(fail(format!(
-            "{} resolves inside the env repo ({}) — refusing to deploy into the source checkout{hint}",
-            entry.to,
-            ctx.repo.display()
-        )));
-    }
-    // Expansion is total: a placeholder surviving to deploy means a
-    // {version} with no locked tag or a substitution bug — never a
-    // path worth linking
-    if from.contains('{') {
-        return Err(fail(format!(
-            "{} still contains a placeholder after expansion (from {})",
-            from, entry.from
-        )));
-    }
-    if !source.exists() {
-        // install={} keys are payload-relative — a versioned top-level
-        // dir in the archive must be part of the key; say what IS here
-        let hint = std::fs::read_dir(store_path)
-            .map(|entries| {
-                let names: Vec<_> = entries
-                    .filter_map(|e| e.ok())
-                    .map(|e| e.file_name().to_string_lossy().into_owned())
-                    .collect();
-                if names.is_empty() {
-                    String::new()
-                } else {
-                    format!(" (payload top-level: {})", names.join(", "))
-                }
-            })
-            .unwrap_or_default();
-        return Err(fail(format!(
-            "no payload or repo file at {} (from {}){hint}",
-            source.display(),
-            entry.from
-        )));
-    }
-    if source.is_dir() && entry.mode != Ownership::Owned {
-        return Err(fail(format!(
-            "{:?} on a directory ({}) — directory payloads are not supported yet; owned symlinks work today",
-            entry.mode, entry.from
-        )));
-    }
-    // template payloads render at deploy time — the vars were computed
-    // by the frontend at eval; the core only substitutes (0001 §3.7)
-    let rendered = match &entry.mode {
-        Ownership::Template => Some(crate::template::render_template(
-            &std::fs::read(&source)?,
-            &entry.vars,
-            &entry.from,
-        )?),
-        _ => None,
-    };
-    // the ONE planner (0034): the op IS the decision — plan renders
-    // it, apply executes it, rollback constructs it
-    let view = crate::ops::DestView {
-        module,
-        entry,
-        dest: dest.clone(),
-        home: &ctx.home,
-        observed: {
-            let (dest_dir, dest_name) = dest_capability(&dest)?;
-            observe(&dest_dir, &dest_name)?
-        },
-        prev,
-        take_over: ctx.takes_over(&entry.to),
-    };
-    let op = match &entry.mode {
-        Ownership::Owned => {
-            let already = std::fs::read_link(&dest)
-                .map(|t| t == source)
-                .unwrap_or(false);
-            crate::ops::plan_entry_op(
-                &view,
-                crate::ops::ModeInput::Link {
-                    source: &source,
-                    content_hash: store::canonical_file_hash(&source)?.into(),
-                    already,
-                },
-            )?
-        }
-        Ownership::TrackedCopy | Ownership::Template => {
-            let content: &[u8] = match &rendered {
-                Some(r) => r.as_slice(),
-                None => &std::fs::read(&source)?,
-            };
-            // Whole-file outputs share the same source-executability policy.
-            #[cfg(unix)]
-            let src_exec = {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::metadata(&source)?.permissions().mode() & 0o111 != 0
-            };
-            #[cfg(not(unix))]
-            let src_exec = false;
-            crate::ops::plan_entry_op(
-                &view,
-                crate::ops::ModeInput::Write {
-                    content,
-                    permissions: crate::ops::WritePermissions::Source {
-                        executable: src_exec,
-                    },
-                },
-            )?
-        }
-        Ownership::Merge => {
-            let payload = std::fs::read_to_string(&source)
-                .map_err(|e| fail(format!("cannot read {}: {e}", source.display())))?;
-            crate::ops::plan_entry_op(
-                &view,
-                crate::ops::ModeInput::Merge {
-                    payload: &payload,
-                    permissions: crate::ops::WritePermissions::Preserve,
-                },
-            )?
-        }
-    };
-    // a foreign destination blocks apply (the renderer shows the same
-    // op as "needs --take-over")
-    if op.authority() == Some(crate::ops::Authority::Foreign) {
-        return Err(ExecError::Step {
-            module: module.to_string(),
-            step: "deploy".into(),
-            detail: format!(
-                "{} exists and was not deployed by gripsack — move it away or use --take-over",
-                entry.to
-            ),
-        });
-    }
-    let (report, captured_prior) =
-        crate::ops::execute_op(ctx.home_dir()?, &ctx.home, op.as_executable()?)?;
-    // the manifest entry: what the op produces, or the previous entry
-    // carried forward (satisfied)
-    match op.produces() {
-        Some(produced) => {
-            out.push(store::DeployedEntry {
-                // the EXPANDED key — rollback and store verify re-join
-                // it against the store path verbatim
-                from: std::path::PathBuf::from(&from),
-                to: entry.to.clone(),
-                key: Some(dest.clone()),
-                mode: entry.mode.clone(),
-                vars: entry.vars.clone(),
-                hash: produced.hash.clone(),
-                file_mode: produced.file_mode,
-                source_executable: produced.source_executable,
-                prior: captured_prior.or_else(|| produced.prior.clone()),
-                preserved_drift: produced.preserved_drift,
-            });
-        }
-        None => {
-            if let Some(prev_entry) = prev {
-                out.push((*prev_entry).clone());
-            }
-        }
-    }
-    Ok((report.summary, report.kind))
-}
 
 /// Does `dest` resolve inside `repo`? Canonicalize the deepest
 /// existing ancestor — a symlinked intermediate directory resolves
@@ -420,27 +141,32 @@ mod tests {
         // an unverified destination
         let dir = tempfile::tempdir().unwrap();
         let home = gripsack_fs::open_or_create(dir.path()).unwrap();
+        let run = store::journal::begin_run(
+            &home,
+            dir.path(),
+            None,
+            store::GenerationId::new(1),
+            store::journal::RunOp::Apply,
+        )
+        .unwrap();
         let dest = dir.path().join("config");
         let (dest_dir, dest_name) = dest_capability(&dest).unwrap();
-        let err = journaled(
-            &home,
-            &dest_dir,
-            &dest_name,
-            &dest,
-            store::journal::Intended::Object(store::journal::ObjectIdentity::Link(
-                "intended".into(),
-            )),
-            None,
-            || Ok(()), // reports success, writes nothing
-        )
-        .unwrap_err();
-        assert!(
-            err.to_string().contains("did not reach its intended state"),
-            "{err}"
-        );
-        // the journal entry survives for reconcile
-        let lines = store::journal::reconcile(&home, dir.path()).unwrap();
-        assert!(!lines.is_empty());
+        let captured = store::journal::capture(&run, dest_dir, dest_name, &dest, None).unwrap();
+        let intended = store::journal::Intended::Object(store::journal::ObjectIdentity::Link(
+            "intended".into(),
+        ));
+        let error = store::journal::record(captured, &intended)
+            .unwrap()
+            .execute(|_, _| Ok(()))
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert!(dest.symlink_metadata().is_err());
+        let pending = store::journal::pending_recovery(&home).unwrap().unwrap();
+        assert_eq!(pending.entries, 1);
+        assert!(pending.run_marker);
+        drop(run);
+        store::journal::reconcile(&home, dir.path()).unwrap();
+        assert!(store::journal::pending_recovery(&home).unwrap().is_none());
     }
 
     #[test]
@@ -456,7 +182,7 @@ mod tests {
             from: "m-{version}-{target}/m".into(),
             to: dest.to_string_lossy().into_owned(),
             key: None,
-            mode: Ownership::Owned,
+            ownership: store::StoredOwnership::Legacy(Ownership::Owned),
             vars: Default::default(),
             file_mode: None,
             source_executable: None,

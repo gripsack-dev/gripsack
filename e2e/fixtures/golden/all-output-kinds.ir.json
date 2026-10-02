@@ -1,0 +1,338 @@
+{
+  "diagnostics": [],
+  "ir": {
+    "host": {
+      "arch": "x86_64",
+      "libc": "glibc-2.36",
+      "os": "linux",
+      "tags": []
+    },
+    "ir_version": 5,
+    "workspace": {
+      "outputs": [
+        {
+          "commands": {
+            "bash": "bin/bash"
+          },
+          "kind": "package",
+          "layout": {
+            "kind": "relocatable"
+          },
+          "name": "shell",
+          "producer": {
+            "kind": "provider",
+            "provider": {
+              "fetch": {
+                "kind": "file",
+                "path": "shell.bin"
+              }
+            }
+          },
+          "target": {
+            "abi": "gnu",
+            "arch": "x86_64",
+            "os": "linux"
+          }
+        },
+        {
+          "commands": {
+            "fixed": "bin/fixed"
+          },
+          "kind": "package",
+          "layout": {
+            "kind": "fixed_prefix",
+            "prefix": "/opt/tools"
+          },
+          "name": "fixed",
+          "producer": {
+            "kind": "provider",
+            "provider": {
+              "fetch": {
+                "kind": "file",
+                "path": "fixed.bin"
+              }
+            }
+          },
+          "target": {
+            "abi": "gnu",
+            "arch": "x86_64",
+            "os": "linux"
+          }
+        },
+        {
+          "checks": [
+            "build-ok"
+          ],
+          "execution": {
+            "access": "unconfined",
+            "kind": "host"
+          },
+          "kind": "recipe",
+          "name": "build",
+          "output_kind": "tree",
+          "source": {
+            "fetch": {
+              "kind": "file",
+              "path": "recipe-source.txt"
+            }
+          },
+          "steps": [
+            {
+              "body": "echo \"$INPUT\"",
+              "env": {
+                "INPUT": {
+                  "kind": "literal",
+                  "value": "from a typed environment value"
+                }
+              },
+              "interpreter": {
+                "command": "bash",
+                "kind": "package_command",
+                "package": "shell"
+              },
+              "kind": "run_bash"
+            },
+            {
+              "argv": [
+                {
+                  "command": "bash",
+                  "kind": "package_command",
+                  "package": "shell"
+                },
+                {
+                  "kind": "literal",
+                  "value": "--version"
+                }
+              ],
+              "kind": "exec"
+            }
+          ],
+          "target": {
+            "abi": "gnu",
+            "arch": "x86_64",
+            "os": "linux"
+          }
+        },
+        {
+          "commands": {
+            "app": "bin/app"
+          },
+          "kind": "package",
+          "layout": {
+            "kind": "relocatable"
+          },
+          "name": "app",
+          "producer": {
+            "kind": "recipe",
+            "recipe": "build"
+          },
+          "runtime": [
+            "shell"
+          ],
+          "target": {
+            "abi": "gnu",
+            "arch": "x86_64",
+            "os": "linux"
+          }
+        },
+        {
+          "kind": "check",
+          "name": "build-ok",
+          "run": {
+            "argv": [
+              {
+                "command": "app",
+                "kind": "package_command",
+                "package": "app"
+              },
+              {
+                "kind": "literal",
+                "value": "--version"
+              }
+            ],
+            "kind": "exec"
+          },
+          "subject": "app"
+        },
+        {
+          "env": {
+            "APP_ROOT": {
+              "kind": "artifact",
+              "output": "app",
+              "selector": "."
+            }
+          },
+          "kind": "environment",
+          "name": "dev",
+          "packages": [
+            "shell",
+            "app",
+            "fixed"
+          ],
+          "prefix": "/opt/tools",
+          "target": {
+            "abi": "gnu",
+            "arch": "x86_64",
+            "os": "linux"
+          }
+        },
+        {
+          "kind": "task",
+          "name": "prepare",
+          "run": {
+            "argv": [
+              {
+                "kind": "literal",
+                "value": "true"
+              }
+            ],
+            "kind": "exec"
+          }
+        },
+        {
+          "checks": [
+            "build-ok"
+          ],
+          "deps": [
+            "prepare"
+          ],
+          "environment": "dev",
+          "kind": "task",
+          "name": "format",
+          "run": {
+            "argv": [
+              {
+                "command": "app",
+                "kind": "package_command",
+                "package": "app"
+              },
+              {
+                "kind": "literal",
+                "value": "format"
+              }
+            ],
+            "kind": "exec"
+          }
+        },
+        {
+          "kind": "schedule",
+          "name": "nightly",
+          "scope": "user",
+          "task": "format",
+          "trigger": {
+            "kind": "daily",
+            "time": "03:30"
+          }
+        },
+        {
+          "kind": "hook",
+          "name": "reload",
+          "run": {
+            "argv": [
+              {
+                "kind": "literal",
+                "value": "true"
+              }
+            ],
+            "kind": "exec"
+          },
+          "trigger": "post_activate"
+        },
+        {
+          "kind": "image",
+          "name": "container",
+          "packages": [
+            "shell",
+            "app"
+          ],
+          "target": {
+            "abi": "gnu",
+            "arch": "x86_64",
+            "os": "linux"
+          }
+        },
+        {
+          "environment": "dev",
+          "files": [
+            {
+              "content": {
+                "kind": "template",
+                "template": "name={{ name }}\n",
+                "variables": {
+                  "name": "left"
+                }
+              },
+              "destination": {
+                "kind": "symlink",
+                "path": "~/.config/demo/left"
+              },
+              "source": {
+                "kind": "repo_file",
+                "path": "dotfiles/left/config.tmpl"
+              }
+            },
+            {
+              "content": {
+                "kind": "template",
+                "template": "name={{ name }}\n",
+                "variables": {
+                  "name": "right"
+                }
+              },
+              "destination": {
+                "kind": "tracked_copy",
+                "path": "~/.config/demo/right"
+              },
+              "source": {
+                "kind": "repo_file",
+                "path": "dotfiles/right/config.tmpl"
+              }
+            },
+            {
+              "content": {
+                "kind": "template",
+                "template": "name={{ name }}\n",
+                "variables": {
+                  "name": "block"
+                }
+              },
+              "destination": {
+                "kind": "managed_block",
+                "marker": "#",
+                "path": "~/.config/demo/shared"
+              },
+              "source": {
+                "kind": "artifact_file",
+                "output": "app",
+                "selector": "share/config.tmpl"
+              }
+            },
+            {
+              "content": {
+                "kind": "identity"
+              },
+              "destination": {
+                "kind": "tracked_copy",
+                "path": "~/.config/demo/readme"
+              },
+              "source": {
+                "kind": "artifact_file",
+                "output": "app",
+                "selector": "share/readme"
+              }
+            }
+          ],
+          "hooks": [
+            "reload"
+          ],
+          "kind": "profile",
+          "name": "personal",
+          "schedules": [
+            "nightly"
+          ]
+        }
+      ]
+    }
+  },
+  "probe_requests": []
+}

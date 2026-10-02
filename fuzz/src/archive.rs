@@ -7,7 +7,7 @@ use crate::sandbox::Sandbox;
 use gripsack_fetch::{FetchContext, FetchError, FetchLimits, FetchOutcome};
 use gripsack_ir::FetchSpec;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::path::{Component, Path};
+use std::path::Path;
 
 /// 0042 E fuzz-scale acquisition limits: 64 KiB download, 1 MiB
 /// expanded, 128 entries, 8 MiB decoder memory.
@@ -84,11 +84,13 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
 
 /// Independent containment audit of an extracted payload: entry and
 /// byte caps plus link safety, re-derived here rather than trusted
-/// from the decoder. Never follows symlinks — a link redirecting the
-/// walk is exactly the escape being checked for.
+/// from the decoder. The walk never follows symlinks; only each link's
+/// fully resolved destination is inspected. This catches composed
+/// `d/up -> ..; leak -> d/up/../sentinel` that a lexical-depth oracle misses.
 fn audit(dest: &Path) -> (usize, u64) {
     let mut entries = 0usize;
     let mut bytes = 0u64;
+    let canonical_root = std::fs::canonicalize(dest).unwrap();
     let mut pending = vec![dest.to_owned()];
     while let Some(directory) = pending.pop() {
         for child in std::fs::read_dir(&directory).unwrap() {
@@ -102,13 +104,12 @@ fn audit(dest: &Path) -> (usize, u64) {
                 bytes += std::fs::symlink_metadata(&path).unwrap().len();
             } else if kind.is_symlink() {
                 let target = std::fs::read_link(&path).unwrap();
+                let resolved = std::fs::canonicalize(&path).unwrap_or_else(|error| {
+                    panic!("accepted link {path:?} -> {target:?} is unresolved: {error}")
+                });
                 assert!(
-                    !target.is_absolute(),
-                    "extracted link {target:?} is absolute"
-                );
-                assert!(
-                    stays_within(dest, &path, &target),
-                    "extracted link {target:?} escapes the payload"
+                    resolved.starts_with(&canonical_root),
+                    "accepted link {path:?} -> {target:?} resolves outside the payload: {resolved:?}"
                 );
             } else {
                 panic!("extracted special file {path:?}");
@@ -143,28 +144,4 @@ fn relax(root: &Path) {
             }
         }
     }
-}
-
-/// Lexically resolve `target` against the link's parent; the walk must
-/// never climb above the payload root.
-fn stays_within(root: &Path, link: &Path, target: &Path) -> bool {
-    let parent = match link.parent().and_then(|p| p.strip_prefix(root).ok()) {
-        Some(parent) => parent,
-        None => return false,
-    };
-    let mut depth = parent.components().count() as i64;
-    for part in target.components() {
-        match part {
-            Component::Normal(_) => depth += 1,
-            Component::CurDir => {}
-            Component::ParentDir => {
-                depth -= 1;
-                if depth < 0 {
-                    return false;
-                }
-            }
-            _ => return false,
-        }
-    }
-    depth >= 0
 }

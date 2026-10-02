@@ -6,7 +6,7 @@ mod protocol;
 #[cfg(test)]
 mod tests;
 
-use crate::{FetchError, FetchLimits};
+use crate::{FetchContext, FetchError, FetchLimits};
 use gripsack_process::{Control, Limits, StopReason};
 use gripsack_store::hash::PayloadHash;
 use protocol::PluginMessage;
@@ -24,21 +24,32 @@ pub(crate) struct PluginFetch {
 }
 
 pub(crate) fn fetch(
+    context: &FetchContext,
     name: &str,
     args: &serde_json::Value,
     dest: &Path,
     locked: Option<&serde_json::Value>,
     limits: FetchLimits,
 ) -> Result<PluginFetch, FetchError> {
-    let exe = crate::find_fetcher(name).ok_or_else(|| {
+    let deadline = std::time::Instant::now() + PLUGIN_TIMEOUT;
+    let exe = context.find_fetcher(name).ok_or_else(|| {
         failure(
             name,
             format!("gripfetch-{name} not found on PATH (or declare it in env.toml)"),
         )
     })?;
-    if let Some(caps) = capabilities::get(name, &exe) {
+    if let Some(caps) = capabilities::get(context, name, &exe, deadline) {
         for (domain, budget) in &caps.throttle {
-            crate::throttle::acquire_declared(domain, budget);
+            if crate::throttle::acquire_declared_until(domain, budget, deadline)
+                == crate::throttle::ThrottleAdmission::DeadlineExpired
+            {
+                return Err(failure(
+                    name,
+                    format!(
+                        "gripfetch-{name} cannot acquire a {domain} token within its operation deadline"
+                    ),
+                ));
+            }
         }
     }
     let request = protocol::FetchRequest {
@@ -47,12 +58,18 @@ pub(crate) fn fetch(
         dest_dir: dest.to_string_lossy(),
         locked,
     };
+    let mut command = Command::new(exe);
+    context.apply_build_env(&mut command);
     fetch_exchange(
-        &mut Command::new(exe),
+        &mut command,
         name,
         &request,
         dest,
-        PLUGIN_TIMEOUT,
+        Limits {
+            timeout: PLUGIN_TIMEOUT,
+            operation_deadline: Some(deadline),
+            ..Limits::default()
+        },
         limits,
     )
 }
@@ -69,7 +86,7 @@ fn fetch_exchange(
     name: &str,
     request: &impl serde::Serialize,
     dest: &Path,
-    timeout: Duration,
+    process_limits: Limits,
     limits: FetchLimits,
 ) -> Result<PluginFetch, FetchError> {
     let mut responded = false;
@@ -77,50 +94,42 @@ fn fetch_exchange(
     let mut diagnostics = Vec::new();
     let mut diagnostic_count = 0usize;
     let mut too_many_diagnostics = false;
-    let mut input = gripsack_process::InputBuffer::new(Limits::default().input_bytes);
+    let mut input = gripsack_process::InputBuffer::new(process_limits.input_bytes);
     serde_json::to_writer(&mut input, request).map_err(|error| failure(name, error.to_string()))?;
     std::io::Write::write_all(&mut input, b"\n")?;
-    let outcome = gripsack_process::run(
-        command,
-        input.as_bytes(),
-        Limits {
-            timeout,
-            ..Limits::default()
-        },
-        |line| {
-            let line = String::from_utf8_lossy(line);
-            let Ok(message) = serde_json::from_str::<PluginMessage>(&line) else {
-                return Control::Continue;
-            };
-            match message.kind.as_str() {
-                "diagnostic" => {
-                    diagnostic_count += 1;
-                    if diagnostic_count > 1024 {
-                        too_many_diagnostics = true;
-                        return Control::Response;
-                    }
-                    if let Some(d) = message.diagnostic {
-                        if d.severity == gripsack_ir::Severity::Error {
-                            diagnostics.push(d);
-                        } else {
-                            tracing::warn!(plugin = name, code = d.code.as_ref(), "{}", d.message);
-                        }
-                    }
-                }
-                "progress" => tracing::info!(plugin = name, "{line}"),
-                "response" => {
-                    responded = true;
-                    result = message.result;
-                    if let Some(provenance) = result.as_ref().and_then(|r| r.provenance.as_ref()) {
-                        tracing::info!(plugin = name, provenance = %provenance, "provenance");
-                    }
+    let outcome = gripsack_process::run(command, input.as_bytes(), process_limits, |line| {
+        let line = String::from_utf8_lossy(line);
+        let Ok(message) = serde_json::from_str::<PluginMessage>(&line) else {
+            return Control::Continue;
+        };
+        match message.kind.as_str() {
+            "diagnostic" => {
+                diagnostic_count += 1;
+                if diagnostic_count > 1024 {
+                    too_many_diagnostics = true;
                     return Control::Response;
                 }
-                _ => {}
+                if let Some(d) = message.diagnostic {
+                    if d.severity == gripsack_ir::Severity::Error {
+                        diagnostics.push(d);
+                    } else {
+                        tracing::warn!(plugin = name, code = d.code.as_ref(), "{}", d.message);
+                    }
+                }
             }
-            Control::Continue
-        },
-    )
+            "progress" => tracing::info!(plugin = name, "{line}"),
+            "response" => {
+                responded = true;
+                result = message.result;
+                if let Some(provenance) = result.as_ref().and_then(|r| r.provenance.as_ref()) {
+                    tracing::info!(plugin = name, provenance = %provenance, "provenance");
+                }
+                return Control::Response;
+            }
+            _ => {}
+        }
+        Control::Continue
+    })
     .map_err(FetchError::Io)?;
 
     // A response is not permission to suppress input, output, deadline or
@@ -129,7 +138,7 @@ fn fetch_exchange(
         let reason = match &outcome.reason {
             StopReason::Deadline => format!(
                 "gripfetch-{name} exceeded the {}s exchange deadline",
-                timeout.as_secs()
+                process_limits.timeout.as_secs()
             ),
             StopReason::LineLimit => {
                 format!("gripfetch-{name} wrote a single line over the 1 MiB cap")

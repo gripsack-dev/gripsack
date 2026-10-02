@@ -1,0 +1,220 @@
+RUNNER_SOURCE_COMMIT=2699d79342da7c70136840828ae3455b0e3eb257
+RUNNER_SOURCE_ROOTS_DIRTY=clean (git status --porcelain -- SOURCE_ROOTS before and after direct runner: empty)
+RUNNER_COMMANDS=docker compose run --build --rm e2e uv run --locked --no-sync pytest -q test_golden.py test_workspace_contract.py test_workspace_diagnostics.py; docker compose run --build --rm test cargo test --locked -p gripsack-ir --test schema_acceptance --test workspace_v4_compat --test workspace_v5_acceptance
+RUNNER_TOOL_VERSIONS=Docker Compose v5.5.0; pytest 9.1.1; digest-pinned Rust test image
+RUNNER_INPUTS=committed strict v3/v4/v5 schema and reader corpora, embedded nine-kind TS golden, sandboxed HOME and real CLI target/diagnostic fixtures
+
+2699d79342da7c70136840828ae3455b0e3eb257
+ Image gripsack-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 525B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.6s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 ...
+
+#6 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#6 DONE 0.7s
+
+#5 [internal] load metadata for docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#5 DONE 1.0s
+
+#7 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#7 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.1s done
+#7 DONE 0.1s
+
+#8 [internal] load .dockerignore
+#8 transferring context: 139B done
+#8 DONE 0.0s
+
+#9 [e2e  4/12] ADD --checksum=sha256:394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2 https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-unknown-linux-gnu.zip /tmp/deno.zip
+#9 DONE 0.0s
+
+#10 [e2e  1/12] FROM docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+#10 resolve docker.io/library/python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 0.1s done
+#10 DONE 0.1s
+
+#11 [internal] load build context
+#11 transferring context: 126.69kB 0.1s done
+#11 DONE 0.1s
+
+#12 [e2e 12/12] WORKDIR /app/e2e
+#12 CACHED
+
+#13 exporting to image
+#13 exporting layers done
+#13 exporting manifest sha256:51d00681231105d39d838d6420487e42bf6fb6e38a24e33c54caf23d1568523e 0.0s done
+#13 exporting config sha256:eb42cabdeb4a586c0f99d89b5ae7111ce1a4fb95db7886d19ed899cfa404e764 0.0s done
+#13 exporting attestation manifest sha256:2b9b7e2a387f7a537c4917df71fdd40c8fc82df03206de008d029fc1df2824b3
+#13 exporting attestation manifest sha256:2b9b7e2a387f7a537c4917df71fdd40c8fc82df03206de008d029fc1df2824b3 0.1s done
+#13 exporting manifest list sha256:84f0fa45216ecccbd7f75625fcefa7f819bd5bd05d79254e8b65ac2f67a8f228 0.0s done
+#13 naming to docker.io/library/gripsack-e2e:latest
+#13 naming to docker.io/library/gripsack-e2e:latest done
+#13 unpacking to docker.io/library/gripsack-e2e:latest 0.0s done
+#13 DONE 0.3s
+
+#14 resolving provenance for metadata file
+#14 DONE 0.0s
+ Image gripsack-e2e Built 
+ Container gripsack-e2e-run-14b0b3b8b902 Creating 
+ Container gripsack-e2e-run-14b0b3b8b902 Created 
+.............................................                            [100%]
+45 passed in 11.74s
+
+=== STRICT v3/v4/v5 RUST SCHEMA ===
+ Image gripsack-test Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 530B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 10.04kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#4 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 139B done
+#6 DONE 0.0s
+
+#7 [builder  1/10] FROM docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce
+#7 resolve docker.io/library/rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 75.36kB 0.1s done
+#8 DONE 0.1s
+
+#9 [builder  2/10] RUN apk add --no-cache musl-dev git curl xz     && rustup component add clippy rustfmt
+#9 CACHED
+
+#10 [builder 10/10] COPY scripts ./scripts
+#10 CACHED
+
+#11 [test 1/2] RUN cargo fmt --check     && cargo clippy --locked --workspace --all-targets -- -D warnings     && cargo test --locked
+#11 CACHED
+
+#12 [builder  3/10] RUN set -e;     arch="$(uname -m)";     case "$arch" in       x86_64)  sha=3374daaf153e6f82028add5e4bf7cc2deab46537dee24f20be80df831193aeb4 ;;       aarch64) sha=35d90cee9648037eaa4c1a2649fdca9d1b9a9997b972d37be7f8629139ba1294 ;;       *) echo "unsupported arch: $arch" >&2; exit 1 ;;     esac;     curl -fsSL -o /tmp/ca.tar.xz "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.5/cargo-auditable-${arch}-unknown-linux-musl.tar.xz";     echo "$sha  /tmp/ca.tar.xz" | sha256sum -c -;     mkdir -p /tmp/ca && tar -xJf /tmp/ca.tar.xz -C /tmp/ca;     mv /tmp/ca/*/cargo-auditable /usr/local/bin/cargo-auditable;     rm -rf /tmp/ca /tmp/ca.tar.xz
+#12 CACHED
+
+#13 [builder  4/10] WORKDIR /app
+#13 CACHED
+
+#14 [builder  7/10] COPY fuzz ./fuzz
+#14 CACHED
+
+#15 [builder  6/10] COPY crates ./crates
+#15 CACHED
+
+#16 [builder  8/10] COPY schema ./schema
+#16 CACHED
+
+#17 [builder  9/10] COPY typescript ./typescript
+#17 CACHED
+
+#18 [builder  5/10] COPY Cargo.toml Cargo.lock ./
+#18 CACHED
+
+#19 [test 2/2] RUN apk add --no-cache python3     && cargo package --list -p gripsack-exec | grep -q "embedded_frontend.rs"     && python3 scripts/gen_diagnostic_registry.py --check     && python3 scripts/gen_diagnostic_registry.py --self-check     && python3 scripts/gen_frontend_embed.py --check
+#19 CACHED
+
+#20 exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:1ad770f48c3310e7cb278341230aa68c1eb8339875e530f79762c2be2515b77f done
+#20 exporting config sha256:0fd1166078325fe2c0a1073588bcf77001f41525f2a1f04cc47893d721d1baa6 done
+#20 exporting attestation manifest sha256:7af86a3f013a4259a1b8eaf9e2497d475857cdd2ef0e55c1ae21a1e966a9ba08 0.0s done
+#20 exporting manifest list sha256:26b9c1ca8c7af6e01d57f146f1a0ea07c40c2b682eae0068c73d20cf764af17e 0.0s done
+#20 naming to docker.io/library/gripsack-test:latest done
+#20 unpacking to docker.io/library/gripsack-test:latest 0.0s done
+#20 DONE 0.1s
+
+#21 resolving provenance for metadata file
+#21 DONE 0.0s
+ Image gripsack-test Built 
+ Container gripsack-test-run-042a7537a98d Creating 
+ Container gripsack-test-run-042a7537a98d Created 
+   Compiling memchr v2.8.3
+   Compiling serde_json v1.0.151
+   Compiling once_cell v1.21.4
+   Compiling smallvec v1.15.2
+   Compiling indexmap v2.14.0
+   Compiling syn v3.0.4
+   Compiling syn v2.0.119
+   Compiling parking_lot_core v0.9.12
+   Compiling parking_lot v0.12.5
+   Compiling aho-corasick v1.1.5
+   Compiling verus_state_machines_macros v0.0.0-2026-09-06-0133
+   Compiling regex-automata v0.4.18
+   Compiling serde_derive v1.0.229
+   Compiling ref-cast-impl v1.0.27
+   Compiling thiserror-impl v2.0.20
+   Compiling ref-cast v1.0.27
+   Compiling thiserror v2.0.20
+   Compiling synstructure v0.13.2
+   Compiling fancy-regex v0.19.1
+   Compiling regex v1.13.1
+   Compiling verus_builtin_macros v0.0.0-2026-09-06-0133
+   Compiling strum_macros v0.28.0
+   Compiling serde v1.0.229
+   Compiling ahash v0.8.12
+   Compiling fluent-uri v0.4.1
+   Compiling email_address v0.2.9
+   Compiling jsonschema-value v0.55.0
+   Compiling referencing v0.55.0
+   Compiling strum v0.28.0
+   Compiling jsonschema v0.55.0
+   Compiling vstd v0.0.0-2026-09-06-0133
+   Compiling gripsack-policy v0.42.0 (/app/crates/gripsack-policy)
+   Compiling gripsack-ir v0.42.0 (/app/crates/gripsack-ir)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 27.10s
+     Running tests/schema_acceptance.rs (target/debug/deps/schema_acceptance-e26e17c43a31f47c)
+
+running 3 tests
+test schema_pattern_assertions_execute ... ok
+test valid_documents_are_admitted_by_both_sides ... ok
+test rejected_documents_fail_both_sides ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/workspace_v4_compat.rs (target/debug/deps/workspace_v4_compat-c35c9f811f359518)
+
+running 3 tests
+test versions_reject_each_others_fields_and_bad_refs ... ok
+test historical_schema_and_reader_preserve_opaque_platform_strings ... ok
+test historical_recipe_execution_and_fixed_layout_never_gain_new_policy ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/workspace_v5_acceptance.rs (target/debug/deps/workspace_v5_acceptance-72a6444be37192ed)
+
+running 5 tests
+test version_dispatch_asymmetry ... ok
+test schema_authored_constraints_execute ... ok
+test valid_documents_are_admitted_by_both_sides ... ok
+test rejected_documents_fail_both_sides ... ok
+test each_output_kind_rejects_undeclared_authority_with_its_own_span ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+A1_SCHEMA_CORPUS=56 (45 real CLI/frontend + 11 Rust schema/parser tests)

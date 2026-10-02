@@ -1,0 +1,2 @@
+# Keep raw evidence inspectable without counting it as hand-written source.
+verification/reports/*.log linguist-generated=true

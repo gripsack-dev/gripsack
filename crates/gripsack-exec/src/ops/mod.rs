@@ -63,6 +63,7 @@ pub enum OpKind {
     /// Merge upsert, re-derived from the guarded live content at mutation.
     /// Inspection/report notes are computed once by the planner.
     MergeUpsert {
+        block_id: Option<store::ManagedBlockId>,
         payload: Vec<u8>,
         marker: Option<String>,
         mode: u32,

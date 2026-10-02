@@ -1,0 +1,15 @@
+RUNNER_SOURCE_COMMIT=ce3c7e062335e4749b5da7e60fc7bfe8b8d5d58c
+RUNNER_SOURCE_FINGERPRINT=872ccc2079878af8ff598d9458345e9358afc76e2712cf5eb321d5a38cbc36fc
+RUNNER_DIRTY_PATCH_SHA256=87f49c82ba6197ec783c5e6dae58645ca6d505cf04c5765f3da89272702c3f57
+RUNNER_COMMAND=sh probes.sh with one buildkit-calibration Cargo.lock package in isolated checkout
+RUNNER_EXIT=1 expected; no worker and no B0 six-case success marker
+RUNNER_TOOL_VERSIONS=Python 3.12.3 tomllib and Docker29 host
+INTENDED_PROPERTY=the native Rust dependency graph never acquires an optional builder/client package
+OBSERVED_REJECTION=native Rust lock gained builder dependencies: buildkit-calibration before worker startup
+
+===== actual baseline log =====
+--- probe1: baseline preservation
+FAIL: native Rust lock gained builder dependencies: ['buildkit-calibration']
+
+B0_LOCK_MUTANT=1
+RUNNER_COUNTS=1 intended dependency mutant rejected, zero skipped/missing tools.

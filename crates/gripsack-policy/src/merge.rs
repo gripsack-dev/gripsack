@@ -4,10 +4,11 @@
 //! the actual input/output bytes (handoff §5.5), never over an
 //! abstract "foreign text preserved" flag.
 //!
-//! `ManagedBlockSet` (gripsack-exec) supplies the spans from its
-//! parser and converts back through `String::from_utf8` — span
-//! alignment on UTF-8 boundaries is the PARSER's obligation, not the
-//! kernel's.
+//! `ManagedBlockSet` supplies spans from `scanner`. Its production line walk
+//! and open/close state prove span order, bounds and UTF-8 alignment; lexical
+//! marker recognition remains in exec.
+
+pub mod scanner;
 
 use vstd::prelude::*;
 // plain-cargo shim builds see no use of the seq lemmas; the

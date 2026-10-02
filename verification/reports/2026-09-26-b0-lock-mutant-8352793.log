@@ -1,0 +1,15 @@
+RUNNER_SOURCE_COMMIT=8352793611c9d197ad8b86053d91c1c16221b979
+RUNNER_SOURCE_FINGERPRINT=14f0153f38343774be869c1a73268ba5ea2dbca01b4d64eab9e1b7a98c4721e4
+RUNNER_DIRTY_PATCH_SHA256=87f49c82ba6197ec783c5e6dae58645ca6d505cf04c5765f3da89272702c3f57
+RUNNER_COMMAND=sh probes.sh in isolated checkout with one extra Cargo.lock [[package]] named buildkit-calibration
+RUNNER_EXIT=1 (expected), before any BuildKit worker was started; named container and cache volume are absent
+RUNNER_INPUTS=Rust native lock with one controlled otherwise-valid extra builder package; Python 3.12.3 tomllib present, exact patch SHA above; base source root 8352793611c9d197ad8b86053d91c1c16221b979 clean before mutation
+INTENDED_PROPERTY=native Rust product dependency graph must not acquire optional builder/client dependencies
+OBSERVED_REJECTION=native Rust lock gained builder dependencies: buildkit-calibration; real probe driver propagated parser rejection instead of tee success
+
+===== real probe1 driver log =====
+--- probe1: baseline preservation
+FAIL: native Rust lock gained builder dependencies: ['buildkit-calibration']
+
+B0_LOCK_MUTANT=1
+RUNNER_COUNTS=1 calibrated expected-failure execution, 1 pass by named builder dependency rejection, zero skipped/missing tools. Historical source 6542fc9 printed a baseline failure and continued.

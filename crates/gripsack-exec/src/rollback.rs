@@ -37,12 +37,12 @@ pub fn rollback_generation(
     // pending record naming the current generation re-runs its
     // intents; anything else is discarded, never run
     // same fail-closed rule as apply (0035 F5)
-    let resumed = crate::activate::resume_pending(&home, current.map(|g| g.number)).map_err(|e| {
+    let resumed = crate::activate::resume_activation(session).map_err(|e| {
         ExecError::Step {
             module: "*".into(),
             step: "activate".into(),
             detail: format!(
-                "the activation record is unreadable ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
+                "activation recovery is blocked ({e}) — inspect $GRIPSACK_HOME/activation.json; refusing to mutate over it"
             ),
         }
     })?;
@@ -54,16 +54,16 @@ pub fn rollback_generation(
         },
         message: format!("{}: {}", r.module, r.summary),
     }));
-    store::journal::begin_run(
+    let selection = store::journal::begin_run(
         &home,
+        home_path,
         current.map(|g| g.number),
         target.number,
         RunOp::Rollback,
     )?;
 
     let result = (|| {
-        let (ops, mut planned_notes) = plan(home_path, current, target)?;
-        execute(&home, home_path, &ops)?;
+        let mut planned_notes = restore_destinations(&selection, current, target)?;
         notes.append(&mut planned_notes);
         // The env profile renders INTO the generation before the flip
         // (0025 §C): activation and profile become one indivisible step.
@@ -72,26 +72,18 @@ pub fn rollback_generation(
         // 0037): a failure here compensates like any other; a crash
         // after the flip leaves the record for the next run's resume
         let intents = rollback_intents(current, target);
-        if !intents.is_empty() {
-            store::activation::write_pending(
-                &home,
-                &store::activation::PendingActivation {
-                    generation: target.number,
-                    intents,
-                },
-            )?;
-        }
+        let activation = store::activation::prepare(&home, &selection, intents)?;
         // test-only kill switch: the restore→flip crash window's e2e
         crate::util::crash_hook("after-rollback-restore");
-        store::flip(&home, home_path, target.number)?;
-        Ok(())
+        let committed = store::flip(selection)?;
+        Ok((activation, committed))
     })();
     match result {
-        Ok(()) => {
+        Ok((activation, committed)) => {
             // the flip already committed — a cleanup failure is
             // cleanup-pending, not a failed rollback (0030 §13); the
             // next reconcile finishes it
-            if let Err(e) = store::journal::commit_run(&home) {
+            if let Err(e) = store::journal::commit_run(committed) {
                 notes.push(store::journal::RecoveryNote {
                     severity: store::journal::NoteSeverity::Warn,
                     message: format!(
@@ -103,24 +95,26 @@ pub fn rollback_generation(
             // activate the TARGET generation as recorded (0037): the
             // pending record is the source (it also carries the
             // removal hooks of modules this rollback undeclared)
-            if let Some(pending) = store::activation::read_pending(&home)? {
-                for report in crate::activate::run(&pending.intents) {
-                    notes.push(store::journal::RecoveryNote {
-                        severity: if report.kind == crate::report::ReportKind::Warned {
-                            store::journal::NoteSeverity::Warn
-                        } else {
-                            store::journal::NoteSeverity::Info
-                        },
-                        message: format!("{}: {}", report.module, report.summary),
-                    });
-                }
-                if let Err(e) = store::activation::clear_pending(&home) {
-                    notes.push(store::journal::RecoveryNote {
+            if let Some(batch) = activation {
+                match crate::activate::run(batch, &home, home_path) {
+                    Ok(reports) => {
+                        for report in reports {
+                            notes.push(store::journal::RecoveryNote {
+                                severity: if report.kind == crate::report::ReportKind::Warned {
+                                    store::journal::NoteSeverity::Warn
+                                } else {
+                                    store::journal::NoteSeverity::Info
+                                },
+                                message: format!("{}: {}", report.module, report.summary),
+                            });
+                        }
+                    }
+                    Err(error) => notes.push(store::journal::RecoveryNote {
                         severity: store::journal::NoteSeverity::Warn,
                         message: format!(
-                            "activation record cleanup pending ({e}) — the next run finishes it"
+                            "activation evidence retained ({error}) — inspect hooks before retrying"
                         ),
-                    });
+                    }),
                 }
             }
             Ok(notes)
@@ -142,18 +136,18 @@ pub fn rollback_generation(
     }
 }
 
-/// `(module, entry, store_path)` per CANONICAL destination (0035 F1).
-type DestMap<'m> = BTreeMap<std::path::PathBuf, (&'m str, &'m store::DeployedEntry, &'m Path)>;
+/// Entries are keyed by physical destination AND managed-block identity.
+/// Whole-file ownership still transfers across owner renames.
+type DestMap<'m> = BTreeMap<store::OwnershipKey, (&'m str, &'m store::DeployedEntry, &'m Path)>;
 
 fn by_destination(generation: &store::Generation) -> DestMap<'_> {
-    // E111 guarantees one deployer per destination within a
-    // generation; first-wins is defensive against hand-edited
-    // manifests
     let mut map = DestMap::new();
     for (name, state) in &generation.modules {
         for entry in &state.entries {
-            map.entry(entry.key())
-                .or_insert((name.as_str(), entry, &state.store_path));
+            map.insert(
+                entry.ownership_key(name),
+                (name.as_str(), entry, &state.store_path),
+            );
         }
     }
     map
@@ -186,27 +180,26 @@ fn rollback_intents(
     intents
 }
 
-/// Plan one op per destination, with drift policy and preflight
-/// (0026 §1, §9). The decisions are the SAME planner apply and the
-/// CLI preview share (0034): rollback is plan_entry_op with the
-/// target generation's manifest as the desired state — plan_copy's
-/// three-way IS the rollback drift rule (live == target → nothing;
-/// live == current's record → restore; else → keep, drift preserved).
-fn plan(
-    home_path: &Path,
+/// Preflight every retained target before effects. Plan and execute each
+/// ownership unit in order: the next block in a shared file must observe the
+/// previous block's actual result, not reuse a stale whole-file observation.
+/// The one planner and journal retain their drift and recovery authority.
+fn restore_destinations(
+    journal: &store::journal::JournalRun<'_>,
     current: Option<&store::Generation>,
     target: &store::Generation,
-) -> Result<(Vec<crate::ops::Op>, Vec<store::journal::RecoveryNote>), ExecError> {
+) -> Result<Vec<store::journal::RecoveryNote>, ExecError> {
     use store::journal::{NoteSeverity, RecoveryNote};
+    let home = journal.home();
+    let home_path = journal.home_path();
     preflight(target)?;
     let current_by_dest = current.map(by_destination).unwrap_or_default();
     let target_by_dest = by_destination(target);
-    let dests: BTreeSet<std::path::PathBuf> = current_by_dest
+    let dests: BTreeSet<store::OwnershipKey> = current_by_dest
         .keys()
         .chain(target_by_dest.keys())
         .cloned()
         .collect();
-    let mut ops = Vec::new();
     let mut notes = Vec::new();
     for dest in dests {
         match (current_by_dest.get(&dest), target_by_dest.get(&dest)) {
@@ -217,7 +210,7 @@ fn plan(
                 if entry.preserved_drift {
                     continue;
                 }
-                match crate::ops::plan_remove_op(name, entry, sp, home_path)? {
+                match crate::ops::plan_remove_op(name, entry, sp, home)? {
                     None => {} // already gone
                     Some(op) if matches!(op.kind(), crate::ops::OpKind::Preserved) => {
                         notes.push(RecoveryNote {
@@ -228,7 +221,9 @@ fn plan(
                             ),
                         });
                     }
-                    Some(op) => ops.push(op),
+                    Some(op) => {
+                        crate::ops::execute_op(journal, op.as_executable()?)?;
+                    }
                 }
             }
             // only the target deploys it: restore, unless foreign
@@ -242,7 +237,7 @@ fn plan(
                         severity: NoteSeverity::Warn,
                         message: format!(
                             "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
-                            dest.display()
+                            dest.destination().display()
                         ),
                     }),
                     Some(op) => match op.kind() {
@@ -254,7 +249,7 @@ fn plan(
                                 op.dest().display()
                             ),
                         }),
-                        _ => ops.push(op),
+                        _ => { crate::ops::execute_op(journal, op.as_executable()?)?; }
                     },
                 }
             }
@@ -274,7 +269,7 @@ fn plan(
                         severity: NoteSeverity::Warn,
                         message: format!(
                             "skipped {} — no safe restore plan (stale manifest or unreadable merge file)",
-                            dest.display()
+                            dest.destination().display()
                         ),
                     }),
                     Some(op) => match op.kind() {
@@ -286,14 +281,14 @@ fn plan(
                                 op.dest().display()
                             ),
                         }),
-                        _ => ops.push(op),
+                        _ => { crate::ops::execute_op(journal, op.as_executable()?)?; }
                     },
                 }
             }
             (None, None) => {} // unreachable, union of keys
         }
     }
-    Ok((ops, notes))
+    Ok(notes)
 }
 
 /// 0026 §9: never discover an incomplete target mid-mutation — every
@@ -351,19 +346,6 @@ fn preflight(target: &store::Generation) -> Result<(), ExecError> {
                 });
             }
         }
-    }
-    Ok(())
-}
-
-/// Execute the plan: every mutation journaled, one transition per
-/// destination.
-fn execute(
-    home: &gripsack_fs::Dir,
-    home_path: &Path,
-    ops: &[crate::ops::Op],
-) -> Result<(), ExecError> {
-    for op in ops {
-        crate::ops::execute_op(home, home_path, op.as_executable()?)?;
     }
     Ok(())
 }

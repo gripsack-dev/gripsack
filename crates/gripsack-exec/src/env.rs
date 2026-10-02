@@ -26,7 +26,7 @@ pub fn render_profile(modules: &BTreeMap<String, store::ModuleState>) -> Option<
 /// are immutable, 0027 §8). Returns the path either way.
 pub fn render_env_file(
     home: &Path,
-    generation: u64,
+    generation: store::GenerationId,
     modules: &BTreeMap<String, store::ModuleState>,
 ) -> io::Result<PathBuf> {
     let rel = Path::new("generations")
@@ -138,7 +138,7 @@ mod tests {
                 from: "a".into(),
                 to: "~/.a".into(),
                 key: None,
-                mode: Ownership::Owned,
+                ownership: store::StoredOwnership::Legacy(Ownership::Owned),
                 vars: Default::default(),
                 hash: gripsack_store::hash::ManifestHash::from_raw("h".into()),
                 file_mode: None,
@@ -175,7 +175,7 @@ mod tests {
                 ],
             ),
         );
-        let path = render_env_file(dir.path(), 1, &modules).unwrap();
+        let path = render_env_file(dir.path(), store::GenerationId::new(1), &modules).unwrap();
         let out = std::fs::read_to_string(path).unwrap();
         assert!(out.contains("export EDITOR=\"hx\""), "{out}");
         assert!(
@@ -196,13 +196,13 @@ mod tests {
             "hx".to_string(),
             state("/gs/store/abc-hx", vec![var("A", EnvOp::Set, "1")]),
         );
-        render_env_file(dir.path(), 1, &modules).unwrap();
+        render_env_file(dir.path(), store::GenerationId::new(1), &modules).unwrap();
         // the profile is generation-local now (0025 §C)
         let path = dir.path().join("generations/1/env/profile.sh");
         assert!(path.exists());
         modules.insert("hx".to_string(), state("/gs/store/abc-hx", vec![]));
         // a generation with no contributions carries no profile
-        render_env_file(dir.path(), 2, &modules).unwrap();
+        render_env_file(dir.path(), store::GenerationId::new(2), &modules).unwrap();
         assert!(!dir.path().join("generations/2/env/profile.sh").exists());
     }
 
@@ -216,7 +216,7 @@ mod tests {
         );
         modules.insert("a".to_string(), s.clone());
         modules.insert("b".to_string(), s);
-        let path = render_env_file(dir.path(), 1, &modules).unwrap();
+        let path = render_env_file(dir.path(), store::GenerationId::new(1), &modules).unwrap();
         let out = std::fs::read_to_string(path).unwrap();
         assert_eq!(out.matches("abc-hx/bin").count(), 1, "{out}");
     }

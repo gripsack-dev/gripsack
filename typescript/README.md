@@ -29,6 +29,135 @@ export default defineEnv((ctx) => ({
 registered by import side effect — the function *returns* the
 environment, so `Inputs → Environment` is testable and cacheable.
 
+## A workspace is a function (unreleased IR v5)
+
+This workspace API requires the matching development core and SDK in
+this checkout; the published 0.42.0 pair predates it.
+
+A root `gripsack.ts` — preferred over `hosts/<name>.ts` when present —
+default-exports `defineWorkspace` and returns a `workspace({ outputs })`
+value. No hostname selection and no fake host file: the core injects
+the same facts/probes context, and the emitter produces the v5
+workspace envelope (`{ir_version: 5, host, workspace}`):
+
+```ts
+// gripsack.ts
+import { defineWorkspace, workspace, recipe, pkg, targetPlatform } from "@gripsack/core";
+import { githubRelease } from "@gripsack/core";
+
+const tools = recipe("tools", {
+  source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
+  execution: { kind: "host", access: "unconfined" },
+  output_kind: "tree",
+  target: targetPlatform({ os: "linux", arch: "x86_64" }),
+});
+
+export default defineWorkspace(() =>
+  workspace({
+    outputs: [
+      tools,
+      pkg("tools-bin", {
+        producer: "tools", // or provider(githubRelease({…})) — no synthetic recipe
+        commands: { tools: "bin/tools" },
+        target: targetPlatform({ os: "linux", arch: "x86_64" }),
+        layout: { kind: "relocatable" },
+      }),
+    ],
+  }));
+```
+
+Outputs are the nine typed kinds — `recipe`, `pkg`, `environment`,
+`task`, `schedule`, `check`, `image`, `profile`, `hook` — each a pure,
+frozen value with a mandatory source span. Duplicate catalog names
+show both declaration sites; invalid references show the referring
+declaration (and the conflicting target where applicable); dependency
+cycles show the causal path. `runBash` bodies are literal text (`${…}`
+interpolation is rejected; dynamic values enter through typed
+`env`/`argv` refs) and require a declared `packageCommand` interpreter,
+never ambient Bash. The reference identifies a package command; its
+bytes are pinned only when core resolves the lockfile. The current
+command wire has no resolved Bash digest or strict-options field yet.
+
+Object and immutable fluent command forms lower to the same command
+IR, aside from their declaration spans:
+
+```ts
+import { bash, bashBody, exec, lit, packageCommand } from "@gripsack/core";
+
+const args = exec(packageCommand("tools", "jq"))
+  .arg(lit("--sort-keys")).arg(lit("two words"))
+  .env("MODE", lit("strict")).build();
+// Same command as exec({ argv: [packageCommand("tools", "jq"),
+//   lit("--sort-keys"), lit("two words")], env: { MODE: lit("strict") } }).
+
+const script = bash(packageCommand("shell", "bash"))
+  .body(bashBody`
+    echo "$INPUT"
+  `)
+  .env("INPUT", lit("two words")).build();
+```
+
+`bashBody` captures the template's source line before dedenting, so a
+generated script error can map back to the original line. A plain
+string is supported only for single-line `runBash({ body })`; multiline
+strings without an original body location are rejected rather than
+given a false `line_map`. JavaScript evaluates template expressions
+before calling a tag: do not put `${…}` expressions in `bashBody`.
+The frontend rejects them when invoked, but this is **not** a static
+pre-evaluation check. Workspace command execution remains unavailable;
+the native file-profile path below does not execute those commands.
+
+Recipe execution is explicit: `{ kind: "host", access: "unconfined" }`
+declares host filesystem/kernel/network access, or
+`{ kind: "isolated_linux", worker: "buildkit" }` requests the later B2
+worker; neither runs during `grip check`. Native downloads are
+provider-backed packages, not a `recipe` "native" execution mode.
+Targets may declare an ABI (`gnu`/`musl` on Linux, `darwin` on macOS)
+and `minimum_os: { major, minor, patch? }`. Fixed-prefix packages use
+`{ kind: "fixed_prefix", prefix: "/opt/tool" }`; selecting one into an
+environment requires that environment's matching `prefix`.
+
+`grip check` evaluates and admits the workspace without a host file or
+`env.toml` and lists named outputs. Native **file-only profiles** now
+execute: repository files are captured once, literal/template content
+is prepared before deployment, and the same content can be linked,
+copied or merged as a managed block. `check` and `plan` prepare without
+deploying; `apply` uses the existing generations, ownership and journal;
+`rollback` restores retained bytes without rerendering current inputs.
+File-only `update` validates these inputs without writing a host lock.
+
+Package/artifact realization, environments, commands and schedules
+still reject execution with E124, naming the first unavailable output,
+its declaration span and owning milestone. Historical v4 workspaces
+remain read-only pending A5 migration. `check` never bootstraps BuildKit
+or a scheduler. `adopt` does not edit workspace TypeScript automatically:
+declare the file policy and use explicit `apply --take-over` when
+reversible adoption of a foreign tracked-copy destination is intended.
+
+Four [graduated workspaces](../examples/workspaces/) use the real SDK
+without a hostname shim or a synthetic package: [dotfiles only](../examples/workspaces/01-dotfiles/gripsack.ts),
+[an offline-staged native tool and profile](../examples/workspaces/02-native-tool/gripsack.ts),
+[a source recipe with alternate producer and typed command consumer](../examples/workspaces/03-source-built/gripsack.ts),
+and [manual plus scheduled tasks](../examples/workspaces/04-scheduled-task/gripsack.ts).
+The `ts-test` gate strictly type-checks their source, and `e2e` admits
+each through the real `grip check`. The dotfile example can be planned
+and applied natively. The other archives are executable offline
+fixtures, not claims that package or scheduler execution is available.
+
+The legacy `hosts/<name>.ts` path emits a v5 modules-compatibility
+envelope until the A5 migration; the core keeps v3 and historical v4
+readers. It is not a workspace executor.
+
+`grip check --json` emits one versioned document on stdout:
+`{version: 1, ok, diagnostics, host?, outputs?, modules?, layouts?}`.
+Diagnostics use the same codes, labels, spans and help as terminal
+output; failures exit nonzero. Readable snippets come only from files
+under the evaluated repo's pinned directory capability, at most 1 MiB
+per file. Out-of-repo labels remain visible without reading their
+contents; JSON carries diagnostic facts, not source-file bytes.
+Operational failures such as a denied trust gate still report stderr
+and may have no structured diagnostic in the JSON document.
+
 ## Probes are requests, not effects
 
 The sandbox cannot run probes, so `ctx.probe.executable(name)` /
@@ -51,9 +180,10 @@ The core spawns the embedded driver under Deno with deny-by-default
 permissions:
 
 ```
-deno run --no-remote --cached-only --no-lock \
-    --allow-read=<repo>,<inputs dir>,<frontend dir> \
-    <frontend>/src/cli.ts <repo> --inputs <path>
+deno run --no-remote --cached-only --no-lock --no-config \
+    --node-modules-dir=manual --import-map=<captured frontend>/deno.json \
+    --allow-read=<captured repo>,<captured frontend>,<optional captured pin>,<input file> \
+    <captured frontend>/src/cli.ts <captured repo> --inputs <input file>
 ```
 
 and reads one JSON line off stdout:
@@ -63,14 +193,22 @@ repo's own `node_modules/@gripsack/core` install still wins when it
 shadows the embedded copy (the deliberate-pin rule); stale pins fail
 with instructions.
 
-First eval of an unfamiliar repo is an explicit trust decision
-(`grip trust add`), recorded in `$GRIPSACK_HOME/trust.toml`.
+Approval binds canonical repository identity, the copied read set and the
+runtime/grant policy. Ignored and untracked imports count as source; edits,
+pin changes and expanded native policy require renewed approval. Every probe
+round uses the same captured bundle. `grip trust inspect --json` exposes the
+inventory and fingerprints; non-interactive `grip trust add` requires both
+`--bundle` and `--policy`. Old path-only entries and `GRIPSACK_TRUST_ALL=1`
+do not authorize evaluation.
 
 ## API overview
 
 | area | exports |
 |---|---|
 | hosts | `defineEnv`, `Env`, `EnvContext`, `EnvFn` |
+| workspace | `defineWorkspace`, `workspace`, `emitWorkspaceIr`, `WorkspaceValue`, `WorkspaceContext` |
+| outputs | `recipe`, `pkg`, `environment`, `task`, `schedule`, `check`, `image`, `profile`, `hook`, `provider`, `targetPlatform` |
+| commands/files | `exec` (object or fluent), `bash`, `bashBody`, `runBash`, `file`, `lit`, `artifact`, `hostPath`, `packageCommand`, `repoFile`, `artifactFile`, `identity`, `literalText`, `templateText`, `symlinkTo`, `trackedCopyTo`, `managedBlock`, `daily`, `weekly` |
 | modules | `module`, `define`, `Module`, `ModuleSpec`, `ModuleValue` |
 | probes | `ctx.probe` (`executable`, `file_exists`), `ProbeRequest` |
 | facts | `HostFacts` (core-injected), `when`, `hasTag`, `Condition` |

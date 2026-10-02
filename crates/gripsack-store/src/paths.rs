@@ -99,18 +99,13 @@ pub fn expand_home(to: &str) -> PathBuf {
     PathBuf::from(to)
 }
 
-/// Where a prior blob lives: `$GRIPSACK_HOME/prior/<sha256>`.
-pub fn prior_blob_path(home: &Path, sha: &str) -> PathBuf {
-    home.join("prior").join(sha)
-}
-
 /// The `current` symlink — flipping it IS activation (0001 §9.2).
 pub fn current_link(home: &Path) -> PathBuf {
     home.join("current")
 }
 
 /// Directory of one generation's profile tree.
-pub fn generation_dir(home: &Path, generation: u64) -> PathBuf {
+pub fn generation_dir(home: &Path, generation: crate::GenerationId) -> PathBuf {
     home.join(GENERATIONS_DIR).join(generation.to_string())
 }
 
@@ -210,7 +205,10 @@ mod tests {
     fn generation_layout() {
         let home = Path::new("/gs");
         assert_eq!(current_link(home), Path::new("/gs/current"));
-        assert_eq!(generation_dir(home, 42), Path::new("/gs/generations/42"));
+        assert_eq!(
+            generation_dir(home, crate::GenerationId::new(42)),
+            Path::new("/gs/generations/42")
+        );
     }
 
     #[test]

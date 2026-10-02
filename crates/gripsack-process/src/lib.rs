@@ -1,8 +1,8 @@
 //! Bounded, single-threaded Unix process supervision (Linux and macOS).
 //!
-//! `timeout` includes cleanup: the final min(timeout / 4, 2 seconds) is
-//! reserved for termination, draining and reaping. Thus Deadline can be
-//! selected before the total budget expires. The clock starts before spawn.
+//! The effective budget ends at the earlier of `timeout` and the caller's
+//! absolute `operation_deadline`. Its final min(remaining / 4, 2 seconds) is
+//! reserved for termination, draining and reaping. The clock starts before spawn.
 //! Spawn/exec, synchronous callbacks, allocation and kernel scheduling cannot
 //! be preempted here. Callbacks must return promptly. Timely SIGKILL delivery
 //! and scheduler progress are required to reap within the budget; otherwise
@@ -15,8 +15,30 @@
 //! that deliberately leave the group cannot be killed by this mechanism;
 //! their inherited pipes are closed at the deadline instead.
 
+mod deadline;
+pub use deadline::OperationDeadline;
+mod digest;
 mod exchange;
+pub use digest::Sha256Digest;
+mod error;
+pub use error::{NativeIoError, NativeIoKind};
+mod receipt;
+pub use receipt::{ByteBinding, Enforcement, ProcessDisposition, ProcessReceipt};
+mod environment;
+pub use environment::{OperatorEnvironment, ProcessRole};
+mod descriptors;
+mod exec_payload;
+mod image;
+pub use image::{ProgramIdentity, SelectedProgram};
+mod invocation;
+pub use invocation::{ActivationEnvironment, Invocation, NativeInput, NativeOutcome};
+mod confinement;
+pub use confinement::{Boundary, Ruleset, runtime_read_roots};
 mod input;
+pub mod terminal;
+pub use gripsack_policy::process_budget::{
+    FrameByteLimit, InputByteLimit, RetainedStderrLimit, StderrByteLimit, StdoutByteLimit,
+};
 pub use input::InputBuffer;
 mod lifecycle;
 mod sys;
@@ -28,6 +50,8 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+const MAX_CLEANUP_RESERVE: Duration = Duration::from_secs(2);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
     Continue,
@@ -38,24 +62,27 @@ pub enum Control {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
     pub timeout: Duration,
-    pub input_bytes: usize,
+    /// A shared operation budget may shorten, never extend, this exchange.
+    pub operation_deadline: Option<Instant>,
+    pub input_bytes: InputByteLimit,
     /// Content bytes, excluding LF. CR is ordinary content.
-    pub line_bytes: usize,
+    pub line_bytes: FrameByteLimit,
     /// Includes delimiters and bytes received after Response.
-    pub stdout_bytes: u64,
-    pub stderr_bytes: u64,
-    pub retained_stderr_bytes: usize,
+    pub stdout_bytes: StdoutByteLimit,
+    pub stderr_bytes: StderrByteLimit,
+    pub retained_stderr_bytes: RetainedStderrLimit,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Self {
             timeout: Duration::from_secs(600),
-            input_bytes: 4 * 1024 * 1024,
-            line_bytes: 1024 * 1024,
-            stdout_bytes: 16 * 1024 * 1024,
-            stderr_bytes: 16 * 1024 * 1024,
-            retained_stderr_bytes: 64 * 1024,
+            operation_deadline: None,
+            input_bytes: InputByteLimit::new(4 * 1024 * 1024),
+            line_bytes: FrameByteLimit::new(1024 * 1024),
+            stdout_bytes: StdoutByteLimit::new(16 * 1024 * 1024),
+            stderr_bytes: StderrByteLimit::new(16 * 1024 * 1024),
+            retained_stderr_bytes: RetainedStderrLimit::new(64 * 1024),
         }
     }
 }
@@ -92,6 +119,7 @@ pub struct Outcome {
     pub reason: StopReason,
     /// Last retained_stderr_bytes bytes actually read, including a cap-crossing read.
     pub stderr: Vec<u8>,
+    pub stderr_truncated: bool,
 }
 
 /// Force piped stdio and a new child process group, incrementally send input,
@@ -100,7 +128,7 @@ pub struct Outcome {
 /// Response only suppresses callbacks; input is still sent and closed normally.
 /// EPIPE means the peer declined further input, not a supervisor I/O failure.
 ///
-/// Oversized input and zero timeout do not spawn. Err is reserved for spawn
+/// Oversized input and expired budgets do not spawn. Err is reserved for spawn
 /// failure or a timeout unrepresentable by Instant. Post-spawn failures are
 /// Outcomes. The command is mutated; callers supply any arguments/environment.
 /// On leader exit, kill the remaining owned group immediately, even if its
@@ -110,36 +138,71 @@ pub fn run(
     command: &mut Command,
     input: &[u8],
     limits: Limits,
+    on_line: impl FnMut(&[u8]) -> Control,
+) -> io::Result<Outcome> {
+    supervise(command, input, limits, OutputMode::Lines, on_line)
+}
+
+/// Supervise an arbitrary byte stream without line framing or a line buffer.
+/// `line_bytes` is inapplicable; the total stdout/stderr caps, deadline,
+/// callback suppression and process-group cleanup are identical to `run`.
+pub fn run_raw(
+    command: &mut Command,
+    input: &[u8],
+    limits: Limits,
+    on_bytes: impl FnMut(&[u8]) -> Control,
+) -> io::Result<Outcome> {
+    supervise(command, input, limits, OutputMode::Raw, on_bytes)
+}
+
+#[derive(Clone, Copy)]
+enum OutputMode {
+    Lines,
+    Raw,
+}
+
+fn supervise(
+    command: &mut Command,
+    input: &[u8],
+    limits: Limits,
+    output: OutputMode,
     mut on_line: impl FnMut(&[u8]) -> Control,
 ) -> io::Result<Outcome> {
     let empty = |reason| Outcome {
         status: None,
         reason,
         stderr: Vec::new(),
+        stderr_truncated: false,
     };
-    if input.len() > limits.input_bytes {
+    let Some(input_transfer) =
+        gripsack_policy::process_budget::InputTransfer::admit(input.len(), limits.input_bytes)
+    else {
         return Ok(empty(StopReason::InputLimit));
-    }
+    };
     let start = Instant::now();
     let end = start.checked_add(limits.timeout).ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "timeout exceeds Instant range")
     })?;
-    if limits.timeout.is_zero() {
+    let end = limits
+        .operation_deadline
+        .map_or(end, |deadline| deadline.min(end));
+    let remaining = end.saturating_duration_since(start);
+    let reserve = (remaining / 4).min(MAX_CLEANUP_RESERVE);
+    let mut active_deadline = OperationDeadline::at(end - reserve);
+    if active_deadline.remaining().is_none() {
         return Ok(empty(StopReason::Deadline));
     }
-    let reserve = (limits.timeout / 4).min(Duration::from_secs(2));
-    let active_end = end - reserve;
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
-    let mut child = command.spawn()?;
+    let child = command.spawn()?;
     // Install before any post-spawn fallible operation. Child::drop does not wait.
-    let mut guard = lifecycle::Guard::new(child.id(), end);
-    let mut exchange = exchange::Exchange::new(&mut child, input, limits);
+    let (mut guard, pipes) = lifecycle::Guard::new(child, end);
+    let mut exchange = exchange::Exchange::new(pipes, input, input_transfer, limits, output);
     let reason = match exchange.configure() {
-        Ok(()) => exchange.drive(&mut guard, active_end, &mut on_line),
+        Ok(()) => exchange.drive(&mut guard, active_deadline, &mut on_line),
         Err(error) => StopReason::Io(error),
     };
     exchange.close_input();
@@ -151,9 +214,11 @@ pub fn run(
         },
         None => reason,
     };
+    let (stderr, stderr_truncated) = exchange.into_tail();
     Ok(Outcome {
         status,
         reason,
-        stderr: exchange.into_tail(),
+        stderr,
+        stderr_truncated,
     })
 }

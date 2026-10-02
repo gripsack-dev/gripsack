@@ -1,0 +1,12 @@
+Gripsack GC root-authority defect: failing-before actual CLI witness
+Date: 2026-09-27
+Scope: all files are inside a private temporary sandbox. No operator files were targeted.
+After two real applies, the store root was moved aside and replaced by a symlink to an external fixture directory. GC retention was set to one.
+This is a demonstrated failure, not a passing test or a claim about every supported filesystem.
+Fuzz: NOT RUN, owner instruction
+
+gc: pruned generations 1
+gc: collected /tmp/gripsack-gc-root-probe-zaci1z5t/.local/share/gripsack/store/foreign-directory
+28.0 B freed
+
+{"exit": 0, "external_sentinel_retained": false, "generations_before": ["1", "2", "high-water"], "generations_after": ["2", "high-water"]}
