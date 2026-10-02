@@ -2039,4 +2039,9 @@ A superseded local flow invocation accidentally included `test_golden.py`
 (four failures and one pass observed) before cancellation; it is not accepted
 as qualification. Subsequent flow invocations explicitly exclude the
 owner-waived golden replay and keep the complete persistence shard campaign.
+The owner subsequently authorized fixture emission only: the three current
+snapshots were emitted as v6 and their semantic diff inspected (tagged sources,
+ordered command steps, strict Bash options, task context, image configuration
+and canonical catalog order). The typed-command fixture accessor was migrated
+to `step.command`. That emission ran no corpus assertions or semantic mutants.
 

@@ -468,6 +468,11 @@ the original differing-mode frontend cache now builds/runs/applies the committed
 lock without update or lock mutation. Fresh Rust/flow checks cover these repairs.
 One superseded local flow invocation accidentally included golden replay before
 cancellation; §33 records that exception, not a passing qualification claim.
+The owner then authorized emission-only migration of the three IR snapshots to
+v6; their changed command/source/image shapes were inspected without corpus
+assertions. The external example cutover is reviewed separately in
+[example PR1](https://github.com/gripsack-dev/example-env-typescript/pull/1);
+the candidate canary pins its commit and exercises cold frozen Conda consumers.
 
 ## Settled rejections (all eras)
 
