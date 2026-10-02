@@ -86,7 +86,7 @@ jobs:
           tar -xzf gripsack-*-${{ matrix.target }}.tar.gz -C "$tmp"
           bin="$(find "$tmp" -type f -name grip | head -1)"
           file "$bin"
-          python3 scripts/check_native_binary.py "$bin"
+          python3 ../scripts/check_native_binary.py "$bin"
           "$bin" --version
           # fails the release if the SBOM embed is missing or the
           # shipped tree hits an advisory (plan/0022 §2)
@@ -102,7 +102,7 @@ jobs:
           bin="$(find "$tmp" -type f -name grip | head -1)"
           file "$bin"
           otool -L "$bin"
-          python3 scripts/check_native_binary.py "$bin"
+          python3 ../scripts/check_native_binary.py "$bin"
           "$bin" --version
           cargo audit bin "$bin"
 
