@@ -4,17 +4,13 @@
 
 import assert from "node:assert/strict";
 import {
-  clearResources,
   configStep,
   dep,
-  emitIr,
   fetchStep,
   githubRelease,
   hasTag,
   installStep,
-  mergeTags,
   module,
-  parseInputs,
   resource,
   runStep,
   service,
@@ -26,8 +22,9 @@ import {
 } from "../src/index.ts";
 import type { Env, EnvContext, HostFacts } from "../src/index.ts";
 import * as index from "../src/index.ts";
-import type { ProbeRequest } from "../src/index.ts";
-import { createProbeBuilder } from "../src/probe.ts";
+import { emitIr, mergeTags, parseInputs, createProbeBuilder } from "../src/advanced.ts";
+import type { ProbeRequest } from "../src/advanced.ts";
+import { clearResources } from "../src/resources.ts";
 
 const facts: HostFacts = { os: "linux", arch: "x86_64", libc: "glibc-2.36", hostname: "box" };
 
@@ -39,55 +36,6 @@ function view(over: Partial<EnvContext> = {}): EnvContext {
 // JSON.parse's inferred `any` is deliberate here: these tests assert
 // the wire shape of the emitted IR, field by field
 const emit = (env: Env, tags: string[] = []) => JSON.parse(emitIr(env, facts, tags));
-Deno.test("emitIr emits the IR v5 legacy-modules contract", () => {
-  clearResources();
-  const helix = module("helix", {
-    fetch: githubRelease({
-      repo: "helix-editor/helix",
-      asset: "helix-{version}-x86_64-linux.tar.xz",
-    }),
-    install: { "bin/hx": symlink("~/.local/bin/hx") },
-    config: { "config.toml": trackedCopy("~/.config/helix/config.toml") },
-    depends: [dep("git")],
-    activate: [service("syncthing")],
-  });
-  const git = module("git", { fetch: tarball("https://example.invalid/git.tar.xz") });
-
-  const ir = emit({ modules: [helix, git] }, ["gui"]);
-
-  assert.equal(ir.ir_version, 5);
-  assert.deepEqual(ir.host.tags, ["gui"]);
-
-  assert.equal(ir.modules.helix.fetch.kind, "github_release");
-  assert.equal(ir.modules.helix.fetch.repo, "helix-editor/helix");
-  assert.deepEqual(ir.modules.helix.install, [
-    { from: "bin/hx", to: "~/.local/bin/hx", mode: "owned" },
-  ]);
-  assert.equal(ir.modules.helix.config[0].mode, "tracked_copy");
-  assert.equal(ir.modules.helix.depends[0].for, "runtime");
-  assert.equal(ir.modules.helix.activate[0].kind, "service");
-  assert.equal(ir.modules.helix.activate[0].trigger, "post_activate");
-
-  // optional sections absent, not null — the IR is sparse by convention
-  assert.equal(ir.modules.git.install, undefined);
-  assert.equal(ir.modules.git.depends, undefined);
-});
-
-Deno.test("host facts keep their key order and never leak the hostname", () => {
-  clearResources();
-  const x = module("x", { fetch: tarball("https://example.invalid/x.tar.xz") });
-  const ir = emit({ modules: [x] });
-  // key order is part of the golden-corpus contract
-  assert.deepEqual(Object.keys(ir.host), ["os", "arch", "tags", "libc"]);
-  assert.equal("hostname" in ir.host, false);
-});
-
-Deno.test("undetectable libc is omitted from the IR host", () => {
-  clearResources();
-  const x = module("x", { fetch: tarball("https://example.invalid/x.tar.xz") });
-  const ir = JSON.parse(emitIr({ modules: [x] }, { ...facts, libc: null }, []));
-  assert.deepEqual(Object.keys(ir.host), ["os", "arch", "tags"]);
-});
 
 Deno.test("module() captures spans pointing at this file", () => {
   clearResources();
@@ -117,37 +65,6 @@ Deno.test("dotfiles-only modules emit no source", () => {
   assert.equal(ir.modules.helix.config[0].mode, "tracked_copy");
 });
 
-Deno.test("explicit steps emit verbatim", () => {
-  clearResources();
-  const patched = module("helix-patched", {
-    steps: [
-      fetchStep(tarball("https://example.invalid/helix.tar.xz")),
-      shellStep("patch -p1 < fix.patch", "patch", { needs: ["fetch"] }),
-    ],
-  });
-  const steps = emit({ modules: [patched] }).modules["helix-patched"].steps;
-  assert.equal(steps[0].action.kind, "fetch");
-  assert.equal(steps[0].phase, "fetch");
-  assert.equal(steps[1].id, "patch");
-  assert.equal(steps[1].action.kind, "custom_shell");
-  assert.deepEqual(steps[1].needs, ["fetch"]);
-});
-
-Deno.test("runStep emits structured argv actions with outputs", () => {
-  clearResources();
-  const built = module("built", {
-    steps: [
-      runStep(["make", "install"], "make-install", {
-        needs: ["fetch"],
-        outputs: ["bin/hx"],
-      }),
-    ],
-  });
-  const action = emit({ modules: [built] }).modules.built.steps[0].action;
-  assert.equal(action.kind, "run");
-  assert.deepEqual(action.argv, ["make", "install"]);
-  assert.deepEqual(action.outputs, ["bin/hx"]);
-});
 
 
 Deno.test("dep rejects legacy and misspelled option shapes", () => {

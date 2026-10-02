@@ -18,10 +18,11 @@ pub struct WorkspacePlatform {
 }
 
 impl WorkspacePlatform {
-    /// Adapt strict v5 declarations to the production policy's typed
-    /// requirement. An omitted patch is a zero floor component, not
-    /// a wildcard; the conversion never reads the checking host.
-    pub(crate) fn policy_requirement(&self) -> TargetRequirement {
+    /// Adapt declarations to the production policy's typed requirement.
+    /// An omitted patch is a zero floor component, not a wildcard; the
+    /// conversion never reads the checking host. Native consumer admission
+    /// compares the result against the evaluated host facts.
+    pub fn policy_requirement(&self) -> TargetRequirement {
         TargetRequirement {
             os: match self.os {
                 PlatformOs::Linux => TargetOs::Linux,

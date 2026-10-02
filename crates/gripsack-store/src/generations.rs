@@ -11,6 +11,8 @@
 
 mod admission;
 mod current;
+mod environment;
+pub use environment::{EnvironmentContribution, StructuredEnvironment};
 mod inventory;
 mod publication;
 mod selection;
@@ -24,7 +26,7 @@ pub(crate) use selection::{
 
 use crate::GenerationId;
 use crate::prior::Prior;
-use gripsack_ir::{EnvVar, Ownership};
+use gripsack_ir::Ownership;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -148,7 +150,7 @@ pub struct ModuleState {
     /// Environment contributions, replayed into the shell profile at
     /// activation and rollback (0001 §3.10).
     #[serde(default)]
-    pub env: Vec<EnvVar>,
+    pub env: Vec<EnvironmentContribution>,
     /// Content identity of the published tree (0014): present for
     /// content-addressed modules — store verify compares the live tree
     /// against this, no lockfile lookup.

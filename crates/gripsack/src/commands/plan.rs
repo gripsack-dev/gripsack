@@ -38,7 +38,7 @@ pub fn plan_ir(path: &Path, palette: Palette) -> ExitCode {
     ) {
         return code;
     }
-    if ir.workspace.is_some() {
+    if ir.has_workspace() {
         return native_preview(&ir, ir_source_root(path), &[], palette);
     }
     tracing::info!(modules = ir.modules.len(), "ir parsed and validated");
@@ -99,7 +99,7 @@ pub fn plan_module(path: &Path, name: &str, palette: Palette) -> ExitCode {
     ) {
         return code;
     }
-    if ir.workspace.is_some() {
+    if ir.has_workspace() {
         return native_preview(&ir, ir_source_root(path), &[name.to_owned()], palette);
     }
     if !ir.modules.contains_key(name) {

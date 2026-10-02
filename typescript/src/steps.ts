@@ -60,7 +60,7 @@ export function fetchStep(fetch: Fetch, id = "fetch", opts?: StepOpts): Step {
   if (typeof fetch !== "object" || fetch === null || typeof fetch.kind !== "string") {
     throw new TypeError(
       `fetchStep(fetch, id?) — the first argument must be a fetch spec from ` +
-        `githubRelease()/tarball()/fileFetch()/git()/brew()/pixi()/pluginFetch(); ` +
+        `githubRelease()/tarball()/fileFetch()/git()/brew()/pluginFetch(); ` +
         `got ${describe(fetch)} (arguments swapped?)`,
     );
   }

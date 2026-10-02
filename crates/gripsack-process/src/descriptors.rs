@@ -1,6 +1,6 @@
 //! Apply close-on-exec in the child, retaining only an explicitly supplied
-//! script handle. Marking rather than closing preserves Rust's private exec
-//! error pipe until its normal close-on-exec handshake.
+//! image handles and admitted coordination leases. Marking rather than closing
+//! preserves Rust's private exec error pipe until its normal exec handshake.
 #[cfg(target_os = "linux")]
 mod linux;
 use std::{io, os::fd::RawFd};
@@ -46,7 +46,11 @@ impl DescriptorPolicy {
 
     /// Only async-signal-safe descriptor syscalls execute after fork. Kernel
     /// descriptor limits must not be lowered by a privileged concurrent actor.
-    pub(crate) fn apply(&self, script: Option<RawFd>) -> io::Result<()> {
+    pub(crate) fn apply(
+        &self,
+        images: super::image::ImageDescriptors,
+        leases: [Option<RawFd>; 2],
+    ) -> io::Result<()> {
         #[cfg(target_os = "linux")]
         {
             // SAFETY: close_range with CLOEXEC changes only descriptor flags in
@@ -85,9 +89,17 @@ impl DescriptorPolicy {
                 return Err(io::Error::last_os_error());
             }
         }
-        if let Some(descriptor) = script {
-            // SAFETY: this is the retained sealed script fd, intentionally made
-            // available to the separately admitted interpreter after exec.
+        for descriptor in [
+            images.script,
+            images.loaded_executable,
+            leases[0],
+            leases[1],
+        ]
+        .into_iter()
+        .flatten()
+        {
+            // SAFETY: retained image/lease owners outlive spawn. Clearing
+            // CLOEXEC is an explicit grant, not ambient descriptor inheritance.
             if unsafe { libc::fcntl(descriptor, libc::F_SETFD, 0) } < 0 {
                 return Err(io::Error::last_os_error());
             }

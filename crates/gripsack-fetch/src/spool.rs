@@ -57,9 +57,33 @@ impl<R: Read> Read for Limited<R> {
     }
 }
 
-pub(crate) struct Download {
+pub struct Download {
     pub file: tempfile::NamedTempFile,
     pub hash: DownloadHash,
+}
+
+/// A caller's absolute operation deadline also applies to local tool mirrors.
+pub(crate) struct DeadlineReader<R> {
+    pub reader: R,
+    pub deadline: std::time::Instant,
+}
+impl<R: Read> Read for DeadlineReader<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if std::time::Instant::now() >= self.deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "tool acquisition deadline expired",
+            ));
+        }
+        let count = self.reader.read(buffer)?;
+        if std::time::Instant::now() >= self.deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "tool acquisition deadline expired",
+            ));
+        }
+        Ok(count)
+    }
 }
 
 pub(crate) fn download(reader: impl Read, limit: u64) -> io::Result<Download> {

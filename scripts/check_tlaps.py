@@ -16,7 +16,10 @@ from tlaps_source import SourceError, theorem_ranges
 ROOT = Path(__file__).resolve().parent.parent
 TLAPM = os.environ.get('TLAPM', 'tlapm')
 TLC_JAR = os.environ.get('TLC_JAR', '/tla/tla2tools.jar')
-VERSION = '7824dab'
+# Upstream re-published the mutable 1.6.0-pre release on 2026-10-01
+# (7824dab → bfa9468); see the Dockerfile tlaps stage for provenance. The
+# full induction and every calibration below must pass under this revision.
+VERSION = 'bfa9468'
 MIN_OBLIGATIONS = 301
 THEOREMS = (
     'EntryType', 'RecordImage', 'CompletedStepDurability', 'RecoveryOfEntry', 'UndoIntended',
@@ -149,6 +152,63 @@ def restore_barrier_calibration(work: Path, proved: Path) -> None:
     print('calibration: missing restore barrier has a proved violating transition and a reachable recovery-evidence loss', flush=True)
 
 
+def session_fence_calibrations(work: Path, proved: Path) -> None:
+    directory = work / 'session-fence-witness'
+    directory.mkdir()
+    shutil.copy2(proved / 'BuildSession.tla', directory / 'BuildSession.tla')
+    source = directory / 'BuildSessionFenceWitness.tla'
+    shutil.copy2(ROOT / 'specs' / source.name, source)
+    status, evidence = prove(source, work / 'session-fence-cache')
+    evidence.positive(status, 11, source, (
+        'WorkerWitnessStartsSafe', 'MissingWorkerFenceAcceptsForeignReply',
+        'ConflictWitnessStartsSafe', 'MissingConflictFenceAdmitsChangedTerminal',
+    ))
+    for config, invariant in (
+        ('build-session-stale-worker.cfg', 'ForeignRefusal'),
+        ('build-session-conflicting-replay.cfg', 'ConflictRefusal'),
+    ):
+        shutil.copy2(ROOT / 'specs/cfg' / config, directory / config)
+        result = run([
+            'java', '-Xmx1g', '-XX:+UseParallelGC', '-cp', TLC_JAR, 'tlc2.TLC',
+            '-cleanup', '-workers', '1', '-metadir', str(work / 'session-fence-states'),
+            '-config', config, 'BuildSession.tla',
+        ], directory, 120)
+        if result.returncode != 12 or f'Invariant {invariant} is violated' not in result.stdout:
+            raise EvidenceError('session fence calibration did not violate ' + invariant)
+    print(f'TLAPS_SESSION_FENCE_WITNESS={evidence.count}', flush=True)
+    print('calibration: worker identity and terminal-conflict fences have proved violating transitions and reachable counterexamples', flush=True)
+
+def worker_lease_calibrations(work: Path, proved: Path) -> None:
+    directory = work / 'worker-lease-witness'
+    directory.mkdir()
+    shutil.copy2(proved / 'WorkerLease.tla', directory / 'WorkerLease.tla')
+    source = directory / 'WorkerLeaseFenceWitness.tla'
+    shutil.copy2(ROOT / 'specs' / source.name, source)
+    status, evidence = prove(source, work / 'worker-lease-cache')
+    evidence.positive(status, 50, source, (
+        'LiveReadyStartsSafe', 'MissingStopFenceStopsWithLiveLease',
+        'MissingLeaseFenceErasesCrashEvidence',
+        'StaleEpochStateStartsSafe', 'MissingEpochFenceRetiresNewEpochRoot',
+        'ForeignOwnerStateStartsSafe', 'MissingOwnerFenceRetiresNewOwnerRoot',
+    ))
+    for index, (config, invariant) in enumerate((
+        ('worker-lease-early-stop.cfg', 'NoStopWithLiveLease'),
+        ('worker-lease-crash-wipes.cfg', 'NoSilentLeaseVanish'),
+        ('worker-lease-retire-foreign-owner.cfg', 'RetireRespectsOwner'),
+        ('worker-lease-retire-stale-epoch.cfg', 'RetireRespectsEpoch'),
+    )):
+        shutil.copy2(ROOT / 'specs' / 'cfg' / config, directory / config)
+        result = run([
+            'java', '-Xmx1g', '-XX:+UseParallelGC', '-cp', TLC_JAR, 'tlc2.TLC',
+            '-cleanup', '-workers', '1', '-metadir', str(work / f'worker-lease-states-{index}'),
+            '-config', config, 'WorkerLease.tla',
+        ], directory, 180)
+        if result.returncode != 12 or f'Invariant {invariant} is violated' not in result.stdout:
+            raise EvidenceError('worker lease calibration did not violate ' + invariant)
+    print(f'TLAPS_WORKER_LEASE_WITNESS={evidence.count}', flush=True)
+    print('calibration: worker stop/crash/owner/epoch fences have proved violating transitions and reachable counterexamples', flush=True)
+
+
 def main() -> None:
     version = subprocess.check_output([TLAPM, '--version'], text=True).strip()
     if version != VERSION:
@@ -212,6 +272,8 @@ def main() -> None:
         proved, _ = generalized_proofs(work)
         catalog_calibrations(work, proved)
         restore_barrier_calibration(work, proved)
+        session_fence_calibrations(work, proved)
+        worker_lease_calibrations(work, proved)
         print('tlaps gate: OK', flush=True)
 
 

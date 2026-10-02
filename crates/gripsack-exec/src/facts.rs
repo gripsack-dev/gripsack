@@ -3,6 +3,8 @@
 //! self-detects — one detector feeding one frontend is what deleted
 //! the dual-detection bug class by construction.
 
+mod platform_release;
+pub(crate) use platform_release::platform_release;
 use std::sync::LazyLock;
 
 /// What the core can observe about the host. `libc` is `None` when

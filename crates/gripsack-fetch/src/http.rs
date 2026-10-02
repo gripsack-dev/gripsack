@@ -10,6 +10,7 @@ mod roots;
 pub(crate) use failure::safe_location;
 pub use failure::{HttpFailure, HttpFailureKind};
 pub(crate) use request::RequestKind;
+pub(crate) use retry::OPERATION_TIMEOUT;
 pub use retry::RetryStopReason;
 
 use parking_lot::Mutex;
@@ -18,6 +19,7 @@ use std::time::Duration;
 
 pub(crate) struct Client {
     agents: OnceLock<(ureq::Agent, ureq::Agent)>,
+    tool_agents: OnceLock<(ureq::Agent, ureq::Agent)>,
     certificates: roots::Locations,
     proxy: Option<ureq::Proxy>,
     policy: Policy,
@@ -148,6 +150,7 @@ impl Client {
         });
         Self {
             agents: OnceLock::new(),
+            tool_agents: OnceLock::new(),
             certificates: roots::Locations::capture(build_env),
             proxy,
             policy: Policy::from_env(build_env),
@@ -156,11 +159,21 @@ impl Client {
     }
 
     fn request(&self, url: &str) -> ureq::Request {
-        let (direct, proxied) = self.agents.get_or_init(|| {
+        self.request_with_tls_policy(url, false)
+    }
+
+    fn request_with_tls_policy(&self, url: &str, https_only: bool) -> ureq::Request {
+        let agents = if https_only {
+            &self.tool_agents
+        } else {
+            &self.agents
+        };
+        let (direct, proxied) = agents.get_or_init(|| {
             let tls = tls_config(&self.certificates);
             let builder = || {
                 ureq::AgentBuilder::new()
                     .tls_config(Arc::clone(&tls))
+                    .https_only(https_only)
                     .timeout_connect(Duration::from_secs(30))
                     .timeout(Duration::from_secs(600))
                     .try_proxy_from_env(false)

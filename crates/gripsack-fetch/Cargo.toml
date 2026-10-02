@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 flate2 = "1"
-xz2 = "0.1"
+xz2 = { version = "0.1", features = ["static"] }
 zip = { version = "8", default-features = false, features = ["deflate", "bzip2", "zstd"] }
 gripsack-ir.workspace = true
 gripsack-fs.workspace = true

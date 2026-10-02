@@ -160,20 +160,19 @@ pub fn inspect_known(
     host: &HostName,
     limits: gripsack_fetch::FetchLimits,
 ) -> Result<Vec<(String, LayoutEvidence)>, ExecError> {
-    let repo = repository.contents();
-    if let Some(workspace) = &ir.workspace {
+    if ir.has_workspace() {
         if ir
             .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
             .is_none()
         {
-            return crate::workspace::NativeProfiles::prepare(
-                workspace,
-                repo,
+            return crate::workspace::NativeProfiles::prepare_preview(
+                ir,
+                repository,
                 &gripsack_store::gripsack_home(),
                 &[],
                 limits,
             )
-            .map(|native| native.layout_evidence());
+            .map(|native| native.map_or_else(Vec::new, |native| native.layout_evidence()));
         }
         // Read-only catalog admission never realizes unsupported packages/tasks.
         return Ok(Vec::new());

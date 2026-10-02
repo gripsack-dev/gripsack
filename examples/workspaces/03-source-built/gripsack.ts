@@ -22,10 +22,7 @@ export default defineWorkspace((ctx) => {
     target: linux, layout: { kind: "relocatable" },
   });
   const dev = environment("dev", { packages: ["greeter"], target: linux });
-  const smoke = task("smoke", {
-    run: exec({ argv: [packageCommand("greeter", "greet"), lit("hello")] }),
-    environment: "dev",
-  });
+  const smoke = task("smoke", { steps: [exec({ argv: [packageCommand("greeter", "greet"), lit("hello")] })], environment: "dev", });
   // A1 admits source/consumer wiring; B3 and A2-P own realization/run.
   return workspace({ outputs: [build, greeter, dev, smoke] });
 });

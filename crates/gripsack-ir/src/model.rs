@@ -18,22 +18,25 @@ pub struct Ir {
     /// `default` lets workspace-only envelopes omit it.
     #[serde(default)]
     pub modules: BTreeMap<String, Module>,
-    /// Current v5 typed workspace. The v4 historical wire remains a
-    /// separate read-only value; no old execution/layout meaning is
-    /// reinterpreted by a v5 executor.
+    /// Current v5 typed workspace — the retained strict v5 reader; the
+    /// live native-v5-profile path consumes it. v6 declarations never
+    /// land here (plan/0052 §1.2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<crate::workspace::Workspace>,
     #[serde(skip)]
     pub workspace_v4: Option<crate::legacy_v4::LegacyWorkspaceV4>,
+    /// Current v6 typed workspace (schema/ir/v6.json) — the frontend
+    /// writer. Deserialized only by the version dispatch in parse.rs,
+    /// never by the retained v5 reader.
+    #[serde(skip)]
+    pub workspace_v6: Option<crate::workspace_v6::WorkspaceV6>,
 }
 
 impl Ir {
     pub fn has_workspace(&self) -> bool {
-        self.workspace.is_some() || self.workspace_v4.is_some()
+        self.workspace.is_some() || self.workspace_v4.is_some() || self.workspace_v6.is_some()
     }
-
-    /// Native file profiles use the existing lifecycle. Unsupported workspace
-    /// capabilities are refused before CLI or direct executor effects.
+    /// Missing capabilities are refused before CLI or direct executor effects.
     pub fn workspace_execution_error(
         &self,
         operation: crate::workspace::WorkspaceOperation,
@@ -48,17 +51,32 @@ impl Ir {
 impl Serialize for Ir {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::{Error as _, SerializeStruct};
-        if self.workspace.is_some() && self.workspace_v4.is_some() {
-            return Err(S::Error::custom("both v4 and v5 workspaces present"));
+        if [
+            self.workspace.is_some(),
+            self.workspace_v4.is_some(),
+            self.workspace_v6.is_some(),
+        ]
+        .into_iter()
+        .filter(|present| *present)
+        .count()
+            > 1
+        {
+            return Err(S::Error::custom("multiple versioned workspaces present"));
         }
         if self.workspace_v4.is_some() && self.ir_version != crate::parse::WORKSPACE_V4_VERSION {
             return Err(S::Error::custom(
                 "historical workspace requires ir_version 4",
             ));
         }
-        if self.workspace.is_some() && self.ir_version != crate::parse::IR_VERSION {
+        if self.workspace.is_some() && self.ir_version != crate::parse::WORKSPACE_V5_VERSION {
+            return Err(S::Error::custom("retained workspace requires ir_version 5"));
+        }
+        if self.workspace_v6.is_some() && self.ir_version != crate::parse::IR_VERSION {
+            return Err(S::Error::custom("current workspace requires ir_version 6"));
+        }
+        if self.has_workspace() && !self.modules.is_empty() {
             return Err(S::Error::custom(
-                "typed workspace requires the current IR version",
+                "workspace and legacy modules are mutually exclusive",
             ));
         }
         let omit_modules = self.has_workspace() && self.modules.is_empty();
@@ -81,7 +99,9 @@ impl Serialize for Ir {
         if !omit_modules {
             state.serialize_field("modules", &self.modules)?;
         }
-        if let Some(workspace) = &self.workspace_v4 {
+        if let Some(workspace) = &self.workspace_v6 {
+            state.serialize_field("workspace", workspace)?;
+        } else if let Some(workspace) = &self.workspace_v4 {
             state.serialize_field("workspace", workspace)?;
         } else if let Some(workspace) = &self.workspace {
             state.serialize_field("workspace", workspace)?;

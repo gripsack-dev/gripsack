@@ -1,0 +1,124 @@
+// Independent decoding surface for BuildKit v0.33.0 solver/pb/ops.proto.
+// Field numbers and wire types match upstream. Unsupported fields remain
+// unknown fields and MUST be rejected recursively by the Rust checker.
+// Upstream schema: https://github.com/moby/buildkit/blob/v0.33.0/solver/pb/ops.proto
+syntax = "proto3";
+package gripsack.llb;
+
+message Definition {
+  repeated bytes def = 1;
+  repeated MetadataEntry metadata = 2;
+  Source source = 3;
+}
+// Explicit map-entry messages preserve unknown fields and duplicate keys.
+// The wire is identical to protobuf maps; the checker admits each entry.
+message MetadataEntry { string key = 1; OpMetadata value = 2; }
+message StringEntry { string key = 1; string value = 2; }
+message CapabilityEntry { string key = 1; bool value = 2; }
+// Upstream emits empty location entries even without source annotations.
+// Nonempty source payloads remain unsupported and visible as unknown fields.
+message Source { repeated SourceLocationEntry locations = 1; }
+message SourceLocationEntry { string key = 1; EmptyLocations value = 2; }
+message EmptyLocations {}
+message Op {
+  repeated Input inputs = 1;
+  oneof op {
+    ExecOp exec = 2;
+    SourceOp source = 3;
+    FileOp file = 4;
+  }
+  Platform platform = 10;
+  WorkerConstraints constraints = 11;
+}
+message Input { string digest = 1; int64 index = 2; }
+message Platform {
+  string architecture = 1;
+  string os = 2;
+  string variant = 3;
+  string os_version = 4;
+  repeated string os_features = 5;
+}
+message WorkerConstraints { repeated string filter = 1; }
+message ExecOp {
+  Meta meta = 1;
+  repeated Mount mounts = 2;
+  int32 network = 3;
+  int32 security = 4;
+}
+message Meta {
+  repeated string args = 1;
+  repeated string env = 2;
+  string cwd = 3;
+  string user = 4;
+  string hostname = 7;
+  bool remove_mount_stubs_recursive = 11;
+  repeated int32 valid_exit_codes = 12;
+}
+message Mount {
+  int64 input = 1;
+  string selector = 2;
+  string dest = 3;
+  int64 output = 4;
+  bool readonly = 5;
+  int32 mount_type = 6;
+  string result_id = 23;
+  int32 content_cache = 24;
+}
+message SourceOp {
+  string identifier = 1;
+  repeated StringEntry attrs = 2;
+}
+message OpMetadata {
+  bool ignore_cache = 1;
+  repeated StringEntry description = 2;
+  repeated CapabilityEntry caps = 5;
+}
+message FileOp { repeated FileAction actions = 2; }
+message FileAction {
+  int64 input = 1;
+  int64 secondary_input = 2;
+  int64 output = 3;
+  oneof action {
+    FileActionCopy copy = 4;
+    FileActionMkFile mkfile = 5;
+    FileActionMkDir mkdir = 6;
+  }
+}
+message FileActionCopy {
+  string src = 1;
+  string dest = 2;
+  ChownOpt owner = 3;
+  int32 mode = 4;
+  bool follow_symlink = 5;
+  bool dir_copy_contents = 6;
+  bool attempt_unpack_docker_compatibility = 7;
+  bool create_dest_path = 8;
+  bool allow_wildcard = 9;
+  bool allow_empty_wildcard = 10;
+  int64 timestamp = 11;
+  repeated string include_patterns = 12;
+  repeated string exclude_patterns = 13;
+  bool always_replace_existing_dest_paths = 14;
+  string mode_str = 15;
+  repeated string required_paths = 16;
+}
+message FileActionMkFile {
+  string path = 1;
+  int32 mode = 2;
+  bytes data = 3;
+  int64 timestamp = 5;
+}
+message FileActionMkDir {
+  string path = 1;
+  int32 mode = 2;
+  bool make_parents = 3;
+  int64 timestamp = 5;
+}
+message ChownOpt {
+  UserOpt user = 1;
+  UserOpt group = 2;
+}
+message UserOpt {
+  // Named-user lookup is deliberately unsupported; field 1 remains unknown.
+  oneof user { uint32 by_id = 2; }
+}

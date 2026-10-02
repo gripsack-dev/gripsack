@@ -1,4 +1,4 @@
-/** v5 immutable exec/runBash commands, typed arguments and dedent maps. */
+/** Immutable exec/runBash commands, typed arguments and dedent maps. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
@@ -15,6 +15,7 @@ import type {
   WorkspacePackageCommand,
   WorkspacePath,
   WorkspaceRunBashCommand,
+  WorkspaceProductionPath,
 } from "./ir.ts";
 import {
   asArg,
@@ -24,6 +25,7 @@ import {
   asRecord,
   asSelector,
   asSpan,
+  asSha256,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
@@ -46,6 +48,16 @@ export function artifact(output: string, selector: string): WorkspaceArtifactRef
   });
 }
 
+/** Select an immutable source path inside the enclosing producer. */
+export function sourcePath(selector = "."): WorkspaceProductionPath {
+  return freezeDeep({ kind: "source", selector: asSelector(selector, "sourcePath(selector)") });
+}
+
+/** Select writable staging, never an arbitrary live host destination. */
+export function outputPath(selector = "."): WorkspaceProductionPath {
+  return freezeDeep({ kind: "output", selector: asSelector(selector, "outputPath(selector)") });
+}
+
 /** A host filesystem path (command cwd only — never an argv value). */
 export function hostPath(path: string): WorkspaceHostPath {
   return freezeDeep({ kind: "host", path: asName(path, "hostPath(path)") });
@@ -53,11 +65,12 @@ export function hostPath(path: string): WorkspaceHostPath {
 
 /** A command provided by a declared package: `packageCommand("bash",
  *  "bash")` names the `bash` command of the `bash` package output. */
-export function packageCommand(pkg: string, command: string): WorkspacePackageCommand {
+export function packageCommand(pkg: string, command: string, sha256?: string): WorkspacePackageCommand {
   return freezeDeep({
     kind: "package_command",
     package: asName(pkg, "packageCommand(package)"),
     command: asName(command, "packageCommand(command)"),
+    ...(sha256 !== undefined ? { sha256: asSha256(sha256, "packageCommand(sha256)") } : {}),
   });
 }
 
@@ -103,7 +116,7 @@ export function exec(spec: ExecSpec | WorkspaceArg): WorkspaceExecCommand | Exec
   }
   rejectUnknownFields(what, value, ["argv", "env", "cwd", "span"]);
   const fields = spec as ExecSpec;
-  if (!Array.isArray(fields.argv)) throw new Error(`${what}: argv must be an array`);
+  if (!Array.isArray(fields.argv) || fields.argv.length === 0) throw new Error(`${what}: argv must contain an executable argument`);
   const span = nodeSpan(fields.span, what);
   const argv = fields.argv.map((a, i) => asArg(a, `${what}: argv[${i}]`));
   const env = asEnv(fields.env, `${what}: env`);
@@ -229,6 +242,7 @@ export function runBash(spec: RunBashSpec): WorkspaceRunBashCommand {
     kind: "run_bash",
     span,
     interpreter,
+    options: ["-e", "-u", "-o", "pipefail"],
     body: text,
     ...(env ? { env } : {}),
     ...(spec.cwd !== undefined ? { cwd: asPath(spec.cwd, `${what}: cwd`) } : {}),

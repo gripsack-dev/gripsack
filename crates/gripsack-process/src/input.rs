@@ -19,6 +19,11 @@ impl InputBuffer {
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }
+    /// Transfer the already bounded request without copying it into a second
+    /// allocation. Framed callers can fill their reserved header afterward.
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
 }
 
 impl Write for InputBuffer {

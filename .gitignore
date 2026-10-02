@@ -9,5 +9,15 @@ demos/out/
 /repro/
 /fuzz/target/
 /fuzz/artifacts/
-/specs/states/
-/specs/*TTrace*
+/tools/conda-helper/target/
+/persistence-reports/
+
+# Generated verification output is not source or durable evidence.
+# New runner reports require deliberate admission; see verification/reports/README.md.
+*.log
+.verus-log/
+/specs/**/states/
+/specs/**/*TTrace*
+/specs/**/*.tlaps/
+/specs/**/*.out
+*.hprof

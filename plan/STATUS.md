@@ -399,6 +399,37 @@ model-to-Rust refinement or physical-storage guarantee is inferred.
   containment theorem; required PR CI at the evidence head `23d4940`
   later passed (run 36257568636).
 
+## Unreleased workspace / BuildKit integration
+
+`feat/workspace-buildkit` isolates this work from the 0.43 candidate.
+Plan 0052 §33 records the strict v6 writer, semantic pin/lock identities and
+ordinary/advanced SDK split. Development checks passed **57 frontend/driver
+tests**, **11 v6 Rust admission tests**, and a compiled installed-SDK plus
+deliberate-pin driver smoke. The Linux `grip build --bridge` path also passed a
+real whole-subgraph smoke: a compiled tool feeds another recipe, a required check
+gates export, native execution survives builder cache removal/GC, and a second
+build reuses retained outputs without a helper. No generation was created.
+This does not close A1/B, optional-helper provisioning, retained-build recovery,
+native package/image consumers, Mac workers or proof/platform/release gates.
+No fuzz or corpus replay was run.
+The root/deliberate-pin SDK cutover now exposes `pixi.fromLock` consistently
+with `conda.environment`; the old single-package constructor is removed.
+Its real isolated Deno authoring smoke passed. Coherent Conda materialization,
+native/image consumers and native Mac qualification remain separate gates.
+Subsequent §33 evidence now includes real native project/task/shell/profile
+consumers, retained Python/NumPy generations, independent read-only OCI
+execution and clean image reproduction. The Linux x64 Conda helper has a
+measured two-build pin and passed cold/warm/corruption/retained-use CLI checks.
+The final rebuilt Rust/helper gate, TLC model gate and TLAPS induction passed.
+Linux x64/ARM64 and Mac ARM64 helper complete-table reproducibility/dependency/
+protocol qualification passed in run36974791863 at `f1b6984`. The owner explicitly
+deferred the Mac VZ and full coherent Mac Conda runtime campaigns under
+`MAC-NATIVE-QUAL-2026-10-02` (plan/0048 §9); hosted Mac non-VM tests stay enabled.
+The Mac runtime gaps remain unqualified, not blocking Linux integration under
+that exception. The complete rebuilt Verus gate also passed: **444/0** policy,
+**30/0** actual collector, **92+4** calibrated mutations and **19** evidence
+negatives. Full flow and release gates remain open. No raw prover output was added.
+
 ## Settled rejections (all eras)
 
 - **TOML/data-format frontend** — five times. TypeScript is the

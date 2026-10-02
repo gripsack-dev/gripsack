@@ -34,6 +34,11 @@ pub(super) fn validate(
                 "module {name:?}: build-only state contains deployment effects"
             )));
         }
+        if state.env.iter().any(|value| !value.valid_structured()) {
+            return Err(invalid(format!(
+                "module {name:?}: invalid structured environment contribution"
+            )));
+        }
         crate::paths::validate_store_root(home, &state.store_path)
             .map_err(|error| invalid(format!("module {name:?}: {error}")))?;
         for path in &state.build_closure {

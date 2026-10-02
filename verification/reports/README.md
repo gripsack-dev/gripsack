@@ -10,6 +10,24 @@ For current missing gates, prerequisites, commands and the scoped owner
 fuzz/replay exception, use [the release handoff](../release-handoff.md).
 Historical passing logs below do not close that outstanding work.
 
+## Artifact retention
+
+- Generated run logs, TLC state directories and `TTrace` exports, TLAPS caches,
+  Verus query logs and JVM heap dumps are ignored. Keep `.tla` sources and `.cfg`
+  counterexample inputs, not generated traces or fingerprint caches.
+- Do not archive whole CI/build/prover console dumps by default. Keep scratch
+  output outside the checkout and cite the CI job; admit a repo-local report only
+  when a maintained evidence claim requires its actual bytes. Prefer bounded
+  machine-readable receipts that satisfy the evidence checker.
+- Existing reports remain byte-for-byte intact: the delivery ledger and proof
+  history cite their SHA-256 values. Being historical does not make them current
+  release evidence. Removing one requires migrating its references and preserving
+  the audit trail, not silently discarding a checksum-bound report.
+- `.gitattributes` marks archived logs as generated for source statistics and
+  default diff presentation; their contents remain inspectable and checked.
+  New `.log` reports are ignored even here, so adding one requires an intentional
+  exception after reviewing its necessity and evidence bindings.
+
 ## Binding statement (honest limits)
 
 - File mtimes (2026-09-24 08:14–08:56 BST = 07:14–07:56 UTC) are consistent with the

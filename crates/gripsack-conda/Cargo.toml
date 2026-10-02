@@ -1,0 +1,29 @@
+[package]
+name = "gripsack-conda"
+description = "Canonical Conda lock admission and helper protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# The core shares Rattler's canonical MatchSpec/record parser, not a second
+# partial grammar. Solver, networking and installation stay helper-only.
+
+[dependencies]
+gripsack-ir.workspace = true
+gripsack-fetch.workspace = true
+gripsack-fs.workspace = true
+gripsack-process.workspace = true
+gripsack-policy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rattler_conda_types = { version = "0.55", default-features = false }
+rattler_digest = { version = "=2.0.0", default-features = false }
+jiff = { version = "0.2", default-features = false, features = ["std"] }
+archspec = "0.2"
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"
+libc = "0.2"

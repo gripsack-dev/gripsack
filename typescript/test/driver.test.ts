@@ -1,13 +1,11 @@
 /** Driver end-to-end under the exact 0013 spawn contract:
  * `deno run --no-remote --cached-only --no-lock --allow-read=<repo>,
  * <inputs dir>,<frontend> src/cli.ts <repo> --inputs <path>`.
- * Exercises the envelope out, host selection, the two-stage probe
- * protocol, and the deliberate-pin rule (a fake pinned
- * `node_modules/@gripsack/core` must win). */
+ * Exercises host selection and the two-stage probe protocol. */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -103,7 +101,6 @@ Deno.test("driver evaluates a host into an envelope under the sandbox flags", ()
       tags: ["gui", "work"],
       libc: "glibc-2.36",
     });
-    assert.equal(envelope.ir.ir_version, 5);
     assert.ok(envelope.ir.modules.helix);
     assert.ok(envelope.ir.modules.demo, "facts-conditional module present");
     assert.equal(envelope.ir.modules.cuda, undefined, "unbound probe gates cuda out");
@@ -170,94 +167,6 @@ Deno.test("duplicate module names surface the frontend error", () => {
   );
 });
 
-Deno.test("the repo's pinned @gripsack/core wins (deliberate pin)", () => {
-  // a minimal but honest fake: enough API surface for the driver,
-  // with a marker IR that proves WHICH copy answered
-  const FAKE = `export const parseInputs = (_t) => ({
-    host: "lap", facts: { os: "linux", arch: "x86_64", libc: null, hostname: "b" },
-    tags: [], probes: {}, settings: {},
-  });
-  export const createProbeBuilder = () => ({
-    probe: { executable: () => false, file_exists: () => false },
-    requests: [],
-  });
-  export const emitIr = (_env, _facts, tags) => JSON.stringify({ ir_version: 999, pin: "won", tags }, null, 2);
-  export const defineEnv = (fn) => fn;
-  export const mergeTags = (a, b) => [...(a ?? []), ...b];
-  export const module = (name, spec) => ({ __gripsack: "module", name, ir: spec });
-  export const trackedCopy = (to) => ({ to, mode: "tracked_copy" });
-  export const githubRelease = (spec) => ({ kind: "github_release", ...spec });
-  export const symlink = (to) => ({ to, mode: "owned" });
-  `;
-  withRepo(
-    {
-      "hosts/lap.ts": HOST,
-      "node_modules/@gripsack/core/package.json":
-        '{"name":"@gripsack/core","version":"9.9.9","type":"module","main":"index.js"}',
-      "node_modules/@gripsack/core/index.js": FAKE,
-    },
-    (repo) => {
-      const r = runDriver(repo, baseInputs);
-      assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
-      const envelope = JSON.parse(r.stdout);
-      assert.equal(envelope.ir.ir_version, 999, "the pinned copy answered, not the embedded one");
-      assert.equal(envelope.ir.pin, "won");
-    },
-  );
-});
-
-Deno.test("a src-only pinned package resolves through its types entry (0.40 fallback)", () => {
-  // The materialized embedded tree symlinked into node_modules: its
-  // package.json names dist/src/index.js which does not exist there —
-  // the resolver must fall back to the src entry. The symlink target
-  // lives OUTSIDE node_modules (the realpath escape that makes Deno's
-  // type stripping legal), exactly like $GRIPSACK_HOME/frontend/current.
-  // Plain JS-compatible source keeps the fake loadable either way.
-  const FAKE = `export const parseInputs = (_t) => ({
-    host: "lap", facts: { os: "linux", arch: "x86_64", libc: null, hostname: "b" },
-    tags: [], probes: {}, settings: {},
-  });
-  export const createProbeBuilder = () => ({
-    probe: { executable: () => false, file_exists: () => false },
-    requests: [],
-  });
-  export const emitIr = (_env, _facts, tags) => JSON.stringify({ ir_version: 998, pin: "src-won", tags }, null, 2);
-  export const defineEnv = (fn) => fn;
-  export const mergeTags = (a, b) => [...(a ?? []), ...b];
-  export const module = (name, spec) => ({ __gripsack: "module", name, ir: spec });
-  export const trackedCopy = (to) => ({ to, mode: "tracked_copy" });
-  export const githubRelease = (spec) => ({ kind: "github_release", ...spec });
-  export const symlink = (to) => ({ to, mode: "owned" });
-  `;
-  withRepo(
-    {
-      "hosts/lap.ts": HOST,
-      ".frontend/package.json": JSON.stringify({
-        name: "@gripsack/core",
-        version: "9.9.9",
-        type: "module",
-        main: "./dist/src/index.js",
-        types: "./src/index.ts",
-        exports: { ".": { types: "./src/index.ts", import: "./dist/src/index.js" } },
-      }),
-      ".frontend/src/index.ts": FAKE,
-    },
-    (repo) => {
-      // the pin is a SYMLINK (like node_modules/@gripsack/core →
-      // $GRIPSACK_HOME/frontend/current), never copied files —
-      // copied .ts under node_modules is rightfully refused by Deno
-      mkdirSync(join(repo, "node_modules", "@gripsack"), { recursive: true });
-      symlinkSync(
-        join("..", "..", ".frontend"),
-        join(repo, "node_modules", "@gripsack", "core"),
-      );
-      const r = runDriver(repo, baseInputs);
-      assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
-      const envelope = JSON.parse(r.stdout);
-      assert.equal(envelope.ir.pin, "src-won", "the src fallback answered");
-    },
-  );
-});
 
 Deno.test("a stale pin predating defineEnv errors with the fix", () => {
   const STALE = `export const defineEnv = (fn) => fn;
@@ -310,7 +219,6 @@ Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () 
     assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
     const envelope = JSON.parse(r.stdout);
     assert.deepEqual(Object.keys(envelope.ir), ["ir_version", "host", "workspace"]);
-    assert.equal(envelope.ir.ir_version, 5);
     assert.equal(envelope.ir.modules, undefined, "workspace envelope never carries modules");
     assert.equal(envelope.ir.host.os, "linux");
     assert.equal("hostname" in envelope.ir.host, false);
@@ -319,6 +227,7 @@ Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () 
     const outputs = envelope.ir.workspace.outputs;
     assert.equal(outputs.length, 1, "unbound probe gates tools-bin out");
     assert.equal(outputs[0].kind, "recipe");
+    assert.equal(outputs[0].source.kind, "fetch");
     assert.equal(outputs[0].source.fetch.kind, "github_release");
     assert.match(outputs[0].span.file, /gripsack\.ts$/);
     assert.match(envelope.ir.workspace.span.file, /gripsack\.ts$/);

@@ -1,145 +1,105 @@
-// The production bridge entrypoint. Today it speaks the full protocol
-// over stdio and is deliberately FAIL-CLOSED on Submit: no BuildKit
-// client is linked into the binary yet, so a submitted session is
-// accepted, fenced and terminally rejected — never a fake success.
-// The B0-qualified client/lowering packages attach here in later B1/B2
-// slices; nothing else about the loop changes when they do.
+// The internal bridge has two bounded, single-attempt commands: pure lowering
+// and exact-byte execution. It is not a TypeScript frontend or package manager.
 package main
 
 import (
+	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
-	"log"
+	"math"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"gripsack.dev/buildkit-bridge/client"
+	"gripsack.dev/buildkit-bridge/lower"
 	"gripsack.dev/buildkit-bridge/protocol"
 )
 
-// serve drives one framed conversation: strict decode of every
-// core→bridge frame, one fence gate per session, exactly one terminal
-// per session, bounded logs.
-func serve(in io.Reader, out io.Writer) error {
-	gates := map[protocol.SessionID]*protocol.EventGate{}
-	negotiated := false
-	for {
-		message, err := protocol.ReadFrame[protocol.ToBridge](in)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return fmt.Errorf("reading a core frame: %w", err)
-		}
-		switch {
-		case message.Negotiate != nil:
-			if negotiated {
-				return errors.New("double negotiation: the protocol negotiates exactly once")
-			}
-			if message.Negotiate.ProtocolVersion != protocol.ProtocolVersion {
-				return fmt.Errorf(
-					"core speaks protocol %d; this bridge speaks %d exactly",
-					message.Negotiate.ProtocolVersion, protocol.ProtocolVersion)
-			}
-			negotiated = true
-			reply := protocol.FromBridge{NegotiateOK: &protocol.NegotiateOK{
-				ProtocolVersion: protocol.ProtocolVersion,
-				DaemonVersion:   "standalone (no buildkit client linked)",
-				Capabilities:    []string{"protocol.v1"},
-			}}
-			if err := writeFrame(out, reply); err != nil {
-				return err
-			}
-		case message.Submit != nil:
-			if !negotiated {
-				return errors.New("submit before negotiation")
-			}
-			session := message.Submit.Session
-			if err := session.Validate(); err != nil {
-				return err
-			}
-			if err := message.Submit.Definition.Validate(); err != nil {
-				return err
-			}
-			if err := message.Submit.Exporter.Validate(); err != nil {
-				return err
-			}
-			if _, exists := gates[session]; exists {
-				return fmt.Errorf("session %q submitted twice", session)
-			}
-			const epoch = 1
-			gate := protocol.NewEventGate(epoch)
-			gates[session] = gate
-			if err := writeFrame(out, protocol.FromBridge{Accepted: &protocol.Accepted{Session: session, Epoch: epoch}}); err != nil {
-				return err
-			}
-			// FAIL-CLOSED: no client is linked, so the session ends in a
-			// terminal failure — with bounded diagnostics, never a lie.
-			logLine := protocol.FromBridge{Event: &protocol.Event{
-				Session: session, Epoch: epoch,
-				Log: &protocol.LogEvent{
-					Vertex:    "bridge",
-					Chunk:     []byte("no buildkit client is linked into this bridge yet\n"),
-					Truncated: false,
-				},
-			}}
-			if err := writeFrame(out, logLine); err != nil {
-				return err
-			}
-			if err := gate.Log(epoch); err != nil {
-				return err
-			}
-			if err := gate.Terminal(epoch, protocol.TerminalFailed); err != nil {
-				return err
-			}
-			failure := protocol.FromBridge{Failed: &protocol.Failed{
-				Session: session, Epoch: epoch,
-				Code:    protocol.FailureInternal,
-				Message: "no buildkit client is linked into this bridge yet",
-			}}
-			if err := writeFrame(out, failure); err != nil {
-				return err
-			}
-		case message.Cancel != nil:
-			if !negotiated {
-				return errors.New("cancel before negotiation")
-			}
-			session := message.Cancel.Session
-			gate, exists := gates[session]
-			if !exists {
-				// Idempotent: cancelling an unknown session is not an
-				// error and invents no state.
-				if err := writeFrame(out, protocol.FromBridge{Cancelled: &protocol.Terminal{Session: session, Epoch: 0}}); err != nil {
-					return err
-				}
-				continue
-			}
-			if _, terminal := gate.TerminalState(); !terminal {
-				if err := gate.Terminal(1, protocol.TerminalCancelled); err != nil {
-					return err
-				}
-			}
-			if err := writeFrame(out, protocol.FromBridge{Cancelled: &protocol.Terminal{Session: session, Epoch: 1}}); err != nil {
-				return err
-			}
-		default:
-			return errors.New("empty ToBridge frame")
-		}
+const maxFailureMessageBytes = 8192
+
+func failure(output io.Writer, identity protocol.Identity, worker *protocol.WorkerBinding, code string, err error) error {
+	message := err.Error()
+	if len(message) > maxFailureMessageBytes {
+		message = message[:maxFailureMessageBytes]
 	}
+	vertices := []string{}
+	var solve *client.SolveFailure
+	if errors.As(err, &solve) {
+		vertices = solve.Vertices
+	}
+	return protocol.WriteFrame(output, protocol.Response{Failed: &protocol.Failed{Identity: identity, Worker: worker, Code: code, Message: message, Vertices: vertices}})
 }
 
-func writeFrame(out io.Writer, message protocol.FromBridge) error {
-	frame, err := protocol.EncodeFrame(message)
-	if err != nil {
-		return err
+func serve(arguments []string, input io.Reader, output io.Writer) error {
+	if len(arguments) == 0 {
+		return fmt.Errorf("expected lower or execute")
 	}
-	_, err = out.Write(frame)
-	return err
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	switch arguments[0] {
+	case "lower":
+		if len(arguments) != 1 {
+			return fmt.Errorf("lower accepts no host configuration")
+		}
+		request, err := protocol.ReadFrame[protocol.LowerRequest](input)
+		if err != nil {
+			return err
+		}
+		if err := request.Identity.Validate(); err != nil {
+			return err
+		}
+		if err := request.Validate(); err != nil {
+			return failure(output, request.Identity, nil, "rejected", err)
+		}
+		lowered, err := lower.Prepare(ctx, request.Plan)
+		if err != nil {
+			return failure(output, request.Identity, nil, "rejected", err)
+		}
+		return protocol.WriteFrame(output, protocol.Response{Prepared: &protocol.Prepared{Identity: request.Identity, Lowered: *lowered}})
+	case "execute":
+		flags := flag.NewFlagSet("execute", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		var paths client.Paths
+		flags.StringVar(&paths.Address, "address", "", "owned Unix socket")
+		flags.StringVar(&paths.Inputs, "inputs", "", "private immutable input root")
+		flags.StringVar(&paths.Output, "output", "", "private empty export staging")
+		timeoutMillis := flags.Uint64("timeout-ms", 0, "remaining operation budget")
+		if err := flags.Parse(arguments[1:]); err != nil {
+			return err
+		}
+		if flags.NArg() != 0 || *timeoutMillis == 0 || *timeoutMillis > uint64(math.MaxInt64/int64(time.Millisecond)) {
+			return fmt.Errorf("execute requires a representable positive remaining deadline")
+		}
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(*timeoutMillis)*time.Millisecond)
+		defer cancel()
+		request, err := protocol.ReadFrame[protocol.ExecuteRequest](input)
+		if err != nil {
+			return err
+		}
+		if err := request.Identity.Validate(); err != nil {
+			return err
+		}
+		if err := request.Validate(); err != nil {
+			return failure(output, request.Identity, &request.Worker, "rejected", err)
+		}
+		if err := client.Execute(ctx, request, paths, output); err != nil {
+			return failure(output, request.Identity, &request.Worker, "export_failed", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown bridge operation %q", arguments[0])
+	}
 }
 
 func main() {
-	log.SetFlags(0)
-	log.SetPrefix("bridge: ")
-	if err := serve(os.Stdin, os.Stdout); err != nil {
-		log.Fatal(err)
+	if err := serve(os.Args[1:], os.Stdin, os.Stdout); err != nil {
+		// Quote controls; arbitrary request/worker bytes never become terminal
+		// escape sequences. Structured failures travel on stdout instead.
+		fmt.Fprintf(os.Stderr, "bridge: %q\n", err.Error())
+		os.Exit(1)
 	}
 }

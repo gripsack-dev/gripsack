@@ -16,9 +16,13 @@ import {
   asSelector,
   asRepoFilePath,
   asSource,
+  asFile,
+  asSha256,
+  asSpan,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
+import { asPatterns } from "./bindings.ts";
 
 
 // file-declaration axes (origin / content / destination — orthogonal)
@@ -37,6 +41,15 @@ export function artifactFile(output: string, selector: string): WorkspaceSource 
   });
 }
 
+/** A declared artifact tree expanded into explicit owned files by the core. */
+export function artifactTree(output: string, selection: { include: readonly string[]; exclude?: readonly string[] }): WorkspaceSource {
+  return freezeDeep({
+    kind: "tree", output: asName(output, "artifactTree(output)"),
+    include: asPatterns(selection.include, "artifactTree(include)", true),
+    ...(selection.exclude ? { exclude: asPatterns(selection.exclude, "artifactTree(exclude)", false) } : {}),
+  });
+}
+
 /** Content is exactly the origin's bytes. */
 export function identity(): WorkspaceContent {
   return freezeDeep({ kind: "identity" });
@@ -52,6 +65,7 @@ export function literalText(text: string): WorkspaceContent {
 export function templateText(
   template: string,
   variables: Record<string, string>,
+  resultDigest?: string,
 ): WorkspaceContent {
   if (typeof template !== "string") throw new Error("templateText(template) must be a string");
   const vars = asRecord(variables, "templateText(...): variables");
@@ -60,7 +74,7 @@ export function templateText(
       throw new Error(`templateText(...): variables["${k}"] must be a string`);
     }
   }
-  return freezeDeep({ kind: "template", template, variables });
+  return freezeDeep({ kind: "template", template, variables, ...(resultDigest === undefined ? {} : { result_digest: asSha256(resultDigest, "templateText(resultDigest)") }) });
 }
 
 /** Store-owned, read-only destination; edits go through the declaration. */
@@ -87,7 +101,7 @@ export function managedBlock(path: string, marker: string): WorkspaceDestination
 export function file(spec: WorkspaceFileSpec): WorkspaceFile {
   const what = "file(...)";
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["source", "content", "destination", "span"]);
+  rejectUnknownFields(what, spec, ["source", "content", "destination", "checks", "span"]);
   const span = nodeSpan(spec.span, what);
   const content = asContent(spec.content, `${what}: content`);
   if (spec.source === undefined && content.kind !== "literal") {
@@ -101,6 +115,9 @@ export function file(spec: WorkspaceFileSpec): WorkspaceFile {
     ...(spec.source !== undefined ? { source: asSource(spec.source, `${what}: source`) } : {}),
     content,
     destination: asDestination(spec.destination, `${what}: destination`),
+    ...(spec.checks?.length ? { checks: spec.checks.map((check) => ({
+      ...check, span: check.span === undefined ? span : asSpan(check.span, "file check"),
+    })) } : {}),
   };
-  return freezeDeep(node);
+  return freezeDeep(asFile(node, what));
 }

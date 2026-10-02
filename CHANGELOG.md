@@ -3,6 +3,87 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [Unreleased]
+
+### Changed
+
+- The workspace SDK exports `pixi.fromLock` for explicit captured-manifest/lock
+  imports and `conda.environment` for a coherent solve. The old single-package
+  `pixi(package)` constructor is removed; historical IR readers keep their
+  versioned meaning. Full all-platform qualification remains open.
+- Coherent Conda admission independently checks declared roots, channel order
+  and policy, canonical package uniqueness and transitive MatchSpecs before
+  archive acquisition. Frozen selections reject missing or unrelated packages;
+  native admission reevaluates ordinary and virtual conditional requirements
+  against physical capabilities. Imported missing solve facts cannot silently
+  disable conditional dependencies, while images report unresolved external
+  kernel/CPU/GPU requirements rather than treating them as image capabilities.
+- Native command admission measures Linux kernel/macOS product versions before
+  comparing declared OS floors. A future or incompatible floor is refused rather
+  than being accepted from a declaration or left permanently unmeasurable.
+- `grip build <output>` now realizes selected v6 recipes/packages without
+  creating a personal generation. Compatible Linux production and required
+  checks enter one independently checked BuildKit solve; acquisition, export
+  validation, retained artifacts and GC remain native. `grip builder
+  status|stop|cache-clean` acts only on the recorded owned worker. The bridge
+  helper no longer requires `--bridge`: on the first solve that needs it, the
+  pinned per-platform helper is downloaded, verified against the sha256
+  compiled into this release, and stored under
+  `$GRIPSACK_HOME/tools/buildkit-bridge-<version>/`; warm reuse is offline
+  and re-verified on every run, a corrupted cache entry is replaced, and
+  provisioning failures name the remedy. `--bridge <helper>` remains as an
+  explicit operator override, and `GRIPSACK_BRIDGE_MIRROR` redirects only the
+  download origin of the pinned artifact (the compiled-in hash still
+  authenticates it). Check, plan, preview, rollback and fully cached builds
+  download no builder components. The matching release artifacts have measured
+  per-platform pins; unpublished source builds can use a matching mirror or
+  operator override. Full platform qualification remains open.
+- `grip update` publishes portable v6 source/frontend/import pins. Its check
+  mode performs no source or lock publication; frozen native acquisition rejects
+  changed archive bytes and never silently repeats discovery. Provider packages
+  can be built and retained without starting a builder or creating a generation.
+- `cargoPackage` lowers a pinned, vendored Cargo source tree into the common
+  Linux producer/package model. Offline release tests gate installation of
+  declared binaries; dependency checksum failures prevent publication.
+- `grip build <image>` exports retained Linux packages through a checked BuildKit
+  OCI plan with explicit placement, numeric ownership and runtime configuration.
+  Native verification checks descriptors, compressed/uncompressed digests and
+  package contents before immutable publication. Cached images and native
+  commands survive worker-cache removal; image production creates no generation.
+- Profiles consume realized package environments and artifact files through the
+  existing journal/generation/rollback lifecycle, including cold production.
+  Generation environment records distinguish new literal/store-relative data
+  from retained legacy shell expressions; literal `$` and `{store}` text cannot
+  become code. Artifact trees expand to bounded per-file ownership rather than
+  claiming a whole directory, preserving unrelated children and drift.
+- Native project and profile commands preserve multicall selectors even when
+  exported under another name. Explicit task package commands keep their byte
+  pin and runtime search plan instead of becoming ambient executable paths.
+  Linux GNU dynamic commands use separately bound loader/main images; origin
+  translation rejects changed library selection and requires glibc >=2.33.
+  OCI admission checks image-local ELF/interpreter/library closure, including
+  RPATH versus RUNPATH, before publishing the archive.
+- Task-declared PATH directories cannot shadow the selected environment's
+  exported commands in nested child lookups. Long/spaced Conda relocation
+  refuses non-Python interpreter argument combinations that would become a
+  single invalid `env` token, instead of publishing an unlaunchable script.
+- Native artifacts statically link bundled XZ rather than inheriting a
+  Homebrew `liblzma` dependency from the macOS build host.
+- The standalone Conda helper also bundles bzip2 and has measured Linux x64,
+  Linux ARM64 and Mac ARM64 release pins. Native Mac VM and full coherent Conda
+  runtime qualification are temporarily deferred by the owner for Linux
+  integration: unavailable hosted VZ and a fail-closed `libgcc_s.1.1.dylib`
+  format refusal remain recorded, not counted as passing tests.
+- Abandoned builds retain their source roots and staging until an owned-worker
+  stop establishes a matching owner/epoch fence and inherited native leases have
+  drained. Recovery removes staging before retiring the root and lock records.
+- Workspace authoring emits the strict v6 contract: captured inputs, pure
+  mutation-lock references, ordered command/action steps, explicit Linux
+  toolchains and strict Bash options. Existing v3/v4/v5 readers remain separate.
+- Compiler utilities moved from the ordinary SDK root to
+  `@gripsack/core/advanced`; the driver selects both entry points from the
+  same deliberate package pin. Registry-reset utilities are internal.
+
 ## [0.43.0] — 2026-09-29
 
 ### Added
@@ -20,10 +101,13 @@ User-visible changes per release. Design archaeology lives in
   any failure refuses evaluation rather than running it unconfined.
 - Captured local npm packages keep working; direct-ELF, `sh`-wrapper,
   `/usr/bin/env` and python-virtualenv runtimes all run confined.
-- **macOS:** no kernel evaluator confinement exists yet. Evaluation fails
-  closed by default; set `GRIPSACK_EVAL_UNCONFINED=1` (operator-level,
-  loudly logged) to acknowledge the gap and run unconfined until the
-  seatbelt boundary ships.
+- **Kernel-confined evaluation (macOS).** The same approved-root boundary
+  is assembled before fork and installed by the fixed platform launcher after
+  exec, before the admitted evaluator starts. A data-only argv bridge preserves
+  argv0 and empty/spaced arguments; sandbox parsing and allocation do not run
+  in `pre_exec`. If confinement cannot be installed, evaluation fails closed.
+  Native Mac ARM qualification remains required; unconfined execution is not
+  a supported or qualifying mode.
 
 - Source approval now binds the canonical repository, copied source digest and
   actual runtime/grant policy. `trust inspect --json` exposes the bounded

@@ -3,9 +3,22 @@
   "roots": [
     "GeneralRecoveryProofs",
     "PublishedPayloadBridgeProofs",
-    "DestinationProductProofs"
+    "DestinationProductProofs",
+    "BuildSessionProofs",
+    "WorkerLeaseProofs"
   ],
   "units": {
+    "BuildSessionProofs": {
+      "minimum_obligations": 16,
+      "theorems": [
+        "InitInvariant",
+        "ReceiveInvariant",
+        "ExitInvariant",
+        "CompletionInvariant",
+        "StepInvariant",
+        "ExportAndProcessBeforeAuthority"
+      ]
+    },
     "UndoCellProofs": {
       "minimum_obligations": 243,
       "theorems": [
@@ -647,6 +660,29 @@
         "ProductInvariantImpliesRecoverySafety",
         "ArbitraryDestinationSafety",
         "ArbitraryDestinationRecoveryEvidence"
+      ]
+    },
+    "WorkerLeaseProofs": {
+      "minimum_obligations": 155,
+      "theorems": [
+        "InitInvariant",
+        "StartInvariant",
+        "AcquireInvariant",
+        "ReleaseInvariant",
+        "QuarantineInvariant",
+        "DrainInvariant",
+        "RequestStopInvariant",
+        "StopDoneInvariant",
+        "ReconcileStopInvariant",
+        "CrashInvariant",
+        "ReprovisionInvariant",
+        "ReincarnateInvariant",
+        "RestartInvariant",
+        "PublishInvariant",
+        "RetireInvariant",
+        "StepInvariant",
+        "SafetyCorollaries",
+        "SpecSafety"
       ]
     }
   }

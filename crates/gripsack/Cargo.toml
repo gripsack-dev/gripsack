@@ -27,6 +27,7 @@ gripsack-trace.workspace = true
 tracing = "0.1"
 gripsack-exec.workspace = true
 gripsack-fetch.workspace = true
+gripsack-buildkit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 gripsack-process.workspace = true
