@@ -17,6 +17,10 @@ pub enum ProcessRole {
     Hook,
     Fact,
     Update,
+    /// A project consumer process (run/shell/task): repository-selected
+    /// commands on the host, with an explicit repository overlay and no
+    /// evaluator-private state. Interactive admission is exclusive to it.
+    Task,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +60,12 @@ impl OperatorEnvironment {
             values: admitted,
             search_path,
         })
+    }
+
+    /// An admitted operator value from this immutable snapshot. Missing values
+    /// never fall back to the ambient environment or a repository overlay.
+    pub fn var_os(&self, name: &OsStr) -> Option<&OsStr> {
+        self.values.get(name).map(OsString::as_os_str)
     }
 
     /// The evaluator's cache is a core-selected runtime directory, never an

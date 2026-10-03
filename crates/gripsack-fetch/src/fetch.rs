@@ -4,12 +4,14 @@ use std::io;
 
 pub(crate) mod archive;
 pub(crate) mod brew;
+pub mod bridge;
 pub(crate) mod file;
 pub(crate) mod git;
 pub(crate) mod pixi;
 pub(crate) mod plugin;
 pub(crate) mod tarball;
 
+pub use archive::{clone_immutable_tree, validate_tree};
 pub use git::resolve_head as resolve_git_head;
 
 #[derive(Debug, thiserror::Error)]

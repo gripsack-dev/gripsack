@@ -26,12 +26,11 @@ pub fn preview_ops(
         return Err(ExecError::Gate(diagnostic));
     }
     let repo = repository.contents();
-    if let Some(workspace) = &ir.workspace {
-        let home = store::gripsack_home();
-        return crate::workspace::NativeProfiles::prepare(
-            workspace, repo, &home, selected, limits,
-        )?
-        .preview(&home, prev, adopting);
+    let home = store::gripsack_home();
+    if let Some(native) =
+        crate::workspace::NativeProfiles::prepare_preview(ir, repository, &home, selected, limits)?
+    {
+        return native.preview(&home, prev, adopting);
     }
     let mut ops = Vec::new();
     // the destination-global lineage map (0030 §H4): the previous
@@ -47,7 +46,6 @@ pub fn preview_ops(
             }
         }
     }
-    let home = store::gripsack_home();
     let steps_by_module = crate::expand::expand_all(&ir.modules)?;
     let recipes = crate::resolve::RecipeGraph::new(
         ir,

@@ -1,4 +1,4 @@
-/** Runtime structural guards for v5 workspace authoring values. */
+/** Runtime structural guards for current workspace authoring values. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import { DiagnosticError, diagnosticCodes } from "../diagnostic.ts";
@@ -15,7 +15,9 @@ import type {
   WorkspacePath,
   WorkspaceProducer,
   WorkspaceSource,
+  WorkspaceSourceV6,
 } from "./ir.ts";
+import { asPlatform } from "./target.ts";
 
 // ---------------------------------------------------------------------------
 
@@ -68,16 +70,19 @@ export function nodeSpan(explicit: Span | undefined, what: string): Span {
 const ARG_FIELDS: Record<string, readonly string[]> = {
   literal: ["kind", "value"],
   artifact: ["kind", "output", "selector"],
-  package_command: ["kind", "package", "command"],
+  package_command: ["kind", "package", "command", "sha256"],
+  input: ["kind", "input"],
+  source: ["kind", "selector"],
+  output: ["kind", "selector"],
   host: ["kind", "path"],
 };
 
 export function asArg(v: unknown, where: string): WorkspaceArg {
   const rec = asRecord(v, where);
   const kind = rec.kind;
-  if (typeof kind !== "string" || !(kind in ARG_FIELDS) || kind === "host") {
+  if (typeof kind !== "string" || !Object.hasOwn(ARG_FIELDS, kind) || kind === "host") {
     throw new Error(
-      `${where}: kind must be "literal", "artifact" or "package_command"`,
+      `${where}: expected a literal, artifact, package_command, input, source or output argument`,
     );
   }
   rejectUnknownFields(where, rec, ARG_FIELDS[kind]!);
@@ -85,9 +90,11 @@ export function asArg(v: unknown, where: string): WorkspaceArg {
   // every reference field names something and must be non-empty
   if (kind === "literal") {
     if (typeof rec.value !== "string") throw new Error(`${where}.value must be a string`);
+    if (rec.value.includes("\0")) throw new Error(`${where}.value cannot contain NUL`);
   } else {
     for (const field of ARG_FIELDS[kind]!) {
       if (field === "selector") asSelector(rec[field], `${where}.${field}`);
+      else if (field === "sha256") { if (rec[field] !== undefined) asSha256(rec[field], `${where}.${field}`); }
       else if (field !== "kind") asName(rec[field], `${where}.${field}`);
     }
   }
@@ -97,8 +104,8 @@ export function asArg(v: unknown, where: string): WorkspaceArg {
 export function asPath(v: unknown, where: string): WorkspacePath {
   const rec = asRecord(v, where);
   const kind = rec.kind;
-  if (typeof kind !== "string" || !(kind in ARG_FIELDS) || kind === "package_command") {
-    throw new Error(`${where}: kind must be "literal", "artifact" or "host"`);
+  if (typeof kind !== "string" || !Object.hasOwn(ARG_FIELDS, kind) || kind === "package_command" || kind === "input") {
+    throw new Error(`${where}: expected a literal, artifact, host, source or output path`);
   }
   rejectUnknownFields(where, rec, ARG_FIELDS[kind]!);
   if (kind === "literal") {
@@ -118,7 +125,7 @@ export function asPath(v: unknown, where: string): WorkspacePath {
 export function asSelector(v: unknown, where: string): string {
   const s = asName(v, where);
   if (s === ".") return s;
-  if (s.includes("\0") || s.startsWith("/") ||
+  if (s.includes("\0") || s.includes("\\") || s.startsWith("/") ||
     s.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) {
     throw new Error(
       `${where}: selector must be "." or a normalized relative POSIX path ` +
@@ -143,6 +150,11 @@ export function asRepoFilePath(v: unknown, where: string): string {
   return path;
 }
 
+export function asSha256(value: unknown, where: string): string {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) throw new Error(`${where}: expected 64 lowercase SHA-256 hex characters`);
+  return value;
+}
+
 /** Environment values are DATA — literal text or an artifact
  *  reference. A package_command here would invoke a program from a
  *  value position, which workspace IR never admits (0052 §2.2, core E128):
@@ -157,6 +169,9 @@ export function asEnv(
   // fluent inputs must emit identical bytes regardless of insertion order.
   const entries: [string, WorkspaceArg][] = [];
   for (const k of Object.keys(rec).sort()) {
+    if (k.length === 0 || k.includes("=") || k.includes("\0")) {
+      throw new Error(`${where}: environment names must be nonempty and contain neither '=' nor NUL`);
+    }
     const a = asArg(rec[k], `${where}["${k}"]`);
     if (a.kind === "package_command") {
       throw new Error(
@@ -182,19 +197,30 @@ export function asCommand(v: unknown, where: string): WorkspaceCommand {
   if (rec.kind === "exec") {
     rejectUnknownFields(where, rec, ["kind", "span", "argv", "env", "cwd"]);
     asSpan(rec.span, where);
-    if (!Array.isArray(rec.argv)) throw new Error(`${where}.argv must be an array`);
-    rec.argv.forEach((a, i) => asArg(a, `${where}.argv[${i}]`));
-    asEnv(rec.env as Record<string, WorkspaceArg> | undefined, `${where}.env`);
-    if (rec.cwd !== undefined) asPath(rec.cwd, `${where}.cwd`);
-    return v as WorkspaceCommand;
+    if (!Array.isArray(rec.argv) || rec.argv.length === 0) throw new Error(`${where}.argv must contain an executable argument`);
+    const argv = rec.argv.map((a, i) => asArg(a, `${where}.argv[${i}]`));
+    const env = asEnv(rec.env as Record<string, WorkspaceArg> | undefined, `${where}.env`);
+    return {
+      kind: "exec",
+      span: asSpan(rec.span, where),
+      argv,
+      ...(env ? { env } : {}),
+      ...(rec.cwd !== undefined ? { cwd: asPath(rec.cwd, `${where}.cwd`) } : {}),
+    };
   }
   if (rec.kind === "run_bash") {
-    rejectUnknownFields(where, rec, ["kind", "span", "interpreter", "body", "env", "cwd", "line_map"]);
+    rejectUnknownFields(where, rec, ["kind", "span", "interpreter", "options", "body", "env", "cwd", "line_map"]);
     asSpan(rec.span, where);
-    asArg(rec.interpreter, `${where}.interpreter`);
+    const interpreter = asArg(rec.interpreter, `${where}.interpreter`);
+    if (interpreter.kind !== "package_command") {
+      throw new Error(`${where}.interpreter must reference a declared package command`);
+    }
+    if (!Array.isArray(rec.options) || rec.options.length !== 4 ||
+      rec.options.some((value, index) => value !== ["-e", "-u", "-o", "pipefail"][index])) {
+      throw new Error(`${where}.options must be -e -u -o pipefail`);
+    }
     if (typeof rec.body !== "string") throw new Error(`${where}.body must be a string`);
-    asEnv(rec.env as Record<string, WorkspaceArg> | undefined, `${where}.env`);
-    if (rec.cwd !== undefined) asPath(rec.cwd, `${where}.cwd`);
+    const env = asEnv(rec.env as Record<string, WorkspaceArg> | undefined, `${where}.env`);
     if (rec.line_map !== undefined) {
       if (
         !Array.isArray(rec.line_map) ||
@@ -203,7 +229,16 @@ export function asCommand(v: unknown, where: string): WorkspaceCommand {
         throw new Error(`${where}.line_map must be an array of integers >= 1`);
       }
     }
-    return v as WorkspaceCommand;
+    return {
+      kind: "run_bash",
+      span: asSpan(rec.span, where),
+      interpreter,
+      options: ["-e", "-u", "-o", "pipefail"],
+      body: rec.body,
+      ...(env ? { env } : {}),
+      ...(rec.cwd !== undefined ? { cwd: asPath(rec.cwd, `${where}.cwd`) } : {}),
+      ...(rec.line_map !== undefined ? { line_map: rec.line_map as number[] } : {}),
+    };
   }
   throw new Error(`${where}: kind must be "exec" or "run_bash" — use exec()/runBash()`);
 }
@@ -221,7 +256,18 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
     asSelector(rec.selector, `${where}.selector`);
     return v as WorkspaceSource;
   }
-  throw new Error(`${where}: kind must be "repo_file" or "artifact_file"`);
+  if (rec.kind === "tree") {
+    rejectUnknownFields(where, rec, ["kind", "output", "include", "exclude"]);
+    asName(rec.output, `${where}.output`);
+    if (!Array.isArray(rec.include) || rec.include.length === 0) throw new Error(`${where}.include must be nonempty`);
+    rec.include.forEach((pattern, index) => asRepoFilePath(pattern, `${where}.include[${index}]`));
+    if (rec.exclude !== undefined) {
+      if (!Array.isArray(rec.exclude)) throw new Error(`${where}.exclude must be an array`);
+      rec.exclude.forEach((pattern, index) => asRepoFilePath(pattern, `${where}.exclude[${index}]`));
+    }
+    return v as WorkspaceSource;
+  }
+  throw new Error(`${where}: kind must be "repo_file", "artifact_file" or "tree"`);
 }
 
 export function asContent(v: unknown, where: string): WorkspaceContent {
@@ -236,8 +282,9 @@ export function asContent(v: unknown, where: string): WorkspaceContent {
     return v as WorkspaceContent;
   }
   if (rec.kind === "template") {
-    rejectUnknownFields(where, rec, ["kind", "template", "variables"]);
+    rejectUnknownFields(where, rec, ["kind", "template", "variables", "result_digest"]);
     if (typeof rec.template !== "string") throw new Error(`${where}.template must be a string`);
+    if (rec.result_digest !== undefined) asSha256(rec.result_digest, `${where}.result_digest`);
     const vars = asRecord(rec.variables, `${where}.variables`);
     for (const [k, val] of Object.entries(vars)) {
       if (typeof val !== "string") {
@@ -291,7 +338,7 @@ export function asDestinationPath(v: unknown, where: string): string {
 
 export function asFile(v: unknown, where: string): WorkspaceFile {
   const rec = asRecord(v, where);
-  rejectUnknownFields(where, rec, ["span", "source", "content", "destination"]);
+  rejectUnknownFields(where, rec, ["span", "source", "content", "destination", "checks"]);
   asSpan(rec.span, where);
   const content = asContent(rec.content, `${where}.content`);
   if (rec.source !== undefined) asSource(rec.source, `${where}.source`);
@@ -302,6 +349,19 @@ export function asFile(v: unknown, where: string): WorkspaceFile {
     );
   }
   asDestination(rec.destination, `${where}.destination`);
+  if (rec.checks !== undefined) {
+    if (!Array.isArray(rec.checks)) throw new Error(`${where}.checks must be an array`);
+    rec.checks.forEach((value, index) => {
+      const check = asRecord(value, `${where}.checks[${index}]`);
+      rejectUnknownFields(`${where}.checks[${index}]`, check, ["check", "subject", "stage", "span"]);
+      asName(check.check, `${where}.checks[${index}].check`);
+      asSpan(check.span, `${where}.checks[${index}]`);
+      if (!["source", "rendered", "deployed"].includes(check.subject as string) ||
+        !["pre_flip", "post_link", "post_activate"].includes(check.stage as string)) {
+        throw new Error(`${where}.checks[${index}] has an invalid subject/stage`);
+      }
+    });
+  }
   return v as WorkspaceFile;
 }
 
@@ -337,14 +397,9 @@ export function asProducer(v: unknown, where: string): WorkspaceProducer {
   }
   if (rec.kind === "provider") {
     rejectUnknownFields(where, rec, ["kind", "provider"]);
-    const inner = asRecord(rec.provider, `${where}.provider`);
-    rejectUnknownFields(`${where}.provider`, inner, ["fetch", "span"]);
     return {
       kind: "provider",
-      provider: {
-        fetch: asFetch(inner.fetch, `${where}.provider.fetch`),
-        span: asSpan(inner.span, `${where}.provider`),
-      },
+      provider: asSourceV6(rec.provider, `${where}.provider`),
     };
   }
   throw new Error(`${where}: producer must be a recipe output name or provider(fetch(...))`);
@@ -356,6 +411,60 @@ export function asFetch(v: unknown, where: string): Fetch {
     throw new Error(`${where} must be a fetch spec (githubRelease()/tarball()/…)`);
   }
   return v as Fetch;
+}
+
+/** A v6 acquisition source — the tagged union behind `RecipeNode.source`
+ *  and the provider branch of {@link WorkspaceProducer}. The legacy bare
+ *  `{fetch,span}` shape and the brew/pixi fetch kinds are rejected. */
+export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
+  const rec = asRecord(v, where);
+  if (rec.kind === "fetch") {
+    rejectUnknownFields(where, rec, ["kind", "fetch", "span"]);
+    const fetch = asFetch(rec.fetch, `${where}.fetch`);
+    if (fetch.kind === "brew" || fetch.kind === "pixi") {
+      throw new Error(
+        `${where}.fetch: "${fetch.kind}" fetches are superseded by conda_environment/pixi_lock sources in v6`,
+      );
+    }
+    asSpan(rec.span, where);
+    return v as WorkspaceSourceV6;
+  }
+  if (rec.kind === "conda_environment") {
+    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "span"]);
+    const channels = rec.channels;
+    if (!Array.isArray(channels) || channels.length === 0 ||
+      channels.some((c) => typeof c !== "string" || c === "")) {
+      throw new Error(`${where}.channels must be a non-empty array of channel names/URLs`);
+    }
+    const packages = asRecord(rec.packages, `${where}.packages`);
+    const entries = Object.entries(packages);
+    if (entries.length === 0) {
+      throw new Error(`${where}.packages must declare at least one package`);
+    }
+    for (const [name, spec] of entries) {
+      if (!/^[a-z0-9][a-z0-9._-]*$/.test(name)) {
+        throw new Error(`${where}.packages: "${name}" must be a lowercase Conda package name`);
+      }
+      if (typeof spec !== "string" || spec === "") {
+        throw new Error(`${where}.packages["${name}"] must be a non-empty MatchSpec string ("*" allowed)`);
+      }
+    }
+    if (rec.platforms !== undefined) {
+      if (!Array.isArray(rec.platforms)) throw new Error(`${where}.platforms must be an array`);
+      rec.platforms.forEach((p, i) => asPlatform(p, `${where}.platforms[${i}]`));
+    }
+    asSpan(rec.span, where);
+    return v as WorkspaceSourceV6;
+  }
+  if (rec.kind === "pixi_lock") {
+    rejectUnknownFields(where, rec, ["kind", "manifest", "lock", "environment", "span"]);
+    asName(rec.manifest, `${where}.manifest`);
+    asName(rec.lock, `${where}.lock`);
+    asName(rec.environment, `${where}.environment`);
+    asSpan(rec.span, where);
+    return v as WorkspaceSourceV6;
+  }
+  throw new Error(`${where}: source kind must be "fetch", "conda_environment" or "pixi_lock"`);
 }
 
 /** Deep copy + freeze: the returned value shares no mutable state

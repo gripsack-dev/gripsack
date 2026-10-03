@@ -21,8 +21,8 @@ const personal = profile("personal", {
   })],
 });
 
-// The local archive stands in for previously downloaded bytes. A2
-// owns acquisition, package realization and profile deployment.
+// The captured local archive is a native provider. Applying personal deploys
+// its environment and config through the existing generation transaction.
 export default defineWorkspace(() => workspace({
   outputs: [formatter, development, personal],
 }));

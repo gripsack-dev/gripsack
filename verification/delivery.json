@@ -2780,7 +2780,10 @@
    "evidence_kinds": [
     "runner"
    ],
-   "evidence_records": []
+   "evidence_records": [],
+   "lane_notes": {
+    "macos": "Remaining native runtime qualification is deferred-authorized for the 0.44 Linux integration under owner exception MAC-NATIVE-QUAL-2026-10-02 (plan/0048 section 9). Hosted solve/build checks are not full native parity; this row and its original lane inventory remain open."
+   }
   },
   {
    "id": "A3-02",
@@ -2807,7 +2810,10 @@
    "evidence_kinds": [
     "runner"
    ],
-   "evidence_records": []
+   "evidence_records": [],
+   "lane_notes": {
+    "macos": "Deferred-authorized for 0.44 Linux integration only: MAC-NATIVE-QUAL-2026-10-02. Run 36953073512 at b7fbd041300080a219fc546df8ff1eb1a1c2ddcb refused lib/libgcc_s.1.1.dylib as an unrecognized executable format before publication. Full coherent Python/NumPy run/task/shell/profile/update/GC remains unqualified; no failed or skipped case is counted as verified."
+   }
   },
   {
    "id": "A3-03",
@@ -2833,6 +2839,11 @@
     "real crossprocess positive/negative wire fixtures and actual decoder fuzz seeds/campaigns exercise length and identity admission",
     "production-used Verus terminal/admission decision kernel and semantic mutant tie helper success to the live attempt rather than an untrusted success flag"
    ],
+   "proof_obligation_inventory": [
+    "conda_admission::terminal_succeeded",
+    "conda_admission::admit_response"
+   ],
+   "proof_expected_minimum": 2,
    "evidence_kinds": [
     "runner",
     "formal"
@@ -3538,6 +3549,9 @@
     "runner"
    ],
    "evidence_records": [],
+   "lane_notes": {
+    "macos-vm": "Deferred-authorized for the 0.44 Linux integration under owner exception MAC-NATIVE-QUAL-2026-10-02 (plan/0048 section 9). Run 36953073512 passed 24 native worker tests then refused VZVirtualMachine.isSupported=false before downloads. Resume all original VM/lifecycle cases on VZ-capable Apple Silicon; no positive qualification or milestone closure is claimed."
+   },
    "status_history": [
     {
      "date": "2026-09-24",

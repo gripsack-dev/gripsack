@@ -1,4 +1,5 @@
 target/
+tools/conda-helper/target/
 typescript/node_modules/
 typescript/dist/
 dist/

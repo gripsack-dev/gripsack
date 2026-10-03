@@ -19,6 +19,7 @@ EXPECTED = (
     'failure::tests::certificate_failures_are_not_transient_connections',
     'failure::tests::failure_locations_redact_credentials_and_queries',
     'retry::tests::an_expired_clock_observation_cannot_admit_an_attempt',
+    'retry::tests::caller_deadline_bounds_attempt_completion_and_retry_wait',
     'retry::tests::real_retry_policy_has_fixed_deadline_and_bounded_attempts',
     'retry::tests::terminal_classes_and_upstream_cooldowns_never_get_fast_replays',
     'tests::host_binding_survives_url_normalization',
@@ -49,7 +50,11 @@ MUTANTS = (
            'request::tests::a_successful_body_consumer_cannot_complete_after_the_operation_deadline',
            'late_http_consumer_was_reported_successfully'),
     Mutant('ignored-clock-observation', RETRY,
-           '.begin(now.saturating_duration_since(self.started).as_nanos())', '.begin(0)',
+           '    pub fn begin(&mut self, mut now: Instant) -> Result<Duration, RetryStopReason> {\n'
+           '        loop {',
+           '    pub fn begin(&mut self, mut now: Instant) -> Result<Duration, RetryStopReason> {\n'
+           '        now = self.started;\n'
+           '        loop {',
            'retry::tests::an_expired_clock_observation_cannot_admit_an_attempt',
            'expired_http_attempt_admitted'),
     Mutant('terminal-classification-replayed', RETRY,

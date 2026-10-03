@@ -37,6 +37,9 @@ pub enum ProcessDisposition {
 pub struct ProcessReceipt {
     pub executable_sha256: super::Sha256Digest,
     pub script_sha256: Option<super::Sha256Digest>,
+    /// Explicit interpreter bytes, when a sealed ELF uses a checked loader plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loader_sha256: Option<super::Sha256Digest>,
     pub byte_binding: ByteBinding,
     pub enforcement: Enforcement,
     pub environment_keys: Vec<String>,

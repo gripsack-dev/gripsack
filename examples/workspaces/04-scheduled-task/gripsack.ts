@@ -11,14 +11,8 @@ const formatter = pkg("formatter", {
   target: linux, layout: { kind: "relocatable" },
 });
 const dev = environment("dev", { packages: ["formatter"], target: linux });
-const manual = task("format-now", {
-  run: exec(packageCommand("formatter", "format")).arg(lit("docs")).build(),
-  environment: "dev",
-});
-const nightly = task("format-nightly", {
-  run: exec(packageCommand("formatter", "format")).arg(lit("docs")).build(),
-  environment: "dev", deps: ["format-now"],
-});
+const manual = task("format-now", { steps: [exec(packageCommand("formatter", "format")).arg(lit("docs")).build()], environment: "dev", });
+const nightly = task("format-nightly", { steps: [exec(packageCommand("formatter", "format")).arg(lit("docs")).build()], environment: "dev", deps: ["format-now"], });
 const timer = schedule("nightly", { task: "format-nightly", trigger: daily("03:30") });
 const personal = profile("personal", { schedules: ["nightly"] });
 

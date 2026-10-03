@@ -33,6 +33,7 @@ pub use streamed::{atomic_copy_with_mode, publication_occurred};
 pub mod fault;
 pub use directories::{
     create_dir_all, fsync_dir, fsync_pinned_dir, open_or_create, remove_file, rename,
+    rename_noreplace,
 };
 use fault::{Boundary, operation};
 pub use scoped::{open_dir_nofollow, open_file_nofollow};
@@ -414,13 +415,60 @@ impl FlockGuard {
         flock(&file, libc::LOCK_EX)?;
         Ok(Self(file))
     }
-}
 
-impl Drop for FlockGuard {
-    fn drop(&mut self) {
-        let _ = flock(&self.0, libc::LOCK_UN);
+    /// Retain this same open-file-description lock across an explicitly
+    /// admitted child exec. Exclusion lasts until the final handle closes.
+    pub fn duplicate_handle(&self) -> io::Result<std::fs::File> {
+        self.0.try_clone()
+    }
+
+    /// Try to lock `<dir>/<name>.flock` exclusively without blocking;
+    /// `Ok(None)` means another live process holds it. The ONE
+    /// cross-process liveness probe (managed worker leases): a held lock
+    /// is authority, never a PID-existence guess.
+    pub fn try_acquire(dir: &Path, name: &str) -> io::Result<Option<Self>> {
+        std::fs::create_dir_all(dir)?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(dir.join(format!("{name}.flock")))?;
+        match flock(&file, libc::LOCK_EX | libc::LOCK_NB) {
+            Ok(()) => Ok(Some(Self(file))),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Nonblocking coordination relative to an already admitted directory.
+    /// A leaf alias or special file cannot substitute another lock authority.
+    pub fn try_acquire_in(dir: &Dir, name: &str) -> io::Result<Option<Self>> {
+        let mut options = cap_std::fs::OpenOptions::new();
+        options.create(true).write(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use cap_std::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+        }
+        let file = dir.open_with(format!("{name}.flock"), &options)?;
+        if !file.metadata()?.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "coordination handle must be a regular file",
+            ));
+        }
+        let file = file.into_std();
+        match flock(&file, libc::LOCK_EX | libc::LOCK_NB) {
+            Ok(()) => Ok(Some(Self(file))),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 }
+
+// File::drop releases the kernel flock at the final close. Explicit LOCK_UN
+// here would also unlock duplicated/inherited handles still protecting a
+// live bridge writer after its parent guard has gone away.
 
 #[cfg(unix)]
 fn flock(file: &std::fs::File, op: i32) -> io::Result<()> {

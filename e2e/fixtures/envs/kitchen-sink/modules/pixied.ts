@@ -1,5 +1,5 @@
-import { module, pixi } from "@gripsack/core";
+import { module } from "@gripsack/core";
 
 export default module("pixied", {
-  fetch: pixi("ripgrep", "15.0.0"),
+  fetch: { kind: "pixi", package: "ripgrep", version: "15.0.0" },
 });

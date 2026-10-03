@@ -16,8 +16,9 @@ class Evidence:
     diagnostics: tuple[dict, ...]
 
     @classmethod
-    def parse(cls, output: str) -> "Evidence":
+    def parse(cls, output: str, crate: str = "gripsack_policy") -> "Evidence":
         reports, diagnostics = [], []
+        prefix = crate + "::"
         decoder = json.JSONDecoder()
         for start in re.finditer(r"(?m)^\{", output):
             try:
@@ -27,14 +28,14 @@ class Evidence:
             if not isinstance(value, dict):
                 continue
             if value.get("reason") == "compiler-message":
-                if value.get("target", {}).get("name") == "gripsack_policy":
+                if value.get("target", {}).get("name") == crate:
                     diagnostics.append(value["message"])
             if "verification-results" in value and any(
-                name.startswith("gripsack_policy::") for name in value.get("func-details", {})
+                name.startswith(prefix) for name in value.get("func-details", {})
             ):
                 reports.append(value)
         if len(reports) != 1:
-            raise EvidenceError("expected exactly one fresh gripsack_policy verifier report")
+            raise EvidenceError(f"expected exactly one fresh {crate} verifier report")
         report = reports[0]
         results = report["verification-results"]
         if results.get("is-verifying-entire-crate") is not True:
@@ -46,11 +47,11 @@ class Evidence:
         for module in modules:
             for function in module.get("function-breakdown", []):
                 name = function["function"]
-                if not name.startswith("gripsack_policy::"):
+                if not name.startswith(prefix):
                     raise EvidenceError("foreign function in production verification report")
                 if type(function.get("success")) is not bool:
                     raise EvidenceError("function has no actual solver verdict")
-                name = name.removeprefix("gripsack_policy::")
+                name = name.removeprefix(prefix)
                 functions[name] = functions.get(name, True) and function["success"]
         if not functions:
             raise EvidenceError("no production function obligations executed")
@@ -68,13 +69,13 @@ class Evidence:
             if missing:
                 raise EvidenceError(f"{family}: unverified named production functions: {missing}")
 
-    def mutant(self, returncode: int, source: Path, function: str, workspace: Path) -> None:
+    def mutant(self, returncode: int, source: Path, functions: tuple[str, ...], workspace: Path) -> None:
         failed = {name for name, success in self.functions.items() if not success}
         if (returncode == 0 or self.results.get("success") is not False
                 or self.results.get("errors", 0) < 1 or self.results.get("verified", 0) < 1):
             raise EvidenceError("mutant did not reach a nonempty failed verification")
-        if failed != {function}:
-            raise EvidenceError(f"wrong failing functions: {sorted(failed)}; expected {function}")
+        if not functions or failed != set(functions):
+            raise EvidenceError(f"wrong failing functions: {sorted(failed)}; expected {functions}")
         admitted = []
         for diagnostic in self.diagnostics:
             if diagnostic.get("level") != "error":
@@ -116,8 +117,8 @@ def self_check() -> None:
     foreign_span = {"file_name": "crates/gripsack-policy/src/graph.rs", "is_primary": True}
     target_error = {"level": "error", "message": "postcondition not satisfied", "spans": [target_span]}
 
-    def attribution(functions, diagnostics, status=1):
-        Evidence(failure, functions, tuple(diagnostics)).mutant(status, source, "classify", workspace)
+    def attribution(functions, diagnostics, status=1, expected=("classify",)):
+        Evidence(failure, functions, tuple(diagnostics)).mutant(status, source, expected, workspace)
 
     attribution({"classify": False}, [target_error])
     invariant_error = {
@@ -131,12 +132,21 @@ def self_check() -> None:
         "message": "constructed value may fail to meet its declared type invariant",
     }
     attribution({"classify": False}, [constructed_error])
+    attribution({"classify": False, "dependent": False}, [target_error],
+                expected=("classify", "dependent"))
     bad_cases = (
         ("missing family", lambda: good.positive(0, 72, {"retention": ("retention::plan_delete",)})),
         ("zero/fewer obligations", lambda: good.positive(0, 73, {})),
         ("failed process", lambda: good.positive(1, 72, {})),
         ("missing report", lambda: Evidence.parse("verification results:: 72 verified, 0 errors")),
         ("truncated JSON", lambda: Evidence.parse('{"verification-results":')),
+        ("missing expected dependent failure", lambda: attribution(
+            {"classify": False, "dependent": True}, [target_error],
+            expected=("classify", "dependent"))),
+        ("unexpected dependent failure", lambda: attribution(
+            {"classify": False, "dependent": False}, [target_error])),
+        ("empty expected failure set", lambda: attribution(
+            {}, [target_error], expected=())),
         ("unrelated function in target file", lambda: attribution(
             {"classify": True, "unrelated_lemma": False}, [target_error])),
         ("warning and foreign proof error", lambda: attribution(

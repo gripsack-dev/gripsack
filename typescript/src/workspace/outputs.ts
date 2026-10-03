@@ -7,6 +7,8 @@ import type { Span } from "../module.ts";
 import type {
   CheckNode,
   CheckSpec,
+  CondaEnvironmentSpec,
+  CondaEnvironmentSource,
   EnvironmentNode,
   EnvironmentSpec,
   HookNode,
@@ -23,6 +25,9 @@ import type {
   ScheduleSpec,
   TaskNode,
   TaskSpec,
+  PixiLockSpec,
+  PixiLockSource,
+  WorkspaceMutationLock,
   WorkspaceCalendar,
   WorkspaceFn,
   WorkspaceOutput,
@@ -31,23 +36,26 @@ import type {
   WorkspaceProducer,
   WorkspaceSpec,
   WorkspaceValue,
+  WorkspaceSourceV6,
   WorkspaceWeekday,
 } from "./ir.ts";
 import {
   asCalendar,
   asCommand,
   asEnv,
-  asFetch,
   asFile,
   asName,
   asNames,
   asProducer,
+  asSourceV6,
   asRecord,
   duplicateError,
   freezeDeep,
   nodeSpan,
 } from "./validate.ts";
 import { asExecution, asInstallPrefix, asLayout, asPlatform } from "./target.ts";
+import { asInput, asLock, asStep, asTaskContext, lockKey } from "./bindings.ts";
+import { imageProperties } from "./image.ts";
 
 
 /** A per-output build/target platform. */
@@ -55,17 +63,80 @@ export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
   return freezeDeep(asPlatform(spec, "targetPlatform(...)"));
 }
 
+/** Lower an authoring source — a bare `Fetch`, a plain
+ *  CondaEnvironmentSpec/PixiLockSpec, or a pre-built
+ *  `condaEnvironment(...)`/`pixiFromLock(...)` value — to the v6 tagged
+ *  wire shape, stamping `span` on freshly wrapped variants. */
+function asSourceValue(source: unknown, span: Span, where: string): WorkspaceSourceV6 {
+  const rec = asRecord(source, where);
+  if (rec.kind === "fetch" || rec.kind === "conda_environment" || rec.kind === "pixi_lock") {
+    return asSourceV6(source, where);
+  }
+  if (typeof rec.kind === "string" && rec.kind !== "") {
+    // a bare Fetch spec — the v6 fetch wrapper carries the provenance span
+    return asSourceV6({ kind: "fetch", fetch: source, span }, where);
+  }
+  if (rec.channels !== undefined || rec.packages !== undefined) {
+    const conda = source as CondaEnvironmentSpec;
+    return asSourceV6({
+      kind: "conda_environment",
+      channels: conda.channels,
+      packages: conda.packages,
+      ...(conda.platforms ? { platforms: conda.platforms } : {}),
+      span,
+    }, where);
+  }
+  const pixiLock = source as PixiLockSpec;
+  return asSourceV6({
+    kind: "pixi_lock",
+    manifest: pixiLock.manifest,
+    lock: pixiLock.lock,
+    environment: pixiLock.environment,
+    span,
+  }, where);
+}
+
+/** A coherent binary Conda environment source, solved through Rattler —
+ *  usable directly as `recipe({ source })` or inside `provider(...)`. */
+export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSource {
+  const span = callerSpan();
+  if (!span) {
+    throw new Error(
+      "condaEnvironment(...): could not capture a source span — construct the source explicitly",
+    );
+  }
+  const rec = asRecord(spec, "condaEnvironment(...)");
+  rejectUnknownFields("condaEnvironment(...)", rec, ["channels", "packages", "platforms"]);
+  return freezeDeep(asSourceValue(spec, span, "condaEnvironment(...)") as CondaEnvironmentSource);
+}
+
+/** An explicit Pixi lock import: `manifest`/`lock` are workspace input
+ *  names, `environment` selects the Pixi environment from the lock. */
+export function pixiFromLock(spec: PixiLockSpec): PixiLockSource {
+  const span = callerSpan();
+  if (!span) {
+    throw new Error(
+      "pixiFromLock(...): could not capture a source span — construct the source explicitly",
+    );
+  }
+  const rec = asRecord(spec, "pixiFromLock(...)");
+  rejectUnknownFields("pixiFromLock(...)", rec, ["manifest", "lock", "environment"]);
+  return freezeDeep(asSourceValue(spec, span, "pixiFromLock(...)") as PixiLockSource);
+}
+
 /** A direct provider-backed acquisition for `pkg({ producer })` —
  *  the package resolves through the declared provider with its own
- *  provenance, no synthetic recipe output. */
-export function provider(fetch: Fetch): WorkspaceProducer {
+ *  provenance, no synthetic recipe output. Accepts a `Fetch` (wrapped as
+ *  `{"kind":"fetch",…}`) or a `condaEnvironment(...)`/`pixiFromLock(...)`
+ *  source value. */
+export function provider(source: Fetch | WorkspaceSourceV6): WorkspaceProducer {
   const span = callerSpan();
   if (!span) {
     throw new Error(
       "provider(...): could not capture a source span — construct the producer explicitly",
     );
   }
-  return freezeDeep({ kind: "provider", provider: { fetch: asFetch(fetch, "provider(...)"), span } });
+  return freezeDeep({ kind: "provider", provider: asSourceValue(source, span, "provider(...)") });
 }
 
 
@@ -95,19 +166,19 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
     "source", "execution", "output_kind", "target", "steps", "checks", "span",
   ]);
   const span = nodeSpan(spec.span, what);
-  const fetch = asFetch(spec.source, `${what}: source`);
+  const source = asSourceValue(spec.source, span, `${what}: source`);
   if (spec.output_kind !== "file" && spec.output_kind !== "tree") {
     throw new Error(`${what}: output_kind must be "file" or "tree"`);
   }
   const steps = spec.steps?.length
-    ? spec.steps.map((c, i) => asCommand(c, `${what}: steps[${i}]`))
+    ? spec.steps.map((c, i) => asStep(c, `${what}: steps[${i}]`))
     : undefined;
   const checks = asNames(spec.checks, `${what}: checks`);
   const node: RecipeNode = {
     name,
     span,
     kind: "recipe",
-    source: { fetch, span },
+    source,
     execution: asExecution(spec.execution, `${what}: execution`),
     output_kind: spec.output_kind,
     target: asPlatform(spec.target, `${what}: target`),
@@ -130,7 +201,7 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
   const span = nodeSpan(spec.span, what);
   const producer = asProducer(spec.producer, `${what}: producer`);
   const commandsRec = asRecord(spec.commands, `${what}: commands`);
-  const commands: Record<string, string> = {};
+  const commands: Record<string, string> = Object.create(null);
   for (const [k, v] of Object.entries(commandsRec)) {
     commands[k] = asName(v, `${what}: commands["${k}"]`);
   }
@@ -173,15 +244,19 @@ export function environment(
   return makeOutput(node);
 }
 
-/** A manual task: one command plus unordered prerequisites and
- *  per-invocation postconditions. */
+/** A manual task: ordered local actions, unordered prerequisites and
+ * per-invocation postconditions. It never becomes cached production. */
 export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
   const what = `task("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["run", "deps", "environment", "checks", "span"]);
+  rejectUnknownFields(what, spec, ["steps", "context", "locks", "deps", "environment", "checks", "span"]);
   const span = nodeSpan(spec.span, what);
-  const run = asCommand(spec.run, `${what}: run`);
+  if (!Array.isArray(spec.steps) || spec.steps.length === 0) throw new Error(`${what}: steps must be nonempty`);
+  const steps = spec.steps.map((step, index) => asStep(step, `${what}: steps[${index}]`));
+  const context = asTaskContext(spec.context ?? { kind: "host", mutable_paths: [] }, `${what}: context`);
+  if (spec.locks !== undefined && !Array.isArray(spec.locks)) throw new Error(`${what}: locks must be an array`);
+  const locks = spec.locks?.map((lock, index) => asLock(lock, `${what}: locks[${index}]`));
   const deps = asNames(spec.deps, `${what}: deps`);
   const envName = spec.environment !== undefined
     ? asName(spec.environment, `${what}: environment`)
@@ -191,7 +266,9 @@ export function task(name: string, spec: TaskSpec): WorkspaceOutput<TaskNode> {
     name,
     span,
     kind: "task",
-    run,
+    steps,
+    context,
+    ...(locks?.length ? { mutation_locks: locks } : {}),
     ...(deps ? { deps } : {}),
     ...(envName !== undefined ? { environment: envName } : {}),
     ...(checks ? { checks } : {}),
@@ -237,19 +314,18 @@ export function check(name: string, spec: CheckSpec): WorkspaceOutput<CheckNode>
   return makeOutput(node);
 }
 
-/** An image: a package set realized for one target platform. */
+/** A runtime package composition exported as an OCI image. */
 export function image(name: string, spec: ImageSpec): WorkspaceOutput<ImageNode> {
   const what = `image("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["packages", "target", "span"]);
+  rejectUnknownFields(what, spec, ["packages", "target", "base", "destinations", "config", "span"]);
   const span = nodeSpan(spec.span, what);
   const node: ImageNode = {
     name,
     span,
     kind: "image",
-    packages: asNames(spec.packages, `${what}: packages`) ?? [],
-    target: asPlatform(spec.target, `${what}: target`),
+    ...imageProperties(spec, what),
   };
   return makeOutput(node);
 }
@@ -310,9 +386,11 @@ export function hook(name: string, spec: HookSpec): WorkspaceOutput<HookNode> {
 export function workspace(spec: WorkspaceSpec): WorkspaceValue {
   const what = "workspace(...)";
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["outputs", "span"]);
+  rejectUnknownFields(what, spec, ["outputs", "inputs", "name", "span"]);
   if (!Array.isArray(spec.outputs)) throw new Error(`${what}: outputs must be an array`);
   const span = nodeSpan(spec.span, what);
+  const name = spec.name === undefined ? undefined : asName(spec.name, `${what}: name`);
+  if (name !== undefined && /[\u0000-\u001f\u007f-\u009f]/.test(name)) throw new Error(`${what}: name cannot contain controls`);
   const outputs: WorkspaceOutputNode[] = [];
   const seen = new Map<string, Span>();
   for (const o of spec.outputs) {
@@ -333,9 +411,30 @@ export function workspace(spec: WorkspaceSpec): WorkspaceValue {
   if (outputs.length === 0) {
     throw new Error(`${what}: outputs must declare at least one output`);
   }
+  outputs.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  if (spec.inputs !== undefined && !Array.isArray(spec.inputs)) throw new Error(`${what}: inputs must be an array`);
+  const inputs = spec.inputs?.map((input, index) => asInput(input, `${what}: inputs[${index}]`)) ?? [];
+  const inputNames = new Map<string, Span>();
+  for (const input of inputs) {
+    const previous = inputNames.get(input.name);
+    if (previous) throw duplicateError(input.name, previous, input.span);
+    inputNames.set(input.name, input.span);
+  }
+  inputs.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  const locks = new Map<string, WorkspaceMutationLock>();
+  for (const output of outputs) {
+    if (output.kind !== "task") continue;
+    for (const lock of output.mutation_locks ?? []) {
+      const key = lockKey(lock);
+      const previous = locks.get(key);
+      if (!previous || `${lock.span.file}:${lock.span.line}:${lock.span.col ?? 0}` <
+        `${previous.span.file}:${previous.span.line}:${previous.span.col ?? 0}`) locks.set(key, lock);
+    }
+  }
+  const mutation_locks = [...locks].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([, lock]) => lock);
   return Object.freeze({
     __gripsack: "workspace",
-    ir: freezeDeep({ span, outputs }),
+    ir: freezeDeep({ span, outputs, ...(name === undefined ? {} : { name }), ...(inputs.length ? { inputs } : {}), ...(mutation_locks.length ? { mutation_locks } : {}) }),
   });
 }
 

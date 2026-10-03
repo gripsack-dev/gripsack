@@ -15,7 +15,8 @@ use crate::{FetchError, FetchLimits};
 pub(crate) use pour::pour;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
-pub(crate) use tree::{copy_tree_filtered, validate_tree};
+pub(crate) use tree::copy_tree_filtered;
+pub use tree::{clone_immutable_tree, validate_tree};
 
 pub(crate) fn extract(
     file: &mut std::fs::File,

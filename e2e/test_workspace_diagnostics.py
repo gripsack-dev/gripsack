@@ -189,7 +189,7 @@ def test_ambient_bash_interpreter_is_a_structured_capability_error(sandbox):
         "ambient",
         'import { defineWorkspace, workspace, task, runBash, lit } from "@gripsack/core";\n'
         "export default defineWorkspace(() => workspace({ outputs: [\n"
-        '  task("script", { run: runBash({ interpreter: lit("bash"), body: "true" }) }),\n'
+        '  task("script", { steps: [runBash({ interpreter: lit("bash"), body: "true" })] }),\n'
         "] }));\n",
     )
     terminal, doc = check_both(repo)
@@ -215,12 +215,12 @@ def test_dedented_bash_interpolation_maps_to_the_original_source_line(sandbox):
         '  commands: { bash: "bin/bash" },\n'
         '  target: targetPlatform({ os: "linux", arch: "x86_64" }),\n'
         '  layout: { kind: "relocatable" } });\n'
-        'const script = task("script", { run: bash(packageCommand("shell", "bash"))\n'
+        'const script = task("script", { steps: [bash(packageCommand("shell", "bash"))\n'
         "  .body(bashBody`\n"
         "    echo first\n"
         "    echo second \\${HOME}\n"
         "    echo third\n"
-        "  `).build() });\n"
+        "  `).build()] });\n"
         "export default defineWorkspace(() => workspace({ outputs: [shell, script] }));\n",
     )
     terminal, doc = check_both(repo)
@@ -375,7 +375,9 @@ def test_check_never_provisions_a_builder(sandbox):
         "isolated",
         'import { defineWorkspace, workspace, recipe, targetPlatform, fileFetch } from "@gripsack/core";\n'
         'const build = recipe("build", { source: fileFetch("src.tar.gz"),\n'
-        '  execution: { kind: "isolated_linux", worker: "buildkit" },\n'
+        '  execution: { kind: "isolated_linux", worker: "buildkit", '
+        'platform: targetPlatform({ os: "linux", arch: "x86_64" }), '
+        'toolchain: { reference: "docker.io/library/alpine@sha256:' + "a" * 64 + '" } },\n'
         '  output_kind: "tree",\n'
         '  target: targetPlatform({ os: "linux", arch: "x86_64" }) });\n'
         "export default defineWorkspace(() => workspace({ outputs: [build] }));\n",

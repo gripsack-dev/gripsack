@@ -4,6 +4,7 @@ use super::Ruleset;
 use super::{
     Control, Enforcement, Limits, OperatorEnvironment, Outcome, ProcessDisposition, ProcessReceipt,
     ProcessRole, Sha256Digest, StopReason, descriptors::DescriptorPolicy, image::SelectedProgram,
+    overlay::EnvironmentOverlay,
 };
 use std::{
     ffi::OsStr,
@@ -41,14 +42,16 @@ pub struct NativeOutcome {
 }
 
 pub struct Invocation<'a> {
-    program: &'a SelectedProgram,
-    environment: &'a OperatorEnvironment,
-    role: ProcessRole,
-    directory: File,
-    limits: Limits,
-    deadline: Instant,
-    deadline_millis: u64,
-    confinement: Option<Ruleset>,
+    pub(crate) program: &'a SelectedProgram,
+    pub(crate) environment: &'a OperatorEnvironment,
+    pub(crate) role: ProcessRole,
+    pub(crate) directory: File,
+    pub(crate) limits: Limits,
+    pub(crate) deadline: Instant,
+    pub(crate) deadline_millis: u64,
+    pub(crate) confinement: Option<Ruleset>,
+    pub(crate) leases: super::ProcessLeases,
+    pub(crate) overlay: Option<EnvironmentOverlay>,
 }
 
 impl<'a> Invocation<'a> {
@@ -103,7 +106,18 @@ impl<'a> Invocation<'a> {
             deadline,
             deadline_millis,
             confinement: None,
+            leases: super::ProcessLeases::default(),
+            overlay: None,
         })
+    }
+
+    /// Layer an explicitly admitted repository-owned overlay over the operator
+    /// snapshot. The merge is deterministic (overlay wins declared keys, its
+    /// search prefix precedes the operator PATH) and happens at payload
+    /// construction, never by mutating the operator boundary.
+    pub fn with_overlay(mut self, overlay: EnvironmentOverlay) -> Self {
+        self.overlay = Some(overlay);
+        self
     }
 
     /// Confine the launched process (and its descendants) to an assembled
@@ -112,6 +126,24 @@ impl<'a> Invocation<'a> {
     pub fn confine(mut self, ruleset: Ruleset) -> Self {
         self.confinement = Some(ruleset);
         self
+    }
+
+    /// Grant only the two explicit coordination handles of a build/verification
+    /// attempt or a consumer process root. All unrelated descriptors remain
+    /// close-on-exec. A retained worker/root lock survives parent death while
+    /// the bridge or the launched consumer still holds its duplicated handle.
+    pub fn retain_leases(mut self, leases: super::ProcessLeases) -> io::Result<Self> {
+        if !matches!(
+            self.role,
+            ProcessRole::Build | ProcessRole::Verify | ProcessRole::Task
+        ) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "coordination leases are restricted to build, verification and task roles",
+            ));
+        }
+        self.leases = leases.admit()?;
+        Ok(self)
     }
 
     /// Preserve the shell action's `-c` semantics, with closed bounded stdin.
@@ -180,20 +212,15 @@ impl<'a> Invocation<'a> {
             self.environment,
             self.role,
             activation,
+            self.overlay.as_ref(),
             confinement.as_ref(),
         )?;
         let mut command = Command::new(&self.program.executable.path);
         command.env_clear();
         let descriptors = DescriptorPolicy::admit()?;
         let directory = self.directory.as_raw_fd();
-        #[cfg(target_os = "linux")]
-        let script = self
-            .program
-            .script
-            .as_ref()
-            .map(|image| image.file.as_raw_fd());
-        #[cfg(target_os = "macos")]
-        let script = None;
+        let lease_descriptors = self.leases.descriptors();
+        let images = self.program.inherited_images();
         // SAFETY: retained image/directory owners outlive spawn and supervision.
         // The closure performs only fchdir, Linux Landlock syscalls,
         // fcntl/close_range, execve and errno reads. macOS Seatbelt is installed
@@ -209,7 +236,7 @@ impl<'a> Invocation<'a> {
                 if libc::fchdir(directory) < 0 {
                     return Err(io::Error::last_os_error());
                 }
-                descriptors.apply(script)?;
+                descriptors.apply(images, lease_descriptors)?;
                 Err(payload.execute())
             });
         }
@@ -221,6 +248,7 @@ impl<'a> Invocation<'a> {
             executable_sha256: self.program.executable.digest,
             script_sha256: input_script
                 .or_else(|| self.program.script.as_ref().map(|script| script.digest)),
+            loader_sha256: self.program.loader_sha256(),
             byte_binding: self.program.executable.binding.clone(),
             enforcement: Enforcement::ProcessGroup,
             environment_keys,

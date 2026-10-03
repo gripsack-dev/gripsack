@@ -7,7 +7,7 @@
       "os": "linux",
       "tags": []
     },
-    "ir_version": 5,
+    "ir_version": 6,
     "workspace": {
       "outputs": [
         {
@@ -41,7 +41,8 @@
               "fetch": {
                 "kind": "file",
                 "path": "tool.bin"
-              }
+              },
+              "kind": "fetch"
             }
           },
           "target": {

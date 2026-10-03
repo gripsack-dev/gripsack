@@ -1,5 +1,10 @@
 """Native captured/rendered files, shared blocks and retained-state recovery (A2)."""
+import fcntl
+import hashlib
 import json
+import platform
+import subprocess
+import sys
 
 from conftest import grip
 
@@ -7,6 +12,7 @@ from conftest import grip
 IMPORTS = '''import {
   defineWorkspace, workspace, profile, file, repoFile, templateText,
   literalText, symlinkTo, trackedCopyTo, managedBlock,
+  pkg, provider, fileFetch, artifactTree, artifactFile, identity, environment, lit,
 } from "@gripsack/core";
 '''
 
@@ -36,6 +42,28 @@ def rendered_profile(value, link="~/.linked"):
       file({{ {content}, destination: trackedCopyTo("~/.copied") }}),
       file({{ {content}, destination: managedBlock("~/.shared-rc", "settings") }}),
     ] }})'''
+
+
+def deployment_state(sandbox, repo):
+    """Snapshot authority-bearing state, not evaluator capture/approval caches."""
+    home = sandbox / ".local/share/gripsack"
+    roots = [home / name for name in (
+        "store", "generations", "current", "roots", "workspace-staging",
+        "buildkit", "journal", "locks/apply.flock", "tools/conda-helper",
+    )] + [repo / "gripsack.lock", repo / "locks"]
+    result = {}
+    for root in roots:
+        paths = [root]
+        if root.is_dir() and not root.is_symlink():
+            paths.extend(root.rglob("*"))
+        for path in paths:
+            if not path.exists() and not path.is_symlink():
+                continue
+            metadata = path.lstat()
+            content = (str(path.readlink()) if path.is_symlink() else
+                       path.read_bytes() if path.is_file() else None)
+            result[str(path)] = (metadata.st_mode, metadata.st_mtime_ns, content)
+    return result
 
 
 def test_rendered_content_composes_with_all_ownership_policies_and_rolls_back(sandbox):
@@ -78,6 +106,32 @@ def test_rendered_content_composes_with_all_ownership_policies_and_rolls_back(sa
     assert b"value=two" not in shared.read_bytes()
     assert shared.read_bytes().startswith(b"FOREIGN\r\n")
     run(repo, "store-verify")
+
+
+def test_rendered_digest_claim_is_checked_before_any_destination_changes(sandbox):
+    repo = sandbox / "digest-env"
+    rendered = b"value=one\n"
+    expected = hashlib.sha256(rendered).hexdigest()
+
+    def outputs(digest, first):
+        return f'''profile("files", {{ files: [
+          file({{ content: literalText({json.dumps(first)}), destination: trackedCopyTo("~/.first") }}),
+          file({{ source: repoFile("template.txt"),
+            content: templateText("value={{{{ value }}}}\\n", {{ value: "one" }}, {json.dumps(digest)}),
+            destination: trackedCopyTo("~/.rendered") }}),
+        ] }})'''
+
+    declare(repo, outputs(expected, "original"))
+    (repo / "template.txt").write_text("value={{ value }}\n")
+    run(repo, "apply")
+    prior = manifest(sandbox)
+    assert (sandbox / ".rendered").read_bytes() == rendered
+    declare(repo, outputs("0" * 64, "must not land"))
+    refused = grip("apply", cwd=repo)
+    assert refused.returncode != 0
+    assert (sandbox / ".first").read_text() == "original"
+    assert (sandbox / ".rendered").read_bytes() == rendered
+    assert manifest(sandbox) == prior
 
 
 def blocks(left="left", right="right"):
@@ -259,3 +313,177 @@ def test_native_take_over_preserves_original_bytes_and_permissions_for_rollback(
     run(repo, "rollback", str(baseline))
     assert target.read_bytes() == b"unmanaged original\n"
     assert target.stat().st_mode & 0o7777 == 0o640
+
+
+def test_artifact_tree_expands_files_preserves_foreign_children_and_refuses_aliases(sandbox):
+    repo = sandbox / "artifact-tree-env"
+    package = '''pkg("bundle", {
+      producer: provider(fileFetch("payload")),
+      target: { os: "linux", arch: "x86_64" },
+      layout: { kind: "relocatable" }, commands: {},
+    })'''
+    tree = '''profile("files", { files: [file({
+      source: artifactTree("bundle", {
+        include: ["config/nested"], exclude: ["config/nested/ignored"],
+      }),
+      content: identity(), destination: trackedCopyTo("~/tree-target"),
+    })] })'''
+    declarations = package + ",\n" + tree
+    declare(repo, declarations)
+    payload = repo / "payload/config/nested"
+    payload.mkdir(parents=True)
+    (payload / "a").write_text("original a\n")
+    (payload / "c").write_text("original c\n")
+    (payload / "ignored").write_text("excluded\n")
+    target = sandbox / "tree-target"
+    target.mkdir()
+    (target / "foreign").write_text("foreign child\n")
+    before = deployment_state(sandbox, repo)
+    run(repo, "check")
+    cold = run(repo, "plan")
+    assert "(satisfied)" not in cold.stdout
+    assert not (target / "config").exists()
+    assert deployment_state(sandbox, repo) == before
+    run(repo, "apply")
+    selected = target / "config/nested"
+    assert (selected / "a").read_text() == "original a\n"
+    assert (selected / "c").read_text() == "original c\n"
+    assert not (selected / "ignored").exists()
+    assert (target / "foreign").read_text() == "foreign child\n"
+    assert {entry["to"] for entry in manifest(sandbox)["modules"]["files"]["entries"]} == {
+        "~/tree-target/config/nested/a", "~/tree-target/config/nested/c",
+    }
+    retained = deployment_state(sandbox, repo)
+    with (sandbox / ".local/share/gripsack/locks/apply.flock").open("rb") as authority:
+        fcntl.flock(authority, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        run(repo, "check")
+        planned = run(repo, "plan")
+    assert "~/tree-target/config/nested/a (satisfied)" in planned.stdout
+    assert "~/tree-target/config/nested/c (satisfied)" in planned.stdout
+    assert deployment_state(sandbox, repo) == retained
+
+    # A missing immutable object means unknown tree membership, not an empty
+    # tree that would prune deployed children. An existing corrupt receipt is
+    # an error, never repaired by a read-only command.
+    home = sandbox / ".local/share/gripsack"
+    receipt = next((home / "store").glob("*-workspace-package/package.json"))
+    package_root = receipt.parent
+    parked = sandbox / "parked-package"
+    package_root.rename(parked)
+    physical = sandbox / "physical-tree"
+    target.rename(physical)
+    target.symlink_to(physical, target_is_directory=True)
+    missing = deployment_state(sandbox, repo)
+    unknown = run(repo, "plan")
+    assert "(prune)" not in unknown.stdout
+    assert "(satisfied)" not in unknown.stdout
+    assert deployment_state(sandbox, repo) == missing
+    assert (selected / "a").read_text() == "original a\n"
+    assert (selected / "c").read_text() == "original c\n"
+    target.unlink()
+    physical.rename(target)
+    parked.rename(package_root)
+    original = receipt.read_bytes()
+    bad = json.loads(original)
+    bad["version"] += 1
+    receipt.chmod(0o600)
+    receipt.write_text(json.dumps(bad))
+    corrupt = deployment_state(sandbox, repo)
+    for command in ("check", "plan"):
+        refused = grip(command, cwd=repo)
+        assert refused.returncode != 0
+        assert deployment_state(sandbox, repo) == corrupt
+    package_root.chmod(0o755)
+    receipt.unlink()
+    missing_receipt = deployment_state(sandbox, repo)
+    for command in ("check", "plan"):
+        refused = grip(command, cwd=repo)
+        assert refused.returncode != 0
+        assert deployment_state(sandbox, repo) == missing_receipt
+    receipt.write_bytes(original)
+    receipt.chmod(0o444)
+    package_root.chmod(0o555)
+    (selected / "a").write_text("user drift\n")
+    (payload / "a").unlink()
+    (payload / "c").unlink()
+    (payload / "b").write_text("new child\n")
+    run(repo, "apply")
+    assert (selected / "a").read_text() == "user drift\n"
+    assert not (selected / "c").exists()
+    assert (selected / "b").read_text() == "new child\n"
+    prior = manifest(sandbox)
+    declare(repo, declarations + ''', profile("collision", { files: [
+      file({ content: literalText("collision"),
+        destination: trackedCopyTo("~/tree-target/config/nested/b") }),
+    ] })''')
+    refused = grip("apply", cwd=repo)
+    assert refused.returncode != 0
+    assert manifest(sandbox) == prior
+    assert (selected / "b").read_text() == "new child\n"
+    refused_preview = grip("plan", cwd=repo)
+    assert refused_preview.returncode != 0
+    assert (selected / "b").read_text() == "new child\n"
+    assert (target / "foreign").read_text() == "foreign child\n"
+    assert not (sandbox / ".local/share/gripsack/buildkit").exists()
+
+
+def test_profile_package_alias_literal_environment_and_old_generation_survive_gc(sandbox):
+    repo = sandbox / "profile-package-env"
+    target = {
+        "os": "macos" if sys.platform == "darwin" else "linux",
+        "arch": "aarch64" if platform.machine() in {"arm64", "aarch64"} else "x86_64",
+    }
+    literal = "$(tripwire) $HOME {store} 'quotes'"
+    declare(repo, f'''pkg("tool", {{
+      producer: provider(fileFetch("payload")), target: {json.dumps(target)},
+      layout: {{ kind: "relocatable" }}, commands: {{ friendly: "internal-name" }},
+    }}), environment("dev", {{
+      packages: ["tool"], target: {json.dumps(target)}, env: {{ MESSAGE: lit({json.dumps(literal)}) }},
+    }}), profile("personal", {{
+      environment: "dev", files: [file({{
+        source: artifactFile("tool", "config"), content: identity(),
+        destination: trackedCopyTo("~/.package-config"),
+      }})],
+    }})''')
+    payload = repo / "payload"
+    payload.mkdir()
+    command = payload / "internal-name"
+    command.write_text('#!/bin/sh\nprintf "%s" "$MESSAGE"\nfor arg do printf "<%s>" "$arg"; done\n')
+    command.chmod(0o755)
+    (payload / "config").write_text("first\n")
+    before = deployment_state(sandbox, repo)
+    run(repo, "check")
+    run(repo, "plan")
+    assert not (sandbox / ".package-config").exists()
+    assert deployment_state(sandbox, repo) == before
+    run(repo, "apply")
+    first = manifest(sandbox)
+    home = sandbox / ".local/share/gripsack"
+    retained = deployment_state(sandbox, repo)
+    run(repo, "check")
+    planned = run(repo, "plan")
+    assert "~/.package-config (satisfied)" in planned.stdout
+    assert deployment_state(sandbox, repo) == retained
+
+    def invoke_profile():
+        marker = sandbox / "unexpected-environment-execution"
+        result = subprocess.run(
+            ["/bin/sh", "-c",
+             'probe="$2"; tripwire() { : > "$probe"; }; . "$1"; friendly "" "two words"',
+             "profile-test", str(home / "current/env/profile.sh"), str(marker)],
+            capture_output=True, text=True, timeout=20,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == literal + "<><two words>"
+        assert not marker.exists()
+
+    invoke_profile()
+    assert run(repo, "run", "--env", "dev", "--", "friendly", "", "two words").stdout == literal + "<><two words>"
+    (payload / "config").write_text("second\n")
+    run(repo, "apply")
+    assert (sandbox / ".package-config").read_text() == "second\n"
+    run(repo, "gc")
+    run(repo, "rollback", str(first["number"]))
+    assert (sandbox / ".package-config").read_text() == "first\n"
+    invoke_profile()
+    assert not (home / "buildkit").exists()

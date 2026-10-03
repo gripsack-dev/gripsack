@@ -8,11 +8,22 @@ use std::process::Command;
 #[derive(Default)]
 pub(crate) struct BuildProcessEnv {
     values: BTreeMap<String, String>,
+    operator: Option<gripsack_process::OperatorEnvironment>,
 }
 
 impl BuildProcessEnv {
     pub(crate) fn new(values: BTreeMap<String, String>) -> Self {
-        Self { values }
+        Self {
+            values,
+            operator: None,
+        }
+    }
+
+    pub(crate) fn from_operator(environment: &gripsack_process::OperatorEnvironment) -> Self {
+        Self {
+            values: BTreeMap::new(),
+            operator: Some(environment.clone()),
+        }
     }
 
     pub(crate) fn apply(&self, command: &mut Command) {
@@ -20,6 +31,12 @@ impl BuildProcessEnv {
     }
 
     pub(crate) fn var(&self, name: &str) -> Option<String> {
+        if let Some(operator) = &self.operator {
+            return operator
+                .var_os(std::ffi::OsStr::new(name))
+                .and_then(|value| value.to_str())
+                .map(str::to_owned);
+        }
         self.values
             .get(name)
             .cloned()
@@ -27,6 +44,11 @@ impl BuildProcessEnv {
     }
 
     pub(crate) fn var_os(&self, name: &str) -> Option<OsString> {
+        if let Some(operator) = &self.operator {
+            return operator
+                .var_os(std::ffi::OsStr::new(name))
+                .map(OsString::from);
+        }
         self.values
             .get(name)
             .map(OsString::from)

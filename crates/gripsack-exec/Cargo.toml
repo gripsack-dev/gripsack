@@ -10,6 +10,7 @@ repository.workspace = true
 loom-tests = []
 
 [dependencies]
+gripsack-conda.workspace = true
 gripsack-config.workspace = true
 gripsack-fs.workspace = true
 gripsack-fetch.workspace = true
@@ -20,9 +21,17 @@ gripsack-process.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+sha2.workspace = true
 tracing = "0.1"
 libc = "0.2"
 tempfile = "3"
+getrandom = "0.4"
+memchr = "2"
+zip = { version = "8", default-features = false, features = ["deflate"] }
+bzip2 = "0.6"
+zstd = "0.13"
+tar = "0.4"
+gripsack-buildkit.workspace = true
 
 [dev-dependencies]
 loom = "0.7.2"

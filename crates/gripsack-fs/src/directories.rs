@@ -120,3 +120,14 @@ pub fn rename(from_dir: &Dir, from: &Path, to_dir: &Dir, to: &Path) -> io::Resul
         from_dir.rename(from, to_dir, to)
     })
 }
+
+/// Rename within one directory, FAILING when `to` already exists
+/// (RENAME_NOREPLACE; RENAME_EXCL on Apple). Namespace publication uses
+/// this so a staged private directory can never replace a path that
+/// appeared concurrently — replacing it would steal a foreign name.
+pub fn rename_noreplace(dir: &Dir, from: &Path, to: &Path) -> io::Result<()> {
+    operation(Boundary::TreePublish, to, || {
+        rustix::fs::renameat_with(dir, from, dir, to, rustix::fs::RenameFlags::NOREPLACE)
+            .map_err(io::Error::from)
+    })
+}

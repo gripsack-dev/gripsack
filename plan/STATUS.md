@@ -495,6 +495,84 @@ evidence below completes the 0.43 release record without promoting waived CI.
   containment theorem; required PR CI at the evidence head `23d4940`
   later passed (run 36257568636).
 
+## Unreleased workspace / BuildKit integration
+
+`feat/workspace-buildkit` isolates this work from the 0.43 candidate.
+Plan 0052 §33 records the strict v6 writer, semantic pin/lock identities and
+ordinary/advanced SDK split. Development checks passed **57 frontend/driver
+tests**, **11 v6 Rust admission tests**, and a compiled installed-SDK plus
+deliberate-pin driver smoke. The Linux `grip build --bridge` path also passed a
+real whole-subgraph smoke: a compiled tool feeds another recipe, a required check
+gates export, native execution survives builder cache removal/GC, and a second
+build reuses retained outputs without a helper. No generation was created.
+This does not close A1/B, optional-helper provisioning, retained-build recovery,
+native package/image consumers, Mac workers or proof/platform/release gates.
+Those initial development smokes did not run fuzz or corpus replay.
+The root/deliberate-pin SDK cutover now exposes `pixi.fromLock` consistently
+with `conda.environment`; the old single-package constructor is removed.
+Its real isolated Deno authoring smoke passed. Coherent Conda materialization,
+native/image consumers and native Mac qualification remain separate gates.
+Subsequent §33 evidence now includes real native project/task/shell/profile
+consumers, retained Python/NumPy generations, independent read-only OCI
+execution and clean image reproduction. The Linux x64 Conda helper has a
+measured two-build pin and passed cold/warm/corruption/retained-use CLI checks.
+The final rebuilt Rust/helper gate, TLC model gate and TLAPS induction passed.
+Linux x64/ARM64 and Mac ARM64 helper complete-table reproducibility/dependency/
+protocol qualification passed in run36974791863 at `f1b6984`. The owner explicitly
+deferred the Mac VZ and full coherent Mac Conda runtime campaigns under
+`MAC-NATIVE-QUAL-2026-10-02` (plan/0048 §9); hosted Mac non-VM tests stay enabled.
+The Mac runtime gaps remain unqualified, not blocking Linux integration under
+that exception. The complete rebuilt Verus gate also passed: **444/0** policy,
+**30/0** actual collector, **92+4** calibrated mutations and **19** evidence
+negatives. Full flow and release gates remain open. No raw prover output was added.
+The external caller migration exposed and repaired ambient-umask definition
+identity drift and cache-only frozen Conda acquisition. A distinct HOME with
+the original differing-mode frontend cache now builds/runs/applies the committed
+lock without update or lock mutation. Fresh Rust/flow checks cover these repairs.
+One superseded local flow invocation accidentally included golden replay before
+cancellation; §33 records that exception, not a passing qualification claim.
+The owner then authorized emission-only migration of the three IR snapshots to
+v6; their changed command/source/image shapes were inspected without corpus
+assertions. The external example cutover is reviewed separately in
+[example PR1](https://github.com/gripsack-dev/example-env-typescript/pull/1);
+the candidate canary pins its commit and exercises cold frozen Conda consumers.
+The 0.43 publication repairs are integrated without changing workspace runtime
+or proof source. All fourteen 0.44 crate archives packaged and compiled in the
+rebuilt container dry-run at `f413b90`; none was uploaded. Publication includes
+Conda and respects the production BuildKit dependency graph. Its byte-exact
+helper pin gate and actual protocol/whole-graph qualification remain required;
+the incidental bare-invocation diagnostic-text check was removed. Required
+candidate CI still needs the integrated head; the 0.43 exception does not waive it.
+
+Native CI now uses `macos-15`: GitHub's
+[macOS 14 deprecation notice](https://github.com/actions/runner-images/issues/13518)
+warns of longer queues and scheduled brownouts before retirement. This changes
+the runner, not scope: both platforms, six scenarios, two fault modes and eight
+shards still require all **192** persistence partitions, plus the native flow
+lane. Required-result admission calibration passed **6** positives and **294**
+negatives. Helper reproducibility environments and measured pins are unchanged;
+the current candidate still requires actual native CI results.
+
+The owner subsequently requested actual 0.44 publication after qualification,
+then a retrospective. Release-facing guides now name the matching 0.44/v6
+contract rather than the obsolete unreleased v5 path. The core release workflow
+accepts explicit dispatch against an existing `core-v*` tag; the same source and
+version guards remain, avoiding tag movement when automatic CI was skipped.
+The SDK's actual README example passed check/update, explicit approval of the
+updated lock, native build and stdin-driven execution with the freshly packed
+SDK. A separate frozen committed example retained its lock bytes without update.
+
+The source-built tutorial's host-executor declaration reproduced E124 before
+the cutover. Its pinned BuildKit recipe now builds and serves real project/task
+consumers, then reuses the exported command after owned-cache removal and GC.
+The native-provider/profile tutorial also ran successfully. The rebuilt TS gate
+passed all **61** tests and typechecked the examples. Website
+[PR20](https://github.com/gripsack-dev/gripsack-dev.github.io/pull/20) stages the
+removed-Pixi guidance and published-version pin: eight executable examples and
+one classified fragment passed against the candidate, and the changed page/SVG
+were visually inspected. The live site must not cut over before both matching
+0.44 artifacts are published. These checks do not waive the final candidate CI.
+
 ## Settled rejections (all eras)
 
 - **TOML/data-format frontend** — five times. TypeScript is the

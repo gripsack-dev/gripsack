@@ -4,6 +4,16 @@ use gripsack_policy::operation_budget::{OperationBudget, RemainingTime};
 use std::time::{Duration, Instant};
 
 const NANOS_PER_SECOND: u128 = 1_000_000_000;
+const MAX_CLEANUP_RESERVE: Duration = Duration::from_secs(2);
+
+/// An execution subdeadline inside an existing operation. The remaining
+/// quarter (capped at two seconds) belongs to cancellation/draining, never a
+/// fresh operation budget. A coordinating client may nest this split for its
+/// own RPC cancellation before the native supervisor's group cleanup.
+pub fn execution_deadline(start: Instant, end: Instant) -> Instant {
+    let remaining = end.saturating_duration_since(start);
+    end - (remaining / 4).min(MAX_CLEANUP_RESERVE)
+}
 
 #[derive(Debug)]
 pub struct OperationDeadline {

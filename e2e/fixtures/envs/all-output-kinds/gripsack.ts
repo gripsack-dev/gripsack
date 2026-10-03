@@ -44,11 +44,8 @@ const dev = environment("dev", {
   packages: ["shell", "app", "fixed"], target: linux,
   prefix: "/opt/tools", env: { APP_ROOT: artifact("app", ".") },
 });
-const prepare = task("prepare", { run: exec({ argv: [lit("true")] }) });
-const format = task("format", {
-  run: exec(packageCommand("app", "app")).arg(lit("format")).build(),
-  deps: ["prepare"], environment: "dev", checks: ["build-ok"],
-});
+const prepare = task("prepare", { steps: [exec({ argv: [lit("true")] })] });
+const format = task("format", { steps: [exec(packageCommand("app", "app")).arg(lit("format")).build()], deps: ["prepare"], environment: "dev", checks: ["build-ok"], });
 const nightly = schedule("nightly", { task: "format", trigger: daily("03:30") });
 const reload = hook("reload", {
   trigger: "post_activate", run: exec({ argv: [lit("true")] }),
