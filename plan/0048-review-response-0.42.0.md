@@ -848,9 +848,18 @@ risk and correcting any later finding in a subsequent release.
   The verifier working-directory repair passed the actual local static-binary
   check. The original ARM64 release build and checksum passed, then reproduced
   the exact missing `dist/scripts/check_native_binary.py` failure.
-- **Unmet evidence / risk:** fresh hosted CI for the repair remains unqualified.
-  Runner routing and publication changes still need their real execution;
-  earlier core checks do not prove those effects.
+- **Unmet evidence / risk:** fresh full CI for the workflow repair was waived,
+  not qualified. The separate tag-triggered reproducibility run is independently
+  tracked; artifact verification does not imply a reproducibility result.
+- **Observed publication:** core run 37098193758 succeeded for all four native
+  artifact builds and publication; TS run 37097894148 published the unchanged
+  SDK tag. All thirteen Rust crates were published from core tag source
+  `b490838083c8c561b6b5fdcd776468d400c59201`. Independent verification checked
+  all four downloaded tarballs against their SHA256 and signed SLSA provenance,
+  enforcing that source/signer digest, release workflow, tag ref and hosted
+  runner identity. Fresh registry, npm-pin and public-installer consumers passed.
+  Intel Mac is a cross-build with dependency/SBOM checks, not native Intel
+  hardware execution. Plan/STATUS records release links and artifact digests.
 - **Preserved controls:** source/version binding, four platform artifacts,
   checksum and native dependency checks, actual supported native execution,
   embedded dependency audit, truthful provenance, and crates.io before GitHub
