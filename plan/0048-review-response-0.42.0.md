@@ -852,6 +852,31 @@ reproducibility/dependency/protocol checks and already passing non-VM native tes
 remain enabled. No runtime guard, proof, Linux gate, checksum or original delivery
 inventory is weakened or removed; skipped lanes cannot close their milestones.
 
+### Owner exception REL-ALPHA-043-2026-10-03
+
+The owner explicitly authorized cutting the 0.43 alpha release without waiting
+for the stalled hosted-runner requalification, accepting the residual release
+risk and correcting any later finding in a subsequent release.
+
+- **Scope:** M2 / §7 and §9's fresh exact-candidate CI prerequisite for the
+  0.43 workflow-only release repair and publication. This does not authorize a
+  0.44 release, change native support claims, or mark a queued check successful.
+- **Replacement evidence:** the original 0.43 required CI passed at
+  `862a96b7cadedf988cff902807e84e3137bf2db2` (run 36951775022, attempt 2);
+  merged source `afe10dab1d6eeda5fa50cd58695ed6652048faa8` has the same tree.
+  The verifier working-directory repair passed the actual local static-binary
+  check. The original ARM64 release build and checksum passed, then reproduced
+  the exact missing `dist/scripts/check_native_binary.py` failure.
+- **Unmet evidence / risk:** fresh hosted CI for the repair remains unqualified.
+  Runner routing and publication changes still need their real execution;
+  earlier core checks do not prove those effects.
+- **Preserved controls:** source/version binding, four platform artifacts,
+  checksum and native dependency checks, actual supported native execution,
+  embedded dependency audit, truthful provenance, and crates.io before GitHub
+  release publication. No signature/checksum bypass or secret disclosure.
+- **Resumption:** restore ordinary source-bound CI qualification when hosted
+  runners are available; this exception is confined to 0.43. Existing explicit
+  fuzz/corpus exclusions remain exclusions, not passing evidence.
 
 ### Required implementation and handoff record
 

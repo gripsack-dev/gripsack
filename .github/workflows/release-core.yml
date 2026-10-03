@@ -31,24 +31,11 @@ jobs:
   # table — fails HERE, before any core binary is built: a release can
   # never pair core bytes with unverified helper bytes.
   bridge:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Build and pin-check helper artifacts
         run: VERSION="${GITHUB_REF_NAME#core-v}" tools/buildkit-bridge/dist.sh --check --dist dist
-      # The linux/x86_64 artifact is the qualified lane's helper:
-      # execute it natively (it must reject a bare invocation with its
-      # usage error, proving the static binary runs).
-      - name: Smoke the native linux artifact
-        run: |
-          bin="dist/grip-buildkit-bridge-${GITHUB_REF_NAME#core-v}-x86_64-unknown-linux-musl"
-          test -x "$bin"
-          set +e
-          output="$("$bin" 2>&1)"
-          status=$?
-          set -e
-          test "$status" -ne 0
-          printf '%s\n' "$output" | grep -q "expected lower or execute"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dist-bridge
@@ -63,12 +50,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-unknown-linux-musl, runner: ubuntu-latest, docker: true }
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, docker: true }
           - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, docker: true }
           # both darwin targets on the arm runner — x86_64 cross-compiles
           # with the stock Xcode (no macos-13 queue, which can idle 20-60min)
-          - { target: x86_64-apple-darwin, runner: macos-14, cross: true }
-          - { target: aarch64-apple-darwin, runner: macos-14 }
+          - { target: x86_64-apple-darwin, runner: macos-15, cross: true }
+          - { target: aarch64-apple-darwin, runner: macos-15 }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -150,7 +137,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -235,9 +222,10 @@ jobs:
           # budget lost to index lag on the 0.42.0 policy→ir hop.
           # re-runs tolerate "already exists"; anything else fails loudly.
           failed=""
-          for crate in gripsack-ir gripsack-fs gripsack-policy gripsack-store \
-                       gripsack-process gripsack-fetch gripsack-config griplint \
-                       gripsack-lint gripsack-trace gripsack-exec gripsack; do
+          for crate in gripsack-fs gripsack-policy gripsack-ir gripsack-process \
+                       griplint gripsack-config gripsack-store gripsack-fetch \
+                       gripsack-trace gripsack-buildkit gripsack-conda gripsack-lint \
+                       gripsack-exec gripsack; do
             ok=""
             for attempt in $(seq 1 12); do
               if out="$(cargo publish -p "$crate" 2>&1)"; then

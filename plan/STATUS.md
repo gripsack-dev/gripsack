@@ -121,6 +121,14 @@ The release workflow now uses a structured ELF/Mach-O verifier and a valid
 attestation-action commit. These artifact checks do not replace required
 candidate CI, and no tag/publication is implied.
 
+**0.43 release invocation repair (2026-10-02):** Required CI
+[36951775022](https://github.com/gripsack-dev/gripsack/actions/runs/36951775022)
+passed at `862a96b` and PR164 merged as `afe10dab` with the identical source
+tree. The release workflow's `cd dist` exposed a wrong verifier path, reproduced
+as a missing-file error. Both platform invocations now use `../scripts/`;
+the actual qualified musl binary passed that invocation from `dist/` and printed
+`grip 0.43.0`. No binary source, dependency allowlist or checksum was changed.
+
 **0051 source update (`80b50a3`, 2026-09-26):** The retired
 BuildKit v0.33.0 manifest-list digest was replaced by a resolvable
 digest with the same qualified amd64 leaf. The pinned Go bridge was
@@ -403,6 +411,23 @@ CLI suite passed; native/exact-candidate CI remains required. The integrated
 local receipts are indexed in `verification/reports/README.md`; no formal
 model-to-Rust refinement or physical-storage guarantee is inferred.
 
+
+## 0.43 alpha publication exception
+
+The owner authorized proceeding without the queued hosted CI requalification
+under `REL-ALPHA-043-2026-10-03` (plan/0048 §9). Original candidate CI passed in
+run 36951775022, attempt 2; the workflow repair leaves its Rust/SDK/schema/build
+inputs unchanged. The actual ARM release build and checksum passed before the
+verifier's wrong working-directory path failed; the corrected path passed the
+local static-artifact smoke.
+
+Queued checks are not marked successful. Artifact verification and registry
+ordering remain required. Publication uses the available ARM Linux runner pool,
+explicit native build runner versions, and a tag-bound manual TypeScript entry
+point; the TS tag need not move. Cargo metadata exposed an invalid hard-coded
+crate order and an omitted workspace crate; publication now includes every
+publishable member in dependency order. Actual publication results remain to
+be recorded; neither this exception nor successful local checks claim a release.
 
 ## Security maintenance (non-release changes)
 

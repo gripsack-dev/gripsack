@@ -185,6 +185,10 @@ User-visible changes per release. Design archaeology lives in
 - Native macOS release binaries statically link bundled XZ rather than depending
   on the builder's Homebrew installation. Artifact verification distinguishes
   `otool` headers from actual dependencies and admits only explicit system paths.
+  Both platform checks locate that verifier from the artifact directory.
+- Release publication orders all workspace crates by their actual dependencies.
+  TypeScript publication can be dispatched against an existing version tag
+  without moving it; Linux publication uses the ARM runner pool.
 - macOS's confined launcher can open the root directory required for startup
   without granting recursive reads; unrelated file contents remain denied.
 - Source captures finalize their private directory name before read-only sealing
