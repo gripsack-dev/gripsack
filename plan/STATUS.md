@@ -426,18 +426,46 @@ ordering remain required. Publication uses the available ARM Linux runner pool,
 explicit native build runner versions, and a tag-bound manual TypeScript entry
 point; the TS tag need not move. Cargo metadata exposed an invalid hard-coded
 crate order and an omitted workspace crate; publication now includes every
-publishable member in dependency order. Registry publication is now observed;
-the final native core release is still pending.
+publishable member in dependency order. The actual publication and consumer
+evidence below completes the 0.43 release record without promoting waived CI.
 
-All thirteen 0.43 crates were uploaded from exact tag source `b490838`, after
-the pinned-container workspace packaging dry-run. A separate fresh registry
-installation passed real embedded-frontend check/apply/reuse/GC. The published
-`@gripsack/core@0.43.0` package binds TS tag source `afe10dab`; its
-[publication run](https://github.com/gripsack-dev/gripsack/actions/runs/37097894148)
-and [GitHub release](https://github.com/gripsack-dev/gripsack/releases/tag/ts-v0.43.0)
-succeeded. The same consumer journey also passed with the published npm pin.
-These observations do not claim the remaining native artifacts or core GitHub
-release have finished.
+### Published 0.43 artifacts and observed consumers
+
+- [Core publication](https://github.com/gripsack-dev/gripsack/actions/runs/37098193758)
+  and [release](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.43.0)
+  succeeded at source `b490838083c8c561b6b5fdcd776468d400c59201`.
+  All thirteen Rust crates were packaged, compiled and uploaded from that exact
+  tag in a pinned container before GitHub publication.
+- [SDK publication](https://github.com/gripsack-dev/gripsack/actions/runs/37097894148)
+  and [release](https://github.com/gripsack-dev/gripsack/releases/tag/ts-v0.43.0)
+  succeeded. The npm package binds the unchanged TS tag source
+  `afe10dab1d6eeda5fa50cd58695ed6652048faa8` and includes source types plus
+  compiled runtime entrypoints.
+- Each native artifact passed the release job's dependency and embedded-SBOM
+  audit. Linux x64/ARM64 and Mac ARM executed their binaries on matching runners;
+  Intel Mac was cross-built on Apple Silicon, not tested on Intel hardware.
+- Downloaded all four public tarballs and verified SHA256 plus signed SLSA v1
+  provenance using checksum-verified official `gh 2.102.0`. Verification enforced
+  repository, `release-core.yml`, `refs/tags/core-v0.43.0`, exact source/signer
+  digest `b490838...`, and `--deny-self-hosted-runners`.
+- A fresh `cargo install --locked --version =0.43.0 --registry crates-io`
+  passed in the pinned container. Its actual core then passed isolated-HOME
+  check, file-profile apply, unchanged second apply and GC, both with embedded
+  frontend and with the published npm pin. The public HTTPS installer also
+  downloaded, checksum-verified and executed `grip 0.43.0`.
+- Homebrew Formula and Cask metadata moved to 0.43.0; Cask hashes match the
+  published Mac artifacts. This is not a claim of a local Homebrew installation.
+- Auxiliary observations remain explicit: site refresh run 37103193348 was
+  queued and the browser still showed 0.42.0 when inspected; its installer
+  already selected and installed 0.43.0. Standalone repro run 37098193747 is
+  separately monitored and is not represented as a completed proof here.
+
+| Target | Published tarball SHA256 |
+|---|---|
+| Linux x86_64 musl | `97be3e7901d0a1f58e3adad46ac97f08b5227036f68df4249eaabd545df6eed6` |
+| Linux ARM64 musl | `e336c5c4344fe51444e560bc0d0202efa02a4ca145555ad6a6d91817a966c318` |
+| macOS Apple Silicon | `ce6b7c759d5bb1f8aa5ecf82e83db563d906e581dc085fb57c5c566acc4f2cc5` |
+| macOS Intel cross-build | `99d1a174e96e0f6f69d618618961e86a3018e740fcbcd5f2f264e52fa536cb4b` |
 
 ## Security maintenance (non-release changes)
 
