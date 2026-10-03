@@ -544,6 +544,15 @@ helper pin gate and actual protocol/whole-graph qualification remain required;
 the incidental bare-invocation diagnostic-text check was removed. Required
 candidate CI still needs the integrated head; the 0.43 exception does not waive it.
 
+Native CI now uses `macos-15`: GitHub's
+[macOS 14 deprecation notice](https://github.com/actions/runner-images/issues/13518)
+warns of longer queues and scheduled brownouts before retirement. This changes
+the runner, not scope: both platforms, six scenarios, two fault modes and eight
+shards still require all **192** persistence partitions, plus the native flow
+lane. Required-result admission calibration passed **6** positives and **294**
+negatives. Helper reproducibility environments and measured pins are unchanged;
+the current candidate still requires actual native CI results.
+
 ## Settled rejections (all eras)
 
 - **TOML/data-format frontend** — five times. TypeScript is the

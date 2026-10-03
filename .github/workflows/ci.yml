@@ -84,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-latest, macos-14]
+        platform: [ubuntu-latest, macos-15]
         scenario: [apply-deploy, apply-prune, rollback-deploy, rollback-prune, apply-deploy-copy, apply-prune-copy]
         fault: [error, kill]
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
@@ -184,7 +184,7 @@ jobs:
   # sandbox cannot be installed the evaluator still fails closed and this
   # required lane goes red.
   e2e-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Require native Mac ARM
