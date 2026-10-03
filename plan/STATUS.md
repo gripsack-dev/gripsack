@@ -412,6 +412,23 @@ local receipts are indexed in `verification/reports/README.md`; no formal
 model-to-Rust refinement or physical-storage guarantee is inferred.
 
 
+## 0.43 alpha publication exception
+
+The owner authorized proceeding without the queued hosted CI requalification
+under `REL-ALPHA-043-2026-10-03` (plan/0048 §9). Original candidate CI passed in
+run 36951775022, attempt 2; the workflow repair leaves its Rust/SDK/schema/build
+inputs unchanged. The actual ARM release build and checksum passed before the
+verifier's wrong working-directory path failed; the corrected path passed the
+local static-artifact smoke.
+
+Queued checks are not marked successful. Artifact verification and registry
+ordering remain required. Publication uses the available ARM Linux runner pool,
+explicit native build runner versions, and a tag-bound manual TypeScript entry
+point; the TS tag need not move. Cargo metadata exposed an invalid hard-coded
+crate order and an omitted workspace crate; publication now includes every
+publishable member in dependency order. Actual publication results remain to
+be recorded; neither this exception nor successful local checks claim a release.
+
 ## Security maintenance (non-release changes)
 
 - 2026-09-26: The protected `audit` check exposed
