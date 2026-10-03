@@ -26,12 +26,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-unknown-linux-musl, runner: ubuntu-latest, docker: true }
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, docker: true }
           - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, docker: true }
           # both darwin targets on the arm runner — x86_64 cross-compiles
           # with the stock Xcode (no macos-13 queue, which can idle 20-60min)
-          - { target: x86_64-apple-darwin, runner: macos-14, cross: true }
-          - { target: aarch64-apple-darwin, runner: macos-14 }
+          - { target: x86_64-apple-darwin, runner: macos-15, cross: true }
+          - { target: aarch64-apple-darwin, runner: macos-15 }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -86,7 +86,7 @@ jobs:
           tar -xzf gripsack-*-${{ matrix.target }}.tar.gz -C "$tmp"
           bin="$(find "$tmp" -type f -name grip | head -1)"
           file "$bin"
-          python3 scripts/check_native_binary.py "$bin"
+          python3 ../scripts/check_native_binary.py "$bin"
           "$bin" --version
           # fails the release if the SBOM embed is missing or the
           # shipped tree hits an advisory (plan/0022 §2)
@@ -102,7 +102,7 @@ jobs:
           bin="$(find "$tmp" -type f -name grip | head -1)"
           file "$bin"
           otool -L "$bin"
-          python3 scripts/check_native_binary.py "$bin"
+          python3 ../scripts/check_native_binary.py "$bin"
           "$bin" --version
           cargo audit bin "$bin"
 
@@ -113,7 +113,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -161,9 +161,9 @@ jobs:
           # budget lost to index lag on the 0.42.0 policy→ir hop.
           # re-runs tolerate "already exists"; anything else fails loudly.
           failed=""
-          for crate in gripsack-ir gripsack-fs gripsack-policy gripsack-store \
-                       gripsack-process gripsack-fetch gripsack-config griplint \
-                       gripsack-lint gripsack-trace gripsack-exec gripsack; do
+          for crate in gripsack-fs gripsack-policy gripsack-ir gripsack-process \
+                       griplint gripsack-buildkit gripsack-config gripsack-store \
+                       gripsack-fetch gripsack-trace gripsack-exec gripsack-lint gripsack; do
             ok=""
             for attempt in $(seq 1 12); do
               if out="$(cargo publish -p "$crate" 2>&1)"; then
