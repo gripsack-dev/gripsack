@@ -1,6 +1,9 @@
 name: release-core
 
 on:
+  # Dispatch against an existing core-v* tag when its commit deliberately
+  # skipped automatic CI. The tag and its source stay immutable.
+  workflow_dispatch:
   push:
     tags: ["core-v*"]
 permissions:

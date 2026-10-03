@@ -29,10 +29,10 @@ export default defineEnv((ctx) => ({
 registered by import side effect — the function *returns* the
 environment, so `Inputs → Environment` is testable and cacheable.
 
-## A workspace is a function (unreleased IR v6)
+## A workspace is a function (IR v6)
 
-This workspace API requires the matching development core and SDK in
-this checkout; the published 0.42.0 pair predates it.
+Use the matching 0.44 core and SDK for this workspace API. Older cores do not
+admit the v6 writer; retained v3/v4/v5 data keeps its versioned meaning.
 
 A root `gripsack.ts` — preferred over `hosts/<name>.ts` when present —
 default-exports `defineWorkspace` and returns a `workspace({ outputs })`
@@ -42,29 +42,31 @@ workspace envelope (`{ir_version: 6, host, workspace}`):
 
 ```ts
 // gripsack.ts
-import { defineWorkspace, workspace, recipe, pkg, targetPlatform } from "@gripsack/core";
-import { githubRelease } from "@gripsack/core";
+import {
+  conda, defineWorkspace, environment, pkg, provider, targetPlatform, workspace,
+} from "@gripsack/core";
 
-const tools = recipe("tools", {
-  source: githubRelease({ repo: "example/tools", asset: "tools-{version}.tar.gz" }),
-  execution: { kind: "host", access: "unconfined" },
-  output_kind: "tree",
-  target: targetPlatform({ os: "linux", arch: "x86_64" }),
+const target = targetPlatform({ os: "linux", arch: "x86_64", abi: "gnu" });
+const ripgrep = pkg("ripgrep", {
+  producer: provider(conda.environment({
+    channels: ["conda-forge"],
+    packages: { ripgrep: "*" },
+  })),
+  commands: { rg: "bin/rg" },
+  target,
+  layout: { kind: "prefix_materialized" },
 });
 
-export default defineWorkspace(() =>
-  workspace({
-    outputs: [
-      tools,
-      pkg("tools-bin", {
-        producer: "tools", // or provider(githubRelease({…})) — no synthetic recipe
-        commands: { tools: "bin/tools" },
-        target: targetPlatform({ os: "linux", arch: "x86_64" }),
-        layout: { kind: "relocatable" },
-      }),
-    ],
-  }));
+export default defineWorkspace(() => workspace({
+  outputs: [ripgrep, environment("search", { packages: ["ripgrep"], target })],
+}));
 ```
+
+Run `grip update` to record the complete selection, then `grip build ripgrep`
+or `grip run --env search -- rg --version`. Frozen consumers use those records
+without re-solving. Provider packages do not need a synthetic recipe or worker.
+Lock updates change captured inputs: review and approve the new source/policy
+snapshot when prompted before the next build. This is not an approval bypass.
 
 `conda.environment({ channels, packages })` describes one coherent Conda
 environment, not independently solved packages. `pixi.fromLock({ manifest,
@@ -118,12 +120,12 @@ The frontend rejects them when invoked, but this is **not** a static
 pre-evaluation check. Recipe commands execute only through explicit production;
 the native file-profile path below does not execute command declarations.
 
-Recipe execution is explicit. `{ kind: "host", access: "unconfined" }`
-declares host access but still requires its native executor. Isolated recipes
-declare `kind: "isolated_linux"`, `worker: "buildkit"`, a Linux `platform`, and
+Recipe execution is explicit. In 0.44, production recipes declare
+`kind: "isolated_linux"`, `worker: "buildkit"`, a Linux `platform`, and
 `toolchain: { reference: "<registry/image>@sha256:<digest>" }`. They do not run
-during `grip check`. Native downloads are provider-backed packages, not a
-`recipe` "native" execution mode.
+during `grip check`. A `{ kind: "host", access: "unconfined" }` declaration is
+admitted as contract data but host recipe execution remains gated. Native
+downloads are provider-backed packages, not a `recipe` "native" execution mode.
 Targets may declare an ABI (`gnu`/`musl` on Linux, `darwin` on macOS)
 and `minimum_os: { major, minor, patch? }`. Fixed-prefix packages use
 `{ kind: "fixed_prefix", prefix: "/opt/tool" }`; selecting one into an
@@ -192,9 +194,9 @@ placements and leftover base files inside a package prefix are rejected.
 The returned image path is an OCI archive. Native admission checks descriptor
 sizes/SHA-256, gzip DiffIDs, platform/configuration, timestamps, package
 bytes/links/modes/ownership and unselected payloads before publication, including
-cache hits. Static Linux package/project/image reuse and two independent clean
-exports are exercised; dynamic-loader and coherent Conda image qualification
-remain separate gates.
+cache hits. Linux x86_64 static, GNU dynamic and coherent Conda consumers have
+runtime evidence, including independent read-only/no-network OCI execution and
+clean exports. Other host/image platforms need their own qualification.
 
 Profiles may select the same compatible environment used by `grip run` and
 deploy `artifactFile` or `artifactTree` sources. A cold `apply` realizes required
@@ -218,11 +220,11 @@ Four [graduated workspaces](../examples/workspaces/) use the real SDK
 without a hostname shim or a synthetic package: [dotfiles only](../examples/workspaces/01-dotfiles/gripsack.ts),
 [an offline-staged native tool and profile](../examples/workspaces/02-native-tool/gripsack.ts),
 [a source recipe with alternate producer and typed command consumer](../examples/workspaces/03-source-built/gripsack.ts),
-and [manual plus scheduled tasks](../examples/workspaces/04-scheduled-task/gripsack.ts).
+and [manual plus scheduled task declarations](../examples/workspaces/04-scheduled-task/gripsack.ts).
 The `ts-test` gate strictly type-checks their source, and `e2e` admits
-each through the real `grip check`. The dotfile example can be planned
-and applied natively. The other archives are executable offline fixtures;
-their environment/profile and scheduler consumer gates remain separate.
+each through the real `grip check`. The dotfile and native-tool profiles use
+the native lifecycle; the source-built tool uses the pinned BuildKit policy.
+Scheduler registration remains gated: a declared schedule activates nothing.
 
 The legacy `hosts/<name>.ts` path emits a v6 modules-compatibility
 envelope until the A5 migration. Strict v3/v4/v5 readers preserve historical
@@ -293,7 +295,8 @@ do not authorize evaluation.
 | probes | `ctx.probe` (`executable`, `file_exists`), `ProbeBuilder`, `ProbeKind` |
 | facts | `HostFacts` (core-injected), `when`, `hasTag`, `Condition` |
 | captured inputs / pure locks | `inputFile`, `inputDirectory`, `input`, `lock`, `ensureArtifact` |
-| fetchers | `githubRelease`, `tarball`, `git`, `fileFetch`, `pluginFetch`, `brew`, `pixi` |
+| fetchers | `githubRelease`, `tarball`, `git`, `fileFetch`, `pluginFetch`, `brew` |
+| workspace environment sources | `conda.environment`, `pixi.fromLock` |
 | destinations | `symlink`, `trackedCopy`, `merge`, `template` |
 | dependencies | `dep(module, { for? })` |
 | activation | `service`, `fonts`, `desktopEntry`, `customHook` |

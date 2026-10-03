@@ -3,12 +3,17 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
-## [Unreleased]
+## [0.44.0] — 2026-10-03
 
 ### Changed
 
 - Workspace publication includes `gripsack-conda` and orders the production
   `gripsack-buildkit` crate after its fetch/process dependencies.
+- The source-built workspace tutorial uses the supported pinned BuildKit policy
+  and typed source/output paths; native build/run/task and post-GC reuse are
+  exercised rather than left as host-executor declarations.
+- Core publication can be dispatched explicitly against an existing version tag,
+  so a commit's CI-skip marker does not require moving that tag.
 
 - The workspace SDK exports `pixi.fromLock` for explicit captured-manifest/lock
   imports and `conda.environment` for a coherent solve. The old single-package

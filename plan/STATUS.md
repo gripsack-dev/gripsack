@@ -553,6 +553,26 @@ lane. Required-result admission calibration passed **6** positives and **294**
 negatives. Helper reproducibility environments and measured pins are unchanged;
 the current candidate still requires actual native CI results.
 
+The owner subsequently requested actual 0.44 publication after qualification,
+then a retrospective. Release-facing guides now name the matching 0.44/v6
+contract rather than the obsolete unreleased v5 path. The core release workflow
+accepts explicit dispatch against an existing `core-v*` tag; the same source and
+version guards remain, avoiding tag movement when automatic CI was skipped.
+The SDK's actual README example passed check/update, explicit approval of the
+updated lock, native build and stdin-driven execution with the freshly packed
+SDK. A separate frozen committed example retained its lock bytes without update.
+
+The source-built tutorial's host-executor declaration reproduced E124 before
+the cutover. Its pinned BuildKit recipe now builds and serves real project/task
+consumers, then reuses the exported command after owned-cache removal and GC.
+The native-provider/profile tutorial also ran successfully. The rebuilt TS gate
+passed all **61** tests and typechecked the examples. Website
+[PR20](https://github.com/gripsack-dev/gripsack-dev.github.io/pull/20) stages the
+removed-Pixi guidance and published-version pin: eight executable examples and
+one classified fragment passed against the candidate, and the changed page/SVG
+were visually inspected. The live site must not cut over before both matching
+0.44 artifacts are published. These checks do not waive the final candidate CI.
+
 ## Settled rejections (all eras)
 
 - **TOML/data-format frontend** — five times. TypeScript is the
