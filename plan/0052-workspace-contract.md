@@ -2031,6 +2031,19 @@ Observed working-tree development checks:
   evidence. The original differing-mode HOME successfully built, ran and applied
   ripgrep from the same frozen lock **without update** or lock mutation:
   `FROZEN_EXTERNAL_CONDA_COLD_ARCHIVES_AND_DIFFERENT_UMASK_WITHOUT_UPDATE=passed`.
+- The current optimized musl artifact passed its checksum/native checks and a
+  fresh-HOME frozen Conda check/build/stdin-search/task/profile/reuse/GC journey,
+  with unchanged lock bytes and no BuildKit state. The current whole-graph
+  BuildKit CLI scenario also passed its source-built tool, dependent recipe,
+  required check, native export and reuse after owned-cache removal/GC.
+- Integration of the 0.43 publication repair preserves its narrow alpha-CI
+  exception separately from the authorized 0.44 Mac deferral. At `f413b90`,
+  rebuilt-container `cargo publish --workspace --dry-run --locked` packaged and
+  compiled all **fourteen** 0.44 members through Cargo's temporary registry.
+  No 0.44 package was uploaded. The release order now includes Conda and puts
+  production BuildKit after its fetch/process prerequisites; helper gates
+  still precede native builds. The redundant bare-invocation wording check is
+  removed, not repinned; actual protocol and whole-graph evidence is retained.
 
 These development checks do not replace full Compose or source-bound release
 evidence. Required normalization/refinement, publication/retention, recovery,

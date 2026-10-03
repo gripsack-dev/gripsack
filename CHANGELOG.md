@@ -7,6 +7,9 @@ User-visible changes per release. Design archaeology lives in
 
 ### Changed
 
+- Workspace publication includes `gripsack-conda` and orders the production
+  `gripsack-buildkit` crate after its fetch/process dependencies.
+
 - The workspace SDK exports `pixi.fromLock` for explicit captured-manifest/lock
   imports and `conda.environment` for a coherent solve. The old single-package
   `pixi(package)` constructor is removed; historical IR readers keep their

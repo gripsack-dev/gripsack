@@ -426,8 +426,18 @@ ordering remain required. Publication uses the available ARM Linux runner pool,
 explicit native build runner versions, and a tag-bound manual TypeScript entry
 point; the TS tag need not move. Cargo metadata exposed an invalid hard-coded
 crate order and an omitted workspace crate; publication now includes every
-publishable member in dependency order. Actual publication results remain to
-be recorded; neither this exception nor successful local checks claim a release.
+publishable member in dependency order. Registry publication is now observed;
+the final native core release is still pending.
+
+All thirteen 0.43 crates were uploaded from exact tag source `b490838`, after
+the pinned-container workspace packaging dry-run. A separate fresh registry
+installation passed real embedded-frontend check/apply/reuse/GC. The published
+`@gripsack/core@0.43.0` package binds TS tag source `afe10dab`; its
+[publication run](https://github.com/gripsack-dev/gripsack/actions/runs/37097894148)
+and [GitHub release](https://github.com/gripsack-dev/gripsack/releases/tag/ts-v0.43.0)
+succeeded. The same consumer journey also passed with the published npm pin.
+These observations do not claim the remaining native artifacts or core GitHub
+release have finished.
 
 ## Security maintenance (non-release changes)
 
@@ -498,6 +508,13 @@ v6; their changed command/source/image shapes were inspected without corpus
 assertions. The external example cutover is reviewed separately in
 [example PR1](https://github.com/gripsack-dev/example-env-typescript/pull/1);
 the candidate canary pins its commit and exercises cold frozen Conda consumers.
+The 0.43 publication repairs are integrated without changing workspace runtime
+or proof source. All fourteen 0.44 crate archives packaged and compiled in the
+rebuilt container dry-run at `f413b90`; none was uploaded. Publication includes
+Conda and respects the production BuildKit dependency graph. Its byte-exact
+helper pin gate and actual protocol/whole-graph qualification remain required;
+the incidental bare-invocation diagnostic-text check was removed. Required
+candidate CI still needs the integrated head; the 0.43 exception does not waive it.
 
 ## Settled rejections (all eras)
 
