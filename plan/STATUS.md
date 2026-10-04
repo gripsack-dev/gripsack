@@ -495,9 +495,9 @@ evidence below completes the 0.43 release record without promoting waived CI.
   containment theorem; required PR CI at the evidence head `23d4940`
   later passed (run 36257568636).
 
-## Unreleased workspace / BuildKit integration
+## 0.44 workspace / BuildKit integration
 
-`feat/workspace-buildkit` isolates this work from the 0.43 candidate.
+The integration landed in [PR173](https://github.com/gripsack-dev/gripsack/pull/173).
 Plan 0052 §33 records the strict v6 writer, semantic pin/lock identities and
 ordinary/advanced SDK split. Development checks passed **57 frontend/driver
 tests**, **11 v6 Rust admission tests**, and a compiled installed-SDK plus
@@ -505,9 +505,9 @@ deliberate-pin driver smoke. The Linux `grip build --bridge` path also passed a
 real whole-subgraph smoke: a compiled tool feeds another recipe, a required check
 gates export, native execution survives builder cache removal/GC, and a second
 build reuses retained outputs without a helper. No generation was created.
-This does not close A1/B, optional-helper provisioning, retained-build recovery,
-native package/image consumers, Mac workers or proof/platform/release gates.
-Those initial development smokes did not run fuzz or corpus replay.
+Those initial development smokes alone did not close A1/B, optional-helper
+provisioning, retained-build recovery, native package/image consumers, Mac workers
+or proof/platform/release gates. They did not run fuzz or corpus replay.
 The root/deliberate-pin SDK cutover now exposes `pixi.fromLock` consistently
 with `conda.environment`; the old single-package constructor is removed.
 Its real isolated Deno authoring smoke passed. Coherent Conda materialization,
@@ -524,7 +524,7 @@ deferred the Mac VZ and full coherent Mac Conda runtime campaigns under
 The Mac runtime gaps remain unqualified, not blocking Linux integration under
 that exception. The complete rebuilt Verus gate also passed: **444/0** policy,
 **30/0** actual collector, **92+4** calibrated mutations and **19** evidence
-negatives. Full flow and release gates remain open. No raw prover output was added.
+negatives. Full flow and release gates were still open at that point. No raw prover output was added.
 The external caller migration exposed and repaired ambient-umask definition
 identity drift and cache-only frozen Conda acquisition. A distinct HOME with
 the original differing-mode frontend cache now builds/runs/applies the committed
@@ -541,8 +541,8 @@ or proof source. All fourteen 0.44 crate archives packaged and compiled in the
 rebuilt container dry-run at `f413b90`; none was uploaded. Publication includes
 Conda and respects the production BuildKit dependency graph. Its byte-exact
 helper pin gate and actual protocol/whole-graph qualification remain required;
-the incidental bare-invocation diagnostic-text check was removed. Required
-candidate CI still needs the integrated head; the 0.43 exception does not waive it.
+the incidental bare-invocation diagnostic-text check was removed. These preparation
+checks did not waive final candidate CI; its completed result is recorded below.
 
 Native CI now uses `macos-15`: GitHub's
 [macOS 14 deprecation notice](https://github.com/actions/runner-images/issues/13518)
@@ -551,7 +551,7 @@ the runner, not scope: both platforms, six scenarios, two fault modes and eight
 shards still require all **192** persistence partitions, plus the native flow
 lane. Required-result admission calibration passed **6** positives and **294**
 negatives. Helper reproducibility environments and measured pins are unchanged;
-the current candidate still requires actual native CI results.
+the final native CI results are recorded below.
 
 The owner subsequently requested actual 0.44 publication after qualification,
 then a retrospective. Release-facing guides now name the matching 0.44/v6
@@ -571,7 +571,38 @@ passed all **61** tests and typechecked the examples. Website
 removed-Pixi guidance and published-version pin: eight executable examples and
 one classified fragment passed against the candidate, and the changed page/SVG
 were visually inspected. The live site must not cut over before both matching
-0.44 artifacts are published. These checks do not waive the final candidate CI.
+0.44 artifacts are published. These checks did not waive final candidate CI.
+
+### Final qualification and immutable tags
+
+Exact source `f8c68f6a80e08ad511896274c19e3d14d6919b03` passed
+[CI37134187816](https://github.com/gripsack-dev/gripsack/actions/runs/37134187816),
+attempt 1: **202 successful jobs**, including all **192** Linux/macOS persistence
+partitions, and one explicitly owner-waived fuzz job. Core/B0, Linux flows,
+confined native Mac flows, TLC, TLAPS, Verus, docs, audit and both required
+aggregates succeeded. The final gate recorded `REL-FUZZ-2026-09-27` and passed
+**6** positive/**294** negative admission cases; no 0.44 full-CI exception was used.
+The [matching real-caller canary](https://github.com/gripsack-dev/gripsack/actions/runs/37134189898)
+also passed its static core/helper builds, SDK typecheck, legacy sandboxed apply
+and frozen Conda consumers.
+
+Core PR173 merged at `7cb9c4c`; external example PR1 merged at `4b1790a`.
+The merge tree is byte-identical to the qualified source tree. Both immutable
+`core-v0.44.0` and `ts-v0.44.0` tags point directly to the qualified `f8c68f6`;
+publication is explicitly dispatched against those tag refs. Two local clean
+release builds at that source produced identical binary SHA256
+`60140fae7bddf5ac703ba07f62a11fe0e968b9efd588a8b86d088787a3e06c51`.
+This is a same-input result, not cross-time or cross-platform reproducibility.
+The Mac VZ and full coherent Mac Conda runtime exclusions remain unqualified.
+
+The [SDK publisher](https://github.com/gripsack-dev/gripsack/actions/runs/37182422705)
+published npm `@gripsack/core@0.44.0` with `gitHead` equal to `f8c68f6`.
+The external example's registry-only lock passed a clean install and both-entrypoint
+typecheck. Its first migration attempt retained the obsolete file link and failed
+TS2307; removing that link and its extraneous lock record corrected the actual
+dependency resolution. Native artifact publication and public-consumer evidence
+are distinct from these source and SDK results.
+
 
 ## Settled rejections (all eras)
 

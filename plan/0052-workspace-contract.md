@@ -2045,9 +2045,9 @@ Observed working-tree development checks:
   still precede native builds. The redundant bare-invocation wording check is
   removed, not repinned; actual protocol and whole-graph evidence is retained.
 
-These development checks do not replace full Compose or source-bound release
-evidence. Required normalization/refinement, publication/retention, recovery,
-platform and release gates remain open. No fuzz-engine campaign was run.
+These development checks alone did not replace full Compose or source-bound release
+evidence. The later final-source qualification is recorded in §34; it does not
+close the explicitly excluded platform acceptance. No fuzz-engine campaign was run.
 A superseded local flow invocation accidentally included `test_golden.py`
 (four failures and one pass observed) before cancellation; it is not accepted
 as qualification. Subsequent flow invocations explicitly exclude the
@@ -2057,4 +2057,44 @@ snapshots were emitted as v6 and their semantic diff inspected (tagged sources,
 ordered command steps, strict Bash options, task context, image configuration
 and canonical catalog order). The typed-command fixture accessor was migrated
 to `step.command`. That emission ran no corpus assertions or semantic mutants.
+
+## 34. Final 0.44 source qualification (2026-10-04)
+
+Source `f8c68f6a80e08ad511896274c19e3d14d6919b03` passed
+[CI37134187816](https://github.com/gripsack-dev/gripsack/actions/runs/37134187816)
+on attempt 1. The complete paginated inventory contains **203** jobs:
+**202** succeeded, including all **192** Linux/macOS persistence partitions;
+only the explicitly owner-waived fuzz lane was skipped. The actual final gate
+bound the source and `REL-FUZZ-2026-09-27`, after **6** positive and **294**
+negative admission cases. Core/B0, Linux flows, confined native Mac flows,
+TLC, TLAPS, Verus, docs and audit all succeeded. No 0.44 full-CI waiver was used.
+
+The [same-source caller canary](https://github.com/gripsack-dev/gripsack/actions/runs/37134189898)
+passed the static core and byte-pinned helper builds, SDK/both-entrypoint
+typecheck, sandboxed legacy apply and frozen coherent Conda consumer journey.
+A separate rebuilt-container smoke installed the packed SDK rather than a
+sibling checkout and exercised cold frozen build, stdin search, task, profile,
+retained reuse with the helper unavailable, GC and re-execution. Its committed
+lock stayed byte-identical:
+`18848a57d77e98dc91fb27e664c4f8ca27715b6faee3e5353861507dadc55150`.
+
+Core PR173 and external example PR1 landed. Both 0.44 tags point directly to
+the exact qualified source; the core merge has the same Git tree. The published
+npm SDK also records that source as `gitHead`. Artifact checks and published
+consumer evidence remain separate from these source-bound results.
+
+`MAC-NATIVE-QUAL-2026-10-02` is unchanged: no Mac VZ lifecycle or full coherent
+Mac Conda runtime success is claimed. Passing compilation, ordinary native
+flows and helper qualification cannot substitute for those excluded campaigns.
+
+The [tag-bound reproducibility run](https://github.com/gripsack-dev/gripsack/actions/runs/37182422842)
+also passed on the same clean source. Both fresh containers used captured
+builder image `684e1c9f5613f432824a6f91815ad9b2043d20dd45da642a3106e298b5effc10`,
+Cargo.lock SHA256
+`bef284d9acf9df0f7b262a32c759bd230d5efc8caed9330c8fcdf00cacda2f04`,
+and fresh target directories. Both binaries measured
+`60140fae7bddf5ac703ba07f62a11fe0e968b9efd588a8b86d088787a3e06c51`
+and compared byte-identical. The uploaded report records the toolchains and
+held-fixed inputs; it explicitly excludes general cross-time/cross-platform
+reproducibility and an external audit.
 
