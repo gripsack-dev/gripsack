@@ -2,201 +2,70 @@ package protocol
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
-	"encoding/json"
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func sha256SumForTest(text string) []byte {
-	sum := sha256.Sum256([]byte(text))
-	return sum[:]
+func framed(body string) []byte {
+	result := make([]byte, 8+len(body))
+	binary.LittleEndian.PutUint64(result, uint64(len(body)))
+	copy(result[8:], body)
+	return result
 }
 
-func roundTripFromBridge(t *testing.T, message FromBridge) {
-	t.Helper()
-	frame, err := EncodeFrame(message)
+const fileRequest = `{"protocol_version":3,"session":"fixture","attempt":2,"epoch":3,"plan":{"platform":{"os":"linux","architecture":"amd64"},"nodes":[{"kind":"file","input":null,"path":"/hello","data":"cGF5bG9hZA==","mode":292}],"root":0,"exporter":{"kind":"local"}}}`
+
+func TestReadFrameRetainsTheAdmittedIdentityAndContent(t *testing.T) {
+	request, err := ReadFrame[LowerRequest](bytes.NewReader(framed(fileRequest)))
 	if err != nil {
-		t.Fatalf("encode: %v", err)
+		t.Fatal(err)
 	}
-	decoded, err := DecodeFrame[FromBridge](frame)
-	if err != nil {
-		t.Fatalf("decode: %v", err)
+	if request.Session != "fixture" || request.Attempt != 2 || request.Epoch != 3 || len(request.Plan.Nodes) != 1 {
+		t.Fatalf("decoded request lost its operation identity: %+v", request)
 	}
-	first, _ := json.Marshal(message)
-	second, _ := json.Marshal(decoded)
-	if !bytes.Equal(first, second) {
-		t.Fatalf("re-encode changed the message:\n%s\n%s", first, second)
+	file := request.Plan.Nodes[0].File
+	if file == nil || string(file.Data) != "payload" || file.Path != "/hello" || file.Mode != 0444 {
+		t.Fatalf("decoded file semantics differ: %+v", file)
 	}
 }
-
-func TestEveryFromBridgeMessageRoundTrips(t *testing.T) {
-	session := SessionID("build-1a")
-	toolDigest := Digest(DigestOfForTest(t, "tool"))
-	roundTripFromBridge(t, FromBridge{NegotiateOK: &NegotiateOK{ProtocolVersion: ProtocolVersion, DaemonVersion: "v0.33.0", Capabilities: []string{"llb.v1"}}})
-	roundTripFromBridge(t, FromBridge{Accepted: &Accepted{Session: session, Epoch: 7}})
-	roundTripFromBridge(t, FromBridge{Event: &Event{Session: session, Epoch: 7, Log: &LogEvent{Vertex: "gcc", Chunk: []byte("compiling\n"), Truncated: false}}})
-	roundTripFromBridge(t, FromBridge{Event: &Event{Session: session, Epoch: 7, Progress: &ProgressEvent{Vertex: "export", Message: "writing layer"}}})
-	roundTripFromBridge(t, FromBridge{Exported: &Exported{Session: session, Epoch: 7, Outputs: []ExportedOutput{{Name: "tool", Digest: toolDigest, Size: 933288}}}})
-	roundTripFromBridge(t, FromBridge{Done: &Terminal{Session: session, Epoch: 7}})
-	roundTripFromBridge(t, FromBridge{Failed: &Failed{Session: session, Epoch: 7, Code: FailureWorkerDied, Message: "buildkitd exited"}})
-	roundTripFromBridge(t, FromBridge{Cancelled: &Terminal{Session: session, Epoch: 7}})
-}
-
-func TestToBridgeRoundTripsAndValidates(t *testing.T) {
-	session := SessionID("build-1a")
-	definition := Digest(DigestOfForTest(t, "definition"))
-	messages := []ToBridge{
-		{Negotiate: &Negotiate{ProtocolVersion: ProtocolVersion, Capabilities: []string{"llb.v1"}}},
-		{Submit: &Submit{Session: session, Definition: definition, DefinitionLen: 10, Exporter: Digest(DigestOfForTest(t, "exporter"))}},
-		{Cancel: &Cancel{Session: session}},
+func TestDecoderRejectsAmbiguousOrTruncatedRequests(t *testing.T) {
+	cases := map[string][]byte{
+		"duplicate identity":     framed(strings.Replace(fileRequest, `"epoch":3`, `"epoch":3,"epoch":4`, 1)),
+		"duplicate nested mode":  framed(strings.Replace(fileRequest, `"mode":292`, `"mode":292,"mode":493`, 1)),
+		"unknown path authority": framed(strings.Replace(fileRequest, `"root":0`, `"root":0,"host_root":"/"`, 1)),
+		"missing root":           framed(strings.Replace(fileRequest, `,"root":0`, "", 1)),
+		"null root":              framed(strings.Replace(fileRequest, `"root":0`, `"root":null`, 1)),
+		"integer overflow":       framed(strings.Replace(fileRequest, `"attempt":2`, `"attempt":18446744073709551616`, 1)),
+		"negative index":         framed(strings.Replace(fileRequest, `"root":0`, `"root":-1`, 1)),
+		"truncated header":       {1, 2, 3},
+		"truncated body":         framed(fileRequest)[:len(fileRequest)],
+		"trailing frame":         append(framed(fileRequest), framed(fileRequest)...),
 	}
-	for _, message := range messages {
-		frame, err := EncodeFrame(message)
+	oversized := make([]byte, 8)
+	binary.LittleEndian.PutUint64(oversized, MaxFrameBytes+1)
+	cases["oversized before body"] = oversized
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := ReadFrame[LowerRequest](bytes.NewReader(input)); err == nil {
+				t.Fatal("invalid request was admitted")
+			}
+		})
+	}
+}
+func TestPlanRejectsCyclesAndUnreachableProduction(t *testing.T) {
+	for _, body := range []string{
+		strings.Replace(fileRequest, `"input":null`, `"input":0`, 1),
+		strings.Replace(fileRequest, `}],"root":0`, `},{"kind":"file","input":null,"path":"/unused","data":"","mode":292}],"root":0`, 1),
+		strings.Replace(fileRequest, `"session":"fixture"`, `"session":"../escape"`, 1),
+		strings.Replace(fileRequest, `"epoch":3`, `"epoch":0`, 1),
+	} {
+		request, err := ReadFrame[LowerRequest](bytes.NewReader(framed(body)))
 		if err != nil {
-			t.Fatalf("encode: %v", err)
+			t.Fatalf("fixture did not reach semantic admission: %v", err)
 		}
-		decoded, err := DecodeFrame[ToBridge](frame)
-		if err != nil {
-			t.Fatalf("decode: %v", err)
+		if err := request.Validate(); err == nil {
+			t.Fatal("invalid graph/identity reached lowering")
 		}
-		first, _ := json.Marshal(message)
-		second, _ := json.Marshal(decoded)
-		if !bytes.Equal(first, second) {
-			t.Fatalf("re-encode changed the message:\n%s\n%s", first, second)
-		}
-	}
-	if err := (SessionID("../escape")).Validate(); err == nil {
-		t.Fatal("escaping session id accepted")
-	}
-	if err := (Digest("XYZ")).Validate(); err == nil {
-		t.Fatal("malformed digest accepted")
-	}
-}
-
-func DigestOfForTest(t *testing.T, text string) string {
-	t.Helper()
-	sum := sha256SumForTest(text)
-	var hex string
-	for _, b := range sum {
-		const digits = "0123456789abcdef"
-		hex += string(digits[b>>4]) + string(digits[b&0xf])
-	}
-	return hex
-}
-
-func TestHostileFramesReject(t *testing.T) {
-	oversized := make([]byte, 8+16)
-	binary.LittleEndian.PutUint64(oversized[:8], uint64(MaxFrameBytes+1))
-	if _, err := DecodeFrame[FromBridge](oversized); err == nil {
-		t.Fatal("oversized header accepted")
-	}
-	valid := []byte(`{"Accepted":{"session":"s","epoch":1}}`)
-	frame := append(make([]byte, 8), valid...)
-	binary.LittleEndian.PutUint64(frame[:8], uint64(len(valid)))
-	if _, err := DecodeFrame[FromBridge](frame[:10]); err == nil {
-		t.Fatal("truncated frame accepted")
-	}
-	trailing := append(append([]byte{}, frame...), '{')
-	if _, err := DecodeFrame[FromBridge](trailing); err == nil {
-		t.Fatal("trailing bytes accepted")
-	}
-	unknown := []byte(`{"Accepted":{"session":"s","epoch":1,"extra":true}}`)
-	unknownFrame := append(make([]byte, 8), unknown...)
-	binary.LittleEndian.PutUint64(unknownFrame[:8], uint64(len(unknown)))
-	if _, err := DecodeFrame[FromBridge](unknownFrame); err == nil {
-		t.Fatal("unknown field accepted")
-	}
-}
-
-func TestNegotiationIsOneExactPair(t *testing.T) {
-	if _, err := CheckNegotiation(&FromBridge{NegotiateOK: &NegotiateOK{ProtocolVersion: ProtocolVersion, DaemonVersion: "v", Capabilities: nil}}); err != nil {
-		t.Fatalf("matching negotiation refused: %v", err)
-	}
-	if _, err := CheckNegotiation(&FromBridge{NegotiateOK: &NegotiateOK{ProtocolVersion: ProtocolVersion - 1, DaemonVersion: "v"}}); err == nil {
-		t.Fatal("mismatched version accepted")
-	}
-	if _, err := CheckNegotiation(&FromBridge{Done: &Terminal{Session: "s", Epoch: 1}}); err == nil {
-		t.Fatal("non-negotiate message accepted during negotiation")
-	}
-}
-
-func TestGateFencesStaleDuplicateAndFloodingEvents(t *testing.T) {
-	gate := NewEventGate(7)
-	if err := gate.Log(7); err != nil {
-		t.Fatalf("live log rejected: %v", err)
-	}
-	if err := gate.Observe(6); err == nil {
-		t.Fatal("stale epoch accepted")
-	}
-	if err := gate.Observe(8); err == nil {
-		t.Fatal("future epoch accepted")
-	}
-	if err := gate.Terminal(7, TerminalCancelled); err != nil {
-		t.Fatalf("first terminal rejected: %v", err)
-	}
-	if _, ok := gate.TerminalState(); !ok {
-		t.Fatal("terminal state lost")
-	}
-	if err := gate.Terminal(7, TerminalCancelled); err == nil {
-		t.Fatal("duplicate terminal accepted")
-	}
-	if err := gate.Log(7); err == nil {
-		t.Fatal("post-terminal log accepted")
-	}
-
-	flooding := NewEventGate(1)
-	for i := uint64(0); i < MaxLogEvents; i++ {
-		if err := flooding.Log(1); err != nil {
-			t.Fatalf("budget rejected early at %d: %v", i, err)
-		}
-	}
-	if err := flooding.Log(1); err == nil {
-		t.Fatal("log flood accepted over the budget")
-	}
-}
-
-// TestSharedConformanceCorpus decodes the exact wire bytes the Rust
-// side's fuzz corpus ships: the two implementations must agree on
-// every seed — the valid ones decode, the hostile ones reject.
-func TestSharedConformanceCorpus(t *testing.T) {
-	root := os.Getenv("GRIPSACK_PROTOCOL_CORPUS")
-	if root == "" {
-		root = "../../../fuzz/corpus/buildkit_protocol"
-	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		t.Fatalf("shared corpus missing at %s: %v", root, err)
-	}
-	mustDecode := map[string]bool{
-		"negotiate.txt": true, "accepted.txt": true, "log-event.txt": true, "done.txt": true,
-		"oversized-header.bin": false, "truncated.txt": false, "unknown-field.txt": false,
-	}
-	seen := 0
-	for _, entry := range entries {
-		want, known := mustDecode[entry.Name()]
-		if !known {
-			continue
-		}
-		seen++
-		frame, err := os.ReadFile(filepath.Join(root, entry.Name()))
-		if err != nil {
-			t.Fatalf("read seed: %v", err)
-		}
-		// The corpus mixes both message families; try FromBridge first
-		// (the valid seeds are bridge→core shapes), then ToBridge.
-		_, fromErr := DecodeFrame[FromBridge](frame)
-		_, toErr := DecodeFrame[ToBridge](frame)
-		if want && fromErr != nil && toErr != nil {
-			t.Fatalf("%s must decode on the Go side too (from=%v to=%v)", entry.Name(), fromErr, toErr)
-		}
-		if !want && (fromErr == nil || toErr == nil) {
-			t.Fatalf("%s must reject on the Go side too", entry.Name())
-		}
-	}
-	if seen != len(mustDecode) {
-		t.Fatalf("expected %d named seeds, saw %d — corpus drifted", len(mustDecode), seen)
 	}
 }

@@ -13,10 +13,15 @@ import type {
   WorkspacePackageCommand,
   WorkspacePath,
   WorkspaceValue,
+  WorkspaceInput,
+  WorkspaceStep,
 } from "./ir.ts";
 import { asName, asRecord, asSelector, asSpan, duplicateError } from "./validate.ts";
 import { DiagnosticError, diagnosticCodes, errorAt } from "../diagnostic.ts";
 import { checkTargetsAndLayouts } from "./target.ts";
+import { asInput } from "./bindings.ts";
+import { rejectUnknownFields } from "../fields.ts";
+import { checkImageSelection } from "./image.ts";
 
 /** Catalog roles never conflate publication checks or retention with
  * production closure. Ordered local commands are intra-output and
@@ -109,6 +114,11 @@ function commandEdges(cmd: WorkspaceCommand, from: string, role: EdgeRole, edges
   if (cmd.cwd) argEdge(cmd.cwd);
 }
 
+function stepEdges(step: WorkspaceStep, from: string, span: Span, role: EdgeRole, edges: Edge[]): void {
+  if ("command" in step) commandEdges(step.command, from, role, edges);
+  else edges.push({ from, to: step.action.output, span: step.action.span ?? span, expected: ARTIFACT_KINDS, role });
+}
+
 function outputEdges(node: WorkspaceOutputNode): Edge[] {
   const edges: Edge[] = [];
   const names = (
@@ -122,7 +132,7 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
   };
   switch (node.kind) {
     case "recipe":
-      for (const c of node.steps ?? []) commandEdges(c, node.name, "build_input", edges);
+      for (const step of node.steps ?? []) stepEdges(step, node.name, node.span, "build_input", edges);
       names(node.checks, ["check"], "validation");
       break;
     case "package":
@@ -142,7 +152,7 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
       }
       break;
     case "task":
-      commandEdges(node.run, node.name, "runtime", edges);
+      for (const step of node.steps) stepEdges(step, node.name, node.span, "runtime", edges);
       names(node.deps, ["task"], "task_prereq");
       names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "runtime");
       names(node.checks, ["check"], "validation");
@@ -156,12 +166,21 @@ function outputEdges(node: WorkspaceOutputNode): Edge[] {
       break;
     case "image":
       names(node.packages, ["package"], "runtime");
+      for (const argument of node.config.entrypoint) {
+        if (argument.kind === "package_command") names([argument.package], ["package"], "runtime");
+      }
       break;
     case "profile":
       for (const f of node.files ?? []) {
         if (f.source?.kind === "artifact_file") {
           checkSelector(f.source.selector, f.span, `profile '${node.name}' file source`);
           edges.push({ from: node.name, to: f.source.output, span: f.span, expected: ARTIFACT_KINDS, role: "runtime" });
+        }
+        if (f.source?.kind === "tree") {
+          edges.push({ from: node.name, to: f.source.output, span: f.span, expected: ARTIFACT_KINDS, role: "runtime" });
+        }
+        for (const check of f.checks ?? []) {
+          edges.push({ from: node.name, to: check.check, span: check.span, expected: ["check"], role: "validation" });
         }
       }
       names(node.environment !== undefined ? [node.environment] : undefined, ["environment"], "retention");
@@ -215,6 +234,14 @@ export function emitWorkspaceIr(
     throw new Error("emitWorkspaceIr: workspace value must carry at least one output");
   }
   asSpan(ir.span, "emitWorkspaceIr: workspace");
+  rejectUnknownFields("emitWorkspaceIr: workspace", ir, ["span", "name", "outputs", "inputs", "mutation_locks"]);
+  const inputCatalog = new Map<string, WorkspaceInput>();
+  for (const raw of ir.inputs ?? []) {
+    const input = asInput(raw, "workspace input");
+    const previous = inputCatalog.get(input.name);
+    if (previous) throw duplicateError(input.name, previous.span, input.span);
+    inputCatalog.set(input.name, input);
+  }
 
   const catalog = new Map<string, WorkspaceOutputNode>();
   for (const node of ir.outputs) {
@@ -236,6 +263,9 @@ export function emitWorkspaceIr(
         if (target?.kind === "package") {
           commandKeys.push({ pkg: target, command: a.command, span });
         }
+      }
+      if (a.kind === "input" && !inputCatalog.has(a.input)) {
+        throw errorAt(diagnosticCodes.unknownWorkspaceRef, `workspace: unknown captured input '${a.input}'`, span, "input referenced here");
       }
     }
   };
@@ -272,14 +302,15 @@ export function emitWorkspaceIr(
       }
       if (isDependency(e.role)) depEdges.push(e);
     }
-    if (node.kind === "recipe") for (const c of node.steps ?? []) collectCommandKeys(c);
-    if (node.kind === "task" || node.kind === "check" || node.kind === "hook") {
-      collectCommandKeys(node.run);
+    if (node.kind === "recipe" || node.kind === "task") {
+      for (const step of node.steps ?? []) if ("command" in step) collectCommandKeys(step.command);
     }
+    if (node.kind === "check" || node.kind === "hook") collectCommandKeys(node.run);
     if (node.kind === "environment") collectArgKeys(Object.values(node.env ?? {}), node.span);
+    if (node.kind === "image") collectArgKeys(node.config.entrypoint, node.span);
   }
   for (const { pkg: target, command, span } of commandKeys) {
-    if (!(command in target.commands)) {
+    if (!Object.hasOwn(target.commands, command)) {
       const have = Object.keys(target.commands).join(", ");
       throw new DiagnosticError({
         code: diagnosticCodes.unknownWorkspaceRef,
@@ -291,6 +322,9 @@ export function emitWorkspaceIr(
     }
   }
   checkTargetsAndLayouts(catalog);
+  for (const node of catalog.values()) {
+    if (node.kind === "image") checkImageSelection(node, catalog);
+  }
 
   // dependency cycles over production/build edges only — validation
   // edges (a recipe gated by a check on the package it produces) may
@@ -338,7 +372,7 @@ export function emitWorkspaceIr(
         tags,
         ...(facts.libc !== null ? { libc: facts.libc } : {}),
       },
-      workspace: { span: ir.span, outputs: ir.outputs },
+      workspace: ir,
     },
     null,
     2,

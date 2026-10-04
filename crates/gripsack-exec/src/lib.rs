@@ -60,6 +60,9 @@ pub use source::preflight::{
 };
 pub use update::{UpdateMode, update};
 pub use util::LifecycleSession;
+pub use workspace::roots::{BuildRecovery, recover_builder_roots};
+pub use workspace::{BuildOptions, BuildResult, BuiltOutput, build_workspace};
+pub use workspace::{ConsumerOutcome, ConsumerRequest, consume};
 
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};
@@ -82,11 +85,10 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
     {
         return Err(PlanError::WorkspaceUnavailable(diagnostic));
     }
-    if let Some(workspace) = &ir.workspace {
-        let mut names: Vec<String> = workspace
-            .outputs
-            .iter()
-            .map(|output| output.name().to_owned())
+    if ir.has_workspace() {
+        let mut names: Vec<String> = ir
+            .workspace_outputs()
+            .map(|output| output.name.to_owned())
             .collect();
         names.sort();
         return Ok(names);
@@ -141,7 +143,7 @@ pub fn build_order(ir: &Ir) -> Result<Vec<String>, PlanError> {
 /// dependencies, wave k = everything whose deps finished in waves < k.
 pub fn waves(ir: &Ir) -> Result<Vec<Vec<String>>, PlanError> {
     let order = build_order(ir)?;
-    if ir.workspace.is_some() {
+    if ir.has_workspace() {
         return Ok(vec![order]);
     }
     let mut level: BTreeMap<&str, usize> = BTreeMap::new();
@@ -200,6 +202,7 @@ mod tests {
             resources: vec![],
             workspace: None,
             workspace_v4: None,
+            workspace_v6: None,
             modules: entries
                 .iter()
                 .map(|(name, deps)| (name.to_string(), module_with_deps(deps)))

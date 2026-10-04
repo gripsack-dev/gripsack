@@ -1,6 +1,6 @@
 {
   "name": "@gripsack/core",
-  "version": "0.43.0",
+  "version": "0.44.0",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",
@@ -10,6 +10,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./dist/src/index.js"
+    },
+    "./advanced": {
+      "types": "./src/advanced.ts",
+      "import": "./dist/src/advanced.js"
     }
   },
   "files": [

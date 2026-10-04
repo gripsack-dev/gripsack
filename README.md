@@ -32,6 +32,7 @@ root, no sandbox dogma.
 - [What it does](#what-it-does)
 - [How it works](#how-it-works)
 - [The frontend](#the-frontend)
+- [Workspace production](#workspace-production)
 - [Sourcing](#sourcing)
 - [Documentation](#documentation)
 - [Development](#development)
@@ -78,6 +79,49 @@ Your first eval downloads the pinned, hash-verified Deno runtime
 - **Compiler-grade errors** — every IR node carries a source span;
   diagnostics are structured with stable codes. An LSP is a shim away
   ([plan/0004](plan/0004-rich-ir-and-passes.md)).
+
+## Workspace production
+
+Core 0.44 accepts a typed `gripsack.ts` workspace with recipe,
+package, environment, task, image and profile outputs. Production does not
+create a personal generation:
+
+```bash
+grip build service
+grip run --env dev -- service "" "two words"
+grip shell dev
+grip task test
+grip build container
+grip builder cache-clean
+grip gc
+```
+
+Compatible Linux production and required checks enter one checked BuildKit
+graph. Source acquisition, independent export validation, immutable publication,
+retention and GC remain native. The optional bridge is provisioned lazily with
+its compiled-in hash. `GRIPSACK_BRIDGE_MIRROR` changes only the download origin;
+`--bridge <helper>` deliberately selects an operator-provided helper. Cached outputs and
+provider-only native paths need no builder bootstrap.
+
+Profiles can cold-build their package environment and artifact files through
+the existing generation/rollback transaction. Environment values remain literal
+data, and artifact trees retain per-file ownership. Exported command aliases
+preserve their underlying selector, including multicall binaries.
+
+Linux GNU dynamic commands require glibc >=2.33. The core separately binds the
+loader and executable bytes, checks the retained library closure and translates
+`$ORIGIN` paths only when lookup remains equivalent. Shared libraries are
+retained and inspected, not sealed executable images. Images use the fixed OCI
+exporter profile and are independently checked for content, configuration and
+image-local runtime closure; deleting the builder cache does not delete them.
+
+Linux x86_64 Conda/Pixi native and OCI journeys have runtime qualification.
+The Mac VM backend and full coherent Mac Conda journey remain unqualified:
+hosted VZ is unavailable, and the native Conda fixture currently refuses a
+`libgcc_s.1.1.dylib` format before publication. The owner temporarily deferred
+those Mac runtime campaigns; Mac build/package and ordinary native core checks
+remain enabled. [Plan/0052 §33](plan/0052-workspace-contract.md#33-unreleased-v6-integration-2026-10-01)
+records the actual evidence and its limits, not all-platform runtime parity.
 
 ## Source approval and migration
 
@@ -161,14 +205,14 @@ host-derived file access. `grip init` sanitizes the detected machine
 hostname to this spelling; role-named hosts such as `work.dev` remain
 valid.
 
-The **unreleased v5 workspace path** also accepts a root `gripsack.ts`
-without a host shim. Native file-only profiles can be checked, planned,
-applied and rolled back with the matching development core/SDK; see the
+The v6 workspace path accepts a root `gripsack.ts` without a host shim.
+Use a matching 0.44 core and SDK for current production/package/environment
+commands; older cores do not admit the v6 writer. Native file-only profiles
+retain the same check, plan, apply and rollback lifecycle. See the
 [dotfile workspace](examples/workspaces/01-dotfiles/gripsack.ts) and
-[current capability limits](typescript/README.md#a-workspace-is-a-function-unreleased-ir-v5).
-The published 0.42.0 pair predates this API. Package, project-command and
-worker integration remains tracked in the handover, not implied by
-native file deployment.
+[workspace contract](typescript/README.md#a-workspace-is-a-function-ir-v6).
+Strict v3/v4/v5 readers preserve their historical meanings; the current SDK
+does not silently add new fields to those retained formats.
 
 Evaluation runs in Deno, spawned deny-by-default: no env vars,
 network, or subprocesses. Reads are limited to the repo, injected

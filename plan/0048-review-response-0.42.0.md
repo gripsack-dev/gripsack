@@ -833,6 +833,25 @@ verification are part of the release, not optional follow-up work.
   that same explicit owner decision; the implementing agent cannot
   invent the exception. This plan itself authorizes no publication.
 
+### Owner exception MAC-NATIVE-QUAL-2026-10-02
+
+The owner explicitly authorized disabling blocking Mac tests temporarily and
+continuing Linux delivery after confirming that no SSH-accessible or self-hosted
+Mac is available. This exception applies to the unreleased 0.44 workspace/backend
+integration, not the separate 0.43 release's existing Mac gates.
+
+| Affected acceptance | State | Evidence, risk and resumption |
+|---|---|---|
+| B0-02; B0-03 VM footprint; B1-01/B1-02 Mac worker lifecycle portions | deferred-authorized | Native source `b7fbd041300080a219fc546df8ff1eb1a1c2ddcb`, [run 36953073512](https://github.com/gripsack-dev/gripsack/actions/runs/36953073512), passed 24 worker tests and built the exact bridge, then refused `VZVirtualMachine.isSupported=false` before downloads. No successful Mac VM start/solve/cache-reuse/replacement/stop/cleanup or VM-dependent negative campaign is claimed. Resume on maintained Apple Silicon hardware with working Virtualization.framework before advertising a qualified Mac builder. |
+| A3-01/A3-02 remaining coherent native Mac Conda runtime acceptance | deferred-authorized | The same run built the core and reproducible helper, passed 50 process tests, five source-capture tests and the real Mach-O launch fixture. Full Python/NumPy materialization refused `lib/libgcc_s.1.1.dylib` as an unrecognized executable format before publication. This remains a known unsupported runtime case, not a successful test. Resume native format admission and the full run/task/shell/profile/update/GC journey before claiming Mac Conda parity. |
+
+Temporary guarantee: Linux runtime evidence applies only to Linux; the Mac VM
+backend and full coherent Mac Conda journey remain unqualified. Their diagnostic
+runtime campaign is opt-in and disabled by default. Mac compilation, helper
+reproducibility/dependency/protocol checks and already passing non-VM native tests
+remain enabled. No runtime guard, proof, Linux gate, checksum or original delivery
+inventory is weakened or removed; skipped lanes cannot close their milestones.
+
 ### Owner exception REL-ALPHA-043-2026-10-03
 
 The owner explicitly authorized cutting the 0.43 alpha release without waiting
@@ -2780,6 +2799,15 @@ Its three rate/five HTTP CLI smokes are explicitly earlier development
 snapshots with binary/image identities, not relabelled as exact-candidate
 qualification. Journal authority, remaining process transitions and complete
 update accounting remain mandatory; no whole-M-V7 or release closure is claimed.
+
+The unreleased v6 helper provisioning path also supplies a caller deadline to
+the HTTP adapter. Its current container gate passed **13** named adapter
+properties and the same **four** semantic negatives. The ignored-clock mutant
+now substitutes the operation's start at the observation boundary, before both
+absolute and policy deadline checks; zeroing only the policy elapsed value no
+longer models that fault because the absolute guard independently refuses it.
+Production checks and the expired-attempt oracle remain intact. This focused
+result does not replace the complete Compose or native release gates.
 
 `verification/reports/2026-09-29-m-v7-process-development.log` (1,783,653 bytes),
 SHA-256 `543491a9842ee908955ddd354e435968d208c3ff2a0d0b31b09b567d9e53b857`,

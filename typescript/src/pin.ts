@@ -1,90 +1,6 @@
-/** The deliberate-pin shim (0013 D2/D3) — the deno.json import-map
- *  target for bare `@gripsack/core` imports.
- *
- * The sandboxed driver (`deno run --no-remote --cached-only --no-lock
- * --allow-read=…`) resolves the repo host entrypoint's `import … from
- * "@gripsack/core"` through the import map to THIS file, which then
- * applies the pin rule exactly once for the whole eval: the repo's own
- * `node_modules/@gripsack/core` install wins when it shadows this
- * embedded copy; the package next to this file is the fallback. The
- * driver (cli.ts) imports the same instance, so module values,
- * resource declarations, and probes always share one registry no
- * matter which copy won.
- *
- * The explicit re-export list is part of the pinned authoring surface;
- * update it when index.ts gains a supported runtime or type export. */
-
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import type * as Index from "./index.ts";
-
-/** The winning @gripsack/core URL, resolved from the repo's
- *  perspective — `repo` is the driver's first argument. */
-export function resolveCoreUrl(repo: string, self: string): string {
-  // the pin lives at the repo root, NOWHERE else: the eval sandbox
-  // allows reading <repo> only, so a hoisted parent node_modules is
-  // both unreadable and unimportable — and createRequire().resolve is
-  // ambient-scope-sensitive under deno besides (it can see the
-  // frontend's own package from a dev-checkout cwd)
-  const pkgDir = join(resolve(repo), "node_modules", "@gripsack", "core");
-  const pkgFile = join(pkgDir, "package.json");
-  if (existsSync(pkgFile)) {
-    const pkg = JSON.parse(readFileSync(pkgFile, "utf8")) as {
-      main?: string;
-      types?: string;
-      exports?: Record<string, unknown>;
-    };
-    const dot = pkg.exports?.["."];
-    const entry = typeof dot === "string"
-      ? dot
-      : (dot as { import?: unknown; types?: unknown; default?: unknown } | undefined);
-    const conditions = (typeof entry === "object" && entry !== null ? entry : {}) as {
-      import?: unknown;
-      types?: unknown;
-      default?: unknown;
-    };
-    // the runtime entry (0.40: dist/ for a copied npm install — Deno
-    // cannot type-strip under node_modules), falling back to the
-    // source entry when no compiled tree exists (the materialized
-    // frontend symlinked into node_modules — its realpath escapes
-    // node_modules, so type stripping is allowed there)
-    const candidates = [
-      (typeof entry === "string" ? entry : undefined) ??
-        (conditions.import ?? conditions.default) as string | undefined,
-      pkg.main,
-      (conditions.types ?? pkg.types) as string | undefined,
-      "index.js",
-    ];
-    for (const rel of candidates) {
-      if (rel && existsSync(join(pkgDir, rel))) {
-        return pathToFileURL(join(pkgDir, rel)).href;
-      }
-    }
-  }
-  // the sibling entry of THIS file: the embedded tree is source-only
-  return new URL("./index.ts", self).href;
-}
-
-export const coreUrl = resolveCoreUrl(resolve(process.argv[2] ?? "."), import.meta.url);
-
-// plugin loading: which package instance wins is decided at runtime
-// (the repo's pin vs this embedded copy) — a static import would
-// always load the embedded one and defeat the pin rule
-let api: typeof Index;
-try {
-  api = await import(coreUrl) as typeof Index;
-} catch (e) {
-  console.error(
-    `gripsack: the pinned @gripsack/core at ${coreUrl} failed to load: ` +
-      `${(e as Error).message} — fix or remove the pin (node_modules/@gripsack/core)`,
-  );
-  process.exit(1);
-}
-
-/** The winning package instance — the driver and every host module
- *  share it. */
-export const core = api;
+/** Bare import-map target: exactly the ordinary authoring API of the selected
+ * package. Compiler entry points are separate, including for embedded eval. */
+import { authoring as api } from "./pin-selection.ts";
 
 export const dep = api.dep;
 export const merge = api.merge;
@@ -101,19 +17,12 @@ export const tarball = api.tarball;
 export const hasTag = api.hasTag;
 export const when = api.when;
 export const defineEnv = api.defineEnv;
-export const emitIr = api.emitIr;
-export const IR_VERSION = api.IR_VERSION;
-export const mergeTags = api.mergeTags;
 export const tree = api.tree;
 export const module = api.module;
 export const customHook = api.customHook;
 export const desktopEntry = api.desktopEntry;
 export const fonts = api.fonts;
 export const service = api.service;
-export const parseInputs = api.parseInputs;
-export const createProbeBuilder = api.createProbeBuilder;
-export const CORE_RESOURCES = api.CORE_RESOURCES;
-export const clearResources = api.clearResources;
 export const resource = api.resource;
 export const buildStep = api.buildStep;
 export const configStep = api.configStep;
@@ -128,12 +37,20 @@ export const verifyFile = api.verifyFile;
 export const verifyShell = api.verifyShell;
 export const artifact = api.artifact;
 export const artifactFile = api.artifactFile;
+export const artifactTree = api.artifactTree;
+export const ensureArtifact = api.ensureArtifact;
+export const input = api.input;
+export const inputDirectory = api.inputDirectory;
+export const inputFile = api.inputFile;
+export const lock = api.lock;
 export const bash = api.bash;
 export const bashBody = api.bashBody;
+export const cargoPackage = api.cargoPackage;
 export const check = api.check;
+export const conda = api.conda;
+export const condaEnvironment = api.condaEnvironment;
 export const daily = api.daily;
 export const defineWorkspace = api.defineWorkspace;
-export const emitWorkspaceIr = api.emitWorkspaceIr;
 export const environment = api.environment;
 export const exec = api.exec;
 export const file = api.file;
@@ -145,7 +62,10 @@ export const lit = api.lit;
 export const literalText = api.literalText;
 export const managedBlock = api.managedBlock;
 export const packageCommand = api.packageCommand;
+export const sourcePath = api.sourcePath;
+export const outputPath = api.outputPath;
 export const pkg = api.pkg;
+export const pixiFromLock = api.pixiFromLock;
 export const profile = api.profile;
 export const provider = api.provider;
 export const recipe = api.recipe;
@@ -165,7 +85,10 @@ export type {
   BashBody,
   BashBuilder,
   BashCommandBuilder,
+  CargoPackageSpec,
   CheckSpec,
+  CondaEnvironmentSource,
+  CondaEnvironmentSpec,
   Condition,
   Dependency,
   Dest,
@@ -177,23 +100,25 @@ export type {
   ExecBuilder,
   ExecSpec,
   FactView,
+  FetchSource,
   Fetch,
   HookSpec,
   HostFacts,
+  ImageConfig,
+  ImageDestination,
+  ImageOwner,
   ImageSpec,
-  Inputs,
   Intent,
-  IrEntry,
-  IrModule,
   ModuleSpec,
   ModuleValue,
   Ownership,
   PackageLayout,
   PackageSpec,
   Phase,
+  PixiLockSource,
+  PixiLockSpec,
   ProbeBuilder,
   ProbeKind,
-  ProbeRequest,
   ProfileSpec,
   RecipeExecution,
   RecipeSpec,
@@ -205,6 +130,14 @@ export type {
   StepAction,
   StepOpts,
   TaskSpec,
+  TaskContext,
+  WorkspaceAction,
+  WorkspaceStep,
+  WorkspaceStepValue,
+  WorkspaceInput,
+  WorkspaceInputRef,
+  WorkspaceMutationLock,
+  WorkspaceFileCheck,
   TreeFilesOptions,
   Trigger,
   Verify,
@@ -225,13 +158,14 @@ export type {
   WorkspaceOsVersion,
   WorkspaceOutput,
   WorkspaceOutputKind,
-  WorkspaceOutputNode,
   WorkspacePackageCommand,
   WorkspacePath,
   WorkspacePlatform,
   WorkspaceProducer,
+  WorkspaceProductionPath,
   WorkspaceRunBashCommand,
   WorkspaceSource,
+  WorkspaceSourceV6,
   WorkspaceSpec,
   WorkspaceValue,
   WorkspaceWeekday,

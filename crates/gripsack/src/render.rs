@@ -562,7 +562,7 @@ pub fn diff_section(
     // the lockfile resolves warm fetched payloads to their store
     // paths (0035 F7) — a deployed module previews satisfied, not
     // deferred; a cold or unpinned one stays deferred
-    let lock = if ir.workspace.is_some() {
+    let lock = if ir.has_workspace() {
         gripsack_exec::lockfile::Lockfile::default()
     } else {
         match gripsack_exec::lockfile::read(repository.identity(), host) {

@@ -195,7 +195,7 @@ def test_workspace_golden_rejects_a_changed_typed_command_input(sandbox):
             output for output in document["ir"]["workspace"]["outputs"]
             if output["name"] == "build"
         )
-        return build["steps"][0]["env"]["INPUT"]
+        return build["steps"][0]["command"]["env"]["INPUT"]
 
     assert command_env(expected)["value"] == input_value
     assert command_env(actual)["value"] == changed_value

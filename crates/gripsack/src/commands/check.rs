@@ -23,7 +23,7 @@ pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> Exi
         Ok(ir) => ir,
         Err(code) => return sink.finish_failure(code),
     };
-    if ir.workspace.is_some()
+    if ir.has_workspace()
         && ir
             .workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
             .is_none()
@@ -49,34 +49,22 @@ pub fn check(repo: &Path, host: Option<String>, mut sink: DiagnosticSink) -> Exi
     }
 }
 
-/// The admitted catalog as report rows (v5 and read-only v4 alike).
+/// The admitted catalog as report rows, without changing versioned semantics.
 fn workspace_outputs(
     ir: &Ir,
     sources: &gripsack_store::source_bundle::SourceBundle,
 ) -> Option<Vec<CheckOutputReport>> {
-    let row = |name: &str, kind: &str, span: &Span| CheckOutputReport {
-        name: name.to_string(),
-        kind: kind.to_string(),
-        span: Span {
-            file: sources.logical_text(&span.file).into_owned(),
-            line: span.line,
-            col: span.col,
-        },
-    };
-    if let Some(workspace) = &ir.workspace {
-        return Some(
-            workspace
-                .outputs
-                .iter()
-                .map(|o| row(o.name(), o.kind(), o.span()))
-                .collect(),
-        );
-    }
-    ir.workspace_v4.as_ref().map(|workspace| {
-        workspace
-            .outputs
-            .iter()
-            .map(|o| row(o.name(), o.kind(), o.span()))
+    ir.has_workspace().then(|| {
+        ir.workspace_outputs()
+            .map(|output| CheckOutputReport {
+                name: output.name.to_owned(),
+                kind: output.kind.to_owned(),
+                span: Span {
+                    file: sources.logical_text(&output.span.file).into_owned(),
+                    line: output.span.line,
+                    col: output.span.col,
+                },
+            })
             .collect()
     })
 }

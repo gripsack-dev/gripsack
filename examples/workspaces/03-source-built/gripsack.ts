@@ -1,14 +1,22 @@
 import {
-  defineWorkspace, environment, exec, fileFetch, lit, packageCommand,
-  pkg, provider, recipe, targetPlatform, task, workspace,
+  defineWorkspace, environment, exec, fileFetch, lit, outputPath, packageCommand,
+  pkg, provider, recipe, sourcePath, targetPlatform, task, workspace,
 } from "@gripsack/core";
 
 const linux = targetPlatform({ os: "linux", arch: "x86_64", abi: "gnu" });
 const build = recipe("build-greeter", {
-  source: fileFetch("source/greeter.c"),
-  execution: { kind: "host", access: "unconfined" },
+  source: fileFetch("source"),
+  execution: {
+    kind: "isolated_linux", worker: "buildkit", platform: linux,
+    toolchain: {
+      reference: "docker.io/library/golang@sha256:e3665e241a474aba30bbfaf177cfa88e1913e970c83bd86889cacfb67d6e7e51",
+    },
+  },
   output_kind: "tree", target: linux,
-  steps: [exec({ argv: [lit("sh"), lit("-c"), lit("mkdir -p bin && cc greeter.c -o bin/greeter")] })],
+  steps: [
+    exec({ argv: [lit("mkdir"), lit("-p"), outputPath("bin")] }),
+    exec({ argv: [lit("cc"), lit("-static"), sourcePath("greeter.c"), lit("-o"), outputPath("bin/greeter")] }),
+  ],
 });
 
 // The fact is injected, never read from the evaluator's ambient host.
@@ -22,10 +30,7 @@ export default defineWorkspace((ctx) => {
     target: linux, layout: { kind: "relocatable" },
   });
   const dev = environment("dev", { packages: ["greeter"], target: linux });
-  const smoke = task("smoke", {
-    run: exec({ argv: [packageCommand("greeter", "greet"), lit("hello")] }),
-    environment: "dev",
-  });
-  // A1 admits source/consumer wiring; B3 and A2-P own realization/run.
+  const smoke = task("smoke", { steps: [exec({ argv: [packageCommand("greeter", "greet"), lit("hello")] })], environment: "dev", });
+  // Build, project execution and this task do not activate a personal generation.
   return workspace({ outputs: [build, greeter, dev, smoke] });
 });

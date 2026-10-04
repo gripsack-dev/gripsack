@@ -48,10 +48,32 @@ COPY schema ./schema
 COPY typescript ./typescript
 COPY scripts ./scripts
 
+# Real upstream LLB conformance is a test prerequisite, not a core/runtime
+# dependency. Ordinary bin/release stages deliberately do not copy this helper.
+FROM golang:1.26.3@sha256:e3665e241a474aba30bbfaf177cfa88e1913e970c83bd86889cacfb67d6e7e51 AS buildkit-bridge-test
+WORKDIR /bridge
+ENV GOFLAGS=-mod=readonly GOTOOLCHAIN=local
+COPY tools/buildkit-bridge/go.mod tools/buildkit-bridge/go.sum ./
+RUN go mod download
+COPY tools/buildkit-bridge/ ./
+RUN test -z "$(gofmt -l .)" \
+    && go vet ./... \
+    && go test -race ./... \
+    && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /gripsack-buildkit-bridge .
+
 FROM builder AS test
+COPY --from=buildkit-bridge-test /gripsack-buildkit-bridge /usr/local/libexec/gripsack-buildkit-bridge
+ENV GRIPSACK_TEST_BRIDGE=/usr/local/libexec/gripsack-buildkit-bridge
+COPY tools/conda-helper ./tools/conda-helper
+RUN apk add --no-cache python3 build-base cmake perl linux-headers xz-dev bzip2-dev zstd-dev
 RUN cargo fmt --check \
     && cargo clippy --locked --workspace --all-targets -- -D warnings \
     && cargo test --locked
+# The optional installer has its own dependency lock, but not an optional gate.
+RUN cargo fmt --manifest-path tools/conda-helper/Cargo.toml --all --check \
+    && CARGO_TARGET_DIR=/app/target cargo clippy --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets -- -D warnings \
+    && CARGO_TARGET_DIR=/app/target cargo test --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets \
+    && python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
 # Published artifacts and coordinator/journal/GC admission boundaries
 # are checked and mutation-calibrated. Tool/build failures never qualify as
 # successful semantic negatives.
@@ -165,7 +187,8 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY fuzz ./fuzz
-COPY scripts/check_verus.sh scripts/check_verus.py scripts/verus_evidence.py ./scripts/
+COPY schema ./schema
+COPY scripts/check_verus.sh scripts/check_verus.py scripts/verus_evidence.py scripts/check_collector_verus.py ./scripts/
 RUN sh scripts/check_verus.sh
 
 # TypeScript frontend tests and strict type checking of the four

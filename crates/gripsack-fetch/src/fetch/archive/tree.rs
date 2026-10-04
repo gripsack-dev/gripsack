@@ -121,7 +121,9 @@ fn admitted(root: &Dir, skip: &[&str], limits: FetchLimits) -> Result<Graph, Fet
     Ok(graph)
 }
 
-pub(crate) fn validate_tree(root: &Path, limits: FetchLimits) -> Result<(), FetchError> {
+/// Admit one existing payload tree under the shared entry/byte/link policy.
+/// This validates bytes for an effect owner; it does not publish an artifact.
+pub fn validate_tree(root: &Path, limits: FetchLimits) -> Result<(), FetchError> {
     let source = paths::open_existing_root(root)?;
     admitted(&source, &[], limits)?;
     Ok(())
@@ -132,6 +134,29 @@ pub(crate) fn copy_tree_filtered(
     to: &Path,
     skip: &[&str],
     limits: FetchLimits,
+) -> Result<(), FetchError> {
+    materialize_tree(from, to, skip, limits, FileTransfer::Copy)
+}
+
+/// Prepare a readonly session snapshot from an already immutable native tree.
+/// Hard links avoid copying retained payload bytes on the same filesystem.
+/// The caller must never expose the result as a writable process mount.
+pub fn clone_immutable_tree(from: &Path, to: &Path, limits: FetchLimits) -> Result<(), FetchError> {
+    materialize_tree(from, to, &[], limits, FileTransfer::LinkImmutable)
+}
+
+#[derive(Clone, Copy)]
+enum FileTransfer {
+    Copy,
+    LinkImmutable,
+}
+
+fn materialize_tree(
+    from: &Path,
+    to: &Path,
+    skip: &[&str],
+    limits: FetchLimits,
+    transfer: FileTransfer,
 ) -> Result<(), FetchError> {
     let source = paths::open_existing_root(from)?;
     let graph = admitted(&source, skip, limits)?;
@@ -162,6 +187,19 @@ pub(crate) fn copy_tree_filtered(
                         relative,
                         "payload file changed during copy",
                     ));
+                }
+                if let FileTransfer::LinkImmutable = transfer {
+                    if let Some(parent) = relative.parent() {
+                        paths::directories(&destination, parent)?;
+                    }
+                    match source.hard_link(relative, &destination, relative) {
+                        Ok(()) => {
+                            budget.bytes(metadata.len())?;
+                            continue;
+                        }
+                        Err(error) if error.raw_os_error() == Some(libc::EXDEV) => {}
+                        Err(error) => return Err(error.into()),
+                    }
                 }
                 let mut output = paths::file(&destination, relative)?;
                 budget.copy(&mut input, &mut output, |_| {})?;

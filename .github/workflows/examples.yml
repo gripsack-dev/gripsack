@@ -20,6 +20,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: gripsack-dev/example-env-typescript
+          # Candidate caller cutover; published 0.43 guidance is not rewritten.
+          ref: e66c363ecda8685c8bb5cb19f2c64db572313d04
           path: example
 
       - name: Build grip (static musl)
@@ -33,6 +35,16 @@ jobs:
           tar -xzf gripsack/dist/gripsack-*.tar.gz -C /tmp/grip-bin
           echo "GRIP=$(find /tmp/grip-bin -type f -name grip)" >> "$GITHUB_ENV"
 
+      - name: Build the byte-pinned candidate Conda helper
+        working-directory: gripsack
+        run: |
+          sh tools/conda-helper/dist.sh --dist "$RUNNER_TEMP/conda-helper" \
+            --target x86_64-unknown-linux-musl --check
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 22.23.2
+
       - name: Build @gripsack/core
         run: |
           cd gripsack/typescript
@@ -42,8 +54,7 @@ jobs:
       - name: Typecheck the example env
         run: |
           cd example
-          npm pkg delete 'dependencies.@gripsack/core'
-          npm install "$GITHUB_WORKSPACE/gripsack/typescript"
+          npm ci
           npx tsc
 
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
@@ -77,3 +88,29 @@ jobs:
           # Apply may publish a lockfile inside the captured read set.
           approve_fixture
           "$GRIP" apply --host laptop   # satisfied
+
+      - name: Consume the frozen coherent Conda workspace
+        env:
+          HOME: /tmp/example-home-conda
+          GRIPSACK_HOME: /tmp/example-home-conda/.gs
+          GRIPSACK_CONDA_HELPER_MIRROR: ${{ runner.temp }}/conda-helper
+        run: |
+          mkdir -p "$HOME"
+          cd example/workspaces/conda
+          source="$("$GRIP" trust inspect --json)"
+          "$GRIP" trust add \
+            --bundle "$(printf '%s' "$source" | jq -r .bundle_digest)" \
+            --policy "$(printf '%s' "$source" | jq -r .policy_digest)"
+          before="$(sha256sum gripsack.lock)"
+          "$GRIP" check
+          "$GRIP" build ripgrep --json
+          result="$(printf 'other\nneedle\n' | "$GRIP" run --env search -- rg '^needle$')"
+          test "$result" = needle
+          "$GRIP" task version
+          "$GRIP" apply personal
+          "$GRIP" apply personal
+          export GRIPSACK_CONDA_HELPER="$RUNNER_TEMP/unavailable-conda-helper"
+          "$GRIP" build ripgrep --json
+          "$GRIP" gc
+          printf 'rg --version\nexit\n' | "$GRIP" shell search
+          test "$(sha256sum gripsack.lock)" = "$before"

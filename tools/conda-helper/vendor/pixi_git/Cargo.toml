@@ -1,0 +1,44 @@
+# Complete crates/pixi_git from prefix-dev/pixi at
+# 6f71156de33ac6420522a77f21437ff0a331cb09, including its upstream tests.
+# The sole source change routes AsyncPrefixGuard to the unchanged implementation
+# copied from crates/pixi_utils/src/prefix_guard.rs at that same commit. This
+# removes pixi_utils' unused CLI/Python authentication dependency graph without
+# changing Git APIs or canonical Pixi manifest semantics. Workspace dependencies
+# are expanded below; UV-derived sources retain their original attribution.
+# Binary distributions must include LICENSE (Pixi BSD-3-Clause) and
+# LICENSE-UV-MIT (UV's MIT option at the source commit cited in each module).
+[package]
+name = "pixi_git"
+version = "0.0.1"
+authors = ["pixi contributors <hi@prefix.dev>"]
+edition = "2024"
+rust-version = "1.90"
+description = "Contains the code to interact with git"
+homepage = "https://github.com/prefix-dev/pixi"
+repository = "https://github.com/prefix-dev/pixi"
+license = "BSD-3-Clause AND MIT"
+publish = false
+
+[dependencies]
+async-fd-lock = "0.2.0"
+dashmap = "6.1.0"
+dunce = "1.0.5"
+fs-err = { version = "3.1.0", features = ["tokio"] }
+rattler_networking = { version = "0.31", default-features = false, features = ["dirs", "google-cloud-auth"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking"] }
+reqwest-middleware = { package = "astral-reqwest-middleware", version = "0.5", features = ["multipart"] }
+serde = { version = "1.0.218", features = ["derive"] }
+serde_json = "1.0.139"
+thiserror = "2.0.12"
+tokio = { version = "1.43.0", features = ["fs", "io-util", "rt"] }
+tracing = "0.1.41"
+url = "2.5"
+urlencoding = "2.1.3"
+which = "8.0.0"
+
+[dev-dependencies]
+fs-err = "3.1.0"
+insta = "1.42.1"
+pixi_test_utils = { git = "https://github.com/prefix-dev/pixi", rev = "6f71156de33ac6420522a77f21437ff0a331cb09" }
+reqwest-middleware = { package = "astral-reqwest-middleware", version = "0.5", features = ["multipart"] }
+tempfile = "3.17.1"

@@ -13,14 +13,24 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, Exec
     {
         return Err(ExecError::Gate(diagnostic));
     }
-    if let Some(workspace) = &ir.workspace {
-        let native = crate::workspace::NativeProfiles::prepare(
-            workspace,
-            ctx.repository.contents(),
-            &ctx.home,
-            &ctx.only,
-            ctx.fetch.limits(),
-        )?;
+    if ir.workspace_v6.as_ref().is_some_and(|workspace| {
+        workspace.outputs.iter().any(|output| {
+            !matches!(
+                output,
+                gripsack_ir::workspace_v6::WorkspaceOutput::Profile(_)
+            )
+        })
+    }) {
+        return crate::workspace::update::update(ir, ctx, mode);
+    }
+    if let Some(native) = crate::workspace::NativeProfiles::prepare(
+        ir,
+        ctx.repository.contents(),
+        &ctx.home,
+        &ctx.only,
+        ctx.fetch.limits(),
+        None,
+    )? {
         return native.update_reports();
     }
     let _session = crate::util::LifecycleSession::acquire(&ctx.home)?;

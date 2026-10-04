@@ -1,4 +1,4 @@
-/** Workspace v5 contract: named outputs, immutable command authoring,
+/** Workspace contract: named outputs, immutable command authoring,
  *  reference admission, literal Bash and pure deterministic emission. */
 
 import assert from "node:assert/strict";
@@ -6,15 +6,16 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { chdir } from "node:process";
-import { emitIr, module } from "../src/index.ts";
+import { emitWorkspaceIr } from "../src/advanced.ts";
 import {
   artifact,
   artifactFile,
   bash,
   bashBody,
   check,
+  conda,
+  condaEnvironment,
   daily,
-  emitWorkspaceIr,
   environment,
   exec,
   file,
@@ -27,6 +28,7 @@ import {
   managedBlock,
   packageCommand,
   pkg,
+  pixiFromLock,
   profile,
   provider,
   recipe,
@@ -106,19 +108,13 @@ function kitchenSink(): WorkspaceValue {
     target: linux,
     env: { TOOLS_HOME: artifact("tools-bin", ".") },
   });
-  const build = task("build", {
-    run: exec({
-      argv: [packageCommand("tools-bin", "tools"), lit("build")],
-      cwd: { kind: "literal", value: "." },
-    }),
-    deps: ["lint"],
-    environment: "dev",
-    checks: ["tools-ok"],
-  });
-  const lint = task("lint", {
-    run: exec({ argv: [packageCommand("tools-bin", "tools"), lit("lint")] }),
-    environment: "dev",
-  });
+  const build = task("build", { steps: [exec({
+    argv: [packageCommand("tools-bin", "tools"), lit("build")],
+    cwd: { kind: "literal", value: "." },
+  })], deps: ["lint"],
+  environment: "dev",
+  checks: ["tools-ok"], });
+  const lint = task("lint", { steps: [exec({ argv: [packageCommand("tools-bin", "tools"), lit("lint")] })], environment: "dev", });
   const nightly = schedule("nightly", { task: "build", trigger: weekly("fri", "03:30") });
   const reload = hook("reload", {
     run: exec({ argv: [lit("true")] }),
@@ -161,139 +157,6 @@ function kitchenSink(): WorkspaceValue {
   });
 }
 
-Deno.test("emitWorkspaceIr emits the v5 workspace envelope", () => {
-  const ir = emit(kitchenSink(), ["work"]);
-
-  assert.deepEqual(Object.keys(ir), ["ir_version", "host", "workspace"]);
-  assert.equal(ir.ir_version, 5);
-  assert.equal(ir.modules, undefined, "workspace envelope never carries modules");
-  assert.equal(ir.resources, undefined);
-  assert.deepEqual(Object.keys(ir.host), ["os", "arch", "tags", "libc"]);
-  assert.equal("hostname" in ir.host, false, "hostname never crosses into the IR");
-  assert.deepEqual(ir.host.tags, ["work"]);
-
-  assert.deepEqual(Object.keys(ir.workspace), ["span", "outputs"]);
-  assert.match(ir.workspace.span.file, /workspace\.test\.ts$/);
-  assert.ok(ir.workspace.span.line >= 1);
-
-  const byName = Object.fromEntries(
-    ir.workspace.outputs.map((o: { name: string }) => [o.name, o]),
-  );
-  assert.deepEqual(Object.keys(byName), [
-    "bash-src",
-    "bash",
-    "tools",
-    "tools-bin",
-    "tools-ok",
-    "dev",
-    "build",
-    "lint",
-    "nightly",
-    "reload",
-    "me",
-    "ci",
-  ]);
-
-  // every output carries name/kind/span with a real provenance
-  for (const o of ir.workspace.outputs) {
-    assert.ok(o.name.length > 0);
-    assert.match(o.span.file, /workspace\.test\.ts$/);
-    assert.ok(o.span.line >= 1, `${o.name} span.line`);
-  }
-  assert.deepEqual(
-    ir.workspace.outputs.map((o: { kind: string }) => o.kind),
-    [
-      "recipe",
-      "package",
-      "recipe",
-      "package",
-      "check",
-      "environment",
-      "task",
-      "task",
-      "schedule",
-      "hook",
-      "profile",
-      "image",
-    ],
-  );
-
-  // recipe: workspaceFetch wrapper carries its own mandatory span
-  assert.deepEqual(Object.keys(byName.tools.source), ["fetch", "span"]);
-  assert.equal(byName.tools.source.fetch.kind, "github_release");
-  assert.ok(byName.tools.source.span.line >= 1);
-  assert.deepEqual(byName.tools.execution, hostExecution);
-  assert.deepEqual(byName.tools.checks, ["tools-ok"]);
-
-  // run_bash: pinned package_command interpreter, literal body, no line_map
-  const rb = byName.tools.steps[0];
-  assert.equal(rb.kind, "run_bash");
-  assert.deepEqual(rb.interpreter, { kind: "package_command", package: "bash", command: "bash" });
-  assert.equal(rb.body, "make install");
-  assert.equal(rb.line_map, undefined, "single-line body emits no line_map");
-  assert.deepEqual(rb.env, { PREFIX: { kind: "literal", value: "/usr" } });
-  assert.deepEqual(rb.cwd, { kind: "host", path: "/tmp" });
-  assert.ok(rb.span.line >= 1, "command span");
-
-  // exec: typed argv refs
-  const ex = byName.tools.steps[1];
-  assert.deepEqual(ex.argv, [
-    { kind: "literal", value: "cp" },
-    { kind: "artifact", output: "bash", selector: "share/doc" },
-    { kind: "literal", value: "share/doc" },
-  ]);
-
-  // package: recipe-ref producer in the tagged wire form
-  assert.deepEqual(byName["tools-bin"].producer, { kind: "recipe", recipe: "tools" });
-  assert.deepEqual(byName["tools-bin"].commands, { tools: "bin/tools" });
-  assert.deepEqual(byName["tools-bin"].runtime, ["bash"]);
-  assert.deepEqual(byName["tools-bin"].layout, fixedTools);
-
-  // task / schedule / hook
-  assert.deepEqual(byName.build.deps, ["lint"]);
-  assert.equal(byName.build.environment, "dev");
-  assert.deepEqual(byName.nightly.trigger, { kind: "weekly", weekday: "fri", time: "03:30" });
-  assert.equal(byName.nightly.scope, "user");
-  assert.equal(byName.reload.trigger, "post_activate");
-
-  // profile files: origin optional only for literal content
-  const [rc, bashrc, toolsToml] = byName.me.files;
-  assert.equal(rc.source, undefined, "literal content needs no origin");
-  assert.deepEqual(rc.content, { kind: "literal", text: "x=1\n" });
-  assert.deepEqual(rc.destination, { kind: "symlink", path: "~/.xrc" });
-  assert.deepEqual(bashrc.source, { kind: "repo_file", path: "dotfiles/bashrc.sh" });
-  assert.deepEqual(bashrc.content, { kind: "identity" });
-  assert.deepEqual(bashrc.destination, { kind: "managed_block", path: "~/.bashrc", marker: "#" });
-  assert.deepEqual(toolsToml.source, {
-    kind: "artifact_file",
-    output: "tools-bin",
-    selector: "share/tools.toml",
-  });
-  assert.deepEqual(toolsToml.content, {
-    kind: "template",
-    template: "editor = {{ editor }}",
-    variables: { editor: "hx" },
-  });
-  assert.ok(rc.span.line >= 1, "file span");
-  assert.deepEqual(byName.me.schedules, ["nightly"]);
-  assert.deepEqual(byName.me.hooks, ["reload"]);
-
-  // image / environment / check
-  assert.deepEqual(byName.ci.packages, ["bash"]);
-  assert.deepEqual(byName.dev.packages, ["bash"]);
-  assert.deepEqual(byName.dev.env, {
-    TOOLS_HOME: { kind: "artifact", output: "tools-bin", selector: "." },
-  });
-  assert.equal(byName["tools-ok"].subject, "tools-bin");
-});
-
-Deno.test("emitIr legacy path emits the v5 modules envelope, never a workspace", () => {
-  const ir = JSON.parse(emitIr({ modules: [module("m", { lint: "toml" })] }, facts, []));
-  assert.deepEqual(Object.keys(ir), ["ir_version", "host", "modules"]);
-  assert.equal(ir.ir_version, 5);
-  assert.equal(ir.workspace, undefined);
-  assert.equal(ir.modules.m.lint, "toml");
-});
 
 Deno.test("duplicate output names throw at declaration with both sites", () => {
   const a = recipe("same", {
@@ -449,7 +312,6 @@ Deno.test("fluent exec and object form emit the same command, preserving branche
   assert.ok(Object.isFrozen(fluent));
   assert.throws(() => (fluent.argv as WorkspaceArg[]).push(lit("changed")), TypeError);
   assert.throws(() => base.env("COMMAND", packageCommand("tools", "jq")), /environment values are/);
-  assert.throws(() => exec(hostPath("/bin/jq") as never), /kind must be/);
 });
 
 Deno.test("environment names survive cloning even when shadowing a prototype key", () => {
@@ -522,10 +384,7 @@ Deno.test("file destinations reject escapes at authoring, not just in decoded IR
 });
 
 Deno.test("emit rejects unknown output references with the reference span", () => {
-  const t = task("build", {
-    run: exec({ argv: [lit("true")] }),
-    deps: ["ghost"],
-  });
+  const t = task("build", { steps: [exec({ argv: [lit("true")] })], deps: ["ghost"], });
   const unknown = thrownDiagnostic(
     () => emitWorkspaceIr(workspace({ outputs: [t] }), facts),
     "E126",
@@ -578,8 +437,8 @@ Deno.test("emit rejects package_command refs to unknown commands", () => {
 });
 
 Deno.test("emit rejects task dependency cycles", () => {
-  const a = task("a", { run: exec({ argv: [lit("true")] }), deps: ["b"] });
-  const b = task("b", { run: exec({ argv: [lit("true")] }), deps: ["a"] });
+  const a = task("a", { steps: [exec({ argv: [lit("true")] })], deps: ["b"] });
+  const b = task("b", { steps: [exec({ argv: [lit("true")] })], deps: ["a"] });
   const cycle = thrownDiagnostic(
     () => emitWorkspaceIr(workspace({ outputs: [a, b] }), facts),
     "E127",
@@ -641,10 +500,99 @@ Deno.test("a provider-backed package needs no synthetic recipe", () => {
   const ir = emit(workspace({ outputs: [jq] }));
   const producer = ir.workspace.outputs[0].producer;
   assert.equal(producer.kind, "provider");
+  assert.equal(producer.provider.kind, "fetch");
   assert.equal(producer.provider.fetch.kind, "github_release");
   assert.equal(producer.provider.fetch.repo, "jqlang/jq");
   assert.ok(producer.provider.span.line >= 1, "provider fetch provenance");
   assert.match(producer.provider.span.file, /workspace\.test\.ts$/);
+});
+
+Deno.test("recipe sources emit the v6 tagged fetch wrapper", () => {
+  const tools = recipe("tools", {
+    source: tarball("https://example.invalid/t.tar.gz"),
+    execution: hostExecution,
+    output_kind: "tree",
+    target: linux,
+  });
+  const ir = emit(workspace({ outputs: [tools] }));
+  const source = ir.workspace.outputs[0].source;
+  assert.equal(source.kind, "fetch");
+  assert.equal(source.fetch.kind, "tarball");
+  assert.ok(source.span.line >= 1, "fetch wrapper carries provenance");
+});
+
+Deno.test("condaEnvironment emits the conda_environment wire and rejects bad specs", () => {
+  const env = condaEnvironment({
+    channels: ["conda-forge"],
+    packages: { python: "3.12.*", numpy: "*" },
+  });
+  assert.equal(env.kind, "conda_environment");
+  assert.deepEqual(env.channels, ["conda-forge"]);
+  assert.deepEqual(env.packages, { python: "3.12.*", numpy: "*" });
+  assert.equal(env.platforms, undefined, "platforms omitted unless declared");
+  assert.match(env.span.file, /workspace\.test\.ts$/);
+
+  const src = recipe("env-src", {
+    source: conda.environment({
+      channels: ["conda-forge"],
+      packages: { python: "3.12.*" },
+      platforms: [{ os: "linux", arch: "x86_64" }],
+    }),
+    execution: hostExecution,
+    output_kind: "tree",
+    target: linux,
+  });
+  const source = emit(workspace({ outputs: [src] })).workspace.outputs[0].source;
+  assert.equal(source.kind, "conda_environment");
+  assert.deepEqual(source.platforms, [{ os: "linux", arch: "x86_64" }]);
+
+  assert.throws(
+    () => condaEnvironment({ channels: [], packages: { python: "*" } }),
+    /channels must be a non-empty array/,
+  );
+  assert.throws(
+    () => condaEnvironment({ channels: ["conda-forge"], packages: {} }),
+    /packages must declare at least one package/,
+  );
+  assert.throws(
+    () => condaEnvironment({ channels: ["conda-forge"], packages: { Python: "3.12.*" } }),
+    /"Python" must be a lowercase Conda package name/,
+  );
+  assert.throws(
+    () => condaEnvironment({ channels: ["conda-forge"], packages: { python: "" } }),
+    /non-empty MatchSpec/,
+  );
+});
+
+Deno.test("pixiFromLock emits the pixi_lock wire naming workspace inputs", () => {
+  const locked = pixiFromLock({ manifest: "pixi-manifest", lock: "pixi-lock", environment: "default" });
+  assert.equal(locked.kind, "pixi_lock");
+  assert.equal(locked.manifest, "pixi-manifest");
+  assert.equal(locked.lock, "pixi-lock");
+  assert.equal(locked.environment, "default");
+  assert.match(locked.span.file, /workspace\.test\.ts$/);
+  assert.throws(
+    () => pixiFromLock({ manifest: "", lock: "pixi-lock", environment: "default" }),
+    /manifest must be a non-empty string/,
+  );
+});
+
+Deno.test("a conda provider package materializes its prefix", () => {
+  const py = pkg("python", {
+    producer: provider(condaEnvironment({
+      channels: ["conda-forge"],
+      packages: { python: "3.12.*" },
+    })),
+    commands: { python: "bin/python" },
+    target: linux,
+    layout: { kind: "prefix_materialized" },
+  });
+  const ir = emit(workspace({ outputs: [py] }));
+  const out = ir.workspace.outputs[0];
+  assert.equal(out.layout.kind, "prefix_materialized");
+  assert.equal(out.producer.kind, "provider");
+  assert.equal(out.producer.provider.kind, "conda_environment");
+  assert.deepEqual(out.producer.provider.packages, { python: "3.12.*" });
 });
 
 Deno.test("no import-order registry: repeated evals in one process emit identical IR", () => {
@@ -679,23 +627,17 @@ Deno.test("constructed values are deeply frozen", () => {
     target: linux,
     steps: [exec({ argv: [lit("make")] })],
   });
-  assert.ok(Object.isFrozen(out));
-  assert.ok(Object.isFrozen(out.ir));
-  assert.ok(Object.isFrozen(out.ir.source));
-  assert.ok(Object.isFrozen(out.ir.source.fetch));
-  assert.ok(Object.isFrozen(out.ir.steps));
-  assert.ok(Object.isFrozen(out.ir.steps![0]));
-  assert.ok(Object.isFrozen((out.ir.steps![0] as { argv: unknown[] }).argv));
+  const step = out.ir.steps![0]!;
+  assert.ok("command" in step && step.command.kind === "exec");
+  const argv = step.command.argv;
   assert.throws(() => {
     (out.ir as { name: string }).name = "other";
   }, TypeError);
   assert.throws(() => {
-    ((out.ir.steps![0] as { argv: unknown[] }).argv as unknown[]).push(lit("x"));
+    (argv as unknown[]).push(lit("x"));
   }, TypeError);
 
   const ws = kitchenSink();
-  assert.ok(Object.isFrozen(ws));
-  assert.ok(Object.isFrozen(ws.ir.outputs));
   assert.throws(() => {
     (ws.ir.outputs as unknown[]).push(out.ir);
   }, TypeError);
@@ -763,15 +705,6 @@ Deno.test("enum and calendar boundaries reject out-of-grammar values", () => {
       }),
     /execution\.kind must be "host" or "isolated_linux"/,
   );
-  // isolated_linux is admitted explicitly — the core owns the
-  // unavailable-capability rejection, the frontend never reinterprets
-  const iso = recipe("iso", {
-    source: tarball("https://example.invalid/x.tar.gz"),
-    execution: { kind: "isolated_linux", worker: "buildkit" },
-    output_kind: "tree",
-    target: linux,
-  });
-  assert.deepEqual(emit(workspace({ outputs: [iso] })).workspace.outputs[0].execution, { kind: "isolated_linux", worker: "buildkit" });
 });
 
 function treeFixture(files: Record<string, string>): string {

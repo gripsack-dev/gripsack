@@ -53,6 +53,35 @@ impl AcquisitionGate {
         *active += 1;
         Permit(self)
     }
+
+    pub(crate) fn acquire_until(
+        &self,
+        deadline: std::time::Instant,
+    ) -> std::io::Result<Permit<'_>> {
+        let mut active = self
+            .active
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        loop {
+            let remaining = deadline
+                .checked_duration_since(std::time::Instant::now())
+                .filter(|remaining| !remaining.is_zero())
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "tool acquisition deadline expired",
+                    )
+                })?;
+            if *active < self.limit {
+                *active += 1;
+                return Ok(Permit(self));
+            }
+            (active, _) = self
+                .changed
+                .wait_timeout(active, remaining)
+                .unwrap_or_else(|error| error.into_inner());
+        }
+    }
 }
 
 pub(crate) struct Permit<'a>(&'a AcquisitionGate);

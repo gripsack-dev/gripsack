@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -25,7 +26,11 @@ from pathlib import Path
 # dependencies require a deliberate reviewed update of this map.
 ALLOWED: dict[str, frozenset[str]] = {
     "gripsack-policy": frozenset({"vstd"}),
-    "gripsack-ir": frozenset({"gripsack-policy", "serde", "serde_json", "thiserror", "jsonschema"}),
+    "gripsack-ir": frozenset({
+        "gripsack-policy", "serde", "serde_json", "thiserror", "jsonschema",
+        # Pure semantic identities and the production Collector refinement.
+        "sha2", "vstd",
+    }),
     "gripsack-store": frozenset({
         "gripsack-fs", "gripsack-ir", "gripsack-policy", "gripsack-process", "serde", "serde_json",
         "toml", "sha2", "tempfile", "getrandom",
@@ -107,6 +112,18 @@ def check(root: Path) -> list[str]:
         if protected not in members:
             issues.append(f"required protected crate missing from workspace members: {protected}")
     return issues
+
+
+def resolved_tls(manifest: Path, target: str | None) -> list[str]:
+    """Check Cargo's active normal/build graph, including optional-helper deps."""
+    command = ["cargo", "tree", "--locked", "--manifest-path", str(manifest),
+               "--edges", "normal,build", "--prefix", "none", "--format", "{p}"]
+    if target:
+        command.extend(["--target", target])
+    listing = subprocess.check_output(command, text=True)
+    packages = {line.split()[0] for line in listing.splitlines() if line.strip()}
+    return [f"{manifest}: active {package} violates rustls-only policy"
+            for package in sorted(packages & FORBIDDEN_TLS)]
 
 
 def write_crate(crates_dir: Path, name: str, extra: str = "") -> None:
@@ -217,8 +234,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--self-check", action="store_true", help="calibrate forbidden dependency rejection")
+    parser.add_argument("--resolved-manifest", action="append", type=Path, default=[],
+                        help="also inspect this Cargo manifest's active normal/build graph")
+    parser.add_argument("--target", help="target triple for resolved dependency checks")
     args = parser.parse_args()
     issues = check(args.root)
+    for manifest in args.resolved_manifest:
+        issues.extend(resolved_tls(manifest, args.target))
     if issues:
         for issue in issues:
             print(f"architecture violation: {issue}", file=sys.stderr)

@@ -14,8 +14,16 @@ pub(crate) enum RequestKind<'a> {
     GithubMetadata,
     Metadata,
     Text,
-    Artifact { api_url: Option<&'a str> },
-    RegistryArtifact { authorization: &'a str },
+    Artifact {
+        api_url: Option<&'a str>,
+    },
+    RegistryArtifact {
+        authorization: &'a str,
+    },
+    /// Trusted bootstrap bytes: no host-bound credentials, HTTPS-only redirects.
+    Tool {
+        deadline: Instant,
+    },
 }
 impl RequestKind<'_> {
     fn label(self) -> &'static str {
@@ -24,6 +32,7 @@ impl RequestKind<'_> {
             Self::Metadata => "metadata",
             Self::Text => "text",
             Self::Artifact { .. } | Self::RegistryArtifact { .. } => "artifact",
+            Self::Tool { .. } => "tool",
         }
     }
 }
@@ -159,7 +168,10 @@ impl Client {
         // would silently fetch the browser URL without the intended auth.
         // Parse the selected route once; retry attempts reuse its header.
         let route_for = |value| {
-            if matches!(kind, RequestKind::RegistryArtifact { .. }) {
+            if matches!(
+                kind,
+                RequestKind::RegistryArtifact { .. } | RequestKind::Tool { .. }
+            ) {
                 CredentialRoute::Unbound
             } else {
                 self.policy.route(value)
@@ -176,10 +188,14 @@ impl Client {
         let host = super::host_port(selected).map(|(host, _)| host);
         let _request_span =
             tracing::info_span!("http", url = %safe, purpose = kind.label()).entered();
-        let mut budget = RequestBudget::new(started)?;
+        let mut budget = match kind {
+            RequestKind::Tool { deadline } => RequestBudget::until(started, deadline)?,
+            _ => RequestBudget::new(started)?,
+        };
         let mut transfer = TransferBudget::new(limit);
         let authentication = || match kind {
             RequestKind::RegistryArtifact { .. } => AuthenticationDisposition::OtherBound,
+            RequestKind::Tool { .. } => AuthenticationDisposition::Absent,
             _ => self.policy.authentication(selected),
         };
         let failure = |kind, budget: &RequestBudget, stop| {
@@ -196,7 +212,10 @@ impl Client {
         };
         // Refuse the entire operation rather than silently dropping a bound
         // credential and falling back to a cleartext API/browser URL.
-        let registry_auth = matches!(kind, RequestKind::RegistryArtifact { .. });
+        let registry_auth = matches!(
+            kind,
+            RequestKind::RegistryArtifact { .. } | RequestKind::Tool { .. }
+        );
         let insecure_registry =
             registry_auth && !url::Url::parse(selected).is_ok_and(|url| url.scheme() == "https");
         if matches!(credential, CredentialRoute::Insecure) || insecure_registry {
@@ -241,7 +260,12 @@ impl Client {
                     failure(HttpFailureKind::Timeout, &budget, RetryStopReason::Deadline).into(),
                 );
             }
-            let mut request = self.request(selected).set("User-Agent", "gripsack");
+            let mut request = if matches!(kind, RequestKind::Tool { .. }) {
+                self.request_with_tls_policy(selected, true)
+            } else {
+                self.request(selected)
+            }
+            .set("User-Agent", "gripsack");
             let remaining = budget
                 .begin(Instant::now())
                 .map_err(|stop| admission_failure(&budget, stop))?;

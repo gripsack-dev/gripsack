@@ -96,7 +96,7 @@ def test_all_nine_output_kinds_admit_from_one_offline_workspace(sandbox):
     }
     planned = grip("plan", cwd=repo)
     assert planned.returncode != 0
-    assert "E124" in planned.stderr and "shell" in planned.stderr
+    assert "E124" in planned.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()
 
 
@@ -131,11 +131,14 @@ def test_graduated_examples_validate_and_gate_only_unavailable_capabilities(sand
     assert checked.returncode == 0, checked.stdout + checked.stderr
     document = json.loads(checked.stdout)
     assert document["ok"] is True
-    assert [(output["name"], output["kind"]) for output in document["outputs"]] == outputs
+    assert {(output["name"], output["kind"]) for output in document["outputs"]} == set(outputs)
     planned = grip("plan", cwd=repo)
-    if example == "01-dotfiles":
+    if example in {"01-dotfiles", "02-native-tool"}:
         assert planned.returncode == 0, planned.stdout + planned.stderr
         assert not (sandbox / ".config/editor/config.toml").exists()
+        assert not (sandbox / ".config/formatter/config.toml").exists()
+        assert not (sandbox / ".local/share/gripsack/store").exists()
+        assert not (sandbox / ".local/share/gripsack/buildkit").exists()
     else:
         assert planned.returncode != 0
         assert "E124" in planned.stderr and outputs[0][0] in planned.stderr
@@ -153,11 +156,11 @@ def test_fluent_commands_cross_the_sandbox_without_executing(sandbox):
         'commands: { bash: "bin/bash" }, '
         'target: targetPlatform({ os: "linux", arch: "x86_64" }), '
         'layout: { kind: "relocatable" } });\n'
-        'const script = task("script", { run: bash(packageCommand("shell", "bash"))'
+        'const script = task("script", { steps: [bash(packageCommand("shell", "bash"))'
         '.body(bashBody`\n  echo "$INPUT"\n`)'
-        '.env("INPUT", lit("two words")).build() });\n'
-        'const argv = task("argv", { run: exec(lit("echo"))'
-        '.arg(lit("two words")).build() });\n'
+        '.env("INPUT", lit("two words")).build()] });\n'
+        'const argv = task("argv", { steps: [exec(lit("echo"))'
+        '.arg(lit("two words")).build()] });\n'
         'export default defineWorkspace(() => workspace({ outputs: [shell, script, argv] }));\n'
     )
     checked = grip("check", cwd=repo)

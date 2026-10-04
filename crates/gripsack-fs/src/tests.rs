@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn duplicate_handle_keeps_lease_locked_until_last_close() {
+    let directory = tempfile::tempdir().unwrap();
+    let parent = FlockGuard::acquire(directory.path(), "worker-lease").unwrap();
+    let inherited = parent.duplicate_handle().unwrap();
+    drop(parent);
+    assert!(
+        FlockGuard::try_acquire(directory.path(), "worker-lease")
+            .unwrap()
+            .is_none(),
+        "dropping_parent_released_live_child_lease",
+    );
+    drop(inherited);
+    assert!(
+        FlockGuard::try_acquire(directory.path(), "worker-lease")
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
 fn atomic_write_lands_content_without_leftovers() {
     let dir = tempfile::tempdir().unwrap();
     let cap = open(dir.path()).unwrap();

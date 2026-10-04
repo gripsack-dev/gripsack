@@ -125,12 +125,27 @@ check MergeBoundary.tla cfg/merge-boundary-unclosed-marker.cfg ForeignTextPreser
 check MergeBoundary.tla cfg/merge-boundary-first-mode.cfg AllModeEvidenceRequired
 check MergeBoundary.tla cfg/merge-boundary-first-prune.cfg PruneNeedsWholeEvidence
 
-# B1 worker lease safety (plan/0051): the positive two-client crash
-# model plus two calibrated mutants — an early stop that ignores live
-# leases and a crash that silently erases them.
+# B1 worker lease safety (plan/0051, Epic B 10.3): the positive two-client
+# crash model with owner incarnations, monotone durable counters and
+# quiescence receipts, plus four calibrated mutants — an early stop that
+# ignores live leases, a crash that silently erases them, and retirements
+# that ignore the owner incarnation or the epoch fence.
 check WorkerLease.tla cfg/worker-lease.cfg
 check WorkerLease.tla cfg/worker-lease-early-stop.cfg NoStopWithLiveLease
 check WorkerLease.tla cfg/worker-lease-crash-wipes.cfg NoSilentLeaseVanish
+check WorkerLease.tla cfg/worker-lease-retire-foreign-owner.cfg RetireRespectsOwner
+check WorkerLease.tla cfg/worker-lease-retire-stale-epoch.cfg RetireRespectsEpoch
+
+# Checked bridge sessions bind both operation and worker epochs. Exact replies
+# stutter, while changed terminal payloads and foreign workers remain errors.
+check BuildSession.tla cfg/build-session.cfg
+check BuildSession.tla cfg/build-session-stale-identity.cfg MatchingExport
+check BuildSession.tla cfg/build-session-stale-worker.cfg ForeignRefusal
+check BuildSession.tla cfg/build-session-early-done.cfg MatchingExport
+check BuildSession.tla cfg/build-session-conflicting-replay.cfg ConflictRefusal
+check BuildSession.tla cfg/build-session-success-witness.cfg NeverCompletes
+check BuildSession.tla cfg/build-session-cancel-witness.cfg NeverCancellation
+check BuildSession.tla cfg/build-session-replay-witness.cfg NeverReplay
 
 # M-V6: finite discovery instances of the shared, crash-unbounded protocol.
 # The separate TLAPS catalog checks every generalized theorem dependency.

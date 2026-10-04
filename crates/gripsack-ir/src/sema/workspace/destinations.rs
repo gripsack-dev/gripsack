@@ -18,28 +18,44 @@ use crate::workspace::{Workspace, WorkspaceDestination, WorkspaceOutput};
 use std::collections::BTreeMap;
 
 pub(super) fn check(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
+    check_declarations(
+        workspace
+            .outputs
+            .iter()
+            .filter_map(|output| match output {
+                WorkspaceOutput::Profile(profile) => Some(profile),
+                _ => None,
+            })
+            .flat_map(|profile| {
+                profile
+                    .files
+                    .iter()
+                    .map(|file| (&file.span, &file.destination))
+            }),
+        diagnostics,
+    );
+}
+
+pub(in crate::sema) fn check_declarations<'a>(
+    declarations: impl IntoIterator<Item = (&'a Span, &'a WorkspaceDestination)>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
     // Group by case-folded path first: any whole-file policy over a
     // path makes every declaration on that path one owner too many.
     // Blocks then subgroup by case-folded marker — distinct markers
     // are distinct per-block owners inside the shared host file.
     let mut by_path: BTreeMap<String, Vec<(&Span, Option<&str>)>> = BTreeMap::new();
-    for output in &workspace.outputs {
-        let WorkspaceOutput::Profile(profile) = output else {
-            continue;
+    for (span, destination) in declarations {
+        let (path, marker) = match destination {
+            WorkspaceDestination::Symlink { path } | WorkspaceDestination::TrackedCopy { path } => {
+                (path, None)
+            }
+            WorkspaceDestination::ManagedBlock { path, marker } => (path, Some(marker.as_str())),
         };
-        for file in &profile.files {
-            let (path, marker) = match &file.destination {
-                WorkspaceDestination::Symlink { path }
-                | WorkspaceDestination::TrackedCopy { path } => (path, None),
-                WorkspaceDestination::ManagedBlock { path, marker } => {
-                    (path, Some(marker.as_str()))
-                }
-            };
-            by_path
-                .entry(path.to_lowercase())
-                .or_default()
-                .push((&file.span, marker));
-        }
+        by_path
+            .entry(path.to_lowercase())
+            .or_default()
+            .push((span, marker));
     }
     for (folded, declarations) in by_path {
         if declarations.len() < 2 {

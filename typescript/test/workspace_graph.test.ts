@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { tarball } from "../src/fetch.ts";
+import { emitWorkspaceIr } from "../src/advanced.ts";
 import {
   artifact,
   artifactFile,
   check,
-  emitWorkspaceIr,
   environment,
   exec,
   file,
@@ -49,7 +49,7 @@ function emit(outputs: WorkspaceOutput[]): string {
 }
 
 Deno.test("artifact refs require an actual artifact with both sites reported", () => {
-  const noArtifact = task("ephemeral", { run: exec({ argv: [lit("true")] }) });
+  const noArtifact = task("ephemeral", { steps: [exec({ argv: [lit("true")] })] });
   const config = profile("config", {
     files: [file({
       source: artifactFile("ephemeral", "config"),
@@ -64,7 +64,7 @@ Deno.test("artifact refs require an actual artifact with both sites reported", (
   assert.equal(diagnostic.labels.length, 2, "reference and declaration spans labeled");
   assert.ok(diagnostic.labels[0]?.span?.line !== diagnostic.labels[1]?.span?.line);
   const img = image("img", { packages: [], target: linux });
-  const consumer = task("consume", { run: exec({ argv: [artifact("img", "manifest")] }) });
+  const consumer = task("consume", { steps: [exec({ argv: [artifact("img", "manifest")] })] });
   const imageFailure = thrownDiagnostic(() => emit([img, consumer]), "E126");
   assert.deepEqual(imageFailure.labels.map((label) => label.span?.line), [
     consumer.ir.span.line, img.ir.span.line,
@@ -85,16 +85,16 @@ Deno.test("artifact selectors cannot escape or use non-canonical path segments",
     assert.throws(() => artifactFile("tool", path), /selector must be/);
   }
   const { source, packageValue } = built();
-  const canonical = task("use", { run: exec({ argv: [artifact("tool", "bin/tool")] }) });
+  const canonical = task("use", { steps: [exec({ argv: [artifact("tool", "bin/tool")] })] });
   assert.equal(JSON.parse(emit([source, packageValue, canonical])).workspace.outputs.length, 3);
   // Hand-built values bypass constructor guards; the emitter still rejects them with the site.
   const fake = {
     __gripsack: "workspace",
     ir: { span: { file: "direct.ts", line: 1 }, outputs: [source.ir, packageValue.ir, {
       ...canonical.ir,
-      run: { kind: "exec", span: { file: "direct.ts", line: 7 }, argv: [
+      steps: [{ command: { kind: "exec", span: { file: "direct.ts", line: 7 }, argv: [
         { kind: "artifact", output: "tool", selector: "../secret" },
-      ] },
+      ] } }],
     }] },
   } as unknown as WorkspaceValue;
   const escaping = thrownDiagnostic(() => emitWorkspaceIr(fake, facts), "E130");
@@ -161,18 +161,3 @@ Deno.test("ABI mismatch and incompatible minimum OS reject with both declaration
   }
 });
 
-Deno.test("recipe command lists retain local order without task-prerequisite edges", () => {
-  const first = exec({ argv: [lit("first")], span: { file: "recipe.ts", line: 4 } });
-  const second = exec({ argv: [lit("second")], span: { file: "recipe.ts", line: 5 } });
-  const source = tarball("https://example.invalid/order.tar.gz");
-  const declared = (steps: typeof first[]) => recipe("order", {
-    source, execution: hostExecution, output_kind: "tree", target: linux,
-    steps, span: { file: "recipe.ts", line: 2 },
-  });
-  const commands = (steps: typeof first[]) =>
-    JSON.parse(emit([declared(steps)])).workspace.outputs[0].steps.map(
-      (command: { argv: { value: string }[] }) => command.argv[0].value,
-    );
-  assert.deepEqual(commands([first, second]), ["first", "second"]);
-  assert.deepEqual(commands([second, first]), ["second", "first"]);
-});

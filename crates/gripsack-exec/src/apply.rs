@@ -20,7 +20,10 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     {
         return Err(ExecError::Gate(diagnostic));
     }
-    let session = crate::util::LifecycleSession::acquire(&ctx.home)?;
+    let (session, prepared_native) = match crate::workspace::prepare_apply(ir, ctx)? {
+        Some((session, profiles)) => (session, Some(profiles)),
+        None => (crate::util::LifecycleSession::acquire(&ctx.home)?, None),
+    };
     // crash recovery (0019): a previous run killed between a deploy
     // mutation and the flip left uncommitted journal entries — the
     // filesystem sits between generations. Restore the priors before
@@ -40,7 +43,7 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             tracing::warn!("{line}");
         }
     }
-    let mut lock = if ir.workspace.is_some() {
+    let mut lock = if ir.has_workspace() {
         crate::lockfile::Lockfile::default()
     } else {
         match crate::lockfile::read(ctx.repository.identity(), &ctx.host) {
@@ -94,19 +97,17 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
             reports,
         });
     }
-    let native = ir
-        .workspace
-        .as_ref()
-        .map(|workspace| {
-            crate::workspace::NativeProfiles::prepare(
-                workspace,
-                ctx.repository.contents(),
-                &ctx.home,
-                &ctx.only,
-                ctx.fetch.limits(),
-            )
-        })
-        .transpose()?;
+    let native = match prepared_native {
+        Some(profiles) => Some(profiles),
+        None => crate::workspace::NativeProfiles::prepare(
+            ir,
+            ctx.repository.contents(),
+            &ctx.home,
+            &ctx.only,
+            ctx.fetch.limits(),
+            None,
+        )?,
+    };
     // the allocator is NOT current+1 (0026 §3): after a rollback,
     // current is lower than the highest generation on disk, and
     // reusing a number would rewrite immutable history. Allocate

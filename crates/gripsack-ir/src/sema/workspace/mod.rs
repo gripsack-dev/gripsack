@@ -8,17 +8,20 @@
 
 mod context;
 mod cycles;
-mod destinations;
+pub(super) mod destinations;
 mod graph;
 mod names;
 mod policy;
 mod refs;
-mod span_value;
+pub(super) mod span_value;
 
 use crate::diagnostic::Diagnostic;
 use crate::model::Ir;
 
 pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
+    if let Some(workspace) = &ir.workspace_v6 {
+        super::workspace_v6::check(workspace, diagnostics);
+    }
     if let Some(workspace) = &ir.workspace {
         check_workspace(workspace, diagnostics);
     }
@@ -174,8 +177,8 @@ mod tests {
         let v5_modules = legacy.replace(r#""ir_version": 4"#, r#""ir_version": 5"#);
         assert!(parse(&v5_modules).is_ok());
         // Out-of-range versions remain E100, not a silent fallback.
-        let future = r#"{"ir_version": 6, "modules": {}}"#;
-        assert_eq!(parse(future).unwrap_err().code, codes::VERSION);
+        let future = serde_json::json!({"ir_version": crate::IR_VERSION + 1, "modules": {}});
+        assert_eq!(parse(&future.to_string()).unwrap_err().code, codes::VERSION);
     }
 
     #[test]

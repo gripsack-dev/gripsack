@@ -1,266 +1,381 @@
-//! The core side of the bridge transport: spawn the bridge binary,
-//! speak the framed protocol over its stdio, and drive each session
-//! through the [`EventGate`] fence until exactly one terminal. The
-//! driver is transport-only — it never trusts the bridge: version
-//! negotiation is exact, every event is fenced, logs are bounded by
-//! the gate, and a session that ends without a terminal is an error,
-//! not a success.
-
-use crate::protocol::{
-    self, Digest, EventGate, FromBridge, PROTOCOL_VERSION, ProtocolError, SessionId, Terminal,
-    ToBridge,
+//! Two bounded bridge invocations: pure lowering, then execution of checked
+//! bytes. Uses the common admitted native-process supervisor, not a second
+//! blocking child/pipe implementation. EOF and process exit never imply Done.
+#[cfg(test)]
+mod tests;
+use crate::{
+    identity::{AttemptIdentity, DefinitionDigest, LlbVertexDigest},
+    llb::{CheckError, CheckedDefinition},
+    plan::{NodeIndex, ValidatedBuildPlan},
+    protocol::{self, FromBridge, LowerRequest, ProtocolError},
 };
-use std::io::{BufReader, Write};
-use std::process::{Child, Command, Stdio};
+use gripsack_policy::buildkit::{SessionEvent, SessionStage, transition};
+use gripsack_process::{
+    Control, InputByteLimit, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessReceipt,
+    ProcessRole, SelectedProgram,
+};
+use serde::Serialize;
+use std::{
+    collections::BTreeMap,
+    ffi::{OsStr, OsString},
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TransportError {
-    #[error("bridge process failed: {0}")]
-    Spawn(#[source] std::io::Error),
-    #[error("bridge protocol violation: {0}")]
+    #[error("bridge admission failed: {0}")]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
     Protocol(#[from] ProtocolError),
-    #[error("bridge wire error: {0}")]
-    Wire(#[source] std::io::Error),
-    #[error("session {0:?} ended without a terminal event")]
-    NoTerminal(String),
-    #[error("session {0:?} exceeded {1} events without a terminal")]
-    EventBudget(String, u64),
-    #[error("bridge did not negotiate: first reply was {0:?}")]
-    NotNegotiated(Box<FromBridge>),
+    #[error(transparent)]
+    Check(#[from] CheckError),
+    #[error("bridge process failed or cleanup is unconfirmed")]
+    Process {
+        receipt: Box<ProcessReceipt>,
+        stderr: Vec<u8>,
+    },
+    #[error("bridge rejected the attempt ({code:?}): {message:?}")]
+    Rejected {
+        code: protocol::FailureCode,
+        message: String,
+        vertices: Vec<LlbVertexDigest>,
+        nodes: Vec<NodeIndex>,
+    },
+    #[error("bridge attempt was cancelled; no publication is authorized")]
+    Cancelled,
+    #[error("bridge ended without its required terminal result")]
+    NoTerminal,
 }
 
-/// One live bridge child with its framed stdio.
-pub struct BridgeProcess {
-    child: Child,
-    reader: BufReader<std::process::ChildStdout>,
-    negotiated: bool,
+/// A completed export is not an admitted package. The realization owner must
+/// still validate payload, runtime closure, receipts and retained roots.
+pub struct CompletedExport {
+    definition: DefinitionDigest,
+    destination: PathBuf,
+    process: ProcessReceipt,
+    identity: AttemptIdentity,
+    worker: protocol::WorkerBinding,
+    scope: crate::worker::WorkerScope,
 }
-
-/// How many bridge→core events one session may produce before the
-/// core gives up — a bridge stuck in an event loop is a failure, not
-/// a hang.
-const SESSION_EVENT_BUDGET: u64 = 8192;
-
-impl BridgeProcess {
-    pub fn spawn(mut command: Command) -> Result<Self, TransportError> {
-        let mut child = command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(TransportError::Spawn)?;
-        let reader = BufReader::new(child.stdout.take().expect("piped stdout"));
-        Ok(Self {
-            child,
-            reader,
-            negotiated: false,
-        })
+impl CompletedExport {
+    pub fn definition(&self) -> DefinitionDigest {
+        self.definition
     }
-
-    fn send(&mut self, message: &ToBridge) -> Result<(), TransportError> {
-        let frame = protocol::encode_frame(message);
-        self.child
-            .stdin
-            .as_mut()
-            .expect("piped stdin")
-            .write_all(&frame)
-            .map_err(TransportError::Wire)?;
-        self.child
-            .stdin
-            .as_mut()
-            .expect("piped stdin")
-            .flush()
-            .map_err(TransportError::Wire)
+    pub fn destination(&self) -> &Path {
+        &self.destination
     }
-
-    fn receive(&mut self) -> Result<FromBridge, TransportError> {
-        let mut header = [0u8; 8];
-        std::io::Read::read_exact(&mut self.reader, &mut header).map_err(TransportError::Wire)?;
-        let declared = u64::from_le_bytes(header);
-        if declared > protocol::MAX_FRAME_BYTES as u64 {
-            return Err(ProtocolError::OversizedFrame(declared, protocol::MAX_FRAME_BYTES).into());
-        }
-        let mut body = vec![0u8; declared as usize];
-        std::io::Read::read_exact(&mut self.reader, &mut body).map_err(TransportError::Wire)?;
-        let message: FromBridge =
-            serde_json::from_slice(&body).map_err(ProtocolError::Malformed)?;
-        Ok(message)
+    pub fn process(&self) -> &ProcessReceipt {
+        &self.process
     }
-
-    /// Negotiate exactly once, refusing every other version.
-    pub fn negotiate(&mut self) -> Result<Vec<String>, TransportError> {
-        if self.negotiated {
-            return Err(TransportError::Protocol(ProtocolError::NotNegotiate(
-                "double negotiation".into(),
-            )));
-        }
-        self.send(&ToBridge::Negotiate {
-            protocol_version: PROTOCOL_VERSION,
-            capabilities: vec!["protocol.v1".into()],
-        })?;
-        let reply = self.receive()?;
-        if !matches!(reply, FromBridge::NegotiateOk { .. }) {
-            return Err(TransportError::NotNegotiated(Box::new(reply)));
-        }
-        let capabilities = protocol::negotiate(&reply)?;
-        self.negotiated = true;
-        Ok(capabilities)
+    pub fn identity(&self) -> &AttemptIdentity {
+        &self.identity
     }
-
-    /// Submit a session and drive it to exactly one terminal. Every
-    /// event is fenced by the session gate; the returned terminal is
-    /// what the bridge proved, never a default.
-    pub fn submit(
-        &mut self,
-        session: &SessionId,
-        definition: &Digest,
-        definition_len: u64,
-        exporter: &Digest,
-    ) -> Result<Terminal, TransportError> {
-        if !self.negotiated {
-            return Err(TransportError::Protocol(ProtocolError::NotNegotiate(
-                "submit before negotiation".into(),
-            )));
-        }
-        self.send(&ToBridge::Submit {
-            session: session.clone(),
-            definition: definition.clone(),
-            definition_len,
-            exporter: exporter.clone(),
-        })?;
-        let mut gate: Option<(u64, EventGate)> = None;
-        let mut events = 0u64;
-        loop {
-            let reply = self.receive()?;
-            events += 1;
-            if events > SESSION_EVENT_BUDGET {
-                return Err(TransportError::EventBudget(
-                    session.as_str().to_owned(),
-                    events,
-                ));
-            }
-            let (epoch, mut event_gate) = match (&reply, gate.take()) {
-                (FromBridge::Accepted { epoch, .. }, None) => (*epoch, EventGate::new(*epoch)),
-                (_, Some(live)) => live,
-                (other, None) => {
-                    return Err(TransportError::Protocol(ProtocolError::NotNegotiate(
-                        format!("{other:?} before the session was accepted"),
-                    )));
-                }
-            };
-            match reply {
-                FromBridge::Accepted { .. } | FromBridge::NegotiateOk { .. } => {}
-                FromBridge::Event { kind, .. } => match kind {
-                    protocol::BridgeEvent::Log { .. } => map_gate(event_gate.log(epoch))?,
-                    protocol::BridgeEvent::Progress { .. } => map_gate(event_gate.observe(epoch))?,
-                },
-                FromBridge::Exported { .. } => {
-                    map_gate(event_gate.observe(epoch))?;
-                }
-                FromBridge::Done { .. } => {
-                    map_gate(event_gate.terminal(epoch, Terminal::Done))?;
-                    return Ok(Terminal::Done);
-                }
-                FromBridge::Failed { .. } => {
-                    map_gate(event_gate.terminal(epoch, Terminal::Failed))?;
-                    return Ok(Terminal::Failed);
-                }
-                FromBridge::Cancelled { .. } => {
-                    map_gate(event_gate.terminal(epoch, Terminal::Cancelled))?;
-                    return Ok(Terminal::Cancelled);
-                }
-            }
-            gate = Some((epoch, event_gate));
-        }
+    pub fn worker(&self) -> protocol::WorkerBinding {
+        self.worker
     }
-
-    /// Idempotent cancellation: an unknown or finished session still
-    /// acknowledges, and the core never treats the ack as success of
-    /// the cancelled work.
-    pub fn cancel(&mut self, session: &SessionId) -> Result<(), TransportError> {
-        if !self.negotiated {
-            return Err(TransportError::Protocol(ProtocolError::NotNegotiate(
-                "cancel before negotiation".into(),
-            )));
-        }
-        self.send(&ToBridge::Cancel {
-            session: session.clone(),
-        })?;
-        let reply = self.receive()?;
-        match reply {
-            FromBridge::Cancelled { .. } => Ok(()),
-            other => Err(TransportError::Protocol(ProtocolError::NotNegotiate(
-                format!("expected Cancelled, got {other:?}"),
-            ))),
-        }
+    pub fn scope(&self) -> crate::worker::WorkerScope {
+        self.scope
     }
 }
 
-impl Drop for BridgeProcess {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+pub struct ExportPaths<'a> {
+    pub worker: &'a crate::worker::WorkerLease,
+    pub retention: Option<&'a std::fs::File>,
+    pub inputs: &'a Path,
+    pub destination: &'a Path,
+}
+
+/// Operator-selected pinned executable and captured environment outlive both
+/// calls. The absolute operation deadline is never reset between phases.
+pub struct Bridge<'a> {
+    environment: &'a OperatorEnvironment,
+    program: &'a SelectedProgram,
+    directory: &'a Path,
+    deadline: Instant,
+}
+impl<'a> Bridge<'a> {
+    pub fn new(
+        environment: &'a OperatorEnvironment,
+        program: &'a SelectedProgram,
+        directory: &'a Path,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            environment,
+            program,
+            directory,
+            deadline,
+        }
     }
-}
 
-fn map_gate(result: Result<(), protocol::GateError>) -> Result<(), TransportError> {
-    result.map_err(|error| {
-        TransportError::Protocol(ProtocolError::NotNegotiate(format!(
-            "session fence: {error}"
-        )))
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn bridge_bin() -> std::path::PathBuf {
-        std::env::var_os("GRIPSACK_BRIDGE_BIN")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../tools/buildkit-bridge/bridge-bin")
+    pub fn lower(
+        &self,
+        plan: &ValidatedBuildPlan,
+        identity: &AttemptIdentity,
+        retention: Option<&std::fs::File>,
+    ) -> Result<CheckedDefinition, TransportError> {
+        let request = LowerRequest {
+            protocol_version: protocol::PROTOCOL_VERSION,
+            session: identity.session.clone(),
+            attempt: identity.attempt,
+            epoch: identity.epoch,
+            plan: plan.plan(),
+        };
+        let leases = retention
+            .map(|handle| {
+                handle
+                    .try_clone()
+                    .map(|retention| gripsack_process::ProcessLeases {
+                        worker: None,
+                        retention: Some(retention),
+                    })
             })
+            .transpose()?;
+        let mut result: Option<Result<CheckedDefinition, TransportError>> = None;
+        self.invoke(&[OsStr::new("lower")], &request, leases, |event| {
+            if !event.matches(identity) || event.worker_binding().is_some() {
+                return Err(ProtocolError::Identity);
+            }
+            if matches!(&event, FromBridge::Failed { vertices, .. } if !vertices.is_empty()) {
+                return Err(ProtocolError::Transition);
+            }
+            if let Some(previous) = &result {
+                let replay = match (previous, &event) {
+                    (Ok(checked), FromBridge::Prepared { lowered, .. }) => checked.repeats(lowered),
+                    (
+                        Err(TransportError::Rejected {
+                            code,
+                            message,
+                            vertices,
+                            ..
+                        }),
+                        FromBridge::Failed {
+                            code: next_code,
+                            message: next_message,
+                            vertices: next_vertices,
+                            ..
+                        },
+                    ) => code == next_code && message == next_message && vertices == next_vertices,
+                    _ => false,
+                };
+                return if replay {
+                    Ok(())
+                } else {
+                    Err(ProtocolError::Transition)
+                };
+            }
+            result = Some(match event {
+                FromBridge::Prepared { lowered, .. } => {
+                    CheckedDefinition::validate(plan, lowered).map_err(TransportError::Check)
+                }
+                FromBridge::Failed {
+                    code,
+                    message,
+                    vertices,
+                    ..
+                } => Err(TransportError::Rejected {
+                    code,
+                    message,
+                    vertices,
+                    nodes: Vec::new(),
+                }),
+                _ => return Err(ProtocolError::Transition),
+            });
+            Ok(())
+        })?;
+        result.ok_or(TransportError::NoTerminal)?
     }
 
-    /// Cross-process, cross-language: the Rust core drives the REAL
-    /// compiled Go bridge end to end over stdio. Ignored in the
-    /// standard gate because `tools/` sits outside the test image;
-    /// run explicitly via `cargo test -p gripsack-buildkit -- --ignored`
-    /// after `tools/buildkit-bridge/build.sh` (the receipt records the
-    /// explicit run).
-    #[test]
-    #[ignore = "requires tools/buildkit-bridge/bridge-bin (built by the pinned golang gate)"]
-    fn the_real_go_bridge_negotiates_fails_closed_and_cancels_idempotently() {
-        let bin = bridge_bin();
-        assert!(
-            bin.is_file(),
-            "bridge binary missing at {}: run sh tools/buildkit-bridge/build.sh first",
-            bin.display()
-        );
-        let mut bridge =
-            BridgeProcess::spawn(Command::new(&bin)).expect("spawn the compiled bridge");
-
-        let capabilities = bridge.negotiate().expect("negotiation");
-        assert_eq!(capabilities, vec!["protocol.v1".to_string()]);
-
-        // Fail-closed submit: no BuildKit client is linked yet, so the
-        // session must terminally fail — never fake success.
-        let session = SessionId::new("build-e2e").unwrap();
-        let terminal = bridge
-            .submit(
-                &session,
-                &Digest::of(b"definition"),
-                10,
-                &Digest::of(b"exporter"),
+    pub fn execute(
+        &self,
+        definition: CheckedDefinition,
+        identity: &AttemptIdentity,
+        paths: ExportPaths<'_>,
+        mut log: impl FnMut(&[NodeIndex], &str, &[u8], bool),
+    ) -> Result<CompletedExport, TransportError> {
+        // Paths are core-selected capabilities, never values returned by lowering.
+        if !paths.inputs.is_absolute() || !paths.destination.is_absolute() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "bridge requires explicit private absolute paths and Unix socket",
             )
-            .expect("drive the submitted session");
-        assert_eq!(terminal, Terminal::Failed);
+            .into());
+        }
+        let address = paths.worker.address().connect_arg();
+        let leases = gripsack_process::ProcessLeases {
+            worker: Some(paths.worker.duplicate_handle()?),
+            retention: paths.retention.map(std::fs::File::try_clone).transpose()?,
+        };
+        let digest = definition.digest();
+        let worker = protocol::WorkerBinding {
+            instance: crate::identity::WorkerInstanceId::parse(paths.worker.instance_id())?,
+            epoch: paths.worker.epoch(),
+        };
+        let (request, witness) = definition.into_request(identity, worker);
+        let mut node_bindings: BTreeMap<String, Vec<NodeIndex>> = BTreeMap::new();
+        for binding in witness {
+            node_bindings
+                .entry(String::from(binding.vertex))
+                .or_default()
+                .push(binding.node);
+        }
+        let now = Instant::now();
+        let process_end = gripsack_process::execution_deadline(now, self.deadline);
+        let solve_end = gripsack_process::execution_deadline(now, process_end);
+        let remaining = solve_end.saturating_duration_since(now);
+        let timeout_ms = u64::try_from(remaining.as_millis()).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "bridge deadline cannot be represented",
+            )
+        })?;
+        let timeout = OsString::from(timeout_ms.to_string());
+        let args = [
+            OsStr::new("execute"),
+            OsStr::new("--address"),
+            address.as_os_str(),
+            OsStr::new("--inputs"),
+            paths.inputs.as_os_str(),
+            OsStr::new("--output"),
+            paths.destination.as_os_str(),
+            OsStr::new("--timeout-ms"),
+            timeout.as_os_str(),
+        ];
+        let mut stage = SessionStage::AwaitingAcceptance;
+        let mut failure: Option<TransportError> = None;
+        let mut accepted = false;
+        let mut exported = false;
+        let mut log_count = 0;
+        let receipt = self.invoke(&args, &request, Some(leases), |event| {
+            if !event.matches(identity) || event.worker_binding() != Some(worker) { return Err(ProtocolError::Identity); }
+            let kind = match &event {
+                FromBridge::Accepted { daemon_version, platform, .. } => {
+                    if daemon_version != protocol::EXPECTED_DAEMON_VERSION || platform != &request.platform {
+                        return Err(ProtocolError::Capability);
+                    }
+                    SessionEvent::Accepted
+                },
+                FromBridge::Event { .. } => SessionEvent::Log,
+                FromBridge::Exported { .. } => SessionEvent::Exported,
+                FromBridge::Done { .. } => SessionEvent::Done,
+                FromBridge::Failed { .. } => SessionEvent::Failed,
+                FromBridge::Cancelled { .. } => SessionEvent::Cancelled,
+                FromBridge::Prepared { .. } => return Err(ProtocolError::Transition),
+            };
+            // Identical control replies stutter, including late duplicates.
+            // Identity/capability checks precede this path; a changed terminal
+            // still reaches the transition fence and cannot replace its result.
+            let replay = match &event {
+                FromBridge::Accepted { .. } => accepted,
+                FromBridge::Exported { .. } => exported,
+                FromBridge::Done { .. } => stage == SessionStage::Done,
+                FromBridge::Cancelled { .. } => stage == SessionStage::Cancelled,
+                FromBridge::Failed { code, message, vertices, .. } => matches!(&failure,
+                    Some(TransportError::Rejected { code: previous_code, message: previous_message, vertices: previous_vertices, .. })
+                    if code == previous_code && message == previous_message && vertices == previous_vertices),
+                FromBridge::Event { .. } | FromBridge::Prepared { .. } => false,
+            };
+            if replay { return Ok(()); }
+            stage = transition(stage, kind).ok_or(ProtocolError::Transition)?;
+            match event {
+                FromBridge::Accepted { .. } => accepted = true,
+                FromBridge::Exported { .. } => exported = true,
+                FromBridge::Event { vertex, chunk, truncated, .. } => {
+                    log_count += 1;
+                    if log_count > protocol::MAX_LOG_EVENTS { return Err(ProtocolError::EventBudget); }
+                    log(node_bindings.get(&vertex).map_or(&[], Vec::as_slice), &vertex, &chunk, truncated);
+                },
+                FromBridge::Failed { code, message, vertices, .. } => failure = Some(TransportError::Rejected { code, message, vertices, nodes: Vec::new() }),
+                _ => {},
+            }
+            Ok(())
+        })?;
+        if let Some(TransportError::Rejected {
+            vertices, nodes, ..
+        }) = &mut failure
+        {
+            for vertex in vertices {
+                if let Some(bound) = node_bindings.get(vertex.as_str()) {
+                    nodes.extend_from_slice(bound);
+                }
+            }
+            nodes.sort_unstable_by_key(|node| node.index());
+            nodes.dedup();
+        }
+        if let Some(error) = failure {
+            return Err(error);
+        }
+        match stage {
+            SessionStage::Done => Ok(CompletedExport {
+                definition: digest,
+                destination: paths.destination.to_owned(),
+                process: receipt,
+                identity: identity.clone(),
+                worker,
+                scope: paths.worker.scope(),
+            }),
+            SessionStage::Cancelled => Err(TransportError::Cancelled),
+            _ => Err(TransportError::NoTerminal),
+        }
+    }
 
-        // Idempotent cancel on an unknown session still acknowledges.
-        let other = SessionId::new("unknown-session").unwrap();
-        bridge.cancel(&other).expect("cancel acknowledges");
-        bridge.cancel(&other).expect("cancel is idempotent");
+    fn invoke(
+        &self,
+        arguments: &[&OsStr],
+        request: &impl Serialize,
+        leases: Option<gripsack_process::ProcessLeases>,
+        mut receive: impl FnMut(FromBridge) -> Result<(), ProtocolError>,
+    ) -> Result<ProcessReceipt, TransportError> {
+        let request = protocol::encode_frame(request)?;
+        let limits = Limits {
+            timeout: self.deadline.saturating_duration_since(Instant::now()),
+            operation_deadline: Some(self.deadline),
+            input_bytes: InputByteLimit::new(
+                protocol::MAX_FRAME_BYTES + std::mem::size_of::<u64>(),
+            ),
+            ..Limits::default()
+        };
+        let invocation = Invocation::admit(
+            self.environment,
+            ProcessRole::Build,
+            self.program,
+            self.directory,
+            limits,
+        )?;
+        let invocation = match leases {
+            Some(leases) => invocation.retain_leases(leases)?,
+            None => invocation,
+        };
+        let mut decoder = protocol::FrameDecoder::default();
+        let mut protocol_error = None;
+        let mut events = 0;
+        let outcome = invocation.run(arguments, NativeInput::Bytes(&request), None, |bytes| {
+            let result = decoder.push(bytes, |event| {
+                events += 1;
+                if events > protocol::MAX_EVENT_COUNT {
+                    return Err(ProtocolError::EventBudget);
+                }
+                receive(event)
+            });
+            match result {
+                Ok(()) => Control::Continue,
+                Err(error) => {
+                    protocol_error = Some(error);
+                    Control::Response
+                }
+            }
+        })?;
+        if let Some(error) = protocol_error {
+            return Err(error.into());
+        }
+        decoder.finish()?;
+        if !outcome.success {
+            return Err(TransportError::Process {
+                receipt: Box::new(outcome.receipt),
+                stderr: outcome.stderr,
+            });
+        }
+        Ok(outcome.receipt)
     }
 }

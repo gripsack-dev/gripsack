@@ -134,6 +134,7 @@ pub fn gc(
             }
         }
     }
+    referenced.extend(crate::workspace::roots::inventory(&home_cap, home)?);
     let store_inventory = inventory::ObjectInventory::open(&home_cap, home, store::STORE_DIR)?;
     let prior_inventory = inventory::ObjectInventory::open(&home_cap, home, "prior")?;
     let referenced: Vec<&str> = referenced.iter().map(String::as_str).collect();

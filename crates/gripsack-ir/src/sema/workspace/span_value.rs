@@ -235,7 +235,7 @@ fn check_values(workspace: &Workspace, diagnostics: &mut Vec<Diagnostic>) {
 /// A repo-file origin always names a captured file, never an ambient
 /// absolute path or a directory selector. This is lexical admission;
 /// realization must additionally resolve through a root-pinned snapshot.
-fn admissible_repo_file(path: &str) -> bool {
+pub(in crate::sema) fn admissible_repo_file(path: &str) -> bool {
     !path.is_empty()
         && !path.starts_with('/')
         && !path.contains('\\')
@@ -249,7 +249,7 @@ fn admissible_repo_file(path: &str) -> bool {
 /// normalized segments — the module grammar's E102 rule plus the
 /// selector segment rules, so no profile file can address `..`, a
 /// bare `~`, a relative path or an empty/trailing segment.
-fn admissible_destination(path: &str) -> bool {
+pub(in crate::sema) fn admissible_destination(path: &str) -> bool {
     let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix('/')) else {
         return false;
     };
@@ -305,7 +305,7 @@ fn check_bash_body(command: &WorkspaceCommand, diagnostics: &mut Vec<Diagnostic>
 /// HH:MM local time, 00–23 : 00–59 — the schema's
 /// `^([01][0-9]|2[0-3]):[0-5][0-9]$` pattern as a parser check so
 /// admission, not just frontend authoring, enforces it.
-fn valid_local_time(time: &str) -> bool {
+pub(in crate::sema) fn valid_local_time(time: &str) -> bool {
     let bytes = time.as_bytes();
     if bytes.len() != 5 || bytes[2] != b':' {
         return false;
