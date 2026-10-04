@@ -628,6 +628,43 @@ small remaining native/publication jobs use explicit supported/ARM runner pools.
 New helper measurements and real published consumers remain required. The prior
 source qualification and unrun patch CI are not conflated.
 
+The owner then chose **Linux-first local publication** under
+`REL-LINUX-FIRST-0441-2026-10-04`: prebuilt core Linux x86_64, measured Linux
+helpers and matching SDK, without pretending that unbuilt Mac/other binaries or
+hosted-build attestations exist. Local x64 Conda measurement produced
+`41227b553bfe0229f5e8f6f4ac784f236c0176d55826952270fa323072af2124`;
+native ARM job111481798463 produced
+`d5a3a55330aa966d138730f500fa66925a56d99418b9936690da66b1279569ba`.
+Both were two-build/native-protocol results. The remaining queued workflow was
+cancelled after its successful ARM artifact was recovered; it is not a globally
+passing run. Unmeasured Mac helper pins are absent, not copied from 0.44.0.
+
+Complete local audits covered 372 core and 570 helper dependencies with Cargo
+1.98.0, cargo-audit 0.22.2 and advisory database
+`ef6173cbc5c50ec8166f9a5b28f07834144373ee`. An earlier runtime lacking Cargo could
+not update the registry index; those warnings were fixed, not suppressed.
+The old example lock correctly failed E301 after the frontend version change.
+Explicit `grip update ripgrep` produced the new captured frontend identity and
+current glibc solve fact without changing any selected package/archive record.
+Both embedded and packed candidate frontends then passed fresh frozen native
+build/run/task/profile/reuse/GC journeys; final published/default-pin verification
+remains distinct from those operator-helper smokes.
+
+The actual live installer selected unpublished core-v0.44.0 and failed HTTP404
+in a private home. The corrected script selected the available 0.43.0 artifact,
+verified its checksum and executed the installed binary. Eight rebuilt-container
+regressions cover unpublished/partial target assets, stable-version selection,
+bad checksums, HTTP errors, truncated catalog data and preservation of an existing
+binary. This fixes publication selection, not a downgrade fallback on verification
+failure. The source fix must reach the live site before claiming that surface fixed.
+
+After adopting the measured Linux pins, both embedded and packed 0.44.1
+frontends passed the same frozen journey through the core's **compiled-in**
+helper identity using a file mirror: cold build, exact stdin search, task,
+profile, satisfied apply, retained reuse with an unavailable helper and GC.
+The lock stayed byte-identical throughout consumption. This verifies default
+pin admission without pretending the not-yet-published HTTP assets were fetched.
+
 ## Settled rejections (all eras)
 
 - **TOML/data-format frontend** — five times. TypeScript is the

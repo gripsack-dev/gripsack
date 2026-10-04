@@ -886,6 +886,38 @@ to the **0.44.1 packaging/version/pin repair**, not a permanent CI policy.
   plan0053 research. This exception neither approves that migration nor changes
   the standing required-CI workflow/branch-protection policy.
 
+### Owner exception REL-LINUX-FIRST-0441-2026-10-04
+
+After Linux ARM measurement succeeded but macOS remained queued, the owner
+explicitly selected **“Linux-first local release”** with the described platform
+and hosted-build-attestation tradeoffs. This supplements the full-CI exception
+above; it does not relabel missing native evidence as passing.
+
+- **Distribution scope:** publish the locally verified Linux x86_64 core and
+  matching SDK, with measured available Linux helpers. Other unbuilt 0.44.1 core
+  binaries, including macOS, are deferred and must not be advertised as available.
+  The installer must choose a complete published asset pair for its actual
+  target, leaving other targets on an available older release.
+- **Artifact identities:** Linux x64 Conda helper measurement is local, from
+  source `1024283`; native ARM measurement is job111481798463 in
+  [run37217602438](https://github.com/gripsack-dev/gripsack/actions/runs/37217602438),
+  source `8b31778`. Both used two builds, native dependency/protocol checks and
+  the same helper lock. Adopt those measured hashes only; remove the absent
+  Mac slot rather than reusing an old hash under the new release identity.
+- **Provenance limit:** locally assembled release payloads do not claim
+  GitHub-hosted signed build provenance. Record their actual local/job-bound
+  origin, inputs and digests; do not manufacture an attestation or claim that
+  checksums provide the excluded assurance. The published notes must expose
+  this limitation.
+- **Preserved checks:** real checksum, SBOM/dependency/static checks, source and
+  version guards, locked package verification, native Linux consumers, helper
+  byte admission and explicit source approval remain required. Registry and
+  website publication must describe the artifacts actually available.
+- **Identity:** neither 0.44.0 tag nor the published npm 0.44.0 package moves.
+  Mac/other-target expansion and restored hosted attestation claims require
+  actual evidence in a later qualified release. CI/provider research is still
+  separate from this one-release exception.
+
 ### Owner exception REL-ALPHA-043-2026-10-03
 
 The owner explicitly authorized cutting the 0.43 alpha release without waiting

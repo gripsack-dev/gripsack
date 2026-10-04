@@ -11,6 +11,13 @@ Artifact verification and truthful platform/provenance claims remain required.
 This scoped release exception does not approve a general CI migration or turn
 unrun checks into passing evidence.
 
+The owner subsequently chose `REL-LINUX-FIRST-0441-2026-10-04`: ship locally
+verified Linux x86_64 core/SDK with measured Linux helpers; explicitly defer
+unbuilt platform binaries and hosted-build attestation claims for the local
+release payloads. This is a disclosed one-release scope change, not permission
+to weaken future CI invisibly. The live installer's unpublished-tag failure was
+reproduced and its available-asset selection is being repaired in PR175.
+
 ## 1. Assignment and coordination
 
 Research a predictable, resumable CI/release flow that catches publication defects

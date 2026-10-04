@@ -3,7 +3,7 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
-## [0.44.1] — Unreleased
+## [0.44.1] — 2026-10-04
 
 ### Fixed
 
@@ -11,9 +11,22 @@ User-visible changes per release. Design archaeology lives in
   Docker. Relative `--dist dist` now binds the actual staging directory instead
   of creating an empty named volume. Required CI runs the real four-platform,
   two-clean-build pin check before tagging, not only during publication.
+- The installer selects a complete published archive/checksum pair for its
+  actual target, skipping unpublished or platform-incomplete tags. Transport,
+  authorization, server and checksum failures remain terminal; they cannot
+  silently downgrade or replace an existing binary.
+- Workspace example locks are explicitly migrated to the 0.44.1 captured
+  frontend through `grip update`. Changing SDK bytes does not bypass frozen
+  frontend admission; renewed source approval remains explicit.
 
-The owner selected a patch release rather than moving either existing 0.44.0 tag.
-The IR contract is unchanged.
+### Distribution scope
+
+The owner selected a Linux-first local release rather than moving either
+existing 0.44.0 tag: prebuilt core for Linux x86_64, measured Linux helpers and
+the matching SDK. Other unbuilt core targets and hosted-build attestations for
+locally assembled payloads are explicitly deferred. Checksums, native checks,
+SBOM and actual consumer verification remain required; fresh full hosted CI is
+owner-waived, not marked successful. The IR contract is unchanged.
 
 ## [0.44.0] — 2026-10-04
 

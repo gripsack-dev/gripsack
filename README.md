@@ -123,6 +123,13 @@ those Mac runtime campaigns; Mac build/package and ordinary native core checks
 remain enabled. [Plan/0052 §33](plan/0052-workspace-contract.md#33-unreleased-v6-integration-2026-10-01)
 records the actual evidence and its limits, not all-platform runtime parity.
 
+The owner selected a Linux-first **0.44.1** distribution: the prebuilt core is
+Linux x86_64, with measured Linux Conda helpers. Other prebuilt core targets stay
+on their last available release; the installer checks availability for its
+target. Locally produced 0.44.1 assets have checksum/build receipts, not a claim
+of GitHub-hosted build attestation. This scoped exception does not qualify the
+deferred Mac backend or make a fresh full-CI run successful.
+
 ## Source approval and migration
 
 Evaluation reads one private, read-only snapshot, including ignored/untracked
