@@ -3104,9 +3104,11 @@ required. Receipts live in CI artifacts; their checkout directory is ignored.
 ### R4.BRIDGE-DIST — release output bind admission
 
 - Class/owner: NEXT, M2 release tooling; integration owner.
-- State: path repair verified locally; final artifact/consumer verification and
-  publication remain required. Fresh hosted full CI is owner-waived under
-  `REL-ALPHA-0441-2026-10-04`; neither existing 0.44.0 tag is changed.
+- State: DONE — repaired core/SDK **0.44.1** published from `33336e3`, with
+  final artifact checks and actual published/default-helper consumers passed.
+  Fresh full hosted CI remains owner-waived under `REL-ALPHA-0441-2026-10-04`;
+  platform/provenance limits follow `REL-LINUX-FIRST-0441-2026-10-04`.
+  Neither existing 0.44.0 tag changed.
 - Failing-before evidence: release run
   [37182423088](https://github.com/gripsack-dev/gripsack/actions/runs/37182423088),
   bridge job111377500605, invokes `dist.sh --check --dist dist`. Docker treats
@@ -3122,8 +3124,15 @@ required. Receipts live in CI artifacts; their checkout directory is ignored.
   passed in 64.19s. All four artifacts were built twice and matched the unchanged
   committed pins. The required CI core lane now runs this real distribution gate
   before a tag is cut; this is not a mocked mount or source-text assertion.
-- Owner decision: publish repaired core and matching SDK as **0.44.1**, preserving
-  both existing 0.44.0 tags. Patch metadata, measured helpers, local replacement
-  checks and actual publication/consumer results remain required under the
-  separately recorded CI exception.
+- Publication evidence: all fourteen crates published before the core GitHub
+  release. The SDK publisher uploaded npm successfully; its later GitHub metadata
+  step failed on the isolated CLI's execute permission and was completed manually,
+  without republishing npm or calling the workflow green. All 22 anonymous asset
+  downloads matched their qualified SHA256 digests; all 72 downloaded SDK files
+  matched the qualified package.
+- The exact downloaded optimized core acquired its default bridge over public
+  HTTP, built the real greeter recipe, executed project/task consumers, removed
+  owned builder cache, ran GC, and reused/re-executed the retained artifact with
+  the bridge unavailable. Plan0052 §35 records the source/build identities and
+  the separate Conda, registry and first-party consumer evidence.
 
