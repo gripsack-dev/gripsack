@@ -604,6 +604,24 @@ dependency resolution. Native artifact publication and public-consumer evidence
 are distinct from these source and SDK results.
 
 
+### 0.44.1 publication repair
+
+[Core run37182423088](https://github.com/gripsack-dev/gripsack/actions/runs/37182423088)
+failed before core compilation/publication: relative `--dist dist` was passed
+to Docker as a named volume, leaving `/out/targets.txt` absent. Conda audit and
+all three native helper qualifications passed; core build/release jobs were
+skipped. The core registry index still lacked 0.44.0 and its GitHub release
+returned 404; the already published SDK remains intact.
+
+The distribution script now resolves the output directory before constructing
+the bind mount. The exact failed invocation then built all four artifacts
+twice and passed the unchanged committed pins. Required core CI now includes
+that distribution command. Plan0048 records the `R4.BRIDGE-DIST` leaf.
+The owner selected a coordinated **0.44.1** release rather than retargeting
+either 0.44.0 tag. New version metadata, measured helper pins, required CI and
+published-consumer checks remain prerequisites; the earlier source qualification
+is not presented as a completed 0.44.1 release.
+
 ## Settled rejections (all eras)
 
 - **TOML/data-format frontend** — five times. TypeScript is the

@@ -44,6 +44,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$dist" ] || dist=$(mktemp -d)
 mkdir -p "$dist/a" "$dist/b"
+# Docker treats a bare relative source as a named volume, not a host bind.
+dist=$(CDPATH= cd -- "$dist" && pwd)
 
 # Independent compiler caches keep the second round a fresh build, not reuse
 # of the first round's already compiled artifact. Module download bytes are shared.

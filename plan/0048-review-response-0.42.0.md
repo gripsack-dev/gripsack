@@ -3034,3 +3034,28 @@ these inventory measurements do not claim complete recovery execution.
 Gate calibration passed **6 positive / 294 negative** admissions, and partition
 configuration rejected **11** invalid/vacuous cases. Full candidate CI remains
 required. Receipts live in CI artifacts; their checkout directory is ignored.
+
+### R4.BRIDGE-DIST — release output bind admission
+
+- Class/owner: NEXT, M2 release tooling; integration owner.
+- State: path repair verified locally; new final-source CI and publication remain
+  required. Neither existing 0.44.0 tag nor the published SDK is changed.
+- Failing-before evidence: release run
+  [37182423088](https://github.com/gripsack-dev/gripsack/actions/runs/37182423088),
+  bridge job111377500605, invokes `dist.sh --check --dist dist`. Docker treats
+  `dist:/out` as a named volume, not the newly populated host directory; the
+  helper build fails opening `/out/targets.txt`. Core build/release jobs were
+  skipped. Conda audit and all three native qualifications succeeded.
+- Ownership: `tools/buildkit-bridge/dist.sh` resolves its output directory before
+  constructing the Docker bind; the required CI core lane exercises the actual
+  relative-path distribution invocation. Existing deterministic two-build and
+  committed-pin admission remain unchanged; no alternate packager or bypass.
+- Observed after repair: the exact
+  `VERSION=0.44.0 tools/buildkit-bridge/dist.sh --check --dist dist` invocation
+  passed in 64.19s. All four artifacts were built twice and matched the unchanged
+  committed pins. The required CI core lane now runs this real distribution gate
+  before a tag is cut; this is not a mocked mount or source-text assertion.
+- Owner decision: publish repaired core and matching SDK as **0.44.1**, preserving
+  both existing 0.44.0 tags. Patch metadata, helper measurements, fresh required
+  CI and the actual publication/consumer results must qualify that new source.
+

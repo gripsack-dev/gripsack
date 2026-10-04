@@ -3,7 +3,22 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
-## [0.44.0] — 2026-10-03
+## [0.44.1] — Unreleased
+
+### Fixed
+
+- Bridge distribution resolves its output directory before mounting it into
+  Docker. Relative `--dist dist` now binds the actual staging directory instead
+  of creating an empty named volume. Required CI runs the real four-platform,
+  two-clean-build pin check before tagging, not only during publication.
+
+The owner selected a patch release rather than moving either existing 0.44.0 tag.
+The IR contract is unchanged.
+
+## [0.44.0] — 2026-10-04
+
+SDK published; core publication stopped in bridge packaging before any core
+build or upload. The workspace/core changes below are carried into 0.44.1.
 
 ### Changed
 
