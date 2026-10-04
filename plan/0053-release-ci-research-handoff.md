@@ -4,6 +4,13 @@ Status: **research requested; no migration or replacement workflow approved.**
 Evidence snapshot: 2026-10-04. The release owner is continuing 0.44.1 separately.
 This document is input to another agent, not an additional 0.44.1 release gate.
 
+**Subsequent owner decision:** the stalled 0.44.1 delivery may proceed without a
+fresh hosted full-CI campaign, under `REL-ALPHA-0441-2026-10-04` recorded in
+[PR175's plan0048](https://github.com/gripsack-dev/gripsack/blob/fix/bridge-relative-dist/plan/0048-review-response-0.42.0.md#owner-exception-rel-alpha-0441-2026-10-04).
+Artifact verification and truthful platform/provenance claims remain required.
+This scoped release exception does not approve a general CI migration or turn
+unrun checks into passing evidence.
+
 ## 1. Assignment and coordination
 
 Research a predictable, resumable CI/release flow that catches publication defects

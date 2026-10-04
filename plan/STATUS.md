@@ -619,9 +619,14 @@ the bind mount. The exact failed invocation then built all four artifacts
 twice and passed the unchanged committed pins. Required core CI now includes
 that distribution command. Plan0048 records the `R4.BRIDGE-DIST` leaf.
 The owner selected a coordinated **0.44.1** release rather than retargeting
-either 0.44.0 tag. New version metadata, measured helper pins, required CI and
-published-consumer checks remain prerequisites; the earlier source qualification
-is not presented as a completed 0.44.1 release.
+either 0.44.0 tag. After the helper workflow remained queued behind its
+unallocated `ubuntu-latest` audit job, the owner requested another publication
+path including skipping CI. `REL-ALPHA-0441-2026-10-04` in plan0048 waives the
+fresh hosted full-CI campaign for this patch, not artifact verification or honest
+platform/provenance claims. Linux builds and Cargo publication can run locally;
+small remaining native/publication jobs use explicit supported/ARM runner pools.
+New helper measurements and real published consumers remain required. The prior
+source qualification and unrun patch CI are not conflated.
 
 ## Settled rejections (all eras)
 

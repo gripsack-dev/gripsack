@@ -852,6 +852,40 @@ reproducibility/dependency/protocol checks and already passing non-VM native tes
 remain enabled. No runtime guard, proof, Linux gate, checksum or original delivery
 inventory is weakened or removed; skipped lanes cannot close their milestones.
 
+### Owner exception REL-ALPHA-0441-2026-10-04
+
+After the native-measurement workflow remained queued behind an unallocated
+`ubuntu-latest` audit job, the owner explicitly requested another release path,
+including skipping CI rather than continuing to wait. This exception applies
+to the **0.44.1 packaging/version/pin repair**, not a permanent CI policy.
+
+- **Waived prerequisite:** a fresh hosted full-CI requalification, including the
+  complete persistence/formal rerun, is not required to publish this patch.
+  Unrun checks remain unrun; no queued/cancelled job is marked successful.
+- **Replacement evidence:** retain the exact `f8c68f6` full qualification
+  (202 successful jobs, all 192 persistence partitions) only for explicitly
+  unchanged inputs. Require actual local pinned-container build/package,
+  advisory and affected-path consumer checks for the patch, plus measured
+  helper identities and the actual published-asset verification.
+- **Preserved boundaries:** both 0.44.0 tags stay unchanged. Native artifact
+  availability, checksums, dependency/SBOM/protocol checks, registry ordering,
+  matching public consumers and truthful provenance remain required. A local
+  registry upload is not evidence of a hosted build; do not label local-built
+  bytes as GitHub-built. No platform artifacts or support claims are silently
+  dropped. Existing Mac runtime exclusions remain separately recorded.
+- **Risk:** the patch will not have a fresh complete integrated CI campaign.
+  Local checks cannot claim the coverage of that campaign. Any discovered
+  correctness failure still needs repair; this is not permission to suppress it.
+- **Execution:** build/verify Linux artifacts locally and use the existing
+  protected local Cargo credentials without exposing them. Small native/platform
+  and credential-bound publication jobs may use other available runner pools.
+  The helper audit moves to ARM; fresh patch measurements use explicit Linux
+  runners and macOS 15. Their measured hashes must be adopted, not inherited.
+- **Resumption:** restore ordinary source-bound CI qualification for subsequent
+  releases when capacity is available, or after an owner-approved result of
+  plan0053 research. This exception neither approves that migration nor changes
+  the standing required-CI workflow/branch-protection policy.
+
 ### Owner exception REL-ALPHA-043-2026-10-03
 
 The owner explicitly authorized cutting the 0.43 alpha release without waiting
@@ -3038,8 +3072,9 @@ required. Receipts live in CI artifacts; their checkout directory is ignored.
 ### R4.BRIDGE-DIST — release output bind admission
 
 - Class/owner: NEXT, M2 release tooling; integration owner.
-- State: path repair verified locally; new final-source CI and publication remain
-  required. Neither existing 0.44.0 tag nor the published SDK is changed.
+- State: path repair verified locally; final artifact/consumer verification and
+  publication remain required. Fresh hosted full CI is owner-waived under
+  `REL-ALPHA-0441-2026-10-04`; neither existing 0.44.0 tag is changed.
 - Failing-before evidence: release run
   [37182423088](https://github.com/gripsack-dev/gripsack/actions/runs/37182423088),
   bridge job111377500605, invokes `dist.sh --check --dist dist`. Docker treats
@@ -3056,6 +3091,7 @@ required. Receipts live in CI artifacts; their checkout directory is ignored.
   committed pins. The required CI core lane now runs this real distribution gate
   before a tag is cut; this is not a mocked mount or source-text assertion.
 - Owner decision: publish repaired core and matching SDK as **0.44.1**, preserving
-  both existing 0.44.0 tags. Patch metadata, helper measurements, fresh required
-  CI and the actual publication/consumer results must qualify that new source.
+  both existing 0.44.0 tags. Patch metadata, measured helpers, local replacement
+  checks and actual publication/consumer results remain required under the
+  separately recorded CI exception.
 
