@@ -22,7 +22,8 @@ TARGETS = {
 SLOTS = dict(zip(TARGETS.values(), (
     "LinuxX86_64Musl", "LinuxAarch64Musl", "MacosAarch64", "MacosX86_64",
 )))
-REQUIRED = {"LinuxX86_64Musl", "LinuxAarch64Musl", "MacosAarch64"}
+# Linux-first release policy; any requested Mac target still needs its own pin.
+REQUIRED = {"LinuxX86_64Musl", "LinuxAarch64Musl"}
 
 
 def read_pins(path, toolchain):

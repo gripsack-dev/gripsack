@@ -9,13 +9,17 @@ on:
         description: "Existing ts-v* tag to publish"
         type: string
         required: true
+      runner_label:
+        description: "Authorized publisher runner label (use a unique ephemeral label for local publication)"
+        type: string
+        default: ubuntu-24.04-arm
 
 permissions:
   contents: write
 
 jobs:
   publish:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ${{ inputs.runner_label || 'ubuntu-24.04-arm' }}
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:

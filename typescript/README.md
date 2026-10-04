@@ -34,6 +34,12 @@ environment, so `Inputs → Environment` is testable and cacheable.
 Use the matching 0.44 core and SDK for this workspace API. Older cores do not
 admit the v6 writer; retained v3/v4/v5 data keeps its versioned meaning.
 
+The 0.44.1 prebuilt-core release is Linux x86_64 first. Other platforms retain
+their last available core binary; keep its compatible SDK rather than assuming
+that installing the newest npm package upgrades the core. The workspace lock
+captures frontend identity, so an intentional SDK change can require explicit
+`grip update` and renewed source approval.
+
 A root `gripsack.ts` — preferred over `hosts/<name>.ts` when present —
 default-exports `defineWorkspace` and returns a `workspace({ outputs })`
 value. No hostname selection and no fake host file: the core injects

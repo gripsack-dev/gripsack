@@ -128,7 +128,7 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
-    /// Re-resolve legacy pins or validate native file profiles
+    /// Refresh source pins and captured workspace frontend/import pins
     Update {
         #[arg(long)]
         host: Option<String>,

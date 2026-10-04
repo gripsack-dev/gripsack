@@ -75,6 +75,7 @@ the fetcher registry stay the north star.
 | 0050 | E0 qualification — task/schedule scope, vocabulary, proof targets | (pending) | E0-01 records source→A1/A2-P mappings, eight scenario families, frozen failure/skip/unknown vocabulary, budgets and E1/E3 proof targets. E0-02's `systemd-linux` lane has exact-source `ce3c7e0` real systemd 255 user-manager evidence: UID/user scope, daily normalization, OnCalendar trigger within 0.995 s and zero-residue cleanup bound to `verification/reports/2026-09-26-e0-systemd-ce3c7e0.log`. Native launchd cases remain named separately and blocked without a Mac, so E0-02 row and E0 milestone remain open; no E3 Gripsack scheduler or sleep/reboot/DST inference | E1 gated on A1/A2/A2-P; actual launchd user-agent and future TLAPS proof infrastructure required |
 | 0051 | B0 qualification — BuildKit harness + integration inventory | (pending) | B0-04 records LLB field matrix, bridge fences, proof mappings, emitted-LLB witness and scheduler migration. Source `ce3c7e0` ran **6/6** real Linux/amd64 pinned Go/BuildKit cases: graph reuse/cancel/failure, declared-input policy, surviving executable, two independently verified clean OCI exports and a separate Docker engine running their verified content. Source-bound `verification/reports/2026-09-26-b0-linux-ce3c7e0.log` plus three real-worker negatives and four loaded-image substitutions check native builder admission, blob hashes, Docker archive load, loaded tag/platform/Env/exact DiffIDs. Docker 28 CI rejected a pure OCI tar as `/blobs/json` (failed required runs `0be1eaa`/`fc67212`); the independent verifier now repackages **the same checked bytes** in a Docker-save archive and compares effective loaded semantics, not raw Docker config ID. The **full required PR `test` job** at `ce3c7e0` passed B0 **6/6** on Docker28, real CLI e2e **319/319**, TLC and Verus **72/0** plus seven mutants; exact job bytes: `verification/reports/2026-09-26-b0-required-ci-ce3c7e0.log` (SHA-256 `50b48797ce77092a311188b687d18943515a37945b6fe08fdbf6fb00b64815e3`). **Only B0-01** is verified in `linux-amd64` and `container-gates`; full B0 remains pending. B1-02/04 kernels landed at `80b7738`: the pure worker lease transition table + owned-only CleanupSet (a live lease blocks stop; crashes keep leases and block recovery until explicit drain) with `specs/WorkerLease.tla` in the model gate — positive two-client crash model clean, early-stop and crash-wipes mutants violate exactly their named invariants (the mutant caught a vacuous TLC `EXCEPT` draft before it could count); bridge gate now race-enabled (receipt `2026-09-26-b1-worker-leases-80b7738.log`, six gates green). B1-03 transport landed at `50b829c`: the bridge speaks stdio frames with a deliberately FAIL-CLOSED Submit (no client linked — bounded log + terminal Failed, never fake success) and the Rust core drives real sessions (`transport::BridgeProcess`) to exactly one fenced terminal; a cross-process Rust↔Go e2e (ignored test, explicit run) proves negotiate/submit-fail/cancel against the compiled bridge — receipt `2026-09-26-b1-transport-50b829c.log`, six gates green. Earlier at `1d43f0d`: the production Go bridge began (`tools/buildkit-bridge`, package `protocol`) mirroring the exact Rust contract — strict framed decoding, 256 KiB header cap in both DecodeFrame and streaming ReadFrame, cap-checked base64 log chunks, exact-pair CheckNegotiation and the EventGate port — with the fuzz corpus doubling as a two-sided conformance corpus (valid seeds decode and hostile seeds reject on both sides; receipt `2026-09-26-b1-bridge-go-d0d0a4a.log`). Rust crate `gripsack-buildkit` landed at `d656075` — the bounded framed Rust↔Go wire contract (header-checked 256 KiB cap, strict tagged shapes, digest-bound Submit, 64 KiB log chunks, exact-pair negotiation) plus the pure `EventGate` fence kernel (epoch fencing, one terminal, duplicate-terminal and log-budget rejection), a registered fuzz target with 7 seeds and six gates green (receipt `2026-09-26-b1-protocol-d656075.log`); no Go bridge/transport/worker speaks it yet. B0-03 footprint partial; no production BuildKit backend wired into `grip` | B0-02 Apple Silicon Mac VM blocked (no hardware); B1 worker/bridge and B2 lowering not landed; never infer Mac VM or full B0 from Linux/hosted native Mac e2e |
 | 0052 | A1 workspace contract: v4 history, v5 typed admission and partial graph/command/diagnostic/file gates | (pending) | Strict v3 modules and read-only v4 workspaces retained. Current v5 schema/Rust/TS admits nine named output kinds, typed targets/layouts, graph roles, fluent/object commands and source-mapped Bash; unsupported execution fails E124 before activation. The E131 adapter rejects missing/substituted source edges, wrong reference sites and catalog indices; `WORKSPACE-INDEX-001` pointwise binds candidate names, and `WORKSPACE-TARGET-001` proves typed target comparison, **not** full serde/source-edge/IR-enum refinement. A1-06's manifest generates registry-backed Rust codes, five frontend constants and a static membership Record; unallocated E999 remains a traceback, malformed spans get E129 labels, E124 owner diagnostics prefer the first declared capability and logs cannot pollute `check --json` stdout. `runBash` statically requires a package-command ref but resolved interpreter bytes/options await A1-05. A1-08 registers common commands, E128 host-shell refusal and inert schedule/prerequisite owners; identity/context proof remains open. A1-11 admits composed source/content/destination values, rejects destination escapes E102 and duplicate physical destinations E111. Source `d946d30` rejects `repo_file` parent/absolute/ambiguous paths in v5 schema, TypeScript and decoded Rust E130 at the file span before E124 (receipt `2026-09-26-a1-repo-file-d946d30.log`, five focused groups + five gates). Source `d9ce200` lands eval-time `treeFiles(src, to, {include, exclude, mode, maxEntries})`: stable sorted expansion of a captured repo directory into ordinary v5 per-file entries with per-entry spans, segment-boundary include/exclude, eager destination validation, a 10 000-entry cap and symlink/special rejection without following — no wire or version change (decision in §30.2; `pin.ts` re-exports the helper after a failing-before authored import). Receipt `2026-09-26-a1-treefiles-d9ce200.log`; five gates on identical bytes: fresh Rust, Deno **67/67**, e2e **321/321** with the new authored case, TLC, Verus **72/0**+7 mutants — not A1 proofs. Source `b0861eb` makes managed blocks per-marker owners: destination admission folds by case-folded path (whole-file policies still reject co-declarations) then by case-folded marker, so distinct markers over one host file coexist (failing-before: always E111) while a duplicate case-variant marker rejects labeling both declarations (receipt `2026-09-26-a1-block-markers-b0861eb.log`; five gates, e2e **322/322**). The later native-file continuation now prepares repo/literal/template content and executes symlink, tracked-copy and managed-block file-only profiles through existing generations, drift handling, rollback and prune (see 0048 §14 and the continuation below). Artifact/package/environment/task realization, artifact-side trees, staged lint/check mapping and owner/refinement proofs remain open; earlier A1 source-bound receipts remain historical. Portable locks/pins, identity/context proofs, protected exact-head CI and native Mac still block full workspace/release closure | A1-01 implemented_unverified; A1-02/A1-03/A1-06/A1-07/A1-08/A1-10/A1-11 in_progress; A1-04/05/09/12 and plan/0048 NEXT open |
+| 0053 | CI and release-flow research handoff | research requested | Evidence-backed observed failures, CI-R01–CI-R10 requirements, preserved assurance constraints and source map; no change to 0.44.1 delivery gates | Separate-agent recommendation and staged adoption proposal; provider/hosting changes are not approved | — |
 
 **0048 R1 continuation (2026-09-29):** Source/policy-bound approval, copied
 read-only roots, retained runtime selection, immutable per-round inputs and
@@ -495,9 +496,9 @@ evidence below completes the 0.43 release record without promoting waived CI.
   containment theorem; required PR CI at the evidence head `23d4940`
   later passed (run 36257568636).
 
-## Unreleased workspace / BuildKit integration
+## 0.44 workspace / BuildKit integration
 
-`feat/workspace-buildkit` isolates this work from the 0.43 candidate.
+The integration landed in [PR173](https://github.com/gripsack-dev/gripsack/pull/173).
 Plan 0052 §33 records the strict v6 writer, semantic pin/lock identities and
 ordinary/advanced SDK split. Development checks passed **57 frontend/driver
 tests**, **11 v6 Rust admission tests**, and a compiled installed-SDK plus
@@ -505,9 +506,9 @@ deliberate-pin driver smoke. The Linux `grip build --bridge` path also passed a
 real whole-subgraph smoke: a compiled tool feeds another recipe, a required check
 gates export, native execution survives builder cache removal/GC, and a second
 build reuses retained outputs without a helper. No generation was created.
-This does not close A1/B, optional-helper provisioning, retained-build recovery,
-native package/image consumers, Mac workers or proof/platform/release gates.
-Those initial development smokes did not run fuzz or corpus replay.
+Those initial development smokes alone did not close A1/B, optional-helper
+provisioning, retained-build recovery, native package/image consumers, Mac workers
+or proof/platform/release gates. They did not run fuzz or corpus replay.
 The root/deliberate-pin SDK cutover now exposes `pixi.fromLock` consistently
 with `conda.environment`; the old single-package constructor is removed.
 Its real isolated Deno authoring smoke passed. Coherent Conda materialization,
@@ -524,7 +525,7 @@ deferred the Mac VZ and full coherent Mac Conda runtime campaigns under
 The Mac runtime gaps remain unqualified, not blocking Linux integration under
 that exception. The complete rebuilt Verus gate also passed: **444/0** policy,
 **30/0** actual collector, **92+4** calibrated mutations and **19** evidence
-negatives. Full flow and release gates remain open. No raw prover output was added.
+negatives. Full flow and release gates were still open at that point. No raw prover output was added.
 The external caller migration exposed and repaired ambient-umask definition
 identity drift and cache-only frozen Conda acquisition. A distinct HOME with
 the original differing-mode frontend cache now builds/runs/applies the committed
@@ -541,8 +542,8 @@ or proof source. All fourteen 0.44 crate archives packaged and compiled in the
 rebuilt container dry-run at `f413b90`; none was uploaded. Publication includes
 Conda and respects the production BuildKit dependency graph. Its byte-exact
 helper pin gate and actual protocol/whole-graph qualification remain required;
-the incidental bare-invocation diagnostic-text check was removed. Required
-candidate CI still needs the integrated head; the 0.43 exception does not waive it.
+the incidental bare-invocation diagnostic-text check was removed. These preparation
+checks did not waive final candidate CI; its completed result is recorded below.
 
 Native CI now uses `macos-15`: GitHub's
 [macOS 14 deprecation notice](https://github.com/actions/runner-images/issues/13518)
@@ -551,7 +552,7 @@ the runner, not scope: both platforms, six scenarios, two fault modes and eight
 shards still require all **192** persistence partitions, plus the native flow
 lane. Required-result admission calibration passed **6** positives and **294**
 negatives. Helper reproducibility environments and measured pins are unchanged;
-the current candidate still requires actual native CI results.
+the final native CI results are recorded below.
 
 The owner subsequently requested actual 0.44 publication after qualification,
 then a retrospective. Release-facing guides now name the matching 0.44/v6
@@ -571,7 +572,98 @@ passed all **61** tests and typechecked the examples. Website
 removed-Pixi guidance and published-version pin: eight executable examples and
 one classified fragment passed against the candidate, and the changed page/SVG
 were visually inspected. The live site must not cut over before both matching
-0.44 artifacts are published. These checks do not waive the final candidate CI.
+0.44 artifacts are published. These checks did not waive final candidate CI.
+
+### Final qualification and immutable tags
+
+Exact source `f8c68f6a80e08ad511896274c19e3d14d6919b03` passed
+[CI37134187816](https://github.com/gripsack-dev/gripsack/actions/runs/37134187816),
+attempt 1: **202 successful jobs**, including all **192** Linux/macOS persistence
+partitions, and one explicitly owner-waived fuzz job. Core/B0, Linux flows,
+confined native Mac flows, TLC, TLAPS, Verus, docs, audit and both required
+aggregates succeeded. The final gate recorded `REL-FUZZ-2026-09-27` and passed
+**6** positive/**294** negative admission cases; no 0.44 full-CI exception was used.
+The [matching real-caller canary](https://github.com/gripsack-dev/gripsack/actions/runs/37134189898)
+also passed its static core/helper builds, SDK typecheck, legacy sandboxed apply
+and frozen Conda consumers.
+
+Core PR173 merged at `7cb9c4c`; external example PR1 merged at `4b1790a`.
+The merge tree is byte-identical to the qualified source tree. Both immutable
+`core-v0.44.0` and `ts-v0.44.0` tags point directly to the qualified `f8c68f6`;
+publication is explicitly dispatched against those tag refs. Two local clean
+release builds at that source produced identical binary SHA256
+`60140fae7bddf5ac703ba07f62a11fe0e968b9efd588a8b86d088787a3e06c51`.
+This is a same-input result, not cross-time or cross-platform reproducibility.
+The Mac VZ and full coherent Mac Conda runtime exclusions remain unqualified.
+
+The [SDK publisher](https://github.com/gripsack-dev/gripsack/actions/runs/37182422705)
+published npm `@gripsack/core@0.44.0` with `gitHead` equal to `f8c68f6`.
+The external example's registry-only lock passed a clean install and both-entrypoint
+typecheck. Its first migration attempt retained the obsolete file link and failed
+TS2307; removing that link and its extraneous lock record corrected the actual
+dependency resolution. Native artifact publication and public-consumer evidence
+are distinct from these source and SDK results.
+
+
+### 0.44.1 publication repair
+
+[Core run37182423088](https://github.com/gripsack-dev/gripsack/actions/runs/37182423088)
+failed before core compilation/publication: relative `--dist dist` was passed
+to Docker as a named volume, leaving `/out/targets.txt` absent. Conda audit and
+all three native helper qualifications passed; core build/release jobs were
+skipped. The core registry index still lacked 0.44.0 and its GitHub release
+returned 404; the already published SDK remains intact.
+
+The distribution script now resolves the output directory before constructing
+the bind mount. The exact failed invocation then built all four artifacts
+twice and passed the unchanged committed pins. Required core CI now includes
+that distribution command. Plan0048 records the `R4.BRIDGE-DIST` leaf.
+The owner selected a coordinated **0.44.1** release rather than retargeting
+either 0.44.0 tag. After the helper workflow remained queued behind its
+unallocated `ubuntu-latest` audit job, the owner requested another publication
+path including skipping CI. `REL-ALPHA-0441-2026-10-04` in plan0048 waives the
+fresh hosted full-CI campaign for this patch, not artifact verification or honest
+platform/provenance claims. Linux builds and Cargo publication can run locally;
+small remaining native/publication jobs use explicit supported/ARM runner pools.
+New helper measurements and real published consumers remain required. The prior
+source qualification and unrun patch CI are not conflated.
+
+The owner then chose **Linux-first local publication** under
+`REL-LINUX-FIRST-0441-2026-10-04`: prebuilt core Linux x86_64, measured Linux
+helpers and matching SDK, without pretending that unbuilt Mac/other binaries or
+hosted-build attestations exist. Local x64 Conda measurement produced
+`41227b553bfe0229f5e8f6f4ac784f236c0176d55826952270fa323072af2124`;
+native ARM job111481798463 produced
+`d5a3a55330aa966d138730f500fa66925a56d99418b9936690da66b1279569ba`.
+Both were two-build/native-protocol results. The remaining queued workflow was
+cancelled after its successful ARM artifact was recovered; it is not a globally
+passing run. Unmeasured Mac helper pins are absent, not copied from 0.44.0.
+
+Complete local audits covered 372 core and 570 helper dependencies with Cargo
+1.98.0, cargo-audit 0.22.2 and advisory database
+`ef6173cbc5c50ec8166f9a5b28f07834144373ee`. An earlier runtime lacking Cargo could
+not update the registry index; those warnings were fixed, not suppressed.
+The old example lock correctly failed E301 after the frontend version change.
+Explicit `grip update ripgrep` produced the new captured frontend identity and
+current glibc solve fact without changing any selected package/archive record.
+Both embedded and packed candidate frontends then passed fresh frozen native
+build/run/task/profile/reuse/GC journeys; final published/default-pin verification
+remains distinct from those operator-helper smokes.
+
+The actual live installer selected unpublished core-v0.44.0 and failed HTTP404
+in a private home. The corrected script selected the available 0.43.0 artifact,
+verified its checksum and executed the installed binary. Eight rebuilt-container
+regressions cover unpublished/partial target assets, stable-version selection,
+bad checksums, HTTP errors, truncated catalog data and preservation of an existing
+binary. This fixes publication selection, not a downgrade fallback on verification
+failure. The source fix must reach the live site before claiming that surface fixed.
+
+After adopting the measured Linux pins, both embedded and packed 0.44.1
+frontends passed the same frozen journey through the core's **compiled-in**
+helper identity using a file mirror: cold build, exact stdin search, task,
+profile, satisfied apply, retained reuse with an unavailable helper and GC.
+The lock stayed byte-identical throughout consumption. This verifies default
+pin admission without pretending the not-yet-published HTTP assets were fetched.
 
 ## Settled rejections (all eras)
 

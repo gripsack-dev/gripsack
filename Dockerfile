@@ -213,8 +213,8 @@ RUN cd typescript && deno install && deno task test \
 # DENO_RELEASE) and GRIPSACK_DENO points at it — e2e never provisions.
 FROM python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 AS e2e
 WORKDIR /app
-# git: --repo clone tests and the trust gate's remote/commit probes
-RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git \
+# git: repo/trust probes; curl: the real installer against loopback release fixtures.
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl \
     && rm -rf /var/lib/apt/lists/*
 ARG DENO_VERSION=2.9.6
 ARG DENO_SHA256=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
@@ -239,6 +239,7 @@ COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
 RUN cd e2e && uv sync --locked
 COPY e2e ./e2e
 COPY examples ./examples
+COPY install.sh ./install.sh
 ENV GRIPSACK_E2E_IN_DOCKER=1
 ENV GRIPSACK_BIN=/usr/local/bin/grip
 WORKDIR /app/e2e

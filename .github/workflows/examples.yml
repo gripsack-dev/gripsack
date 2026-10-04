@@ -20,8 +20,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: gripsack-dev/example-env-typescript
-          # Candidate caller cutover; published 0.43 guidance is not rewritten.
-          ref: e66c363ecda8685c8bb5cb19f2c64db572313d04
+          # Frozen caller lock explicitly migrated to the 0.44.1 frontend.
+          ref: 3888c0a7e53c4103773b2acfb6c0495eb3ee1dca
           path: example
 
       - name: Build grip (static musl)

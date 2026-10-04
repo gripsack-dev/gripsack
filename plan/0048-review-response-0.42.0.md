@@ -852,6 +852,72 @@ reproducibility/dependency/protocol checks and already passing non-VM native tes
 remain enabled. No runtime guard, proof, Linux gate, checksum or original delivery
 inventory is weakened or removed; skipped lanes cannot close their milestones.
 
+### Owner exception REL-ALPHA-0441-2026-10-04
+
+After the native-measurement workflow remained queued behind an unallocated
+`ubuntu-latest` audit job, the owner explicitly requested another release path,
+including skipping CI rather than continuing to wait. This exception applies
+to the **0.44.1 packaging/version/pin repair**, not a permanent CI policy.
+
+- **Waived prerequisite:** a fresh hosted full-CI requalification, including the
+  complete persistence/formal rerun, is not required to publish this patch.
+  Unrun checks remain unrun; no queued/cancelled job is marked successful.
+- **Replacement evidence:** retain the exact `f8c68f6` full qualification
+  (202 successful jobs, all 192 persistence partitions) only for explicitly
+  unchanged inputs. Require actual local pinned-container build/package,
+  advisory and affected-path consumer checks for the patch, plus measured
+  helper identities and the actual published-asset verification.
+- **Preserved boundaries:** both 0.44.0 tags stay unchanged. Native artifact
+  availability, checksums, dependency/SBOM/protocol checks, registry ordering,
+  matching public consumers and truthful provenance remain required. A local
+  registry upload is not evidence of a hosted build; do not label local-built
+  bytes as GitHub-built. No platform artifacts or support claims are silently
+  dropped. Existing Mac runtime exclusions remain separately recorded.
+- **Risk:** the patch will not have a fresh complete integrated CI campaign.
+  Local checks cannot claim the coverage of that campaign. Any discovered
+  correctness failure still needs repair; this is not permission to suppress it.
+- **Execution:** build/verify Linux artifacts locally and use the existing
+  protected local Cargo credentials without exposing them. Small native/platform
+  and credential-bound publication jobs may use other available runner pools.
+  The helper audit moves to ARM; fresh patch measurements use explicit Linux
+  runners and macOS 15. Their measured hashes must be adopted, not inherited.
+- **Resumption:** restore ordinary source-bound CI qualification for subsequent
+  releases when capacity is available, or after an owner-approved result of
+  plan0053 research. This exception neither approves that migration nor changes
+  the standing required-CI workflow/branch-protection policy.
+
+### Owner exception REL-LINUX-FIRST-0441-2026-10-04
+
+After Linux ARM measurement succeeded but macOS remained queued, the owner
+explicitly selected **“Linux-first local release”** with the described platform
+and hosted-build-attestation tradeoffs. This supplements the full-CI exception
+above; it does not relabel missing native evidence as passing.
+
+- **Distribution scope:** publish the locally verified Linux x86_64 core and
+  matching SDK, with measured available Linux helpers. Other unbuilt 0.44.1 core
+  binaries, including macOS, are deferred and must not be advertised as available.
+  The installer must choose a complete published asset pair for its actual
+  target, leaving other targets on an available older release.
+- **Artifact identities:** Linux x64 Conda helper measurement is local, from
+  source `1024283`; native ARM measurement is job111481798463 in
+  [run37217602438](https://github.com/gripsack-dev/gripsack/actions/runs/37217602438),
+  source `8b31778`. Both used two builds, native dependency/protocol checks and
+  the same helper lock. Adopt those measured hashes only; remove the absent
+  Mac slot rather than reusing an old hash under the new release identity.
+- **Provenance limit:** locally assembled release payloads do not claim
+  GitHub-hosted signed build provenance. Record their actual local/job-bound
+  origin, inputs and digests; do not manufacture an attestation or claim that
+  checksums provide the excluded assurance. The published notes must expose
+  this limitation.
+- **Preserved checks:** real checksum, SBOM/dependency/static checks, source and
+  version guards, locked package verification, native Linux consumers, helper
+  byte admission and explicit source approval remain required. Registry and
+  website publication must describe the artifacts actually available.
+- **Identity:** neither 0.44.0 tag nor the published npm 0.44.0 package moves.
+  Mac/other-target expansion and restored hosted attestation claims require
+  actual evidence in a later qualified release. CI/provider research is still
+  separate from this one-release exception.
+
 ### Owner exception REL-ALPHA-043-2026-10-03
 
 The owner explicitly authorized cutting the 0.43 alpha release without waiting
@@ -3034,3 +3100,30 @@ these inventory measurements do not claim complete recovery execution.
 Gate calibration passed **6 positive / 294 negative** admissions, and partition
 configuration rejected **11** invalid/vacuous cases. Full candidate CI remains
 required. Receipts live in CI artifacts; their checkout directory is ignored.
+
+### R4.BRIDGE-DIST — release output bind admission
+
+- Class/owner: NEXT, M2 release tooling; integration owner.
+- State: path repair verified locally; final artifact/consumer verification and
+  publication remain required. Fresh hosted full CI is owner-waived under
+  `REL-ALPHA-0441-2026-10-04`; neither existing 0.44.0 tag is changed.
+- Failing-before evidence: release run
+  [37182423088](https://github.com/gripsack-dev/gripsack/actions/runs/37182423088),
+  bridge job111377500605, invokes `dist.sh --check --dist dist`. Docker treats
+  `dist:/out` as a named volume, not the newly populated host directory; the
+  helper build fails opening `/out/targets.txt`. Core build/release jobs were
+  skipped. Conda audit and all three native qualifications succeeded.
+- Ownership: `tools/buildkit-bridge/dist.sh` resolves its output directory before
+  constructing the Docker bind; the required CI core lane exercises the actual
+  relative-path distribution invocation. Existing deterministic two-build and
+  committed-pin admission remain unchanged; no alternate packager or bypass.
+- Observed after repair: the exact
+  `VERSION=0.44.0 tools/buildkit-bridge/dist.sh --check --dist dist` invocation
+  passed in 64.19s. All four artifacts were built twice and matched the unchanged
+  committed pins. The required CI core lane now runs this real distribution gate
+  before a tag is cut; this is not a mocked mount or source-text assertion.
+- Owner decision: publish repaired core and matching SDK as **0.44.1**, preserving
+  both existing 0.44.0 tags. Patch metadata, measured helpers, local replacement
+  checks and actual publication/consumer results remain required under the
+  separately recorded CI exception.
+

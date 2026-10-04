@@ -4764,7 +4764,7 @@ export const pixi = { fromLock: pixiFromLockImpl };
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.44.0",
+  "version": "0.44.1",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",

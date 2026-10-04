@@ -49,6 +49,9 @@ jobs:
       - name: TypeScript frontend tests (deno)
         run: docker compose run --build --rm ts-test
 
+      - name: Production bridge release artifacts and pins
+        run: tools/buildkit-bridge/dist.sh --check --dist dist
+
       # B0's qualification is a real Go client against disposable
       # digest-pinned BuildKit workers. Keep it in the required core lane,
       # not an optional docs/probe job; any failed verifier/load aborts.

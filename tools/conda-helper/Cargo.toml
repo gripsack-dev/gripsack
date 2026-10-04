@@ -4,7 +4,7 @@ exclude = ["vendor/pixi_git"]
 
 [package]
 name = "gripsack-conda-helper"
-version = "0.44.0"
+version = "0.44.1"
 edition = "2024"
 license = "MIT"
 publish = false
@@ -14,8 +14,8 @@ name = "gripsack-conda"
 path = "src/main.rs"
 
 [dependencies]
-gripsack-conda = { version = "0.44.0", path = "../../crates/gripsack-conda" }
-gripsack-ir = { version = "0.44.0", path = "../../crates/gripsack-ir" }
+gripsack-conda = { version = "0.44.1", path = "../../crates/gripsack-conda" }
+gripsack-ir = { version = "0.44.1", path = "../../crates/gripsack-ir" }
 # async-compression's 0.5 backend must not inherit pkg-config's dynamic bzip2.
 bzip2 = { version = "0.5.2", features = ["static"] }
 serde_json = "1"
