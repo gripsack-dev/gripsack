@@ -2098,3 +2098,117 @@ and compared byte-identical. The uploaded report records the toolchains and
 held-fixed inputs; it explicitly excludes general cross-time/cross-platform
 reproducibility and an external audit.
 
+## 35. Published 0.44.1 Linux-first repair (2026-10-04)
+
+[PR175](https://github.com/gripsack-dev/gripsack/pull/175) landed the packaging,
+version/pin and installer repair. Both `core-v0.44.1` and `ts-v0.44.1` bind
+`33336e33c5cd4c0becaaaf05f7ccf94bd56c0550`; the merge has the same source tree.
+Neither 0.44.0 tag nor its published npm bytes was replaced. The earlier §34
+full qualification is not relabeled as a fresh 0.44.1 CI run.
+
+The owner-approved `REL-ALPHA-0441-2026-10-04` and
+`REL-LINUX-FIRST-0441-2026-10-04` exceptions are in plan0048 §9. Distribution is
+**Linux x86_64 prebuilt core**, matching SDK and measured Linux helpers.
+Unbuilt core targets, Mac VZ/full coherent Mac Conda acceptance and hosted
+signed build provenance for local payloads remain excluded. Cross-built Darwin
+bridge files do not establish native Mac runtime qualification.
+
+### Source-bound local qualification
+
+- Two clean core builds used captured builder image
+  `sha256:fc7aee83b04aa9747e21f956ec5c576d58bdde400923b930158fb227acf3ea54`,
+  the exact clean tagged source, fresh target directories and Cargo.lock SHA256
+  `e0f3270ca61af11567a967642d1ca2debb5490c54b2b4f3a2ccd50c28ac88009`.
+  Both produced binary SHA256
+  `96859f743743a76ebd5dd2b0dbd950f5679237aee2f7b43d689c13d872f2c37c`.
+  The promoted binary was not rebuilt; the attached reports describe held-fixed
+  inputs, not general cross-time/cross-platform reproducibility.
+- That binary passed static/native admission and audit of its embedded
+  cargo-auditable SBOM (**280** dependencies). Complete root/helper lock audits
+  covered **372/570** dependencies using Cargo 1.98.0, cargo-audit 0.22.2 and
+  advisory database `ef6173cbc5c50ec8166f9a5b28f07834144373ee`.
+- Linux x64 Conda qualification at `b708f8a` rebuilt twice after populating the
+  final pin table and passed native/protocol/`--check` admission, retaining SHA256
+  `41227b553bfe0229f5e8f6f4ac784f236c0176d55826952270fa323072af2124`.
+  Native ARM job111481798463 at `8b31778` measured
+  `d5a3a55330aa966d138730f500fa66925a56d99418b9936690da66b1279569ba`.
+  Its remaining queued workflow was cancelled, not globally qualified.
+- Rebuilt-container checks passed **94** fetch/provisioning tests, **61**
+  frontend/driver tests plus strict examples, and **8** real installer regressions.
+  All fourteen crate archives packaged and compiled through the dry-run registry
+  before the actual upload. No fresh full CI, fuzz engine or corpus replay was
+  performed for this patch.
+
+### Actual publication and downloaded consumers
+
+- Local pinned-container Cargo published all **fourteen** 0.44.1 crates in
+  dependency order before the public
+  [core release](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.44.1).
+  A separate fresh registry/target container then ran
+  `cargo install --locked --version =0.44.1 gripsack` successfully and executed
+  `grip 0.44.1` and its actual `check --help`.
+- [SDK run37230710854](https://github.com/gripsack-dev/gripsack/actions/runs/37230710854)
+  used an isolated one-job local worker, with no host HOME or Docker socket.
+  Build/pack and npm publication succeeded. The later GitHub-release step failed
+  because the mounted CLI was not executable by the runner UID; only that
+  metadata operation was completed manually. The workflow remains failed,
+  not repainted green, and npm publication was not repeated. The registry
+  `gitHead` matches the tag. The downloaded tarball passed its SHA512 integrity,
+  and all **72** package files exactly matched the qualified candidate.
+- All **22** release assets were downloaded anonymously from their public URLs
+  and matched the qualified local/uploaded SHA256 digests. The Linux core archive
+  SHA256 is `21c357288fedf0e7d66839cfd4919c3a5ce3f23c093e1a06ed08f29af8dbe9d3`.
+  Checksums and origin records are not a claim of the excluded hosted attestation.
+- The exact downloaded optimized core plus actual npm tarball, with **no helper
+  mirrors**, passed cold frozen Conda build/stdin-search/task/profile/satisfied
+  apply, retained reuse with an unavailable helper, GC and re-execution. Lock
+  bytes and prefix bytes/modes/links were unchanged.
+- The same public bytes acquired the default pinned bridge, built a real
+  BuildKit greeter recipe, executed project/task consumers, removed owned worker
+  cache, ran GC, and reused/re-executed the retained output with the bridge absent.
+- [Example PR3](https://github.com/gripsack-dev/example-env-typescript/pull/3)
+  switched to the real registry SDK and removed the obsolete sibling-link lock
+  record. Clean `npm ci && npx tsc` passed. Published core/SDK then passed both
+  legacy cold/satisfied apply and a cold frozen Conda project shell. The legacy
+  apt lock requires Ubuntu 24.04 metadata and native runtime libraries; earlier
+  minimal Debian/Ubuntu harness failures were fixed by supplying those declared
+  prerequisites, never by changing the lock or suppressing verification.
+- [Tap PR1](https://github.com/gripsack-dev/homebrew-tap/pull/1) advanced the source
+  formula using the actual crate SHA256
+  `571a3a0e4036ac6c8a2eac8e6f50565496e7f5f70bf94210bec255ccbe8643a5`.
+  Its Cargo VCS record names the clean qualified source. Ruby syntax passed;
+  native Homebrew qualification is not claimed. The Mac cask remains 0.43.0.
+
+### Website and live installation
+
+[Website PR20](https://github.com/gripsack-dev/gripsack-dev.github.io/pull/20)
+landed at `be061931a49a191b4470ad15d68e78b45fdcd97b`.
+[Pages run37232580169](https://github.com/gripsack-dev/gripsack-dev.github.io/actions/runs/37232580169)
+passed both jobs on isolated one-job local workers. Its actual downloaded
+0.44.1 core/npm package accepted **8** executable documentation examples and
+classified **1** fragment; the deliberate-pin canary also passed. Deployment
+succeeded, and Chromium inspection observed the live 0.44.1 chip, current
+workspace guidance and explicit platform/SDK limits.
+
+The actual `https://gripsack.dev/install.sh` bytes matched the qualified source,
+SHA256 `76a3fd74f2c0de14a7a7a98d589a80d5e4aaead69a36b1e65c784fb4d1f4531e`.
+In a new private HOME, that script selected the 0.44.1 Linux x64 archive, verified
+its checksum, installed and executed `grip 0.44.1`. The installed binary matched
+the promoted SHA256 above. The private installation was removed afterward.
+
+The live UI inspection also caught an old generic hosted-attestation command
+beside the new version chip. [Website PR21](https://github.com/gripsack-dev/gripsack-dev.github.io/pull/21)
+corrects it to the actual archive-integrity/SBOM checks and an explicit local
+provenance limitation. The rebuilt styled preview was inspected in Chromium,
+and its displayed `sha256sum -c gripsack-*.tar.gz.sha256` command passed against
+the actual public archive. Checksums are explicitly not represented as provenance.
+
+The correction landed at `dda1b1ffc9c20bf2b29745d6432fd49e57828b6c`;
+[final Pages run37233557185](https://github.com/gripsack-dev/gripsack-dev.github.io/actions/runs/37233557185)
+passed both the published-example gate and deployment. A new live Chromium
+inspection confirmed the 0.44.1 version chip, the visible no-hosted-attestation
+notice and its scope/evidence link. The final deployment still served the exact
+installer bytes already executed above. Both repositories had zero remaining
+registrations for the owned ephemeral workers; their containers, temporary
+consumer scripts, private homes and preview services were removed.
+

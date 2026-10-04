@@ -656,7 +656,8 @@ verified its checksum and executed the installed binary. Eight rebuilt-container
 regressions cover unpublished/partial target assets, stable-version selection,
 bad checksums, HTTP errors, truncated catalog data and preservation of an existing
 binary. This fixes publication selection, not a downgrade fallback on verification
-failure. The source fix must reach the live site before claiming that surface fixed.
+failure. At that stage the source fix still needed live deployment; the final
+published result below records that separate check.
 
 After adopting the measured Linux pins, both embedded and packed 0.44.1
 frontends passed the same frozen journey through the core's **compiled-in**
@@ -664,6 +665,37 @@ helper identity using a file mirror: cold build, exact stdin search, task,
 profile, satisfied apply, retained reuse with an unavailable helper and GC.
 The lock stayed byte-identical throughout consumption. This verifies default
 pin admission without pretending the not-yet-published HTTP assets were fetched.
+
+### Published 0.44.1 result
+
+[Core 0.44.1](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.44.1)
+and [SDK 0.44.1](https://github.com/gripsack-dev/gripsack/releases/tag/ts-v0.44.1)
+are published from `33336e33c5cd4c0becaaaf05f7ccf94bd56c0550`.
+Plan0052 §35 records the clean two-build/static/SBOM evidence, complete local
+lock audits, fourteen-crate upload and fresh registry install, all 22 public
+asset checks and the actual npm package's matching 72 files.
+
+Default public-HTTP Conda and BuildKit consumers passed frozen production,
+project/task/profile/retained-reuse/GC paths. The published-package example
+cutover landed in external PR3, including real legacy apply/satisfied and
+frozen project-shell execution. The source Homebrew formula is 0.44.1; its
+Mac cask deliberately remains 0.43.0.
+
+SDK publication succeeded before its isolated worker's GitHub-metadata step
+failed on CLI execute permissions. That last operation was completed manually;
+the workflow remains failed and npm was not published again. Fresh full hosted
+CI, unbuilt platform cores and hosted attestation claims remain excluded under
+the two owner exceptions, not silently treated as qualified.
+
+Website PR20 and its source-bound Pages run37232580169 passed the actual
+published-artifact documentation gate (8 executable examples, 1 classified
+fragment) and deployment. The real HTTPS installer then selected, verified,
+installed and executed the exact 0.44.1 Linux binary in a private HOME.
+Live browser verification also exposed a stale generic attestation instruction.
+Website PR21 corrected it; final Pages run37233557185 passed both jobs at
+`dda1b1f`. Fresh live inspection confirmed the explicit no-hosted-attestation
+notice and that the served installer still matched the executed bytes. Owned
+ephemeral runner registrations and preview/consumer scaffolds were removed.
 
 ## Settled rejections (all eras)
 
