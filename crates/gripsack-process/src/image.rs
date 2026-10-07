@@ -4,8 +4,8 @@
 //! subprocesses selected by the launched program.
 mod loader;
 use super::{ByteBinding, OperatorEnvironment, Sha256Digest};
-pub use loader::SelectedGnuLoader;
 pub(crate) use loader::ImageDescriptors;
+pub use loader::SelectedGnuLoader;
 use sha2::{Digest, Sha256};
 #[cfg(target_os = "linux")]
 use std::os::fd::{AsRawFd, FromRawFd};
@@ -244,7 +244,11 @@ impl SelectedProgram {
                 macho_libraries: None,
             });
         };
-        let executable = Image::copy(environment.resolve(&interpreter)?.canonical(), None, deadline)?;
+        let executable = Image::copy(
+            environment.resolve(&interpreter)?.canonical(),
+            None,
+            deadline,
+        )?;
         if executable.interpreter()?.is_some() {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
@@ -316,5 +320,4 @@ impl SelectedProgram {
             byte_binding: self.executable.binding.clone(),
         }
     }
-
 }

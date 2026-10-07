@@ -158,8 +158,7 @@ fn current_v6_output(
 ) -> Option<DeclaredCapability<'_>> {
     use crate::workspace_v6::{RecipeExecution, WorkspaceOutput};
     let deployable = |profile: &crate::workspace_v6::ProfileOutput| {
-        profile.schedules.is_empty()
-            && profile.files.iter().all(|file| file.checks.is_empty())
+        profile.schedules.is_empty() && profile.files.iter().all(|file| file.checks.is_empty())
     };
     let mut first_non_profile: Option<&WorkspaceOutput> = None;
     let mut has_deployable_profile = false;

@@ -193,7 +193,9 @@ impl NativeProfiles {
                     take_over: adopting.contains(&entry.to),
                 };
                 if entry.mode == Ownership::Owned
-                    && (!profile.deferred.is_empty() || profile.deferred_environment.is_some() || !profile.deferred_hooks.is_empty())
+                    && (!profile.deferred.is_empty()
+                        || profile.deferred_environment.is_some()
+                        || !profile.deferred_hooks.is_empty())
                 {
                     operations.push(deferred(&view, format!("{}:{}: profile content identity awaits deferred files/environment/hooks; captured file bytes are known",
                         span.file, span.line)));

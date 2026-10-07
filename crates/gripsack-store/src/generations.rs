@@ -184,11 +184,21 @@ impl Serialize for Generation {
             version: u32,
             generation: Manifest<'a>,
         }
-        let manifest = Manifest { number: self.number, modules: &self.modules };
-        if self.modules.values().flat_map(|state| &state.intents)
+        let manifest = Manifest {
+            number: self.number,
+            modules: &self.modules,
+        };
+        if self
+            .modules
+            .values()
+            .flat_map(|state| &state.intents)
             .any(|intent| intent.action.requires_v2())
         {
-            Versioned { version: WORKSPACE_MANIFEST_VERSION, generation: manifest }.serialize(serializer)
+            Versioned {
+                version: WORKSPACE_MANIFEST_VERSION,
+                generation: manifest,
+            }
+            .serialize(serializer)
         } else {
             manifest.serialize(serializer)
         }
@@ -212,18 +222,34 @@ impl<'de> Deserialize<'de> for Generation {
         }
         #[derive(Deserialize)]
         #[serde(untagged)]
-        enum Wire { Versioned(Versioned), Legacy(Manifest) }
+        enum Wire {
+            Versioned(Versioned),
+            Legacy(Manifest),
+        }
         let (manifest, current) = match Wire::deserialize(deserializer)? {
-            Wire::Versioned(value) if value.version == WORKSPACE_MANIFEST_VERSION => (value.generation, true),
-            Wire::Versioned(_) => return Err(serde::de::Error::custom("unsupported manifest version")),
+            Wire::Versioned(value) if value.version == WORKSPACE_MANIFEST_VERSION => {
+                (value.generation, true)
+            }
+            Wire::Versioned(_) => {
+                return Err(serde::de::Error::custom("unsupported manifest version"));
+            }
             Wire::Legacy(value) => (value, false),
         };
-        if !current && manifest.modules.values().flat_map(|state| &state.intents)
-            .any(|intent| intent.action.requires_v2())
+        if !current
+            && manifest
+                .modules
+                .values()
+                .flat_map(|state| &state.intents)
+                .any(|intent| intent.action.requires_v2())
         {
-            return Err(serde::de::Error::custom("workspace actions require manifest version 2"));
+            return Err(serde::de::Error::custom(
+                "workspace actions require manifest version 2",
+            ));
         }
-        Ok(Self { number: manifest.number, modules: manifest.modules })
+        Ok(Self {
+            number: manifest.number,
+            modules: manifest.modules,
+        })
     }
 }
 
@@ -411,7 +437,10 @@ mod tests {
         let wire = serde_json::to_value(&generation).unwrap();
         assert_eq!(wire["version"], 2);
         assert!(wire.get("number").is_none());
-        assert_eq!(serde_json::from_value::<Generation>(wire.clone()).unwrap(), generation);
+        assert_eq!(
+            serde_json::from_value::<Generation>(wire.clone()).unwrap(),
+            generation
+        );
         assert!(serde_json::from_value::<Generation>(wire["generation"].clone()).is_err());
         let mut unsupported = wire.clone();
         unsupported["version"] = 3.into();

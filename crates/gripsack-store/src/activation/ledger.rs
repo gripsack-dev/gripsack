@@ -307,7 +307,11 @@ impl ActivationBatch {
     }
 
     fn persist(&mut self, index: usize, next: StateRecord) -> io::Result<()> {
-        next.admit(self.plan.version, self.plan.instance, &self.plan.intents[index])?;
+        next.admit(
+            self.plan.version,
+            self.plan.instance,
+            &self.plan.intents[index],
+        )?;
         storage::write(
             &self.outcomes,
             Path::new(&state_name(next.intent)),
@@ -341,7 +345,8 @@ impl ActivationBatch {
             RecordKind::Plan,
             Access::Recover,
         )?;
-        if !matches!(pointer, PendingPointer::Current { version, instance } if instance == self.plan.instance && version == self.plan.version) {
+        if !matches!(pointer, PendingPointer::Current { version, instance } if instance == self.plan.instance && version == self.plan.version)
+        {
             return Err(invalid(
                 "activation pointer changed before completed-outcome cleanup",
             ));

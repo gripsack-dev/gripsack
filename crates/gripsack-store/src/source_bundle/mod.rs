@@ -42,7 +42,9 @@ impl CaptureRoot {
                     .filter(|alias| alias != &declared && alias != &canonical),
                 _ => None,
             }
-        } else { None };
+        } else {
+            None
+        };
         let directory = gripsack_fs::open(&canonical)?;
         Ok(Self {
             kind,
@@ -153,13 +155,19 @@ impl From<CaptureRoot> for SourceOrigin {
 
 impl SourceOrigin {
     fn relative<'a>(&self, path: &'a Path) -> Option<&'a Path> {
-        path.strip_prefix(&self.canonical).ok()
+        path.strip_prefix(&self.canonical)
+            .ok()
             .or_else(|| path.strip_prefix(&self.declared).ok())
-            .or_else(|| self.declared_alias.as_ref().and_then(|alias| path.strip_prefix(alias).ok()))
+            .or_else(|| {
+                self.declared_alias
+                    .as_ref()
+                    .and_then(|alias| path.strip_prefix(alias).ok())
+            })
     }
 
     fn overlaps(&self, root: &Path) -> bool {
-        [&self.canonical, &self.declared].into_iter()
+        [&self.canonical, &self.declared]
+            .into_iter()
             .chain(self.declared_alias.iter())
             .any(|origin| root.starts_with(origin) || origin.starts_with(root))
     }
@@ -193,7 +201,9 @@ impl SourceBundle {
         policy: SourceCapturePolicy,
     ) -> io::Result<Self> {
         if pin.is_some() && policy.excludes(Path::new("node_modules/@gripsack/core")) {
-            return Err(invalid("excluded SDK location cannot admit a pinned frontend root"));
+            return Err(invalid(
+                "excluded SDK location cannot admit a pinned frontend root",
+            ));
         }
         let mut roots = vec![
             CaptureRoot::open(SourceRootKind::Repository, repo)?,
@@ -284,7 +294,8 @@ impl SourceBundle {
         if !path.is_absolute() {
             Some(path)
         } else {
-            path.strip_prefix(&self.repository).ok()
+            path.strip_prefix(&self.repository)
+                .ok()
                 .or_else(|| self.repository_origin.relative(path))
         }
     }
@@ -293,13 +304,21 @@ impl SourceBundle {
     /// including an excluded subtree, a declared root alias, or a root ancestor.
     /// Return the checked canonical spelling so callers do not grant the alias.
     pub fn admit_evaluator_root(&self, root: &Path) -> io::Result<PathBuf> {
-        let overlaps = |candidate: &Path| self.inventory.roots().iter().any(|&kind| {
-            self.origin(kind).is_some_and(|origin| origin.overlaps(candidate))
-        });
-        let refused = || io::Error::new(io::ErrorKind::PermissionDenied, format!(
-            "evaluator grant {} overlaps live source; select a runtime and cache outside source roots",
-            root.display()
-        ));
+        let overlaps = |candidate: &Path| {
+            self.inventory.roots().iter().any(|&kind| {
+                self.origin(kind)
+                    .is_some_and(|origin| origin.overlaps(candidate))
+            })
+        };
+        let refused = || {
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!(
+                    "evaluator grant {} overlaps live source; select a runtime and cache outside source roots",
+                    root.display()
+                ),
+            )
+        };
         // Check the caller's spelling before following a link out of a source
         // exclusion, then check the target of aliases pointing into source.
         if overlaps(root) {

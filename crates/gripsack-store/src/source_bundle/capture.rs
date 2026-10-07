@@ -177,9 +177,12 @@ impl Capture<'_> {
                     self.admission,
                     self.budget,
                 )
-                .map_err(|error| io::Error::new(error.kind(), format!(
-                    "source alias {}: {error}", logical.display()
-                )))?;
+                .map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!("source alias {}: {error}", logical.display()),
+                    )
+                })?;
                 self.alias(logical, target)?;
             } else if metadata.is_dir() {
                 let directory = gripsack_fs::open_dir_nofollow(source, Path::new(&name))?;
@@ -261,7 +264,10 @@ pub(super) fn copy_roots(
         capture.entries,
         capture.exclusions,
     )?;
-    if roots.iter().any(|root| root.kind == SourceRootKind::PinnedFrontend) {
+    if roots
+        .iter()
+        .any(|root| root.kind == SourceRootKind::PinnedFrontend)
+    {
         if destination.canonicalize("repo/node_modules/@gripsack/core")? != Path::new("pin") {
             return Err(invalid(
                 "captured frontend pin differs from the admitted package root",
@@ -271,9 +277,11 @@ pub(super) fn copy_roots(
         match destination.symlink_metadata("repo/node_modules/@gripsack/core") {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
-            Ok(_) => return Err(invalid(
-                "captured frontend pin appeared without an admitted package root; capture again",
-            )),
+            Ok(_) => {
+                return Err(invalid(
+                    "captured frontend pin appeared without an admitted package root; capture again",
+                ));
+            }
         }
     }
     Ok(inventory)

@@ -112,6 +112,17 @@ pub(in crate::workspace) fn prepare(
         &span,
     )?;
     let overlay = EnvironmentOverlay::admit(entries, search, library).map_err(operational)?;
-    let cwd = task_cwd(command.working_directory(), subject, realization, checkout, &span)?;
-    Ok(PreparedCommand { program, argv, overlay, cwd })
+    let cwd = task_cwd(
+        command.working_directory(),
+        subject,
+        realization,
+        checkout,
+        &span,
+    )?;
+    Ok(PreparedCommand {
+        program,
+        argv,
+        overlay,
+        cwd,
+    })
 }

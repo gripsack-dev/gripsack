@@ -1,7 +1,7 @@
 //! Resolve source aliases without granting access to ambient ancestor trees.
 use super::inventory::{MAX_DEPTH, MAX_LINK_EXPANSIONS, invalid};
-use super::{CaptureBudget, CaptureRoot};
 use super::policy::CaptureAdmission;
+use super::{CaptureBudget, CaptureRoot};
 use gripsack_fs::Dir;
 use std::{
     collections::VecDeque,
@@ -46,16 +46,22 @@ fn parts(path: &Path) -> io::Result<VecDeque<Part>> {
 
 fn endpoint(roots: &[CaptureRoot], path: &Path) -> Option<usize> {
     roots.iter().enumerate().rev().find_map(|(index, root)| {
-        (path == root.canonical || path == root.declared
-            || root.declared_alias.as_deref() == Some(path)).then_some(index)
+        (path == root.canonical
+            || path == root.declared
+            || root.declared_alias.as_deref() == Some(path))
+        .then_some(index)
     })
 }
 
 fn is_root_ancestor(roots: &[CaptureRoot], path: &Path) -> bool {
-    roots
-        .iter()
-        .any(|root| root.canonical.starts_with(path) || root.declared.starts_with(path)
-            || root.declared_alias.as_ref().is_some_and(|alias| alias.starts_with(path)))
+    roots.iter().any(|root| {
+        root.canonical.starts_with(path)
+            || root.declared.starts_with(path)
+            || root
+                .declared_alias
+                .as_ref()
+                .is_some_and(|alias| alias.starts_with(path))
+    })
 }
 
 /// An unresolved suffix is never lexically collapsed across a symlink. Outside

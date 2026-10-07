@@ -65,8 +65,9 @@ impl PreparedEvaluation {
                 ExitCode::FAILURE
             })?;
         }
-        let capture_policy = SourceCapturePolicy::new(std::mem::take(&mut initial.env.capture.exclude))
-            .map_err(operational)?;
+        let capture_policy =
+            SourceCapturePolicy::new(std::mem::take(&mut initial.env.capture.exclude))
+                .map_err(operational)?;
         let environment = OperatorEnvironment::capture().map_err(operational)?;
         let home = std::path::absolute(gripsack_store::gripsack_home()).map_err(operational)?;
         let frontend = gripsack_exec::ensure_ts_frontend(&home, env!("CARGO_PKG_VERSION"))
@@ -94,7 +95,8 @@ impl PreparedEvaluation {
                 .map_err(operational)?,
         );
         sink.bind_captured_source(Arc::clone(&sources));
-        let captured = configuration::Configuration::read(sources.repository(), Some(&sources), sink)?;
+        let captured =
+            configuration::Configuration::read(sources.repository(), Some(&sources), sink)?;
         initial.require_same(&captured).map_err(operational)?;
         let mut env = captured.env;
         let host = match explicit_host {
@@ -125,8 +127,8 @@ impl PreparedEvaluation {
         // Only the core-selected runtime is provisioned before approval. Repo
         // fetcher/linter provisioning belongs to the later authorized path.
         let deno = gripsack_exec::ensure_deno(&home, &provisioning).map_err(operational)?;
-        let runtime_access = runtime::access(&sources, &environment, &deno, &home)
-            .map_err(operational)?;
+        let runtime_access =
+            runtime::access(&sources, &environment, &deno, &home).map_err(operational)?;
         let evaluator_cache = home.join("deno-cache");
         let evaluator_tmp = home.join("eval-tmp");
         std::fs::create_dir_all(&evaluator_cache).map_err(operational)?;
@@ -140,11 +142,21 @@ impl PreparedEvaluation {
             .checked_add(limits.timeout)
             .ok_or_else(|| operational(io::Error::other("runtime selection deadline overflow")))?;
         let runtime = SelectedProgram::select(
-            &environment, &deno, Some(runtime_access.primary_digest().map_err(operational)?), deadline,
-        ).map_err(operational)?;
-        runtime_access.require_selected_identity(&runtime.identity()).map_err(operational)?;
-        let evaluator_cache = sources.admit_evaluator_root(&evaluator_cache).map_err(operational)?;
-        let evaluator_tmp = sources.admit_evaluator_root(&evaluator_tmp).map_err(operational)?;
+            &environment,
+            &deno,
+            Some(runtime_access.primary_digest().map_err(operational)?),
+            deadline,
+        )
+        .map_err(operational)?;
+        runtime_access
+            .require_selected_identity(&runtime.identity())
+            .map_err(operational)?;
+        let evaluator_cache = sources
+            .admit_evaluator_root(&evaluator_cache)
+            .map_err(operational)?;
+        let evaluator_tmp = sources
+            .admit_evaluator_root(&evaluator_tmp)
+            .map_err(operational)?;
         let policy = EvaluationPolicy::capture(
             &sources,
             runtime.identity(),
@@ -289,7 +301,11 @@ impl PreparedEvaluation {
         }
         println!(
             "frontend implementation: {}",
-            if self.sources.pinned_frontend().is_some() { "pinned SDK" } else { "embedded SDK" }
+            if self.sources.pinned_frontend().is_some() {
+                "pinned SDK"
+            } else {
+                "embedded SDK"
+            }
         );
         for excluded in self.sources.capture_policy().exclusions() {
             println!(
@@ -363,7 +379,6 @@ impl ApprovedEvaluation<'_> {
         self.prepared.map_diagnostics(diagnostics);
     }
 }
-
 
 pub(super) fn map_diagnostics(sources: &SourceBundle, diagnostics: &mut [gripsack_ir::Diagnostic]) {
     fn map(sources: &SourceBundle, text: &mut String) {

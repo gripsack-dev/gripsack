@@ -232,10 +232,13 @@ impl EnvironmentPlan {
         let macho = commands
             .values()
             .any(|command| command.macho_library_dirs.is_some());
-        let gnu_loader = commands.values().find_map(|command| command.gnu_loader.as_ref());
+        let gnu_loader = commands
+            .values()
+            .find_map(|command| command.gnu_loader.as_ref());
         for (key, argument) in &declaration.env {
             if let Some(loader) = gnu_loader {
-                loader.check_environment_key(std::ffi::OsStr::new(key))
+                loader
+                    .check_environment_key(std::ffi::OsStr::new(key))
                     .map_err(|error| gate(&declaration.span, error.to_string()))?;
             }
             if macho && key.starts_with("DYLD_") {
@@ -383,7 +386,9 @@ impl EnvironmentPlan {
                 .map_err(operational)?;
             }
             if let Some(loader) = &command.gnu_loader {
-                let loader = loader.path().to_str()
+                let loader = loader
+                    .path()
+                    .to_str()
                     .ok_or_else(|| failure("platform loader path is not UTF-8"))?;
                 let subject = command
                     .interpreter

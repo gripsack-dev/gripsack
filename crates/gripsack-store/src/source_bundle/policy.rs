@@ -1,6 +1,9 @@
 //! Explicit literal repository subtrees, not Git ignore rules or ambient roots.
 use super::{CaptureBudget, CaptureRoot, SourceRootKind, inventory::invalid};
-use std::{io, path::{Path, PathBuf}};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 /// Validated, sorted, non-overlapping repository-relative exclusions. The wire
 /// lives in env.toml; its exact copied bytes bind this policy to approval.
@@ -16,10 +19,15 @@ impl SourceCapturePolicy {
             budget.entry(value)?;
             if value.is_empty()
                 || value.contains(['\0', '\\', '*', '?', '[', ']'])
-                || value.split('/').any(|part| part.is_empty() || matches!(part, "." | ".."))
+                || value
+                    .split('/')
+                    .any(|part| part.is_empty() || matches!(part, "." | ".."))
                 || value.split('/').count() + 1 > super::inventory::MAX_DEPTH
                 || value.chars().any(char::is_control)
-                || value.split('/').next().is_some_and(|part| part.contains(':'))
+                || value
+                    .split('/')
+                    .next()
+                    .is_some_and(|part| part.contains(':'))
             {
                 return Err(invalid(&format!(
                     "capture exclusion {value:?} must be a normalized literal repository-relative subtree"
@@ -28,9 +36,13 @@ impl SourceCapturePolicy {
             // These root names carry configuration/authority. Reject their
             // ASCII case variants too, so a case-insensitive capture filesystem cannot
             // hide a required lock behind a differently spelled exclusion.
-            let first = value.split('/').next().expect("nonempty normalized exclusion");
+            let first = value
+                .split('/')
+                .next()
+                .expect("nonempty normalized exclusion");
             if ["env.toml", "gripsack.ts", "hosts", "gripsack.lock", "locks"]
-                .iter().any(|required| first.eq_ignore_ascii_case(required))
+                .iter()
+                .any(|required| first.eq_ignore_ascii_case(required))
             {
                 return Err(invalid(&format!(
                     "capture exclusion {value:?} intersects required configuration, lock authority or entrypoints"
@@ -45,7 +57,10 @@ impl SourceCapturePolicy {
                 return Err(invalid("capture exclusions must not be duplicated"));
             }
             for (end, _) in value.match_indices('/') {
-                if exclusions.binary_search_by(|other| other.as_str().cmp(&value[..end])).is_ok() {
+                if exclusions
+                    .binary_search_by(|other| other.as_str().cmp(&value[..end]))
+                    .is_ok()
+                {
                     return Err(invalid("capture exclusions must not overlap"));
                 }
             }
@@ -65,10 +80,14 @@ impl SourceCapturePolicy {
         // Normalize only those spellings; the copying walker allocates nothing.
         // Parent traversal is never collapsed (callers reject it separately).
         let normalized;
-        let relative = if relative.as_os_str().as_encoded_bytes().split(|byte| *byte == b'/')
+        let relative = if relative
+            .as_os_str()
+            .as_encoded_bytes()
+            .split(|byte| *byte == b'/')
             .any(|part| part.is_empty() || part == b".")
         {
-            normalized = relative.components()
+            normalized = relative
+                .components()
                 .filter(|part| *part != std::path::Component::CurDir)
                 .collect::<PathBuf>();
             normalized.as_path()
@@ -76,17 +95,26 @@ impl SourceCapturePolicy {
             relative
         };
         relative.ancestors().filter_map(Path::to_str).any(|path| {
-            self.exclusions.binary_search_by(|value| value.as_str().cmp(path)).is_ok()
+            self.exclusions
+                .binary_search_by(|value| value.as_str().cmp(path))
+                .is_ok()
         })
     }
 
     pub(super) fn requires_directory(&self, relative: &Path) -> bool {
-        let Some(path) = relative.to_str() else { return false };
+        let Some(path) = relative.to_str() else {
+            return false;
+        };
         let index = self.exclusions.partition_point(|excluded| {
-            excluded.bytes().cmp(path.bytes().chain(std::iter::once(b'/'))).is_lt()
+            excluded
+                .bytes()
+                .cmp(path.bytes().chain(std::iter::once(b'/')))
+                .is_lt()
         });
         self.exclusions.get(index).is_some_and(|excluded| {
-            excluded.strip_prefix(path).is_some_and(|suffix| suffix.starts_with('/'))
+            excluded
+                .strip_prefix(path)
+                .is_some_and(|suffix| suffix.starts_with('/'))
         })
     }
 
@@ -94,7 +122,9 @@ impl SourceCapturePolicy {
         let repo = &roots[0];
         for other in &roots[1..] {
             if repo.canonical.starts_with(&other.canonical) {
-                return Err(invalid("an auxiliary source root must not contain the repository"));
+                return Err(invalid(
+                    "an auxiliary source root must not contain the repository",
+                ));
             }
             for excluded in &self.exclusions {
                 let path = repo.canonical.join(excluded);
@@ -115,16 +145,23 @@ impl SourceCapturePolicy {
         let mut budget = CaptureBudget::default();
         for excluded in &self.exclusions {
             let mut directory = repo.directory.try_clone()?;
-            let parent = Path::new(excluded).parent().expect("relative exclusion has a parent");
+            let parent = Path::new(excluded)
+                .parent()
+                .expect("relative exclusion has a parent");
             for component in parent.components() {
                 budget.resolve_step()?;
                 let name = Path::new(component.as_os_str());
                 match gripsack_fs::open_dir_nofollow(&directory, name) {
                     Ok(child) => directory = child,
                     Err(error) if error.kind() == io::ErrorKind::NotFound => break,
-                    Err(error) => return Err(io::Error::new(error.kind(), format!(
-                        "capture exclusion {excluded:?} requires real directory ancestors: {error}"
-                    ))),
+                    Err(error) => {
+                        return Err(io::Error::new(
+                            error.kind(),
+                            format!(
+                                "capture exclusion {excluded:?} requires real directory ancestors: {error}"
+                            ),
+                        ));
+                    }
                 }
             }
         }
@@ -139,7 +176,9 @@ pub(super) struct CaptureAdmission<'a> {
 
 impl CaptureAdmission<'_> {
     pub fn excludes(&self, root: &CaptureRoot, relative: &Path) -> bool {
-        relative.components().any(|component| component.as_os_str() == ".git")
+        relative
+            .components()
+            .any(|component| component.as_os_str() == ".git")
             || (root.kind == SourceRootKind::Repository && self.policy.excludes(relative))
             || (self.runtime_home != root.canonical
                 && self.runtime_home.starts_with(&root.canonical)
@@ -150,7 +189,8 @@ impl CaptureAdmission<'_> {
         if self.excludes(root, relative) {
             let logical: PathBuf = root.logical(relative);
             return Err(invalid(&format!(
-                "source alias enters excluded subtree {}", logical.display()
+                "source alias enters excluded subtree {}",
+                logical.display()
             )));
         }
         Ok(())

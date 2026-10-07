@@ -3,7 +3,11 @@ use super::{map_diagnostics, operational};
 use crate::render::DiagnosticSink;
 use gripsack_process::Sha256Digest;
 use gripsack_store::source_bundle::SourceBundle;
-use std::{io::{self, Read}, path::Path, process::ExitCode};
+use std::{
+    io::{self, Read},
+    path::Path,
+    process::ExitCode,
+};
 
 /// Configuration has a smaller bootstrap budget than arbitrary source files.
 const MAX_CONFIGURATION_BYTES: u64 = 1024 * 1024;
@@ -34,12 +38,17 @@ impl Configuration {
             let file = gripsack_fs::open_file_nofollow(&directory, Path::new("env.toml"))
                 .map_err(operational)?;
             let mut bytes = Vec::new();
-            file.take(MAX_CONFIGURATION_BYTES + 1).read_to_end(&mut bytes).map_err(operational)?;
+            file.take(MAX_CONFIGURATION_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .map_err(operational)?;
             if bytes.len() as u64 > MAX_CONFIGURATION_BYTES {
-                return Err(operational(io::Error::other("env.toml exceeds its bootstrap byte budget")));
+                return Err(operational(io::Error::other(
+                    "env.toml exceeds its bootstrap byte budget",
+                )));
             }
             let digest = Some(Sha256Digest::of(&bytes));
-            let source = std::str::from_utf8(&bytes).map_err(|error| operational(io::Error::other(error)))?;
+            let source = std::str::from_utf8(&bytes)
+                .map_err(|error| operational(io::Error::other(error)))?;
             let env = gripsack_config::parse_env(source).map_err(|mut diagnostics| {
                 if let Some(sources) = sources {
                     map_diagnostics(sources, &mut diagnostics);
@@ -54,18 +63,22 @@ impl Configuration {
                 env: gripsack_config::EnvConfig::default(),
                 digest: None,
             }),
-            Ok(_) => Err(operational(io::Error::other("gripsack.ts is not a regular workspace source"))),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Err(operational(io::Error::other(
-                "no env.toml or gripsack.ts in the repository",
+            Ok(_) => Err(operational(io::Error::other(
+                "gripsack.ts is not a regular workspace source",
             ))),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Err(operational(
+                io::Error::other("no env.toml or gripsack.ts in the repository"),
+            )),
             Err(error) => Err(operational(error)),
         }
     }
 
     pub fn require_same(&self, captured: &Self) -> io::Result<()> {
         if self.digest != captured.digest {
-            return Err(io::Error::new(io::ErrorKind::InvalidData,
-                "env.toml changed during source capture; inspect the source and capture policy again"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "env.toml changed during source capture; inspect the source and capture policy again",
+            ));
         }
         Ok(())
     }
@@ -85,10 +98,7 @@ mod tests {
         std::fs::create_dir(&frontend).unwrap();
         std::fs::write(repo.join("gripsack.ts"), "// entrypoint").unwrap();
         let config = repo.join("env.toml");
-        for replacement in [
-            Some("[capture]\nexclude = []\n"),
-            None,
-        ] {
+        for replacement in [Some("[capture]\nexclude = []\n"), None] {
             std::fs::write(&config, "[capture]\nexclude = ['.venv']\n").unwrap();
             let initial = Configuration::read(&repo, None, &mut DiagnosticSink::json()).unwrap();
             let policy = SourceCapturePolicy::new(initial.env.capture.exclude.clone()).unwrap();
@@ -97,10 +107,20 @@ mod tests {
             } else {
                 std::fs::remove_file(&config).unwrap();
             }
-            let bundle = SourceBundle::capture(&repo, &frontend, None, &temporary.path().join("runtime"), policy.clone()).unwrap();
+            let bundle = SourceBundle::capture(
+                &repo,
+                &frontend,
+                None,
+                &temporary.path().join("runtime"),
+                policy.clone(),
+            )
+            .unwrap();
             let captured = Configuration::read(
-                bundle.repository(), Some(&bundle), &mut DiagnosticSink::json(),
-            ).unwrap();
+                bundle.repository(),
+                Some(&bundle),
+                &mut DiagnosticSink::json(),
+            )
+            .unwrap();
             assert!(initial.require_same(&captured).is_err());
             assert!(captured.require_same(&initial).is_err());
             assert!(captured.require_same(&captured).is_ok());

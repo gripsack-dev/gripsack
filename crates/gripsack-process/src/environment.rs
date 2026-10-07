@@ -40,7 +40,10 @@ pub struct ResolvedProgram {
 impl ResolvedProgram {
     fn new(declared: PathBuf) -> io::Result<Self> {
         let canonical = declared.canonicalize()?;
-        Ok(Self { declared, canonical })
+        Ok(Self {
+            declared,
+            canonical,
+        })
     }
 
     pub fn declared(&self) -> &Path {

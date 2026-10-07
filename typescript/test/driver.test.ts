@@ -295,15 +295,13 @@ Deno.test("retired Pixi calls report a source diagnostic through an imported ali
     },
     (repo) => {
       const result = runDriver(repo, baseInputs);
-      assert.equal(result.status, 0, result.stderr);
-      const envelope = JSON.parse(result.stdout);
-      assert.equal(envelope.ir, null);
-      assert.equal(envelope.diagnostics.length, 1);
-      assert.equal(envelope.diagnostics[0].code, "E130");
-      assert.equal(envelope.diagnostics[0].severity, "error");
-      assert.equal(envelope.diagnostics[0].labels[0].span.file, join(repo, "hosts/lap.ts"));
-      assert.equal(envelope.diagnostics[0].labels[0].span.line, 2);
-      assert.deepEqual(envelope.probe_requests, []);
+      assert.equal(result.status, 1);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /E130/);
+      assert.match(result.stderr, /pixi\(package\) was removed/);
+      assert.match(result.stderr, /removed single-package constructor called here/);
+      assert.match(result.stderr, /workspace-migration\.html/);
+      assert.match(result.stderr, /lap\.ts:2/);
     },
   );
 });

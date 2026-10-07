@@ -3,15 +3,15 @@ use std::os::unix::process::ExitStatusExt;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod confinement;
-mod lifecycle;
-mod native;
-mod pressure;
 #[cfg(all(
     target_os = "linux",
     target_env = "gnu",
     any(target_arch = "x86_64", target_arch = "aarch64")
 ))]
 mod gnu_loader;
+mod lifecycle;
+mod native;
+mod pressure;
 
 fn command(body: &str) -> Command {
     let mut command = Command::new("/bin/sh");

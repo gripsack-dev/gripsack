@@ -123,10 +123,15 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
         admit(&metadata).unwrap().directories,
         vec![payload.join("lib")]
     );
-    metadata.elf_loader_extensions.push(
-        gripsack_process::executable::ElfLoaderExtension::Audit("outside.so".into()),
+    metadata
+        .elf_loader_extensions
+        .push(gripsack_process::executable::ElfLoaderExtension::Audit(
+            "outside.so".into(),
+        ));
+    assert!(
+        admit(&metadata).is_err(),
+        "main-image auditing escapes DT_NEEDED"
     );
-    assert!(admit(&metadata).is_err(), "main-image auditing escapes DT_NEEDED");
     metadata.elf_loader_extensions.clear();
     for tag in [0x6fff_fefb_i64, 0x6fff_fefc, 0x7fff_fffd, 0x7fff_ffff] {
         let mut indirect = dynamic_library("outside.so");
@@ -141,7 +146,10 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
     for capability in ["tls", "haswell", "x86_64", "avx512_1"] {
         let shadow = payload.join("lib").join(capability);
         std::fs::create_dir(&shadow).unwrap();
-        assert!(admit(&metadata).is_ok(), "an empty reserved directory cannot shadow lookup");
+        assert!(
+            admit(&metadata).is_ok(),
+            "an empty reserved directory cannot shadow lookup"
+        );
         std::fs::write(shadow.join("libexample.so"), &library).unwrap();
         assert!(
             admit(&metadata).is_err(),
@@ -161,11 +169,12 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
         std::fs::remove_dir(directory).unwrap();
     }
     metadata.rpaths.clear();
-    let ordinary_needed = std::mem::replace(
-        &mut metadata.needed_libraries,
-        vec!["$PLATFORM".into()],
+    let ordinary_needed =
+        std::mem::replace(&mut metadata.needed_libraries, vec!["$PLATFORM".into()]);
+    assert!(
+        admit(&metadata).is_err(),
+        "DT_NEEDED tokens are not literal SONAMEs"
     );
-    assert!(admit(&metadata).is_err(), "DT_NEEDED tokens are not literal SONAMEs");
     metadata.needed_libraries = ordinary_needed;
     let foreign = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(foreign.path(), &library).unwrap();

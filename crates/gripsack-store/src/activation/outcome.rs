@@ -64,7 +64,8 @@ impl StateRecord {
             return Err(invalid());
         }
         let required_processes = match intent.action() {
-            super::ActivationAction::CustomShell { .. } | super::ActivationAction::WorkspaceHook { .. } => 1,
+            super::ActivationAction::CustomShell { .. }
+            | super::ActivationAction::WorkspaceHook { .. } => 1,
             super::ActivationAction::Fonts | super::ActivationAction::DesktopEntry => 2,
             super::ActivationAction::Service { .. } => 3,
         };

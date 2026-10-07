@@ -2,11 +2,11 @@
 //! supervision. Diagnostics retain identities/status, never script/argv bytes.
 use super::output::CapturedOutput;
 use crate::report::{ReportKind, StepReport};
-use gripsack_store::activation::ActivationAction as Action;
 use gripsack_process::{
     ActivationEnvironment, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessReceipt,
     ProcessRole, SelectedProgram,
 };
+use gripsack_store::activation::ActivationAction as Action;
 use gripsack_store::activation::{AdmissionStage, EffectiveIntent, IntentFailure, LaunchPermit};
 use std::{
     ffi::OsStr,
@@ -46,8 +46,14 @@ pub(super) fn run(
         };
         if let Action::WorkspaceHook { context, sha256 } = intent.action() {
             let result = crate::workspace::hooks::run(
-                context, *sha256, home, &activation, environment, |bytes| output.stdout(bytes),
-            ).map_err(|error| admission(AdmissionStage::Execution, &error))?;
+                context,
+                *sha256,
+                home,
+                &activation,
+                environment,
+                |bytes| output.stdout(bytes),
+            )
+            .map_err(|error| admission(AdmissionStage::Execution, &error))?;
             return if output.result(result, &mut processes) {
                 Ok(())
             } else {

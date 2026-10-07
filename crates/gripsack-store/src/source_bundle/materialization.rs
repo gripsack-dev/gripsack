@@ -25,9 +25,13 @@ impl SourceBundle {
             return Err(invalid("materialized source must be repository-relative"));
         }
         if self.excluded_selection(relative) {
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!(
-                "repository source {} is excluded by capture policy", relative.display()
-            )));
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!(
+                    "repository source {} is excluded by capture policy",
+                    relative.display()
+                ),
+            ));
         }
         let resolved = self.root.canonicalize(Path::new("repo").join(relative))?;
         Ok(self
@@ -44,14 +48,18 @@ impl SourceBundle {
             return false;
         }
         let mut logical = PathBuf::from("repo");
-        for component in relative.components().filter(|part| *part != Component::CurDir) {
+        for component in relative
+            .components()
+            .filter(|part| *part != Component::CurDir)
+        {
             logical.push(component.as_os_str());
             if let Ok(relative) = logical.strip_prefix("repo")
                 && self.capture_policy.excludes(relative)
             {
                 return true;
             }
-            if let Some(SourceObject::Alias { target }) = logical.to_str()
+            if let Some(SourceObject::Alias { target }) = logical
+                .to_str()
                 .and_then(|path| self.inventory.entry(path))
                 .map(|entry| &entry.object)
             {

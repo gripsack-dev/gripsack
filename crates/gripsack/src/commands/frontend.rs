@@ -75,11 +75,14 @@ impl<'a> Frontend<'a> {
                 "host input file has no parent directory",
             ))
         })?;
-        let inputs_directory = sources.admit_evaluator_root(inputs_directory)
+        let inputs_directory = sources
+            .admit_evaluator_root(inputs_directory)
             .map_err(FrontendRunError::Process)?;
-        let cache = sources.admit_evaluator_root(self.approved.evaluator_cache())
+        let cache = sources
+            .admit_evaluator_root(self.approved.evaluator_cache())
             .map_err(FrontendRunError::Process)?;
-        let temporary = sources.admit_evaluator_root(self.approved.evaluator_tmp())
+        let temporary = sources
+            .admit_evaluator_root(self.approved.evaluator_tmp())
             .map_err(FrontendRunError::Process)?;
         boundary = boundary
             .read_beneath(&inputs_directory)
@@ -89,12 +92,16 @@ impl<'a> Frontend<'a> {
             .and_then(|boundary| boundary.read_write_beneath(&temporary))
             .map_err(FrontendRunError::Process)?;
         for file in self.approved.runtime_access().files() {
-            let file = sources.admit_evaluator_root(file)
+            let file = sources
+                .admit_evaluator_root(file)
                 .map_err(FrontendRunError::Process)?;
-            boundary = boundary.read_file(&file).map_err(FrontendRunError::Process)?;
+            boundary = boundary
+                .read_file(&file)
+                .map_err(FrontendRunError::Process)?;
         }
         for root in self.approved.runtime_access().directories() {
-            let root = sources.admit_evaluator_root(root)
+            let root = sources
+                .admit_evaluator_root(root)
                 .map_err(FrontendRunError::Process)?;
             boundary = boundary
                 .read_beneath(&root)

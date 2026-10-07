@@ -23,18 +23,34 @@ fn sealed_gnu_loader_executes_original_bytes_and_preserves_argv_zero() {
         ("LD_PRELOAD".into(), "/nonexistent/preload.so".into()),
         ("LD_AUDIT".into(), "/nonexistent/audit.so".into()),
         ("GLIBC_TUNABLES".into(), "glibc.cpu.hwcaps=hostile".into()),
-    ]).unwrap();
+    ])
+    .unwrap();
     let deadline = Instant::now() + limits().timeout;
     let loader = Arc::new(SelectedGnuLoader::select(platform_loader(), deadline).unwrap());
     let selected = SelectedProgram::select(&environment, &path, Some(Sha256Digest::of(&bytes)), deadline)
         .unwrap().with_gnu_loader(loader, OsStr::new("/lib64:/usr/lib64:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu")).unwrap();
-    assert_eq!(selected.identity().executable_sha256, Sha256Digest::of(&bytes));
-    assert_eq!(selected.identity().loader_sha256, Some(Sha256Digest::of(&fs::read(platform_loader()).unwrap())));
+    assert_eq!(
+        selected.identity().executable_sha256,
+        Sha256Digest::of(&bytes)
+    );
+    assert_eq!(
+        selected.identity().loader_sha256,
+        Some(Sha256Digest::of(&fs::read(platform_loader()).unwrap()))
+    );
     // Neither the selected program nor its argv0 changes when its pathname is
     // replaced after admission. There is no unsealed pathname fallback.
     fs::write(&path, b"not the selected executable anymore").unwrap();
-    let invocation = Invocation::admit(&environment, ProcessRole::Task, &selected, directory.path(),
-        Limits { operation_deadline: Some(deadline), ..limits() }).unwrap();
+    let invocation = Invocation::admit(
+        &environment,
+        ProcessRole::Task,
+        &selected,
+        directory.path(),
+        Limits {
+            operation_deadline: Some(deadline),
+            ..limits()
+        },
+    )
+    .unwrap();
     let mut output = Vec::new();
     let result = invocation.run(&[OsStr::new("-c"), OsStr::new(
         "printf '%s' \"$0\"; test -z \"${LD_PRELOAD+x}${LD_AUDIT+x}${GLIBC_TUNABLES+x}\""
@@ -47,14 +63,24 @@ fn sealed_gnu_loader_executes_original_bytes_and_preserves_argv_zero() {
     for key in ["LD_PRELOAD", "LD_AUDIT", "LD_HWCAP_MASK", "GLIBC_TUNABLES"] {
         let overlay = EnvironmentOverlay::admit(
             [(key.into(), "/nonexistent/declared-loader-input".into())],
-            [], [],
-        ).unwrap();
+            [],
+            [],
+        )
+        .unwrap();
         let invocation = Invocation::admit(
-            &environment, ProcessRole::Task, &selected, directory.path(), limits(),
-        ).unwrap().with_overlay(overlay);
+            &environment,
+            ProcessRole::Task,
+            &selected,
+            directory.path(),
+            limits(),
+        )
+        .unwrap()
+        .with_overlay(overlay);
         let error = match invocation.run(
             &[OsStr::new("-c"), OsStr::new("printf effect > unadmitted")],
-            NativeInput::Bytes(b""), None, |_| Control::Continue,
+            NativeInput::Bytes(b""),
+            None,
+            |_| Control::Continue,
         ) {
             Ok(_) => panic!("declared loader input reached execution: {key}"),
             Err(error) => error,
@@ -70,8 +96,11 @@ fn missing_real_loader_control_is_refused_even_without_a_version_check() {
     let path = directory.path().join("loader-without-control");
     let original = fs::read(platform_loader()).unwrap();
     for control in [
-        "--argv0", "--inhibit-cache", "--inhibit-rpath",
-        "--library-path", "--glibc-hwcaps-mask",
+        "--argv0",
+        "--inhibit-cache",
+        "--inhibit-rpath",
+        "--library-path",
+        "--glibc-hwcaps-mask",
     ] {
         let needle = control.as_bytes();
         let mut bytes = original.clone();
@@ -91,7 +120,11 @@ fn missing_real_loader_control_is_refused_even_without_a_version_check() {
             Ok(_) => panic!("loader missing {control} capability was admitted"),
             Err(error) => error,
         };
-        assert_eq!(error.kind(), io::ErrorKind::Unsupported, "{control}: {error}");
+        assert_eq!(
+            error.kind(),
+            io::ErrorKind::Unsupported,
+            "{control}: {error}"
+        );
         assert!(error.to_string().contains(control));
     }
 }

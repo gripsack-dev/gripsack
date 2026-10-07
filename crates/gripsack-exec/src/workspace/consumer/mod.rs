@@ -378,8 +378,20 @@ fn task_command(
     base_overlay: &EnvironmentOverlay,
     leases: &ProcessLeases,
 ) -> Result<gripsack_process::NativeOutcome, ExecError> {
-    let command::PreparedCommand { program, argv, overlay, cwd } = command::prepare(
-        command, subject, plan, realization, host, checkout, options, base_overlay,
+    let command::PreparedCommand {
+        program,
+        argv,
+        overlay,
+        cwd,
+    } = command::prepare(
+        command,
+        subject,
+        plan,
+        realization,
+        host,
+        checkout,
+        options,
+        base_overlay,
     )?;
     let invocation = Invocation::admit(
         options.environment,
@@ -440,7 +452,10 @@ pub(in crate::workspace) fn task_argument(
             let subject = subject.ok_or_else(|| gate(span, "task command has no check subject"))?;
             let payload = admit::artifact_payload(subject, realization)
                 .ok_or_else(|| gate(span, format!("check subject {subject:?} has no artifact")))?;
-            OsString::from(admit::utf8_path(&inside_payload(&payload, selector, span)?, span)?)
+            OsString::from(admit::utf8_path(
+                &inside_payload(&payload, selector, span)?,
+                span,
+            )?)
         }
         WorkspaceArg::Output { .. } => {
             return Err(gate(

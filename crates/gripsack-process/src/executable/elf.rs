@@ -3,9 +3,9 @@
 //! String-table addresses resolve through PT_LOAD vaddr windows with
 //! checked arithmetic only.
 use super::{
-    ElfLoaderExtension, Endian, ExecutableArch, ExecutableFormat, ExecutableMetadata, Interpreter, LayoutError,
-    MAX_DYNAMIC_BYTES, MAX_PROGRAM_HEADERS, MAX_STRING_BYTES, ObjectKind, WordClass, field,
-    read_exact_at, read_up_to,
+    ElfLoaderExtension, Endian, ExecutableArch, ExecutableFormat, ExecutableMetadata, Interpreter,
+    LayoutError, MAX_DYNAMIC_BYTES, MAX_PROGRAM_HEADERS, MAX_STRING_BYTES, ObjectKind, WordClass,
+    field, read_exact_at, read_up_to,
 };
 use std::{
     ffi::OsString,
@@ -171,7 +171,8 @@ fn dynamic_entries(
         match tag {
             DT_NULL => break,
             DT_STRTAB => strtab = Some(value),
-            DT_NEEDED | DT_RPATH | DT_RUNPATH | DT_DEPAUDIT | DT_AUDIT | DT_AUXILIARY | DT_FILTER => {
+            DT_NEEDED | DT_RPATH | DT_RUNPATH | DT_DEPAUDIT | DT_AUDIT | DT_AUXILIARY
+            | DT_FILTER => {
                 wanted.push((tag, value));
             }
             _ => {}
@@ -195,10 +196,18 @@ fn dynamic_entries(
             DT_NEEDED => metadata.needed_libraries.push(name),
             DT_RPATH => metadata.rpaths.push(name),
             DT_RUNPATH => metadata.runpaths.push(name),
-            DT_AUDIT => metadata.elf_loader_extensions.push(ElfLoaderExtension::Audit(name)),
-            DT_DEPAUDIT => metadata.elf_loader_extensions.push(ElfLoaderExtension::DependencyAudit(name)),
-            DT_AUXILIARY => metadata.elf_loader_extensions.push(ElfLoaderExtension::AuxiliaryFilter(name)),
-            DT_FILTER => metadata.elf_loader_extensions.push(ElfLoaderExtension::Filter(name)),
+            DT_AUDIT => metadata
+                .elf_loader_extensions
+                .push(ElfLoaderExtension::Audit(name)),
+            DT_DEPAUDIT => metadata
+                .elf_loader_extensions
+                .push(ElfLoaderExtension::DependencyAudit(name)),
+            DT_AUXILIARY => metadata
+                .elf_loader_extensions
+                .push(ElfLoaderExtension::AuxiliaryFilter(name)),
+            DT_FILTER => metadata
+                .elf_loader_extensions
+                .push(ElfLoaderExtension::Filter(name)),
             _ => unreachable!("only requested dynamic strings reach this dispatch"),
         }
     }

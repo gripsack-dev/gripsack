@@ -17,8 +17,10 @@ pub(super) fn access(
         // files and loader dependencies, never all PATH or tools descendants.
         let engine = match environment.resolve(Path::new("deno")) {
             Ok(selected) => selected.declared().to_owned(),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => home.join("tools")
-                .join(format!("deno-{}", gripsack_fetch::DENO_RELEASE.version)).join("deno"),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => home
+                .join("tools")
+                .join(format!("deno-{}", gripsack_fetch::DENO_RELEASE.version))
+                .join("deno"),
             Err(error) => return Err(error),
         };
         access.add_program(environment, &engine, admit)?;

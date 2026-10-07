@@ -223,7 +223,11 @@ impl Plan {
                 "activation plan identity or effective ordering is corrupt",
             )
         };
-        if !matches!(self.version, super::LEGACY_FORMAT_VERSION | super::FORMAT_VERSION) || self.instance != instance {
+        if !matches!(
+            self.version,
+            super::LEGACY_FORMAT_VERSION | super::FORMAT_VERSION
+        ) || self.instance != instance
+        {
             return Err(invalid());
         }
         if self.identity_origin == IdentityOrigin::Transaction
@@ -234,7 +238,12 @@ impl Plan {
         let mut fonts = false;
         let mut desktop = false;
         let mut ordinary = false;
-        if self.version == super::LEGACY_FORMAT_VERSION && self.intents.iter().any(|intent| intent.action.requires_v2()) {
+        if self.version == super::LEGACY_FORMAT_VERSION
+            && self
+                .intents
+                .iter()
+                .any(|intent| intent.action.requires_v2())
+        {
             return Err(invalid());
         }
         for (index, intent) in self.intents.iter().enumerate() {

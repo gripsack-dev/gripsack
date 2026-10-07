@@ -12,7 +12,10 @@ pub(super) struct PointerRecord {
 }
 
 pub(super) enum PendingPointer {
-    Current { version: u32, instance: ActivationId },
+    Current {
+        version: u32,
+        instance: ActivationId,
+    },
     Legacy {
         generation: GenerationId,
         intents: Vec<PendingIntent>,
@@ -71,15 +74,18 @@ impl<'de> Deserialize<'de> for PendingPointer {
                     }
                 }
                 match version {
-                    Some(version @ (super::LEGACY_FORMAT_VERSION | super::FORMAT_VERSION)) if generation.is_none() && intents.is_none() => {
+                    Some(version @ (super::LEGACY_FORMAT_VERSION | super::FORMAT_VERSION))
+                        if generation.is_none() && intents.is_none() =>
+                    {
                         Ok(PendingPointer::Current {
                             version,
-                            instance: instance.ok_or_else(|| A::Error::missing_field("instance"))?,
+                            instance: instance
+                                .ok_or_else(|| A::Error::missing_field("instance"))?,
                         })
                     }
-                    Some(super::LEGACY_FORMAT_VERSION | super::FORMAT_VERSION) => Err(A::Error::custom(
-                        "activation pointer mixes current and legacy fields",
-                    )),
+                    Some(super::LEGACY_FORMAT_VERSION | super::FORMAT_VERSION) => Err(
+                        A::Error::custom("activation pointer mixes current and legacy fields"),
+                    ),
                     Some(_) => Err(A::Error::custom("unsupported activation pointer version")),
                     None if instance.is_some() => Err(A::Error::missing_field("version")),
                     None => Ok(PendingPointer::Legacy {
@@ -87,9 +93,12 @@ impl<'de> Deserialize<'de> for PendingPointer {
                             generation.ok_or_else(|| A::Error::missing_field("generation"))?,
                         ),
                         intents: {
-                            let intents = intents.ok_or_else(|| A::Error::missing_field("intents"))?;
+                            let intents =
+                                intents.ok_or_else(|| A::Error::missing_field("intents"))?;
                             if intents.iter().any(|intent| intent.action.requires_v2()) {
-                                return Err(A::Error::custom("workspace actions require activation version 2"));
+                                return Err(A::Error::custom(
+                                    "workspace actions require activation version 2",
+                                ));
                             }
                             intents
                         },

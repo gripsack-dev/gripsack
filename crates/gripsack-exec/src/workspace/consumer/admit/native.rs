@@ -46,7 +46,10 @@ impl<'a> NativeContext<'a> {
         let mut selected = self.gnu_loader.borrow_mut();
         if let Some(loader) = selected.as_ref() {
             if loader.path() != Path::new(path) {
-                return Err(gate(span, "GNU interpreter differs from the invocation's platform loader"));
+                return Err(gate(
+                    span,
+                    "GNU interpreter differs from the invocation's platform loader",
+                ));
             }
             return Ok(Arc::clone(loader));
         }

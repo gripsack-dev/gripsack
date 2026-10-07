@@ -88,9 +88,15 @@ fn dynamic_elf_reports_loader_and_needed_libraries() {
 fn elf_audit_and_filter_objects_cannot_escape_needed_inventory() {
     let name = OsString::from("outside.so");
     for (tag, expected) in [
-        (0x6fff_fefb_i64, ElfLoaderExtension::DependencyAudit(name.clone())),
+        (
+            0x6fff_fefb_i64,
+            ElfLoaderExtension::DependencyAudit(name.clone()),
+        ),
         (0x6fff_fefc, ElfLoaderExtension::Audit(name.clone())),
-        (0x7fff_fffd, ElfLoaderExtension::AuxiliaryFilter(name.clone())),
+        (
+            0x7fff_fffd,
+            ElfLoaderExtension::AuxiliaryFilter(name.clone()),
+        ),
         (0x7fff_ffff, ElfLoaderExtension::Filter(name.clone())),
     ] {
         let mut dynamic = Vec::new();
@@ -99,7 +105,10 @@ fn elf_audit_and_filter_objects_cannot_escape_needed_inventory() {
             dynamic.extend_from_slice(&value.to_le_bytes());
         }
         let mut bytes = elf64(
-            &[(1, 0, 0, 0x900), (2, 0x40 + 56 * 2, 0, dynamic.len() as u64)],
+            &[
+                (1, 0, 0, 0x900),
+                (2, 0x40 + 56 * 2, 0, dynamic.len() as u64),
+            ],
             Some(&dynamic),
         );
         bytes.resize(0x800, 0);

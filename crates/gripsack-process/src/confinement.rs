@@ -28,9 +28,9 @@
 //! Platforms without a kernel boundary fail closed: assembling a boundary
 //! returns an error and the evaluator refuses to run rather than evaluating
 //! unconfined.
+mod runtime;
 #[cfg(target_os = "macos")]
 pub(super) mod seatbelt;
-mod runtime;
 pub use runtime::RuntimeAccess;
 #[cfg(target_os = "linux")]
 use std::fs::File;
@@ -68,8 +68,10 @@ impl Boundary {
     pub fn read_file(mut self, path: &Path) -> io::Result<Self> {
         let canonical = path.canonicalize()?;
         if !std::fs::metadata(&canonical)?.is_file() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                "an exact confinement read grant must name a regular file"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "an exact confinement read grant must name a regular file",
+            ));
         }
         if !self.read_files.contains(&canonical) {
             self.read_files.push(canonical);
@@ -333,8 +335,10 @@ impl Ruleset {
             metadata.is_dir()
         };
         if !valid {
-            return Err(io::Error::new(io::ErrorKind::InvalidData,
-                "confinement anchor changed its admitted object kind"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "confinement anchor changed its admitted object kind",
+            ));
         }
         let attr = PathBeneathAttr {
             allowed_access,
@@ -439,4 +443,3 @@ fn landlock_abi() -> io::Result<u32> {
     }
     Ok(abi as u32)
 }
-

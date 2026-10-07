@@ -18,8 +18,14 @@ pub(super) struct Command {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Program {
-    Host { value: String },
-    Package { package: String, command: String, sha256: Option<String> },
+    Host {
+        value: String,
+    },
+    Package {
+        package: String,
+        command: String,
+        sha256: Option<String>,
+    },
 }
 
 impl Command {
@@ -31,30 +37,78 @@ impl Command {
     ) -> Result<Self, ExecError> {
         let program = match program {
             WorkspaceArg::Literal { value } => Program::Host { value },
-            WorkspaceArg::PackageCommand { package, command, sha256 } => Program::Package { package, command, sha256 },
+            WorkspaceArg::PackageCommand {
+                package,
+                command,
+                sha256,
+            } => Program::Package {
+                package,
+                command,
+                sha256,
+            },
             _ => return Err(invalid("retained hook program has an unresolved binding")),
         };
-        let arguments = arguments.into_iter().map(|argument| argument.into_string()
-            .map_err(|_| invalid("retained hook argument is not UTF-8"))).collect::<Result<_, _>>()?;
-        let directory = directory.into_os_string().into_string()
+        let arguments = arguments
+            .into_iter()
+            .map(|argument| {
+                argument
+                    .into_string()
+                    .map_err(|_| invalid("retained hook argument is not UTF-8"))
+            })
+            .collect::<Result<_, _>>()?;
+        let directory = directory
+            .into_os_string()
+            .into_string()
             .map_err(|_| invalid("retained hook directory is not UTF-8"))?;
-        Ok(Self { program, arguments, environment, directory })
+        Ok(Self {
+            program,
+            arguments,
+            environment,
+            directory,
+        })
     }
 
     pub(super) fn decode(&self) -> WorkspaceCommand {
         let mut argv = Vec::with_capacity(self.arguments.len() + 1);
         argv.push(match &self.program {
-            Program::Host { value } => WorkspaceArg::Literal { value: value.clone() },
-            Program::Package { package, command, sha256 } => WorkspaceArg::PackageCommand {
-                package: package.clone(), command: command.clone(), sha256: sha256.clone(),
+            Program::Host { value } => WorkspaceArg::Literal {
+                value: value.clone(),
+            },
+            Program::Package {
+                package,
+                command,
+                sha256,
+            } => WorkspaceArg::PackageCommand {
+                package: package.clone(),
+                command: command.clone(),
+                sha256: sha256.clone(),
             },
         });
-        argv.extend(self.arguments.iter().map(|value| WorkspaceArg::Literal { value: value.clone() }));
+        argv.extend(self.arguments.iter().map(|value| WorkspaceArg::Literal {
+            value: value.clone(),
+        }));
         WorkspaceCommand::Exec {
-            span: Span { file: "<retained-workspace-hook>".into(), line: 1, col: None },
+            span: Span {
+                file: "<retained-workspace-hook>".into(),
+                line: 1,
+                col: None,
+            },
             argv,
-            env: self.environment.iter().map(|(key, value)| (key.clone(), WorkspaceArg::Literal { value: value.clone() })).collect(),
-            cwd: Some(WorkspacePath::Host { path: self.directory.clone() }),
+            env: self
+                .environment
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.clone(),
+                        WorkspaceArg::Literal {
+                            value: value.clone(),
+                        },
+                    )
+                })
+                .collect(),
+            cwd: Some(WorkspacePath::Host {
+                path: self.directory.clone(),
+            }),
         }
     }
 }

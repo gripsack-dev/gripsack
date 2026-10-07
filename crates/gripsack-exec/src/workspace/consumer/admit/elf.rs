@@ -33,7 +33,10 @@ pub(super) fn admit(
 ) -> Result<Runtime, ExecError> {
     header(metadata, host, true, span)?;
     if !metadata.elf_loader_extensions.is_empty() {
-        return Err(gate(span, "ELF audit/filter dependencies are outside the admitted DT_NEEDED closure"));
+        return Err(gate(
+            span,
+            "ELF audit/filter dependencies are outside the admitted DT_NEEDED closure",
+        ));
     }
     if metadata.interpreter.is_none()
         && metadata.needed_libraries.is_empty()
@@ -125,7 +128,10 @@ pub(super) fn admit(
             })?;
             header(&metadata, host, false, span)?;
             if !metadata.elf_loader_extensions.is_empty() {
-                return Err(gate(span, "runtime ELF audit/filter dependencies are outside the admitted DT_NEEDED closure"));
+                return Err(gate(
+                    span,
+                    "runtime ELF audit/filter dependencies are outside the admitted DT_NEEDED closure",
+                ));
             }
             if metadata.interpreter.as_ref().is_some_and(
                 |interpreter| !matches!(interpreter, Interpreter::Loader(named) if named == loader),

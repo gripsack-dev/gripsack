@@ -3,12 +3,12 @@
 //! application remain separately byte-bound; the application descriptor survives
 //! the loader's exec. This does not claim byte binding for shared libraries.
 mod capability;
-pub use capability::SelectedGnuLoader;
 use super::{Image, SelectedProgram};
 use crate::{
     Sha256Digest,
     executable::{self, ExecutableFormat, Interpreter},
 };
+pub use capability::SelectedGnuLoader;
 use std::{
     ffi::OsStr,
     io::{self, Read, Seek},
@@ -53,8 +53,10 @@ impl SelectedProgram {
         let metadata = executable::classify(&mut reader)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         if !metadata.elf_loader_extensions.is_empty() {
-            return Err(io::Error::new(io::ErrorKind::InvalidData,
-                "ELF audit/filter dependencies are outside the admitted GNU loader plan"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ELF audit/filter dependencies are outside the admitted GNU loader plan",
+            ));
         }
         if metadata.format != Some(ExecutableFormat::Elf)
             || !matches!(&metadata.interpreter,Some(Interpreter::Loader(named)) if Path::new(named) == loader.path())
@@ -122,7 +124,9 @@ impl SelectedProgram {
 
 impl SelectedProgram {
     pub(crate) fn loader_sha256(&self) -> Option<Sha256Digest> {
-        self.loader.as_ref().map(|loader| loader.selected.image.digest)
+        self.loader
+            .as_ref()
+            .map(|loader| loader.selected.image.digest)
     }
 
     pub(crate) fn admit_gnu_environment(
@@ -150,14 +154,21 @@ fn admit_system_preload(path: &Path) -> io::Result<()> {
     };
     let status = file.metadata()?;
     if !status.is_file() || status.len() > PRELOAD_POLICY_BYTES {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "GNU preload policy is not a bounded regular file"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "GNU preload policy is not a bounded regular file",
+        ));
     }
     let mut bytes = Vec::new();
-    file.take(PRELOAD_POLICY_BYTES + 1).read_to_end(&mut bytes)?;
+    file.take(PRELOAD_POLICY_BYTES + 1)
+        .read_to_end(&mut bytes)?;
     if bytes.len() as u64 > PRELOAD_POLICY_BYTES
         || bytes.split(|byte| *byte == b'\n').any(|line| {
-            line.split(|byte| *byte == b'#').next().unwrap_or_default()
-                .iter().any(|byte| !byte.is_ascii_whitespace())
+            line.split(|byte| *byte == b'#')
+                .next()
+                .unwrap_or_default()
+                .iter()
+                .any(|byte| !byte.is_ascii_whitespace())
         })
     {
         return Err(io::Error::new(
@@ -181,7 +192,10 @@ mod tests {
         admit_system_preload(&policy).unwrap();
         for active in ["/tmp/hostile.so\n", "libaudit.so # comment\n", "\0"] {
             std::fs::write(&policy, active).unwrap();
-            assert_eq!(admit_system_preload(&policy).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+            assert_eq!(
+                admit_system_preload(&policy).unwrap_err().kind(),
+                io::ErrorKind::PermissionDenied
+            );
         }
     }
 }
