@@ -112,10 +112,28 @@ def test_failed_hook_is_degraded_without_rollback_or_automatic_retry(sandbox):
     assert current(sandbox) == generation
     assert effect.read_bytes() == before
     assert outcomes(repo) == rows
-    run(repo, "rollback", generation.name)
+    refused = grip("rollback", cwd=repo)
+    assert refused.returncode != 0
+    assert "nothing to roll back to" in refused.stderr
     assert current(sandbox) == generation
+    assert effect.read_bytes() == before
+    assert outcomes(repo) == rows
+    # A different generation can activate without retrying the failed hook.
+    # Explicit rollback is deliberate reactivation, not automatic recovery.
+    declare(repo, [], content="replacement")
+    run(repo, "apply")
+    assert current(sandbox).name != generation.name
+    assert (sandbox / ".workspace-hook-owned").read_text() == "replacement"
+    assert effect.read_bytes() == before
+    run(repo, "rollback", generation.name)
+    assert current(sandbox).name == generation.name
+    assert (sandbox / ".workspace-hook-owned").read_text() == "active"
     assert len(effect.read_text().splitlines()) == 2
-    assert len({row["intent"] for row in outcomes(repo)}) == 2
+    restored = outcomes(repo)
+    assert len(restored) == 2
+    assert len({row["intent"] for row in restored}) == 2
+    assert len({row["activation"] for row in restored}) == 2
+    assert all(row["state"] == {"kind": "failed", "attempt": 1} for row in restored)
 
 
 @pytest.mark.parametrize("cut,before_count,attempt,after_count", [
