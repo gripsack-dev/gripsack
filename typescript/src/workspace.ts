@@ -122,8 +122,23 @@ export {
 } from "./workspace/outputs.ts";
 
 import { condaEnvironment as condaEnvironmentImpl, pixiFromLock as pixiFromLockImpl } from "./workspace/outputs.ts";
+import { DiagnosticError, diagnosticCodes } from "./diagnostic.ts";
+import { callerSpan } from "./module.ts";
 
 /** Conda acquisition namespace: `conda.environment({ channels, packages, platforms? })`. */
 export const conda = { environment: condaEnvironmentImpl };
-/** Pixi acquisition namespace: `pixi.fromLock({ manifest, lock, environment })`. */
-export const pixi = { fromLock: pixiFromLockImpl };
+/** Pixi acquisition namespace: `pixi.fromLock({ manifest, lock, environment })`.
+ * The public type is deliberately not callable. The runtime call trap only
+ * diagnoses retired JavaScript/pre-typecheck callers; it never emits a fetch. */
+export const pixi: { fromLock: typeof pixiFromLockImpl } = Object.assign(
+  function removedPixiConstructor(): never {
+    throw new DiagnosticError({
+      code: diagnosticCodes.invalidWorkspaceValue,
+      severity: "error",
+      message: "pixi(package) was removed in 0.44; a coherent environment belongs in a gripsack.ts workspace",
+      labels: [{ span: callerSpan() ?? null, note: "removed single-package constructor called here" }],
+      help: "Use conda.environment(...) or pixi.fromLock(...). Migration guide: https://gripsack.dev/docs/workspace-migration.html",
+    });
+  },
+  { fromLock: pixiFromLockImpl },
+);
