@@ -11,6 +11,6 @@ pub const CONDA_SHA256: &[(AssetTarget, &str)] = &[
     ),
     (
         AssetTarget::LinuxAarch64Musl,
-        "d5a3a55330aa966d138730f500fa66925a56d99418b9936690da66b1279569ba",
+        "57f6db60e08441eaf0ac4813816ff873257ded21770968a64cce7cbc78585bd5",
     ),
 ];
