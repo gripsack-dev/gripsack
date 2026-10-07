@@ -3212,10 +3212,13 @@ Known diagnostics gap recorded (not fixed in 0.45.0): a declared package
 command whose selector is absent from the materialized prefix surfaces as a
 bare `E201: io: No such file or directory` instead of naming the selector.
 
-Release artifacts (Linux-first, `REL-REVIEW-0450`): promoted core binary is
-the recorded reproducibility experiment's own build — two clean builds pinned
-to image `sha256:e6445e884c3404402973c6267f6a0b286c09f9b4f8e3666cfa61cd8a67ff6dbc`
-produced byte-identical sha256 `c33cf2ee114ebc7c584599abc59e08c85a5090f7eb6c035b0f18030091583f31`.
+Release artifacts (Linux-first, `REL-REVIEW-0450`): final source `459a3c1`
+(adds the recovery-only fault-boundary availability fix found by
+release-binary qualification — `GRIPSACK_FS_RECOVER_ONLY` was debug-only
+while the crash hooks ship in every profile; the integrity refusal itself was
+correct). Promoted core binary is the recorded reproducibility experiment's
+own build — two clean builds pinned to the captured builder image produced
+byte-identical sha256 `43338a18a880c5d1b1ae1f69c95d9ae4d4d4560bdfb6b993ac7a7a24fc24b33f`.
 Finding recorded: the workspace release build embeds the build-script OUT_DIR
 path (`/app/target` vs `/tmp/repro-target` variants differ only there), so the
 fixed-target-dir repro service defines the canonical bytes. Conda helper pins:
@@ -3223,5 +3226,7 @@ x64 `152de682…4516` (local two-build + committed-pin re-check), ARM64
 `57f6db60…85bd5` (native hosted measurement run 37591535999, all four jobs
 green). Bridge pins regenerated through the full Go gate; bytes identical to
 0.44.1 (deterministic, source unchanged). Dependency audits: 372 root + 570
-helper crates, zero findings, fresh advisory DB.
+helper crates, zero findings, fresh advisory DB. Final-binary qualification:
+A/C journeys all markers; RHEL 8.10 29/29 (loader+hooks+checks); hooks/checks
+17/17 on the Debian e2e image with the release binary.
 
