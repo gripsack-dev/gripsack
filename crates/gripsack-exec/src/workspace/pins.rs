@@ -67,7 +67,7 @@ impl WorkspacePins {
             .as_ref()
             .and_then(|lock| lock.resolutions.get(&key))
             .and_then(|resolution| resolution.pins.iter().find(|pin| pin.output == output));
-        if pin.is_some_and(|pin| pin.source != *source) {
+        if pin.is_some_and(|pin| !same_source_declaration(&pin.source, source)) {
             return Err(failure(
                 output,
                 "declared source differs from its lock; frozen acquisition cannot re-resolve it",
@@ -141,6 +141,20 @@ impl WorkspacePins {
     }
 }
 
+/// Captured Pixi input identities are resolution evidence, not declaration
+/// fields. Frozen preparation and read-only inspection verify both inputs
+/// separately before using the locked closure.
+fn same_source_declaration(locked: &LockedSource, declared: &LockedSource) -> bool {
+    match (locked, declared) {
+        (LockedSource::PixiLock(locked), LockedSource::PixiLock(declared)) => {
+            locked.manifest == declared.manifest
+                && locked.lock == declared.lock
+                && locked.environment == declared.environment
+        }
+        _ => locked == declared,
+    }
+}
+
 fn read_bytes(directory: &gripsack_fs::Dir) -> Result<Option<Vec<u8>>, ExecError> {
     let file = match gripsack_fs::open_file_nofollow(directory, Path::new(WORKSPACE_LOCK)) {
         Ok(file) => file,
@@ -168,3 +182,6 @@ fn failure(output: &str, detail: impl Into<String>) -> ExecError {
         detail: detail.into(),
     }
 }
+
+#[cfg(test)]
+mod tests;
