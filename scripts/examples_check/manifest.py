@@ -188,4 +188,45 @@ EXAMPLES = [
             "page shows above it)"
         ),
     },
+    {
+        "id": "environments-workspace-node",
+        "file": "environments.md",
+        "locator": {"window": "gripsack.ts"},
+        "kind": "fragment",
+        "reason": (
+            "complete verified workspace program (default-exports "
+            "defineWorkspace), but the site checker scaffolds module/host "
+            "files only — no root gripsack.ts workspace kind"
+        ),
+    },
+    {
+        "id": "environments-profile-hook",
+        "file": "environments.md",
+        "locator": {"window": "gripsack.ts — a profile hook"},
+        "kind": "fragment",
+        "reason": (
+            "hook declaration is real but elided from its selecting profile "
+            "— `profile(…, { hooks: [\"after\"] })` appears in prose only"
+        ),
+    },
+    {
+        "id": "migration-conda-environment",
+        "file": "workspace-migration.md",
+        "locator": {"window": "gripsack.ts — conda.environment"},
+        "kind": "fragment",
+        "reason": (
+            "pkg(...) fragment with the environment/profile continuation "
+            "elided to comments — the complete shape lives on environments.md"
+        ),
+    },
+    {
+        "id": "migration-pixi-fromlock",
+        "file": "workspace-migration.md",
+        "locator": {"window": "gripsack.ts — pixi.fromLock"},
+        "kind": "fragment",
+        "reason": (
+            "input + provider declarations only; the workspace({inputs, "
+            "outputs}) wiring is elided in a trailing comment"
+        ),
+    },
 ]

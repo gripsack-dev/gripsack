@@ -852,6 +852,31 @@ reproducibility/dependency/protocol checks and already passing non-VM native tes
 remain enabled. No runtime guard, proof, Linux gate, checksum or original delivery
 inventory is weakened or removed; skipped lanes cannot close their milestones.
 
+### Owner exception REL-REVIEW-0450
+
+The owner requests the external 0.42.0→0.44.1 consumer findings addressed in
+a coordinated **0.45.0 minor release**, explicitly permitting GitHub CI and
+macOS to be skipped and deferring the separate CI/provider migration.
+
+- Scope: the new §17 review-response leaves, not a claim that old failures or
+  absent workspace capabilities are acceptable.
+- Waived: hosted CI execution and fresh macOS qualification for this release.
+  They remain unrun, not passing. The existing Linux-first distribution and
+  honest local-build provenance limits remain visible; no new Mac binary,
+  native acceptance or GitHub-hosted attestation is invented.
+- Required replacement evidence: affected local container checks, actual
+  modern-glibc and glibc-2.28 execution, security negatives, applicable proof
+  obligations, real published consumers and the live installation surface.
+  An available newer host kernel is not silently labelled the reviewer's
+  external el9 5.14 Space kernel.
+- Preserve exact captured source/policy approval, strict retained-state
+  admission, source/version/digest checks and post-activation failure semantics.
+  No confinement downgrade, automatic approval, changed pin to hide a failure,
+  or documentation-only substitute for required hook/runtime implementation.
+- Preserve the owner's no fuzz-engine/corpus-replay instruction. Subsequent
+  ordinary release qualification and the separately researched CI migration
+  require their own evidence and owner decisions.
+
 ### Owner exception REL-ALPHA-0441-2026-10-04
 
 After the native-measurement workflow remained queued behind an unallocated
@@ -3135,4 +3160,46 @@ required. Receipts live in CI artifacts; their checkout directory is ignored.
   owned builder cache, ran GC, and reused/re-executed the retained artifact with
   the bridge unavailable. Plan0052 §35 records the source/build identities and
   the separate Conda, registry and first-party consumer evidence.
+
+## 17. External consumer review — 0.45.0 execution record
+
+The owner supplied a fresh host/module→workspace migration report after
+0.44.1. Its observations are established evidence, not invitations to rerun
+failing commands merely to confirm them. Source inspection confirms the Pixi
+lock declaration/captured-digest mismatch and the GNU loader version gate.
+The personal node profile success and intentional missing-libX11 rejection
+are retained as such; neither proves full private-repository portability.
+
+All leaves below are **NEXT / 0.45.0**. Publication is blocked until their
+applicable Linux behavior, migration and evidence are complete. `REL-REVIEW-0450`
+above is the exact hosted-CI/macOS exception, not an implementation deferral.
+
+| Leaf | Owner and responsibility | Acceptance | State/evidence |
+|---|---|---|---|
+| UP45.A | Integration: persistent profiles, personal/shared-path examples, initialization and rollback | Actual retained-prefix commands from a clean noninteractive shell and shared destination; profile rollback behavior documented/exercised; explain complete Conda runtime dependencies including optional pyright closure | implementing; reviewer node success and missing-libX11 refusal are established; new integration evidence pending |
+| UP45.B | Glibc228: native consumer ELF admission and process loader plan | GNU-dynamic commands actually execute with glibc 2.28 and modern glibc while preserving sealed executable identity, closure/search equivalence and confinement; static commands remain supported | implementing; historical E128 is established; lowering a threshold alone is not acceptance |
+| UP45.C | Integration: source declaration/pin matching and Pixi input verification | Unchanged Pixi lock7 survives update/reapproval/update/check/run/apply; changed manifest or lock is refused until explicit update and exact reviewed approval; no captured-digest comparison masquerading as declaration mismatch | implementing; source mismatch confirmed in pins/prepare/source; regressions and actual import pending |
+| UP45.D | WorkspaceHooks: workspace activation/check capability through existing durable hook owners | Actual selected hook and check effects on both supported Linux runtimes; durable identity/outcomes and crash ambiguity preserved; post-activation failure does not auto-rollback; no interpreter workaround for absent capability | implementing; E124 before execution is established; missing executor must be implemented |
+| UP45.E | Integration: declared solve baseline, immutable lock assumptions and runtime portability | Explicit Pixi glibc baseline governs solve/import and exact archives; disclose host-relative native solve assumptions and deliberate baseline review; separately verify actual CPU/libc requirements and loader admission | implementing; target ABI alone is not a baseline; no portability inference from lock identity |
+| UP45.1 | CapturePolicy: configuration, bounded source bundle capture and exact trust binding | Explicit conservative capture exclusions/roots, no automatic gitignore trust; offending alias path shown; excluded source is not readable via live-tree/alias/pinned-SDK fallback; changed policy/source invalidates approval | implementing; ignored outbound venv/editor aliases and unnamed error are established |
+| UP45.2 | Integration: retired callable Pixi migration diagnostic | Actionable diagnostic names removed constructor and current workspace alternatives; no restored legacy provider or compatibility shim | pending |
+| UP45.3 | Integration: host/module support and migration contract | Clear current support status and examples covering host parameters/destinations, lock selection and configuration ownership without an invented removal date or perpetual compatibility promise | pending |
+| UP45.4 | Integration with CapturePolicy: unattended reviewed approval | Immutable reviewed source/lock/untracked inventory/exclusion policy; compare inspected digests against reviewed expected values, reject mismatch, then approve exactly; no trust-all or floating approval | pending |
+| UP45.5 | Integration: retained store/journal downgrade admission | Establish completed-v2 versus unfinished-v2 downgrade behavior, document unsupported 0.42.0 reads and verify refusal before effects; do not claim new code retrofits the already-published old binary | pending |
+| UP45.REL | Integration: versions, caller migration, Linux qualification and publication | Source-bound local gates and applicable proofs, actual old/new GNU runtime consumers, coordinated core/SDK publication, exact artifacts/registry/installer/site checks; all skipped Mac/CI/provenance claims explicit | pending |
+
+Responsibility map: native ELF/runtime admission remains in
+`workspace/consumer` and `gripsack-process`; hook execution reuses the existing
+activation/journal/process owners rather than a second hook protocol; source
+capture policy stays with configuration/evaluation and store source bundles.
+The integration owner owns shared wire/schema decisions, `main.rs`,
+`workspace/prepare.rs`, journal format and global documentation/release metadata.
+Shared source comparison and captured-input verification remain separate
+invariants. No IR extension is assumed merely to document an already expressible
+Pixi baseline; any necessary wire change must preserve the strict versioned
+reader policy and migrate every emitter/caller.
+
+Parallel implementations skip build/lint/test/formatter runs until integration.
+Actual verification commands, raw results, changed symbols and remaining
+acceptance will replace the pending evidence in this record before release.
 
