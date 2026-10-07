@@ -1,6 +1,7 @@
 //! Resolve source aliases without granting access to ambient ancestor trees.
 use super::inventory::{MAX_DEPTH, MAX_LINK_EXPANSIONS, invalid};
 use super::{CaptureBudget, CaptureRoot};
+use super::policy::CaptureAdmission;
 use gripsack_fs::Dir;
 use std::{
     collections::VecDeque,
@@ -45,14 +46,16 @@ fn parts(path: &Path) -> io::Result<VecDeque<Part>> {
 
 fn endpoint(roots: &[CaptureRoot], path: &Path) -> Option<usize> {
     roots.iter().enumerate().rev().find_map(|(index, root)| {
-        (path == root.canonical || path == root.declared).then_some(index)
+        (path == root.canonical || path == root.declared
+            || root.declared_alias.as_deref() == Some(path)).then_some(index)
     })
 }
 
 fn is_root_ancestor(roots: &[CaptureRoot], path: &Path) -> bool {
     roots
         .iter()
-        .any(|root| root.canonical.starts_with(path) || root.declared.starts_with(path))
+        .any(|root| root.canonical.starts_with(path) || root.declared.starts_with(path)
+            || root.declared_alias.as_ref().is_some_and(|alias| alias.starts_with(path)))
 }
 
 /// An unresolved suffix is never lexically collapsed across a symlink. Outside
@@ -63,6 +66,7 @@ pub(super) fn resolve(
     from_root: usize,
     parent: &Path,
     target: &Path,
+    admission: &CaptureAdmission<'_>,
     budget: &mut CaptureBudget,
 ) -> io::Result<PathBuf> {
     let origin = roots
@@ -79,6 +83,7 @@ pub(super) fn resolve(
             return Err(invalid("source alias parent is not root-relative"));
         };
         budget.resolve_step()?;
+        admission.require_available(origin, &relative.join(name))?;
         let directory = directories.last().unwrap_or(&origin.directory);
         let child = gripsack_fs::open_dir_nofollow(directory, Path::new(name))?;
         directories.push(child);
@@ -124,6 +129,11 @@ pub(super) fn resolve(
             }
             Part::Name(name) => {
                 let candidate = physical.join(&name);
+                // Check before endpoint promotion or any filesystem read. A
+                // symlink cannot turn an excluded spelling into a root grant.
+                if let Some(index) = selected {
+                    admission.require_available(&roots[index], &relative.join(&name))?;
+                }
                 if let Some(index) = endpoint(roots, &candidate)
                     && (selected != Some(index) || !relative.as_os_str().is_empty())
                 {

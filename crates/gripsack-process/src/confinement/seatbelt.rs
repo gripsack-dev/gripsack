@@ -26,7 +26,12 @@ pub(super) fn system_runtime_roots(roots: &mut Vec<PathBuf>) {
         "/usr/share/zoneinfo",
         "/Library/Apple/System/Library",
     ] {
-        super::push_existing(Path::new(directory), roots);
+        if let Ok(canonical) = Path::new(directory).canonicalize()
+            && canonical.is_dir()
+            && !roots.contains(&canonical)
+        {
+            roots.push(canonical);
+        }
     }
 }
 
@@ -70,6 +75,11 @@ impl Profile {
             if !boundary.read_write.contains(root) {
                 read_grant(&mut profile, root)?;
             }
+        }
+        for file in &boundary.read_files {
+            profile.push_str("(allow file-read* (literal \"");
+            escaped(&mut profile, file)?;
+            profile.push_str("\"))\n");
         }
         for root in &boundary.read_write {
             profile.push_str("(allow file-read* file-write* (subpath \"");

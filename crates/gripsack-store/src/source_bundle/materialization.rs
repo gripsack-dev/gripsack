@@ -15,11 +15,19 @@ impl SourceBundle {
     /// Resolve through the retained root capability, including admitted SDK
     /// roots. The returned path never names a live original source.
     pub fn materialization_path(&self, relative: &Path) -> io::Result<PathBuf> {
+        if relative.components().take(MAX_DEPTH + 1).count() > MAX_DEPTH {
+            return Err(invalid("materialized source exceeds its path-depth budget"));
+        }
         if relative
             .components()
             .any(|part| !matches!(part, Component::Normal(_) | Component::CurDir))
         {
             return Err(invalid("materialized source must be repository-relative"));
+        }
+        if self.excluded_selection(relative) {
+            return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!(
+                "repository source {} is excluded by capture policy", relative.display()
+            )));
         }
         let resolved = self.root.canonicalize(Path::new("repo").join(relative))?;
         Ok(self
@@ -27,6 +35,30 @@ impl SourceBundle {
             .parent()
             .expect("captured root exists")
             .join(resolved))
+    }
+
+    /// An alias to an included parent must not turn a deliberately unavailable
+    /// child into an ordinary missing selector eligible for artifact fallback.
+    fn excluded_selection(&self, relative: &Path) -> bool {
+        if self.capture_policy.exclusions().is_empty() {
+            return false;
+        }
+        let mut logical = PathBuf::from("repo");
+        for component in relative.components().filter(|part| *part != Component::CurDir) {
+            logical.push(component.as_os_str());
+            if let Ok(relative) = logical.strip_prefix("repo")
+                && self.capture_policy.excludes(relative)
+            {
+                return true;
+            }
+            if let Some(SourceObject::Alias { target }) = logical.to_str()
+                .and_then(|path| self.inventory.entry(path))
+                .map(|entry| &entry.object)
+            {
+                logical = PathBuf::from(target);
+            }
+        }
+        false
     }
 
     /// Visit a bounded resolved selection. Aliased directories may expand, so

@@ -212,6 +212,8 @@ struct Inspection<'a> {
     policy: &'a EvaluationPolicy,
     provenance: &'a GitProvenance,
     inventory: &'a SourceInventory,
+    capture_exclusions: &'a [String],
+    runtime_access: &'a gripsack_process::RuntimeAccess,
     approval: ApprovalInspection,
 }
 
@@ -225,13 +227,15 @@ fn inspect_json(prepared: &PreparedEvaluation) -> ExitCode {
         Err(error) => return operational(error),
     };
     print_json(&Inspection {
-        version: 1,
+        version: 2,
         repository: prepared.sources().repository_identity(),
         bundle_digest: prepared.sources().digest(),
         policy_digest,
         policy: prepared.policy(),
         provenance: prepared.provenance(),
         inventory: prepared.sources().inventory(),
+        capture_exclusions: prepared.sources().capture_policy().exclusions(),
+        runtime_access: prepared.runtime_access(),
         approval,
     })
 }

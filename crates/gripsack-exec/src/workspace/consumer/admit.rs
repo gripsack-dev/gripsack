@@ -42,7 +42,6 @@ pub(in crate::workspace) struct HostTarget {
     os: TargetOs,
     arch: TargetArch,
     abi: Option<BinaryAbi>,
-    gnu_loader_controls: bool,
 }
 impl HostTarget {
     pub fn from_facts(facts: &gripsack_ir::HostFacts) -> Result<Self, ExecError> {
@@ -71,18 +70,6 @@ impl HostTarget {
             Some(libc) if libc.starts_with("glibc") => Some(BinaryAbi::Gnu),
             Some(_) => None,
         };
-        let gnu_loader_controls = facts
-            .libc
-            .as_deref()
-            .and_then(|value| value.strip_prefix("glibc-"))
-            .and_then(|value| {
-                let mut fields = value.split('.');
-                Some((
-                    fields.next()?.parse::<u32>().ok()?,
-                    fields.next()?.parse::<u32>().ok()?,
-                ))
-            })
-            .is_some_and(|version| version >= (2, 33));
         Ok(Self {
             requirement: TargetRequirement {
                 os,
@@ -93,7 +80,6 @@ impl HostTarget {
             os,
             arch,
             abi,
-            gnu_loader_controls,
         })
     }
 }
@@ -176,7 +162,7 @@ pub(in crate::workspace) struct AdmittedCommand {
     /// Checked per-command lookup plan, including translated main-image origin
     /// paths. A changed dependency selection during translation is refused.
     pub library_dirs: Vec<PathBuf>,
-    pub gnu_loader: Option<&'static str>,
+    pub gnu_loader: Option<std::sync::Arc<gripsack_process::SelectedGnuLoader>>,
     pub macho_library_dirs: Option<Vec<PathBuf>>,
     pub interpreter: Option<PinnedInterpreter>,
     pub bytecode: Option<BytecodePolicy>,
@@ -246,7 +232,12 @@ impl EnvironmentPlan {
         let macho = commands
             .values()
             .any(|command| command.macho_library_dirs.is_some());
+        let gnu_loader = commands.values().find_map(|command| command.gnu_loader.as_ref());
         for (key, argument) in &declaration.env {
+            if let Some(loader) = gnu_loader {
+                loader.check_environment_key(std::ffi::OsStr::new(key))
+                    .map_err(|error| gate(&declaration.span, error.to_string()))?;
+            }
             if macho && key.starts_with("DYLD_") {
                 return Err(gate(
                     &declaration.span,
@@ -391,7 +382,9 @@ impl EnvironmentPlan {
                 )
                 .map_err(operational)?;
             }
-            if let Some(loader) = command.gnu_loader {
+            if let Some(loader) = &command.gnu_loader {
+                let loader = loader.path().to_str()
+                    .ok_or_else(|| failure("platform loader path is not UTF-8"))?;
                 let subject = command
                     .interpreter
                     .as_ref()

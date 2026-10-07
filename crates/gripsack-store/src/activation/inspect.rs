@@ -82,8 +82,11 @@ pub fn inspect(
         Access::Inspect,
     )?;
     let active = match pointer {
-        Some(PendingPointer::Current(instance)) => {
+        Some(PendingPointer::Current { version, instance }) => {
             let batch = ActivationBatch::open(home, instance, Access::Inspect)?;
+            if batch.plan.version != version {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "activation pointer version differs from its plan"));
+            }
             emit(&batch, true, &mut visit)?;
             Some(instance)
         }

@@ -30,6 +30,8 @@
 //! unconfined.
 #[cfg(target_os = "macos")]
 pub(super) mod seatbelt;
+mod runtime;
+pub use runtime::RuntimeAccess;
 #[cfg(target_os = "linux")]
 use std::fs::File;
 #[cfg(target_os = "linux")]
@@ -38,8 +40,6 @@ use std::os::fd::FromRawFd;
 use std::os::unix::io::AsRawFd;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::{ffi::OsStr, io::Read, process::Command};
 use std::{io, path::Path};
 /// `prctl(PR_SET_NO_NEW_PRIVS)` — fixed as 38 on every Linux ABI.
 #[cfg(target_os = "linux")]
@@ -49,6 +49,7 @@ const PR_SET_NO_NEW_PRIVS: libc::c_int = 38;
 #[derive(Debug, Default)]
 pub struct Boundary {
     read: Vec<PathBuf>,
+    read_files: Vec<PathBuf>,
     read_write: Vec<PathBuf>,
 }
 
@@ -60,6 +61,19 @@ impl Boundary {
     /// Everything beneath an existing directory becomes readable.
     pub fn read_beneath(mut self, directory: &Path) -> io::Result<Self> {
         push_unique(&mut self.read, directory)?;
+        Ok(self)
+    }
+
+    /// Read one existing regular file, never its siblings or parent directory.
+    pub fn read_file(mut self, path: &Path) -> io::Result<Self> {
+        let canonical = path.canonicalize()?;
+        if !std::fs::metadata(&canonical)?.is_file() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                "an exact confinement read grant must name a regular file"));
+        }
+        if !self.read_files.contains(&canonical) {
+            self.read_files.push(canonical);
+        }
         Ok(self)
     }
 
@@ -276,6 +290,9 @@ impl Ruleset {
                 };
                 ruleset.add_path_beneath(root, access)?;
             }
+            for file in &boundary.read_files {
+                ruleset.add_path_beneath(file, LANDLOCK_ACCESS_FS_READ_FILE)?;
+            }
             // Executing a binary never widens the read boundary: descendants
             // inherit the read/write rules unchanged, and the evaluator's own
             // process spawning is denied by Deno, not by this ruleset. An
@@ -309,6 +326,16 @@ impl Ruleset {
             .read(true)
             .custom_flags(libc::O_PATH | libc::O_CLOEXEC)
             .open(directory)?;
+        let metadata = anchor.metadata()?;
+        let valid = if allowed_access == LANDLOCK_ACCESS_FS_READ_FILE {
+            metadata.is_file()
+        } else {
+            metadata.is_dir()
+        };
+        if !valid {
+            return Err(io::Error::new(io::ErrorKind::InvalidData,
+                "confinement anchor changed its admitted object kind"));
+        }
         let attr = PathBeneathAttr {
             allowed_access,
             parent_fd: anchor.as_raw_fd(),
@@ -413,208 +440,3 @@ fn landlock_abi() -> io::Result<u32> {
     Ok(abi as u32)
 }
 
-/// Read roots the selected runtime itself needs: the program's directory, its
-/// dynamic loader dependencies (`ldd`, operator-trusted input only), any `#!`
-/// interpreter with the same treatment, and a python interpreter's standard
-/// library when the runtime is a script wrapper. `EXECUTE` needs no rule; see
-/// the module header.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-pub fn runtime_read_roots(
-    environment: &super::OperatorEnvironment,
-    program: &Path,
-) -> io::Result<Vec<PathBuf>> {
-    let mut roots = Vec::new();
-    let resolved = resolve_program(environment, program)?;
-    #[cfg(target_os = "macos")]
-    seatbelt::system_runtime_roots(&mut roots);
-    match script_interpreter(&resolved)? {
-        None => add_program_roots(&resolved, &mut roots)?,
-        Some((interpreter, argument)) => {
-            // `#!/usr/bin/env NAME` resolves NAME through the operator PATH;
-            // the named program — not `env` — supplies the real load roots.
-            let named = argument.filter(|_| {
-                Path::new(&interpreter)
-                    .file_name()
-                    .and_then(OsStr::to_str)
-                    .is_some_and(|name| name == "env")
-            });
-            add_program_roots(&interpreter, &mut roots)?;
-            let (resolved, origin) = match named {
-                Some(name) => (resolve_program(environment, Path::new(&name))?, name),
-                None => {
-                    let origin = interpreter
-                        .file_name()
-                        .and_then(OsStr::to_str)
-                        .unwrap_or_default()
-                        .to_owned();
-                    (interpreter, origin)
-                }
-            };
-            add_program_roots(&resolved, &mut roots)?;
-            if is_python(&resolved) {
-                add_python_stdlib(&resolved, &origin, &mut roots);
-            }
-        }
-    }
-    Ok(roots)
-}
-
-/// Without a kernel confinement mechanism there is no boundary to derive
-/// roots for; evaluator launch fails closed at ruleset assembly instead.
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-pub fn runtime_read_roots(
-    _environment: &super::OperatorEnvironment,
-    _program: &Path,
-) -> io::Result<Vec<PathBuf>> {
-    Ok(Vec::new())
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn resolve_program(
-    environment: &super::OperatorEnvironment,
-    program: &Path,
-) -> io::Result<PathBuf> {
-    environment.resolve(program)
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn add_program_roots(resolved: &Path, roots: &mut Vec<PathBuf>) -> io::Result<()> {
-    let parent = resolved.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "selected runtime has no parent directory",
-        )
-    })?;
-    push_existing(parent, roots);
-    #[cfg(target_os = "linux")]
-    for library in shared_libraries(resolved)? {
-        if let Some(parent) = library.parent() {
-            push_existing(parent, roots);
-        }
-    }
-    Ok(())
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn push_existing(directory: &Path, roots: &mut Vec<PathBuf>) {
-    if let Ok(canonical) = directory.canonicalize()
-        && canonical.is_dir()
-        && !roots.contains(&canonical)
-    {
-        roots.push(canonical);
-    }
-}
-
-/// `ldd` over an operator-selected program (never repository bytes). Missing
-/// `ldd` is a hard error: without library roots the confined runtime could
-/// not start, and guessing would either over-grant or under-grant silently.
-#[cfg(target_os = "linux")]
-fn shared_libraries(resolved: &Path) -> io::Result<Vec<PathBuf>> {
-    let output = Command::new("ldd")
-        .arg(resolved)
-        .output()
-        .map_err(|error| {
-            io::Error::new(
-                error.kind(),
-                format!(
-                    "cannot derive runtime library roots (ldd unavailable): {error}; \
-                 evaluation is refused rather than run with guessed grants"
-                ),
-            )
-        })?;
-    if !output.status.success() {
-        // Static executables ("not a dynamic executable") legitimately have
-        // no library roots. Any other ldd refusal yields no roots too: a
-        // dynamic binary we could not map then fails closed at exec with a
-        // visible access error rather than running under guessed grants.
-        return Ok(Vec::new());
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    let mut libraries = Vec::new();
-    for token in text.split_whitespace() {
-        if !token.starts_with('/') {
-            continue;
-        }
-        let path = PathBuf::from(token.trim_end_matches([':', ')']));
-        // "not found" targets and informational maps are skipped by existence.
-        if path.exists() {
-            libraries.push(path);
-        }
-    }
-    Ok(libraries)
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn script_interpreter(resolved: &Path) -> io::Result<Option<(PathBuf, Option<String>)>> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(resolved)?;
-    let mut header = [0; 128];
-    let length = file.read(&mut header)?;
-    if length < 2 || &header[..2] != b"#!" {
-        return Ok(None);
-    }
-    let line = header[..length]
-        .split(|&byte| byte == b'\n')
-        .next()
-        .unwrap_or(&[]);
-    let line = line.trim_ascii();
-    let text = String::from_utf8_lossy(&line[2..]);
-    let mut parts = text.splitn(2, [' ', '\t']);
-    let Some(interpreter) = parts.next().filter(|value| !value.is_empty()) else {
-        return Ok(None);
-    };
-    let argument = parts
-        .next()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let interpreter = PathBuf::from(interpreter);
-    if !interpreter.is_absolute() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "selected runtime script interpreter must be absolute",
-        ));
-    }
-    Ok(Some((interpreter, argument.map(str::to_owned))))
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn is_python(resolved: &Path) -> bool {
-    resolved
-        .file_name()
-        .and_then(OsStr::to_str)
-        .is_some_and(|name| name.starts_with("python"))
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn add_python_stdlib(interpreter: &Path, origin: &str, roots: &mut Vec<PathBuf>) {
-    use std::os::unix::process::CommandExt;
-    let mut command = Command::new(interpreter);
-    // The confined interpreter resolves its own venv from argv[0] through the
-    // operator PATH; the probe must perform that same walk to observe it.
-    if !origin.is_empty() {
-        command.arg0(origin);
-    }
-    let output = command
-        .args(["-E", "-c"])
-        .arg(
-            "import sys, sysconfig\n\
-             print(sys.prefix)\n\
-             paths = sysconfig.get_paths()\n\
-             print(paths['stdlib'])\n\
-             print(paths['purelib'])",
-        )
-        .output();
-    let Ok(output) = output else { return };
-    if !output.status.success() {
-        return;
-    }
-    // The prefix line covers a virtualenv interpreter's own tree (pyvenv.cfg,
-    // site-packages); the sysconfig lines cover the base standard library.
-    let text = String::from_utf8_lossy(&output.stdout);
-    for line in text.lines() {
-        push_existing(Path::new(line), roots);
-    }
-}

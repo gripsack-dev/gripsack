@@ -3,7 +3,7 @@
 //! String-table addresses resolve through PT_LOAD vaddr windows with
 //! checked arithmetic only.
 use super::{
-    Endian, ExecutableArch, ExecutableFormat, ExecutableMetadata, Interpreter, LayoutError,
+    ElfLoaderExtension, Endian, ExecutableArch, ExecutableFormat, ExecutableMetadata, Interpreter, LayoutError,
     MAX_DYNAMIC_BYTES, MAX_PROGRAM_HEADERS, MAX_STRING_BYTES, ObjectKind, WordClass, field,
     read_exact_at, read_up_to,
 };
@@ -156,6 +156,10 @@ fn dynamic_entries(
     const DT_STRTAB: i64 = 5;
     const DT_RPATH: i64 = 15;
     const DT_RUNPATH: i64 = 29;
+    const DT_DEPAUDIT: i64 = 0x6fff_fefb;
+    const DT_AUDIT: i64 = 0x6fff_fefc;
+    const DT_AUXILIARY: i64 = 0x7fff_fffd;
+    const DT_FILTER: i64 = 0x7fff_ffff;
     let mut strtab: Option<u64> = None;
     let mut wanted: Vec<(i64, u64)> = Vec::new();
     for chunk in segment.chunks_exact(entry_size) {
@@ -167,7 +171,9 @@ fn dynamic_entries(
         match tag {
             DT_NULL => break,
             DT_STRTAB => strtab = Some(value),
-            DT_NEEDED | DT_RPATH | DT_RUNPATH => wanted.push((tag, value)),
+            DT_NEEDED | DT_RPATH | DT_RUNPATH | DT_DEPAUDIT | DT_AUDIT | DT_AUXILIARY | DT_FILTER => {
+                wanted.push((tag, value));
+            }
             _ => {}
         }
     }
@@ -188,7 +194,12 @@ fn dynamic_entries(
         match tag {
             DT_NEEDED => metadata.needed_libraries.push(name),
             DT_RPATH => metadata.rpaths.push(name),
-            _ => metadata.runpaths.push(name),
+            DT_RUNPATH => metadata.runpaths.push(name),
+            DT_AUDIT => metadata.elf_loader_extensions.push(ElfLoaderExtension::Audit(name)),
+            DT_DEPAUDIT => metadata.elf_loader_extensions.push(ElfLoaderExtension::DependencyAudit(name)),
+            DT_AUXILIARY => metadata.elf_loader_extensions.push(ElfLoaderExtension::AuxiliaryFilter(name)),
+            DT_FILTER => metadata.elf_loader_extensions.push(ElfLoaderExtension::Filter(name)),
+            _ => unreachable!("only requested dynamic strings reach this dispatch"),
         }
     }
     Ok(())

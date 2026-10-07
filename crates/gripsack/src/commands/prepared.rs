@@ -1,11 +1,13 @@
 //! One captured source/runtime/policy owner spans approval and all eval rounds.
+mod configuration;
 mod provenance;
+mod runtime;
 
 use crate::render::DiagnosticSink;
 use gripsack_ir::HostName;
 use gripsack_process::{Limits, OperatorEnvironment, SelectedProgram};
 use gripsack_store::{
-    source_bundle::SourceBundle,
+    source_bundle::{SourceBundle, SourceCapturePolicy},
     trust::{self, ApprovalStatus, EvaluationPolicy, GitProvenance},
 };
 use std::{
@@ -27,7 +29,7 @@ pub(super) struct PreparedEvaluation {
     pub(super) config: gripsack_config::Config,
     pub(super) host: HostName,
     pub(super) provisioning: Arc<gripsack_fetch::FetchContext>,
-    runtime_roots: Vec<PathBuf>,
+    runtime_access: gripsack_process::RuntimeAccess,
     evaluator_cache: PathBuf,
     evaluator_tmp: PathBuf,
 }
@@ -54,16 +56,17 @@ impl PreparedEvaluation {
                 sink.report(&[diagnostic]);
                 ExitCode::FAILURE
             })?;
-        let initial = load_env(repo, None, sink)?;
+        let mut initial = configuration::Configuration::read(repo, None, sink)?;
         if explicit_host.is_none()
-            && let Some(host) = &initial.env.default_host
+            && let Some(host) = &initial.env.env.default_host
         {
             HostName::parse(host.clone()).map_err(|diagnostic| {
                 sink.report(&[diagnostic]);
                 ExitCode::FAILURE
             })?;
         }
-        drop(initial);
+        let capture_policy = SourceCapturePolicy::new(std::mem::take(&mut initial.env.capture.exclude))
+            .map_err(operational)?;
         let environment = OperatorEnvironment::capture().map_err(operational)?;
         let home = std::path::absolute(gripsack_store::gripsack_home()).map_err(operational)?;
         let frontend = gripsack_exec::ensure_ts_frontend(&home, env!("CARGO_PKG_VERSION"))
@@ -73,17 +76,27 @@ impl PreparedEvaluation {
                     "this binary has no embedded TypeScript frontend",
                 ))
             })?;
-        let pin_name = repo.join("node_modules/@gripsack/core");
-        let pin = match std::fs::symlink_metadata(&pin_name) {
-            Ok(_) => Some(pin_name.canonicalize().map_err(operational)?),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-            Err(error) => return Err(operational(error)),
+        let pin_relative = Path::new("node_modules/@gripsack/core");
+        // An editor-only SDK exclusion must precede metadata/canonicalization:
+        // it is not an alternative way to admit the external package root.
+        let pin = if capture_policy.excludes(pin_relative) {
+            None
+        } else {
+            let pin_name = repo.join(pin_relative);
+            match std::fs::symlink_metadata(&pin_name) {
+                Ok(_) => Some(pin_name.canonicalize().map_err(operational)?),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+                Err(error) => return Err(operational(error)),
+            }
         };
         let sources = Arc::new(
-            SourceBundle::capture(repo, &frontend, pin.as_deref(), &home).map_err(operational)?,
+            SourceBundle::capture(repo, &frontend, pin.as_deref(), &home, capture_policy)
+                .map_err(operational)?,
         );
         sink.bind_captured_source(Arc::clone(&sources));
-        let mut env = load_env(sources.repository(), Some(&sources), sink)?;
+        let captured = configuration::Configuration::read(sources.repository(), Some(&sources), sink)?;
+        initial.require_same(&captured).map_err(operational)?;
+        let mut env = captured.env;
         let host = match explicit_host {
             Some(host) => host,
             None => HostName::parse(
@@ -112,6 +125,8 @@ impl PreparedEvaluation {
         // Only the core-selected runtime is provisioned before approval. Repo
         // fetcher/linter provisioning belongs to the later authorized path.
         let deno = gripsack_exec::ensure_deno(&home, &provisioning).map_err(operational)?;
+        let runtime_access = runtime::access(&sources, &environment, &deno, &home)
+            .map_err(operational)?;
         let evaluator_cache = home.join("deno-cache");
         let evaluator_tmp = home.join("eval-tmp");
         std::fs::create_dir_all(&evaluator_cache).map_err(operational)?;
@@ -124,14 +139,16 @@ impl PreparedEvaluation {
         let deadline = Instant::now()
             .checked_add(limits.timeout)
             .ok_or_else(|| operational(io::Error::other("runtime selection deadline overflow")))?;
-        let runtime =
-            SelectedProgram::select(&environment, &deno, None, deadline).map_err(operational)?;
-        let runtime_roots =
-            gripsack_process::runtime_read_roots(&environment, &deno).map_err(operational)?;
+        let runtime = SelectedProgram::select(
+            &environment, &deno, Some(runtime_access.primary_digest().map_err(operational)?), deadline,
+        ).map_err(operational)?;
+        runtime_access.require_selected_identity(&runtime.identity()).map_err(operational)?;
+        let evaluator_cache = sources.admit_evaluator_root(&evaluator_cache).map_err(operational)?;
+        let evaluator_tmp = sources.admit_evaluator_root(&evaluator_tmp).map_err(operational)?;
         let policy = EvaluationPolicy::capture(
             &sources,
             runtime.identity(),
-            &(&config, &env.linters),
+            &(&config, &env.linters, &runtime_access),
             limits,
             super::probe::PROBE_ROUNDS,
             super::probe::INPUT_DOCUMENT_BYTES,
@@ -171,7 +188,7 @@ impl PreparedEvaluation {
             config,
             host,
             provisioning,
-            runtime_roots,
+            runtime_access,
             evaluator_cache,
             evaluator_tmp,
         })
@@ -182,6 +199,9 @@ impl PreparedEvaluation {
     }
     pub(super) fn policy(&self) -> &EvaluationPolicy {
         &self.policy
+    }
+    pub(super) fn runtime_access(&self) -> &gripsack_process::RuntimeAccess {
+        &self.runtime_access
     }
     pub(super) fn provenance(&self) -> &GitProvenance {
         &self.provenance
@@ -255,6 +275,28 @@ impl PreparedEvaluation {
             "runtime: {} ({:?})",
             self.policy.runtime.executable_sha256, self.policy.runtime.byte_binding
         );
+        for file in self.runtime_access.files() {
+            println!(
+                "runtime read file: {}",
+                gripsack_process::terminal::tame(file.display().to_string())
+            );
+        }
+        for directory in self.runtime_access.directories() {
+            println!(
+                "interpreter/platform data root: {}",
+                gripsack_process::terminal::tame(directory.display().to_string())
+            );
+        }
+        println!(
+            "frontend implementation: {}",
+            if self.sources.pinned_frontend().is_some() { "pinned SDK" } else { "embedded SDK" }
+        );
+        for excluded in self.sources.capture_policy().exclusions() {
+            println!(
+                "capture exclude: {}",
+                gripsack_process::terminal::tame(excluded.clone())
+            );
+        }
         println!(
             "evaluator: captured source and one immutable input file; no env, network, subprocess, FFI or system grants"
         );
@@ -307,8 +349,8 @@ impl ApprovedEvaluation<'_> {
     pub(super) fn policy(&self) -> &EvaluationPolicy {
         &self.prepared.policy
     }
-    pub(super) fn runtime_roots(&self) -> &[PathBuf] {
-        &self.prepared.runtime_roots
+    pub(super) fn runtime_access(&self) -> &gripsack_process::RuntimeAccess {
+        &self.prepared.runtime_access
     }
     pub(super) fn evaluator_cache(&self) -> &Path {
         &self.prepared.evaluator_cache
@@ -317,46 +359,11 @@ impl ApprovedEvaluation<'_> {
         &self.prepared.evaluator_tmp
     }
 
-    /// The provisioned evaluator runtime tree. Executing a binary under
-    /// Landlock requires reading it, and an operator-selected script runtime
-    /// commonly execs the pinned runtime gripsack provisioned here.
-    pub(super) fn runtime_home(&self) -> PathBuf {
-        self.prepared.home.join("tools")
-    }
     pub(super) fn map_diagnostics(&self, diagnostics: &mut [gripsack_ir::Diagnostic]) {
         self.prepared.map_diagnostics(diagnostics);
     }
 }
 
-fn load_env(
-    repo: &Path,
-    sources: Option<&SourceBundle>,
-    sink: &mut DiagnosticSink,
-) -> Result<gripsack_config::EnvConfig, ExitCode> {
-    let path = repo.join("env.toml");
-    match std::fs::symlink_metadata(&path) {
-        Ok(_) => gripsack_config::load_env(&path).map_err(|mut diagnostics| {
-            if let Some(sources) = sources {
-                map_diagnostics(sources, &mut diagnostics);
-            }
-            sink.report(&diagnostics);
-            ExitCode::FAILURE
-        }),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            match std::fs::metadata(repo.join("gripsack.ts")) {
-                Ok(metadata) if metadata.is_file() => Ok(gripsack_config::EnvConfig::default()),
-                Ok(_) => Err(operational(io::Error::other(
-                    "gripsack.ts is not a regular workspace source",
-                ))),
-                Err(error) if error.kind() == io::ErrorKind::NotFound => Err(operational(
-                    io::Error::other("no env.toml or gripsack.ts in the repository"),
-                )),
-                Err(error) => Err(operational(error)),
-            }
-        }
-        Err(error) => Err(operational(error)),
-    }
-}
 
 pub(super) fn map_diagnostics(sources: &SourceBundle, diagnostics: &mut [gripsack_ir::Diagnostic]) {
     fn map(sources: &SourceBundle, text: &mut String) {

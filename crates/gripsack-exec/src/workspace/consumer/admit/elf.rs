@@ -32,6 +32,9 @@ pub(super) fn admit(
     span: &Span,
 ) -> Result<Runtime, ExecError> {
     header(metadata, host, true, span)?;
+    if !metadata.elf_loader_extensions.is_empty() {
+        return Err(gate(span, "ELF audit/filter dependencies are outside the admitted DT_NEEDED closure"));
+    }
     if metadata.interpreter.is_none()
         && metadata.needed_libraries.is_empty()
         && metadata.rpaths.is_empty()
@@ -57,12 +60,6 @@ pub(super) fn admit(
         }
     }
     let gnu_loader = if abi == BinaryAbi::Gnu {
-        if !host.gnu_loader_controls {
-            return Err(gate(
-                span,
-                "sealed GNU dynamic execution requires measured glibc >=2.33 loader controls",
-            ));
-        }
         Some(loader)
     } else {
         if !metadata.rpaths.is_empty() || !metadata.runpaths.is_empty() {
@@ -98,8 +95,13 @@ pub(super) fn admit(
         for needed in 0..objects[index].metadata.needed_libraries.len() {
             let name = objects[index].metadata.needed_libraries[needed]
                 .to_str()
-                .filter(|name| !name.is_empty() && !name.contains('/'))
-                .ok_or_else(|| gate(span, "DT_NEEDED must name a runtime library, not a path"))?;
+                .filter(|name| !name.is_empty() && !name.contains(['/', '$']))
+                .ok_or_else(|| {
+                    gate(
+                        span,
+                        "DT_NEEDED must name a runtime library, not a path or loader token",
+                    )
+                })?;
             let selected = resolve_library(&objects, index, &mut closure, name, None, span)?;
             if visited.contains(&selected) {
                 continue;
@@ -122,6 +124,9 @@ pub(super) fn admit(
                 )
             })?;
             header(&metadata, host, false, span)?;
+            if !metadata.elf_loader_extensions.is_empty() {
+                return Err(gate(span, "runtime ELF audit/filter dependencies are outside the admitted DT_NEEDED closure"));
+            }
             if metadata.interpreter.as_ref().is_some_and(
                 |interpreter| !matches!(interpreter, Interpreter::Loader(named) if named == loader),
             ) {
@@ -349,6 +354,9 @@ impl<'a> Closure<'a> {
         span: &Span,
     ) -> Result<Option<PathBuf>, ExecError> {
         for directory in directories {
+            if self.host.abi == Some(BinaryAbi::Gnu) {
+                admit_search_directory(directory, self.host.arch, span)?;
+            }
             let candidate = directory.join(name);
             match candidate.canonicalize() {
                 Ok(path) => {
@@ -455,6 +463,70 @@ fn origin_paths(
         }
     }
     Ok(paths)
+}
+
+/// GNU expands tokens and both ':' and ';' in its search argument. In
+/// addition, the pre-2.37 legacy hwcap lookup is independent of the modern
+/// --glibc-hwcaps-mask flag. Refuse capability subtrees rather than admit a
+/// flat graph that the real loader may silently override on another CPU.
+fn admit_search_directory(
+    directory: &Path,
+    arch: TargetArch,
+    span: &Span,
+) -> Result<(), ExecError> {
+    use std::os::unix::ffi::OsStrExt;
+    if directory
+        .as_os_str()
+        .as_bytes()
+        .iter()
+        .any(|byte| matches!(*byte, b':' | b';' | b'$'))
+    {
+        return Err(gate(
+            span,
+            "runtime search directory contains a GNU loader delimiter or token",
+        ));
+    }
+    let capabilities: &[&str] = match arch {
+        TargetArch::X86_64 => &[
+            "tls", "sse2", "x86_64", "avx512_1", "i586", "i686", "haswell", "xeon_phi",
+        ],
+        // With sanitized loader environment, AArch64's HWCAP_IMPORTANT is
+        // ATOMICS, in addition to the kernel platform string and TLS.
+        TargetArch::Aarch64 => &["tls", "aarch64", "atomics"],
+    };
+    for capability in capabilities {
+        let candidate = directory.join(capability);
+        match std::fs::symlink_metadata(&candidate) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(operational(error)),
+            Ok(metadata) => {
+                // Some OS packages reserve empty capability directories.
+                // They cannot override a lookup. A populated tree or alias
+                // needs a different graph policy; do not flatten it silently.
+                if metadata.is_dir() {
+                    if std::fs::read_dir(&candidate)
+                        .map_err(operational)?
+                        .next()
+                        .transpose()
+                        .map_err(operational)?
+                        .is_none()
+                    {
+                        continue;
+                    }
+                } else if !metadata.file_type().is_symlink() {
+                    continue;
+                }
+                return Err(gate(
+                    span,
+                    format!(
+                        "runtime search directory contains unadmitted legacy GNU capability entry {}",
+                        candidate.display()
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Loaders skip absent search candidates. Prove the nearest existing ancestor

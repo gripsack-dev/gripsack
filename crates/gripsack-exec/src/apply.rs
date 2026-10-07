@@ -281,6 +281,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         .cloned()
         .collect();
     let mut intents = crate::activate::collect(&deploying, &steps_by_module);
+    if let Some(native) = &native {
+        intents.extend(native.activation_intents());
+    }
     // on_remove hooks (0035 F9): a module dropped from the IR fires
     // its removal intents with the new generation — the record is the
     // only durable place the old intents live

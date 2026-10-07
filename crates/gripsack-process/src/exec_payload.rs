@@ -117,6 +117,7 @@ impl ExecPayload {
                 .map(|(key, value)| (key.to_os_string(), value.to_os_string()))
                 .collect(),
         };
+        program.admit_gnu_environment(&operator_entries)?;
         if let Some(libraries) = &program.macho_libraries {
             if operator_entries
                 .iter()

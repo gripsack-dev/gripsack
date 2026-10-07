@@ -150,16 +150,15 @@ fn native_profile(output: &WorkspaceOutput) -> bool {
 /// deploys environment selections and artifact/tree file origins through the
 /// common realization service. `plan` previews the SAME profiles offline:
 /// produced content renders as explicit deferred operations and no builder,
-/// download, solve or activation runs. Hooks, schedules and staged file
-/// checks keep their own executor lanes for every operation.
+/// download, solve or activation runs. Hooks share durable post-flip activation;
+/// schedules and staged file checks keep their own executor lanes.
 fn current_v6_output(
     workspace: &crate::workspace_v6::WorkspaceV6,
     operation: WorkspaceOperation,
 ) -> Option<DeclaredCapability<'_>> {
     use crate::workspace_v6::{RecipeExecution, WorkspaceOutput};
     let deployable = |profile: &crate::workspace_v6::ProfileOutput| {
-        profile.hooks.is_empty()
-            && profile.schedules.is_empty()
+        profile.schedules.is_empty()
             && profile.files.iter().all(|file| file.checks.is_empty())
     };
     let mut first_non_profile: Option<&WorkspaceOutput> = None;

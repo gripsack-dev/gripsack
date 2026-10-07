@@ -229,13 +229,7 @@ fn retained_source(
     let mut resolved = pin.map(|pin| pin.resolved.clone());
     if let FetchSpec::File { path } = &fetch.fetch {
         let path = Path::new(path);
-        let relative = if path.is_absolute() {
-            path.strip_prefix(repository.contents())
-                .or_else(|_| path.strip_prefix(repository.identity()))
-                .ok()
-        } else {
-            Some(path)
-        };
+        let relative = repository.source_relative(path);
         if let Some(relative) = relative {
             let captured = repository.materialization_path(relative)?;
             if std::fs::symlink_metadata(&captured)?.is_dir() {

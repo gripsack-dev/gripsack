@@ -414,7 +414,7 @@ def test_corrupt_activation_authority_refuses_before_effects(sandbox, monkeypatc
         target = instance / "receipt.json"
         # Restore only the pointer, as in the archive-before-unlink crash
         # window; the receipt itself is an otherwise valid real outcome.
-        (home / "activation.json").write_text(json.dumps({"version": 1, "instance": row["activation"]}))
+        (home / "activation.json").write_text(json.dumps({"version": 2, "instance": row["activation"]}))
     else:
         target = instance / "outcomes" / (row["intent"] + ".json")
     value = json.loads(target.read_text())
@@ -451,3 +451,67 @@ def test_exhausted_attempt_counter_retains_evidence_without_launch(sandbox, monk
     assert refused.returncode != 0
     assert not effect.exists() and state.read_bytes() == before
     assert outcomes(repo)[0]["state"]["attempt"] == 18446744073709551615
+
+
+def test_retained_v1_activation_replays_without_changing_identity(sandbox, monkeypatch):
+    effect = sandbox / "legacy-version-effects"
+    repo = fixture_repo(sandbox, append_script(effect))
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "before-adapters")
+    assert grip("apply", "--host", "testhost", cwd=repo).returncode != 0
+    home = sandbox / ".local/share/gripsack"
+    pointer_path = home / "activation.json"
+    pointer = json.loads(pointer_path.read_text())
+    instance = home / "activation" / pointer["instance"]
+    # Legacy action bytes and identities are unchanged. Reconstitute exactly
+    # the previous version's pending wire, not a fake process/outcome receipt.
+    for path in [pointer_path, instance / "plan.json", *sorted((instance / "outcomes").glob("*.json"))]:
+        document = json.loads(path.read_text())
+        assert document["version"] == 2
+        document["version"] = 1
+        path.write_text(json.dumps(document))
+    before = outcomes(repo)
+    assert before[0]["state"]["kind"] == "pending"
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+    resumed = grip("apply", "--host", "testhost", cwd=repo)
+    assert resumed.returncode == 0, resumed.stdout + resumed.stderr
+    assert effect.read_text().splitlines() == [f'{before[0]["intent"]}:1']
+    assert outcomes(repo)[0]["intent"] == before[0]["intent"]
+    assert json.loads((instance / "receipt.json").read_text())["version"] == 1
+
+
+@pytest.mark.parametrize("plan_version,pointer_version", [(1, 2), (2, 1)])
+def test_pointer_plan_version_mismatch_refuses_before_effect(
+        sandbox, monkeypatch, plan_version, pointer_version):
+    effect = sandbox / "must-not-run"
+    repo = fixture_repo(sandbox, append_script(effect))
+    monkeypatch.setenv("GRIPSACK_CRASH_AFTER", "before-adapters")
+    assert grip("apply", "--host", "testhost", cwd=repo).returncode != 0
+    home = sandbox / ".local/share/gripsack"
+    pointer_path = home / "activation.json"
+    pointer = json.loads(pointer_path.read_text())
+    instance = home / "activation" / pointer["instance"]
+    records = [pointer_path, instance / "plan.json",
+               *sorted((instance / "outcomes").glob("*.json"))]
+    # Establish a coherent legacy-action plan/outcome set in either supported
+    # version. Inspection must admit it before the one-field mutation below.
+    for path in records:
+        document = json.loads(path.read_text())
+        assert document["version"] == 2
+        document["version"] = plan_version
+        path.write_text(json.dumps(document))
+    admitted = outcomes(repo)
+    assert admitted[0]["state"]["kind"] == "pending"
+    assert not effect.exists()
+    pointer["version"] = pointer_version
+    pointer_path.write_text(json.dumps(pointer))
+    before = {path: path.read_bytes() for path in records}
+    generation = (home / "current").readlink()
+    monkeypatch.delenv("GRIPSACK_CRASH_AFTER")
+    inspection = grip("hooks", "list", "--json", cwd=repo)
+    assert inspection.returncode != 0
+    refused = grip("apply", "--host", "testhost", cwd=repo)
+    assert refused.returncode != 0
+    assert not effect.exists()
+    assert {path: path.read_bytes() for path in records} == before
+    assert (home / "current").readlink() == generation
+    assert (sandbox / ".owned").read_text() == "owned bytes\n"

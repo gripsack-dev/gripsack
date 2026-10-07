@@ -45,6 +45,16 @@ pub(super) fn validate(
             crate::paths::validate_store_root(home, path)
                 .map_err(|error| invalid(format!("module {name:?} build closure: {error}")))?;
         }
+        for intent in &state.intents {
+            if let crate::activation::ActivationAction::WorkspaceHook { context, .. } = &intent.action
+                && (context.parent() != Some(state.store_path.as_path())
+                    || context.file_name().is_none())
+            {
+                return Err(invalid(format!(
+                    "module {name:?}: workspace hook context is outside its retained profile"
+                )));
+            }
+        }
         for entry in &state.entries {
             if entry
                 .from

@@ -26,7 +26,6 @@ fn declared_abi_cannot_hide_an_unproven_minimum_os_floor() {
         os: TargetOs::Linux,
         arch: TargetArch::X86_64,
         abi: Some(BinaryAbi::Gnu),
-        gnu_loader_controls: true,
     };
     let span = Span {
         file: "workspace.ts".into(),
@@ -80,7 +79,6 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
         os: TargetOs::Linux,
         arch: TargetArch::X86_64,
         abi: Some(BinaryAbi::Gnu),
-        gnu_loader_controls: true,
     };
     let mut metadata = ExecutableMetadata {
         format: Some(ExecutableFormat::Elf),
@@ -125,6 +123,50 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
         admit(&metadata).unwrap().directories,
         vec![payload.join("lib")]
     );
+    metadata.elf_loader_extensions.push(
+        gripsack_process::executable::ElfLoaderExtension::Audit("outside.so".into()),
+    );
+    assert!(admit(&metadata).is_err(), "main-image auditing escapes DT_NEEDED");
+    metadata.elf_loader_extensions.clear();
+    for tag in [0x6fff_fefb_i64, 0x6fff_fefc, 0x7fff_fffd, 0x7fff_ffff] {
+        let mut indirect = dynamic_library("outside.so");
+        indirect[0x110..0x118].copy_from_slice(&tag.to_le_bytes());
+        std::fs::write(&path, indirect).unwrap();
+        assert!(
+            admit(&metadata).is_err(),
+            "a dependency's audit/filter object must not escape the admitted graph",
+        );
+    }
+    std::fs::write(&path, &library).unwrap();
+    for capability in ["tls", "haswell", "x86_64", "avx512_1"] {
+        let shadow = payload.join("lib").join(capability);
+        std::fs::create_dir(&shadow).unwrap();
+        assert!(admit(&metadata).is_ok(), "an empty reserved directory cannot shadow lookup");
+        std::fs::write(shadow.join("libexample.so"), &library).unwrap();
+        assert!(
+            admit(&metadata).is_err(),
+            "legacy hwcap lookup must not substitute an unadmitted library"
+        );
+        std::fs::remove_file(shadow.join("libexample.so")).unwrap();
+        std::fs::remove_dir(shadow).unwrap();
+    }
+    for unsafe_name in ["lib;other", "lib$PLATFORM"] {
+        let directory = payload.join(unsafe_name);
+        std::fs::create_dir(&directory).unwrap();
+        metadata.rpaths = vec![format!("$ORIGIN/{unsafe_name}").into()];
+        assert!(
+            admit(&metadata).is_err(),
+            "an admitted literal path must not expand into other loader search paths"
+        );
+        std::fs::remove_dir(directory).unwrap();
+    }
+    metadata.rpaths.clear();
+    let ordinary_needed = std::mem::replace(
+        &mut metadata.needed_libraries,
+        vec!["$PLATFORM".into()],
+    );
+    assert!(admit(&metadata).is_err(), "DT_NEEDED tokens are not literal SONAMEs");
+    metadata.needed_libraries = ordinary_needed;
     let foreign = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(foreign.path(), &library).unwrap();
     std::fs::remove_file(&path).unwrap();

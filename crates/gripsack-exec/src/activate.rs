@@ -23,7 +23,7 @@ pub(crate) fn collect(
             {
                 declarations.push(store::activation::PendingIntent {
                     module: name.clone(),
-                    action: action.as_ref().clone(),
+                    action: action.as_ref().clone().into(),
                     trigger: *trigger,
                 });
             }
@@ -65,7 +65,7 @@ pub(crate) fn run(
     let mut reports = Vec::new();
     while let Some((permit, intent)) = ready.next_attempt()? {
         crate::util::crash_hook("hook-after-start");
-        let result = effect::run(intent, &permit, &environment, &directory);
+        let result = effect::run(intent, &permit, &environment, &directory, home_path);
         crate::util::crash_hook("hook-after-effect");
         let outcome = if result.failure.is_some() {
             gripsack_policy::activation::Outcome::Failed

@@ -3,6 +3,7 @@
 mod capture;
 mod inventory;
 mod materialization;
+mod policy;
 mod resolve;
 #[cfg(test)]
 mod tests;
@@ -14,6 +15,7 @@ use inventory::{
 pub use inventory::{
     SourceBundleDigest, SourceEntry, SourceFileBytes, SourceInventory, SourceObject, SourceRootKind,
 };
+pub use policy::SourceCapturePolicy;
 use std::{
     io::{self, Read},
     path::{Path, PathBuf},
@@ -23,6 +25,7 @@ pub(super) struct CaptureRoot {
     pub kind: SourceRootKind,
     pub canonical: PathBuf,
     pub declared: PathBuf,
+    pub declared_alias: Option<PathBuf>,
     pub directory: Dir,
 }
 
@@ -30,11 +33,22 @@ impl CaptureRoot {
     fn open(kind: SourceRootKind, path: &Path) -> io::Result<Self> {
         let declared = std::path::absolute(path)?;
         let canonical = path.canonicalize()?;
+        // Resolve the parent, but retain a final root alias. This admits the
+        // equivalent /parent/alias spelling of --repo /parent/child/../alias
+        // without lexically collapsing '..' across arbitrary source links.
+        let declared_alias = if declared != canonical {
+            match (declared.parent(), declared.file_name()) {
+                (Some(parent), Some(name)) => Some(parent.canonicalize()?.join(name))
+                    .filter(|alias| alias != &declared && alias != &canonical),
+                _ => None,
+            }
+        } else { None };
         let directory = gripsack_fs::open(&canonical)?;
         Ok(Self {
             kind,
             canonical,
             declared,
+            declared_alias,
             directory,
         })
     }
@@ -124,6 +138,7 @@ impl Drop for OwnedDirectory {
 struct SourceOrigin {
     canonical: PathBuf,
     declared: PathBuf,
+    declared_alias: Option<PathBuf>,
 }
 
 impl From<CaptureRoot> for SourceOrigin {
@@ -131,7 +146,22 @@ impl From<CaptureRoot> for SourceOrigin {
         Self {
             canonical: root.canonical,
             declared: root.declared,
+            declared_alias: root.declared_alias,
         }
+    }
+}
+
+impl SourceOrigin {
+    fn relative<'a>(&self, path: &'a Path) -> Option<&'a Path> {
+        path.strip_prefix(&self.canonical).ok()
+            .or_else(|| path.strip_prefix(&self.declared).ok())
+            .or_else(|| self.declared_alias.as_ref().and_then(|alias| path.strip_prefix(alias).ok()))
+    }
+
+    fn overlaps(&self, root: &Path) -> bool {
+        [&self.canonical, &self.declared].into_iter()
+            .chain(self.declared_alias.iter())
+            .any(|origin| root.starts_with(origin) || origin.starts_with(root))
     }
 }
 
@@ -145,6 +175,7 @@ pub struct SourceBundle {
     repository: PathBuf,
     frontend: PathBuf,
     pinned_frontend: Option<PathBuf>,
+    capture_policy: SourceCapturePolicy,
     inventory: SourceInventory,
     inventory_bytes: Vec<u8>,
     digest: SourceBundleDigest,
@@ -159,15 +190,22 @@ impl SourceBundle {
         frontend: &Path,
         pin: Option<&Path>,
         runtime_home: &Path,
+        policy: SourceCapturePolicy,
     ) -> io::Result<Self> {
+        if pin.is_some() && policy.excludes(Path::new("node_modules/@gripsack/core")) {
+            return Err(invalid("excluded SDK location cannot admit a pinned frontend root"));
+        }
         let mut roots = vec![
             CaptureRoot::open(SourceRootKind::Repository, repo)?,
             CaptureRoot::open(SourceRootKind::Frontend, frontend)?,
         ];
         if let Some(pin) = pin {
             let root = CaptureRoot::open(SourceRootKind::PinnedFrontend, pin)?;
-            admit_pin(&root.directory)?;
             roots.push(root);
+        }
+        policy.admit_roots(&roots)?;
+        if let Some(root) = roots.get(2) {
+            admit_pin(&root.directory)?;
         }
         let temporary = tempfile::Builder::new()
             .prefix("gripsack-source-")
@@ -193,7 +231,11 @@ impl SourceBundle {
             Err(error) => return Err(error),
         };
         let mut budget = CaptureBudget::default();
-        let inventory = capture::copy_roots(&roots, &stage, &runtime_home, &mut budget)?;
+        let admission = policy::CaptureAdmission {
+            policy: &policy,
+            runtime_home: &runtime_home,
+        };
+        let inventory = capture::copy_roots(&roots, &stage, &admission, &mut budget)?;
         if pin.is_some() {
             let pinned = gripsack_fs::open_dir_nofollow(&stage, Path::new("pin"))?;
             admit_pin(&pinned)?;
@@ -222,6 +264,7 @@ impl SourceBundle {
             repository,
             frontend,
             pinned_frontend,
+            capture_policy: policy,
             inventory,
             inventory_bytes,
             digest,
@@ -234,11 +277,48 @@ impl SourceBundle {
     pub fn repository(&self) -> &Path {
         &self.repository
     }
+
+    /// Classify repository source without resolving through a mutable original.
+    /// Both admitted original spellings and the copied root select captured bytes.
+    pub fn repository_relative<'a>(&self, path: &'a Path) -> Option<&'a Path> {
+        if !path.is_absolute() {
+            Some(path)
+        } else {
+            path.strip_prefix(&self.repository).ok()
+                .or_else(|| self.repository_origin.relative(path))
+        }
+    }
+
+    /// Runtime/cache grants must never restore access to any live source root,
+    /// including an excluded subtree, a declared root alias, or a root ancestor.
+    /// Return the checked canonical spelling so callers do not grant the alias.
+    pub fn admit_evaluator_root(&self, root: &Path) -> io::Result<PathBuf> {
+        let overlaps = |candidate: &Path| self.inventory.roots().iter().any(|&kind| {
+            self.origin(kind).is_some_and(|origin| origin.overlaps(candidate))
+        });
+        let refused = || io::Error::new(io::ErrorKind::PermissionDenied, format!(
+            "evaluator grant {} overlaps live source; select a runtime and cache outside source roots",
+            root.display()
+        ));
+        // Check the caller's spelling before following a link out of a source
+        // exclusion, then check the target of aliases pointing into source.
+        if overlaps(root) {
+            return Err(refused());
+        }
+        let canonical = root.canonicalize()?;
+        if overlaps(&canonical) {
+            return Err(refused());
+        }
+        Ok(canonical)
+    }
     pub fn frontend(&self) -> &Path {
         &self.frontend
     }
     pub fn pinned_frontend(&self) -> Option<&Path> {
         self.pinned_frontend.as_deref()
+    }
+    pub fn capture_policy(&self) -> &SourceCapturePolicy {
+        &self.capture_policy
     }
     pub fn inventory(&self) -> &SourceInventory {
         &self.inventory
@@ -300,10 +380,7 @@ impl SourceBundle {
         }
         for &kind in self.inventory.roots().iter().rev() {
             if let (Some(origin), Some(captured)) = (self.origin(kind), self.captured_root(kind))
-                && let Some(relative) = path
-                    .strip_prefix(&origin.canonical)
-                    .ok()
-                    .or_else(|| path.strip_prefix(&origin.declared).ok())
+                && let Some(relative) = origin.relative(path)
             {
                 return captured
                     .join(relative)

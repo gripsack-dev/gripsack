@@ -2,6 +2,7 @@
 //! identities never enter receipts or keys, and payloads never point into a
 //! disposable builder cache. Every publication requires lifecycle authority.
 use crate::{Ctx, ExecError, LifecycleSession};
+pub(super) mod hook;
 use gripsack_ir::{
     workspace::{RecipeOutputKind, WorkspacePlatform},
     workspace_v6::{

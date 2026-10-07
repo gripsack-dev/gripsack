@@ -123,7 +123,7 @@ impl DeployedEntry {
 /// A module's recorded activation intent (0035 F9).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IntentRecord {
-    pub action: gripsack_ir::Action,
+    pub action: crate::activation::ActivationAction,
     pub trigger: gripsack_ir::Trigger,
 }
 
@@ -163,11 +163,68 @@ pub struct ModuleState {
 }
 
 /// A generation: an immutable record of one profile state.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Generation {
-    #[serde(with = "crate::generation_wire")]
     pub number: GenerationId,
     pub modules: BTreeMap<String, ModuleState>,
+}
+
+const WORKSPACE_MANIFEST_VERSION: u32 = 2;
+
+impl Serialize for Generation {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Manifest<'a> {
+            #[serde(with = "crate::generation_wire")]
+            number: GenerationId,
+            modules: &'a BTreeMap<String, ModuleState>,
+        }
+        #[derive(Serialize)]
+        struct Versioned<'a> {
+            version: u32,
+            generation: Manifest<'a>,
+        }
+        let manifest = Manifest { number: self.number, modules: &self.modules };
+        if self.modules.values().flat_map(|state| &state.intents)
+            .any(|intent| intent.action.requires_v2())
+        {
+            Versioned { version: WORKSPACE_MANIFEST_VERSION, generation: manifest }.serialize(serializer)
+        } else {
+            manifest.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Generation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Manifest {
+            #[serde(with = "crate::generation_wire")]
+            number: GenerationId,
+            modules: BTreeMap<String, ModuleState>,
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Versioned {
+            version: u32,
+            generation: Manifest,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Wire { Versioned(Versioned), Legacy(Manifest) }
+        let (manifest, current) = match Wire::deserialize(deserializer)? {
+            Wire::Versioned(value) if value.version == WORKSPACE_MANIFEST_VERSION => (value.generation, true),
+            Wire::Versioned(_) => return Err(serde::de::Error::custom("unsupported manifest version")),
+            Wire::Legacy(value) => (value, false),
+        };
+        if !current && manifest.modules.values().flat_map(|state| &state.intents)
+            .any(|intent| intent.action.requires_v2())
+        {
+            return Err(serde::de::Error::custom("workspace actions require manifest version 2"));
+        }
+        Ok(Self { number: manifest.number, modules: manifest.modules })
+    }
 }
 
 #[cfg(test)]
@@ -337,5 +394,30 @@ mod tests {
         std::fs::remove_dir_all(home.join("generations/2")).unwrap();
         std::fs::remove_dir_all(home.join("generations/3")).unwrap();
         assert_eq!(allocate(home, &cap).unwrap(), GenerationId::new(4));
+    }
+
+    #[test]
+    fn workspace_actions_require_explicit_generation_envelope() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut generation = mk_gen(directory.path(), 1);
+        let state = generation.modules.get_mut("helix").unwrap();
+        state.intents.push(IntentRecord {
+            trigger: gripsack_ir::Trigger::PostLink,
+            action: crate::activation::ActivationAction::WorkspaceHook {
+                context: state.store_path.join("hook-0.json"),
+                sha256: gripsack_process::Sha256Digest::of(b"context"),
+            },
+        });
+        let wire = serde_json::to_value(&generation).unwrap();
+        assert_eq!(wire["version"], 2);
+        assert!(wire.get("number").is_none());
+        assert_eq!(serde_json::from_value::<Generation>(wire.clone()).unwrap(), generation);
+        assert!(serde_json::from_value::<Generation>(wire["generation"].clone()).is_err());
+        let mut unsupported = wire.clone();
+        unsupported["version"] = 3.into();
+        assert!(serde_json::from_value::<Generation>(unsupported).is_err());
+        let mut null = wire;
+        null["version"] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<Generation>(null).is_err());
     }
 }

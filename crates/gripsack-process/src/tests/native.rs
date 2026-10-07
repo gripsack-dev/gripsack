@@ -69,6 +69,10 @@ fn native_child_cannot_read_ungranted_environment_or_inherited_descriptor() {
         ("PATH", "/usr/bin:/bin"),
         ("DUMMY_SECRET", "must-not-inherit"),
         ("LD_PRELOAD", "/nonexistent/gripsack-canary"),
+        ("LD_AUDIT", "/nonexistent/gripsack-audit-canary"),
+        ("LD_LIBRARY_PATH", "/nonexistent/gripsack-library-canary"),
+        ("LD_HWCAP_MASK", "0xffffffffffffffff"),
+        ("GLIBC_TUNABLES", "glibc.cpu.hwcaps=hostile"),
         ("BASH_ENV", "/nonexistent/gripsack-canary"),
     ]);
     let deadline = std::time::Instant::now() + limits().timeout;
@@ -86,7 +90,7 @@ fn native_child_cannot_read_ungranted_environment_or_inherited_descriptor() {
     )
     .unwrap();
     let script = format!(
-        "set -eu\n[ -z \"${{DUMMY_SECRET+x}}\" ]\n[ -z \"${{LD_PRELOAD+x}}\" ]\n[ -z \"${{BASH_ENV+x}}\" ]\nif cat /dev/fd/{descriptor} > stolen 2>/dev/null; then exit 91; fi\nprintf safe > effect\n"
+        "set -eu\n[ -z \"${{DUMMY_SECRET+x}}\" ]\n[ -z \"${{LD_PRELOAD+x}}\" ]\n[ -z \"${{LD_AUDIT+x}}\" ]\n[ -z \"${{LD_LIBRARY_PATH+x}}\" ]\n[ -z \"${{LD_HWCAP_MASK+x}}\" ]\n[ -z \"${{GLIBC_TUNABLES+x}}\" ]\n[ -z \"${{BASH_ENV+x}}\" ]\nif cat /dev/fd/{descriptor} > stolen 2>/dev/null; then exit 91; fi\nprintf safe > effect\n"
     );
     let outcome = invocation
         .run(

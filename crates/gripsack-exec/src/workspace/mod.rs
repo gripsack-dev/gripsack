@@ -6,6 +6,7 @@ pub(crate) mod conda;
 mod consumer;
 mod image;
 mod inputs;
+pub(crate) mod hooks;
 mod lowering;
 mod prepare;
 mod realize;
@@ -44,6 +45,8 @@ struct PreparedProfile {
     build_closure: Vec<PathBuf>,
     deferred: Vec<preview::DeferredFile>,
     deferred_environment: Option<String>,
+    deferred_hooks: Vec<String>,
+    intents: Vec<store::IntentRecord>,
 }
 
 pub(crate) struct NativeProfiles {
@@ -68,9 +71,13 @@ impl NativeProfiles {
         limits: gripsack_fetch::FetchLimits,
         realization: Option<&realize::Realization<'a>>,
     ) -> Result<Option<Self>, ExecError> {
-        Self::prepare_with(ir, repo, home, selected, limits, realization, false)
+        Self::prepare_with(
+            ir, repo, home, selected, limits, realization, false,
+            std::time::Instant::now() + gripsack_process::Limits::default().timeout,
+        )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn prepare_with<'a>(
         ir: &'a gripsack_ir::Ir,
         repo: &Path,
@@ -79,6 +86,7 @@ impl NativeProfiles {
         limits: gripsack_fetch::FetchLimits,
         realization: Option<&realize::Realization<'a>>,
         readonly: bool,
+        deadline: std::time::Instant,
     ) -> Result<Option<Self>, ExecError> {
         let Some(declarations) = declarations::Declarations::from_ir(ir) else {
             return Ok(None);
@@ -127,7 +135,7 @@ impl NativeProfiles {
             .collect();
         let host = realization
             .filter(|_| !readonly)
-            .map(|_| consumer::admit::NativeContext::new(&ir.host, home))
+            .map(|_| consumer::admit::NativeContext::new(&ir.host, home, deadline))
             .transpose()?;
         let mut capture = content::Capture::new(repo, limits)?;
         let mut profiles = BTreeMap::new();
@@ -160,6 +168,7 @@ impl NativeProfiles {
                     .map_err(|error| file_failure(file.span, error))?;
             }
             let deferred_environment = output.environment().filter(|_| readonly).map(str::to_owned);
+            let deferred_hooks = if readonly { output.hooks().to_vec() } else { Vec::new() };
             let env = if let Some(name) = output.environment().filter(|_| !readonly) {
                 let realized = realization.ok_or_else(|| {
                     file_failure(
@@ -188,8 +197,20 @@ impl NativeProfiles {
             } else {
                 Vec::new()
             };
+            let prepared_hooks = if output.hooks().is_empty() || readonly {
+                Vec::new()
+            } else {
+                hooks::prepare(
+                    output.hooks(), &outputs,
+                    realization.ok_or_else(|| file_failure(output.span(), "hooks require protected realization"))?,
+                    home, &stage,
+                    host.as_ref().ok_or_else(|| file_failure(output.span(), "hooks require native admission"))?,
+                    deadline,
+                )?
+            };
             let tree = store::canonical_tree_hash(&stage)?;
             let store_path = store::content_path(home, "workspace-files", tree.as_str());
+            let intents = prepared_hooks.into_iter().map(|hook| hook.record(&store_path)).collect();
             profiles.insert(
                 output.name().to_owned(),
                 PreparedProfile {
@@ -202,6 +223,8 @@ impl NativeProfiles {
                     build_closure: Vec::new(),
                     deferred,
                     deferred_environment,
+                    deferred_hooks,
+                    intents,
                 },
             );
         }
@@ -243,11 +266,26 @@ impl NativeProfiles {
                                     "profile environment activation",
                                 )
                             }))
+                            .chain(profile.deferred_hooks.iter().map(|_| {
+                                crate::DeferredLayoutCheck::RuntimeVerification("profile hook activation")
+                            }))
                             .collect(),
                     },
                 )
             })
             .collect()
+    }
+
+    pub(crate) fn activation_intents(&self) -> Vec<store::activation::PendingIntent> {
+        self.profiles.iter().flat_map(|(name, profile)| {
+            profile.intents.iter()
+                .filter(|intent| intent.trigger != gripsack_ir::Trigger::OnRemove)
+                .map(move |intent| store::activation::PendingIntent {
+                    module: name.clone(),
+                    action: intent.action.clone(),
+                    trigger: intent.trigger,
+                })
+        }).collect()
     }
 
     pub(crate) fn update_reports(&self) -> Result<crate::UpdateSurvey, ExecError> {
@@ -360,7 +398,7 @@ impl NativeProfiles {
                     store_path: profile.store_path.clone(),
                     build_only: false,
                     entries,
-                    intents: vec![],
+                    intents: profile.intents.clone(),
                     verified: None,
                     env: profile.env.clone(),
                     tree256: Some(profile.tree.to_string()),

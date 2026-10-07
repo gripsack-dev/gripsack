@@ -1,5 +1,6 @@
 //! Copied-byte capture and read-only sealing through pinned capabilities.
 use super::inventory::{MAX_DEPTH, MAX_FILE_BYTES, invalid};
+use super::policy::CaptureAdmission;
 use super::{
     CaptureBudget, CaptureRoot, SourceEntry, SourceFileBytes, SourceInventory, SourceObject,
     SourceRootKind,
@@ -55,7 +56,7 @@ impl Read for FileCapture<'_> {
 struct Capture<'a> {
     roots: &'a [CaptureRoot],
     destination: &'a Dir,
-    runtime_home: &'a Path,
+    admission: &'a CaptureAdmission<'a>,
     budget: &'a mut CaptureBudget,
     entries: Vec<SourceEntry>,
     exclusions: Vec<String>,
@@ -140,7 +141,7 @@ impl Capture<'_> {
             let name_in_inventory = logical_name(&logical)?;
             self.budget.entry(name_in_inventory)?;
             let physical = root.canonical.join(&source_relative);
-            if name == ".git" || (physical == self.runtime_home && physical != root.canonical) {
+            if self.admission.excludes(root, &source_relative) {
                 self.exclusions.push(name_in_inventory.to_owned());
                 continue;
             }
@@ -157,6 +158,15 @@ impl Capture<'_> {
                 continue;
             }
             let metadata = source.symlink_metadata(Path::new(&name))?;
+            if root.kind == SourceRootKind::Repository
+                && self.admission.policy.requires_directory(&source_relative)
+                && !metadata.is_dir()
+            {
+                return Err(invalid(&format!(
+                    "capture exclusion ancestor {} must remain a real directory",
+                    logical.display()
+                )));
+            }
             if metadata.file_type().is_symlink() {
                 let target = source.read_link_contents(Path::new(&name))?;
                 let target = super::resolve::resolve(
@@ -164,8 +174,12 @@ impl Capture<'_> {
                     root_index,
                     relative,
                     &target,
+                    self.admission,
                     self.budget,
-                )?;
+                )
+                .map_err(|error| io::Error::new(error.kind(), format!(
+                    "source alias {}: {error}", logical.display()
+                )))?;
                 self.alias(logical, target)?;
             } else if metadata.is_dir() {
                 let directory = gripsack_fs::open_dir_nofollow(source, Path::new(&name))?;
@@ -220,13 +234,13 @@ impl Capture<'_> {
 pub(super) fn copy_roots(
     roots: &[CaptureRoot],
     destination: &Dir,
-    runtime_home: &Path,
+    admission: &CaptureAdmission<'_>,
     budget: &mut CaptureBudget,
 ) -> io::Result<SourceInventory> {
     let mut capture = Capture {
         roots,
         destination,
-        runtime_home,
+        admission,
         budget,
         entries: Vec::new(),
         exclusions: Vec::new(),
@@ -247,14 +261,20 @@ pub(super) fn copy_roots(
         capture.entries,
         capture.exclusions,
     )?;
-    if roots
-        .iter()
-        .any(|root| root.kind == SourceRootKind::PinnedFrontend)
-        && destination.canonicalize("repo/node_modules/@gripsack/core")? != Path::new("pin")
-    {
-        return Err(invalid(
-            "captured frontend pin differs from the admitted package root",
-        ));
+    if roots.iter().any(|root| root.kind == SourceRootKind::PinnedFrontend) {
+        if destination.canonicalize("repo/node_modules/@gripsack/core")? != Path::new("pin") {
+            return Err(invalid(
+                "captured frontend pin differs from the admitted package root",
+            ));
+        }
+    } else {
+        match destination.symlink_metadata("repo/node_modules/@gripsack/core") {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+            Ok(_) => return Err(invalid(
+                "captured frontend pin appeared without an admitted package root; capture again",
+            )),
+        }
     }
     Ok(inventory)
 }

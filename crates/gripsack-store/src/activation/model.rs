@@ -1,8 +1,8 @@
 //! One persisted effective ordering. Cache coalescing happens once, before
 //! publication; replay never reconstructs IDs from today's repository.
-use super::PendingIntent;
+use super::{ActivationAction as Action, PendingIntent};
 use crate::selection_wire::{TransactionText, parse_transaction};
-use gripsack_ir::{Action, Trigger};
+use gripsack_ir::Trigger;
 use gripsack_policy::selection::{SelectionIdentity, TransactionId};
 use gripsack_process::Sha256Digest;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -76,7 +76,6 @@ pub struct EffectiveIntent {
     pub(super) id: IntentId,
     pub(super) ordinal: IntentOrdinal,
     pub(super) action_digest: Sha256Digest,
-    #[serde(with = "super::action_wire")]
     pub(super) action: Action,
     pub(super) contributors: Vec<Contributor>,
 }
@@ -224,7 +223,7 @@ impl Plan {
                 "activation plan identity or effective ordering is corrupt",
             )
         };
-        if self.version != 1 || self.instance != instance {
+        if !matches!(self.version, super::LEGACY_FORMAT_VERSION | super::FORMAT_VERSION) || self.instance != instance {
             return Err(invalid());
         }
         if self.identity_origin == IdentityOrigin::Transaction
@@ -235,6 +234,9 @@ impl Plan {
         let mut fonts = false;
         let mut desktop = false;
         let mut ordinary = false;
+        if self.version == super::LEGACY_FORMAT_VERSION && self.intents.iter().any(|intent| intent.action.requires_v2()) {
+            return Err(invalid());
+        }
         for (index, intent) in self.intents.iter().enumerate() {
             if intent.ordinal.index() != index
                 || intent.contributors.is_empty()

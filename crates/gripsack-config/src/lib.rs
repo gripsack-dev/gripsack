@@ -27,6 +27,7 @@ use gripsack_ir::{Diagnostic, Span, codes};
 pub struct EnvConfig {
     pub env: EnvSection,
     pub eval: EvalSection,
+    pub capture: CaptureSection,
     pub fetchers: BTreeMap<String, FetcherSection>,
     /// Linter registry (0011 §7): name → plugin-store ref
     /// (`owner/repo@tag`, provisioned and receipted) or an explicit
@@ -74,6 +75,15 @@ pub struct EnvSection {
 #[serde(default, deny_unknown_fields)]
 pub struct EvalSection {
     pub env: std::collections::BTreeMap<String, String>,
+}
+
+/// Explicit source selection; never inferred from Git ignore rules. The store
+/// admits these plain-wire paths before capture and binds the exact env.toml
+/// bytes to the resulting source/policy approval.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CaptureSection {
+    pub exclude: Vec<String>,
 }
 
 /// A named fetcher.s tool-level wiring (0002 §4).
@@ -389,6 +399,23 @@ keep_generations = 20
             Some("gripfetch-artifactory")
         );
         assert_eq!(env.settings.keep_generations, Some(20));
+    }
+
+    #[test]
+    fn capture_exclusions_are_explicit_repository_configuration_only() {
+        let env = parse_env(
+            "[capture]\nexclude = ['.venv', 'node_modules/@gripsack/core']\n",
+        ).unwrap();
+        assert_eq!(env.capture.exclude, [".venv", "node_modules/@gripsack/core"]);
+        assert!(parse_env("").unwrap().capture.exclude.is_empty());
+        for source in [
+            "[capture]\nroots = ['/usr']\n",
+            "[capture]\nexclude = '.venv'\n",
+            "[capture]\ngitignore = true\n",
+        ] {
+            assert!(parse_env(source).is_err());
+        }
+        assert!(parse_user("[capture]\nexclude = ['.venv']\n").is_err());
     }
 
     #[test]

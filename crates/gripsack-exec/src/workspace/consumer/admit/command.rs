@@ -86,7 +86,9 @@ pub(in crate::workspace::consumer) fn admit_command(
         path,
         executable: *executable,
         library_dirs: runtime.elf.directories,
-        gnu_loader: runtime.elf.gnu_loader,
+        gnu_loader: runtime.elf.gnu_loader
+            .map(|path| context.gnu_loader(path, span))
+            .transpose()?,
         macho_library_dirs: runtime.macho_library_dirs,
         interpreter: runtime.interpreter,
         bytecode,

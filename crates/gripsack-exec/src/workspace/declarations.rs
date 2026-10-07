@@ -72,6 +72,12 @@ impl<'a> Output<'a> {
             _ => None,
         }
     }
+    pub fn hooks(self) -> &'a [String] {
+        match self {
+            Self::Current(v6::WorkspaceOutput::Profile(profile)) => &profile.hooks,
+            _ => &[],
+        }
+    }
     pub fn admit_profile(self) -> Result<(), ExecError> {
         match self {
             Self::Current(v6::WorkspaceOutput::Profile(profile)) => super::profile::admit(profile),
