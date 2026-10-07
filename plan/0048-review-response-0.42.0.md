@@ -3176,30 +3176,52 @@ above is the exact hosted-CI/macOS exception, not an implementation deferral.
 
 | Leaf | Owner and responsibility | Acceptance | State/evidence |
 |---|---|---|---|
-| UP45.A | Integration: persistent profiles, personal/shared-path examples, initialization and rollback | Actual retained-prefix commands from a clean noninteractive shell and shared destination; profile rollback behavior documented/exercised; explain complete Conda runtime dependencies including optional pyright closure | implementing; reviewer node success and missing-libX11 refusal are established; new integration evidence pending |
-| UP45.B | Glibc228: native consumer ELF admission and process loader plan | GNU-dynamic commands actually execute with glibc 2.28 and modern glibc while preserving sealed executable identity, closure/search equivalence and confinement; static commands remain supported | implementing; historical E128 is established; lowering a threshold alone is not acceptance |
-| UP45.C | Integration: source declaration/pin matching and Pixi input verification | Unchanged Pixi lock7 survives update/reapproval/update/check/run/apply; changed manifest or lock is refused until explicit update and exact reviewed approval; no captured-digest comparison masquerading as declaration mismatch | implementing; source mismatch confirmed in pins/prepare/source; regressions and actual import pending |
-| UP45.D | WorkspaceHooks: workspace activation/check capability through existing durable hook owners | Actual selected hook and check effects on both supported Linux runtimes; durable identity/outcomes and crash ambiguity preserved; post-activation failure does not auto-rollback; no interpreter workaround for absent capability | implementing; E124 before execution is established; missing executor must be implemented |
-| UP45.E | Integration: declared solve baseline, immutable lock assumptions and runtime portability | Explicit Pixi glibc baseline governs solve/import and exact archives; disclose host-relative native solve assumptions and deliberate baseline review; separately verify actual CPU/libc requirements and loader admission | implementing; target ABI alone is not a baseline; no portability inference from lock identity |
-| UP45.1 | CapturePolicy: configuration, bounded source bundle capture and exact trust binding | Explicit conservative capture exclusions/roots, no automatic gitignore trust; offending alias path shown; excluded source is not readable via live-tree/alias/pinned-SDK fallback; changed policy/source invalidates approval | implementing; ignored outbound venv/editor aliases and unnamed error are established |
-| UP45.2 | Integration: retired callable Pixi migration diagnostic | Actionable diagnostic names removed constructor and current workspace alternatives; no restored legacy provider or compatibility shim | pending |
-| UP45.3 | Integration: host/module support and migration contract | Clear current support status and examples covering host parameters/destinations, lock selection and configuration ownership without an invented removal date or perpetual compatibility promise | pending |
-| UP45.4 | Integration with CapturePolicy: unattended reviewed approval | Immutable reviewed source/lock/untracked inventory/exclusion policy; compare inspected digests against reviewed expected values, reject mismatch, then approve exactly; no trust-all or floating approval | pending |
-| UP45.5 | Integration: retained store/journal downgrade admission | Establish completed-v2 versus unfinished-v2 downgrade behavior, document unsupported 0.42.0 reads and verify refusal before effects; do not claim new code retrofits the already-published old binary | pending |
-| UP45.REL | Integration: versions, caller migration, Linux qualification and publication | Source-bound local gates and applicable proofs, actual old/new GNU runtime consumers, coordinated core/SDK publication, exact artifacts/registry/installer/site checks; all skipped Mac/CI/provenance claims explicit | pending |
+| UP45.A | Integration: persistent profiles, personal/shared-path examples, initialization and rollback | Actual retained-prefix commands from a clean noninteractive shell; profile rollback exercised; complete Conda runtime dependencies incl. pyright closure | **verified** — node 26.10.0 profile applied, `env/profile.sh` sourced in plain `/bin/sh` (cwd `/`, `PATH=/usr/bin:/bin`) answers `node --version`; second apply satisfied; rollback restored prior env value AND working wrapper; bare pyright fails closed on `libX11.so.6` (reviewer's exact refusal); explicit `xorg-libx11` completes the closure and `pyright --version` runs. Shared `/usr/local/bin` documented as unverified (grammar-only) on the site |
+| UP45.B | Glibc228: native consumer ELF admission and process loader plan | GNU-dynamic commands execute on glibc 2.28 and modern glibc preserving sealed identity, closure/search equivalence and confinement; static commands supported | **verified** — measured RHEL 8.10 loader (glibc 2.28 with backported `--argv0`/`--glibc-hwcaps-mask`/`--inhibit-cache`/`--library-path`/`--inhibit-rpath`) admitted by capability probe of the sealed loader image; 12/12 gnu-loader e2e + 29/29 with hooks/checks in the UBI 8.10 container (host-kernel caveat recorded); modern-glibc suites green; plain loaders lacking controls still fail closed naming them. Hardening: audit/filter ELF tags, legacy hwcap shadows, active `/etc/ld.so.preload`, declared `LD_*`/`GLIBC_TUNABLES` refusals |
+| UP45.C | Integration: source declaration/pin matching and Pixi input verification | Unchanged Pixi lock7 survives update/reapproval/update/check/run/apply; changed inputs refused until explicit update + reapproval | **verified** — `same_source_declaration` compares declaration fields only; both captured inputs still re-verified (verify_pixi_inputs + read-only inspection). Reviewer's exact repro (pixi 0.81.0 lock v7, glibc 2.28 baseline): update → update ("pyright unchanged") → check → apply with no identity regression; mutated `pixi.lock` refused ("differs from its frozen identity; run grip update") until explicit update; full frozen `pyright --version` execution with GNU ABI + explicit xorg-libx11. Unit regressions in `workspace/pins/tests.rs` |
+| UP45.D | WorkspaceHooks: activation/check capability through durable hook owners | Actual hook/check effects on both runtimes; durable identity/outcomes; crash ambiguity; no auto-rollback | **verified** — profile hooks (post_link/post_activate/on_remove) execute via the existing activation ledger: immutable digest-bound contexts (4 MiB bound), per-intent identity, replay re-admits receipts + native facts, no loader authority persisted, no automatic rollback; task checks run in declaration order after successful steps; recipe checks unchanged; file-check stages/schedules/prerequisites explicitly unavailable. 17/17 hooks+checks e2e on modern glibc; 29/29 incl. RHEL 8.10 |
+| UP45.E | Integration: solve baselines, immutable lock assumptions, portability | Explicit baseline governs solve; assumptions disclosed; loader admission separate | **verified/documented** — Pixi `system-requirements` libc baseline drives the solve (lock v7 with glibc 2.28 resolved pyright 1.1.414/node 26.10.0); native `conda.environment` host-relative virtuals and the identity-not-portability distinction documented on the site with the three separate verifications |
+| UP45.1 | CapturePolicy: exclusions, exact runtime read authority, trust binding | Conservative explicit exclusions; named offending paths; no live-tree/alias fallback; approval-bound | **verified** — `[capture] exclude` literal subtrees; protected `env.toml`/`gripsack.ts`/`hosts/**`/`gripsack.lock`/`locks/**`; evaluator runtimes get exact-file READ authority (executable/interpreter/ldd-derived libs, loader cache) with original-spelling provenance (incl. bare-name PATH) admitted against source roots before approval and at launch; Python discovery isolated (`-I`, fresh cwd, digest-bound) — pre-approval `sysconfig.py` execution closed (CaptureReview findings 001/002/003 all closed at source; reviewer had no regressions surviving); capture suites green |
+| UP45.2 | retired Pixi diagnostic | Actionable, no compatibility shim | **verified** — single callable `pixi` binding throws structured E130 with span/help → migration guide; driver regression asserts rendered diagnostic |
+| UP45.3 | host/module support + migration contract | Status + mapping without invented dates | **done (docs)** — site PR #22: workspace-migration page (exact URL the diagnostic references), mapping table, side-by-side entrypoints, downgrade matrix |
+| UP45.4 | unattended reviewed approval | Expected-digest compare, stop-on-mismatch | **done (docs + mechanism)** — inspect JSON v2 exposes `capture_exclusions` + `runtime_access`; documented workflow compares reviewed expected digests; exact approval throughout; no TRUST_ALL |
+| UP45.5 | downgrade admission | Completed-v2 vs unfinished; documented refusals | **verified** — measured with real 0.42.0/0.44.1 binaries: legacy + file-only generations operate (gc/rollback); structured-env generations refuse ("manifest is corrupt") and hook envelopes are rejected before effects |
+| UP45.REL | versions, qualification, publication | Local gates + proofs + coordinated publication | **in progress** — see qualification record below |
 
-Responsibility map: native ELF/runtime admission remains in
-`workspace/consumer` and `gripsack-process`; hook execution reuses the existing
-activation/journal/process owners rather than a second hook protocol; source
-capture policy stays with configuration/evaluation and store source bundles.
-The integration owner owns shared wire/schema decisions, `main.rs`,
-`workspace/prepare.rs`, journal format and global documentation/release metadata.
-Shared source comparison and captured-input verification remain separate
-invariants. No IR extension is assumed merely to document an already expressible
-Pixi baseline; any necessary wire change must preserve the strict versioned
-reader policy and migrate every emitter/caller.
+### 0.45.0 qualification record (2026-10-07)
 
-Parallel implementations skip build/lint/test/formatter runs until integration.
-Actual verification commands, raw results, changed symbols and remaining
-acceptance will replace the pending evidence in this record before release.
+Source `ce1f20754d76c95e545fea5c5ee6025ed4e05a23` (branch `fix/reviewer-0450`,
+every gate on the exact final source). Gates: `test` (fmt + clippy -D warnings +
+full cargo test + admission/protocol scripts), `ts-test` (62 deno tests +
+examples tsc), `model` (TLC positives + calibrated negatives), `tlaps` (full
+induction + calibration under tlapm `d8b9747` — the mutable upstream tag
+rotated again on 2026-10-06; repinned with verified provenance: GitHub asset
+id 616249697 digest `13eff4e3…d43c`, independent HTTPS download matched,
+`tlapm --version` = d8b9747, gate passing), `verify` (443 Verus obligations +
+mutant calibration incl. the new `CommandOwner::ImmutableSubject` policy),
+affected + full e2e suites.
+
+Notable integration repairs during verification: the process-bounds oracle now
+keeps its positive full-suite run captured (a `--nocapture` interleave
+nondeterministically split one status line); check-subject source resolution
+admitted without staging authority after the first integrated run exposed the
+E128 gap; an explicit-rollback semantic was preserved against my incorrect
+"always refuse" reading (evidence: existing hook-outcome contract).
+
+Known diagnostics gap recorded (not fixed in 0.45.0): a declared package
+command whose selector is absent from the materialized prefix surfaces as a
+bare `E201: io: No such file or directory` instead of naming the selector.
+
+Release artifacts (Linux-first, `REL-REVIEW-0450`): promoted core binary is
+the recorded reproducibility experiment's own build — two clean builds pinned
+to image `sha256:e6445e884c3404402973c6267f6a0b286c09f9b4f8e3666cfa61cd8a67ff6dbc`
+produced byte-identical sha256 `c33cf2ee114ebc7c584599abc59e08c85a5090f7eb6c035b0f18030091583f31`.
+Finding recorded: the workspace release build embeds the build-script OUT_DIR
+path (`/app/target` vs `/tmp/repro-target` variants differ only there), so the
+fixed-target-dir repro service defines the canonical bytes. Conda helper pins:
+x64 `152de682…4516` (local two-build + committed-pin re-check), ARM64
+`57f6db60…85bd5` (native hosted measurement run 37591535999, all four jobs
+green). Bridge pins regenerated through the full Go gate; bytes identical to
+0.44.1 (deterministic, source unchanged). Dependency audits: 372 root + 570
+helper crates, zero findings, fresh advisory DB.
 
