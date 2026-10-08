@@ -6,6 +6,14 @@ trusted, and what evidence backs it. Statuses: `proposed`,
 `superseded`. Populated with evidence, not intentions (hardening
 handoff §8). Rows distinguish checked kernels/protocols from tested
 implementation bridges; a new unqualified proof packet remains explicit.
+
+Active platform scope is **Linux, including WSL2**, under the owner decision
+`PLATFORM-LINUX-WSL-2026-10-08` in [plan0048](../plan/0048-review-response-0.42.0.md).
+Darwin-specific rows, implementations and observations below are historical
+coverage or retained-format context, not current support promises or active
+release prerequisites. Scope retirement is not successful qualification;
+Linux/common proof, integrity and lifecycle obligations remain unchanged.
+
 | ID | Claim (with exclusions) | Enforcement | Admission boundary | Trusted components | Coverage | Bridges | Calibration | Status |
 |---|---|---|---|---|---|---|---|---|
 | CLASSIFY-001 | Exact admitted selection identity decides commitment: Committed iff current equals target; Uncommitted iff fresh with no current or current equals previous but not target; Ambiguous otherwise. Transaction identity is distinct from generation history identity. Exclusions: parser/current admission, successive-lifecycle composition and physical persistence require their own evidence. | `gripsack-policy/src/selection.rs::classify`; production recovery and both bounded explorers invoke it | Versioned marker selections and strict reserved current namespace; legacy same-generation ambiguity is refused before effects | Pinned Verus/Rust/Z3/vstd, serde and capability IO | Total kernel contract; new production-source calibration is being qualified | Actual same-generation rollback failed before; the repaired CLI restores both missing priors before flip and retains both committed links after flip | `2026-09-27-same-generation-before.log` and `2026-09-27-transaction-identity-development.log`; identity/ambiguity mutants remain required | Concrete bridge tested; full candidate proof/qualification pending |
@@ -176,5 +184,6 @@ Only previously observed dead PID/birth identities may remain; new, live,
 changed, truncated, unreadable or expired observations preserve the signal
 failure. Kernel membership completeness, birth-identity fidelity and zombie
 state semantics are explicit external assumptions, not Verus postconditions.
-Native macOS qualification of this new observer remains pending.
+Native macOS qualification of this observer was not completed; it is now outside
+active scope under `PLATFORM-LINUX-WSL-2026-10-08`, not a pending Linux gate.
 

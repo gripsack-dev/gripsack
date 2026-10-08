@@ -16,13 +16,12 @@ LINUX_IMAGE = "rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae
 TARGETS = {
     ("Linux", "x86_64"): "x86_64-unknown-linux-musl",
     ("Linux", "aarch64"): "aarch64-unknown-linux-musl",
-    ("Darwin", "arm64"): "aarch64-apple-darwin",
-    ("Darwin", "x86_64"): "x86_64-apple-darwin",
 }
 SLOTS = dict(zip(TARGETS.values(), (
-    "LinuxX86_64Musl", "LinuxAarch64Musl", "MacosAarch64", "MacosX86_64",
+    "LinuxX86_64Musl", "LinuxAarch64Musl",
 )))
-# Linux-first release policy; any requested Mac target still needs its own pin.
+# Historical pin tables may retain retired platform variants; never package them.
+PIN_VARIANTS = (*SLOTS.values(), "MacosAarch64", "MacosX86_64")
 REQUIRED = {"LinuxX86_64Musl", "LinuxAarch64Musl"}
 
 
@@ -34,7 +33,7 @@ def read_pins(path, toolchain):
         source.write_text(
             "#![allow(dead_code)]\n"
             "mod host { #[derive(Debug)] pub enum AssetTarget {"
-            + ",".join(SLOTS.values()) + "} }\n"
+            + ",".join(PIN_VARIANTS) + "} }\n"
             + f"#[path = {json.dumps(str(path))}] mod pins;\n"
             + 'fn main() { println!("{:?}", pins::CONDA_VERSION);'
             + 'for (slot, hash) in pins::CONDA_SHA256 { println!("[\\"{:?}\\",{:?}]", slot, hash); } }\n'
@@ -113,8 +112,6 @@ def main():
     for key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CARGO_BUILD_RUSTFLAGS"):
         env.pop(key, None)
     env.update(SOURCE_DATE_EPOCH="0", CARGO_INCREMENTAL="0", TZ="UTC", LC_ALL="C")
-    if platform.system() == "Darwin":
-        env["MACOSX_DEPLOYMENT_TARGET"] = "13.0"
     toolchain = [] if os.environ.get("GRIPSACK_CONDA_PACKAGING_CONTAINER") else [f"+{COMPILER}"]
     committed = read_pins(repo / "crates/gripsack-fetch/src/conda_pins.rs", toolchain) if args.check else None
     compiler = subprocess.check_output(["rustc", *toolchain, "-Vv"], text=True)

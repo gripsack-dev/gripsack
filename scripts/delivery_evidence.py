@@ -287,7 +287,7 @@ def coverage_violations(req: dict, records: list[dict], v: Violations,
                     v.add(rid, f"{lane}: named proof obligations without formal evidence: {sorted(set(names) - seen)}")
 
 
-def lane_violations(req: dict, v: Violations) -> None:
+def lane_violations(req: dict, v: Violations, *, check_verified: bool = True) -> None:
     rid = req["id"]
     declared = set(req.get("required_platform_capability_lanes") or [])
     lanes = req.get("lane_status") or {}
@@ -297,7 +297,7 @@ def lane_violations(req: dict, v: Violations) -> None:
     for lane, state in lanes.items():
         if lane not in declared or state not in STATUS_VALUES:
             v.add(rid, f"lane_status has undeclared lane or invalid state: {lane!r}={state!r}")
-    if req["status"] == "verified":
+    if check_verified and req["status"] == "verified":
         if req.get("lane_inventory_state") != "registered" or not declared:
             v.add(rid, "verified row has unresolved lane inventory")
         if set(lanes) != declared or any(state != "verified" for state in lanes.values()):

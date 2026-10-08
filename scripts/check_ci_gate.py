@@ -15,8 +15,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-REQUIRED_JOBS = ("test", "e2e-macos", "docs", "audit", "fuzz")
-TEST_LANES = ("core", "e2e", "e2e-persistence", "formal", "e2e-macos")
+REQUIRED_JOBS = ("test", "docs", "audit", "fuzz")
+TEST_LANES = ("core", "e2e", "e2e-persistence", "formal")
 PERSISTENCE_SCENARIOS = (
     "apply-deploy", "apply-prune", "rollback-deploy", "rollback-prune",
     "apply-deploy-copy", "apply-prune-copy",
@@ -94,12 +94,12 @@ def admit_test_lanes(results: dict) -> None:
 
 
 def admit_persistence(reports: list[dict], source: str) -> None:
-    """Require every native platform/fault/cut partition, not matrix roll-up alone."""
+    """Require all 96 Linux fault/cut partitions, not matrix roll-up alone."""
     if not source:
         raise GateFailure("missing persistence source revision")
     expected = {
         (system, scenario, fault, shard)
-        for system in ("Linux", "Darwin")
+        for system in ("Linux",)
         for scenario in PERSISTENCE_SCENARIOS
         for fault in ("error", "kill")
         for shard in range(PERSISTENCE_SHARDS)
@@ -117,7 +117,7 @@ def admit_persistence(reports: list[dict], source: str) -> None:
         seen.add(key)
         if report.get("source") != source or report.get("shards") != PERSISTENCE_SHARDS:
             raise GateFailure(f"wrong persistence revision or partition count: {key}")
-        if report.get("machine") != ("arm64" if key[0] == "Darwin" else "x86_64"):
+        if report.get("machine") != "x86_64":
             raise GateFailure(f"wrong persistence native architecture: {key}")
         inventory = report.get("inventory")
         if (not isinstance(inventory, list) or len(inventory) < PERSISTENCE_SHARDS
@@ -147,7 +147,6 @@ def self_check() -> None:
     def clean():
         return {
             "test": {"result": "success"},
-            "e2e-macos": {"result": "success"},
             "docs": {"result": "success"},
             "audit": {"result": "success"},
             "fuzz": {"result": "success"},
@@ -193,6 +192,9 @@ def self_check() -> None:
     extra = clean()
     extra["new-required-lane"] = {"result": "success"}
     rejects("unreviewed new job inventory", extra)
+    retired = clean()
+    retired["e2e-macos"] = retired.pop("test")
+    rejects("retired Mac job substituted for Linux aggregate", retired)
     for name in clean():
         for outcome in ("failure", "cancelled", "success" if name == "fuzz" else "skipped"):
             failed = clean()
@@ -225,13 +227,16 @@ def self_check() -> None:
         for result in ("failure", "cancelled", "skipped", None):
             refuses(lambda: admit_test_lanes({**lanes, lane: {"result": result}}),
                     f"test lane {lane}={result}")
+        substituted = {key: value for key, value in lanes.items() if key != lane}
+        substituted["e2e-macos"] = {"result": "success"}
+        refuses(lambda: admit_test_lanes(substituted), f"retired Mac substituted for {lane}")
     receipts = [
-        {"system": system, "machine": "arm64" if system == "Darwin" else "x86_64",
+        {"system": system, "machine": "x86_64",
          "scenario": scenario, "fault": fault, "shard": shard, "shards": PERSISTENCE_SHARDS,
          "source": "calibration", "inventory": [["before", "FilePublish"]] * 19,
          "completed_cuts": list(range(shard + 1, 20, PERSISTENCE_SHARDS)),
          "drift_states": [False, True], "seconds": 1.0}
-        for system in ("Linux", "Darwin")
+        for system in ("Linux",)
         for scenario in PERSISTENCE_SCENARIOS
         for fault in ("error", "kill")
         for shard in range(PERSISTENCE_SHARDS)
@@ -246,6 +251,7 @@ def self_check() -> None:
         ("completed_cuts", []), ("completed_cuts", [1, 9]), ("completed_cuts", [1, 9, 17, 17]),
         ("completed_cuts", [2, 10, 18]), ("drift_states", [False]), ("drift_states", [0, 1]),
         ("inventory", []), ("inventory", [["after", "FilePublish"]] * 19),
+        ("system", "Darwin"),
         ("source", "other"), ("machine", "arm64"), ("shards", 1), ("seconds", 0),
     ):
         refuses(lambda: admit_persistence([{**receipts[0], field: value}, *receipts[1:]], "calibration"),

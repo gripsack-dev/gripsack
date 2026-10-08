@@ -11,7 +11,7 @@ name: repro
 #
 # What a pass is NOT (stated in the report too): not a cross-time claim
 # (a deliberate toolchain bump changes inputs by design), not
-# cross-platform (darwin targets are separate builds), not an audit.
+# cross-architecture (Linux targets are separate builds), not an audit.
 
 on:
   workflow_dispatch:

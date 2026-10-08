@@ -15,6 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 from delivery_evidence import proof_catalog_digest
+from delivery_scope import AMENDMENT_ID, OUT_OF_SCOPE, effective_requirement
 
 REPO = Path(__file__).resolve().parent.parent
 CHECKER = REPO / "scripts/check_delivery.py"
@@ -51,7 +52,7 @@ def record(req: dict, lane: str, milestone: str | None = None, kind: str = "runn
         "report_marker": MARKER,
         "commit": REVISION,
         "counts": {"executed": 1, "passed": 1, "failed": 0, "skipped": 0},
-        "cases_covered": req["case_and_proof_inventory"],
+        "cases_covered": (effective_requirement(req) or req)["case_and_proof_inventory"],
     }
     if milestone:
         data["milestone"] = milestone
@@ -92,19 +93,15 @@ def fixture(tmp: Path) -> tuple[dict, Path]:
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes((REPO / report).read_bytes())
-    # Synthetic support matrix ONLY for a checker fixture. The real
-    # ledger must retain the handover's unresolved platform lanes.
+    # Preserve the exact original inventories and all required evidence kinds.
+    # Only missing proof catalogs get synthetic names in this checker fixture;
+    # this supplies no real implementation evidence.
     for req in ledger["requirements"]:
-        if req.get("lane_inventory_state") != "registered":
-            req["lane_inventory_state"] = "registered"
-            req["required_platform_capability_lanes"] = ["pure"]
-            req["case_and_proof_inventory"] = [req["required_acceptance_evidence"]]
-        req["evidence_kinds"] = ["runner"]
-    # A synthetic complete inventory names proof catalogs for every
-    # milestone. H0 and A0 intentionally have different obligations,
-    # so neither can borrow the other's valid formal runner.
+        if "formal" in req["evidence_kinds"] and req["owner_milestone"] != "global":
+            req.setdefault("proof_obligation_inventory", [f"ProofFixture{req['id']}"])
+            req.setdefault("proof_expected_minimum", 1)
+    # H0 and A0 have distinct catalogs; neither can borrow the other's runner.
     proof = row(ledger, "G-03")
-    proof["evidence_kinds"] = ["runner", "formal", "review"]
     proof["proof_obligations_by_milestone"] = {
         item["id"]: {
             "names": [f"ProofFixture{item['id']}"],
@@ -129,7 +126,10 @@ def fixture(tmp: Path) -> tuple[dict, Path]:
             )
         req["status"] = "verified"
         req["lane_status"] = {lane: "verified" for lane in req["required_platform_capability_lanes"]}
-        req["evidence_records"] = [record(req, lane) for lane in req["lane_status"]]
+        req["evidence_records"] = [
+            record(req, lane, kind=kind)
+            for lane in req["lane_status"] for kind in req["evidence_kinds"]
+        ]
     for req in ledger["requirements"]:
         if req["id"] in ledger["global_gate_ids"]:
             req["evidence_records"] = [
@@ -205,13 +205,44 @@ def main() -> int:
         check(path, fake, "no passing source-bound runner report", "--close-milestone", "A0", "--release", REVISION)
         print("  fake verified row without a runner report rejected")
 
-        skipped = copy.deepcopy(original)
-        target = row(skipped, "B0-02")
-        target["status"] = "verified"
-        target["lane_status"] = {lane: "blocked" for lane in target["required_platform_capability_lanes"]}
-        target["evidence_records"] = [record(target, target["required_platform_capability_lanes"][0])]
-        check(path, skipped, "missing or unresolved required lanes", "--validate")
-        print("  blocked Mac lane rejected")
+        for identity in sorted(OUT_OF_SCOPE):
+            skipped = copy.deepcopy(original)
+            target = row(skipped, identity)
+            target["status"] = "verified"
+            target["lane_status"] = {lane: "verified" for lane in target["required_platform_capability_lanes"]}
+            target["evidence_records"] = [record(target, lane) for lane in target["lane_status"]]
+            check(path, skipped, f"out_of_scope under {AMENDMENT_ID} cannot count as verified", "--validate")
+        print("  every wholly Mac row remains out of scope, never verified even with fabricated passing receipts")
+
+        forged = copy.deepcopy(original)
+        forged["scope_amendments"][0]["id"] = "PLATFORM-ANYTHING-APPROVED"
+        check(path, forged, "missing or unapproved scope amendment", "--validate")
+        forged = copy.deepcopy(original)
+        forged["scope_amendments"][0]["out_of_scope_requirements"]["B0-01"] = "out_of_scope"
+        check(path, forged, "missing or unapproved scope amendment", "--validate")
+        forged = copy.deepcopy(original)
+        forged["scope_amendments"].append(copy.deepcopy(forged["scope_amendments"][0]))
+        check(path, forged, "missing or unapproved scope amendment", "--validate")
+        absent = copy.deepcopy(original)
+        absent.pop("scope_amendments")
+        check(path, absent, "missing or unapproved scope amendment", "--validate")
+        print("  forged, expanded and duplicate owner amendments rejected")
+
+        for identity, field in (
+            ("B0-01", "required_platform_capability_lanes"),
+            ("E2-02", "case_and_proof_inventory"),
+            ("A1-01", "evidence_kinds"),
+        ):
+            dropped = copy.deepcopy(original)
+            row(dropped, identity)[field].pop(0)
+            check(path, dropped, "original lane/case/evidence-kind/prerequisite inventory changed", "--validate")
+        dropped = copy.deepcopy(original)
+        next(m for m in dropped["milestones"] if m["id"] == "B1")["lane_specific_prerequisites"] = []
+        check(path, dropped, "original lane/case/evidence-kind/prerequisite inventory changed", "--validate")
+        empty = copy.deepcopy(original)
+        empty["closure_scopes"]["foundation"] = []
+        check(path, empty, "original lane/case/evidence-kind/prerequisite inventory changed", "--validate")
+        print("  dropped Linux lanes, cases, proof kinds, worker prerequisites and empty scopes rejected")
 
         missing_case_lane = copy.deepcopy(original)
         row(missing_case_lane, "E0-02")["case_and_proof_inventory_by_lane"].pop("launchd")
@@ -231,25 +262,76 @@ def main() -> int:
             {"from": "in_progress", "to": "verified", "date": "2026-09-26"}
         )
         e0["status"] = "verified"
-        e0["lane_status"] = {
-            lane: "verified" for lane in e0["required_platform_capability_lanes"]
-        }
-        e0["evidence_records"] = [record(e0, lane) for lane in e0["lane_status"]]
-        for ev in e0["evidence_records"]:
-            ev["cases_covered"] = e0["case_and_proof_inventory_by_lane"][ev["lane"]]
+        # Preserve launchd's historical blocked lane; only Linux is evidenced.
+        e0["lane_status"]["systemd-linux"] = "verified"
+        e0["evidence_records"] = [record(e0, "systemd-linux")]
+        e0["evidence_records"][0]["cases_covered"] = e0["case_and_proof_inventory_by_lane"]["systemd-linux"]
         path.write_text(json.dumps(qualified_os_lanes))
         good_os_lanes = run(path, "--validate")
         if good_os_lanes.returncode:
-            raise AssertionError(f"distinct verified manager lanes should pass:\n{good_os_lanes.stderr}")
-        print("  distinct systemd/launchd source-bound synthetic cases qualify their own lanes")
+            raise AssertionError(f"active Linux manager lane should pass:\n{good_os_lanes.stderr}")
+        print("  Linux manager qualifies without changing historical blocked launchd evidence")
 
-        borrowed_linux_case = copy.deepcopy(qualified_os_lanes)
-        e0 = row(borrowed_linux_case, "E0-02")
-        launchd = next(ev for ev in e0["evidence_records"] if ev["lane"] == "launchd")
-        launchd["cases_covered"] = e0["case_and_proof_inventory_by_lane"]["systemd-linux"]
-        check(path, borrowed_linux_case, "launchd: conjunctive cases without passing evidence",
-              "--validate")
-        print("  Linux manager report cannot cover native Mac launchd cases")
+        borrowed_mac_case = copy.deepcopy(qualified_os_lanes)
+        e0 = row(borrowed_mac_case, "E0-02")
+        e0["evidence_records"][0]["cases_covered"] = e0["case_and_proof_inventory_by_lane"]["launchd"]
+        check(path, borrowed_mac_case, "systemd-linux: conjunctive cases without passing evidence", "--validate")
+        print("  retired launchd cases cannot replace active Linux manager evidence")
+
+        # Mac parser/preview clauses in common lanes are explicitly retired;
+        # the by-lane systemd byte/admission inventory remains conjunctive.
+        common = copy.deepcopy(original)
+        e2 = row(common, "E2-02")
+        active = effective_requirement(e2)
+        e2.setdefault("status_history", []).append({"from": e2["status"], "to": "verified", "date": "2026-10-08"})
+        e2["status"] = "verified"
+        e2["lane_status"] = {lane: "verified" for lane in active["required_platform_capability_lanes"]}
+        e2["evidence_records"] = [record(e2, lane) for lane in e2["lane_status"]]
+        for ev in e2["evidence_records"]:
+            ev["cases_covered"] = active["case_and_proof_inventory_by_lane"][ev["lane"]]
+        path.write_text(json.dumps(common))
+        accepted = run(path, "--validate")
+        if accepted.returncode:
+            raise AssertionError(f"Linux/common byte translation fixture failed:\n{accepted.stderr}")
+        dropped_common = copy.deepcopy(common)
+        ev = next(ev for ev in row(dropped_common, "E2-02")["evidence_records"] if ev["lane"] == "pure")
+        ev["cases_covered"] = ev["cases_covered"][1:]
+        check(path, dropped_common, "pure: conjunctive cases without passing evidence", "--validate")
+        print("  common-lane Mac portions retired explicitly; Linux decoder cases cannot disappear")
+
+        # Full B0 closure still requires H0/global gates and every Linux/common
+        # B0 row, but never asks for B0-02 or stale retired-lane source identity.
+        linux_b0 = copy.deepcopy(original)
+        for req in linux_b0["requirements"]:
+            if req["owner_milestone"] != "B0" or req["id"] in OUT_OF_SCOPE:
+                continue
+            active = effective_requirement(req)
+            if req["status"] != "verified":
+                req.setdefault("status_history", []).append({"from": req["status"], "to": "verified", "date": "2026-10-08"})
+            req["status"] = "verified"
+            req.setdefault("lane_status", {}).update({lane: "verified" for lane in active["required_platform_capability_lanes"]})
+            req["evidence_records"] = [
+                record(req, lane, kind=kind)
+                for lane in active["required_platform_capability_lanes"] for kind in req["evidence_kinds"]
+            ]
+            if req["id"] == "B0-03":
+                historical_mac = record(req, "macos")
+                historical_mac["commit"] = "0" * 40
+                req["evidence_records"].append(historical_mac)
+        for req in linux_b0["requirements"]:
+            if req["id"] in linux_b0["global_gate_ids"]:
+                req["evidence_records"].extend(
+                    record(req, lane, "B0", kind)
+                    for lane in req["required_platform_capability_lanes"] for kind in req["evidence_kinds"]
+                )
+        path.write_text(json.dumps(linux_b0))
+        accepted = run(path, "--close-milestone", "B0", "--release", REVISION)
+        if accepted.returncode:
+            raise AssertionError(f"Linux B0 closure should not require retired Mac qualification:\n{accepted.stderr}")
+        missing_linux = copy.deepcopy(linux_b0)
+        row(missing_linux, "B0-01")["evidence_records"] = []
+        check(path, missing_linux, "no passing source-bound runner report", "--close-milestone", "B0", "--release", REVISION)
+        print("  B0 closure excludes retired Mac prerequisites, not Linux qualification")
 
         zero = copy.deepcopy(original)
         g03 = next(ev for ev in row(zero, "G-03")["evidence_records"]
@@ -449,7 +531,7 @@ def main() -> int:
         ).strip()
         check(path, reused, "source trees differ", "--close-milestone", "A0", "--release", changed_revision)
         print("  changed-source reuse rejected despite an unchanged evidence receipt")
-    print("delivery checker calibration: 30 negative cases rejected, valid fixtures accepted")
+    print("delivery checker calibration: active Linux fixtures accepted; scope/evidence forgeries rejected")
     return 0
 
 if __name__ == "__main__":

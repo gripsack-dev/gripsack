@@ -8,6 +8,21 @@
   "index_integrity": "CHECKSUMS.sha256 verified 2026-09-24 before import",
   "normative_authority": "The complete six specifications, including detailed prose and all named acceptance cases. This generated index cannot narrow them."
  },
+ "scope_amendments": [
+  {
+   "id": "PLATFORM-LINUX-WSL-2026-10-08",
+   "authority": "owner decision 2026-10-08; plan/0048 owner-scope register",
+   "active_support": ["Linux", "WSL2 Linux execution environment"],
+   "retired_lanes": ["launchd", "macos", "macos-arm64", "macos-vm"],
+   "out_of_scope_requirements": {
+    "B0-02": "out_of_scope",
+    "D2-03": "out_of_scope",
+    "E4-02": "out_of_scope"
+   },
+   "application": "scripts/delivery_scope.py; original inventories and evidence remain historical authority",
+   "revisit": "only a new explicit owner decision; no automatic Mac resumption"
+  }
+ ],
  "status_values": [
   "pending",
   "in_progress",
@@ -20,11 +35,11 @@
   "All named cases in an applicable row and all mandatory platform/capability lanes are conjunctive.",
   "H0 must replace null lane/case inventories before a closure claim; null does not mean no required cases.",
   "Every applicable requirement, prerequisite and global gate must be verified with actual nonempty source/tool/input-bound reports.",
-  "Missing tools, Mac hardware, manager, prover or required CI enforcement keep the affected gate blocked/unverified.",
+  "Missing tools, manager, prover or required CI enforcement keep applicable Linux/WSL2 gates blocked/unverified. Retired Mac work is out_of_scope under PLATFORM-LINUX-WSL-2026-10-08, never verified.",
   "Mocks, skipped/xfail/optional jobs, empty runs, unexecuted cached proofs and handwritten pass flags cannot replace required evidence.",
-  "Only explicit owner-approved scope amendments may waive/downgrade a MUST; record exact ID and rationale.",
+  "Only PLATFORM-LINUX-WSL-2026-10-08 is admitted as active owner scope; its exact application is fixed in scripts/delivery_scope.py. No generic waiver changes acceptance.",
   "Independent ready work and clearly labeled partial slices may proceed while another lane or future scope is pending.",
-  "The index is generated from delivery tables; full detailed prose remains mandatory. It does not prove its own correctness."
+  "The index is generated from delivery tables; full detailed prose remains mandatory as applied by the explicit Linux/WSL2 owner amendment. The immutable bundle and original row inventories remain unchanged historical authority. Neither the index nor scope retirement proves correctness."
  ],
  "global_gate_ids": [
   "G-01",

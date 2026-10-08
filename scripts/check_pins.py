@@ -24,13 +24,13 @@ Modes:
 
 Coupled pins move as ONE proposal each:
   rust    Dockerfile rust:alpine digest + FUZZ_TOOLCHAIN + the native
-          dtolnay/rust-toolchain pins (ci.yml, release-core.yml). The
+          dtolnay/rust-toolchain pins (release-core.yml). The
           image's rustc must equal the native pin — proven by digest
           equality with the rust:<version>-alpine tag (identical
           manifests are identical images), not by running the image.
   deno    Dockerfile (image digest, DENO_VERSION, DENO_SHA256), host.rs
-          DENO_RELEASE (version + every platform hash), the workflows'
-          deno-version pins, and ci.yml's macOS prefetch URL+sha.
+          DENO_RELEASE (version + supported Linux hashes), and the workflows'
+          deno-version pins. Retired platform hashes are historical only.
   tools   cargo-auditable (version + both musl tarball sha256s), tla2tools
           (version + jar sha256), uv (version + both wheel hashes),
           node 22 (both setup-node pins).
@@ -88,8 +88,6 @@ HOST_RS = "crates/gripsack-fetch/src/host.rs"
 DENO_TARGETS = {
     "LinuxX86_64Musl": "x86_64-unknown-linux-gnu",
     "LinuxAarch64Musl": "aarch64-unknown-linux-gnu",
-    "MacosX86_64": "x86_64-apple-darwin",
-    "MacosAarch64": "aarch64-apple-darwin",
 }
 
 
@@ -256,9 +254,11 @@ class PinSites:
             return None
         ver = re.search(r'version:\s*"([^"]+)"', m.group(1))
         pairs = re.findall(r"AssetTarget::(\w+),\s*\n?\s*\"([0-9a-f]{64})\"", m.group(1))
-        if not ver or {t for t, _ in pairs} != set(DENO_TARGETS):
+        supported = [(target, digest) for target, digest in pairs if target in DENO_TARGETS]
+        if (not ver or {target for target, _ in supported} != set(DENO_TARGETS)
+                or len(supported) != len(DENO_TARGETS)):
             return None
-        return ver.group(1), dict(pairs)
+        return ver.group(1), dict(supported)
 
 
 # --- proposals ------------------------------------------------------------
@@ -496,13 +496,6 @@ def unit_deno(sites: PinSites) -> PinUnit:
         e.append(Edit(HOST_RS, old_h, new_hashes[t]))
     if host_comment := re.search(r"Hashes from v[\d.]+", sites.text(HOST_RS)):
         e.append(Edit(HOST_RS, host_comment.group(0), f"Hashes from v{latest}"))
-    ci = sites.text(".github/workflows/ci.yml")
-    if ci_url := re.search(r"releases/download/v[\d.]+/deno-aarch64-apple-darwin\.zip", ci):
-        e.append(Edit(".github/workflows/ci.yml", ci_url.group(0),
-                      f"releases/download/v{latest}/deno-aarch64-apple-darwin.zip"))
-    if ci_sha := re.search(r"[0-9a-f]{64}  /tmp/deno\.zip", ci):
-        e.append(Edit(".github/workflows/ci.yml", ci_sha.group(0),
-                      f"{new_hashes['MacosAarch64']}  /tmp/deno.zip"))
     for path, vals in wf.items():
         for old in dict.fromkeys(vals):
             e.append(Edit(path, f"deno-version: {old}", f"deno-version: v{latest}", vals.count(old)))

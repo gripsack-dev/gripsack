@@ -1,10 +1,9 @@
 #!/bin/sh
 # gripsack installer — curl -fsSL https://gripsack.dev/install.sh | sh
 #
-# Detects OS/arch (linux + macOS, x86_64 and aarch64), downloads the
-# matching static binary from GitHub releases, verifies the checksum,
-# and installs to ~/.local/bin (override: GRIPSACK_BIN).
-# macOS users may prefer: brew install --cask gripsack-dev/tap/gripsack
+# Detects Linux OS/arch (including WSL), downloads the matching static
+# binary from GitHub releases, verifies its checksum, and installs to
+# ~/.local/bin (override: GRIPSACK_BIN). macOS is not supported.
 set -eu
 
 REPO="gripsack-dev/gripsack"
@@ -19,7 +18,9 @@ case "$arch" in
 esac
 case "$os" in
     Linux)  TARGET="$arch-unknown-linux-musl" ;;
-    Darwin) TARGET="$arch-apple-darwin" ;;
+    Darwin)
+        echo "gripsack: macOS is no longer supported; supported environments are Linux and WSL" >&2
+        exit 1 ;;
     MINGW*|MSYS*|CYGWIN*)
         echo "gripsack: no native Windows build by design — use WSL and run this script inside it" >&2
         exit 1 ;;

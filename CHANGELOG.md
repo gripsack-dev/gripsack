@@ -80,6 +80,14 @@ modern-glibc execution, security negatives and published-consumer verification
 remain required. No hosted-build attestation is claimed for locally assembled
 payloads.
 
+The subsequent owner decision `PLATFORM-LINUX-WSL-2026-10-08` makes Linux and
+WSL2 the supported host scope. macOS is no longer an active roadmap,
+qualification, CI or future-release target. The current installer refuses it
+before network access or destination changes rather than selecting historical
+Mac artifacts. Those releases and persisted-format readers remain intact;
+retired Mac work is not marked as passing evidence. Existing Linux
+qualification and integrity requirements are unchanged.
+
 ## [0.44.1] — 2026-10-04
 
 ### Fixed

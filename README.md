@@ -39,6 +39,10 @@ root, no sandbox dogma.
 
 ## Install
 
+Supported hosts are **Linux, including WSL2**. macOS and native Windows are
+not supported. Historical Mac releases are retained as history, not an
+installation or compatibility promise.
+
 ```bash
 cargo install gripsack          # the grip binary (static musl)
 npm i @gripsack/core            # types for your IDE (optional; the
@@ -126,19 +130,19 @@ checked for content, configuration and image-local runtime closure; deleting
 the builder cache does not delete them.
 
 Linux x86_64 Conda/Pixi native and OCI journeys have runtime qualification.
-The Mac VM backend and full coherent Mac Conda journey remain unqualified:
-hosted VZ is unavailable, and the native Conda fixture currently refuses a
-`libgcc_s.1.1.dylib` format before publication. The owner temporarily deferred
-those Mac runtime campaigns; Mac build/package and ordinary native core checks
-remain enabled. [Plan/0052 §33](plan/0052-workspace-contract.md#33-unreleased-v6-integration-2026-10-01)
-records the actual evidence and its limits, not all-platform runtime parity.
+The supported platform scope is Linux and WSL under the owner's
+`PLATFORM-LINUX-WSL-2026-10-08` decision. macOS, its VM backend, launchd and
+native Mac Conda qualification are outside the active roadmap, CI and future
+release targets; revisiting them requires a new explicit support decision.
+Historical platform metadata/readers and release evidence retain their original
+meaning, without implying current Mac support.
 
-The owner selected a Linux-first **0.44.1** distribution: the prebuilt core is
-Linux x86_64, with measured Linux Conda helpers. Other prebuilt core targets stay
-on their last available release; the installer checks availability for its
-target. Locally produced 0.44.1 assets have checksum/build receipts, not a claim
-of GitHub-hosted build attestation. This scoped exception does not qualify the
-deferred Mac backend or make a fresh full-CI run successful.
+The current **0.45.0** prebuilt core is Linux x86_64, with measured Linux
+Conda helpers. The installer selects a complete artifact pair for supported
+Linux architectures; it rejects macOS rather than installing an old Mac
+release. Locally produced 0.45.0 assets have checksum/build receipts, not
+GitHub-hosted build attestations. See [plan0048](plan/0048-review-response-0.42.0.md)
+for the explicit scope amendment and source-bound qualification.
 
 ## Source approval and migration
 

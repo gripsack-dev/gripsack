@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Validate the edition-5 delivery inventory and source-bound closure.
 
-Inventory mode permits pending future rows but protects all 178 imported
-requirements. Closure mode additionally requires every prerequisite and
-global gate, every declared lane and case, real runner report bytes,
-positive execution/proof counts and an exact source revision. A ledger
-attests to evidence completeness; it does not prove the behavior of a
-runner or a publisher.
+Inventory mode protects all 178 imported requirements and their original
+lane/case inventories. Closure applies only the fixed owner-authorized
+Linux/WSL2 amendment, then requires every applicable prerequisite, global
+gate, lane and case, real reports, positive counts and an exact revision.
+Retired Mac requirements are out of scope, never verified. A ledger attests
+to evidence completeness, not the behavior of a runner or publisher.
 
     python3 scripts/check_delivery.py --validate
     python3 scripts/check_delivery.py --close-milestone A0 --release <40-hex-sha>
@@ -37,10 +37,11 @@ from delivery_evidence import (
     source_binding_violations,
     source_fingerprint,
 )
+from delivery_scope import effective_requirement, scope_violations
 
-# Bundle edition 5's 178 mandatory rows: id, owner, scope, source,
-# deliverable and required evidence. An amendment changes this constant
-# explicitly in review; status, evidence and lane registration do not.
+# Bundle edition 5's 178 immutable rows: id, owner, scope, source,
+# deliverable and required evidence. Active scope is projected separately;
+# the Linux/WSL2 amendment does not alter this historical fingerprint.
 INVENTORY_SHA256 = "7a7c717ddd7ae526efc952a07268345a0333c20abf2abef5a0fcc64f0093c699"
 
 
@@ -56,6 +57,7 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
     v = Violations()
     root = repo_root(ledger_dir)
     reqs = ledger["requirements"]
+    scope_active = scope_violations(ledger, v)
     by_id = {r["id"]: r for r in reqs}
     if len(reqs) != 178 or ledger.get("requirement_count") != len(reqs) or len(by_id) != len(reqs):
         v.add("ledger", "missing, duplicated or added requirement rows: edition 5 requires 178 unique IDs")
@@ -146,17 +148,29 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
             if req["owner_milestone"] == "global" and ev.get("milestone") not in milestone_ids:
                 v.add(rid, f"evidence[{idx}]: global gate needs a known milestone")
             evidence_violations(req, ev, idx, v, root)
-        lane_violations(req, v)
+        # Validate historical records/statuses without making retired lanes
+        # prerequisites. Their evidence bytes are retained, never rewritten.
+        lane_violations(req, v, check_verified=False)
+        history_violations(req, v)
+        active = effective_requirement(req) if scope_active else req
+        if active is None:
+            continue
+        active_lanes = set(active.get("required_platform_capability_lanes") or [])
+        if not active_lanes or not active.get("case_and_proof_inventory"):
+            v.add(rid, "active requirement has empty lanes or cases; retirement is not evidence")
+        if any(not cases for cases in active.get("case_and_proof_inventory_by_lane", {}).values()):
+            v.add(rid, "active per-lane inventory cannot be empty")
+        lane_violations(active, v)
         if req["status"] == "verified":
-            if not records:
+            active_records = active.get("evidence_records", [])
+            if not active_records:
                 v.add(rid, "verified without evidence records: a handwritten pass flag is not evidence")
             if req["owner_milestone"] == "global":
                 for mid in sorted(milestone_ids):
-                    selected = [ev for ev in records if ev.get("milestone") == mid]
-                    coverage_violations(req, selected, v, declared, mid)
+                    selected = [ev for ev in active_records if ev.get("milestone") == mid]
+                    coverage_violations(active, selected, v, active_lanes, mid)
             else:
-                coverage_violations(req, records, v, declared)
-        history_violations(req, v)
+                coverage_violations(active, active_records, v, active_lanes)
     if by_id.get("H0-02", {}).get("status") == "verified":
         unresolved = [
             r["id"] for r in reqs
@@ -168,6 +182,8 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
         if unresolved:
             v.add("H0-02", f"complete support/case/proof/evidence-kind inventory missing for {len(unresolved)} rows: {unresolved[:12]}")
         for req in reqs:
+            if scope_active and effective_requirement(req) is None:
+                continue
             if proof_row(req):
                 if req["owner_milestone"] == "global":
                     for mid in sorted(milestone_ids):
@@ -180,6 +196,8 @@ def validate(ledger: dict, ledger_dir: Path) -> Violations:
 
 def close_claim(ledger: dict, milestone: str | None, scope: str | None, release: str | None, ledger_dir: Path) -> Violations:
     v = validate(ledger, ledger_dir)
+    if not scope_violations(ledger, Violations()):
+        return v
     if not release or not COMMIT_RE.fullmatch(release):
         v.add("claim", "--release <exact 40-hex source revision> is required for closure")
     root = repo_root(ledger_dir)
@@ -213,8 +231,8 @@ def close_claim(ledger: dict, milestone: str | None, scope: str | None, release:
         label = f"closure scope {scope}"
     else:
         raise SystemExit("closure claim needs --close-milestone or --close-scope")
-    # Full milestone/scope closure includes all common and lane-specific
-    # prerequisites; partial platform slices are not closure claims.
+    # All registered milestone prerequisites survive: each owns Linux/common
+    # requirements. Retired Mac-only rows within them are not prerequisites.
     pending = list(claimed)
     while pending:
         current = milestones[pending.pop()]
@@ -227,7 +245,10 @@ def close_claim(ledger: dict, milestone: str | None, scope: str | None, release:
                 claimed.add(prereq)
                 pending.append(prereq)
     verified_rows = 0
-    for req in ledger["requirements"]:
+    for original in ledger["requirements"]:
+        req = effective_requirement(original)
+        if req is None:
+            continue
         rid = req["id"]
         if req["owner_milestone"] == "global":
             if req.get("lane_inventory_state") != "registered":
