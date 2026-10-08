@@ -21,13 +21,13 @@ pub struct LockedCondaEnvironment {
     pub channels: Vec<String>,
     /// Solver channel-priority policy record.
     pub channel_priority: ChannelPriority,
-    /// Explicit manifest target requirements, distinct from historical solve
+    /// Explicit native/Pixi target requirements, distinct from historical solve
     /// facts. Required even when empty so missing policy is not invented.
     pub system_requirements: LockedCondaSystemRequirements,
-    /// Virtual packages the solve was grounded in (e.g. the measured
-    /// `__glibc` the solver assumed). Frozen admission re-validates the
-    /// measured host against every depends/constrains MatchSpec naming a
-    /// virtual package — these values are NOT universally floors.
+    /// Virtual packages the solve assumed: measured capabilities with native
+    /// declared floors substituted, or facts captured by a Pixi lock. Frozen
+    /// runtime admission checks the physical host against explicit requirements
+    /// and package MatchSpecs, never treats all historical solve facts as floors.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub virtual_packages: Vec<LockedVirtualPackage>,
     /// Complete transitive closure, canonical order (name, then the

@@ -381,7 +381,7 @@ mod tests {
                 resources: vec![],
                 workspace: None,
                 workspace_v4: None,
-                workspace_v6: None,
+                workspace_catalog: None,
                 modules: [
                     (
                         "consumer".into(),

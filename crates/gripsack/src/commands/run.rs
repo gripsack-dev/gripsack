@@ -1,5 +1,5 @@
 //! `grip run` / `grip shell` / `grip task` — native project consumers over a
-//! v6 workspace. One shared path: evaluate, realize the selected closure
+//! current workspace catalog. One shared path: evaluate, realize the selected closure
 //! (cached/provider closures need no bridge), then launch through the common
 //! consumer service. No personal generation is created and the live
 //! checkout stays the working directory.
@@ -7,7 +7,8 @@ use super::{eval_repo, validated_ir};
 use crate::render::{DiagnosticSink, Palette};
 use gripsack_buildkit::worker::{MemoryBytes, WorkerOptions};
 use gripsack_exec::{BuildOptions, ConsumerRequest, Ctx, ExecError, Repository, consume};
-use gripsack_process::{OperatorEnvironment, terminal::tame};
+use gripsack_ir::workspace_model::identity::PackageDigest;
+use gripsack_process::{OperatorEnvironment, Sha256Digest, terminal::tame};
 use std::{
     ffi::OsString,
     num::{NonZeroU16, NonZeroU64},
@@ -72,6 +73,47 @@ pub struct TaskArgs {
     pub builder_memory_mib: NonZeroU64,
     #[arg(long, default_value = "1800")]
     pub timeout_seconds: NonZeroU64,
+}
+
+/// Internal retained-wrapper protocol; never evaluates a repository.
+#[derive(Debug, clap::Args)]
+pub struct PackageCommandArgs {
+    #[arg(long)]
+    pub home: PathBuf,
+    #[arg(long, value_parser = PackageDigest::parse)]
+    pub package: PackageDigest,
+    #[arg(long, value_parser = Sha256Digest::parse)]
+    pub receipt: Sha256Digest,
+    #[arg(long, allow_hyphen_values = true)]
+    pub command: String,
+    #[arg(long, value_parser = Sha256Digest::parse)]
+    pub environment_sha256: Option<Sha256Digest>,
+    #[arg(last = true, allow_hyphen_values = true)]
+    pub arguments: Vec<OsString>,
+}
+
+pub fn package_command(args: PackageCommandArgs, palette: Palette) -> ExitCode {
+    let sink = DiagnosticSink::terminal(palette, &args.home);
+    let environment = match OperatorEnvironment::capture() {
+        Ok(environment) => environment,
+        Err(error) => {
+            eprintln!("grip: {}", tame(error.to_string()));
+            return ExitCode::FAILURE;
+        }
+    };
+    let arguments: Vec<_> = args.arguments.iter().map(OsString::as_os_str).collect();
+    match gripsack_exec::run_package_command(
+        &args.home,
+        args.package,
+        args.receipt,
+        &args.command,
+        &arguments,
+        args.environment_sha256,
+        &environment,
+    ) {
+        Ok(outcome) => propagate(&outcome.receipt, outcome.root_retained),
+        Err(error) => report_execution_error(error, sink),
+    }
 }
 
 pub fn run(repo: &Path, args: RunArgs, palette: Palette) -> ExitCode {
@@ -198,20 +240,22 @@ fn inner(
     };
     match consume(&ir, &ctx, &options, &request) {
         Ok(outcome) => propagate(&outcome.receipt, outcome.root_retained),
-        Err(error) => {
-            match error {
-                ExecError::Gate(diagnostic) => sink.report(&[diagnostic]),
-                ExecError::Fetch(gripsack_fetch::FetchError::Diagnostics(diagnostics)) => {
-                    sink.report(&diagnostics)
-                }
-                other => sink.report(&[gripsack_ir::Diagnostic::error(
-                    gripsack_ir::codes::EXEC_STEP,
-                    other.to_string(),
-                )]),
-            }
-            sink.finish_failure(ExitCode::FAILURE)
-        }
+        Err(error) => report_execution_error(error, sink),
     }
+}
+
+fn report_execution_error(error: ExecError, mut sink: DiagnosticSink) -> ExitCode {
+    match error {
+        ExecError::Gate(diagnostic) => sink.report(&[diagnostic]),
+        ExecError::Fetch(gripsack_fetch::FetchError::Diagnostics(diagnostics)) => {
+            sink.report(&diagnostics)
+        }
+        other => sink.report(&[gripsack_ir::Diagnostic::error(
+            gripsack_ir::codes::EXEC_STEP,
+            other.to_string(),
+        )]),
+    }
+    sink.finish_failure(ExitCode::FAILURE)
 }
 
 /// Exit with the child's exact status: its exit code, or the same signal

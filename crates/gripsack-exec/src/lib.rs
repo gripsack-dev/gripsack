@@ -62,7 +62,7 @@ pub use update::{UpdateMode, update};
 pub use util::LifecycleSession;
 pub use workspace::roots::{BuildRecovery, recover_builder_roots};
 pub use workspace::{BuildOptions, BuildResult, BuiltOutput, build_workspace};
-pub use workspace::{ConsumerOutcome, ConsumerRequest, consume};
+pub use workspace::{ConsumerOutcome, ConsumerRequest, consume, run_package_command};
 
 use gripsack_ir::Ir;
 use std::collections::{BTreeMap, BTreeSet};
@@ -202,7 +202,7 @@ mod tests {
             resources: vec![],
             workspace: None,
             workspace_v4: None,
-            workspace_v6: None,
+            workspace_catalog: None,
             modules: entries
                 .iter()
                 .map(|(name, deps)| (name.to_string(), module_with_deps(deps)))

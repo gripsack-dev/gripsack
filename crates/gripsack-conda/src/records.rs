@@ -1,6 +1,6 @@
 //! One conversion from the strict portable wire to canonical Rattler records.
 //! No JSON round-trip buffer and no second version/build matcher are involved.
-use gripsack_ir::workspace_v6::lock::{LockedCondaPackage, LockedNoArch};
+use gripsack_ir::workspace_model::lock::{LockedCondaPackage, LockedNoArch};
 use rattler_conda_types::{
     NoArchType, PackageName, PackageRecord, VersionWithSource, package::RunExportsJson,
     utils::TimestampMs,

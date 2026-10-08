@@ -9,7 +9,7 @@
 //! frontend (typescript)
 //!     │  evals your modules, emits JSON with spans
 //!     ▼
-//! parse        E000 malformed · E100 wrong ir_version (accepts 3..=6)
+//! parse        E000 malformed · E100 wrong ir_version (accepts 3..=7)
 //!     ▼
 //! sema::run    ordered passes, one concern each:
 //!     steps        E103 both-shapes · E106 dup/reserved ids · E104 refs
@@ -37,7 +37,7 @@ pub mod step;
 mod tagged;
 pub mod workspace;
 mod workspace_catalog;
-pub mod workspace_v6;
+pub mod workspace_model;
 pub use workspace_catalog::CatalogOutput;
 
 pub use diagnostic::{Diagnostic, Label, Severity, codes};
@@ -45,7 +45,7 @@ pub use host_name::HostName;
 pub use model::*;
 pub use parse::{
     ACCEPTED_IR_VERSIONS, IR_VERSION, LEGACY_IR_VERSION, WORKSPACE_V4_VERSION,
-    WORKSPACE_V5_VERSION, parse,
+    WORKSPACE_V5_VERSION, WORKSPACE_V6_VERSION, parse,
 };
 /// Backwards-compatible alias: pass 2 is `sema::run`.
 pub use sema::run as validate;

@@ -52,7 +52,7 @@ fn push<'a>(edges: &mut Vec<Reference<'a>>, edge: Reference<'a>)
     edges.push(edge);
 }
 
-pub fn references(workspace: &WorkspaceV6) -> (edges: Vec<Reference<'_>>)
+pub fn references(workspace: &WorkspaceCatalog) -> (edges: Vec<Reference<'_>>)
     requires vstd::std_specs::btree::key_obeys_cmp_spec::<String>(),
     ensures views(edges@) =~= workspace_edges(workspace.outputs@),
 {

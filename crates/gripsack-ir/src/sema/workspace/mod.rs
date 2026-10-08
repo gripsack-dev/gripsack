@@ -19,8 +19,8 @@ use crate::diagnostic::Diagnostic;
 use crate::model::Ir;
 
 pub fn check(ir: &Ir, diagnostics: &mut Vec<Diagnostic>) {
-    if let Some(workspace) = &ir.workspace_v6 {
-        super::workspace_v6::check(workspace, diagnostics);
+    if let Some(workspace) = &ir.workspace_catalog {
+        super::workspace_model::check(workspace, diagnostics);
     }
     if let Some(workspace) = &ir.workspace {
         check_workspace(workspace, diagnostics);

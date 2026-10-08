@@ -4,8 +4,8 @@
 use crate::ExecError;
 use gripsack_ir::{
     Diagnostic, codes,
-    workspace_v6::{
-        WorkspaceOutput, WorkspaceV6,
+    workspace_model::{
+        WorkspaceCatalog, WorkspaceOutput,
         graph::{Reference, references},
     },
 };
@@ -15,14 +15,14 @@ use std::{
 };
 
 pub(super) struct Selection<'a> {
-    pub workspace: &'a WorkspaceV6,
+    pub workspace: &'a WorkspaceCatalog,
     pub outputs: BTreeMap<&'a str, &'a WorkspaceOutput>,
     pub required: BTreeSet<&'a str>,
     edges: Vec<Reference<'a>>,
     by_owner: BTreeMap<&'a str, Range<usize>>,
 }
 impl<'a> Selection<'a> {
-    pub fn admit(workspace: &'a WorkspaceV6, requested: &[String]) -> Result<Self, ExecError> {
+    pub fn admit(workspace: &'a WorkspaceCatalog, requested: &[String]) -> Result<Self, ExecError> {
         if requested.is_empty() {
             return Err(ExecError::Gate(
                 Diagnostic::error(

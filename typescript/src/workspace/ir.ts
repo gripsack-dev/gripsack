@@ -1,4 +1,4 @@
-/** v6 workspace wire types; the core retains strict historical readers. */
+/** v7 workspace wire types; the core retains strict historical readers. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
@@ -7,7 +7,7 @@ import type { Span } from "../module.ts";
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v5.json $defs)
+// shared wire fragments (schema/ir/v7.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -76,8 +76,20 @@ export type PackageLayout =
   | { kind: "fixed_prefix"; prefix: string }
   | { kind: "prefix_materialized" };
 
+/** Ordered trusted Linux GNU host library roots; package policy, never producer identity.
+ * Nested values inherit the package span. No ambient loader search is enabled. */
+export interface HostRuntimeSpec { libraryDirectories: string[] }
+export interface HostRuntimeRequirements { library_directories: string[] }
+
+/** Linux solve baseline, not proof of the resulting archives' runtime minimum.
+ * Nested values inherit the acquisition source span. */
+export interface CondaSystemRequirements {
+  libc?: { family: "glibc"; version: string };
+  linux?: string;
+}
+
 // ---------------------------------------------------------------------------
-// v6 acquisition sources (wire shape: schema/ir/v6.json $defs/workspaceSourceV6)
+// Current acquisition sources (schema/ir/v7.json; retained in-memory V6 family)
 // ---------------------------------------------------------------------------
 
 /** Existing archive/git/github/file/plugin acquisition, wrapped with its
@@ -91,6 +103,7 @@ export interface CondaEnvironmentSource {
   channels: string[];
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
+  system_requirements?: CondaSystemRequirements;
   span: Span;
 }
 /** An explicit Pixi lock import: `manifest`/`lock` are workspace INPUT
@@ -102,8 +115,8 @@ export interface PixiLockSource {
   environment: string;
   span: Span;
 }
-/** How a v6 recipe or provider package obtains its payload. */
-export type WorkspaceSourceV6 = FetchSource | CondaEnvironmentSource | PixiLockSource;
+/** How a current recipe or provider package obtains its payload. */
+export type AcquisitionSource = FetchSource | CondaEnvironmentSource | PixiLockSource;
 
 export interface WorkspaceExecCommand {
   kind: "exec";
@@ -175,16 +188,16 @@ export type WorkspaceCalendar =
   | { kind: "weekly"; weekday: WorkspaceWeekday; time: string };
 
 // ---------------------------------------------------------------------------
-// output nodes (wire shape: schema/ir/v5.json $defs/*Output)
+// output nodes (wire shape: schema/ir/v7.json $defs/*Output)
 // ---------------------------------------------------------------------------
 
 export interface RecipeNode {
   name: string;
   span: Span;
   kind: "recipe";
-  /** The recipe's acquisition source — the v6 tagged union
-   *  (`workspaceSourceV6`); the legacy bare `{fetch,span}` shape is gone. */
-  source: WorkspaceSourceV6;
+  /** The recipe's acquisition source (`acquisitionSource` in the schema).
+   *  The legacy bare `{fetch,span}` shape is not admitted. */
+  source: AcquisitionSource;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
@@ -197,7 +210,7 @@ export interface RecipeNode {
  *  acquisition carrying its own provenance — no synthetic recipe. */
 export type WorkspaceProducer =
   | { kind: "recipe"; recipe: string }
-  | { kind: "provider"; provider: WorkspaceSourceV6 };
+  | { kind: "provider"; provider: AcquisitionSource };
 
 export interface PackageNode {
   name: string;
@@ -206,6 +219,7 @@ export interface PackageNode {
   producer: WorkspaceProducer;
   commands: Record<string, string>;
   runtime?: string[];
+  host_runtime?: HostRuntimeRequirements;
   target: WorkspacePlatform;
   layout: PackageLayout;
 }
@@ -339,7 +353,7 @@ export interface RecipeSpec {
   /** A `Fetch` (wrapped as `{"kind":"fetch",…}`), a plain
    *  {@link CondaEnvironmentSpec}/{@link PixiLockSpec}, or a pre-built
    *  `condaEnvironment(...)`/`pixiFromLock(...)` source value. */
-  source: Fetch | CondaEnvironmentSpec | PixiLockSpec | WorkspaceSourceV6;
+  source: Fetch | CondaEnvironmentSpec | PixiLockSpec | AcquisitionSource;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
@@ -356,6 +370,7 @@ export interface CondaEnvironmentSpec {
   channels: string[];
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
+  systemRequirements?: CondaSystemRequirements;
 }
 
 /** Authoring spec for an explicit Pixi lock import — see
@@ -374,6 +389,8 @@ export interface PackageSpec {
   commands: Record<string, string>;
   /** Explicit runtime closure — names of other `package` outputs. */
   runtime?: string[];
+  /** Explicit ordered host library authority, supported only for Linux GNU packages. */
+  hostRuntime?: HostRuntimeSpec;
   target: WorkspacePlatform;
   layout: PackageLayout;
   span?: Span;

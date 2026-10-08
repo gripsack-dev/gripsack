@@ -3363,3 +3363,94 @@ private Space/kernel remains outside observed qualification. The inherited
 incomplete full-suite run remains incomplete; no new fuzz/corpus campaign was
 started. CI/provider migration and original user-owned edits remain untouched.
 
+
+## 18. External 0.45.0 follow-up — 0.46.0 execution record
+
+Received 2026-10-08. The reviewer reports actual execution on WSL Ubuntu24.04
+(glibc2.39) and RHEL8.10 Space (glibc2.28, el9 5.14 kernel, Landlock enabled):
+persistent Node/pyright activation, the complete X11 closure, sealed GNU
+commands, repeated Pixi imports, hooks including `fc-cache`, and passing/failing
+task checks now work on both hosts. Capture exclusions and unattended exact-digest
+approval also worked. This is **external reviewer evidence**, not an internally
+rerun private-host campaign or invented source-bound transcript. The review did
+not retest removed-Pixi diagnostics, broader legacy support or downgrades.
+
+An explicit Pixi solve baseline plus observed execution qualifies that closure
+on those hosts; it is not universal portability proof. Native
+`conda.environment` still needs a declarable baseline. Measured solve facts,
+declared target requirements, archive requirements and sealed-loader admission
+remain separate domains.
+
+### Responsibility and dependency map
+
+- Shared contract/Conda owner: strict writer v7, retained executing v6
+  admission, schema/Rust/TS parity, explicit Conda baseline and helper protocol
+  binding. Normalize current semantic-model names rather than extending types
+  misleadingly named for an obsolete wire version.
+- Native-runtime owner: package-scoped reviewed host-library requirements,
+  retained package receipt identity, sealed ELF lookup/equivalence and native
+  consumers. A mutable host-runtime allowance never becomes an evaluator grant,
+  implicit BuildKit mount or portable OCI runtime closure.
+- Retained invocation owner: native command admission, process-root leases and
+  an internal CLI entrypoint let newly host-dependent persistent wrappers
+  re-admit their exact retained package/receipt graph on every launch. No
+  unsealed fallback, projected-PATH lookup of the core, or persisted loader
+  authority. Existing policy-free wrappers retain their contract.
+- Publication owner: existing shared store/filesystem publication. Staging
+  investigation changes this owner only for a demonstrated cross-device defect;
+  no global `$TMPDIR` workaround or suppressed rename error.
+- Documentation owner: real legacy prune generations, physical release-tree
+  layout, MatchSpecs, closure dependencies and the existing managed-file
+  launcher mechanism. No ownership bypass or speculative launcher API.
+- Integration owner: all caller/version/receipt migrations, focused security
+  review, applicable Linux proofs/flows, public consumers and coordinated
+  core/SDK release. Linux/WSL scope and no-fuzz/corpus instruction remain;
+  plan0053 and original user-owned changes stay separate.
+
+| Leaf | Required result | State/evidence |
+|---|---|---|
+| UP46.1 | Explicit reviewed host-runtime library roots allow the reported absolute RUNPATH use case without weakening default sealed admission, closure/search equivalence, aliases or replay | **verified at candidate source** — real GNU alias/transitive-order security fixture, auxiliary-FD boundaries, 13/13 loader/projection flows; UBI8/glibc2.28 command/task/check/profile + transitive package + moved-core/reapply smokes below |
+| UP46.2 | Migration guide requires a separately approved and applied legacy prune before workspace ownership; explains temporary absence and `--take-over` limits | **verified** — stable0.45 legacy generation1 → applied empty generation2 → workspace generation3; actual ownership/file transitions, no takeover or manual unlink |
+| UP46.3 | `conda.environment.systemRequirements` drives selected solve virtuals, is recorded/bound in frozen state, and cannot be changed or forged silently | in progress — IRv7 and exact helper request/response policy; retain strict v6 behavior and existing archive/CPU/runtime checks |
+| UP46.4 | Document physical sibling-layout loss under per-file artifactTree symlinks and a working trackedCopyTo release-tree pattern | **verified** — actual sibling-loading executable works under tracked copy; complete published-code card accepted by candidate packaged SDK and real core |
+| UP46.5a | Document required MatchSpec operators rather than accepting an ambiguous bare version | implemented in pending website changes |
+| UP46.5b | Retain explicit `xorg-libx11` closure guidance and fail-closed missing-library behavior | externally reconfirmed; no default behavior change requested |
+| UP46.5c | State activation contract and prove any existing profile-managed executable-file launcher; no invented dedicated helper or delivery promise | **verified** — stable0.45 managed executable Node26.10.0 launcher, clean noninteractive cwd/PATH and rollback; candidate packaged-SDK full card accepted |
+| UP46.5d | State producer-specific cross-filesystem staging/publication guarantees and whether TMPDIR override is necessary | **verified at shared publication owner** — real native Conda/Pixi, separate temp/store devices, TMPDIR unset; 42 exact archives and stable retained prefixes, no demonstrated core-owned EXDEV defect |
+| UP46.REL | Matching release, all affected callers/docs and honest source/artifact-bound verification | pending — candidate runtime/docs evidence below; final pins, release-artifact qualification, publication and public consumers remain |
+
+### Candidate runtime and documentation evidence
+
+- GNU-native gate: the compiled ELF fixture exercised the real loader's
+  outside-root alias canary, safe alias origin, reviewed roots, retained
+  receipts and transitive package ordering; 1 comprehensive test passed.
+  Four auxiliary-input cases passed, including deadline/byte limits and
+  refusing a stdin alias without draining it. The required `gnu-test` lane
+  runs these on GNU userspace rather than pretending Alpine's compiler emits
+  GNU fixtures.
+- Real musl-core GNU-loader flows: **13 passed**, including nested
+  task/check/shell/profile projection, 192000 bytes of declared environment
+  values, empty/unset/overridden variables, stdin, argv, status and tampered
+  projection refusal.
+- `/tmp/gs046-native-smoke-ir30j8sr/evidence` records actual UBI8
+  glibc2.28-251.el8_10.43 execution. Core SHA256
+  `01284efbc09ba573958bb9caf7dc69c55770f09c69134dd67c9b51d80ccae7f5`:
+  absolute RUNPATH direct/task/check/profile and transitive-runtime fixtures
+  succeed; absent authority, malformed or missing libraries refuse before
+  stdout. Moving the bound core refuses even with an identical binary on
+  PATH; reapply from its new absolute path publishes generation2 and restores
+  launch, stdin and exit37. This is current WSL6.18 kernel evidence, not the
+  private el9-5.14 host or a final published-artifact claim.
+- `/tmp/gs046-doc-positive-b8yr72tj/evidence.json` records the stable0.45
+  prune/layout/managed-launcher positive scenarios. New documentation was
+  additionally checked with the packed0.46 SDK and candidate core: **11**
+  complete programs accepted by the driver and `grip check`; both deliberate
+  pin and missing-return calibrations passed. Four genuinely partial
+  fragments remain explicitly classified, not called executed.
+- `/tmp/gs0450-staging-xdev-30vkqln4` records network-disabled native
+  Conda/Pixi materialization with `/tmp` on another device, TMPDIR/TMP/TEMP
+  unset and 42 real frozen archives. Retained apply made no network requests
+  and preserved bytes/modes/inodes/mtime/link identity. The shared owner uses
+  same-filesystem rename or a synced destination-filesystem copy and atomic
+  sibling rename; no new staging workaround was added.
+

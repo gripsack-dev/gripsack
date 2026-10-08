@@ -51,6 +51,7 @@ Deno.test("falsy module entries drop out of the environment", () => {
   const steam = module("steam", { fetch: tarball("https://example.invalid/s.tar.xz") });
   const git = module("git", { fetch: tarball("https://example.invalid/g.tar.xz") });
   const ir = emit({ modules: [facts.os === "plan9" && steam, git] });
+  assert.equal(ir.ir_version, 7, "legacy module entrypoints also use the current writer");
   assert.equal(ir.modules.steam, undefined);
   assert.ok(ir.modules.git);
 });

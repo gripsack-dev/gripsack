@@ -5,7 +5,7 @@
 use crate::{Ctx, ExecError, LifecycleSession, Repository};
 use gripsack_ir::{
     workspace::WorkspacePlatform,
-    workspace_v6::{
+    workspace_model::{
         LockedSource,
         lock::{DefinitionPins, LockedPin, WORKSPACE_LOCK_VERSION, WorkspaceLock, platform_key},
     },

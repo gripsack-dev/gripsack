@@ -221,8 +221,11 @@ pub fn tagged_field_check(json: &str, out: &mut Vec<Diagnostic>) {
         Some(v) if v == u64::from(crate::parse::WORKSPACE_V5_VERSION) => {
             workspace::check(&value, workspace::WorkspaceWireVersion::CurrentV5, out);
         }
-        Some(v) if v == u64::from(crate::parse::IR_VERSION) => {
+        Some(v) if v == u64::from(crate::parse::WORKSPACE_V6_VERSION) => {
             workspace::check(&value, workspace::WorkspaceWireVersion::CurrentV6, out);
+        }
+        Some(v) if v == u64::from(crate::parse::IR_VERSION) => {
+            workspace::check(&value, workspace::WorkspaceWireVersion::CurrentV7, out);
         }
         _ => {}
     }

@@ -1,6 +1,6 @@
 //! Admit the complete selected ELF dependency graph before native execution.
-//! Library lookup is confined to retained runtime packages. RPATH ancestry is
-//! distinct from RUNPATH and from the launch's explicit library overlay.
+//! Retained package roots and explicit host roots are separate authorities.
+//! RPATH ancestry remains distinct from RUNPATH and the launch overlay.
 use super::{
     BinaryAbi, EXECUTABLE_BYTES, ExecError, HostTarget, Package, Span, gate, operational,
     platform_loader,
@@ -81,6 +81,7 @@ pub(super) fn admit(
             path,
             payload,
             package.conda.is_some(),
+            &closure,
             span,
         )?,
         runpaths: origin_paths(
@@ -88,11 +89,13 @@ pub(super) fn admit(
             path,
             payload,
             package.conda.is_some(),
+            &closure,
             span,
         )?,
         parent: None,
     }];
-    let mut visited = BTreeSet::new();
+    let mut visited: std::collections::BTreeMap<PathBuf, LoadedLibrary> =
+        std::collections::BTreeMap::new();
     let mut index = 0;
     while index < objects.len() {
         for needed in 0..objects[index].metadata.needed_libraries.len() {
@@ -106,24 +109,30 @@ pub(super) fn admit(
                     )
                 })?;
             let selected = resolve_library(&objects, index, &mut closure, name, None, span)?;
-            if visited.contains(&selected) {
+            if let Some(loaded) = visited.get(&selected.canonical) {
+                if loaded.origin_sensitive && selected.origin != loaded.origin {
+                    return Err(gate(
+                        span,
+                        "runtime object is selected through conflicting loader origins",
+                    ));
+                }
                 continue;
             }
-            let mut file = std::fs::File::open(&selected).map_err(operational)?;
+            let mut file = std::fs::File::open(&selected.canonical).map_err(operational)?;
             let status = file.metadata().map_err(operational)?;
             if !status.is_file() || status.len() > EXECUTABLE_BYTES {
                 return Err(gate(
                     span,
                     format!(
                         "runtime library {} is not a bounded regular file",
-                        selected.display()
+                        selected.spelling.display()
                     ),
                 ));
             }
             let metadata = classify(&mut file).map_err(|error| {
                 gate(
                     span,
-                    format!("runtime library {}: {error}", selected.display()),
+                    format!("runtime library {}: {error}", selected.spelling.display()),
                 )
             })?;
             header(&metadata, host, false, span)?;
@@ -140,34 +149,52 @@ pub(super) fn admit(
                     span,
                     format!(
                         "runtime library {} names a foreign loader",
-                        selected.display()
+                        selected.spelling.display()
                     ),
                 ));
             }
             let owner = closure
-                .owner(&selected)
+                .owner(&selected.canonical)
                 .ok_or_else(|| gate(span, "runtime library escaped the selected closure"))?;
             let rpaths = origin_paths(
                 &metadata.rpaths,
-                &selected,
+                &selected.spelling,
                 owner,
-                closure.materialized(&selected),
+                closure.materialized(&selected.canonical),
+                &closure,
                 span,
             )?;
             let runpaths = origin_paths(
                 &metadata.runpaths,
-                &selected,
+                &selected.spelling,
                 owner,
-                closure.materialized(&selected),
+                closure.materialized(&selected.canonical),
+                &closure,
                 span,
             )?;
+            let origin_sensitive = metadata
+                .rpaths
+                .iter()
+                .chain(&metadata.runpaths)
+                .any(|entry| {
+                    entry.to_str().is_some_and(|entry| {
+                        entry.contains("$ORIGIN") || entry.contains("${ORIGIN}")
+                    })
+                });
             objects.push(Object {
                 metadata: Cow::Owned(metadata),
                 rpaths,
                 runpaths,
                 parent: Some(index),
             });
-            visited.insert(selected);
+            visited.insert(
+                selected.canonical,
+                LoadedLibrary {
+                    spelling: selected.spelling,
+                    origin: selected.origin,
+                    origin_sensitive,
+                },
+            );
         }
         index += 1;
     }
@@ -185,8 +212,9 @@ pub(super) fn admit(
     }
     // Include every resolved dependency directory ahead of any caller-supplied
     // search segment. Ambiguous flattening is refused by the equivalence pass.
-    for path in &visited {
-        let parent = path
+    for loaded in visited.values() {
+        let parent = loaded
+            .spelling
             .parent()
             .ok_or_else(|| gate(span, "runtime library has no parent"))?;
         if !directories.iter().any(|path| path == parent) {
@@ -207,7 +235,12 @@ pub(super) fn admit(
                 Some(&directories),
                 span,
             )?;
-            if original != copied {
+            let origin_sensitive = visited
+                .get(&original.canonical)
+                .is_some_and(|loaded| loaded.origin_sensitive);
+            if original.canonical != copied.canonical
+                || (origin_sensitive && !original.same_origin(&copied))
+            {
                 return Err(gate(
                     span,
                     format!("sealed execution would change the resolution of library {name:?}"),
@@ -256,29 +289,78 @@ pub(super) fn header(
     Ok(())
 }
 
+/// GNU expands a dependency's $ORIGIN from the pathname used to load it,
+/// not from the symlink-resolved identity of the bytes. Keep both throughout
+/// graph admission and launch equivalence.
+#[derive(Clone)]
+pub(super) struct SelectedLibrary {
+    pub(super) spelling: PathBuf,
+    pub(super) canonical: PathBuf,
+    // Resolve the loading directory, never take the parent of canonical bytes.
+    // This accepts equivalent directory aliases and Conda's lib/../lib paths.
+    origin: PathBuf,
+}
+impl SelectedLibrary {
+    pub(super) fn new(spelling: PathBuf) -> std::io::Result<Self> {
+        let canonical = spelling.canonicalize()?;
+        let origin = spelling
+            .parent()
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "runtime library has no loading directory",
+                )
+            })?
+            .canonicalize()?;
+        Ok(Self {
+            spelling,
+            canonical,
+            origin,
+        })
+    }
+    fn same_origin(&self, other: &Self) -> bool {
+        self.canonical == other.canonical && self.origin == other.origin
+    }
+}
+
+struct LoadedLibrary {
+    spelling: PathBuf,
+    origin: PathBuf,
+    origin_sensitive: bool,
+}
+
 struct Object<'a> {
     metadata: Cow<'a, ExecutableMetadata>,
     rpaths: Vec<PathBuf>,
     runpaths: Vec<PathBuf>,
     parent: Option<usize>,
 }
-struct RuntimeRoot {
+struct RetainedRuntimeRoot {
     path: PathBuf,
     materialized: bool,
 }
+/// A declaration grants this host directory, not the retained store namespace.
+/// Preserve the spelling to validate aliases before canonical containment.
+struct AdmittedHostRoot {
+    declared: PathBuf,
+    canonical: PathBuf,
+}
 struct Closure<'a> {
-    roots: Vec<RuntimeRoot>,
+    roots: Vec<RetainedRuntimeRoot>,
+    host_roots: Vec<AdmittedHostRoot>,
     library_dirs: Vec<PathBuf>,
-    system: std::collections::BTreeMap<String, PathBuf>,
+    system: std::collections::BTreeMap<String, SelectedLibrary>,
     host: &'a HostTarget,
 }
 impl<'a> Closure<'a> {
     fn new(package: &Package, host: &'a HostTarget, span: &Span) -> Result<Self, ExecError> {
+        let ordered_runtime = package.host_dependent();
         let mut packages = vec![package];
-        let mut roots: Vec<RuntimeRoot> = Vec::new();
+        let mut roots: Vec<RetainedRuntimeRoot> = Vec::new();
         let mut visited = BTreeSet::new();
         let mut index = 0;
         let mut system = std::collections::BTreeMap::new();
+        let mut host_roots: Vec<AdmittedHostRoot> = Vec::new();
         while index < packages.len() {
             let package = packages[index];
             index += 1;
@@ -291,7 +373,7 @@ impl<'a> Closure<'a> {
                 .canonicalize()
                 .map_err(operational)?;
             if !roots.iter().any(|existing| existing.path == root) {
-                roots.push(RuntimeRoot {
+                roots.push(RetainedRuntimeRoot {
                     path: root,
                     materialized: package.conda.is_some(),
                 });
@@ -305,10 +387,63 @@ impl<'a> Closure<'a> {
                     }
                 }
             }
+            if let Some(policy) = &package.host_runtime {
+                if host.os != TargetOs::Linux || host.abi != Some(BinaryAbi::Gnu) {
+                    return Err(gate(
+                        span,
+                        "host runtime directories require a native Linux GNU target",
+                    ));
+                }
+                for directory in &policy.library_directories {
+                    let declared = PathBuf::from(directory.as_str());
+                    admit_search_directory(&declared, host.arch, span)?;
+                    let canonical = declared.canonicalize().map_err(|error| {
+                        gate(
+                            span,
+                            format!(
+                                "declared host runtime directory {}: {error}",
+                                declared.display()
+                            ),
+                        )
+                    })?;
+                    if !canonical.is_dir() {
+                        return Err(gate(span, "declared host runtime root is not a directory"));
+                    }
+                    if canonical.parent().is_none() {
+                        return Err(gate(
+                            span,
+                            "host runtime directory alias must not grant the filesystem root",
+                        ));
+                    }
+                    admit_search_directory(&canonical, host.arch, span)?;
+                    if let Some(existing) =
+                        host_roots.iter().find(|root| root.canonical == canonical)
+                    {
+                        if existing.declared == declared {
+                            continue;
+                        }
+                        return Err(gate(
+                            span,
+                            "declared host runtime directories contain canonical aliases",
+                        ));
+                    }
+                    host_roots.push(AdmittedHostRoot {
+                        declared,
+                        canonical,
+                    });
+                }
+            }
+            let children = packages.len();
             packages.extend(package.runtime.iter().map(std::sync::Arc::as_ref));
+            if ordered_runtime {
+                // Runtime edges are identity sets and retained receipts restore
+                // digest order. Use the same root-first BFS live and on replay.
+                packages[children..].sort_unstable_by_key(|package| package.identity);
+            }
         }
         let mut closure = Self {
             roots,
+            host_roots,
             library_dirs: Vec::new(),
             system,
             host,
@@ -334,18 +469,30 @@ impl<'a> Closure<'a> {
                 }
             }
         }
+        for root in &closure.host_roots {
+            if !closure.library_dirs.contains(&root.canonical) {
+                closure.library_dirs.push(root.canonical.clone());
+            }
+        }
         Ok(closure)
+    }
+    fn host_owner(&self, path: &Path) -> Option<&AdmittedHostRoot> {
+        self.host_roots
+            .iter()
+            .filter(|root| path.starts_with(&root.canonical))
+            .max_by_key(|root| root.canonical.components().count())
     }
     fn owner(&self, path: &Path) -> Option<&Path> {
         self.roots
             .iter()
             .find(|root| path.starts_with(&root.path))
             .map(|root| root.path.as_path())
+            .or_else(|| self.host_owner(path).map(|root| root.canonical.as_path()))
             .or_else(|| {
                 self.system
                     .values()
-                    .find(|library| library.as_path() == path)
-                    .and_then(|path| path.parent())
+                    .find(|library| library.canonical == path)
+                    .and_then(|library| library.canonical.parent())
             })
     }
     fn materialized(&self, path: &Path) -> bool {
@@ -358,14 +505,23 @@ impl<'a> Closure<'a> {
         directories: &[PathBuf],
         name: &str,
         span: &Span,
-    ) -> Result<Option<PathBuf>, ExecError> {
+    ) -> Result<Option<SelectedLibrary>, ExecError> {
         for directory in directories {
             if self.host.abi == Some(BinaryAbi::Gnu) {
                 admit_search_directory(directory, self.host.arch, span)?;
             }
+            let canonical_directory = directory.canonicalize().map_err(operational)?;
             let candidate = directory.join(name);
             match candidate.canonicalize() {
                 Ok(path) => {
+                    if let Some(root) = self.host_owner(&canonical_directory)
+                        && !path.starts_with(&root.canonical)
+                    {
+                        return Err(gate(
+                            span,
+                            "host runtime library alias escapes its declared root",
+                        ));
+                    }
                     if self.owner(&path).is_none() {
                         return Err(gate(
                             span,
@@ -374,7 +530,11 @@ impl<'a> Closure<'a> {
                             ),
                         ));
                     }
-                    return Ok(Some(path));
+                    return Ok(Some(SelectedLibrary {
+                        spelling: candidate,
+                        canonical: path,
+                        origin: canonical_directory,
+                    }));
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(gate(span, format!("runtime library {name:?}: {error}"))),
@@ -390,7 +550,7 @@ fn resolve_library(
     name: &str,
     launch_paths: Option<&[PathBuf]>,
     span: &Span,
-) -> Result<PathBuf, ExecError> {
+) -> Result<SelectedLibrary, ExecError> {
     let object = &objects[index];
     let suppress_main = launch_paths.is_some();
     if object.runpaths.is_empty() || (index == 0 && suppress_main) {
@@ -417,7 +577,7 @@ fn resolve_library(
     if let Some(path) = closure.system.get(name) {
         return Ok(path.clone());
     }
-    if closure.roots.iter().any(|root| root.materialized)
+    if (closure.roots.iter().any(|root| root.materialized) || !closure.host_roots.is_empty())
         && let Some(path) = super::platform::library(name, closure.host, span)?
     {
         closure.system.insert(name.into(), path.clone());
@@ -433,6 +593,7 @@ fn origin_paths(
     path: &Path,
     payload: &Path,
     materialized: bool,
+    closure: &Closure<'_>,
     span: &Span,
 ) -> Result<Vec<PathBuf>, ExecError> {
     let parent = path
@@ -451,9 +612,19 @@ fn origin_paths(
                     .strip_prefix("$ORIGIN/")
                     .or_else(|| entry.strip_prefix("${ORIGIN}/"))
             };
+            if entry.contains(';') || suffix.unwrap_or(entry).contains('$') {
+                return Err(gate(
+                    span,
+                    "ELF search path contains an unsupported loader token or delimiter",
+                ));
+            }
             let candidate = match suffix {
                 Some(suffix) => parent.join(suffix),
-                None if materialized && Path::new(entry).is_absolute() => PathBuf::from(entry),
+                None if (materialized || !closure.host_roots.is_empty())
+                    && Path::new(entry).is_absolute() =>
+                {
+                    PathBuf::from(entry)
+                }
                 None => {
                     return Err(gate(
                         span,
@@ -461,9 +632,18 @@ fn origin_paths(
                     ));
                 }
             };
-            if let Some(directory) = search_directory(&candidate, payload, span)?
+            let host_root = closure
+                .host_roots
+                .iter()
+                .filter(|root| {
+                    candidate.starts_with(&root.declared) || candidate.starts_with(&root.canonical)
+                })
+                .max_by_key(|root| root.canonical.components().count());
+            let boundary = host_root.map_or(payload, |root| root.canonical.as_path());
+            if let Some(directory) = search_directory(&candidate, boundary, span)?
                 && !paths.contains(&directory)
             {
+                admit_search_directory(&directory, closure.host.arch, span)?;
                 paths.push(directory);
             }
         }
@@ -552,7 +732,7 @@ fn search_directory(
                         "ELF search path is not a directory inside its package",
                     ));
                 }
-                return Ok((ancestor == candidate).then_some(directory));
+                return Ok((ancestor == candidate).then(|| candidate.to_owned()));
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 match std::fs::symlink_metadata(ancestor) {

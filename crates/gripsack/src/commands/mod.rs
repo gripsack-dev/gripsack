@@ -43,7 +43,9 @@ pub use init::init;
 pub use plan::{plan_ir, plan_module};
 pub use repo::resolve as resolve_repo;
 pub use rollback::rollback;
-pub use run::{RunArgs, ShellArgs, TaskArgs, run, shell, task};
+pub use run::{
+    PackageCommandArgs, RunArgs, ShellArgs, TaskArgs, package_command, run, shell, task,
+};
 pub use store_verify::store_verify;
 pub use trust::{TrustCommand, trust};
 pub use update::update;

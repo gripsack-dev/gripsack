@@ -16,6 +16,7 @@ contract; the image does.
 
 ```
 docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
+docker compose run --build --rm gnu-test  # real GNU loader + auxiliary-input boundaries
 docker compose run --build --rm ts-test   # typescript frontend tests (deno)
 docker compose run --build --rm e2e       # flow tests (real binary + real frontend)
 docker compose run --build --rm model     # TLC model check of the transaction spec (plan/0028)
@@ -42,7 +43,7 @@ archived.
 | Path | Contents |
 |---|---|
 | `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the landed/deferred/rejected ledger — update it in the same PR |
-| `schema/ir/v6.json` | Current emitted typed workspace or legacy-modules contract. The core also reads strict v4/v5 workspaces read-only and v3 module maps; earlier schemas remain versioned history, never permission to reinterpret retained state |
+| `schema/ir/v7.json` | Current emitted typed workspace or legacy-modules contract. Strict v6 retains its executing semantics, v5 native file profiles remain executable, v4 workspaces stay read-only, and v3 module maps remain readable; old versions never acquire v7 authority |
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
 | `crates/gripsack-store` | store paths, generations, GC |
 | `crates/gripsack-exec` | Native workflows, consumers and whole-subgraph production coordination |

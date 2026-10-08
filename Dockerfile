@@ -8,6 +8,10 @@
 # the grip binary stays musl-static; deno-dependent stages (ts-test,
 # e2e) run on glibc bases, where the static binary works fine.
 
+# GNU-linked loader fixtures require a GNU compiler and runtime. Coupled to
+# the musl builder/native CI toolchain by scripts/check_pins.py.
+ARG GNU_RUST_IMAGE=rust:1.98.0@sha256:620dbcd124499c59e2406d3741574b5c5838cf9eb9656f0c3a03948f79b02959
+
 # Digest-pinned (plan/0042 F): this manifest-list sha256 is the exact
 # rust:alpine whose rustc is 1.98.0 (88d9e12ae 2026-08-18) — the same
 # toolchain CI's native jobs pin via dtolnay/rust-toolchain. Tags move;
@@ -94,6 +98,14 @@ RUN apk add --no-cache python3 \
 # The debug binary for stages that need a runnable grip (e2e).
 FROM builder AS bin
 RUN cargo build --locked -p gripsack
+
+# Required GNU-native admission regressions; these cannot execute on Alpine.
+# The e2e stage separately exercises the shipped musl core on a GNU host.
+FROM ${GNU_RUST_IMAGE} AS gnu-test
+WORKDIR /app
+COPY --from=builder /app /app
+RUN cargo test --locked -p gripsack-exec --lib workspace::consumer::admit::host_runtime_tests \
+    && cargo test --locked -p gripsack-process --lib input::tests
 
 # The model gate (plan/0028, 0042 G): TLC over the TLA+ specs via the
 # canonical runner scripts/check_models.sh — positive protocols AND
@@ -216,8 +228,8 @@ RUN cd typescript && deno install && deno task test \
 # DENO_RELEASE) and GRIPSACK_DENO points at it — e2e never provisions.
 FROM python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 AS e2e
 WORKDIR /app
-# git: repo/trust probes; curl: the real installer against loopback release fixtures.
-RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl \
+# git: trust; curl: installer fixtures; cc: real GNU loader/security fixtures.
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 ARG DENO_VERSION=2.9.6
 ARG DENO_SHA256=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2

@@ -46,6 +46,9 @@ jobs:
       - name: Rust gate (fmt, clippy, tests)
         run: docker compose run --build --rm test
 
+      - name: GNU loader admission and auxiliary-input regressions
+        run: docker compose run --build --rm gnu-test
+
       - name: TypeScript frontend tests (deno)
         run: docker compose run --build --rm ts-test
 

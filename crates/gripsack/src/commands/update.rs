@@ -116,7 +116,7 @@ pub fn update(
         }
     } else {
         if summary.publishes_lock(mode) {
-            if ir.workspace_v6.is_some() {
+            if ir.workspace_catalog.is_some() {
                 println!(
                     "workspace lock updated — select an output with `grip build` or its native consumer"
                 );

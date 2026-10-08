@@ -1,5 +1,5 @@
 use super::*;
-use gripsack_ir::workspace_v6::lock::LockedCondaPackage;
+use gripsack_ir::workspace_model::lock::LockedCondaPackage;
 use serde_json::json;
 use std::fs;
 use std::io::Cursor;

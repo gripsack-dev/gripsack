@@ -1,12 +1,12 @@
 use super::{Encoder, PackageDigest, commands};
-use crate::workspace_v6::lock::{
+use crate::workspace_model::lock::{
     BytecodePolicy, ChannelPriority, DefinitionPins, LockedCondaEnvironment, LockedNoArch,
     ReceiptPolicy, WorkspaceLock,
 };
 use crate::{
     HostFacts,
     workspace::{Weekday, WorkspaceCalendar, WorkspaceDestination},
-    workspace_v6::*,
+    workspace_model::*,
 };
 use gripsack_policy::semantic::canonical_entries;
 use std::collections::BTreeMap;
@@ -280,7 +280,7 @@ fn output(writer: &mut Encoder, output: &WorkspaceOutput) {
 }
 
 pub(super) fn plan(
-    workspace: &WorkspaceV6,
+    workspace: &WorkspaceCatalog,
     facts: &HostFacts,
     definitions: &DefinitionPins,
     packages: &BTreeMap<String, PackageDigest>,

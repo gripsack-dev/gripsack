@@ -70,7 +70,7 @@ def smoke(binary):
     payload = message.get("payload") if isinstance(message, dict) else None
     detail = payload.pop("message", None) if isinstance(payload, dict) else None
     if result.returncode != 1 or not isinstance(detail, str) or message != {
-        "protocol": 2, "payload": {"kind": "error", "attempt": None, "code": "protocol"}
+        "protocol": 3, "payload": {"kind": "error", "attempt": None, "code": "protocol"}
     }:
         raise SystemExit(f"unexpected native helper smoke result: {message}")
 

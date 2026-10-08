@@ -7,6 +7,8 @@
 //! checkout stays live and writable; host task access is not hermetic.
 pub(super) mod admit;
 pub(super) mod command;
+mod launcher;
+pub use launcher::run_package_command;
 
 use super::{
     realize::{self, Realization},
@@ -15,7 +17,7 @@ use super::{
 use crate::{Ctx, ExecError, LifecycleSession};
 use gripsack_ir::{
     Diagnostic, Ir, Span, codes,
-    workspace_v6::{
+    workspace_model::{
         TaskContext, TaskOutput, WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspacePath,
         WorkspaceStep,
     },
@@ -64,9 +66,9 @@ pub fn consume(
     request: &ConsumerRequest<'_>,
 ) -> Result<ConsumerOutcome, ExecError> {
     let workspace = ir
-        .workspace_v6
+        .workspace_catalog
         .as_ref()
-        .ok_or_else(|| failure("native consumption requires a current v6 workspace"))?;
+        .ok_or_else(|| failure("native consumption requires an executable workspace catalog"))?;
     let host = admit::NativeContext::new(&ir.host, &ctx.home, options.deadline)?;
     let outputs: BTreeMap<&str, &WorkspaceOutput> = workspace
         .outputs
@@ -292,8 +294,10 @@ fn task_launch(
         for step in &task.steps {
             match step {
                 WorkspaceStep::Action(action) => {
-                    let gripsack_ir::workspace_v6::WorkspaceAction::EnsureArtifact { output, span } =
-                        action;
+                    let gripsack_ir::workspace_model::WorkspaceAction::EnsureArtifact {
+                        output,
+                        span,
+                    } = action;
                     if !realization.recipes.contains_key(output.as_str())
                         && !realization.packages.contains_key(output.as_str())
                     {
@@ -393,6 +397,7 @@ fn task_command(
         options,
         base_overlay,
     )?;
+    let overlay = plan.project_command_environment(base_overlay, overlay)?;
     let invocation = Invocation::admit(
         options.environment,
         ProcessRole::Task,
@@ -487,7 +492,7 @@ fn admit_package_command(
         )
     })?;
     if let Some(claim) = claim
-        && gripsack_ir::workspace_v6::identity::ExecutableDigest::parse(claim)
+        && gripsack_ir::workspace_model::identity::ExecutableDigest::parse(claim)
             .map(|claim| claim != provided.executable)
             .unwrap_or(true)
     {

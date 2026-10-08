@@ -8,7 +8,7 @@ use super::{consumer, realize::Realization};
 use crate::ExecError;
 use gripsack_ir::{
     Span, Trigger,
-    workspace_v6::{HookTrigger, WorkspaceOutput},
+    workspace_model::{HookTrigger, WorkspaceOutput},
 };
 use gripsack_process::{
     ActivationEnvironment, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessRole,

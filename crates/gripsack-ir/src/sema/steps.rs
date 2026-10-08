@@ -288,7 +288,7 @@ mod tests {
             .collect(),
             workspace: None,
             workspace_v4: None,
-            workspace_v6: None,
+            workspace_catalog: None,
         }
     }
 

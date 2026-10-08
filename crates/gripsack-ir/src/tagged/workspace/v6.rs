@@ -13,6 +13,20 @@ fn acquisition_source_fields(kind: &str) -> Option<&'static [&'static str]> {
         _ => return None,
     })
 }
+fn acquisition_source_fields_v7(kind: &str) -> Option<&'static [&'static str]> {
+    if kind == "conda_environment" {
+        Some(&[
+            "kind",
+            "channels",
+            "packages",
+            "platforms",
+            "system_requirements",
+            "span",
+        ])
+    } else {
+        acquisition_source_fields(kind)
+    }
+}
 fn acquisition_fetch_fields(kind: &str) -> Option<&'static [&'static str]> {
     match kind {
         "brew" | "pixi" => None,
@@ -25,9 +39,15 @@ pub(super) fn acquisition_source(
     node: &Value,
     path: &str,
     span: Option<&Span>,
+    version: WorkspaceWireVersion,
     out: &mut Vec<Diagnostic>,
 ) {
-    check_tagged_at(node, path, acquisition_source_fields, span, out);
+    let fields = if matches!(version, WorkspaceWireVersion::CurrentV7) {
+        acquisition_source_fields_v7
+    } else {
+        acquisition_source_fields
+    };
+    check_tagged_at(node, path, fields, span, out);
     let Some(object) = node.as_object() else {
         return;
     };
@@ -70,6 +90,23 @@ pub(super) fn output_fields(kind: &str) -> Option<&'static [&'static str]> {
         ])
     } else {
         super::allowed_workspace_output_fields(kind)
+    }
+}
+pub(super) fn output_fields_v7(kind: &str) -> Option<&'static [&'static str]> {
+    if kind == "package" {
+        Some(&[
+            "kind",
+            "name",
+            "span",
+            "producer",
+            "commands",
+            "runtime",
+            "target",
+            "layout",
+            "host_runtime",
+        ])
+    } else {
+        output_fields(kind)
     }
 }
 pub(super) fn execution_fields(kind: &str) -> Option<&'static [&'static str]> {

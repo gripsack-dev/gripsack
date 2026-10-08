@@ -1,5 +1,5 @@
 use super::{fail, values};
-use crate::{Diagnostic, codes, workspace::PlatformOs, workspace_v6::*};
+use crate::{Diagnostic, codes, workspace::PlatformOs, workspace_model::*};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn check(image: &ImageOutput, out: &mut Vec<Diagnostic>) {
@@ -80,7 +80,7 @@ pub(super) fn selection<'a>(
         pending.extend(package.runtime.iter().map(String::as_str));
         let destination = image.destinations.get(name);
         match &package.layout {
-            PackageLayoutV6::FixedPrefix { prefix } => {
+            CatalogPackageLayout::FixedPrefix { prefix } => {
                 if destination.is_none_or(|destination| &destination.path != prefix) {
                     out.push(
                         Diagnostic::error(
@@ -92,14 +92,14 @@ pub(super) fn selection<'a>(
                     );
                 }
             }
-            PackageLayoutV6::PrefixMaterialized => {
+            CatalogPackageLayout::PrefixMaterialized => {
                 if destination.is_none() {
                     out.push(Diagnostic::error(codes::BAD_WORKSPACE_CONTEXT, "prefix-materialized image package requires an explicit destination to materialize at")
                         .with_label(Some(image.span.clone()), "image selection")
                         .with_label(Some(package.span.clone()), "prefix-materialized package"));
                 }
             }
-            PackageLayoutV6::Relocatable => {}
+            CatalogPackageLayout::Relocatable => {}
         }
         let prefix = destination.map_or_else(
             || format!("/opt/gripsack/{name}"),

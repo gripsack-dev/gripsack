@@ -12,8 +12,8 @@ use crate::{
 };
 use gripsack_ir::{
     Diagnostic, Ir, Severity, codes,
-    workspace_v6::{
-        WorkspaceOutput, WorkspaceProducer, WorkspaceSourceV6,
+    workspace_model::{
+        AcquisitionSource, WorkspaceOutput, WorkspaceProducer,
         lock::{LockedPin, PlatformResolution, platform_key},
     },
 };
@@ -26,11 +26,13 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
         return Err(ExecError::Gate(diagnostic));
     }
     let workspace = ir
-        .workspace_v6
+        .workspace_catalog
         .as_ref()
         .filter(|_| {
-            ir.ir_version == gripsack_ir::IR_VERSION
-                && ir.workspace.is_none()
+            matches!(
+                ir.ir_version,
+                gripsack_ir::WORKSPACE_V6_VERSION | gripsack_ir::IR_VERSION
+            ) && ir.workspace.is_none()
                 && ir.workspace_v4.is_none()
                 && ir.modules.is_empty()
         })
@@ -88,7 +90,7 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
         };
         let status = if let Some((source, platform)) = source {
             let key = platform_key(platform);
-            if let WorkspaceSourceV6::CondaEnvironment(_) | WorkspaceSourceV6::PixiLock(_) = source
+            if let AcquisitionSource::CondaEnvironment(_) | AcquisitionSource::PixiLock(_) = source
             {
                 match super::conda::resolve_update(
                     ctx, &session, name, source, platform, workspace, mode,
@@ -120,7 +122,7 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
                     },
                     Err(error) => return Err(error),
                 }
-            } else if let WorkspaceSourceV6::Fetch(fetch) = source {
+            } else if let AcquisitionSource::Fetch(fetch) = source {
                 if acquire::repository_source(ctx, &fetch.fetch)?.is_some() {
                     let removed = lock.resolutions.get_mut(&key).is_some_and(|resolution| {
                         let before = resolution.pins.len();

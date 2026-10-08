@@ -26,6 +26,7 @@ pub(super) enum WorkspaceWireVersion {
     LegacyV4,
     CurrentV5,
     CurrentV6,
+    CurrentV7,
 }
 
 /// Workspace output kinds → allowed keys (the tag plus the variant's
@@ -187,7 +188,10 @@ fn check_workspace_command(
 ) {
     let command_span = raw_node_span(node).or_else(|| output_span.cloned());
     let span = command_span.as_ref();
-    let current_v6 = matches!(version, WorkspaceWireVersion::CurrentV6);
+    let current_v6 = matches!(
+        version,
+        WorkspaceWireVersion::CurrentV6 | WorkspaceWireVersion::CurrentV7
+    );
     let command_fields: FieldRule = if current_v6 {
         v6::command_fields
     } else {
@@ -230,7 +234,10 @@ pub(super) fn check(
     out: &mut Vec<Diagnostic>,
 ) {
     let legacy_v4 = matches!(version, WorkspaceWireVersion::LegacyV4);
-    let current_v6 = matches!(version, WorkspaceWireVersion::CurrentV6);
+    let current_v6 = matches!(
+        version,
+        WorkspaceWireVersion::CurrentV6 | WorkspaceWireVersion::CurrentV7
+    );
     if current_v6 {
         v6::inputs(value, out);
     }
@@ -276,6 +283,8 @@ pub(super) fn check(
         let output_span = raw_node_span(output);
         let allowed: fn(&str) -> Option<&'static [&'static str]> = if legacy_v4 {
             allowed_workspace_output_fields_v4
+        } else if matches!(version, WorkspaceWireVersion::CurrentV7) {
+            v6::output_fields_v7
         } else if current_v6 {
             v6::output_fields
         } else {
@@ -297,7 +306,7 @@ pub(super) fn check(
                     // The acquisition source's own span, else the recipe's.
                     let source_span = raw_node_span(source).or_else(|| output_span.clone());
                     if current_v6 {
-                        v6::acquisition_source(source, &path, source_span.as_ref(), out);
+                        v6::acquisition_source(source, &path, source_span.as_ref(), version, out);
                     } else if let Some(fetch) = source.get("fetch") {
                         check_tagged_at(
                             fetch,
@@ -339,7 +348,13 @@ pub(super) fn check(
                     if let Some(provider) = producer.get("provider") {
                         let provider_span = raw_node_span(provider).or_else(|| output_span.clone());
                         if current_v6 {
-                            v6::acquisition_source(provider, &path, provider_span.as_ref(), out);
+                            v6::acquisition_source(
+                                provider,
+                                &path,
+                                provider_span.as_ref(),
+                                version,
+                                out,
+                            );
                         } else if let Some(fetch) = provider.get("fetch") {
                             check_tagged_at(
                                 fetch,

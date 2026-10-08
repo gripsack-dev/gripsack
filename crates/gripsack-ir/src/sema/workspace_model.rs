@@ -3,13 +3,35 @@
 mod graph;
 mod image;
 mod values;
-use crate::{Diagnostic, Span, codes, workspace_v6::*};
+use crate::{Diagnostic, Span, codes, workspace_model::*};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) fn check(workspace: &WorkspaceV6, diagnostics: &mut Vec<Diagnostic>) {
+pub(super) fn check(workspace: &WorkspaceCatalog, diagnostics: &mut Vec<Diagnostic>) {
     values::check(workspace, diagnostics);
     let mut catalog = BTreeMap::new();
     for output in &workspace.outputs {
+        if let WorkspaceOutput::Package(package) = output
+            && let Some(policy) = &package.host_runtime
+        {
+            if package.target.os != crate::workspace::PlatformOs::Linux
+                || package.target.abi != Some(crate::workspace::PlatformAbi::Gnu)
+            {
+                fail(
+                    diagnostics,
+                    codes::INVALID_WORKSPACE_VALUE,
+                    &package.span,
+                    "host runtime requirements require an explicit Linux GNU target",
+                );
+            }
+            if let Err(message) = policy.validate() {
+                fail(
+                    diagnostics,
+                    codes::INVALID_WORKSPACE_VALUE,
+                    &package.span,
+                    message,
+                );
+            }
+        }
         if let Some(previous) = catalog.insert(output.name(), output) {
             diagnostics.push(
                 Diagnostic::error(

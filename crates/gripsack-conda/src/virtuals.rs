@@ -2,7 +2,7 @@
 //! Recorded solve facts, physical native facts and partial image capabilities
 //! have deliberately different absence semantics.
 use crate::records::{self, RecordError};
-use gripsack_ir::workspace_v6::lock::{
+use gripsack_ir::workspace_model::lock::{
     ChannelPriority, LockedCondaEnvironment, LockedCondaPackage, LockedCondaSystemRequirements,
     LockedVirtualPackage,
 };
@@ -90,13 +90,78 @@ pub fn validate_frozen_environment(
     .map(|_| ())
 }
 
+/// Admit a native declaration into the existing portable lock policy.
+pub fn declared_system_requirements(
+    declared: Option<&gripsack_ir::workspace_model::CondaSystemRequirements>,
+    platform: &str,
+) -> Result<LockedCondaSystemRequirements, VirtualConstraintError> {
+    let Some(declared) = declared else {
+        return Ok(LockedCondaSystemRequirements::default());
+    };
+    if !matches!(platform, "linux-64" | "linux-aarch64") {
+        return Err(VirtualConstraintError::Closure(
+            "native Conda system requirements support only Linux".into(),
+        ));
+    }
+    declared
+        .locked()
+        .map_err(|detail| VirtualConstraintError::Closure(detail.into()))
+}
+
+/// Replace only explicitly declared capabilities in measured solve facts.
+/// These values are solver assumptions, never measurements of the runtime host.
+pub fn apply_solve_baseline(
+    requirements: &LockedCondaSystemRequirements,
+    facts: &mut [LockedVirtualPackage],
+) -> Result<(), VirtualConstraintError> {
+    measured(facts)?;
+    for required in &requirements.virtual_packages {
+        let fact = facts
+            .iter_mut()
+            .find(|fact| fact.name == required.name)
+            .ok_or_else(|| VirtualConstraintError::System {
+                name: required.name.clone(),
+                detail: "no measured capability to override for this solve target".into(),
+            })?;
+        fact.version.clone_from(&required.minimum_version);
+    }
+    evaluate_system_requirements(requirements, facts)
+}
+
+/// Native baseline facts must encode the exact declared versions. A higher
+/// fact would silently solve for the updater instead of the declared floor.
+pub fn validate_solve_baseline(
+    requirements: &LockedCondaSystemRequirements,
+    facts: &[LockedVirtualPackage],
+) -> Result<(), VirtualConstraintError> {
+    evaluate_system_requirements(requirements, facts)?;
+    for required in &requirements.virtual_packages {
+        if !facts
+            .iter()
+            .any(|fact| fact.name == required.name && fact.version == required.minimum_version)
+        {
+            return Err(VirtualConstraintError::Closure(
+                "solve facts differ from the exact declared system baseline".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Bind a coherent source's frozen roots and channel policy before acquisition.
 pub fn validate_frozen_request(
     environment: &LockedCondaEnvironment,
     roots: &[String],
     channels: &[String],
+    requirements: &LockedCondaSystemRequirements,
 ) -> Result<(), VirtualConstraintError> {
     declared_policy(environment, channels)?;
+    if &environment.system_requirements != requirements {
+        return Err(VirtualConstraintError::Closure(
+            "frozen closure changed declared system requirements; update the lock".into(),
+        ));
+    }
+    validate_solve_baseline(requirements, &environment.virtual_packages)?;
     validate_frozen_environment(environment, Some(roots))
 }
 
@@ -108,16 +173,19 @@ pub fn validate_solved_environment(
     roots: &[String],
     channels: &[String],
     facts: &[LockedVirtualPackage],
+    requirements: &LockedCondaSystemRequirements,
 ) -> Result<(), VirtualConstraintError> {
     validate_structure(environment)?;
     declared_policy(environment, channels)?;
-    if measured(facts)? != measured(&environment.virtual_packages)?
-        || environment.system_requirements != LockedCondaSystemRequirements::default()
+    measured(facts)?;
+    if facts != environment.virtual_packages.as_slice()
+        || &environment.system_requirements != requirements
     {
         return Err(VirtualConstraintError::Closure(
             "helper changed solve facts or declared system requirements".into(),
         ));
     }
+    validate_solve_baseline(requirements, facts)?;
     evaluate(&environment.packages, facts, Knowledge::Host, Some(roots)).map(|_| ())
 }
 

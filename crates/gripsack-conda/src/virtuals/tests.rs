@@ -102,7 +102,7 @@ fn conditional_virtual_requirements_follow_the_frozen_package_selection() {
 
 #[test]
 fn declared_system_floors_do_not_reuse_solve_assumptions() {
-    use gripsack_ir::workspace_v6::lock::LockedVirtualPackageRequirement;
+    use gripsack_ir::workspace_model::lock::LockedVirtualPackageRequirement;
     let requirements = LockedCondaSystemRequirements {
         virtual_packages: vec![LockedVirtualPackageRequirement {
             name: "__glibc".into(),
@@ -310,11 +310,18 @@ fn declared_roots_exclude_unrequested_packages_and_bind_channel_policy() {
     ]);
     let roots = vec!["numpy".into()];
     let channels = vec!["conda-forge".into()];
-    assert!(validate_solved_environment(&locked, &roots, &channels, &[]).is_ok());
+    let requirements = LockedCondaSystemRequirements::default();
+    assert!(validate_solved_environment(&locked, &roots, &channels, &[], &requirements).is_ok());
     for root in ["python", "numpy >=4", "other::numpy"] {
-        assert!(validate_solved_environment(&locked, &[root.into()], &channels, &[]).is_err());
+        assert!(
+            validate_solved_environment(&locked, &[root.into()], &channels, &[], &requirements)
+                .is_err()
+        );
     }
-    assert!(validate_solved_environment(&locked, &roots, &["other".into()], &[]).is_err());
+    assert!(
+        validate_solved_environment(&locked, &roots, &["other".into()], &[], &requirements)
+            .is_err()
+    );
     locked
         .channels
         .push("https://conda.anaconda.org/other".into());
@@ -323,7 +330,8 @@ fn declared_roots_exclude_unrequested_packages_and_bind_channel_policy() {
             &locked,
             &roots,
             &["other".into(), "conda-forge".into()],
-            &[]
+            &[],
+            &requirements,
         )
         .is_err()
     );
@@ -333,7 +341,8 @@ fn declared_roots_exclude_unrequested_packages_and_bind_channel_policy() {
             &locked,
             &roots,
             &["conda-forge".into(), "other".into()],
-            &[]
+            &[],
+            &requirements,
         )
         .is_err()
     );
@@ -375,4 +384,141 @@ fn foreign_records_and_undeclared_artifact_channels_are_refused() {
             Err(VirtualConstraintError::Closure(_))
         ));
     }
+}
+
+fn baseline() -> LockedCondaSystemRequirements {
+    let declared = serde_json::from_value(json!({
+        "libc": {"family": "glibc", "version": "2.28"}, "linux": "4.18"
+    }))
+    .unwrap();
+    declared_system_requirements(Some(&declared), "linux-64").unwrap()
+}
+
+#[test]
+fn native_baseline_overrides_only_declared_solve_capabilities() {
+    let mut facts = vec![
+        fact("__glibc", "2.39", "0"),
+        fact("__linux", "6.8", "0"),
+        fact("__unix", "0", "0"),
+        fact("__archspec", "1", "x86_64_v3"),
+        fact("__cuda", "12.0", "0"),
+    ];
+    let measured = facts.clone();
+    let mut libc_only = baseline();
+    libc_only
+        .virtual_packages
+        .retain(|required| required.name == "__glibc");
+    apply_solve_baseline(&libc_only, &mut facts).unwrap();
+    assert_eq!(facts[0], fact("__glibc", "2.28", "0"));
+    assert_eq!(&facts[1..], &measured[1..]);
+    apply_solve_baseline(&baseline(), &mut facts).unwrap();
+    assert_eq!(facts[1], fact("__linux", "4.18", "0"));
+    assert_eq!(&facts[2..], &measured[2..]);
+    assert!(apply_solve_baseline(&baseline(), &mut []).is_err());
+    let mut unchanged = measured.clone();
+    apply_solve_baseline(&Default::default(), &mut unchanged).unwrap();
+    assert_eq!(unchanged, measured);
+}
+
+#[test]
+fn advisory_baseline_binds_exact_requirements_and_facts() {
+    let requirements = baseline();
+    let roots = vec!["python".into()];
+    let channels = vec!["conda-forge".into()];
+    let facts = vec![
+        fact("__glibc", "2.28", "0"),
+        fact("__linux", "4.18", "0"),
+        fact("__unix", "0", "0"),
+    ];
+    let mut locked = environment(vec![package(&["__glibc >=2.17", "__linux >=4"], &[])]);
+    locked.system_requirements = requirements.clone();
+    locked.virtual_packages = facts.clone();
+    assert!(validate_solved_environment(&locked, &roots, &channels, &facts, &requirements).is_ok());
+    let original = locked.clone();
+    // Undeclared capabilities remain bound byte-for-byte too, including
+    // alternate spellings that compare equal as Conda versions.
+    locked.virtual_packages[2].version = "0.0".into();
+    assert!(
+        validate_solved_environment(&locked, &roots, &channels, &facts, &requirements).is_err()
+    );
+    locked = original.clone();
+    locked.system_requirements.virtual_packages[0].minimum_version = "2.27".into();
+    assert!(
+        validate_solved_environment(&locked, &roots, &channels, &facts, &requirements).is_err()
+    );
+    locked = original.clone();
+    locked.virtual_packages[0].version = "2.39".into();
+    assert!(
+        validate_solved_environment(&locked, &roots, &channels, &facts, &requirements).is_err()
+    );
+    // Even an internally consistent request/response cannot use updater facts
+    // in place of the declared floor.
+    assert!(
+        validate_solved_environment(
+            &locked,
+            &roots,
+            &channels,
+            &locked.virtual_packages,
+            &requirements
+        )
+        .is_err()
+    );
+    locked = original;
+    locked.virtual_packages[0].build = "vendor".into();
+    assert!(
+        validate_solved_environment(&locked, &roots, &channels, &facts, &requirements).is_err()
+    );
+}
+
+#[test]
+fn frozen_native_baseline_changes_require_an_explicit_update() {
+    let requirements = baseline();
+    let roots = vec!["python".into()];
+    let channels = vec!["conda-forge".into()];
+    let mut locked = environment(vec![package(&["__glibc >=2.17"], &[])]);
+    locked.system_requirements = requirements.clone();
+    locked.virtual_packages = vec![fact("__glibc", "2.28", "0"), fact("__linux", "4.18", "0")];
+    assert!(validate_frozen_request(&locked, &roots, &channels, &requirements).is_ok());
+    let mut changed = requirements.clone();
+    changed.virtual_packages[0].minimum_version = "2.29".into();
+    assert!(validate_frozen_request(&locked, &roots, &channels, &changed).is_err());
+    changed.virtual_packages[0].minimum_version = "2.27".into();
+    assert!(validate_frozen_request(&locked, &roots, &channels, &changed).is_err());
+    assert!(validate_frozen_request(&locked, &roots, &channels, &Default::default()).is_err());
+    assert!(validate_frozen_request(&locked, &["numpy".into()], &channels, &requirements).is_err());
+    assert!(validate_frozen_request(&locked, &roots, &["other".into()], &requirements).is_err());
+    locked.virtual_packages[0].version = "2.39".into();
+    assert!(validate_frozen_request(&locked, &roots, &channels, &requirements).is_err());
+}
+
+#[test]
+fn updater_measurement_is_not_an_archive_runtime_minimum() {
+    let mut locked = environment(vec![package(&["__glibc >=2.17,<3"], &[])]);
+    locked.virtual_packages = vec![fact("__glibc", "2.39", "0")];
+    assert!(
+        validate_frozen_request(
+            &locked,
+            &["python".into()],
+            &["conda-forge".into()],
+            &Default::default()
+        )
+        .is_ok()
+    );
+    let older_host = vec![fact("__glibc", "2.28", "0"), fact("__linux", "4.18", "0")];
+    assert!(evaluate_requirements(&locked.packages, &older_host).is_ok());
+    assert!(evaluate_system_requirements(&locked.system_requirements, &older_host).is_ok());
+    locked.system_requirements = baseline();
+    assert!(evaluate_system_requirements(&locked.system_requirements, &older_host).is_ok());
+    let too_old = vec![fact("__glibc", "2.27", "0"), fact("__linux", "4.18", "0")];
+    assert!(evaluate_system_requirements(&locked.system_requirements, &too_old).is_err());
+    locked.packages[0].depends = vec!["__glibc >=2.34".into()];
+    assert!(evaluate_requirements(&locked.packages, &older_host).is_err());
+}
+
+#[test]
+fn declared_native_baseline_is_linux_only() {
+    let declared = serde_json::from_value(json!({"linux": "4.18"})).unwrap();
+    assert!(declared_system_requirements(Some(&declared), "linux-aarch64").is_ok());
+    assert!(declared_system_requirements(Some(&declared), "osx-arm64").is_err());
+    assert!(declared_system_requirements(None, "osx-arm64").is_ok());
 }

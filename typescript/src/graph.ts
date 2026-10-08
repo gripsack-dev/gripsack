@@ -10,9 +10,9 @@ import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
 /** One current frontend version (0052 §1): workspace and legacy
- *  module entrypoints both emit v6. Strict historical documents keep
- *  their versioned core readers; only v6 is written by this frontend. */
-export const IR_VERSION = 6;
+ *  module entrypoints both emit v7. Strict historical documents keep
+ *  their versioned core readers; only v7 is written by this frontend. */
+export const IR_VERSION = 7;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,
@@ -68,8 +68,8 @@ export function mergeTags(envTags: string[] | undefined, cliTags: string[]): str
   return [...(envTags ?? []), ...cliTags].filter((t, i, all) => all.indexOf(t) === i);
 }
 
-/** Serialize a returned environment as the v5 legacy-modules IR
- *  envelope (`{ir_version: 5, host, modules[, resources]}` — never a
+/** Serialize a returned environment as the v7 legacy-modules IR
+ *  envelope (`{ir_version: 7, host, modules[, resources]}` — never a
  *  `workspace` key; the schema admits exactly one of the two). This
  *  is the bounded compatibility path for `hosts/<name>.ts`
  *  entrypoints (0052 §2.1); new workspaces use `emitWorkspaceIr`.

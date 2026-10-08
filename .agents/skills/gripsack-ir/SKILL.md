@@ -17,11 +17,11 @@ The IR is a three-party contract. Any change lands in **one PR** touching:
 
 - **Structural changes** are compatible within a version ONLY if the
   prior declared reader explicitly tolerates that extension point. The
-  retained v3/v4 readers and current v5 reader are strict
-  (`deny_unknown_fields` plus tagged admission); even an optional
+  retained v3–v6 readers and current v7 reader are strict
+  (`deny_unknown_fields` plus versioned tagged admission); even an optional
   structural field needs a new version or proven reader negotiation
-  (plan/0003 §8). The v4→v5 target/execution/layout change kept its
-  own read-only v4 reader and schema.
+  (plan/0003 §8). V6 keeps its original executing semantics and rejects v7
+  authority; v5 retains native file profiles and v4 workspaces stay read-only.
 - **Breaking changes** (rename, removal, meaning change, or a field an
   older strict reader rejects) bump `ir_version` and add
   `schema/ir/v<N+1>.json`; keep old schemas and versioned readers. The
@@ -31,7 +31,7 @@ The IR is a three-party contract. Any change lands in **one PR** touching:
   with no independent declaration inherit their owner's span for
   diagnostics. The core preserves/surfaces provenance and never hashes
   it. Retained v3 optional spans are historical compatibility, not a
-  precedent for v4/v5 nodes.
+  precedent for typed workspace nodes.
 - Identity: producer recipe hashes include admitted semantic inputs,
   tools, platform and policy. Consumer selection and provenance do
   not enter producer identity. Changing a source/build field must
@@ -40,6 +40,9 @@ The IR is a three-party contract. Any change lands in **one PR** touching:
   envelope — an IR change regenerates it
   (`REGEN_GOLDEN=1 pytest e2e/test_golden.py`, see the gripsack-e2e
   skill) and the snapshot diff is part of the PR evidence.
+  Under an explicit owner no-replay instruction, regenerate by direct SDK
+  emission only and review the resulting semantic diff; do not invoke golden
+  test functions or report emission as a passing corpus campaign.
 
 ## Checklist
 

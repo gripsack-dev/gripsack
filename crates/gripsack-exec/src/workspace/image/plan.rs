@@ -17,7 +17,7 @@ use gripsack_buildkit::{
 };
 use gripsack_ir::{
     workspace::{PlatformArch, PlatformOs},
-    workspace_v6::{ImageDestination, ImageOutput, ImageOwner, WorkspaceArg, WorkspaceOutput},
+    workspace_model::{ImageDestination, ImageOutput, ImageOwner, WorkspaceArg, WorkspaceOutput},
 };
 use gripsack_process::Sha256Digest;
 use serde::{Deserialize, Serialize};
@@ -71,6 +71,14 @@ pub(super) fn placements<'a, 'ir>(
             .packages
             .get(name)
             .ok_or_else(|| failure(image, "image runtime package was not realized"))?;
+        if package.host_runtime.is_some() {
+            return Err(failure(
+                image,
+                format!(
+                    "package {name:?} declares host runtime directories and cannot enter a portable image"
+                ),
+            ));
+        }
         let destination =
             image
                 .destinations
@@ -211,8 +219,9 @@ pub(super) fn compile<'a, 'ir>(
                     failure(image, "image command is absent from the package receipt")
                 })?;
                 if let Some(claim) = sha256 {
-                    let claim = gripsack_ir::workspace_v6::identity::ExecutableDigest::parse(claim)
-                        .map_err(|error| failure(image, error))?;
+                    let claim =
+                        gripsack_ir::workspace_model::identity::ExecutableDigest::parse(claim)
+                            .map_err(|error| failure(image, error))?;
                     // A supplied pin authenticates the selected native source command,
                     // not the different executable bytes relocated for this image.
                     if claim != command.executable {

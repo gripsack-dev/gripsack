@@ -96,7 +96,7 @@ struct DeclaredCapability<'a> {
 }
 
 fn current_output<'a>(ir: &'a Ir, operation: WorkspaceOperation) -> Option<DeclaredCapability<'a>> {
-    if let Some(workspace) = &ir.workspace_v6 {
+    if let Some(workspace) = &ir.workspace_catalog {
         return current_v6_output(workspace, operation);
     }
     let workspace = ir.workspace.as_ref()?;
@@ -153,11 +153,11 @@ fn native_profile(output: &WorkspaceOutput) -> bool {
 /// download, solve or activation runs. Hooks share durable post-flip activation;
 /// schedules and staged file checks keep their own executor lanes.
 fn current_v6_output(
-    workspace: &crate::workspace_v6::WorkspaceV6,
+    workspace: &crate::workspace_model::WorkspaceCatalog,
     operation: WorkspaceOperation,
 ) -> Option<DeclaredCapability<'_>> {
-    use crate::workspace_v6::{RecipeExecution, WorkspaceOutput};
-    let deployable = |profile: &crate::workspace_v6::ProfileOutput| {
+    use crate::workspace_model::{RecipeExecution, WorkspaceOutput};
+    let deployable = |profile: &crate::workspace_model::ProfileOutput| {
         profile.schedules.is_empty() && profile.files.iter().all(|file| file.checks.is_empty())
     };
     let mut first_non_profile: Option<&WorkspaceOutput> = None;
@@ -236,10 +236,23 @@ fn historical_output<'a>(ir: &'a Ir) -> Option<DeclaredCapability<'a>> {
 }
 
 pub(crate) fn execution_error(ir: &Ir, operation: WorkspaceOperation) -> Option<Diagnostic> {
+    if ir.ir_version == crate::WORKSPACE_V6_VERSION
+        && ir
+            .workspace_catalog
+            .as_ref()
+            .is_some_and(|workspace| workspace.requires_v7())
+    {
+        return Some(Diagnostic::error(
+            codes::MALFORMED,
+            "v7 declaration authority is forbidden in ir_version 6",
+        ));
+    }
     // These services admit the selected closure themselves. Catalog entries
     // that are not selected must not acquire effects or block another output.
-    if ir.ir_version == crate::IR_VERSION
-        && ir.workspace_v6.is_some()
+    if matches!(
+        ir.ir_version,
+        crate::WORKSPACE_V6_VERSION | crate::IR_VERSION
+    ) && ir.workspace_catalog.is_some()
         && ir.workspace.is_none()
         && ir.workspace_v4.is_none()
         && ir.modules.is_empty()
@@ -258,7 +271,7 @@ pub(crate) fn execution_error(ir: &Ir, operation: WorkspaceOperation) -> Option<
     let capability = declaration.capability;
     let help = match capability {
         UnavailableCapability::HistoricalV4 => {
-            "historical v4 workspaces stay read-only; migrate authoring to the current v6 wire. grip check still validates the saved workspace"
+            "historical v4 workspaces stay read-only; migrate authoring to the current v7 wire. grip check still validates the saved workspace"
         }
         _ => {
             "native profiles deploy captured files and realize artifact/environment inputs at apply; this output still requires its named executor capability"

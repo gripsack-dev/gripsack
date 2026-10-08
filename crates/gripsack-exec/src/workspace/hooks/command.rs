@@ -2,7 +2,7 @@
 //! All data bindings are frozen to exact bytes; only package executables retain
 //! a typed package/command reference for repeat native layout admission.
 use super::*;
-use gripsack_ir::workspace_v6::{WorkspaceArg, WorkspaceCommand, WorkspacePath};
+use gripsack_ir::workspace_model::{WorkspaceArg, WorkspaceCommand, WorkspacePath};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

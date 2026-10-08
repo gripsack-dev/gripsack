@@ -1,12 +1,12 @@
 /** Workspace declarations (0052 A1): the supported surface for the
- *  v6 workspace frontend — pure value constructors for nine typed
+ *  v7 workspace frontend — pure value constructors for nine typed
  *  output variants plus the shared command/file grammar and current
  *  emitter. No global registry or import-order magic — the
  *  root `gripsack.ts` entrypoint RETURNS a {@link WorkspaceValue}
  *  built by {@link workspace}, and the driver turns that value into
  *  IR (JSON) via {@link emitWorkspaceIr}.
  *
- *  Wire shape is exactly `schema/ir/v6.json`: every node carries a
+ *  Wire shape is exactly `schema/ir/v7.json`: every node carries a
  *  mandatory provenance span, all structs reject unknown fields at
  *  construction time (JS callers and casts get the same boundary as
  *  the type-checker), and returned values are deeply frozen — an
@@ -46,6 +46,9 @@ export type {
   CheckSpec,
   CondaEnvironmentSource,
   CondaEnvironmentSpec,
+  CondaSystemRequirements,
+  HostRuntimeSpec,
+  HostRuntimeRequirements,
   EnvironmentSpec,
   ExecSpec,
   HookSpec,
@@ -94,7 +97,7 @@ export type {
   WorkspacePlatform,
   WorkspaceProducer,
   WorkspaceProductionPath,
-  WorkspaceSourceV6,
+  AcquisitionSource,
   WorkspaceRunBashCommand,
   WorkspaceSource,
   WorkspaceSpec,

@@ -2,7 +2,7 @@ use super::fail;
 use crate::sema::workspace::span_value::{
     admissible_destination, admissible_repo_file, valid_local_time,
 };
-use crate::{Diagnostic, Span, codes, workspace::PlatformOs, workspace_v6::*};
+use crate::{Diagnostic, Span, codes, workspace::PlatformOs, workspace_model::*};
 use gripsack_policy::workspace_command::{ArgumentPosition, admit_argument, admit_bash_options};
 
 pub(super) fn selector(value: &str) -> bool {
@@ -22,7 +22,7 @@ fn invalid(out: &mut Vec<Diagnostic>, at: &Span, message: &'static str) {
     fail(out, codes::INVALID_WORKSPACE_VALUE, at, message);
 }
 fn hash(value: &str) -> bool {
-    crate::workspace_v6::identity::ArtifactDigest::parse(value).is_ok()
+    crate::workspace_model::identity::ArtifactDigest::parse(value).is_ok()
 }
 fn globs(include: &[String], exclude: &[String]) -> bool {
     !include.is_empty()
@@ -47,10 +47,10 @@ fn lock(value: &WorkspaceMutationLock, out: &mut Vec<Diagnostic>) {
 /// The v6 acquisition grammar (A3): per-variant provenance spans, the
 /// legacy Brew/Pixi fetch spellings rejected (superseded by the Conda
 /// lanes), and bounded lexical checks on Conda/Pixi declarations.
-fn source(value: &WorkspaceSourceV6, out: &mut Vec<Diagnostic>) {
+fn source(value: &AcquisitionSource, target: &WorkspacePlatform, out: &mut Vec<Diagnostic>) {
     span(value.span(), out);
     match value {
-        WorkspaceSourceV6::Fetch(fetch) => {
+        AcquisitionSource::Fetch(fetch) => {
             if matches!(
                 fetch.fetch,
                 crate::FetchSpec::Brew { .. } | crate::FetchSpec::Pixi { .. }
@@ -62,7 +62,7 @@ fn source(value: &WorkspaceSourceV6, out: &mut Vec<Diagnostic>) {
                 );
             }
         }
-        WorkspaceSourceV6::CondaEnvironment(source) => {
+        AcquisitionSource::CondaEnvironment(source) => {
             if source.channels.is_empty()
                 || source
                     .channels
@@ -90,6 +90,23 @@ fn source(value: &WorkspaceSourceV6, out: &mut Vec<Diagnostic>) {
                     );
                 }
             }
+            if let Some(requirements) = &source.system_requirements {
+                if let Err(message) = requirements.validate() {
+                    invalid(out, &source.span, message);
+                }
+                if target.os != PlatformOs::Linux
+                    || source
+                        .platforms
+                        .iter()
+                        .any(|platform| platform.os != PlatformOs::Linux)
+                {
+                    invalid(
+                        out,
+                        &source.span,
+                        "conda system requirements support only Linux",
+                    );
+                }
+            }
             let mut seen: Vec<&WorkspacePlatform> = Vec::new();
             for platform in &source.platforms {
                 if !platform.valid_abi() || seen.contains(&platform) {
@@ -102,7 +119,7 @@ fn source(value: &WorkspaceSourceV6, out: &mut Vec<Diagnostic>) {
                 seen.push(platform);
             }
         }
-        WorkspaceSourceV6::PixiLock(source) => {
+        AcquisitionSource::PixiLock(source) => {
             if !admissible_text(&source.manifest)
                 || !admissible_text(&source.lock)
                 || !admissible_text(&source.environment)
@@ -125,11 +142,11 @@ fn layout(value: &PackageOutput, out: &mut Vec<Diagnostic>) {
     let conda = matches!(
         &value.producer,
         WorkspaceProducer::Provider {
-            provider: WorkspaceSourceV6::CondaEnvironment(_) | WorkspaceSourceV6::PixiLock(_)
+            provider: AcquisitionSource::CondaEnvironment(_) | AcquisitionSource::PixiLock(_)
         }
     );
     match &value.layout {
-        PackageLayoutV6::FixedPrefix { prefix } => {
+        CatalogPackageLayout::FixedPrefix { prefix } => {
             if !prefix.is_safe() {
                 invalid(
                     out,
@@ -145,14 +162,14 @@ fn layout(value: &PackageOutput, out: &mut Vec<Diagnostic>) {
                 );
             }
         }
-        PackageLayoutV6::Relocatable if conda => {
+        CatalogPackageLayout::Relocatable if conda => {
             invalid(
                 out,
                 &value.span,
                 "conda-backed packages are prefix-materialized, not relocatable",
             );
         }
-        PackageLayoutV6::PrefixMaterialized if !conda => {
+        CatalogPackageLayout::PrefixMaterialized if !conda => {
             invalid(
                 out,
                 &value.span,
@@ -162,7 +179,7 @@ fn layout(value: &PackageOutput, out: &mut Vec<Diagnostic>) {
         _ => {}
     }
 }
-pub(super) fn check(workspace: &WorkspaceV6, out: &mut Vec<Diagnostic>) {
+pub(super) fn check(workspace: &WorkspaceCatalog, out: &mut Vec<Diagnostic>) {
     span(&workspace.span, out);
     if workspace.outputs.is_empty() {
         invalid(out, &workspace.span, "workspace declares no outputs");
@@ -227,7 +244,7 @@ pub(super) fn check(workspace: &WorkspaceV6, out: &mut Vec<Diagnostic>) {
         }
         match output {
             WorkspaceOutput::Recipe(value) => {
-                source(&value.source, out);
+                source(&value.source, &value.target, out);
                 if let RecipeExecution::IsolatedLinux {
                     platform,
                     toolchain,
@@ -253,7 +270,7 @@ pub(super) fn check(workspace: &WorkspaceV6, out: &mut Vec<Diagnostic>) {
             }
             WorkspaceOutput::Package(value) => {
                 if let WorkspaceProducer::Provider { provider } = &value.producer {
-                    source(provider, out);
+                    source(provider, &value.target, out);
                 }
                 layout(value, out);
                 for (name, path) in &value.commands {
@@ -568,4 +585,57 @@ pub(super) fn image_reference(value: &str) -> bool {
             byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"./_:-".contains(&byte)
         })
         && hash(digest)
+}
+
+#[cfg(test)]
+mod baseline_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn native_conda_baseline_diagnostics_use_the_source_span() {
+        for (requirements, platforms, os, valid) in [
+            (
+                json!({"libc":{"family":"glibc","version":"2.28"},"linux":"4.18"}),
+                json!([]),
+                "linux",
+                true,
+            ),
+            (
+                json!({"libc":{"family":"musl","version":"1.2"}}),
+                json!([]),
+                "linux",
+                false,
+            ),
+            (json!({"linux":">=4.18"}), json!([]), "linux", false),
+            (
+                json!({"linux":"4.18"}),
+                json!([{"os":"macos","arch":"aarch64"}]),
+                "linux",
+                false,
+            ),
+            (json!({"linux":"4.18"}), json!([]), "macos", false),
+        ] {
+            let declared: AcquisitionSource = serde_json::from_value(json!({
+                "kind":"conda_environment",
+                "channels":["conda-forge"], "packages":{"python":"*"},
+                "platforms":platforms, "system_requirements":requirements,
+                "span":{"file":"baseline.ts","line":12}
+            }))
+            .unwrap();
+            let mut diagnostics = Vec::new();
+            let target: WorkspacePlatform =
+                serde_json::from_value(json!({"os":os,"arch":"aarch64"})).unwrap();
+            source(&declared, &target, &mut diagnostics);
+            assert_eq!(diagnostics.is_empty(), valid, "{diagnostics:?}");
+            if !valid {
+                assert!(diagnostics.iter().all(|diagnostic| {
+                    diagnostic
+                        .labels
+                        .iter()
+                        .any(|label| label.span.as_ref() == Some(declared.span()))
+                }));
+            }
+        }
+    }
 }

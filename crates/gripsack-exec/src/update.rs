@@ -13,11 +13,11 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, Exec
     {
         return Err(ExecError::Gate(diagnostic));
     }
-    if ir.workspace_v6.as_ref().is_some_and(|workspace| {
+    if ir.workspace_catalog.as_ref().is_some_and(|workspace| {
         workspace.outputs.iter().any(|output| {
             !matches!(
                 output,
-                gripsack_ir::workspace_v6::WorkspaceOutput::Profile(_)
+                gripsack_ir::workspace_model::WorkspaceOutput::Profile(_)
             )
         })
     }) {

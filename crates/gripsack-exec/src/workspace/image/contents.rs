@@ -2,7 +2,7 @@ use super::{failure, plan::Placement};
 use crate::ExecError;
 use gripsack_buildkit::oci::{BlobDigest, FileEntry, FileKind, ValidatedImage};
 use gripsack_fs::cap_std::fs::PermissionsExt;
-use gripsack_ir::workspace_v6::ImageOutput;
+use gripsack_ir::workspace_model::ImageOutput;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, io::Read, ops::Bound, path::Path};
 

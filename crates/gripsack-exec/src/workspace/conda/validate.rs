@@ -12,7 +12,7 @@ mod tests;
 
 use super::archive::{CondaArchive, MAX_ENTRY_BYTES};
 use crate::ExecError;
-use gripsack_ir::workspace_v6::lock::LockedCondaEnvironment;
+use gripsack_ir::workspace_model::lock::LockedCondaEnvironment;
 use gripsack_process::executable;
 use gripsack_store as store;
 use inventory::{Content, ExpectedFile, PythonLayout};

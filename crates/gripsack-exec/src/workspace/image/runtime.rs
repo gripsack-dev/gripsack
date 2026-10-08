@@ -4,7 +4,7 @@
 use super::{failure, plan::Placement};
 use crate::ExecError;
 use gripsack_buildkit::oci::{OciLimits, ValidatedImage};
-use gripsack_ir::workspace_v6::{ImageOutput, lock::LockedVirtualPackage};
+use gripsack_ir::workspace_model::{ImageOutput, lock::LockedVirtualPackage};
 use std::{collections::BTreeSet, fs::File};
 
 pub(super) fn validate(
@@ -84,7 +84,7 @@ pub(super) fn validate(
                 required.name.as_str(),
                 "__glibc" | "__unix" | "__osx" | "__win"
             ) {
-                let measured = gripsack_ir::workspace_v6::lock::LockedCondaSystemRequirements {
+                let measured = gripsack_ir::workspace_model::lock::LockedCondaSystemRequirements {
                     virtual_packages: vec![required.clone()],
                     archspec: None,
                 };

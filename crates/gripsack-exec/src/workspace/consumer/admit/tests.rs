@@ -66,8 +66,9 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
             abi: Some(PlatformAbi::Gnu),
             minimum_os: None,
         },
-        layout: PackageLayoutV6::Relocatable,
+        layout: CatalogPackageLayout::Relocatable,
         conda: None,
+        host_runtime: None,
     };
     let host = HostTarget {
         requirement: TargetRequirement {

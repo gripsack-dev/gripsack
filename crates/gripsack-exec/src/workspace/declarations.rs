@@ -1,7 +1,7 @@
 //! Borrowed semantic views over retained v5 and current v6 file declarations.
 //! No wire rewrite, cloned catalog or second deployment implementation.
 use crate::ExecError;
-use gripsack_ir::{Ir, Span, workspace as v5, workspace_v6 as v6};
+use gripsack_ir::{Ir, Span, workspace as v5, workspace_model as v6};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -13,7 +13,7 @@ pub(super) struct Declarations<'a> {
 }
 impl<'a> Declarations<'a> {
     pub fn from_ir(ir: &'a Ir) -> Option<Self> {
-        if let Some(workspace) = &ir.workspace_v6 {
+        if let Some(workspace) = &ir.workspace_catalog {
             Some(Self {
                 span: &workspace.span,
                 old: &[],

@@ -1,7 +1,7 @@
 //! A frozen materializer policy also constrains native execution. The same
 //! suppression is installed in environment overlays and durable command wrappers.
 use super::{ExecError, Span, gate};
-use gripsack_ir::workspace_v6::lock::BytecodePolicy;
+use gripsack_ir::workspace_model::lock::BytecodePolicy;
 use std::ffi::OsString;
 
 pub(in crate::workspace::consumer) fn apply(

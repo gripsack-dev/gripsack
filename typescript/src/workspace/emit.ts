@@ -200,8 +200,8 @@ function orList(kinds: readonly string[]): string {
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the v5 workspace IR envelope —
- *  `{ir_version: 5, host, workspace}`, never `modules` (the schema
+/** Serialize a workspace value as the v7 workspace IR envelope —
+ *  `{ir_version: 7, host, workspace}`, never `modules` (the schema
  *  admits exactly one of the two). Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative

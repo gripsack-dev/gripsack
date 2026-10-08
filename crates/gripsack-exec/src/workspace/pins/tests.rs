@@ -1,5 +1,5 @@
 use super::same_source_declaration;
-use gripsack_ir::workspace_v6::{LockedCondaSource, LockedPixiSource, LockedSource};
+use gripsack_ir::workspace_model::{LockedCondaSource, LockedPixiSource, LockedSource};
 use std::collections::BTreeMap;
 
 fn declared_pixi() -> LockedPixiSource {
