@@ -12,7 +12,7 @@ use crate::host::AssetTarget;
 /// helper artifacts (parent decision: helper rides the core tag, no
 /// separate namespace). Flipping this without re-measuring the hashes
 /// below fails the release workflow's `--check`.
-pub(crate) const BRIDGE_VERSION: &str = "0.44.1";
+pub(crate) const BRIDGE_VERSION: &str = "0.45.0";
 
 /// (platform, sha256 of `grip-buildkit-bridge-<version>-<triple>`).
 /// Generated only from the measured, gated helper source.

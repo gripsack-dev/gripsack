@@ -3,7 +3,7 @@
 //! controls establish that a missing path cannot masquerade as kernel denial.
 use crate::{
     Boundary, Control, Invocation, Limits, NativeInput, NativeOutcome, OperatorEnvironment,
-    ProcessRole, Ruleset, SelectedProgram, runtime_read_roots,
+    ProcessRole, Ruleset, RuntimeAccess, SelectedProgram,
 };
 use std::{
     ffi::OsStr,
@@ -52,8 +52,12 @@ fn invoke<const N: usize>(
 fn sh_boundary(extra_read: &Path) -> Boundary {
     let environment = OperatorEnvironment::capture().unwrap();
     let mut boundary = Boundary::new();
-    for root in runtime_read_roots(&environment, Path::new("/bin/sh")).unwrap() {
-        boundary = boundary.read_beneath(&root).unwrap();
+    let access = RuntimeAccess::discover(&environment, Path::new("/bin/sh"), |_| Ok(())).unwrap();
+    for file in access.files() {
+        boundary = boundary.read_file(file).unwrap();
+    }
+    for root in access.directories() {
+        boundary = boundary.read_beneath(root).unwrap();
     }
     boundary.read_beneath(extra_read).unwrap()
 }
@@ -186,4 +190,79 @@ fn boundary_rejects_missing_or_non_directory_roots() {
     let file = root.path().join("file");
     std::fs::write(&file, b"data").unwrap();
     assert!(Boundary::new().read_beneath(&file).is_err());
+}
+
+#[test]
+fn exact_file_grants_never_authorize_siblings() {
+    let root = tempfile::tempdir().unwrap();
+    let allowed = root.path().join("allowed");
+    let denied = root.path().join("sibling");
+    std::fs::write(&allowed, b"allowed\n").unwrap();
+    std::fs::write(&denied, b"denied\n").unwrap();
+    let environment = OperatorEnvironment::capture().unwrap();
+    let access = RuntimeAccess::discover(&environment, Path::new("/bin/sh"), |_| Ok(())).unwrap();
+    let boundary = || {
+        let mut boundary = Boundary::new().read_file(&allowed).unwrap();
+        for file in access.files() {
+            boundary = boundary.read_file(file).unwrap();
+        }
+        for directory in access.directories() {
+            boundary = boundary.read_beneath(directory).unwrap();
+        }
+        boundary
+    };
+    let (control, bytes) = invoke(["-c", "cat sibling"], root.path(), None);
+    assert!(control.success);
+    assert_eq!(bytes, b"denied\n");
+    let (permitted, bytes) = invoke(["-c", "cat allowed"], root.path(), Some(boundary()));
+    assert!(
+        permitted.success,
+        "{}",
+        String::from_utf8_lossy(&permitted.stderr)
+    );
+    assert_eq!(bytes, b"allowed\n");
+    let (refused, bytes) = invoke(["-c", "cat sibling"], root.path(), Some(boundary()));
+    assert!(!refused.success);
+    assert!(bytes.is_empty());
+    assert!(Boundary::new().read_file(root.path()).is_err());
+}
+
+#[test]
+fn runtime_lookup_preserves_and_admits_the_winning_path_spelling() {
+    let root = tempfile::tempdir().unwrap();
+    let name = root.path().join("selected-shell");
+    std::os::unix::fs::symlink("/bin/sh", &name).unwrap();
+    let environment =
+        OperatorEnvironment::admit([("PATH".into(), root.path().as_os_str().to_owned())]).unwrap();
+    let selected = environment.resolve(Path::new("selected-shell")).unwrap();
+    assert_eq!(selected.declared(), name);
+    assert_eq!(
+        selected.canonical(),
+        std::fs::canonicalize("/bin/sh").unwrap()
+    );
+    let mut observed = Vec::new();
+    let error = RuntimeAccess::discover(&environment, Path::new("selected-shell"), |path| {
+        observed.push(path.to_owned());
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "source-spelled program",
+        ))
+    })
+    .unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    assert_eq!(observed, [name]);
+}
+
+#[test]
+fn native_runtime_authority_lists_files_not_executable_parent_directories() {
+    let environment = OperatorEnvironment::capture().unwrap();
+    let access = RuntimeAccess::discover(&environment, Path::new("/bin/sh"), |_| Ok(())).unwrap();
+    assert!(
+        access
+            .files()
+            .contains(&std::fs::canonicalize("/bin/sh").unwrap())
+    );
+    assert!(access.files().iter().all(|path| path.is_file()));
+    #[cfg(target_os = "linux")]
+    assert!(access.directories().is_empty());
 }

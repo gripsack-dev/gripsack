@@ -104,6 +104,12 @@ impl NativeProfiles {
                     Some(format!("{}:{}: environment {environment:?} → profile activation (runtime admission deferred; no activation performed)",
                         profile.span.file, profile.span.line))));
             }
+            for hook in &profile.deferred_hooks {
+                operations.push(Op::new(owner.clone(), PathBuf::new(), String::new(), Ownership::Owned,
+                    OpKind::Deferred, None, None, store::journal::Intended::Removed, None,
+                    Some(format!("{}:{}: hook {hook:?} → post-flip activation (runtime admission deferred; no hook performed)",
+                        profile.span.file, profile.span.line))));
+            }
             for file in &profile.deferred {
                 let entry = &file.entry;
                 let dest = store::canonical_dest(&entry.to).map_err(|error| {
@@ -187,9 +193,11 @@ impl NativeProfiles {
                     take_over: adopting.contains(&entry.to),
                 };
                 if entry.mode == Ownership::Owned
-                    && (!profile.deferred.is_empty() || profile.deferred_environment.is_some())
+                    && (!profile.deferred.is_empty()
+                        || profile.deferred_environment.is_some()
+                        || !profile.deferred_hooks.is_empty())
                 {
-                    operations.push(deferred(&view, format!("{}:{}: profile content identity awaits deferred files/environment; captured file bytes are known",
+                    operations.push(deferred(&view, format!("{}:{}: profile content identity awaits deferred files/environment/hooks; captured file bytes are known",
                         span.file, span.line)));
                     continue;
                 }

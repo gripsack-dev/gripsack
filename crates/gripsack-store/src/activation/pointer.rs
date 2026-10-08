@@ -12,7 +12,10 @@ pub(super) struct PointerRecord {
 }
 
 pub(super) enum PendingPointer {
-    Current(ActivationId),
+    Current {
+        version: u32,
+        instance: ActivationId,
+    },
     Legacy {
         generation: GenerationId,
         intents: Vec<PendingIntent>,
@@ -71,21 +74,34 @@ impl<'de> Deserialize<'de> for PendingPointer {
                     }
                 }
                 match version {
-                    Some(1) if generation.is_none() && intents.is_none() => {
-                        Ok(PendingPointer::Current(
-                            instance.ok_or_else(|| A::Error::missing_field("instance"))?,
-                        ))
+                    Some(version @ (super::LEGACY_FORMAT_VERSION | super::FORMAT_VERSION))
+                        if generation.is_none() && intents.is_none() =>
+                    {
+                        Ok(PendingPointer::Current {
+                            version,
+                            instance: instance
+                                .ok_or_else(|| A::Error::missing_field("instance"))?,
+                        })
                     }
-                    Some(1) => Err(A::Error::custom(
-                        "activation pointer mixes current and legacy fields",
-                    )),
+                    Some(super::LEGACY_FORMAT_VERSION | super::FORMAT_VERSION) => Err(
+                        A::Error::custom("activation pointer mixes current and legacy fields"),
+                    ),
                     Some(_) => Err(A::Error::custom("unsupported activation pointer version")),
                     None if instance.is_some() => Err(A::Error::missing_field("version")),
                     None => Ok(PendingPointer::Legacy {
                         generation: GenerationId::new(
                             generation.ok_or_else(|| A::Error::missing_field("generation"))?,
                         ),
-                        intents: intents.ok_or_else(|| A::Error::missing_field("intents"))?,
+                        intents: {
+                            let intents =
+                                intents.ok_or_else(|| A::Error::missing_field("intents"))?;
+                            if intents.iter().any(|intent| intent.action.requires_v2()) {
+                                return Err(A::Error::custom(
+                                    "workspace actions require activation version 2",
+                                ));
+                            }
+                            intents
+                        },
                     }),
                 }
             }

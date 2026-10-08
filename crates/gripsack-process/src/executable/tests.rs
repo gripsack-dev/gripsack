@@ -85,6 +85,41 @@ fn dynamic_elf_reports_loader_and_needed_libraries() {
 }
 
 #[test]
+fn elf_audit_and_filter_objects_cannot_escape_needed_inventory() {
+    let name = OsString::from("outside.so");
+    for (tag, expected) in [
+        (
+            0x6fff_fefb_i64,
+            ElfLoaderExtension::DependencyAudit(name.clone()),
+        ),
+        (0x6fff_fefc, ElfLoaderExtension::Audit(name.clone())),
+        (
+            0x7fff_fffd,
+            ElfLoaderExtension::AuxiliaryFilter(name.clone()),
+        ),
+        (0x7fff_ffff, ElfLoaderExtension::Filter(name.clone())),
+    ] {
+        let mut dynamic = Vec::new();
+        for (tag, value) in [(5i64, 0x800u64), (tag, 1), (0, 0)] {
+            dynamic.extend_from_slice(&tag.to_le_bytes());
+            dynamic.extend_from_slice(&value.to_le_bytes());
+        }
+        let mut bytes = elf64(
+            &[
+                (1, 0, 0, 0x900),
+                (2, 0x40 + 56 * 2, 0, dynamic.len() as u64),
+            ],
+            Some(&dynamic),
+        );
+        bytes.resize(0x800, 0);
+        bytes.extend_from_slice(b"\0outside.so\0");
+        let metadata = classify_bytes(&bytes).unwrap();
+        assert!(metadata.needed_libraries.is_empty());
+        assert_eq!(metadata.elf_loader_extensions, vec![expected]);
+    }
+}
+
+#[test]
 fn big_endian_and_non_entry_objects_are_reported() {
     let mut bytes = elf64(&[], None);
     bytes[5] = 2; // big-endian

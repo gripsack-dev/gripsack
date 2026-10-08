@@ -75,8 +75,9 @@ def frontend_eval(sdk_src, deno, repo, inputs: dict, home) -> dict:
         raise CheckFailure(f"frontend eval printed no envelope: {e}\n{res.stdout[:500]}")
 
 
-def core_check(grip, deno, repo, host: str, home, path: str | None = None) -> int:
-    """Run the real `grip check`; return the accepted module count."""
+def core_check(grip, deno, repo, host: str | None, home,
+               path: str | None = None, expect_outputs: dict | None = None) -> int:
+    """Run real `grip check`; validate workspace names/kinds or return module count."""
     env = minimal_env(home, deno_dir=False, path=path)
     env.update({
         "GRIPSACK_HOME": str(home / ".local/share/gripsack"),
@@ -96,8 +97,13 @@ def core_check(grip, deno, repo, host: str, home, path: str | None = None) -> in
     )
     if approved.returncode:
         raise CheckFailure(f"fixture source approval failed:\n{approved.stderr[-2000:]}")
+    cmd = [str(grip), "check"]
+    if host is not None:
+        cmd += ["--host", host]
+    if expect_outputs is not None:
+        cmd.append("--json")
     res = subprocess.run(
-        [str(grip), "check", "--host", host], cwd=repo, env=env,
+        cmd, cwd=repo, env=env,
         capture_output=True, text=True,
     )
     if res.returncode != 0:
@@ -105,6 +111,13 @@ def core_check(grip, deno, repo, host: str, home, path: str | None = None) -> in
             f"grip check failed (exit {res.returncode}):\n"
             f"{res.stdout.strip()[-800:]}\n{res.stderr.strip()[-2000:]}"
         )
+    if expect_outputs is not None:
+        try:
+            report = json.loads(res.stdout)
+        except json.JSONDecodeError as e:
+            raise CheckFailure(f"grip check printed no JSON report: {e}")
+        assert_outputs(report.get("outputs"), expect_outputs, "grip check")
+        return len(report["outputs"])
     m = re.search(r"check: ok (\d+) modules", res.stdout)
     if not m:
         raise CheckFailure(f"no module count in check output: {res.stdout[-500:]}")
@@ -143,11 +156,20 @@ def resolve_expect(names, facts: dict) -> list[str]:
 
 
 def check_ir_point(ir: dict, point: tuple, where: str) -> None:
-    mod, path, expected = point[1], point[2], point[3]
-    if mod not in ir["modules"]:
-        raise CheckFailure(f"{where}: no module {mod!r} in IR (have {sorted(ir['modules'])})")
+    kind, mod, path, expected = point
+    if kind == "output":
+        nodes = {node["name"]: node for node in ir["workspace"]["outputs"]}
+    elif kind == "module":
+        nodes = ir["modules"]
+    else:
+        raise CheckFailure(f"{where}: unknown IR point kind {kind!r}")
+    if mod not in nodes:
+        raise CheckFailure(f"{where}: no {kind} {mod!r} in IR (have {sorted(nodes)})")
     substring = path.endswith("~")
-    actual = dig(ir["modules"][mod], path.removesuffix("~"))
+    try:
+        actual = dig(nodes[mod], path.removesuffix("~"))
+    except (KeyError, IndexError, TypeError) as e:
+        raise CheckFailure(f"{where}: missing {kind} field {mod}.{path}: {e}") from e
     if substring:
         # substring expectation (for script bodies)
         if expected not in actual:
@@ -164,9 +186,34 @@ def check_ir_point(ir: dict, point: tuple, where: str) -> None:
         raise CheckFailure(f"{where}: {mod}.{path} = {actual!r}, want {expected!r}")
 
 
-def assert_envelope(env: dict, expect: list[str], where: str) -> None:
+def assert_outputs(outputs, expect: dict, where: str) -> None:
+    """Compare the whole catalog, including duplicate names and output kinds."""
+    if not isinstance(outputs, list) or any(
+        not isinstance(node, dict)
+        or not isinstance(node.get("name"), str)
+        or not isinstance(node.get("kind"), str)
+        for node in outputs
+    ):
+        raise CheckFailure(f"{where}: no valid named-output catalog: {outputs!r}")
+    got = sorted((node["name"], node["kind"]) for node in outputs)
+    want = sorted(expect.items())
+    if got != want:
+        raise CheckFailure(f"{where}: named outputs {got}, want {want}")
+
+
+def assert_envelope(env: dict, expect: list[str], where: str,
+                    expect_outputs: dict | None = None) -> None:
     if env.get("diagnostics"):
         raise CheckFailure(f"{where}: frontend diagnostics: {env['diagnostics']}")
+    if expect_outputs is not None:
+        ir = env.get("ir")
+        if not isinstance(ir, dict) or "modules" in ir:
+            raise CheckFailure(f"{where}: expected workspace IR, got {ir!r}")
+        workspace = ir.get("workspace")
+        if not isinstance(workspace, dict):
+            raise CheckFailure(f"{where}: no workspace in IR")
+        assert_outputs(workspace.get("outputs"), expect_outputs, where)
+        return
     got = sorted(env["ir"]["modules"])
     want = sorted(expect)
     if got != want:
@@ -190,6 +237,9 @@ def run_example(entry: dict, block: Block, ctx) -> list[str]:
     failures: list[str] = []
     facts = ctx["facts"]
     expect = resolve_expect(entry.get("expect_modules", []), facts)
+    expect_outputs = entry.get("expect_outputs") if entry["kind"] == "workspace" else None
+    if entry["kind"] == "workspace" and not expect_outputs:
+        raise CheckFailure(f"{entry['id']}: workspace needs explicit named-output expectations")
     stages: list[tuple[str, dict]] = [("default", {})]
 
     # extra tag stages: per-file conditional selection must actually
@@ -203,11 +253,13 @@ def run_example(entry: dict, block: Block, ctx) -> list[str]:
         inputs = {"version": 1, "host": "", "facts": facts, "tags": [],
                   "probes": {}, "settings": {}}
         inputs.update(overrides)
+        # The inputs protocol requires a nonempty host even though root
+        # workspaces do not select hosts/<host>.ts.
         inputs["host"] = entry["host"] if entry["kind"] == "host" else "example"
         where = f"{entry['id']} [{stage_name}] frontend"
         try:
             envelope = frontend_eval(ctx["sdk_src"], ctx["deno"], repo, inputs, home)
-            assert_envelope(envelope, expect, where)
+            assert_envelope(envelope, expect, where, expect_outputs)
             if "probe_requests" in entry and stage_name == "default":
                 got = [[p["kind"], p["name"]] for p in envelope.get("probe_requests", [])]
                 if got != entry["probe_requests"]:
@@ -239,7 +291,8 @@ def run_example(entry: dict, block: Block, ctx) -> list[str]:
             failures.append(str(e))
 
     # core level: the real grip check on the same scaffolded repo
-    host = entry["host"] if entry["kind"] == "host" else "example"
+    host = (entry["host"] if entry["kind"] == "host"
+            else None if entry["kind"] == "workspace" else "example")
     for label, path_env in (("core", None), ("core-bound", ctx["fake_probe_path"])):
         if label == "core-bound" and "expect_modules_bound" not in entry:
             continue
@@ -257,11 +310,13 @@ def run_example(entry: dict, block: Block, ctx) -> list[str]:
                          if n not in want]
         try:
             count = core_check(ctx["grip"], ctx["deno"], repo, host, home,
-                               path=path_env or ctx["clean_path"])
-            if count != len(want):
+                               path=path_env or ctx["clean_path"],
+                               expect_outputs=expect_outputs)
+            want_count = len(expect_outputs) if expect_outputs is not None else len(want)
+            if count != want_count:
                 raise CheckFailure(
                     f"{entry['id']} [{label}]: grip check accepted {count} "
-                    f"modules, want {len(want)} ({want})"
+                    f"entries, want {want_count}"
                 )
         except CheckFailure as e:
             failures.append(str(e))

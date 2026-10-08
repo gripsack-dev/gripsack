@@ -4,7 +4,7 @@ use gripsack_ir::{
     HostFacts,
     workspace_v6::{identity::PackageDigest, lock::BytecodePolicy},
 };
-use std::{cell::RefCell, collections::BTreeSet, path::Path};
+use std::{cell::RefCell, collections::BTreeSet, path::Path, sync::Arc, time::Instant};
 
 /// Admission authority belongs to one invocation's home and measured host.
 /// Package receipts have already been matched against protected realization;
@@ -13,9 +13,11 @@ pub(in crate::workspace) struct NativeContext<'a> {
     pub(super) target: HostTarget,
     home: &'a Path,
     admitted: RefCell<BTreeSet<PackageDigest>>,
+    deadline: Instant,
+    gnu_loader: RefCell<Option<Arc<gripsack_process::SelectedGnuLoader>>>,
 }
 impl<'a> NativeContext<'a> {
-    pub fn new(facts: &HostFacts, home: &'a Path) -> Result<Self, ExecError> {
+    pub fn new(facts: &HostFacts, home: &'a Path, deadline: Instant) -> Result<Self, ExecError> {
         let mut target = HostTarget::from_facts(facts)?;
         let native_os = match target.os {
             gripsack_policy::target::TargetOs::Linux => "linux",
@@ -31,7 +33,36 @@ impl<'a> NativeContext<'a> {
             target,
             home,
             admitted: RefCell::default(),
+            deadline,
+            gnu_loader: RefCell::default(),
         })
+    }
+
+    pub(super) fn gnu_loader(
+        &self,
+        path: &'static str,
+        span: &Span,
+    ) -> Result<Arc<gripsack_process::SelectedGnuLoader>, ExecError> {
+        let mut selected = self.gnu_loader.borrow_mut();
+        if let Some(loader) = selected.as_ref() {
+            if loader.path() != Path::new(path) {
+                return Err(gate(
+                    span,
+                    "GNU interpreter differs from the invocation's platform loader",
+                ));
+            }
+            return Ok(Arc::clone(loader));
+        }
+        let loader = gripsack_process::SelectedGnuLoader::select(Path::new(path), self.deadline)
+            .map_err(|error| match error.kind() {
+                std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidData => {
+                    gate(span, error.to_string())
+                }
+                _ => super::operational(error),
+            })?;
+        let loader = Arc::new(loader);
+        *selected = Some(Arc::clone(&loader));
+        Ok(loader)
     }
 
     pub(super) fn admit_package_closure(

@@ -5,6 +5,7 @@
 mod loader;
 use super::{ByteBinding, OperatorEnvironment, Sha256Digest};
 pub(crate) use loader::ImageDescriptors;
+pub use loader::SelectedGnuLoader;
 use sha2::{Digest, Sha256};
 #[cfg(target_os = "linux")]
 use std::os::fd::{AsRawFd, FromRawFd};
@@ -16,7 +17,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const EXECUTABLE_BYTES: u64 = 512 * 1024 * 1024;
+pub(crate) const EXECUTABLE_BYTES: u64 = 512 * 1024 * 1024;
 
 pub(crate) struct Image {
     pub(crate) digest: Sha256Digest,
@@ -232,7 +233,7 @@ impl SelectedProgram {
         expected: Option<Sha256Digest>,
         deadline: std::time::Instant,
     ) -> io::Result<Self> {
-        let selected = Image::copy(&environment.resolve(name)?, expected, deadline)?;
+        let selected = Image::copy(environment.resolve(name)?.canonical(), expected, deadline)?;
         let Some((interpreter, argument)) = selected.interpreter()? else {
             return Ok(Self {
                 executable: selected,
@@ -243,7 +244,11 @@ impl SelectedProgram {
                 macho_libraries: None,
             });
         };
-        let executable = Image::copy(&environment.resolve(&interpreter)?, None, deadline)?;
+        let executable = Image::copy(
+            environment.resolve(&interpreter)?.canonical(),
+            None,
+            deadline,
+        )?;
         if executable.interpreter()?.is_some() {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
@@ -314,9 +319,5 @@ impl SelectedProgram {
             loader_sha256: self.loader_sha256(),
             byte_binding: self.executable.binding.clone(),
         }
-    }
-
-    pub(crate) fn loader_sha256(&self) -> Option<Sha256Digest> {
-        self.loader.as_ref().map(|loader| loader.image.digest)
     }
 }

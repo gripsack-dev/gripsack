@@ -31,7 +31,14 @@ impl Fixture {
     }
 
     fn capture(&self) -> SourceBundle {
-        SourceBundle::capture(&self.repo, &self.frontend, None, &self.home).unwrap()
+        SourceBundle::capture(
+            &self.repo,
+            &self.frontend,
+            None,
+            &self.home,
+            crate::source_bundle::SourceCapturePolicy::default(),
+        )
+        .unwrap()
     }
 
     fn policy(&self, bundle: &SourceBundle, native: &impl serde::Serialize) -> EvaluationPolicy {

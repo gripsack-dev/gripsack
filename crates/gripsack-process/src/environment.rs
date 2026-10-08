@@ -29,6 +29,32 @@ pub struct OperatorEnvironment {
     search_path: Vec<PathBuf>,
 }
 
+/// Executable lookup retains the winning spelling for authority admission;
+/// canonical identity alone loses a repository alias or source-spelled PATH.
+#[derive(Debug)]
+pub struct ResolvedProgram {
+    declared: PathBuf,
+    canonical: PathBuf,
+}
+
+impl ResolvedProgram {
+    fn new(declared: PathBuf) -> io::Result<Self> {
+        let canonical = declared.canonicalize()?;
+        Ok(Self {
+            declared,
+            canonical,
+        })
+    }
+
+    pub fn declared(&self) -> &Path {
+        &self.declared
+    }
+
+    pub fn canonical(&self) -> &Path {
+        &self.canonical
+    }
+}
+
 impl OperatorEnvironment {
     pub fn capture() -> io::Result<Self> {
         Self::admit(std::env::vars_os())
@@ -98,16 +124,14 @@ impl OperatorEnvironment {
         Ok(self)
     }
 
-    /// The operator's executable search space. Confinement grants these
-    /// directories reads: executing a binary requires reading it, and an
-    /// operator-selected script runtime resolves its real interpreter here.
+    /// The operator's executable lookup space, not a recursive read grant.
     pub fn search_directories(&self) -> &[PathBuf] {
         &self.search_path
     }
 
-    pub(crate) fn resolve(&self, program: &Path) -> io::Result<PathBuf> {
+    pub fn resolve(&self, program: &Path) -> io::Result<ResolvedProgram> {
         if program.is_absolute() {
-            return std::fs::canonicalize(program);
+            return ResolvedProgram::new(program.to_owned());
         }
         if program.components().count() != 1 || program.file_name() != Some(program.as_os_str()) {
             return Err(io::Error::new(
@@ -121,7 +145,7 @@ impl OperatorEnvironment {
                 Ok(metadata) => {
                     use std::os::unix::fs::PermissionsExt;
                     if metadata.is_file() && metadata.permissions().mode() & 0o111 != 0 {
-                        return std::fs::canonicalize(path);
+                        return ResolvedProgram::new(path);
                     }
                 }
                 Err(error)

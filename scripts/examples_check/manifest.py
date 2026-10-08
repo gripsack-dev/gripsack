@@ -12,6 +12,8 @@ kind:
              so a factory that forgot `return module(...)` drops its
              modules from the IR and the expectation fails
   host     — IS a host entrypoint (defineEnv); placed verbatim
+  workspace — root gripsack.ts (defineWorkspace); placed verbatim,
+              without a synthetic host or module entrypoint
   fragment — illustrative snippet, not a runnable program; `reason`
              quotes the source evidence that makes it partial
 
@@ -19,6 +21,11 @@ expect_modules: module names that must appear in the emitted IR for
 the default stage (tags [], probes unbound). A name gated on the
 machine's os is ("name", "linux") — expectations follow the facts the
 eval actually ran with, on any checker host.
+
+expect_outputs: exact mapping of workspace output names to kinds.
+Workspace `ir` points use ("output", name, path, expected), with paths
+relative to the named output; module points retain ("module", ...).
+Both forms assert emitted semantics, independently of declaration order.
 """
 
 # Fixture module for examples that import modules the page does not
@@ -186,6 +193,59 @@ EXAMPLES = [
             "is an opt-in illustration, not a runnable program (a completed "
             "variant would also need the [linters.yazi] registration the "
             "page shows above it)"
+        ),
+    },
+    {
+        "id": "environments-workspace-node",
+        "file": "environments.md",
+        "locator": {"window": "gripsack.ts"},
+        "kind": "workspace",
+        "expect_outputs": {
+            "node": "package",
+            "tools": "environment",
+            "with-node": "profile",
+        },
+        "ir": [
+            ("output", "node", "producer.kind", "provider"),
+            ("output", "node", "producer.provider.kind", "conda_environment"),
+            ("output", "node", "producer.provider.channels", ["conda-forge"]),
+            ("output", "node", "producer.provider.packages", {"nodejs": "=26.10.0"}),
+            ("output", "node", "commands", {"node": "bin/node"}),
+            ("output", "node", "target", {"os": "linux", "arch": "x86_64", "abi": "gnu"}),
+            ("output", "node", "layout.kind", "prefix_materialized"),
+            ("output", "tools", "packages", ["node"]),
+            ("output", "tools", "target", {"os": "linux", "arch": "x86_64", "abi": "gnu"}),
+            ("output", "with-node", "environment", "tools"),
+        ],
+    },
+    {
+        "id": "environments-profile-hook",
+        "file": "environments.md",
+        "locator": {"window": "gripsack.ts — a profile hook"},
+        "kind": "fragment",
+        "reason": (
+            "hook declaration is real but elided from its selecting profile "
+            "— `profile(…, { hooks: [\"after\"] })` appears in prose only"
+        ),
+    },
+    {
+        "id": "migration-conda-environment",
+        "file": "workspace-migration.md",
+        "locator": {"window": "gripsack.ts — conda.environment"},
+        "kind": "fragment",
+        "reason": (
+            "pkg(...) fragment with the environment/profile continuation "
+            "elided to comments — the complete shape lives on environments.md"
+        ),
+    },
+    {
+        "id": "migration-pixi-fromlock",
+        "file": "workspace-migration.md",
+        "locator": {"window": "gripsack.ts — pixi.fromLock"},
+        "kind": "fragment",
+        "reason": (
+            "input + provider declarations only; the workspace({inputs, "
+            "outputs}) wiring is elided in a trailing comment"
         ),
     },
 ]

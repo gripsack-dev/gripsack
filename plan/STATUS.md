@@ -697,6 +697,34 @@ Website PR21 corrected it; final Pages run37233557185 passed both jobs at
 notice and that the served installer still matched the executed bytes. Owned
 ephemeral runner registrations and preview/consumer scaffolds were removed.
 
+## 0.45 external consumer review response
+
+The owner requests all blockers and migration issues from the supplied
+0.42.0→0.44.1 review addressed in a minor release. Plan0048 §17 is the
+leaf-level execution record (`UP45.A`–`UP45.E`, `UP45.1`–`UP45.5`,
+`UP45.REL`), not a reduction to the easy Pixi comparison fix.
+Implementation starts from published main `389c3d6` in an isolated worktree.
+The CI/provider migration remains deferred and its research work is untouched.
+
+`REL-REVIEW-0450` authorizes skipping hosted CI and macOS, not replacing actual
+Linux/glibc-2.28 behavior, security boundaries or required local evidence with
+documentation. Reported failures are established; verification will exercise
+the corrected paths without weakening source approval or sealed execution.
+
+### 0.45.0 release candidate
+
+PR181 implements Pixi frozen identity, capability-measured GNU loader
+admission, workspace hooks/task checks, capture exclusions with exact-file
+runtime authority, and the removed-Pixi migration diagnostic. Modern Linux
+and RHEL8.10 userspace execution passed with the qualified release binary;
+the available WSL kernel is not the reviewer's external Space kernel.
+Plan0048 §17 records source-bound gates, consumer evidence and limitations.
+The inherited full e2e run was stopped before completion and is not green.
+The remaining migration examples and coordinated publication are being
+completed under `REL-REVIEW-0450`; this candidate is not yet a published
+release. The CI/provider research and user-owned checkout remain untouched.
+
+
 ## Settled rejections (all eras)
 
 - **TOML/data-format frontend** — five times. TypeScript is the

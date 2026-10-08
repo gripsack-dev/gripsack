@@ -216,15 +216,23 @@ fn check_inputs_and_context(
     } else {
         ExecutionContext::Host
     };
-    let owner = if matches!(
-        output,
-        WorkspaceOutput::Recipe(_) | WorkspaceOutput::Check(_)
-    ) {
-        CommandOwner::Production
-    } else {
-        CommandOwner::Invocation
+    let check_owner = |check: &crate::workspace_v6::CheckOutput| {
+        if matches!(
+            catalog.get(check.subject.as_str()),
+            Some(WorkspaceOutput::Recipe(_) | WorkspaceOutput::Package(_))
+        ) {
+            CommandOwner::ImmutableSubject
+        } else {
+            CommandOwner::Invocation
+        }
+    };
+    let owner = match output {
+        WorkspaceOutput::Recipe(_) => CommandOwner::Production,
+        WorkspaceOutput::Check(check) => check_owner(check),
+        _ => CommandOwner::Invocation,
     };
     let command = |value: &WorkspaceCommand,
+                   owner: CommandOwner,
                    check_target: Option<&WorkspacePlatform>,
                    out: &mut Vec<Diagnostic>| {
         for argument in value.arguments() {
@@ -234,7 +242,7 @@ fn check_inputs_and_context(
                     out,
                     codes::BAD_WORKSPACE_CONTEXT,
                     value.span(),
-                    "source/output bindings require a production owner; a task or hook cannot grant staging authority",
+                    "source bindings require production or an immutable recipe/package check subject; output bindings require a production owner",
                 );
             }
             if let (Some(required), WorkspaceArg::PackageCommand { package, .. }) =
@@ -296,7 +304,7 @@ fn check_inputs_and_context(
         WorkspaceOutput::Recipe(value) => {
             for step in &value.steps {
                 if let WorkspaceStep::Command(value) = step {
-                    command(value, None, out);
+                    command(value, owner, None, out);
                 }
             }
             let target = match &value.execution {
@@ -305,7 +313,7 @@ fn check_inputs_and_context(
             };
             for name in &value.checks {
                 if let Some(WorkspaceOutput::Check(check)) = catalog.get(name.as_str()) {
-                    command(&check.run, Some(target), out);
+                    command(&check.run, check_owner(check), Some(target), out);
                 }
             }
         }
@@ -313,17 +321,17 @@ fn check_inputs_and_context(
         WorkspaceOutput::Task(value) => {
             for step in &value.steps {
                 if let WorkspaceStep::Command(value) = step {
-                    command(value, None, out);
+                    command(value, owner, None, out);
                 }
             }
             for check in &value.checks {
                 if let Some(WorkspaceOutput::Check(check)) = catalog.get(check.as_str()) {
-                    command(&check.run, None, out);
+                    command(&check.run, check_owner(check), None, out);
                 }
             }
         }
-        WorkspaceOutput::Check(value) => command(&value.run, None, out),
-        WorkspaceOutput::Hook(value) => command(&value.run, None, out),
+        WorkspaceOutput::Check(value) => command(&value.run, owner, None, out),
+        WorkspaceOutput::Hook(value) => command(&value.run, owner, None, out),
         WorkspaceOutput::Environment(value) => {
             for value_arg in value.env.values() {
                 arg(value_arg, &value.span, inputs, out);

@@ -115,16 +115,19 @@ RUN sh scripts/check_models.sh /tla/tla2tools.jar
 # never silently upgrades the prover or its bundled Isabelle/Z3/LS4 backends.
 # Provenance: upstream re-published the mutable `1.6.0-pre` tag on
 # 2026-10-01, replacing tlapm 7824dab (sha256 a2860384…9331c, no longer
-# served anywhere; no Wayback snapshot exists) with tlapm bfa9468. The new
-# digest below was fetched from the official release URL and verified by
-# hand on 2026-10-01 (46,747,327 bytes, `tlapm --version` = bfa9468). The
-# complete induction + mutant gate (check_tlaps.py) MUST pass under bfa9468
-# before this toolchain counts as qualified — no waiver, no checksum removal.
+# served anywhere; no Wayback snapshot exists) with tlapm bfa9468, and again
+# on 2026-10-06 with tlapm d8b9747. Each new digest below was fetched from
+# the official release URL and cross-checked against GitHub's own asset
+# metadata (asset id 616249697, 46,749,734 bytes, GitHub-reported digest
+# sha256:13eff4e3…d43c; independent HTTPS download matched; `tlapm --version`
+# = d8b9747). The complete induction + mutant gate (check_tlaps.py) MUST pass
+# under d8b9747 before this toolchain counts as qualified — no waiver, no
+# checksum removal.
 FROM model AS tlaps
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     python3 libgmp10 \
     && rm -rf /var/lib/apt/lists/*
-ARG TLAPS_SHA256=0d6ce5b0536903995c524a5f9ae62a997b11f16663cb59d4860934965f45b4bd
+ARG TLAPS_SHA256=13eff4e3dd0a4570c1c33c46f052fd4eb3afad465eb201ebade607961f09d43c
 ADD --checksum=sha256:${TLAPS_SHA256} https://github.com/tlaplus/tlapm/releases/download/1.6.0-pre/tlapm-1.6.0-pre-x86_64-linux-gnu.tar.gz /tmp/tlapm.tar.gz
 # The bfa9468 slim bundle ships `Isabelle-install` without the Isabelle2025
 # component option files, and its pre-built heaps resolve their parent heaps

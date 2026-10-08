@@ -43,6 +43,17 @@ impl Repository {
         }
     }
 
+    /// A repository-local file source always consumes selected repository
+    /// contents, including an evaluated repository's admitted --repo alias.
+    /// Explicit outside file transports keep their existing native meaning.
+    pub(crate) fn source_relative<'a>(&self, path: &'a Path) -> Option<&'a Path> {
+        match self {
+            Self::Evaluated { sources, .. } => sources.repository_relative(path),
+            Self::Direct(root) if path.is_absolute() => path.strip_prefix(root).ok(),
+            Self::Direct(_) => Some(path),
+        }
+    }
+
     pub(crate) fn materialization_path(&self, relative: &Path) -> io::Result<PathBuf> {
         match self {
             Self::Direct(path) => Ok(path.join(relative)),

@@ -12,16 +12,20 @@ pub enum DirectoryOrigin { Literal, Artifact, LiveHost, ProductionSource, Stagin
 pub enum ArgumentPosition { Argument, Environment, Interpreter }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArgumentOrigin { Literal, Artifact, CapturedInput, PackageCommand, ProductionSource, StagingOutput }
+/// Production owns staging; an immutable recipe/package check subject supplies
+/// only its source binding, never writable output authority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommandOwner { Production, Invocation }
+pub enum CommandOwner { Production, ImmutableSubject, Invocation }
 
 pub fn admit_production_binding(owner: CommandOwner, origin: ArgumentOrigin) -> (admitted: bool)
     ensures admitted == (
         owner == CommandOwner::Production
+        || (owner == CommandOwner::ImmutableSubject && origin == ArgumentOrigin::ProductionSource)
         || (origin != ArgumentOrigin::ProductionSource && origin != ArgumentOrigin::StagingOutput)
     ),
 {
     matches!(owner, CommandOwner::Production)
+        || matches!((owner, origin), (CommandOwner::ImmutableSubject, ArgumentOrigin::ProductionSource))
         || !matches!(origin, ArgumentOrigin::ProductionSource | ArgumentOrigin::StagingOutput)
 }
 

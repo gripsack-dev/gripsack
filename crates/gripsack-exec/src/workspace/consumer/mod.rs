@@ -6,6 +6,7 @@
 //! shared selected-executable/exec-payload/interactive admission. The
 //! checkout stays live and writable; host task access is not hermetic.
 pub(super) mod admit;
+pub(super) mod command;
 
 use super::{
     realize::{self, Realization},
@@ -66,7 +67,7 @@ pub fn consume(
         .workspace_v6
         .as_ref()
         .ok_or_else(|| failure("native consumption requires a current v6 workspace"))?;
-    let host = admit::NativeContext::new(&ir.host, &ctx.home)?;
+    let host = admit::NativeContext::new(&ir.host, &ctx.home, options.deadline)?;
     let outputs: BTreeMap<&str, &WorkspaceOutput> = workspace
         .outputs
         .iter()
@@ -177,9 +178,11 @@ pub fn consume(
                 session,
                 declaration,
                 &plan,
+                &outputs,
                 &realization,
                 &host,
                 options,
+                retention.paths(),
             )
         }
     }
@@ -192,12 +195,6 @@ fn admit_task_shape(task: &TaskOutput) -> Result<(), ExecError> {
         return Err(unavailable(
             &task.span,
             "task prerequisite execution belongs to E1; invoke prerequisites separately",
-        ));
-    }
-    if !task.checks.is_empty() {
-        return Err(unavailable(
-            &task.span,
-            "per-invocation task postconditions belong to E1; run the named checks as tasks",
         ));
     }
     if !task.mutation_locks.is_empty() {
@@ -275,18 +272,21 @@ fn shell_launch(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn task_launch(
     ctx: &Ctx,
     session: LifecycleSession,
     task: &TaskOutput,
     plan: &admit::EnvironmentPlan,
+    outputs: &BTreeMap<&str, &WorkspaceOutput>,
     realization: &Realization,
     host: &admit::NativeContext<'_>,
     options: &super::BuildOptions<'_>,
+    retention: &BTreeSet<PathBuf>,
 ) -> Result<ConsumerOutcome, ExecError> {
     let checkout = live_checkout(ctx)?;
     let mut completed = 0usize;
-    let outcome = with_process_root(ctx, session, plan.closure().clone(), |bin, leases| {
+    let outcome = with_process_root(ctx, session, retention.clone(), |bin, leases| {
         let base_overlay = plan.materialize(bin, None).map_err(operational)?;
         let mut last: Option<ConsumerOutcome> = None;
         for step in &task.steps {
@@ -308,6 +308,7 @@ fn task_launch(
                 WorkspaceStep::Command(command) => {
                     let outcome = task_command(
                         command,
+                        None,
                         plan,
                         realization,
                         host,
@@ -329,6 +330,34 @@ fn task_launch(
             }
             completed += 1;
         }
+        // Postconditions belong to this invocation, never to cached build
+        // success. They run only after every task step succeeds and retain
+        // the same supervised process roots as the task itself.
+        for name in &task.checks {
+            let Some(WorkspaceOutput::Check(check)) = outputs.get(name.as_str()).copied() else {
+                return Err(gate(&task.span, format!("missing task check {name:?}")));
+            };
+            let outcome = task_command(
+                &check.run,
+                Some(&check.subject),
+                plan,
+                realization,
+                host,
+                &checkout,
+                options,
+                &base_overlay,
+                &leases,
+            )?;
+            let success = outcome.success;
+            last = Some(ConsumerOutcome {
+                receipt: outcome.receipt,
+                completed_steps: completed,
+                root_retained: false,
+            });
+            if !success {
+                return Ok(last.expect("recorded check outcome"));
+            }
+        }
         last.ok_or_else(|| failure("task produced no process outcome"))
     });
     outcome.map(|mut outcome| {
@@ -340,6 +369,7 @@ fn task_launch(
 #[allow(clippy::too_many_arguments)]
 fn task_command(
     command: &WorkspaceCommand,
+    subject: Option<&str>,
     plan: &admit::EnvironmentPlan,
     realization: &Realization,
     host: &admit::NativeContext<'_>,
@@ -348,99 +378,21 @@ fn task_command(
     base_overlay: &EnvironmentOverlay,
     leases: &ProcessLeases,
 ) -> Result<gripsack_process::NativeOutcome, ExecError> {
-    let span = command.span().clone();
-    let (program_binding, argv, declared_env) = match command {
-        WorkspaceCommand::Exec { argv, env, .. } => {
-            let (program, arguments) = argv
-                .split_first()
-                .ok_or_else(|| gate(&span, "command has no program"))?;
-            let mut resolved = Vec::with_capacity(arguments.len());
-            for argument in arguments {
-                resolved.push(task_argument(argument, realization, host, &span)?);
-            }
-            (program, resolved, env)
-        }
-        WorkspaceCommand::RunBash {
-            interpreter,
-            options: strict,
-            body,
-            env,
-            ..
-        } => {
-            // Mirror the production lowering: interpreter, the fixed strict
-            // option set, `-c`, body, then the stable $0 label.
-            let mut resolved = Vec::with_capacity(strict.len() + 3);
-            resolved.extend(strict.iter().map(OsString::from));
-            resolved.push(OsString::from("-c"));
-            resolved.push(OsString::from(body));
-            resolved.push(OsString::from("gripsack-bash"));
-            (interpreter, resolved, env)
-        }
-    };
-    let mut entries: Vec<(OsString, OsString)> = base_overlay
-        .entries()
-        .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-    let mut library: Vec<PathBuf> = base_overlay.library_prefix().to_vec();
-    // Command-declared PATH dirs precede the environment's declared segment
-    // and the operator PATH, after the exported-commands bin directory.
-    let mut search: Vec<PathBuf> = base_overlay
-        .search_prefix()
-        .iter()
-        .take(1)
-        .cloned()
-        .collect();
-    for (key, argument) in declared_env {
-        let value = task_argument(argument, realization, host, &span)?;
-        let text = value
-            .to_str()
-            .ok_or_else(|| gate(&span, "environment value is not UTF-8"))?
-            .to_owned();
-        match key.as_str() {
-            "PATH" => search.extend(absolute_directories(&text, &span, "PATH")?),
-            "LD_LIBRARY_PATH" => {
-                library.extend(absolute_directories(&text, &span, "LD_LIBRARY_PATH")?)
-            }
-            _ => entries.push((OsString::from(key), value)),
-        }
-    }
-    search.extend(base_overlay.search_prefix().iter().skip(1).cloned());
-    let explicit = match program_binding {
-        WorkspaceArg::PackageCommand {
-            package,
-            command,
-            sha256,
-        } => Some(admit_package_command(
-            package,
-            command,
-            sha256.as_deref(),
-            realization,
-            host,
-            &span,
-        )?),
-        _ => None,
-    };
-    let (program, admitted) = if let Some(command) = explicit.as_ref() {
-        (bind_admitted_program(command, options)?, Some(command))
-    } else {
-        let program_arg = task_argument(program_binding, realization, host, &span)?;
-        resolve_program(plan, &program_arg, &span, options)?
-    };
-    if let Some(admitted) = admitted {
-        let mut dirs = admitted.library_dirs.clone();
-        dirs.extend(library);
-        library = dirs;
-    }
-    admit::bytecode::apply(
-        admitted
-            .and_then(|command| command.bytecode)
-            .or(plan.bytecode),
-        &mut entries,
-        &span,
+    let command::PreparedCommand {
+        program,
+        argv,
+        overlay,
+        cwd,
+    } = command::prepare(
+        command,
+        subject,
+        plan,
+        realization,
+        host,
+        checkout,
+        options,
+        base_overlay,
     )?;
-    let overlay = EnvironmentOverlay::admit(entries, search, library).map_err(operational)?;
-    let cwd = task_cwd(command.working_directory(), realization, checkout, &span)?;
     let invocation = Invocation::admit(
         options.environment,
         ProcessRole::Task,
@@ -457,8 +409,9 @@ fn task_command(
 /// Resolve one argument value to exact bytes. Empty and spaced literals are
 /// preserved verbatim; artifact/package/input bindings become absolute
 /// store paths inside the realized closure.
-fn task_argument(
+pub(in crate::workspace) fn task_argument(
     argument: &WorkspaceArg,
+    subject: Option<&str>,
     realization: &Realization,
     host: &admit::NativeContext<'_>,
     span: &Span,
@@ -495,7 +448,16 @@ fn task_argument(
                 .ok_or_else(|| gate(span, format!("input {input:?} is not captured")))?;
             OsString::from(admit::utf8_path(path, span)?)
         }
-        WorkspaceArg::Source { .. } | WorkspaceArg::Output { .. } => {
+        WorkspaceArg::Source { selector } => {
+            let subject = subject.ok_or_else(|| gate(span, "task command has no check subject"))?;
+            let payload = admit::artifact_payload(subject, realization)
+                .ok_or_else(|| gate(span, format!("check subject {subject:?} has no artifact")))?;
+            OsString::from(admit::utf8_path(
+                &inside_payload(&payload, selector, span)?,
+                span,
+            )?)
+        }
+        WorkspaceArg::Output { .. } => {
             return Err(gate(
                 span,
                 "production source/output bindings are unavailable to tasks",
@@ -566,15 +528,10 @@ fn bind_admitted_program(
             "selected package interpreter differs from its admitted bytes",
         ));
     }
-    if let Some(loader) = command.gnu_loader {
+    if let Some(loader) = &command.gnu_loader {
         let libraries = std::env::join_paths(&command.library_dirs).map_err(operational)?;
         selected
-            .with_gnu_loader(
-                options.environment,
-                Path::new(loader),
-                &libraries,
-                options.deadline,
-            )
+            .with_gnu_loader(std::sync::Arc::clone(loader), &libraries)
             .map_err(operational)
     } else if let Some(directories) = &command.macho_library_dirs {
         selected
@@ -600,6 +557,7 @@ fn inside_payload(payload: &Path, selector: &str, span: &Span) -> Result<PathBuf
 
 fn task_cwd(
     cwd: Option<&WorkspacePath>,
+    subject: Option<&str>,
     realization: &Realization,
     checkout: &Path,
     span: &Span,
@@ -628,7 +586,13 @@ fn task_cwd(
                 .ok_or_else(|| gate(span, format!("artifact {output:?} is not realized")))?;
             payload.join(selector)
         }
-        Some(WorkspacePath::Source { .. } | WorkspacePath::Output { .. }) => {
+        Some(WorkspacePath::Source { selector }) => {
+            let subject = subject.ok_or_else(|| gate(span, "task command has no check subject"))?;
+            let payload = admit::artifact_payload(subject, realization)
+                .ok_or_else(|| gate(span, format!("check subject {subject:?} has no artifact")))?;
+            inside_payload(&payload, selector, span)?
+        }
+        Some(WorkspacePath::Output { .. }) => {
             return Err(gate(
                 span,
                 "production source/output directories are unavailable to tasks",

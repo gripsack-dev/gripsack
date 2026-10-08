@@ -2,11 +2,11 @@
 //! supervision. Diagnostics retain identities/status, never script/argv bytes.
 use super::output::CapturedOutput;
 use crate::report::{ReportKind, StepReport};
-use gripsack_ir::Action;
 use gripsack_process::{
     ActivationEnvironment, Invocation, Limits, NativeInput, OperatorEnvironment, ProcessReceipt,
     ProcessRole, SelectedProgram,
 };
+use gripsack_store::activation::ActivationAction as Action;
 use gripsack_store::activation::{AdmissionStage, EffectiveIntent, IntentFailure, LaunchPermit};
 use std::{
     ffi::OsStr,
@@ -27,6 +27,7 @@ pub(super) fn run(
     permit: &LaunchPermit,
     environment: &io::Result<OperatorEnvironment>,
     directory: &Path,
+    home: &Path,
 ) -> EffectOutcome {
     let mut processes = Vec::new();
     let mut output = CapturedOutput::default();
@@ -43,6 +44,22 @@ pub(super) fn run(
                 )
             })?,
         };
+        if let Action::WorkspaceHook { context, sha256 } = intent.action() {
+            let result = crate::workspace::hooks::run(
+                context,
+                *sha256,
+                home,
+                &activation,
+                environment,
+                |bytes| output.stdout(bytes),
+            )
+            .map_err(|error| admission(AdmissionStage::Execution, &error))?;
+            return if output.result(result, &mut processes) {
+                Ok(())
+            } else {
+                Err(IntentFailure::Process)
+            };
+        }
         let limits = Limits::default();
         let deadline = std::time::Instant::now()
             .checked_add(limits.timeout)
@@ -57,6 +74,7 @@ pub(super) fn run(
             Action::Fonts => "fc-cache",
             Action::DesktopEntry => "update-desktop-database",
             Action::Service { .. } => "systemctl",
+            Action::WorkspaceHook { .. } => unreachable!("workspace hook dispatched above"),
         };
         let selected = SelectedProgram::select(environment, Path::new(program), None, deadline)
             .map_err(|error| admission(AdmissionStage::Invocation, &error))?;
@@ -142,6 +160,7 @@ pub(super) fn run(
                     &mut output,
                 )?;
             }
+            Action::WorkspaceHook { .. } => unreachable!("workspace hook dispatched above"),
         }
         Ok(())
     })();
@@ -156,6 +175,7 @@ pub(super) fn run(
         Action::DesktopEntry => "desktop database refresh".to_owned(),
         Action::Service { name, .. } => format!("service {name}"),
         Action::CustomShell { .. } => "custom hook".to_owned(),
+        Action::WorkspaceHook { .. } => "workspace hook".to_owned(),
     };
     let summary = if failure.is_some() {
         format!(

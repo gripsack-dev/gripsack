@@ -285,3 +285,21 @@ Deno.test("a syntax error in gripsack.ts stays a traceback", () => {
     },
   );
 });
+
+Deno.test("retired Pixi calls report a source diagnostic through an imported alias", () => {
+  withRepo(
+    {
+      "hosts/lap.ts":
+        'import { defineEnv, module, pixi as acquire } from "@gripsack/core";\n' +
+        'export default defineEnv(() => ({ modules: [module("old", { fetch: acquire("nodejs") })] }));\n',
+    },
+    (repo) => {
+      const result = runDriver(repo, baseInputs);
+      assert.equal(result.status, 1);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /E130/);
+      assert.match(result.stderr, /workspace-migration\.html/);
+      assert.match(result.stderr, /lap\.ts:2/);
+    },
+  );
+});

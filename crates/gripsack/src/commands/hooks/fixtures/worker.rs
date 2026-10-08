@@ -64,7 +64,7 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
                 &pending,
                 vec![store::activation::PendingIntent {
                     module: "fixture".into(),
-                    action,
+                    action: action.into(),
                     trigger: gripsack_ir::Trigger::PostActivate,
                 }],
             )?;

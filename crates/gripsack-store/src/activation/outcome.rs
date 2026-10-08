@@ -37,9 +37,9 @@ pub(super) struct StateRecord {
 }
 
 impl StateRecord {
-    pub(super) fn pending(instance: ActivationId, intent: IntentId) -> Self {
+    pub(super) fn pending(version: u32, instance: ActivationId, intent: IntentId) -> Self {
         Self {
-            version: 1,
+            version,
             instance,
             intent,
             state: IntentState::Pending,
@@ -50,6 +50,7 @@ impl StateRecord {
 
     pub(super) fn admit(
         &self,
+        version: u32,
         instance: ActivationId,
         intent: &super::model::EffectiveIntent,
     ) -> io::Result<()> {
@@ -59,19 +60,20 @@ impl StateRecord {
                 "activation outcome identity or terminal result is corrupt",
             )
         };
-        if self.version != 1 || self.instance != instance || self.intent != intent.id() {
+        if self.version != version || self.instance != instance || self.intent != intent.id() {
             return Err(invalid());
         }
         let required_processes = match intent.action() {
-            gripsack_ir::Action::CustomShell { .. } => 1,
-            gripsack_ir::Action::Fonts | gripsack_ir::Action::DesktopEntry => 2,
-            gripsack_ir::Action::Service { .. } => 3,
+            super::ActivationAction::CustomShell { .. }
+            | super::ActivationAction::WorkspaceHook { .. } => 1,
+            super::ActivationAction::Fonts | super::ActivationAction::DesktopEntry => 2,
+            super::ActivationAction::Service { .. } => 3,
         };
         if self.processes.len() > required_processes {
             return Err(invalid());
         }
         if !self.processes.is_empty()
-            && let gripsack_ir::Action::CustomShell { script } = intent.action()
+            && let super::ActivationAction::CustomShell { script } = intent.action()
         {
             let digest = gripsack_process::Sha256Digest::of(script.as_bytes());
             if self

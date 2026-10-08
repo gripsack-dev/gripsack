@@ -12,7 +12,6 @@ fn host() -> HostTarget {
         os: TargetOs::Macos,
         arch: TargetArch::Aarch64,
         abi: Some(BinaryAbi::Darwin),
-        gnu_loader_controls: false,
     }
 }
 fn span() -> Span {

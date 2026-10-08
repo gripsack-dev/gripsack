@@ -281,13 +281,7 @@ pub(super) fn repository_source(
         return Ok(None);
     };
     let path = Path::new(path);
-    let relative = if path.is_absolute() {
-        path.strip_prefix(ctx.repository.contents())
-            .or_else(|_| path.strip_prefix(ctx.repository.identity()))
-            .ok()
-    } else {
-        Some(path)
-    };
+    let relative = ctx.repository.source_relative(path);
     relative
         .map(|relative| {
             ctx.repository

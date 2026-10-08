@@ -107,13 +107,23 @@ Profiles can cold-build their package environment and artifact files through
 the existing generation/rollback transaction. Environment values remain literal
 data, and artifact trees retain per-file ownership. Exported command aliases
 preserve their underlying selector, including multicall binaries.
+Profile hooks (`post_link`, `post_activate`, `on_remove`) execute through the
+durable activation ledger — per-intent identity, replay-safe outcomes, and no
+automatic rollback after a post-activation failure. Task `checks` run as
+ordered postconditions after successful steps. Profile file-check stages,
+schedules and task prerequisites remain explicitly unavailable.
 
-Linux GNU dynamic commands require glibc >=2.33. The core separately binds the
-loader and executable bytes, checks the retained library closure and translates
-`$ORIGIN` paths only when lookup remains equivalent. Shared libraries are
-retained and inspected, not sealed executable images. Images use the fixed OCI
-exporter profile and are independently checked for content, configuration and
-image-local runtime closure; deleting the builder cache does not delete them.
+Linux GNU dynamic commands need a loader with the sealed-launch controls
+(`--argv0`, `--glibc-hwcaps-mask`, `--inhibit-cache`, `--library-path`,
+`--inhibit-rpath`), measured from the bound loader itself rather than a glibc
+version number — RHEL 8's glibc 2.28 backports qualify. The core separately
+binds the loader and executable bytes, checks the retained library closure,
+refuses audit/filter objects, legacy hwcap shadows and an active
+`/etc/ld.so.preload`, and translates `$ORIGIN` paths only when lookup remains
+equivalent. Shared libraries are retained and inspected, not sealed executable
+images. Images use the fixed OCI exporter profile and are independently
+checked for content, configuration and image-local runtime closure; deleting
+the builder cache does not delete them.
 
 Linux x86_64 Conda/Pixi native and OCI journeys have runtime qualification.
 The Mac VM backend and full coherent Mac Conda journey remain unqualified:
@@ -138,6 +148,12 @@ that same snapshot with a separate immutable host-input file. `.git` and the
 selected gripsack runtime-state subtree are excluded and unavailable to eval.
 Lockfiles inside the repository are source too: an apply/update that changes
 them can require renewed approval on the next command.
+Ignored and untracked files are captured by design; Git ignore rules never
+decide source selection. Declare literal repository-relative exclusions in
+`env.toml` — `[capture] exclude = [".venv"]` — for ordinary build trees or
+editor-only SDK links. The captured configuration binds those rules to the
+approved bundle, and evaluator runtime grants never overlap the repository or
+its exclusions.
 
 Old path-only trust entries do not authorize execution. Unset
 `GRIPSACK_TRUST_ALL`; `=1` now fails with migration guidance. Interactive

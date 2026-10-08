@@ -353,7 +353,7 @@ impl<'a> ModuleRun<'a> {
                     .filter(|_| !self.build_only)
                     .filter_map(|s| match &s.action {
                         StepAction::Intent { action, trigger } => Some(store::IntentRecord {
-                            action: action.as_ref().clone(),
+                            action: action.as_ref().clone().into(),
                             trigger: *trigger,
                         }),
                         _ => None,

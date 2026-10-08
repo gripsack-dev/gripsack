@@ -75,31 +75,36 @@ impl<'a> Frontend<'a> {
                 "host input file has no parent directory",
             ))
         })?;
-        boundary = boundary
-            .read_beneath(inputs_directory)
+        let inputs_directory = sources
+            .admit_evaluator_root(inputs_directory)
+            .map_err(FrontendRunError::Process)?;
+        let cache = sources
+            .admit_evaluator_root(self.approved.evaluator_cache())
+            .map_err(FrontendRunError::Process)?;
+        let temporary = sources
+            .admit_evaluator_root(self.approved.evaluator_tmp())
             .map_err(FrontendRunError::Process)?;
         boundary = boundary
-            .read_write_beneath(self.approved.evaluator_cache())
-            .and_then(|boundary| boundary.read_write_beneath(self.approved.evaluator_tmp()))
+            .read_beneath(&inputs_directory)
             .map_err(FrontendRunError::Process)?;
-        for root in self.approved.runtime_roots() {
+        boundary = boundary
+            .read_write_beneath(&cache)
+            .and_then(|boundary| boundary.read_write_beneath(&temporary))
+            .map_err(FrontendRunError::Process)?;
+        for file in self.approved.runtime_access().files() {
+            let file = sources
+                .admit_evaluator_root(file)
+                .map_err(FrontendRunError::Process)?;
             boundary = boundary
-                .read_beneath(root)
+                .read_file(&file)
                 .map_err(FrontendRunError::Process)?;
         }
-        // Executing a binary under Landlock requires reading it: an operator
-        // script runtime commonly execs the pinned interpreter provisioned
-        // under the runtime home, so that tree is readable by design.
-        boundary = boundary
-            .read_beneath_optional(&self.approved.runtime_home())
-            .map_err(FrontendRunError::Process)?;
-        // Executing a binary also requires reading it. The operator's PATH is
-        // the executable space an operator-selected script runtime resolves
-        // its real interpreter in, so those directories are readable by
-        // design; locations outside every granted root fail closed.
-        for directory in self.approved.environment().search_directories() {
+        for root in self.approved.runtime_access().directories() {
+            let root = sources
+                .admit_evaluator_root(root)
+                .map_err(FrontendRunError::Process)?;
             boundary = boundary
-                .read_beneath_optional(directory)
+                .read_beneath(&root)
                 .map_err(FrontendRunError::Process)?;
         }
         // A `#!` runtime reads its script through this pid's own fd directory;

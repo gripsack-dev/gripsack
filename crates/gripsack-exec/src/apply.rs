@@ -86,9 +86,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         }
     })?;
     reports.extend(resumed);
-    // Debug harness seam: execute the shipped recovery/resume path, then stop
-    // before allocating or applying a new generation. Never present in release.
-    #[cfg(debug_assertions)]
+    // Fault-injection harness seam, available in the same build profiles as
+    // crash_hook: execute real recovery/resume, then stop before allocating or
+    // applying a new generation. Ordinary apply still checks retained content.
     if std::env::var_os("GRIPSACK_FS_RECOVER_ONLY").is_some() {
         return Ok(ApplyResult {
             outcome: Outcome::Satisfied {
@@ -281,6 +281,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         .cloned()
         .collect();
     let mut intents = crate::activate::collect(&deploying, &steps_by_module);
+    if let Some(native) = &native {
+        intents.extend(native.activation_intents());
+    }
     // on_remove hooks (0035 F9): a module dropped from the IR fires
     // its removal intents with the new generation — the record is the
     // only durable place the old intents live

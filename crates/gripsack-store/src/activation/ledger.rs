@@ -117,7 +117,7 @@ fn create(
     }
     let intents = model::effective(instance, declarations)?;
     let plan = Plan {
-        version: 1,
+        version: super::FORMAT_VERSION,
         instance,
         selection,
         identity_origin,
@@ -135,7 +135,7 @@ fn create(
     let states: Vec<_> = plan
         .intents
         .iter()
-        .map(|intent| StateRecord::pending(instance, intent.id))
+        .map(|intent| StateRecord::pending(plan.version, instance, intent.id))
         .collect();
     for state in &states {
         storage::write(
@@ -150,7 +150,7 @@ fn create(
         home,
         Path::new(storage::POINTER),
         &PointerRecord {
-            version: 1,
+            version: plan.version,
             instance,
         },
         RecordKind::Pointer,
@@ -178,8 +178,12 @@ pub fn load_pending(home: &Dir, home_path: &Path) -> io::Result<Option<Activatio
         return Ok(None);
     };
     match pointer {
-        PendingPointer::Current(instance) => {
-            ActivationBatch::open(home, instance, Access::Recover).map(Some)
+        PendingPointer::Current { version, instance } => {
+            let batch = ActivationBatch::open(home, instance, Access::Recover)?;
+            if batch.plan.version != version {
+                return Err(invalid("activation pointer version differs from its plan"));
+            }
+            Ok(Some(batch))
         }
         PendingPointer::Legacy {
             generation,
@@ -232,7 +236,7 @@ impl ActivationBatch {
             access,
         )?;
         let (states, archived) = if let Some(receipt) = receipt {
-            if receipt.version != 1
+            if receipt.version != plan.version
                 || receipt.instance != instance
                 || receipt.plan_sha256 != plan_digest
                 || receipt.outcomes.len() != plan.intents.len()
@@ -240,7 +244,7 @@ impl ActivationBatch {
                 return Err(invalid("activation receipt does not bind its plan"));
             }
             for (state, intent) in receipt.outcomes.iter().zip(&plan.intents) {
-                state.admit(instance, intent)?;
+                state.admit(plan.version, instance, intent)?;
                 if !terminal(state.state) {
                     return Err(invalid("archived activation has an unsettled intent"));
                 }
@@ -255,7 +259,7 @@ impl ActivationBatch {
                     RecordKind::Outcome,
                     access,
                 )?;
-                state.admit(instance, intent)?;
+                state.admit(plan.version, instance, intent)?;
                 states.push(state);
             }
             (states, false)
@@ -285,7 +289,7 @@ impl ActivationBatch {
                 if next != prior.state {
                     let state = StateRecord {
                         state: next,
-                        ..StateRecord::pending(prior.instance, prior.intent)
+                        ..StateRecord::pending(prior.version, prior.instance, prior.intent)
                     };
                     self.persist(index, state)?;
                 }
@@ -303,7 +307,11 @@ impl ActivationBatch {
     }
 
     fn persist(&mut self, index: usize, next: StateRecord) -> io::Result<()> {
-        next.admit(self.plan.instance, &self.plan.intents[index])?;
+        next.admit(
+            self.plan.version,
+            self.plan.instance,
+            &self.plan.intents[index],
+        )?;
         storage::write(
             &self.outcomes,
             Path::new(&state_name(next.intent)),
@@ -323,7 +331,7 @@ impl ActivationBatch {
                 &self.directory,
                 Path::new(storage::RECEIPT),
                 &ReceiptReference {
-                    version: 1,
+                    version: self.plan.version,
                     instance: self.plan.instance,
                     plan_sha256: self.plan_digest,
                     outcomes: &self.states,
@@ -337,7 +345,8 @@ impl ActivationBatch {
             RecordKind::Plan,
             Access::Recover,
         )?;
-        if !matches!(pointer, PendingPointer::Current(instance) if instance == self.plan.instance) {
+        if !matches!(pointer, PendingPointer::Current { version, instance } if instance == self.plan.instance && version == self.plan.version)
+        {
             return Err(invalid(
                 "activation pointer changed before completed-outcome cleanup",
             ));
@@ -367,7 +376,7 @@ impl ReadyActivation {
             };
             let next = StateRecord {
                 state: IntentState::Started { attempt },
-                ..StateRecord::pending(record.instance, record.intent)
+                ..StateRecord::pending(record.version, record.instance, record.intent)
             };
             self.batch.persist(index, next)?;
             let intent = &self.batch.plan.intents[index];
@@ -409,7 +418,7 @@ impl ReadyActivation {
         let state = activation::finish_attempt(&current.state, permit.attempt, outcome)
             .ok_or_else(|| invalid("activation result is not for the current attempt"))?;
         let next = StateRecord {
-            version: 1,
+            version: self.batch.plan.version,
             instance: permit.instance,
             intent: permit.intent,
             state,

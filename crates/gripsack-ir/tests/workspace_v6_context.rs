@@ -53,42 +53,114 @@ fn task_postconditions_keep_task_subjects_without_becoming_build_dependencies() 
     );
 }
 
+fn binding_command(binding: &str, directory: bool) -> serde_json::Value {
+    let mut command = serde_json::json!({
+        "kind":"exec","span":{"file":"checks.ts","line":5},
+        "argv":[{"kind":"literal","value":"/bin/true"}]
+    });
+    let value = serde_json::json!({"kind":binding,"selector":"."});
+    if directory {
+        command["cwd"] = value;
+    } else {
+        command["argv"].as_array_mut().unwrap().push(value);
+    }
+    command
+}
+
+fn assert_binding_refused(declaration: &serde_json::Value) {
+    let rejected = check(&declaration.to_string()).unwrap_err();
+    assert!(
+        rejected
+            .iter()
+            .any(|error| error.code == codes::BAD_WORKSPACE_CONTEXT
+                && error.labels.iter().any(|label| label
+                    .span
+                    .as_ref()
+                    .is_some_and(|span| span.file == "checks.ts" && span.line == 5))),
+        "{rejected:?}"
+    );
+}
+
 #[test]
-fn production_bindings_cannot_be_borrowed_by_tasks_or_their_postconditions() {
-    for binding in ["source", "output"] {
+fn recipe_subject_checks_resolve_source_but_never_grant_staging() {
+    for directory in [false, true] {
         let mut declaration = workspace();
-        declaration["workspace"]["outputs"][1]["run"]["argv"]
+        declaration["workspace"]["outputs"][1]["run"] = binding_command("source", directory);
+        check(&declaration.to_string()).unwrap();
+        declaration["workspace"]["outputs"][1]["run"] = binding_command("output", directory);
+        assert_binding_refused(&declaration);
+    }
+}
+
+#[test]
+fn task_checks_resolve_provider_package_subject_without_a_recipe_owner() {
+    for directory in [false, true] {
+        let mut declaration = workspace();
+        let source = declaration["workspace"]["outputs"][0]["source"].clone();
+        declaration["workspace"]["outputs"][0] = serde_json::json!({
+            "kind":"package","name":"data","span":{"file":"gripsack.ts","line":2},
+            "producer":{"kind":"provider","provider":source},
+            "commands":{},"target":{"os":"linux","arch":"x86_64"},
+            "layout":{"kind":"relocatable"}
+        });
+        declaration["workspace"]["outputs"][1]["subject"] = serde_json::json!("data");
+        declaration["workspace"]["outputs"][1]["run"] = binding_command("source", directory);
+        declaration["workspace"]["outputs"]
             .as_array_mut()
             .unwrap()
-            .push(serde_json::json!({"kind":binding,"selector":"result"}));
+            .push(serde_json::json!({
+                "kind":"task","name":"invoke","span":{"file":"task.ts","line":2},
+                "context":{"kind":"host","mutable_paths":[]},"checks":["verify"],
+                "steps":[{"command":{"kind":"exec","span":{"file":"task.ts","line":3},
+                    "argv":[{"kind":"literal","value":"/bin/true"}]}}]
+            }));
         check(&declaration.to_string()).unwrap();
-        declaration["workspace"]["outputs"][0] = serde_json::json!({
-            "kind":"task","name":"build","span":{"file":"task.ts","line":2},
-            "context":{"kind":"host","mutable_paths":[]},"checks":["verify"],
-            "steps":[{"command":{"kind":"exec","span":{"file":"task.ts","line":3},"argv":[{"kind":"literal","value":"true"}]}}]
-        });
-        let rejected = check(&declaration.to_string()).unwrap_err();
-        assert!(
-            rejected
-                .iter()
-                .any(|error| error.code == codes::BAD_WORKSPACE_CONTEXT
-                    && error.labels.iter().any(|label| label
-                        .span
-                        .as_ref()
-                        .is_some_and(|span| span.file == "checks.ts" && span.line == 5))),
-            "{rejected:?}"
-        );
-        declaration["workspace"]["outputs"][1]["run"]["argv"] =
-            serde_json::json!([{"kind":"literal","value":"true"}]);
-        declaration["workspace"]["outputs"][0]["steps"] = serde_json::json!([{"command":{
-            "kind":"exec","span":{"file":"task.ts","line":3},"argv":[{"kind":"literal","value":"true"}],
-            "cwd":{"kind":binding,"selector":"."}
-        }}]);
-        assert!(
-            check(&declaration.to_string())
-                .unwrap_err()
-                .iter()
-                .any(|error| error.code == codes::BAD_WORKSPACE_CONTEXT)
-        );
+        declaration["workspace"]["outputs"][1]["run"] = binding_command("output", directory);
+        assert_binding_refused(&declaration);
+    }
+}
+
+#[test]
+fn task_and_hook_commands_cannot_borrow_source_or_staging_bindings() {
+    for binding in ["source", "output"] {
+        for directory in [false, true] {
+            for hook in [false, true] {
+                let mut declaration = workspace();
+                let command = binding_command(binding, directory);
+                let output = if hook {
+                    serde_json::json!({
+                        "kind":"hook","name":"invoke","span":{"file":"hook.ts","line":2},
+                        "trigger":"post_link","run":command
+                    })
+                } else {
+                    serde_json::json!({
+                        "kind":"task","name":"invoke","span":{"file":"task.ts","line":2},
+                        "context":{"kind":"host","mutable_paths":[]},"steps":[{"command":command}]
+                    })
+                };
+                declaration["workspace"]["outputs"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(output);
+                assert_binding_refused(&declaration);
+            }
+        }
+    }
+}
+
+#[test]
+fn task_subject_postconditions_do_not_acquire_artifact_bindings() {
+    for binding in ["source", "output"] {
+        for directory in [false, true] {
+            let mut declaration = workspace();
+            declaration["workspace"]["outputs"][0] = serde_json::json!({
+                "kind":"task","name":"build","span":{"file":"task.ts","line":2},
+                "context":{"kind":"host","mutable_paths":[]},"checks":["verify"],
+                "steps":[{"command":{"kind":"exec","span":{"file":"task.ts","line":3},
+                    "argv":[{"kind":"literal","value":"/bin/true"}]}}]
+            });
+            declaration["workspace"]["outputs"][1]["run"] = binding_command(binding, directory);
+            assert_binding_refused(&declaration);
+        }
     }
 }

@@ -1,4 +1,5 @@
 use super::*;
+mod policy_tests;
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
@@ -41,7 +42,13 @@ impl Fixture {
         }
     }
     fn capture(&self) -> io::Result<SourceBundle> {
-        SourceBundle::capture(&self.repo, &self.frontend, Some(&self.pin), &self.home)
+        SourceBundle::capture(
+            &self.repo,
+            &self.frontend,
+            Some(&self.pin),
+            &self.home,
+            crate::source_bundle::SourceCapturePolicy::default(),
+        )
     }
 }
 
@@ -128,9 +135,14 @@ fn root_aliases_bind_native_paths_and_diagnostics_without_changing_trust_identit
     .unwrap();
     let alias = fixture._temporary.path().join("declared-repo");
     symlink(&fixture.repo, &alias).unwrap();
-    let captured =
-        SourceBundle::capture(&alias, &fixture.frontend, Some(&fixture.pin), &fixture.home)
-            .unwrap();
+    let captured = SourceBundle::capture(
+        &alias,
+        &fixture.frontend,
+        Some(&fixture.pin),
+        &fixture.home,
+        crate::source_bundle::SourceCapturePolicy::default(),
+    )
+    .unwrap();
     assert_eq!(
         captured.repository_identity(),
         fixture.repo.canonicalize().unwrap()
@@ -239,6 +251,7 @@ fn diagnostic_urls_keep_original_spelling_without_exposing_capture_paths() {
         &fixture.frontend,
         Some(&fixture.pin),
         &spaced.join("runtime-state"),
+        crate::source_bundle::SourceCapturePolicy::default(),
     )
     .unwrap();
     let captured = url::Url::from_file_path(bundle.repository().join("ignored.ts")).unwrap();

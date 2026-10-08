@@ -159,10 +159,10 @@ def run(root: Path, target: Path, command: list[str], *, timeout=600, preexec=No
 def test(root: Path, target: Path, selection: str = ''):
     command = ['cargo', 'test', '--locked', '-p', 'gripsack-process', '--lib']
     if selection:
-        command.append(selection)
-    command.extend(['--', '--nocapture'])
-    if selection:
-        command.append('--exact')
+        # A single attributed case needs child diagnostics; the full-suite
+        # positive run must keep capture ON so parallel child output cannot
+        # split a libtest status line and hide a named oracle.
+        command.extend([selection, '--', '--nocapture', '--exact'])
     return run(root, target, command)
 
 

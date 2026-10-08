@@ -67,6 +67,15 @@ pub enum Interpreter {
     },
 }
 
+/// ELF loader inputs outside the ordinary DT_NEEDED dependency graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ElfLoaderExtension {
+    Audit(OsString),
+    DependencyAudit(OsString),
+    AuxiliaryFilter(OsString),
+    Filter(OsString),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ExecutableMetadata {
     pub format: Option<ExecutableFormat>,
@@ -84,6 +93,7 @@ pub struct ExecutableMetadata {
     pub needed_libraries: Vec<OsString>,
     pub rpaths: Vec<OsString>,
     pub runpaths: Vec<OsString>,
+    pub elf_loader_extensions: Vec<ElfLoaderExtension>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

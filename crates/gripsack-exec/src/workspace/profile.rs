@@ -54,6 +54,7 @@ impl NativeProfiles {
             limits,
             Some(&retained),
             true,
+            Instant::now() + gripsack_process::Limits::default().timeout,
         )
     }
 }
@@ -81,7 +82,8 @@ pub(crate) fn prepare_apply(
             ));
         };
         admit(profile)?;
-        needs_production |= profile.environment.is_some()
+        needs_production |= !profile.hooks.is_empty()
+            || profile.environment.is_some()
             || profile.files.iter().any(|file| {
                 matches!(
                     file.source,
@@ -115,13 +117,15 @@ pub(crate) fn prepare_apply(
         deadline: Instant::now() + gripsack_process::Limits::default().timeout,
     };
     let mut held = realize::realize_held(ir, ctx, &options, &selected)?;
-    let mut native = NativeProfiles::prepare(
+    let mut native = NativeProfiles::prepare_with(
         ir,
         ctx.repository.contents(),
         &ctx.home,
         &ctx.only,
         ctx.fetch.limits(),
         Some(&held.realization),
+        false,
+        options.deadline,
     )?
     .ok_or_else(|| {
         unavailable(
@@ -145,12 +149,6 @@ pub(crate) fn prepare_apply(
 }
 
 pub(super) fn admit(profile: &ProfileOutput) -> Result<(), ExecError> {
-    if !profile.hooks.is_empty() {
-        return Err(unavailable(
-            &profile.span,
-            "profile hook execution is not available",
-        ));
-    }
     if !profile.schedules.is_empty() {
         return Err(unavailable(
             &profile.span,

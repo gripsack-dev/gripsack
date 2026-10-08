@@ -1309,7 +1309,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-conda"
-version = "0.44.1"
+version = "0.45.0"
 dependencies = [
  "archspec",
  "gripsack-fetch",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-conda-helper"
-version = "0.44.1"
+version = "0.45.0"
 dependencies = [
  "bzip2 0.5.2",
  "gripsack-conda",
@@ -1349,7 +1349,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fetch"
-version = "0.44.1"
+version = "0.45.0"
 dependencies = [
  "bzip2 0.6.1",
  "crc32fast",
@@ -1383,7 +1383,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-fs"
-version = "0.44.1"
+version = "0.45.0"
 dependencies = [
  "cap-std",
  "libc",
@@ -1392,7 +1392,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-ir"
-version = "0.44.1"
+version = "0.45.0"
 dependencies = [
  "gripsack-policy",
  "serde",
@@ -1404,14 +1404,14 @@ dependencies = [
 
 [[package]]
 name = "gripsack-policy"
-version = "0.44.1"
+version = "0.45.0"
 dependencies = [
  "vstd",
 ]
 
 [[package]]
 name = "gripsack-process"
-version = "0.44.1"
+version = "0.45.0"
 dependencies = [
  "gripsack-policy",
  "libc",
@@ -1422,7 +1422,7 @@ dependencies = [
 
 [[package]]
 name = "gripsack-store"
-version = "0.44.1"
+version = "0.45.0"
 dependencies = [
  "getrandom 0.4.3",
  "gripsack-fs",

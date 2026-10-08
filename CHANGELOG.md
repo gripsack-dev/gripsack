@@ -3,6 +3,83 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.45.0] — 2026-10-08
+
+### Fixed
+
+- `pixi.fromLock` frozen consumers no longer fail with `E301: declared source
+  differs from its lock`. The captured manifest/lock digests are resolution
+  evidence, not declaration fields; both inputs are still re-captured and
+  compared before any frozen use. A changed manifest or lock document remains
+  refused until an explicit `grip update` and renewed exact-digest approval.
+- Sealed GNU-dynamic execution admits the bound platform loader by measured
+  capability instead of a glibc >=2.33 version proxy. RHEL 8's glibc 2.28
+  loader — which backports `--argv0`, `--glibc-hwcaps-mask`, `--inhibit-cache`,
+  `--library-path` and `--inhibit-rpath` — now runs GNU commands with
+  unchanged argv[0], sealed executable identity and library-search
+  equivalence. A loader missing any required control still fails closed,
+  naming the missing controls.
+- Sealed-launch admission is stricter everywhere: ELF
+  `DT_AUDIT`/`DT_DEPAUDIT`/`DT_FILTER`/`DT_AUXILIARY` objects are refused,
+  populated or aliased legacy hwcap directories are refused, an active
+  `/etc/ld.so.preload` is refused, and declared `LD_*` inputs other than the
+  separately composed `LD_LIBRARY_PATH`, plus `GLIBC_TUNABLES`, are refused
+  for GNU-bound execution.
+- Source capture cannot be walked around through runtime grants or repository
+  aliases. Evaluator runtimes receive exact-file read authority for the
+  selected executable, interpreter and measured dependencies instead of whole
+  directories; operator PATH entries and runtime selections are admitted
+  against the repository's original spelling before canonicalization; grants
+  overlapping the repository or its exclusions are refused at approval and
+  again at launch. Workspace `fileFetch` classifies the admitted `--repo`
+  alias spelling — not only the canonical root — so an excluded subtree cannot
+  be fetched live through an alias.
+
+### Added
+
+- Workspace profile hooks execute for real: `post_link`, `post_activate` and
+  `on_remove` commands run through the existing durable activation ledger
+  with per-intent identity, crash/replay handling and no automatic rollback
+  after a post-activation failure. Task `checks` execute as ordered
+  postconditions after successful steps; recipe publication checks are
+  unchanged. Profile `file.checks` stage adapters, schedules and task
+  prerequisites remain explicitly unavailable capabilities.
+- `[capture] exclude` in `env.toml` declares literal repository-relative
+  subtrees omitted from captured source (`.venv`, an editor-only SDK link).
+  Ignored/untracked files stay captured unless excluded; the captured
+  configuration binds exclusion rules to the approved bundle; escaping and
+  excluded-alias errors name the offending path; `grip trust inspect` (report
+  version 2) lists configured `capture_exclusions` alongside actual inventory
+  exclusions and names the embedded versus pinned SDK.
+- Calling the removed `pixi(package)` constructor reports an E130 migration
+  diagnostic with a source location and workspace migration guide instead of
+  `TypeError: pixi is not a function`.
+
+### Compatibility
+
+- Activation plans, pending pointers and outcome records advance to version 2.
+  Version-1 records remain readable, and legacy actions keep byte-identical
+  serialization. Generation manifests carrying workspace hooks use an explicit
+  version-2 envelope that older binaries reject before effects; ordinary
+  manifests keep the historical shape. The IR contract and workspace lock
+  version are unchanged.
+- Downgrading authoritative state after a newer apply is not supported.
+  A few completed 0.44.1 legacy/file-only fixtures remained readable by
+  0.42.0; that is not a general compatibility guarantee. Its GC refuses a
+  structured-environment generation as corrupt, and new workspace-hook
+  envelopes are not readable by old binaries. An old binary cannot be
+  retroactively given a better diagnostic; keep the newer binary with its
+  state, and never cross an unfinished transaction with a downgrade.
+
+### Distribution scope
+
+Linux-first distribution continues under the owner's `REL-REVIEW-0450`
+exception: fresh hosted CI and macOS qualification are waived for this release,
+not marked successful; local container gates, real glibc 2.28 (RHEL 8.10) and
+modern-glibc execution, security negatives and published-consumer verification
+remain required. No hosted-build attestation is claimed for locally assembled
+payloads.
+
 ## [0.44.1] — 2026-10-04
 
 ### Fixed
