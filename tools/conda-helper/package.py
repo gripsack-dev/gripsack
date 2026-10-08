@@ -15,14 +15,12 @@ COMPILER = "1.98.0"
 LINUX_IMAGE = "rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce"
 TARGETS = {
     ("Linux", "x86_64"): "x86_64-unknown-linux-musl",
-    ("Linux", "aarch64"): "aarch64-unknown-linux-musl",
 }
-SLOTS = dict(zip(TARGETS.values(), (
-    "LinuxX86_64Musl", "LinuxAarch64Musl",
-)))
-# Historical pin tables may retain retired platform variants; never package them.
-PIN_VARIANTS = (*SLOTS.values(), "MacosAarch64", "MacosX86_64")
-REQUIRED = {"LinuxX86_64Musl", "LinuxAarch64Musl"}
+SLOTS = {"x86_64-unknown-linux-musl": "LinuxX86_64Musl"}
+# Parse historical tables without granting their retired/unqualified slots.
+PIN_VARIANTS = ("LinuxX86_64Musl", "LinuxAarch64Musl", "MacosAarch64", "MacosX86_64")
+# REL-X64-FIRST-0460-2026-10-08: exact current-release platform inventory.
+REQUIRED = set(SLOTS.values())
 
 
 def read_pins(path, toolchain):
@@ -48,8 +46,8 @@ def read_pins(path, toolchain):
         if slot in pins or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
             raise SystemExit(f"duplicate or invalid Conda pin: {slot}")
         pins[slot] = digest
-    if not REQUIRED <= pins.keys():
-        raise SystemExit(f"missing mandatory Conda pins: {sorted(REQUIRED - pins.keys())}")
+    if REQUIRED != pins.keys():
+        raise SystemExit(f"Conda pin targets {sorted(pins)} != release targets {sorted(REQUIRED)}")
     return version, pins
 
 

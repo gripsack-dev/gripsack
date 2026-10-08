@@ -12,14 +12,14 @@ on:
       runner_label:
         description: "Authorized publisher runner label (use a unique ephemeral label for local publication)"
         type: string
-        default: ubuntu-24.04-arm
+        default: ubuntu-24.04
 
 permissions:
   contents: write
 
 jobs:
   publish:
-    runs-on: ${{ inputs.runner_label || 'ubuntu-24.04-arm' }}
+    runs-on: ${{ inputs.runner_label || 'ubuntu-24.04' }}
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:

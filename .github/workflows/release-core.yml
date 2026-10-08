@@ -41,9 +41,8 @@ jobs:
         with:
           name: dist-bridge
           path: dist/*
-  # Linux/WSL binaries, both architectures. The docker musl path needs
-  # no cross config: rust:alpine is multi-arch, so the same build
-  # produces aarch64 musl natively on the arm runner.
+  # REL-X64-FIRST-0460-2026-10-08: this release qualifies Linux x86_64 only.
+  # ARM artifacts remain unavailable until a subsequent native qualification.
   build:
     needs: [bridge, conda]
     strategy:
@@ -51,7 +50,6 @@ jobs:
       matrix:
         include:
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04 }
-          - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -92,7 +90,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -111,7 +109,7 @@ jobs:
           import hashlib, json, os
           from pathlib import Path
           version = os.environ["GITHUB_REF_NAME"].removeprefix("core-v")
-          targets = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"}
+          targets = {"x86_64-unknown-linux-musl"}
           dist = Path("dist")
           core = {f"gripsack-{version}-{target}.tar.gz" for target in targets}
           bridge = {f"grip-buildkit-bridge-{version}-{target}" for target in targets}
@@ -213,6 +211,14 @@ jobs:
           done
           [ -z "$failed" ] || { echo "::error::failed to publish:$failed"; exit 1; }
 
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "gripsack ${GITHUB_REF_NAME#core-v}" \
+            --generate-notes
+
       # Keep the tap in sync: bump the formula's version + crate sha256.
       # Needs HOMEBREW_TAP_TOKEN (fine-grained PAT, contents:write on
       # gripsack-dev/homebrew-tap) — GITHUB_TOKEN is repo-scoped.
@@ -234,14 +240,6 @@ jobs:
           git add Formula/gripsack.rb
           git commit -m "gripsack $ver"
           git push "https://x-access-token:${GH_TOKEN}@github.com/gripsack-dev/homebrew-tap.git" HEAD:main
-
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "gripsack ${GITHUB_REF_NAME#core-v}" \
-            --generate-notes
 
       # The site's version chip reads the releases API at build time —
       # a rebuild dispatch keeps gripsack.dev current (rootle pattern).

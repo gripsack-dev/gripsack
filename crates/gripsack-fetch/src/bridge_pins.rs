@@ -16,13 +16,7 @@ pub(crate) const BRIDGE_VERSION: &str = "0.46.0";
 
 /// (platform, sha256 of `grip-buildkit-bridge-<version>-<triple>`).
 /// Generated only from the measured, gated helper source.
-pub(crate) const BRIDGE_SHA256: &[(AssetTarget, &str)] = &[
-    (
-        AssetTarget::LinuxX86_64Musl,
-        "cda198af66f16c889ab69d54563c3ae0bc251126d066aeb239bb131349722e54",
-    ),
-    (
-        AssetTarget::LinuxAarch64Musl,
-        "9635d8869b1223beacead2477e6d0674bb06692ed9cc812e21d220f4eb9d7ff7",
-    ),
-];
+pub(crate) const BRIDGE_SHA256: &[(AssetTarget, &str)] = &[(
+    AssetTarget::LinuxX86_64Musl,
+    "cda198af66f16c889ab69d54563c3ae0bc251126d066aeb239bb131349722e54",
+)];

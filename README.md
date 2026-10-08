@@ -160,12 +160,13 @@ release targets; revisiting them requires a new explicit support decision.
 Historical platform metadata/readers and release evidence retain their original
 meaning, without implying current Mac support.
 
-The current **0.45.0** prebuilt core is Linux x86_64, with measured Linux
-Conda helpers. The installer selects a complete artifact pair for supported
-Linux architectures; it rejects macOS rather than installing an old Mac
-release. Locally produced 0.45.0 assets have checksum/build receipts, not
-GitHub-hosted build attestations. See [plan0048](plan/0048-review-response-0.42.0.md)
-for the explicit scope amendment and source-bound qualification.
+The **0.46.0** release target is Linux x86_64/WSL, including its native
+Conda and BuildKit helpers. ARM artifacts are unavailable in this release,
+not qualified by emulation or inherited pins. The installer rejects ARM and
+macOS rather than silently selecting an older release. Locally produced
+assets have checksum/build receipts, not GitHub-hosted build attestations.
+See [plan0048](plan/0048-review-response-0.42.0.md) for
+`REL-X64-FIRST-0460-2026-10-08` and source-bound qualification.
 
 ## Source approval and migration
 

@@ -781,8 +781,14 @@ and producer-specific cross-filesystem staging. The selected implementation
 keeps sealed package admission and existing ownership rules, rather than using
 unsealed execution or take-over as a shortcut. Strict v7 emission and preserved
 v6 execution/retained-state semantics are required for new declaration fields.
-Implementation and focused Linux verification are in progress;0.46 is not
-published. Mac remains out of scope and no fuzz/corpus replay is authorized.
+The host-runtime and native-baseline paths now have candidate-source execution
+evidence, including actual glibc2.28, frozen-policy refusals and retained v6
+rollback. Final release qualification/publication remains open;0.46 is not
+published. The owner selected `REL-X64-FIRST-0460-2026-10-08`: prebuilt
+core/native helpers are Linux x86_64/WSL only for this release; ARM remains
+unavailable, not emulated or inherited as passing. Mac stays out of scope,
+and no fuzz/corpus replay is authorized. CI/BuildKit/local-build workflow
+redesign remains separate until after0.46 and the external migration.
 
 ## Settled rejections (all eras)
 

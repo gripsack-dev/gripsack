@@ -30,6 +30,11 @@ docker compose run --build --rm -e VERSION=x.y.z release   # musl tarball → ./
 with the compose gates. `./dist/` and `target/` may contain root-owned
 files (container mounts) — delete via docker or `sudo`.
 
+0.46.0's owner-approved release scope is Linux x86_64/WSL only
+(`REL-X64-FIRST-0460-2026-10-08`, plan0048). ARM artifacts/pins are unavailable,
+not qualified by emulation. Expanding a later release requires native evidence;
+Linux/common proofs and persistence gates are not waived.
+
 TLC (the `model` gate) writes run artifacts next to the spec —
 `specs/states/` fingerprint caches and `*_TTrace_*` counterexample
 traces, root-owned from the container. Commit the spec and its cfgs

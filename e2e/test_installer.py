@@ -123,16 +123,18 @@ def installer(tmp_path):
                NO_PROXY="127.0.0.1,localhost", no_proxy="127.0.0.1,localhost")
     script = Path(__file__).resolve().parent.parent / "install.sh"
 
-    def run(*, os_name: str | None = None):
+    def run(*, os_name: str | None = None, architecture: str | None = None):
         uname = tools / "uname"
-        if os_name is None:
+        if os_name is None and architecture is None:
             uname.unlink(missing_ok=True)
         else:
             uname.write_text(
                 "#!/usr/bin/env python3\n"
                 "import os, sys\n"
-                "if sys.argv[1:] == ['-s']:\n"
+                f"if sys.argv[1:] == ['-s'] and {os_name is not None!r}:\n"
                 f"    print({os_name!r})\n"
+                f"elif sys.argv[1:] == ['-m'] and {architecture is not None!r}:\n"
+                f"    print({architecture!r})\n"
                 "else:\n"
                 f"    os.execv({real_uname!r}, [{real_uname!r}, *sys.argv[1:]])\n"
             )
@@ -238,5 +240,22 @@ def test_installer_refuses_macos_before_network_or_replacement(installer):
 
     assert result.returncode != 0
     assert releases.requests == []
+    assert destination.read_bytes() == original
+    assert destination.stat().st_mode == original_mode
+
+
+def test_installer_refuses_unqualified_arm_before_network_or_replacement(installer):
+    releases, destination, run = installer
+    releases.target = "aarch64-unknown-linux-musl"
+    releases.tags = ["core-v0.45.0"]
+    releases.publish("0.45.0")
+    original = b"operator's existing executable\n"
+    destination.write_bytes(original)
+    original_mode = destination.stat().st_mode
+
+    result = run(os_name="Linux", architecture="aarch64")
+
+    assert result.returncode != 0
+    assert releases.requests == [], "do not silently fall back to a historical ARM release"
     assert destination.read_bytes() == original
     assert destination.stat().st_mode == original_mode

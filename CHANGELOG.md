@@ -50,8 +50,10 @@ User-visible changes per release. Design archaeology lives in
   Core-owned archive/Conda/Pixi publication handles cross-filesystem scratch
   directories; a `$TMPDIR` override is not required for those paths. External
   commands and third-party transports retain their own scratch contracts.
-- Linux and WSL2 are the supported product scope. No macOS distribution or
-  qualification is promised.
+- 0.46.0 ships Linux x86_64/WSL first. ARM artifacts are unavailable until
+  native qualification; the installer refuses ARM rather than silently
+  installing an older release. Linux/WSL remains the product scope; no macOS
+  distribution or qualification is promised.
 
 ## [0.45.0] — 2026-10-08
 

@@ -886,6 +886,32 @@ and the Conda packager refused a retired Mac target before creating output.
 These focused results neither close unfinished Linux handover milestones nor
 claim a fresh full persistence/prover/hosted-CI/native-Mac campaign.
 
+### Owner release scope REL-X64-FIRST-0460-2026-10-08
+
+The owner explicitly selected **“Ship Linux x86_64 first”** for0.46.0 after
+native ARM qualification run37826268050 remained unallocated. Its audit job
+never started; the run was cancelled after the decision, not called passing.
+The owner reaffirmed that the external migration/0.46 release comes before
+the separate CI/BuildKit/local-build workflow redesign.
+
+- For0.46.0 only, the prebuilt core, Conda helper and BuildKit bridge release
+  inventory is Linux x86_64/WSL. This overrides the earlier requirement to
+  include Linux aarch64 in this release, not the permanent Linux-only/Mac
+  retirement decision. ARM remains unavailable and unqualified; neither QEMU
+  nor old pins are substituted for native evidence.
+- Current helper pins, native packaging targets, release workflow inventory
+  and installer admission follow that exact scope. The installer refuses ARM
+  before network/replacement rather than quietly selecting a historical
+  release. Published older tags and artifacts remain immutable.
+- Required local x86_64 runtime/security, dependency, packaging and proof
+  gates remain required. The96 Linux persistence partitions are not waived.
+  Checksums/local build receipts are not hosted build attestations. No
+  missing, cancelled or timed-out gate becomes passing evidence.
+- `REL-FUZZ-2026-09-27` still excludes fuzz-engine/corpus replay. No
+  CI-provider redesign or changes to the owner's plan0053 work are included.
+  A subsequent ARM release needs actual qualification and a deliberate
+  expansion of the artifact/pin inventory.
+
 ### Owner exception MAC-NATIVE-QUAL-2026-10-02
 
 The owner explicitly authorized disabling blocking Mac tests temporarily and
@@ -3411,7 +3437,7 @@ remain separate domains.
 |---|---|---|
 | UP46.1 | Explicit reviewed host-runtime library roots allow the reported absolute RUNPATH use case without weakening default sealed admission, closure/search equivalence, aliases or replay | **verified at candidate source** — real GNU alias/transitive-order security fixture, auxiliary-FD boundaries, 13/13 loader/projection flows; UBI8/glibc2.28 command/task/check/profile + transitive package + moved-core/reapply smokes below |
 | UP46.2 | Migration guide requires a separately approved and applied legacy prune before workspace ownership; explains temporary absence and `--take-over` limits | **verified** — stable0.45 legacy generation1 → applied empty generation2 → workspace generation3; actual ownership/file transitions, no takeover or manual unlink |
-| UP46.3 | `conda.environment.systemRequirements` drives selected solve virtuals, is recorded/bound in frozen state, and cannot be changed or forged silently | in progress — IRv7 and exact helper request/response policy; retain strict v6 behavior and existing archive/CPU/runtime checks |
+| UP46.3 | `conda.environment.systemRequirements` drives selected solve virtuals, is recorded/bound in frozen state, and cannot be changed or forged silently | **verified at candidate source** — real protocol3 helper/local HTTPS solve records2.28/4.18 instead of updater2.41/6.18; changed-policy frozen consumers refuse, explicit update restores them; actual too-low solve refuses; unchanged42-archive implicit lock executes on glibc2.28 |
 | UP46.4 | Document physical sibling-layout loss under per-file artifactTree symlinks and a working trackedCopyTo release-tree pattern | **verified** — actual sibling-loading executable works under tracked copy; complete published-code card accepted by candidate packaged SDK and real core |
 | UP46.5a | Document required MatchSpec operators rather than accepting an ambiguous bare version | implemented in pending website changes |
 | UP46.5b | Retain explicit `xorg-libx11` closure guidance and fail-closed missing-library behavior | externally reconfirmed; no default behavior change requested |
@@ -3453,4 +3479,25 @@ remain separate domains.
   and preserved bytes/modes/inodes/mtime/link identity. The shared owner uses
   same-filesystem rename or a synced destination-filesystem copy and atomic
   sibling rename; no new staging workaround was added.
+- `/tmp/gs0460-conda-baseline-h6s1t8b_/qualification.json` records the real
+  protocol3 solve. Helper SHA256
+  `d88c77dd600b7ef0db4c27d17099e2f7660ea0ddf0b42615211a1a6a2f6bf15a`
+  came from two identical native release builds. All42 exact archive
+  identities remained unchanged. Repeated frozen check/run/apply (actual
+  pyright1.1.414) made zero network requests and preserved lock bytes.
+  Changing2.28→2.29 after source approval still caused E301 until explicit
+  update/reapproval; too-low2.17 failed actual archive constraints without
+  publishing a lock. Omitting the policy recorded updater facts, and that
+  unchanged implicit lock separately executed on actual UBI8/glibc2.28:
+  measured solve facts were not misrepresented as binary ABI minima.
+- `/tmp/gs0460-retained-evidence` records published0.45 apply followed by
+  candidate0.46 prune and rollback to generation1. The retained v6 package
+  hook executed again after original declaration/archive removal, and the
+  old file bytes were restored. No old binary was run against newer state.
+- The integrated local `test` gate passed fmt, clippy, all workspace/helper
+  tests, architecture checks and deterministic admission/protocol/mutant
+  calibrations. Deliberately killed mutants are not production test failures;
+  no fuzz engine or saved-corpus replay ran. The two initial integration
+  compile/lint failures (owned diagnostic sink and enum naming) were fixed
+  before this passing run.
 
