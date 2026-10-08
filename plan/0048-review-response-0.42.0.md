@@ -3501,3 +3501,57 @@ remain separate domains.
   compile/lint failures (owned diagnostic sink and enum naming) were fixed
   before this passing run.
 
+
+### Promoted candidate bytes and remaining gates
+
+Candidate runtime source is clean commit
+`d2161a0f450a56fcb74785627bf848e5d7fa79b3`. Two independent release builds in
+the same captured builder image
+`sha256:da09ae1c9e01165e7ed56226a5ec49b87a6e7556b7b33f4396dc7f13e57b168c`
+produced identical core SHA256
+`cb358c868139204bf26a87ee09939cacca93d9399fd613a6559a6a2674aca23c`.
+These exact bytes, not a later rebuild, are staged for publication.
+The nine-file x86-only inventory is in `/tmp/gs0460-artifact-inventory.json`;
+core archive SHA256 is
+`8f7e09f0c11bcde99043bd1877bb23089aeb9facfe4ee81f22e71dbe308d1761`.
+The helper's fresh two-build committed-pin check retained `d88c77dd…f15a`;
+the bridge's scoped two-build check retained `cda198af…2e54`.
+
+- `/tmp/gs0460-promoted-native-l9h66_i_/acceptance-receipt.json` binds the
+  promoted core to14 real native/transitive cases on each of glibc2.41 and
+  UBI8/glibc2.28 (49 command receipts each), plus13 focused GNU flows and
+  actual0.45 retained-v6 package-hook rollback after archive/source removal.
+- `/tmp/gs0460-promoted-conda-2n4k7uyw/qualification.json` binds promoted
+  core/helper bytes to35 native baseline commands:30 successes and five
+  expected refusals,42 exact archives, zero frozen network requests and
+  older-glibc execution. Existing0.45 Pixi frontend/import pins initially
+  refused; explicit offline update refreshed only `gripsack.lock`.
+  Upstream Pixi documents and42 archive identities remained byte-identical,
+  followed by12 successful frozen consumers across both userspaces.
+- Native dependency inspection passed. Fresh advisory checks found no
+  vulnerabilities in372 root and570 helper lock dependencies, or in the
+  promoted core's280 embedded dependencies.
+- All14 registry packages compiled in a complete-Git-context
+  `cargo publish --workspace --dry-run --locked`; no upload occurred.
+  The first dry run mounted a linked worktree without its external Git
+  metadata, causing Cargo to omit the tracked initializer `.gitignore`.
+  A standalone checkout restored the proper inventory and passed; no
+  initializer resource was removed to conceal the harness failure.
+- The release workflow's actual inventory verifier accepted the exact nine
+  staged files and rejected five attributed missing/extra-ARM/checksum/
+  manifest/license mutations. The rebuilt installer passed10 cases, including
+  zero-network/no-replacement ARM refusal. Unsupported ARM helper packaging
+  exited2 before creating an output directory.
+- Transaction induction passed301 pilot obligations and4816 generalized
+  obligations across42 modules, with calibrated negative witnesses. The
+  unchanged TLC model layer was cached, not freshly explored. Linux B0
+  completed all six real worker/OCI/runtime probes.
+
+The earlier serial non-corpus flow run and policy/calibration run reached an
+outer3600-second command deadline; neither is complete passing evidence.
+Final-source flow qualification is isolated by file, the96 persistence
+partitions retain their full existing cut/drift/recovery oracles, and the
+policy gate continues without that outer deadline. Final Rust/helper gates,
+these remaining campaigns, registry/public artifact/default-helper consumers,
+and live site verification remain release requirements.
+

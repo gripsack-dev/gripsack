@@ -38,6 +38,12 @@ User-visible changes per release. Design archaeology lives in
   responses. Core/helper/SDK release versions must be installed coherently.
   Lock format v2 is unchanged. Downgrading an existing newer store remains
   unsupported; use the current core for rollback.
+- A frontend upgrade can require an explicit Gripsack lock refresh even when
+  `pixi.toml` and `pixi.lock` are unchanged. Review/approve the upgraded source,
+  run `grip update`, then inspect/review/reapprove the generated `gripsack.lock`
+  before frozen consumers. Pixi imports retain the same upstream lock and
+  exact archives; do not edit fingerprints or regenerate Pixi's solve to
+  bypass a captured-frontend refusal.
 - The workspace migration guide now spells out a **separately applied legacy
   prune generation** before ownership cutover. `--take-over` does not adopt
   legacy-owned destinations, and the prune temporarily removes those paths.
