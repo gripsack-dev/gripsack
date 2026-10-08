@@ -3170,9 +3170,9 @@ lock declaration/captured-digest mismatch and the GNU loader version gate.
 The personal node profile success and intentional missing-libX11 rejection
 are retained as such; neither proves full private-repository portability.
 
-All leaves below are **NEXT / 0.45.0**. Publication is blocked until their
-applicable Linux behavior, migration and evidence are complete. `REL-REVIEW-0450`
-above is the exact hosted-CI/macOS exception, not an implementation deferral.
+These leaves were mandatory **0.45.0** release work. The states below record
+completed Linux acceptance and publication under `REL-REVIEW-0450`'s exact
+hosted-CI/macOS exception; unrelated §9 deferrals are unchanged.
 
 | Leaf | Owner and responsibility | Acceptance | State/evidence |
 |---|---|---|---|
@@ -3186,7 +3186,7 @@ above is the exact hosted-CI/macOS exception, not an implementation deferral.
 | UP45.3 | host/module support + migration contract | Status + mapping without invented dates | **done (docs)** — site PR22 maps host parameters, platform locks and config ownership. Separate entrypoint/state roots are required for side-by-side migration: root `gripsack.ts` shadows host entrypoints. No invented removal date or automatic ownership transfer |
 | UP45.4 | unattended reviewed approval | Expected-digest compare, stop-on-mismatch | **verified** — exact documented shell succeeds for separately reviewed expected bundle/policy. Changed `gripsack.lock`, `pixi.lock`, capture exclusions or a wrong expected policy stop before approval/evaluation; trust records and evaluation receipts remain unchanged. Inspection JSONv2 exposes exclusions/runtime access; no blanket bypass |
 | UP45.5 | downgrade admission | Completed-v2 vs unfinished; documented refusals | **limited fixtures measured; unsupported downgrade documented** — real0.42 operated on simple completed0.44.1 legacy/file-only fixtures, not arbitrary newer state. Structured-environment GC refuses; bare rollback finds no readable target. New hook envelopes are unreadable by old readers. No general downgrade guarantee, retroactive old-binary patch, or downgrade across unfinished transactions |
-| UP45.REL | versions, qualification, publication | Local gates + proofs + coordinated publication | **in progress** — see qualification record below |
+| UP45.REL | versions, qualification, publication | Local gates + proofs + coordinated publication | **published and verified** — PR181 merged; both0.45 tags bind `986215f`; all14 Cargo crates, npm SDK and22 GitHub assets published; public consumer, live installer and corrected Pages deployment verified below |
 
 ### 0.45.0 qualification record
 
@@ -3253,4 +3253,60 @@ bin` (280 embedded dependencies, fresh advisory DB). Core/archive, both Conda
 helpers and all four bridge sidecars matched; the tarball contains the
 `43338a18…` promoted executable. Generated experiment binaries were removed
 from the PR tree and retained outside the checkout.
+
+### Published 0.45.0 result — 2026-10-08
+
+Core PR181 merged at `986215f313d36db5ec5de669ce024831809bba82`; immutable
+`core-v0.45.0` and `ts-v0.45.0` both bind that commit. Its tree differs from
+the qualified runtime source only in documentation, checker/test assertions
+and generated-experiment removal. No promoted executable was rebuilt.
+
+All **14 Cargo crates** compiled and published in dependency order before
+the GitHub core announcement. The downloaded `gripsack-0.45.0.crate` hashes
+to `f2a704d8442449e71e3970b88db500b34c9688e063c0365555bb8a5cd929ac7f`;
+its VCS receipt names the tagged commit. SDK publisher
+[37759157056](https://github.com/gripsack-dev/gripsack/actions/runs/37759157056)
+succeeded in an isolated one-job local worker. Public npm metadata reports
+version0.45.0 and the same `gitHead`.
+
+[Core release](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.45.0)
+406677670 has **22 assets**. Every server-reported asset digest/size matched
+the staged qualified file. The archive SHA256 is
+`4ce44ca435e234685d8cc6ef439e93aef4cb0d5fc89fd08b7784b6c62db4f0ae`;
+its executable is the qualified `43338a18…` image. The live
+`https://gripsack.dev/install.sh` selected0.45.0 into an isolated HOME and
+installed those exact bytes. A real installed-core legacy Pixi call emitted
+E130, the caller location and the now-live migration URL.
+
+[Example PR4](https://github.com/gripsack-dev/example-env-typescript/pull/4)
+migrated the public npm pin and used actual `grip update ripgrep` to refresh
+the frozen frontend identity; archive pins were preserved. Its public-artifact
+Ubuntu24.04 journey passed: six legacy modules, apply/satisfied and actual
+installed commands; coherent Conda build/run/task/profile/shell/GC, with default
+public helper acquisition, then helper-absent **network-disconnected** warm
+reuse of the same prefix. `npm ci`/typecheck used the published SDK. Nonfatal
+legacy plugin404 warnings and the piped rather than PTY shell are recorded,
+not suppressed. A final README-only correction was exercised with real grip:
+an expected-digest mismatch stops before following check/apply even when an
+older valid approval exists. The core canary pins merged example commit
+`5d2c4340404744ca527d9347ba673180aafb3a40`.
+
+Website PR22 merged, then actual browser inspection exposed an overflowing
+list-indented safety recipe. PR23 fixed that rendering; the initial successful
+deployment is superseded, not called final visual acceptance. Final
+[Pages run37761491082](https://github.com/gripsack-dev/gripsack-dev.github.io/actions/runs/37761491082)
+at `9b5129ad4c376d21fe64e17c91b63f52b16c1f69` passed both public-artifact
+example checking and deployment. Real Chromium navigation/screenshots verified
+environments, migration and unattended approval; the recipe is multiline and
+document width equals the viewport. The live installer is byte-identical to
+tagged source (SHA256 `76a3fd74f2c0de14a7a7a98d589a80d5e4aaead69a36b1e65c784fb4d1f4531e`).
+All four Pages workers and the SDK worker removed their owned registrations
+and containers; browser tabs were closed.
+
+[Tap PR2](https://github.com/gripsack-dev/homebrew-tap/pull/2) updates the source
+formula to the verified public crate. The macOS cask stays unchanged; no native
+Homebrew/macOS execution or hosted-build attestation is claimed. The exact
+private Space/kernel remains outside observed qualification. The inherited
+incomplete full-suite run remains incomplete; no new fuzz/corpus campaign was
+started. CI/provider migration and original user-owned edits remain untouched.
 
