@@ -711,18 +711,27 @@ Linux/glibc-2.28 behavior, security boundaries or required local evidence with
 documentation. Reported failures are established; verification will exercise
 the corrected paths without weakening source approval or sealed execution.
 
-### 0.45.0 release candidate
+### Published 0.45.0 result
 
-PR181 implements Pixi frozen identity, capability-measured GNU loader
-admission, workspace hooks/task checks, capture exclusions with exact-file
-runtime authority, and the removed-Pixi migration diagnostic. Modern Linux
-and RHEL8.10 userspace execution passed with the qualified release binary;
-the available WSL kernel is not the reviewer's external Space kernel.
-Plan0048 §17 records source-bound gates, consumer evidence and limitations.
-The inherited full e2e run was stopped before completion and is not green.
-The remaining migration examples and coordinated publication are being
-completed under `REL-REVIEW-0450`; this candidate is not yet a published
-release. The CI/provider research and user-owned checkout remain untouched.
+PR181 merged; `core-v0.45.0` and `ts-v0.45.0` bind
+`986215f313d36db5ec5de669ce024831809bba82`. All14 Cargo crates, npm SDK and
+22 GitHub assets are public. The promoted binary remains the two-clean-build
+`43338a18…` image; all uploaded digests matched. The live installer selected
+0.45.0 and its real legacy-Pixi error names the caller and migration guide.
+
+Modern Linux and UBI8/glibc2.28 qualified loader/hooks/checks and the same
+42-archive Node/pyright closure, including persistent personal/service launchers,
+rollback, both Pixi-input refusals and reviewed unattended approval. Available
+WSL6.18 kernel/CPU is not the reviewer's private Space qualification.
+Plan0048§17 retains source-bound gates and the incomplete full-suite limitation.
+
+Example PR4 consumed public core/SDK/helper artifacts, migrated its lock through
+explicit update, and passed legacy and coherent Conda cold/offline-warm journeys.
+The canary pins its merged0.45 source. Website PR22 and the visually necessary
+PR23 correction are live; final Pages37761491082 passed public-artifact examples
+and deployment, followed by browser verification. Tap PR2 updates the verified
+source formula; the macOS cask is unchanged. Hosted full CI/macOS/fuzz are not
+claimed. The CI/provider research and user-owned checkout remain untouched.
 
 
 ## Settled rejections (all eras)

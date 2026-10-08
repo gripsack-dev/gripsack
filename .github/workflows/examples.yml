@@ -20,8 +20,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: gripsack-dev/example-env-typescript
-          # Frozen caller lock explicitly migrated to the 0.44.1 frontend.
-          ref: 3888c0a7e53c4103773b2acfb6c0495eb3ee1dca
+          # Frozen caller lock explicitly migrated to the published 0.45.0 frontend.
+          ref: 5d2c4340404744ca527d9347ba673180aafb3a40
           path: example
 
       - name: Build grip (static musl)
