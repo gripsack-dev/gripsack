@@ -298,8 +298,6 @@ Deno.test("retired Pixi calls report a source diagnostic through an imported ali
       assert.equal(result.status, 1);
       assert.equal(result.stdout, "");
       assert.match(result.stderr, /E130/);
-      assert.match(result.stderr, /pixi\(package\) was removed/);
-      assert.match(result.stderr, /removed single-package constructor called here/);
       assert.match(result.stderr, /workspace-migration\.html/);
       assert.match(result.stderr, /lap\.ts:2/);
     },

@@ -3,7 +3,7 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
-## [0.45.0] — 2026-10-07
+## [0.45.0] — 2026-10-08
 
 ### Fixed
 
@@ -51,9 +51,9 @@ User-visible changes per release. Design archaeology lives in
   excluded-alias errors name the offending path; `grip trust inspect` (report
   version 2) lists configured `capture_exclusions` alongside actual inventory
   exclusions and names the embedded versus pinned SDK.
-- Calling the removed `pixi(package)` constructor reports a structured
-  migration diagnostic naming `conda.environment`/`pixi.fromLock` and the
-  workspace migration guide instead of `TypeError: pixi is not a function`.
+- Calling the removed `pixi(package)` constructor reports an E130 migration
+  diagnostic with a source location and workspace migration guide instead of
+  `TypeError: pixi is not a function`.
 
 ### Compatibility
 
@@ -63,16 +63,18 @@ User-visible changes per release. Design archaeology lives in
   version-2 envelope that older binaries reject before effects; ordinary
   manifests keep the historical shape. The IR contract and workspace lock
   version are unchanged.
-- Measured downgrade behavior after a completed 0.44/0.45 apply: grip 0.42.0
-  still reads and operates on legacy and file-only workspace generations; it
-  refuses generations with structured environment records ("manifest is
-  corrupt — refusing") and rejects workspace-hook envelopes rather than
-  misreading either. Downgrade past those generation shapes is unsupported.
+- Downgrading authoritative state after a newer apply is not supported.
+  A few completed 0.44.1 legacy/file-only fixtures remained readable by
+  0.42.0; that is not a general compatibility guarantee. Its GC refuses a
+  structured-environment generation as corrupt, and new workspace-hook
+  envelopes are not readable by old binaries. An old binary cannot be
+  retroactively given a better diagnostic; keep the newer binary with its
+  state, and never cross an unfinished transaction with a downgrade.
 
 ### Distribution scope
 
 Linux-first distribution continues under the owner's `REL-REVIEW-0450`
-exception: fresh hosted CI and macOS qualification are waived for this patch,
+exception: fresh hosted CI and macOS qualification are waived for this release,
 not marked successful; local container gates, real glibc 2.28 (RHEL 8.10) and
 modern-glibc execution, security negatives and published-consumer verification
 remain required. No hosted-build attestation is claimed for locally assembled

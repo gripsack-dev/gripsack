@@ -711,19 +711,18 @@ Linux/glibc-2.28 behavior, security boundaries or required local evidence with
 documentation. Reported failures are established; verification will exercise
 the corrected paths without weakening source approval or sealed execution.
 
-### 0.45.0 result
+### 0.45.0 release candidate
 
-The full external-review response landed and was verified: Pixi frozen
-identity, capability-measured GNU loader admission (RHEL 8.10 glibc 2.28
-qualified in-container with a host-kernel caveat), real workspace hooks and
-task checks, explicit capture exclusions with exact-file runtime read
-authority (three security-review findings closed at source), the retired-pixi
-diagnostic, and measured 0.42.0 downgrade behavior. Plan0048 §17 carries the
-leaf evidence and the qualification record. All formal gates passed on the
-final source, including TLAPS under a repinned (again rotated) upstream
-toolchain with verified provenance. Publication follows the Linux-first
-local path under `REL-REVIEW-0450`; the website PR merges after the
-artifacts exist.
+PR181 implements Pixi frozen identity, capability-measured GNU loader
+admission, workspace hooks/task checks, capture exclusions with exact-file
+runtime authority, and the removed-Pixi migration diagnostic. Modern Linux
+and RHEL8.10 userspace execution passed with the qualified release binary;
+the available WSL kernel is not the reviewer's external Space kernel.
+Plan0048 §17 records source-bound gates, consumer evidence and limitations.
+The inherited full e2e run was stopped before completion and is not green.
+The remaining migration examples and coordinated publication are being
+completed under `REL-REVIEW-0450`; this candidate is not yet a published
+release. The CI/provider research and user-owned checkout remain untouched.
 
 
 ## Settled rejections (all eras)

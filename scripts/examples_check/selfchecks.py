@@ -7,9 +7,9 @@ gate's deliberately failing configs.
   entries drop by design), so the behavioral expectation fails.
 
   pin_canary — the installed node_modules package must be what
-  answers: a marker package with ir_version 999 has to surface in the
-  envelope. If resolution silently used the embedded copy, every
-  example would still pass while testing the wrong artifact.
+  answers on both host and root-workspace paths: a marker package with
+  ir_version 999 has to surface in each envelope. If resolution silently
+  used the embedded copy, examples would test the wrong artifact.
 """
 
 from __future__ import annotations
@@ -37,6 +37,9 @@ export const createProbeBuilder = () => ({
 });
 export const emitIr = (_env, _facts, _tags) =>
   JSON.stringify({ ir_version: 999, pin: "canary" }, null, 2);
+export const emitWorkspaceIr = emitIr;
+export const defineWorkspace = (fn) => fn;
+export const workspace = (spec) => spec;
 export const defineEnv = (fn) => fn;
 export const mergeTags = (a, b) => [...(a ?? []), ...b];
 export const module = (name, spec) => ({ __gripsack: "module", name, ir: spec });
@@ -48,6 +51,10 @@ CANARY_HOST = (
     'const m = module("canary", {});\n'
     "\n"
     "export default defineEnv((ctx) => ({ modules: [m] }));\n"
+)
+CANARY_WORKSPACE = (
+    'import { defineWorkspace, workspace } from "@gripsack/core";\n'
+    "export default defineWorkspace(() => workspace({ outputs: [] }));\n"
 )
 
 
@@ -92,16 +99,19 @@ def pin_canary(ctx) -> list[str]:
     home = fresh_home(base, "canary")
     inputs = {"version": 1, "host": "canary", "facts": ctx["facts"],
               "tags": [], "probes": {}, "settings": {}}
-    try:
-        envelope = frontend_eval(ctx["sdk_src"], ctx["deno"], repo, inputs, home)
-        ir = envelope.get("ir", {})
-        if ir.get("ir_version") != 999 or ir.get("pin") != "canary":
-            return [
-                "pin canary: the installed node_modules package did NOT "
-                f"answer (ir: {json.dumps(ir)[:120]}) — the packaged SDK "
-                "is being bypassed; executable-docs runs would test the "
-                "embedded copy instead of the package"
-            ]
-    except CheckFailure as e:
-        return [f"pin canary: eval failed: {e}"]
+    for kind in ("host", "workspace"):
+        if kind == "workspace":
+            (repo / "gripsack.ts").write_text(CANARY_WORKSPACE, encoding="utf-8")
+        try:
+            envelope = frontend_eval(ctx["sdk_src"], ctx["deno"], repo, inputs, home)
+            ir = envelope.get("ir", {})
+            if ir.get("ir_version") != 999 or ir.get("pin") != "canary":
+                return [
+                    f"pin canary ({kind}): the installed node_modules package did NOT "
+                    f"answer (ir: {json.dumps(ir)[:120]}) — the packaged SDK "
+                    "is being bypassed; executable-docs runs would test the "
+                    "embedded copy instead of the package"
+                ]
+        except CheckFailure as e:
+            return [f"pin canary ({kind}): eval failed: {e}"]
     return []

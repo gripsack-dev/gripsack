@@ -143,8 +143,10 @@ def host_wrapper(entry: dict, module_stem: str) -> str:
 
 def scaffold(entry: dict, block: Block, base: Path, sdk_pkg: Path) -> Path:
     repo = base / "repos" / entry["id"]
-    (repo / "modules").mkdir(parents=True, exist_ok=True)
-    (repo / "hosts").mkdir(exist_ok=True)
+    repo.mkdir(parents=True, exist_ok=True)
+    if entry["kind"] != "workspace":
+        (repo / "modules").mkdir(exist_ok=True)
+        (repo / "hosts").mkdir(exist_ok=True)
     (repo / "env.toml").write_text('[env]\nname = "examples-check"\n', encoding="utf-8")
     for rel, spec in entry.get("fixtures", {}).items():
         write_fixture(repo, rel, spec)
@@ -162,7 +164,9 @@ def scaffold(entry: dict, block: Block, base: Path, sdk_pkg: Path) -> Path:
                 "doc snippet changed shape; re-classify"
             )
         code = fixed
-    if entry["kind"] == "host":
+    if entry["kind"] == "workspace":
+        (repo / "gripsack.ts").write_text(code, encoding="utf-8")
+    elif entry["kind"] == "host":
         (repo / "hosts" / f"{entry['host']}.ts").write_text(code, encoding="utf-8")
     else:
         stem = entry["module_file"][: -len(".ts")]

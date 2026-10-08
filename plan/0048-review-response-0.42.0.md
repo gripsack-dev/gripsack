@@ -3176,37 +3176,46 @@ above is the exact hosted-CI/macOS exception, not an implementation deferral.
 
 | Leaf | Owner and responsibility | Acceptance | State/evidence |
 |---|---|---|---|
-| UP45.A | Integration: persistent profiles, personal/shared-path examples, initialization and rollback | Actual retained-prefix commands from a clean noninteractive shell; profile rollback exercised; complete Conda runtime dependencies incl. pyright closure | **verified** — node 26.10.0 profile applied, `env/profile.sh` sourced in plain `/bin/sh` (cwd `/`, `PATH=/usr/bin:/bin`) answers `node --version`; second apply satisfied; rollback restored prior env value AND working wrapper; bare pyright fails closed on `libX11.so.6` (reviewer's exact refusal); explicit `xorg-libx11` completes the closure and `pyright --version` runs. Shared `/usr/local/bin` documented as unverified (grammar-only) on the site |
+| UP45.A | Integration: persistent profiles, personal/shared-path examples, initialization and rollback | Actual retained-prefix commands from a clean noninteractive shell; profile rollback exercised; complete Conda runtime dependencies incl. pyright closure | **verified** — promoted binary: personal `~/.local/bin` launcher on glibc2.39/UID1000 and `/usr/local/bin` launcher in disposable UBI8/glibc2.28/UID0; private mode0700 state, initialization, two generations and actual rollback. Plain `/bin/sh`, cwd `/`, initial `PATH=/usr/bin:/bin`, no inherited HOME/activation; Node26.10.0 and pyright1.1.414 execute. Explicit `xorg-libx11` completes the frozen closure; no arbitrary-prefix projection or multi-user permission widening |
 | UP45.B | Glibc228: native consumer ELF admission and process loader plan | GNU-dynamic commands execute on glibc 2.28 and modern glibc preserving sealed identity, closure/search equivalence and confinement; static commands supported | **verified** — measured RHEL 8.10 loader (glibc 2.28 with backported `--argv0`/`--glibc-hwcaps-mask`/`--inhibit-cache`/`--library-path`/`--inhibit-rpath`) admitted by capability probe of the sealed loader image; 12/12 gnu-loader e2e + 29/29 with hooks/checks in the UBI 8.10 container (host-kernel caveat recorded); modern-glibc suites green; plain loaders lacking controls still fail closed naming them. Hardening: audit/filter ELF tags, legacy hwcap shadows, active `/etc/ld.so.preload`, declared `LD_*`/`GLIBC_TUNABLES` refusals |
-| UP45.C | Integration: source declaration/pin matching and Pixi input verification | Unchanged Pixi lock7 survives update/reapproval/update/check/run/apply; changed inputs refused until explicit update + reapproval | **verified** — `same_source_declaration` compares declaration fields only; both captured inputs still re-verified (verify_pixi_inputs + read-only inspection). Reviewer's exact repro (pixi 0.81.0 lock v7, glibc 2.28 baseline): update → update ("pyright unchanged") → check → apply with no identity regression; mutated `pixi.lock` refused ("differs from its frozen identity; run grip update") until explicit update; full frozen `pyright --version` execution with GNU ABI + explicit xorg-libx11. Unit regressions in `workspace/pins/tests.rs` |
+| UP45.C | Integration: source declaration/pin matching and Pixi input verification | Unchanged Pixi lock7 survives update/reapproval/update/check/run/apply; changed inputs refused until explicit update + reapproval | **verified** — declaration-only comparison preserves both captured-input checks. Repeated unchanged imports/check/run/apply succeed with a complete closure. Separately changed `pixi.toml` and `pixi.lock` remain E301 refusals even after source review/approval on both userspaces; explicit update and renewed reviewed approval restore `check`. Refreshing document identity leaves the 42 exact archive records unchanged |
 | UP45.D | WorkspaceHooks: activation/check capability through durable hook owners | Actual hook/check effects on both runtimes; durable identity/outcomes; crash ambiguity; no auto-rollback | **verified** — profile hooks (post_link/post_activate/on_remove) execute via the existing activation ledger: immutable digest-bound contexts (4 MiB bound), per-intent identity, replay re-admits receipts + native facts, no loader authority persisted, no automatic rollback; task checks run in declaration order after successful steps; recipe checks unchanged; file-check stages/schedules/prerequisites explicitly unavailable. 17/17 hooks+checks e2e on modern glibc; 29/29 incl. RHEL 8.10 |
-| UP45.E | Integration: solve baselines, immutable lock assumptions, portability | Explicit baseline governs solve; assumptions disclosed; loader admission separate | **verified/documented** — Pixi `system-requirements` libc baseline drives the solve (lock v7 with glibc 2.28 resolved pyright 1.1.414/node 26.10.0); native `conda.environment` host-relative virtuals and the identity-not-portability distinction documented on the site with the three separate verifications |
+| UP45.E | Integration: solve baselines, immutable lock assumptions, portability | Explicit baseline governs solve; assumptions disclosed; loader admission separate | **verified/documented** — imported Pixi lock7 records `__glibc=2.28`, `__linux=4.18`, `__archspec=0=x86_64` and 42 exact archives. Identical frozen Node/pyright closure executes on glibc2.39 and2.28 without re-solving; UBI8 is network-disabled. Canonical Conda record SHA256 `17293284decce3e02c2065b00dc4a2e574e67791be50f037a5f905c4a05c9c81`. Native host-relative assumptions and required baseline review are explicit. Shared WSL6.18 kernel/CPU is not private-host or el9-5.14 qualification |
 | UP45.1 | CapturePolicy: exclusions, exact runtime read authority, trust binding | Conservative explicit exclusions; named offending paths; no live-tree/alias fallback; approval-bound | **verified** — `[capture] exclude` literal subtrees; protected `env.toml`/`gripsack.ts`/`hosts/**`/`gripsack.lock`/`locks/**`; evaluator runtimes get exact-file READ authority (executable/interpreter/ldd-derived libs, loader cache) with original-spelling provenance (incl. bare-name PATH) admitted against source roots before approval and at launch; Python discovery isolated (`-I`, fresh cwd, digest-bound) — pre-approval `sysconfig.py` execution closed (CaptureReview findings 001/002/003 all closed at source; reviewer had no regressions surviving); capture suites green |
-| UP45.2 | retired Pixi diagnostic | Actionable, no compatibility shim | **verified** — single callable `pixi` binding throws structured E130 with span/help → migration guide; driver regression asserts rendered diagnostic |
-| UP45.3 | host/module support + migration contract | Status + mapping without invented dates | **done (docs)** — site PR #22: workspace-migration page (exact URL the diagnostic references), mapping table, side-by-side entrypoints, downgrade matrix |
-| UP45.4 | unattended reviewed approval | Expected-digest compare, stop-on-mismatch | **done (docs + mechanism)** — inspect JSON v2 exposes `capture_exclusions` + `runtime_access`; documented workflow compares reviewed expected digests; exact approval throughout; no TRUST_ALL |
-| UP45.5 | downgrade admission | Completed-v2 vs unfinished; documented refusals | **verified** — measured with real 0.42.0/0.44.1 binaries: legacy + file-only generations operate (gc/rollback); structured-env generations refuse ("manifest is corrupt") and hook envelopes are rejected before effects |
+| UP45.2 | retired Pixi diagnostic | Actionable, no compatibility shim | **verified** — calling removed `pixi(package)` reports E130, its source location and migration-guide link. Public TypeScript remains non-callable; no legacy producer shim. Real driver alias regression passes without incidental wording assertions |
+| UP45.3 | host/module support + migration contract | Status + mapping without invented dates | **done (docs)** — site PR22 maps host parameters, platform locks and config ownership. Separate entrypoint/state roots are required for side-by-side migration: root `gripsack.ts` shadows host entrypoints. No invented removal date or automatic ownership transfer |
+| UP45.4 | unattended reviewed approval | Expected-digest compare, stop-on-mismatch | **verified** — exact documented shell succeeds for separately reviewed expected bundle/policy. Changed `gripsack.lock`, `pixi.lock`, capture exclusions or a wrong expected policy stop before approval/evaluation; trust records and evaluation receipts remain unchanged. Inspection JSONv2 exposes exclusions/runtime access; no blanket bypass |
+| UP45.5 | downgrade admission | Completed-v2 vs unfinished; documented refusals | **limited fixtures measured; unsupported downgrade documented** — real0.42 operated on simple completed0.44.1 legacy/file-only fixtures, not arbitrary newer state. Structured-environment GC refuses; bare rollback finds no readable target. New hook envelopes are unreadable by old readers. No general downgrade guarantee, retroactive old-binary patch, or downgrade across unfinished transactions |
 | UP45.REL | versions, qualification, publication | Local gates + proofs + coordinated publication | **in progress** — see qualification record below |
 
-### 0.45.0 qualification record (2026-10-07)
+### 0.45.0 qualification record
 
-Source `ce1f20754d76c95e545fea5c5ee6025ed4e05a23` (branch `fix/reviewer-0450`,
-every gate on the exact final source). Gates: `test` (fmt + clippy -D warnings +
-full cargo test + admission/protocol scripts), `ts-test` (62 deno tests +
-examples tsc), `model` (TLC positives + calibrated negatives), `tlaps` (full
-induction + calibration under tlapm `d8b9747` — the mutable upstream tag
-rotated again on 2026-10-06; repinned with verified provenance: GitHub asset
-id 616249697 digest `13eff4e3…d43c`, independent HTTPS download matched,
-`tlapm --version` = d8b9747, gate passing), `verify` (443 Verus obligations +
-mutant calibration incl. the new `CommandOwner::ImmutableSubject` policy),
-affected + full e2e suites.
+The final runtime-source revision is
+`459a3c119fe53e5f1c37ef8b40af915896338ca5`. Its local container `test` gate
+passed (fmt, clippy, Cargo tests and admission/protocol checks), as did the
+TLC/model, TLAPS induction/calibration and Verus policy/mutant gates. The
+62-test frontend gate and strict examples passed for the unchanged shipped
+TypeScript sources. These are source-bound results, not a claim that every
+subsequent documentation-only commit reran every gate.
 
-Notable integration repairs during verification: the process-bounds oracle now
-keeps its positive full-suite run captured (a `--nocapture` interleave
-nondeterministically split one status line); check-subject source resolution
-admitted without staging authority after the first integrated run exposed the
-E128 gap; an explicit-rollback semantic was preserved against my incorrect
-"always refuse" reading (evidence: existing hook-outcome contract).
+TLAPS used `d8b9747`: the mutable upstream tag rotated on 2026-10-06.
+GitHub asset 616249697 and an independent HTTPS download matched
+`13eff4e3dd0a4570c1c33c46f052fd4eb3afad465eb201ebade607961f09d43c`;
+`tlapm --version` matched, and the complete gate passed.
+
+The inherited unfiltered 569-item e2e run was stopped on 2026-10-08 after
+nearly 22 hours at 66%, still launching filesystem apply cases. It did not
+finish and is **not passing evidence**. It also replayed five golden cases
+contrary to the owner's exclusion; that mistake is recorded, not repeated.
+Qualification uses the affected-path and real release-binary scenarios below
+under `REL-REVIEW-0450`, not a fresh full persistence/corpus campaign.
+
+Integration repairs: the process-bounds positive suite now retains captured
+output instead of `--nocapture`; interleaving was a suspected cause of a
+missing status-line oracle, not a demonstrated root cause. Check-subject
+source resolution was admitted without staging authority after an E128
+integration failure. Existing explicit same-generation rollback semantics
+were preserved; only bare rollback requires an earlier readable generation.
 
 Known diagnostics gap recorded (not fixed in 0.45.0): a declared package
 command whose selector is absent from the materialized prefix surfaces as a
@@ -3219,9 +3228,10 @@ while the crash hooks ship in every profile; the integrity refusal itself was
 correct). Promoted core binary is the recorded reproducibility experiment's
 own build — two clean builds pinned to the captured builder image produced
 byte-identical sha256 `43338a18a880c5d1b1ae1f69c95d9ae4d4d4560bdfb6b993ac7a7a24fc24b33f`.
-Finding recorded: the workspace release build embeds the build-script OUT_DIR
-path (`/app/target` vs `/tmp/repro-target` variants differ only there), so the
-fixed-target-dir repro service defines the canonical bytes. Conda helper pins:
+Other build layouts produced different bytes. Inspection found differing
+generated-code `OUT_DIR` paths, but did not prove that these were the only
+differences. The fixed-target-dir reproducibility experiment supplies the
+promoted bytes; packaging must not silently substitute another build. Conda helper pins:
 x64 `152de682…4516` (local two-build + committed-pin re-check), ARM64
 `57f6db60…85bd5` (native hosted measurement run 37591535999, all four jobs
 green). Bridge pins regenerated through the full Go gate; bytes identical to
@@ -3229,4 +3239,18 @@ green). Bridge pins regenerated through the full Go gate; bytes identical to
 helper crates, zero findings, fresh advisory DB. Final-binary qualification:
 A/C journeys all markers; RHEL 8.10 29/29 (loader+hooks+checks); hooks/checks
 17/17 on the Debian e2e image with the release binary.
+
+Finish-line qualification on 2026-10-08: the matching packed SDK and promoted
+binary evaluated all **9 complete website examples**, including the root
+workspace program, through the SDK driver and real `grip check`. Both
+deliberate-pin canaries and factory-negative calibration passed; four genuinely
+partial snippets remain classified fragments. The rebuilt `ts-test` gate
+passed all **62 tests** and strict examples after removing incidental wording
+assertions. `cargo publish --workspace --dry-run --locked --allow-dirty` packaged
+and compiled all **14 crates** in the captured builder image, without uploading.
+The exact promoted binary passed native/static verification and `cargo audit
+bin` (280 embedded dependencies, fresh advisory DB). Core/archive, both Conda
+helpers and all four bridge sidecars matched; the tarball contains the
+`43338a18…` promoted executable. Generated experiment binaries were removed
+from the PR tree and retained outside the checkout.
 
