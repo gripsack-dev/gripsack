@@ -5,6 +5,39 @@ One row per plan. "Deferred" items live on the
 settled (don't relitigate without new evidence). Update this file in
 the same PR as the plan it tracks (convention since 0036).
 
+## Active platform scope — 2026-10-08
+
+Owner amendment **PLATFORM-LINUX-WSL-2026-10-08** makes Linux machines and
+WSL2's Linux execution environment the active support scope, not native
+Windows. macOS/Apple Silicon, Mac VM and launchd support are out of scope
+indefinitely, not temporarily waived pending hardware. Reopening requires a
+new explicit owner decision. This supersedes earlier Mac-resumption language
+below and in 0048/0049 for future work; historical runs, failures, published
+releases and tags remain unchanged.
+
+0048's owner-scope register and 0049's exact application inventory retain all
+178 original delivery IDs/normative fields and original lane/case/history
+records. **B0-02, E4-02 and D2-03 are out_of_scope, never verified**. Mixed
+rows retain every Linux/common obligation, evidence kind, proof and prerequisite;
+the fixed checker projection retires Mac lanes and explicitly identified
+common-lane Mac portions only. A blocked Mac lane no longer blocks applicable
+Linux closure, but no row or milestone becomes complete from retirement alone.
+Older 0050/0051 entries below describe their recorded qualification state,
+not an ongoing requirement to obtain Mac hardware.
+
+New CI/distribution/installation promises are Linux-only; current Linux
+architecture lanes and all 96 Linux persistence partitions remain required.
+Proof/integrity/source-approval/retained-state gates are unchanged. The
+0.45.0 artifacts remain immutable; this policy change does not itself require
+a core/SDK version bump. Plan0053 provider migration remains separate.
+Focused integration checks passed: delivery inventory and scope/closure
+calibration, CI admission (6 positive/188 negative cases), exact Linux
+packaging-contract calibration and rebuilt installer flows (9/9). Both Linux
+bridge targets built twice and matched the existing measured pins. The changed
+installer fetched public0.45.0 on Linux and installed the qualified43338a18…
+binary; its controlled-Darwin case refused before HTTP or replacement. These
+are focused results, not a new full CI/persistence/formal or native Mac run.
+
 ## Foundations (0001–0019)
 
 | Plan | Title | Shipped |

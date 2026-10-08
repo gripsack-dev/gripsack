@@ -8,6 +8,10 @@ subprocesses, read-only within your repo). Every host observation
 value; effects are explicit probe requests the core binds and feeds
 back ([plan/0013](https://github.com/gripsack-dev/gripsack/tree/main/plan)).
 
+The supported `grip` hosts are Linux and WSL2. macOS and native Windows are
+outside the current support scope. Historical target metadata remains readable;
+it does not grant a supported execution platform.
+
 ## A host is a function
 
 ```ts
@@ -132,8 +136,8 @@ Recipe execution is explicit. In 0.44, production recipes declare
 during `grip check`. A `{ kind: "host", access: "unconfined" }` declaration is
 admitted as contract data but host recipe execution remains gated. Native
 downloads are provider-backed packages, not a `recipe` "native" execution mode.
-Targets may declare an ABI (`gnu`/`musl` on Linux, `darwin` on macOS)
-and `minimum_os: { major, minor, patch? }`. Fixed-prefix packages use
+Supported Linux targets may declare `abi: "gnu"` or `"musl"` and
+`minimum_os: { major, minor, patch? }`. Fixed-prefix packages use
 `{ kind: "fixed_prefix", prefix: "/opt/tool" }`; selecting one into an
 environment requires that environment's matching `prefix`.
 
@@ -157,11 +161,12 @@ Provider-only and already-retained outputs need no worker. New compatible Linux
 production uses one checked solve through the pinned, hash-verified bridge
 helper, provisioned lazily into `$GRIPSACK_HOME/tools` on first use
 (`--bridge <helper>` selects a deliberate operator override instead;
-`GRIPSACK_BRIDGE_MIRROR` redirects only the download origin). Four platform
+`GRIPSACK_BRIDGE_MIRROR` redirects only the download origin). Linux helper
 hashes are measured from independent pinned-toolchain builds and compiled into
 the core. Unreleased source builds need a matching artifact mirror or override
-until the matching core release publishes those assets. The owned worker is qualified for
-Linux x86_64 with Docker, not for Mac or other architectures.
+until the matching core release publishes those assets. The owned worker is
+qualified for Linux x86_64 with Docker; this does not claim other-architecture
+worker qualification. macOS is outside the support scope.
 
 `sourcePath(selector)` and `outputPath(selector)` bind immutable input and
 writable staging paths without embedding host paths. A check's source is its

@@ -27,7 +27,7 @@
 #
 # What this is NOT (plan/0042 F): not a cross-time claim (rebuilding
 # after a deliberate toolchain/digest bump may differ), not a
-# cross-platform claim (musl vs darwin binaries are different targets),
+# cross-architecture claim (Linux x64 and ARM64 are different targets),
 # and not an external audit. It records one controlled experiment.
 #
 # Usage: scripts/check_reproducible.sh [output-parent]   (default: ./repro)
@@ -140,7 +140,7 @@ report = {
     },
     "not_claimed": [
         "cross-time reproducibility (a later toolchain/digest bump may produce different bytes)",
-        "cross-platform reproducibility (darwin targets are separate builds)",
+        "cross-architecture reproducibility (Linux targets are separate builds)",
         "external audit",
     ],
     "builds": {"a": {"sha256": sha_a}, "b": {"sha256": sha_b}},
@@ -181,7 +181,7 @@ Target: release (musl static, cargo auditable build --release --locked -p gripsa
 ## Not claimed
 
 Pinning a compiler does not imply cross-time reproducibility (a deliberate
-toolchain bump changes inputs by design), cross-platform identity (darwin
+toolchain bump changes inputs by design), cross-architecture identity (Linux
 targets are separate builds), or an external audit.
 EOF
 

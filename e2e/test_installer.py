@@ -1,7 +1,8 @@
 """Install the actual shell entrypoint against offline release HTTP fixtures.
 
-Only the fixed GitHub origins are redirected; curl, checksums, tar and install
-are real. These tests qualify selection/preservation, not native grip execution.
+The fixed GitHub origins are redirected; curl, checksums, tar and install are
+real. Platform-refusal cases control uname's OS result. These tests qualify
+selection/preservation, not native grip execution.
 """
 
 from __future__ import annotations
@@ -26,16 +27,17 @@ class InstallerReleases:
         self.tags: list[str] = []
         self.assets: dict[str, tuple[int, bytes]] = {}
         self.truncated_catalog = False
+        self.requests: list[str] = []
         machine = platform.machine()
         assert machine in {"x86_64", "amd64", "aarch64", "arm64"}
         arch = "aarch64" if machine in {"aarch64", "arm64"} else "x86_64"
-        assert platform.system() in {"Linux", "Darwin"}
-        suffix = "apple-darwin" if platform.system() == "Darwin" else "unknown-linux-musl"
-        self.target = f"{arch}-{suffix}"
+        assert platform.system() == "Linux"
+        self.target = f"{arch}-unknown-linux-musl"
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
+                owner.requests.append(self.path)
                 catalog = self.path.startswith("/api/repos/")
                 if catalog:
                     status = 200
@@ -87,6 +89,8 @@ def installer(tmp_path):
     releases = InstallerReleases(tmp_path)
     real_curl = shutil.which("curl")
     assert real_curl, "installer verification requires the real curl client"
+    real_uname = shutil.which("uname")
+    assert real_uname, "installer verification requires uname"
     tools = tmp_path / "tools"
     tools.mkdir()
     curl = tools / "curl"
@@ -119,7 +123,20 @@ def installer(tmp_path):
                NO_PROXY="127.0.0.1,localhost", no_proxy="127.0.0.1,localhost")
     script = Path(__file__).resolve().parent.parent / "install.sh"
 
-    def run():
+    def run(*, os_name: str | None = None):
+        uname = tools / "uname"
+        if os_name is None:
+            uname.unlink(missing_ok=True)
+        else:
+            uname.write_text(
+                "#!/usr/bin/env python3\n"
+                "import os, sys\n"
+                "if sys.argv[1:] == ['-s']:\n"
+                f"    print({os_name!r})\n"
+                "else:\n"
+                f"    os.execv({real_uname!r}, [{real_uname!r}, *sys.argv[1:]])\n"
+            )
+            uname.chmod(0o755)
         return subprocess.run(["sh", str(script)], cwd=tmp_path, env=env,
                               capture_output=True, text=True, timeout=30)
 
@@ -206,3 +223,20 @@ def test_installer_preserves_existing_binary_when_no_target_assets_are_published
     result = run()
     assert result.returncode != 0
     assert destination.read_bytes() == original
+
+
+def test_installer_refuses_macos_before_network_or_replacement(installer):
+    releases, destination, run = installer
+    releases.target = releases.target.removesuffix("-unknown-linux-musl") + "-apple-darwin"
+    releases.tags = ["core-v0.43.0"]
+    releases.publish("0.43.0")
+    original = b"operator's existing executable\n"
+    destination.write_bytes(original)
+    original_mode = destination.stat().st_mode
+
+    result = run(os_name="Darwin")
+
+    assert result.returncode != 0
+    assert releases.requests == []
+    assert destination.read_bytes() == original
+    assert destination.stat().st_mode == original_mode

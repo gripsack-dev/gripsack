@@ -68,6 +68,12 @@ the compose gates. `./dist/` and `target/` may contain root-owned files.
 - Install artifact contract (for install.sh, later):
   `gripsack-<VERSION>-x86_64-unknown-linux-musl.tar.gz` containing `grip`.
 
+The active host/release scope is Linux, including WSL2
+(`PLATFORM-LINUX-WSL-2026-10-08`, plan0048). Linux x86_64 and aarch64 release
+targets retain their separate artifact qualification. macOS/native Windows are
+not supported; historical target metadata, readers and released assets do not
+establish an active platform promise.
+
 ## 5. Testing pyramid
 
 | layer | what | where |
@@ -97,7 +103,7 @@ the filesystem or replace the concrete persistence campaigns.
 
 | workflow | trigger | job |
 |---|---|---|
-| `ci` | main push / PR / dispatch | required `test`: Rust + TypeScript + real e2e + TLC + TLAPS + Verus; native Mac, fuzz, docs and audit have separate jobs |
+| `ci` | main push / PR / dispatch | required `test`: Rust + TypeScript + Linux e2e/persistence + TLC + TLAPS + Verus; fuzz, docs and audit have separate jobs |
 | `release-core` | tag `core-v*` | musl tarball → verify (sha, static, `--version`) → **crates.io first** (irreversible) → GitHub release |
 | `release-typescript` | tag `ts-v*` | package-version guard → npm tests/build/dual-form pack → npm → GitHub release (`NPM_TOKEN`) |
 | `demo` | dispatch (+ paths once `apply` lands) | VHS render → `demo/artifacts` bot PR |

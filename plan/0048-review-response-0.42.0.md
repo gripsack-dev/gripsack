@@ -773,6 +773,12 @@ of the “important” work. Each referenced packet includes **all** its
 changes and acceptance cases unless an exact split is stated here.
 Every new behavior carries its own tests/proofs/docs in the same release.
 
+**Active platform scope (owner decision 2026-10-08):**
+`PLATFORM-LINUX-WSL-2026-10-08` below applies to every NEXT/LATER/platform
+entry in this register. Linux and WSL2's Linux environment remain supported;
+Mac-specific implementation/qualification/distribution is out of scope, not
+deferred until a runner becomes available and not verified.
+
 | Scope | NEXT commitment | Explicitly authorized later portion |
 |---|---|---|
 | §1.1–§1.4 evaluator/host/adopt | All fixes, every caller and regression. No exception for a trusted-only fixture or alternate CLI entrypoint. | None. |
@@ -832,6 +838,53 @@ verification are part of the release, not optional follow-up work.
 - An emergency/security hotfix release with reduced scope requires
   that same explicit owner decision; the implementing agent cannot
   invent the exception. This plan itself authorizes no publication.
+
+### Owner scope amendment PLATFORM-LINUX-WSL-2026-10-08
+
+On 2026-10-08 the owner explicitly removed macOS from product scope: Linux
+machines and WSL are the focus, no future Mac support is expected, and only
+user demand followed by a new owner decision may reopen it. WSL means WSL2's
+Linux execution environment, not native Windows. This is a standing active
+support decision, **not another temporary Mac test waiver**.
+
+For future work this supersedes the Mac-resumption/platform portions of
+`MAC-NATIVE-QUAL-2026-10-02`, `REL-LINUX-FIRST-0441-2026-10-04`,
+`REL-REVIEW-0450` and earlier Mac release exceptions. Their original dates,
+observations, failures, risks and published-release authority remain historical.
+It does not extend their hosted-CI/fuzz exceptions or authorize plan0053's
+separate provider migration. Published tags/payloads are not rewritten.
+
+| Acceptance surface | Active application |
+|---|---|
+| §7/§8; R4/R7 distribution and installation | New release targets, installer admission and advertised channels are Linux-only. Source formula remains Linux; the Mac cask is disabled. Historical Mac artifacts are not current downloads. Existing Linux architecture targets remain required. |
+| R1 Mac confinement; R5/M-V7 Darwin process qualification; R6 native Mac filesystem/persistence portions | Mac-only execution, ARM hardware and Darwin-specific acceptance are out of scope. Every Linux/common source-approval, bounded-process, retained-state, proof and fault-case requirement remains mandatory. The 96 Linux x86_64 persistence partitions remain conjunctive; retired Mac partitions are not passing partitions. |
+| Edition-5 B0-02, E4-02, D2-03 | Wholly Mac requirements are explicitly `out_of_scope` under this amendment, never `verified`. Their IDs, original statuses/transitions, requirements and reports remain intact. |
+| Edition-5 mixed rows and prerequisites | Only `macos`, `macos-arm64`, `macos-vm`, `launchd` lanes and individually identified Mac-only case portions retire. All Linux/common lanes, cases, evidence kinds, proof obligations, prerequisites and global gates remain. B0/B1/E3/etc. are not waived milestones. |
+
+Plan0049 records the exact affected IDs and common-lane case application.
+`verification/delivery.json` names this one amendment; the fixed
+`scripts/delivery_scope.py` projection and protected original inventory make
+unapproved exclusions fail closed. Historical Mac receipts remain inspectable
+but cannot satisfy Linux coverage or inflate a verified count. No implementation
+or milestone became verified solely because the owner retired platform scope.
+The immutable external handover remains untouched historical authority, applied
+repo-locally with this explicit owner amendment.
+
+Integrated verification for the amendment: the rebuilt Compose installer
+suite passed **9/9**, including refusal of a controlled Darwin OS result
+before any HTTP request or replacement of an existing binary. Actual Linux
+installation fetched public0.45.0 and matched the qualified executable
+SHA256 `43338a18a880c5d1b1ae1f69c95d9ae4d4d4560bdfb6b993ac7a7a24fc24b33f`.
+Delivery inventory validation and the scope/closure calibration passed;
+the required-job/persistence admission calibration passed **6 positive /
+188 negative** cases. Synthetic release-assembly calibration preserved the
+exact18-file Linux inventory and rejected missing files, retired Darwin
+payloads, checksum/manifest/license corruption. Both Linux bridge targets
+built twice and matched their existing pins using `dist.sh --check`; no Go
+test/corpus runner was invoked. Changed YAML parsed, shell/Ruby syntax passed,
+and the Conda packager refused a retired Mac target before creating output.
+These focused results neither close unfinished Linux handover milestones nor
+claim a fresh full persistence/prover/hosted-CI/native-Mac campaign.
 
 ### Owner exception MAC-NATIVE-QUAL-2026-10-02
 

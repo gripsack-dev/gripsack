@@ -24,8 +24,6 @@ jobs:
     uses: ./.github/workflows/qualify-conda-helper.yml
     with:
       check_pins: true
-      # Intel is intentionally not shipped until its optional native lane is qualified.
-      include_intel: false
 
   # The BuildKit bridge helper the pinned core provisions lazily:
   # deterministic per-platform artifacts from the pinned Go image,
@@ -43,22 +41,17 @@ jobs:
         with:
           name: dist-bridge
           path: dist/*
-  # Per-platform binaries (linux + macOS, both arch variants — Windows
-  # is out by design, WSL is the story there). The docker musl path
-  # needs no cross config: rust:alpine is multi-arch, so the same
-  # build produces aarch64 musl natively on the arm runner.
+  # Linux/WSL binaries, both architectures. The docker musl path needs
+  # no cross config: rust:alpine is multi-arch, so the same build
+  # produces aarch64 musl natively on the arm runner.
   build:
     needs: [bridge, conda]
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, docker: true }
-          - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, docker: true }
-          # both darwin targets on the arm runner — x86_64 cross-compiles
-          # with the stock Xcode (no macos-13 queue, which can idle 20-60min)
-          - { target: x86_64-apple-darwin, runner: macos-15, cross: true }
-          - { target: aarch64-apple-darwin, runner: macos-15 }
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04 }
+          - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -69,43 +62,16 @@ jobs:
       # the exact artifact users download. Prebuilt installs only —
       # from-source tool builds break on new toolchains (audit.yml's
       # lesson).
-      # Exact toolchain pin (plan/0042 F) for native darwin builds —
-      # the same rustc as the digest-pinned docker builder (1.98.0);
-      # bumps are deliberate (scripts/check_pins.py), never floating.
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
-        if: "!matrix.docker"
-        with:
-          toolchain: "1.98.0"
-          targets: ${{ matrix.target }}
-      - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
-        if: "!matrix.docker"
-        with:
-          tool: cargo-auditable
       - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
         with:
           tool: cargo-audit
       - name: Build (linux musl, docker)
-        if: matrix.docker
         run: |
           docker compose run --build --rm \
             -e "VERSION=${GITHUB_REF_NAME#core-v}" \
             -e "TARGET=${{ matrix.target }}" release
 
-      - name: Build (macOS, native)
-        if: "!matrix.docker"
-        run: |
-          cargo auditable build --release --locked --target ${{ matrix.target }} -p gripsack
-          VERSION="${GITHUB_REF_NAME#core-v}"
-          PKG="gripsack-$VERSION-${{ matrix.target }}"
-          staging="$(mktemp -d)"
-          mkdir -p "$staging/$PKG"
-          install -m755 "target/${{ matrix.target }}/release/grip" "$staging/$PKG/grip"
-          mkdir -p dist
-          tar -czf "dist/$PKG.tar.gz" -C "$staging" "$PKG"
-          (cd dist && shasum -a 256 "$PKG.tar.gz" > "$PKG.tar.gz.sha256")
-
       - name: "Verify binary (linux: must be fully static)"
-        if: matrix.docker
         run: |
           cd dist
           sha256sum -c gripsack-*.tar.gz.sha256
@@ -117,20 +83,6 @@ jobs:
           "$bin" --version
           # fails the release if the SBOM embed is missing or the
           # shipped tree hits an advisory (plan/0022 §2)
-          cargo audit bin "$bin"
-
-      - name: "Verify binary (macOS: system libs only)"
-        if: "!matrix.docker"
-        run: |
-          cd dist
-          shasum -a 256 -c gripsack-*.tar.gz.sha256
-          tmp="$(mktemp -d)"
-          tar -xzf gripsack-*-${{ matrix.target }}.tar.gz -C "$tmp"
-          bin="$(find "$tmp" -type f -name grip | head -1)"
-          file "$bin"
-          otool -L "$bin"
-          python3 ../scripts/check_native_binary.py "$bin"
-          "$bin" --version
           cargo audit bin "$bin"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -153,35 +105,33 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Verify all four tarballs are present
+      - name: Verify exact Linux release inventory and checksums
         run: |
-          ls -la dist/
-          count="$(ls dist/gripsack-*.tar.gz | wc -l)"
-          test "$count" -eq 4 || {
-            echo "::error::expected 4 platform tarballs, got $count"; exit 1; }
-          # the helper assets the pinned core provisions lazily — one
-          # per platform, each exactly matching a compiled-in pin
-          # (proven byte-exact in the bridge job above)
-          count="$(ls dist/grip-buildkit-bridge-* | grep -vc '\.sha256$')"
-          test "$count" -eq 4 || {
-            echo "::error::expected 4 bridge helper artifacts, got $count"; exit 1; }
           python3 - <<'PY'
           import hashlib, json, os
           from pathlib import Path
           version = os.environ["GITHUB_REF_NAME"].removeprefix("core-v")
-          targets = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "aarch64-apple-darwin"}
+          targets = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"}
           dist = Path("dist")
-          expected = {f"gripsack-conda-{version}-{target}" for target in targets}
-          actual = {path.name for path in dist.glob("gripsack-conda-*") if not path.name.endswith((".sha256", ".manifest.json", ".LICENSE-pixi", ".LICENSE-UV-MIT"))}
-          if actual != expected:
-              raise SystemExit(f"Conda assets differ: expected {expected}, got {actual}")
-          for name in sorted(expected):
+          core = {f"gripsack-{version}-{target}.tar.gz" for target in targets}
+          bridge = {f"grip-buildkit-bridge-{version}-{target}" for target in targets}
+          conda = {f"gripsack-conda-{version}-{target}" for target in targets}
+          payloads = core | bridge | conda
+          expected = payloads | {f"{name}.sha256" for name in payloads}
+          expected |= {f"{name}.{suffix}" for name in conda
+                       for suffix in ("manifest.json", "LICENSE-pixi", "LICENSE-UV-MIT")}
+          actual = {path.name for path in dist.iterdir()}
+          if actual != expected or any(not path.is_file() for path in dist.iterdir()):
+              raise SystemExit(f"Release assets differ: missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}")
+          for name in sorted(payloads):
+              digest = hashlib.sha256((dist / name).read_bytes()).hexdigest()
+              if (dist / f"{name}.sha256").read_text() != f"{digest}  {name}\n":
+                  raise SystemExit(f"Release sidecar mismatch: {name}")
+          for name in sorted(conda):
               digest = hashlib.sha256((dist / name).read_bytes()).hexdigest()
               manifest = json.loads((dist / f"{name}.manifest.json").read_text())
               if manifest["asset"] != name or manifest["sha256"] != digest or manifest["reproducible_rounds"] != 2:
                   raise SystemExit(f"Conda measurement manifest mismatch: {name}")
-              if (dist / f"{name}.sha256").read_text() != f"{digest}  {name}\n":
-                  raise SystemExit(f"Conda sidecar mismatch: {name}")
               for suffix, source in (("LICENSE-pixi", "LICENSE"), ("LICENSE-UV-MIT", "LICENSE-UV-MIT")):
                   notice = f"{name}.{suffix}"
                   contents = (dist / notice).read_bytes()
@@ -200,9 +150,7 @@ jobs:
 
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
-          subject-path: |
-            dist/gripsack-conda-*-unknown-linux-musl
-            dist/gripsack-conda-*-apple-darwin
+          subject-path: dist/gripsack-conda-*-unknown-linux-musl
       # crates.io before the GitHub release: it is the irreversible
       # artifact. The guard fails a mistagged release instead of
       # publishing the wrong version.
@@ -280,31 +228,10 @@ jobs:
           sed -i -e "s|gripsack-[0-9.]*\.crate|gripsack-$ver.crate|" \
                  -e "s|sha256 \"[0-9a-f]*\"|sha256 \"$sha\"|" \
                  /tmp/tap/Formula/gripsack.rb
-          # the cask: prebuilt per-arch binaries (no rust toolchain on
-          # the user's machine — the better macOS path, uv/pixi-class)
-          mkdir -p /tmp/tap/Casks
-          sha_arm="$(cut -d' ' -f1 "dist/gripsack-$ver-aarch64-apple-darwin.tar.gz.sha256")"
-          sha_x64="$(cut -d' ' -f1 "dist/gripsack-$ver-x86_64-apple-darwin.tar.gz.sha256")"
-          cat > /tmp/tap/Casks/gripsack.rb <<EOF
-          cask "gripsack" do
-            version "$ver"
-
-            arch arm: "aarch64", intel: "x86_64"
-            sha256 arm: "$sha_arm", intel: "$sha_x64"
-
-            url "https://github.com/gripsack-dev/gripsack/releases/download/core-v#{version}/gripsack-#{version}-#{arch}-apple-darwin.tar.gz"
-            name "gripsack"
-            desc "your whole environment in one bag"
-            homepage "https://gripsack.dev"
-
-            binary "gripsack-#{version}-#{arch}-apple-darwin/grip", target: "grip"
-          end
-          EOF
-
           cd /tmp/tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/gripsack.rb Casks/gripsack.rb
+          git add Formula/gripsack.rb
           git commit -m "gripsack $ver"
           git push "https://x-access-token:${GH_TOKEN}@github.com/gripsack-dev/homebrew-tap.git" HEAD:main
 
