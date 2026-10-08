@@ -37,6 +37,8 @@ verus! {
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExToolchain(ToolchainReference);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExOutputKind(RecipeOutputKind);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExLayout(CatalogPackageLayout);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExHostRuntimeRequirements(HostRuntimeRequirements);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExCondaSystemRequirements(CondaSystemRequirements);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExContext(TaskContext);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExCalendar(WorkspaceCalendar);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExScope(ScheduleScope);

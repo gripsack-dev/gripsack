@@ -3555,3 +3555,42 @@ policy gate continues without that outer deadline. Final Rust/helper gates,
 these remaining campaigns, registry/public artifact/default-helper consumers,
 and live site verification remain release requirements.
 
+Completed final-source flow qualification:
+`/tmp/gs0460-flow-20261008T195958Z/summary.json` records **555 passed,
+zero failed/errors/skipped**, with a complete39-file inventory excluding
+golden/corpus and persistence. It joins545 fresh per-file JUnit outcomes
+with the already-passing exact-image10-case installer receipt; the current
+13-case GNU suite also passed. Every container bound source `d2161a0` and
+image `sha256:958b5d45a02fe1e7e3b93674ec3a40654e0578f64bfa235c01315a7b5939ac26`.
+The final-source Compose Rust/helper/calibration gate also passed after
+the x86-only pin change. All11 complete documentation examples passed again
+with the **promoted** core and packed SDK; four fragments remain classified.
+Policy calibration and the separate96-partition persistence campaign remain
+pending; the interrupted serial run is not used to fill either gap.
+
+Policy/collector proof completion: the combined run verified **444 policy
+obligations** and all **92** attributed policy calibrations, including refusal
+of an unrelated lemma as classifier evidence. Its next collector step exposed
+missing Verus datatype specifications for the two new metadata leaves.
+`workspace_model/graph/spec.rs` now gives `HostRuntimeRequirements` and
+`CondaSystemRequirements` the same opaque-leaf treatment as existing metadata:
+neither contains catalog/input references. No collector implementation,
+theorem, floor or completeness condition was weakened. This file is loaded
+only under `cfg(verus_keep_ghost)`; ordinary runtime code is unchanged.
+
+The failed collector step alone was resumed through the existing
+`check_collector_verus.py` in the pinned Verus0.2026.09.06/Rust1.98 tooling
+image. It verified **30 obligations** and rejected all **four** named collector
+mutants with the required attribution. This joins the completed policy
+evidence above; the initially failed Compose invocation is not relabelled
+successful, and its already-completed92 calibrations were not rerun.
+
+Persistence infrastructure incident: at2026-10-08T21:11:20Z, Docker recorded
+explicit `kill` events with signal9 for eight independent `apply-deploy-kill`
+containers. Their `OOMKilled` flags were false; healthy cut/recovery progress
+preceded the interruption. The API caller is unidentified. The containers
+inherited the source image's shared Compose project/service labels, so isolated
+ownership labels are required for subsequent attempts. Interrupted partitions
+are not passing receipts; their raw states/logs remain preserved while the
+complete inventory is finished.
+
