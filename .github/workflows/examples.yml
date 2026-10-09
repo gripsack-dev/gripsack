@@ -20,8 +20,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: gripsack-dev/example-env-typescript
-          # Frozen caller lock explicitly migrated to the published 0.45.0 frontend.
-          ref: 5d2c4340404744ca527d9347ba673180aafb3a40
+          # Frozen caller lock explicitly migrated to the published 0.46.0 frontend.
+          ref: 4d6590d8a1326bbd63562dd428651fd796a12989
           path: example
 
       - name: Build grip (static musl)
@@ -71,10 +71,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p "$HOME"
-          # the example's own node_modules/@gripsack/core (installed
-          # above for the typecheck) shadows the embedded copy — the
-          # deliberate-pin rule; that's what makes a pre-release PR
-          # exercise the in-repo frontend
+          # The published SDK installed by npm ci shadows the candidate core's
+          # embedded copy. This deliberate pin checks the real external caller;
+          # the separate frontend gate covers in-repository SDK changes.
           cd example
           approve_fixture() {
             source="$("$GRIP" trust inspect --json)"

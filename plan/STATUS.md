@@ -785,8 +785,11 @@ The promoted0.46 core/helper bytes passed real native and frozen-consumer
 qualification on modern glibc and UBI8/glibc2.28, including retained-v6 rollback.
 Local gates are complete:555 flows, all96 persistence partitions, policy and
 collector proofs/calibrations, transaction induction, exact artifact/pin
-verification, audits and all14 package dry runs. Publication/public consumers
-remain open;0.46 is not yet announced.
+verification, audits and all14 package dry runs. PR184 merged at8180529;
+both0.46 tags, all14 Cargo crates, npm SDK and nine native assets are public.
+Published/default-helper and helper-absent offline consumers passed; Example
+PR5, live Pages37871457865, the byte-matched live installer and Tap PR4 are
+verified within their recorded scope. Plan0048§18 retains the full evidence.
 
 `PLATFORM-LINUX-X64-2026-10-09` makes Linux/WSL x86_64 the standing scope;
 ARM, macOS and native Windows remain unavailable, not emulated or inherited
