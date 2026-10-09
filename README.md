@@ -153,12 +153,11 @@ and [migration](https://gripsack.dev/docs/workspace-migration.html) contain the
 complete recipes and staging/approval boundaries.
 
 Linux x86_64 Conda/Pixi native and OCI journeys have runtime qualification.
-The supported platform scope is Linux and WSL under the owner's
-`PLATFORM-LINUX-WSL-2026-10-08` decision. macOS, its VM backend, launchd and
-native Mac Conda qualification are outside the active roadmap, CI and future
-release targets; revisiting them requires a new explicit support decision.
+The standing product scope is **Linux and WSL2 on x86_64 only**, under
+`PLATFORM-LINUX-X64-2026-10-09`. ARM, macOS and native Windows are outside
+the active scope; expansion requires a later explicit owner decision.
 Historical platform metadata/readers and release evidence retain their original
-meaning, without implying current Mac support.
+meaning, without implying current support.
 
 The **0.46.0** release target is Linux x86_64/WSL, including its native
 Conda and BuildKit helpers. ARM artifacts are unavailable in this release,

@@ -912,6 +912,25 @@ the separate CI/BuildKit/local-build workflow redesign.
   A subsequent ARM release needs actual qualification and a deliberate
   expansion of the artifact/pin inventory.
 
+### Standing owner scope PLATFORM-LINUX-X64-2026-10-09
+
+After selecting the x86-first0.46 release, the owner made the target decision
+standing: only Linux/WSL on x86_64 is needed. ARM, macOS and native Windows
+are outside active scope; future expansion may be landed after a new owner
+decision, not maintained as a current release blocker or passing claim.
+This supersedes the earlier “retain Linux aarch64” portions of the platform
+amendment and the temporary-only interpretation of `REL-X64-FIRST-0460`.
+The current0.46 artifact inventory was already x86-only; no Linux/common
+proof, runtime or96-partition persistence obligation is withdrawn.
+
+The owner requested the shared Buildbot/owned-worker migration **after0.46**
+and the external migration are unblocked. Its authoritative research is
+`../SHARED-BUILDBOT-CI-PLAN.md`; the older0053 snapshot is historical input,
+not a prohibition on the newly requested implementation. Controller/worker,
+durable candidate state, qualified owner bundles and optional publication
+belong to that next work. No infrastructure deployment or migration completion
+is claimed by this support decision.
+
 ### Owner exception MAC-NATIVE-QUAL-2026-10-02
 
 The owner explicitly authorized disabling blocking Mac tests temporarily and
