@@ -3458,11 +3458,11 @@ remain separate domains.
 | UP46.2 | Migration guide requires a separately approved and applied legacy prune before workspace ownership; explains temporary absence and `--take-over` limits | **verified** — stable0.45 legacy generation1 → applied empty generation2 → workspace generation3; actual ownership/file transitions, no takeover or manual unlink |
 | UP46.3 | `conda.environment.systemRequirements` drives selected solve virtuals, is recorded/bound in frozen state, and cannot be changed or forged silently | **verified at candidate source** — real protocol3 helper/local HTTPS solve records2.28/4.18 instead of updater2.41/6.18; changed-policy frozen consumers refuse, explicit update restores them; actual too-low solve refuses; unchanged42-archive implicit lock executes on glibc2.28 |
 | UP46.4 | Document physical sibling-layout loss under per-file artifactTree symlinks and a working trackedCopyTo release-tree pattern | **verified** — actual sibling-loading executable works under tracked copy; complete published-code card accepted by candidate packaged SDK and real core |
-| UP46.5a | Document required MatchSpec operators rather than accepting an ambiguous bare version | implemented in pending website changes |
+| UP46.5a | Document required MatchSpec operators rather than accepting an ambiguous bare version | **published** — operator meanings, bare-version refusal and exact-archive lock distinction are live |
 | UP46.5b | Retain explicit `xorg-libx11` closure guidance and fail-closed missing-library behavior | externally reconfirmed; no default behavior change requested |
 | UP46.5c | State activation contract and prove any existing profile-managed executable-file launcher; no invented dedicated helper or delivery promise | **verified** — stable0.45 managed executable Node26.10.0 launcher, clean noninteractive cwd/PATH and rollback; candidate packaged-SDK full card accepted |
 | UP46.5d | State producer-specific cross-filesystem staging/publication guarantees and whether TMPDIR override is necessary | **verified at shared publication owner** — real native Conda/Pixi, separate temp/store devices, TMPDIR unset; 42 exact archives and stable retained prefixes, no demonstrated core-owned EXDEV defect |
-| UP46.REL | Matching release, all affected callers/docs and honest source/artifact-bound verification | **locally qualified; publication pending** — reproducible promoted bytes, all555 flows and96 persistence partitions, policy/collector/TLAPS evidence, exact helper pins, audits and package preflight complete; registry/public consumers/site remain |
+| UP46.REL | Matching release, all affected callers/docs and honest source/artifact-bound verification | **published and verified** — PR184 merged; immutable0.46 core/SDK tags, all14 Cargo crates, matching npm package and exact9 native assets public; installed/default-helper/offline consumers and live site/installer verified below |
 
 ### Candidate runtime and documentation evidence
 
@@ -3630,4 +3630,67 @@ The source difference after runtime qualification is documentation plus the
 ghost-only collector datatype specifications described above. No promoted
 executable was rebuilt or substituted. All local release requirements are
 complete; publication and actual public consumers remain the next boundary.
+
+### Published0.46.0 result — 2026-10-09
+
+[PR184](https://github.com/gripsack-dev/gripsack/pull/184) merged at
+`81805290d8ea24f714ece855d1ed8a2e8d2a88a5`; immutable `core-v0.46.0` and
+`ts-v0.46.0` both bind that source. Relative to qualified runtime `d2161a0`,
+the tagged tree changes only documentation and the ghost-only collector
+datatype specifications. The promoted `cb358c86…a23c` executable was not
+rebuilt or substituted.
+
+All14 Cargo crates compiled and published in Cargo's dependency order before
+the public core announcement. A root-with-dropped-capabilities attempt could
+not read the operator-owned mode0600 credential and uploaded nothing; the
+successful publisher ran as UID1000 with only that credential file mounted
+read-only, private HOME/Cargo state and no Docker socket. The downloaded
+`gripsack-0.46.0.crate` matches the sparse-index SHA256
+`c6bfff5cc447879dcc350c615dc4640da02b95c9078b43185190d57e8acaa855`;
+its VCS receipt names the tagged source and includes the initializer dotfile.
+
+SDK [publisher37870597688](https://github.com/gripsack-dev/gripsack/actions/runs/37870597688)
+succeeded on an isolated one-job local worker. The actual npm package reports
+gitHead8180529 and is byte-identical to the qualified SDK tarball.
+[Core release407409045](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.46.0)
+published the exact nine staged x86_64 assets; each server digest/size matched
+the measured inventory before announcement.
+
+[Example PR5](https://github.com/gripsack-dev/example-env-typescript/pull/5)
+merged at `4d6590d8a1326bbd63562dd428651fd796a12989`. Clean `npm ci` and
+TypeScript checking consumed the public SDK. A fresh UID1000 Ubuntu24.04
+journey installed the public core, applied/satisfied all six legacy modules
+and executed their tools, then explicitly updated the native Conda baseline
+to2.28/4.18. All four archive identities and legacy pins stayed unchanged.
+Default public helper acquisition measured `d88c77dd…f15a`, with no private
+helper override. Check/build/run/task/profile/shell/GC passed. A separate
+network-disabled, helper-absent run preserved lock bytes and prefix
+contents/modes/inodes/mtime; the actual production canary shell also passed
+its filtered-stdin output, JSON build, actual GC and lock-preservation checks.
+Offline qualification is for that coherent Conda path: a separate attempted
+offline legacy check needed plugin metadata network access, and its failed
+receipt remains recorded before successful online final-source revalidation.
+
+[Website PR25](https://github.com/gripsack-dev/gripsack-dev.github.io/pull/25)
+merged at `ea3bba667827bee71b27798015510fdae3f19879`.
+[Pages37871457865](https://github.com/gripsack-dev/gripsack-dev.github.io/actions/runs/37871457865)
+passed the public-artifact example gate and deployment using two isolated
+one-job local workers. Real Chromium inspection confirmed live0.46 guidance,
+the frontend-lock refresh recipe and all four changed pages fitting390px.
+The live installer SHA256
+`14d997f425a90a131160a86ba3f936d8e0029f50c90a834002fd9b0c00830bb9`
+selected0.46 and installed the exact promoted executable as UID1000.
+[Tap PR4](https://github.com/gripsack-dev/homebrew-tap/pull/4) merged the
+verified public crate checksum and x86_64 architecture guard; Ruby syntax
+passed, but no native Homebrew-install claim is made.
+
+All three local publisher registrations/containers were removed and browser
+tabs closed. The eight stopped interrupted-test containers were removed only
+after their evidence and successful retries were retained. Bounded raw logs,
+receipts, reproduced commands and artifact copies are retained privately at
+`/home/tarek/workspace/release-evidence/gripsack/0.46.0/` with a hashed manifest;
+public artifact copies also remain on GitHub/registries. Source-controlled
+gate/prover caches and raw trace dumps were not added. No fuzz/corpus, ARM,
+macOS, native Windows, private el9-kernel, physical-power-loss or hosted-build
+attestation claim was manufactured.
 
