@@ -3462,7 +3462,7 @@ remain separate domains.
 | UP46.5b | Retain explicit `xorg-libx11` closure guidance and fail-closed missing-library behavior | externally reconfirmed; no default behavior change requested |
 | UP46.5c | State activation contract and prove any existing profile-managed executable-file launcher; no invented dedicated helper or delivery promise | **verified** — stable0.45 managed executable Node26.10.0 launcher, clean noninteractive cwd/PATH and rollback; candidate packaged-SDK full card accepted |
 | UP46.5d | State producer-specific cross-filesystem staging/publication guarantees and whether TMPDIR override is necessary | **verified at shared publication owner** — real native Conda/Pixi, separate temp/store devices, TMPDIR unset; 42 exact archives and stable retained prefixes, no demonstrated core-owned EXDEV defect |
-| UP46.REL | Matching release, all affected callers/docs and honest source/artifact-bound verification | pending — candidate runtime/docs evidence below; final pins, release-artifact qualification, publication and public consumers remain |
+| UP46.REL | Matching release, all affected callers/docs and honest source/artifact-bound verification | **locally qualified; publication pending** — reproducible promoted bytes, all555 flows and96 persistence partitions, policy/collector/TLAPS evidence, exact helper pins, audits and package preflight complete; registry/public consumers/site remain |
 
 ### Candidate runtime and documentation evidence
 
@@ -3612,4 +3612,22 @@ inherited the source image's shared Compose project/service labels, so isolated
 ownership labels are required for subsequent attempts. Interrupted partitions
 are not passing receipts; their raw states/logs remain preserved while the
 complete inventory is finished.
+
+Final persistence admission completed on2026-10-09. The unmodified
+`check_ci_gate.py::admit_persistence` accepted all **96** source/image-bound
+receipts in `/tmp/gs0460-persistence-d2161a0`: **4692 fault cuts,
+9384 drift cases and18768 recovery invocations**. Measured scenario inventories
+were430/438/284/296/448/450 cuts. All eight externally interrupted attempts
+remain preserved and excluded; fresh complete retries passed under distinct
+Compose ownership labels. Already-live containers were adopted without
+rewriting their original invocation records. Resumed concurrency was explicitly
+bounded at12 with unchanged2-CPU/2-GiB container limits and120-second CLI
+deadlines. No oracle, cut or drift state was omitted.
+
+Final delivery inventory/closure validation, dependency-direction calibration
+and complete-gate admission calibration (**6 positive /188 negative**) passed.
+The source difference after runtime qualification is documentation plus the
+ghost-only collector datatype specifications described above. No promoted
+executable was rebuilt or substituted. All local release requirements are
+complete; publication and actual public consumers remain the next boundary.
 

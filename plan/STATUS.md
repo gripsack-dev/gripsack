@@ -781,14 +781,18 @@ and producer-specific cross-filesystem staging. The selected implementation
 keeps sealed package admission and existing ownership rules, rather than using
 unsealed execution or take-over as a shortcut. Strict v7 emission and preserved
 v6 execution/retained-state semantics are required for new declaration fields.
-The host-runtime and native-baseline paths now have candidate-source execution
-evidence, including actual glibc2.28, frozen-policy refusals and retained v6
-rollback. Final release qualification/publication remains open;0.46 is not
-published. The owner selected `REL-X64-FIRST-0460-2026-10-08`: prebuilt
-core/native helpers are Linux x86_64/WSL only for this release; ARM remains
-unavailable, not emulated or inherited as passing. Mac stays out of scope,
-and no fuzz/corpus replay is authorized. CI/BuildKit/local-build workflow
-redesign remains separate until after0.46 and the external migration.
+The promoted0.46 core/helper bytes passed real native and frozen-consumer
+qualification on modern glibc and UBI8/glibc2.28, including retained-v6 rollback.
+Local gates are complete:555 flows, all96 persistence partitions, policy and
+collector proofs/calibrations, transaction induction, exact artifact/pin
+verification, audits and all14 package dry runs. Publication/public consumers
+remain open;0.46 is not yet announced.
+
+`PLATFORM-LINUX-X64-2026-10-09` makes Linux/WSL x86_64 the standing scope;
+ARM, macOS and native Windows remain unavailable, not emulated or inherited
+as passing. No fuzz/corpus replay is authorized. The owner requested the shared
+Buildbot/BuildKit/local-build migration after0.46; its plan and target-scope
+cutover are next, not additional changes to this release's runtime.
 
 ## Settled rejections (all eras)
 
