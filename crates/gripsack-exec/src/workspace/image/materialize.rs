@@ -10,7 +10,7 @@ use crate::{
         selection::Selection,
     },
 };
-use gripsack_ir::workspace_v6::ImageOutput;
+use gripsack_ir::workspace_model::ImageOutput;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
 

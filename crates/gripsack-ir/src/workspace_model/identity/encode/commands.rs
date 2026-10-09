@@ -1,5 +1,5 @@
 use super::{CommandPins, Encoder, PinGap};
-use crate::workspace_v6::{
+use crate::workspace_model::{
     WorkspaceAction, WorkspaceArg, WorkspaceCommand, WorkspacePath, WorkspaceStep,
 };
 
@@ -128,9 +128,9 @@ fn argument(writer: &mut Encoder, value: &WorkspaceArg, pins: &CommandPins) -> R
             writer.field(pin.package.bytes());
             writer.text(&pin.selector);
             match pin.executable {
-                crate::workspace_v6::identity::ToolExecutable::Captured(executable) => {
+                crate::workspace_model::identity::ToolExecutable::Captured(executable) => {
                     if let Some(claim) = sha256
-                        && crate::workspace_v6::identity::ExecutableDigest::parse(claim)?
+                        && crate::workspace_model::identity::ExecutableDigest::parse(claim)?
                             != executable
                     {
                         return Err(PinGap::ToolMismatch);
@@ -138,7 +138,7 @@ fn argument(writer: &mut Encoder, value: &WorkspaceArg, pins: &CommandPins) -> R
                     writer.field(b"captured-executable");
                     writer.field(executable.bytes());
                 }
-                crate::workspace_v6::identity::ToolExecutable::Produced(production) => {
+                crate::workspace_model::identity::ToolExecutable::Produced(production) => {
                     writer.field(b"produced-executable");
                     writer.field(production.bytes());
                     writer.optional(sha256);

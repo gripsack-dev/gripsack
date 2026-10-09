@@ -20,7 +20,7 @@ impl Ir {
                     span: output.span(),
                 })
             })
-            .chain(self.workspace_v6.iter().flat_map(|workspace| {
+            .chain(self.workspace_catalog.iter().flat_map(|workspace| {
                 workspace.outputs.iter().map(|output| CatalogOutput {
                     name: output.name(),
                     kind: output.kind(),

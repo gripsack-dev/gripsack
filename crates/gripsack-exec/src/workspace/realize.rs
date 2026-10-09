@@ -11,7 +11,7 @@ use crate::{Ctx, ExecError, LifecycleSession};
 use gripsack_buildkit::worker::WorkerOptions;
 use gripsack_ir::{
     Ir,
-    workspace_v6::{
+    workspace_model::{
         WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspaceProducer, WorkspaceStep,
         identity::ExecutableDigest,
     },
@@ -57,7 +57,7 @@ pub fn build_workspace(
     options: &BuildOptions<'_>,
 ) -> Result<BuildResult, ExecError> {
     let workspace = ir
-        .workspace_v6
+        .workspace_catalog
         .as_ref()
         .ok_or_else(|| failure("build requires a current typed workspace"))?;
     let selection = super::selection::Selection::admit(workspace, &ctx.only)?;

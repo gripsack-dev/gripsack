@@ -1,6 +1,6 @@
 //! Deterministic conda-meta bytes: complete frozen record, installed paths and
 //! final destination, reconstructed from lock/archive authority, not helper output.
-use gripsack_ir::workspace_v6::lock::LockedCondaPackage;
+use gripsack_ir::workspace_model::lock::LockedCondaPackage;
 use rattler_conda_types::package::DistArchiveIdentifier;
 use serde::Serialize;
 use std::{

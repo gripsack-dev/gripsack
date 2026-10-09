@@ -1,4 +1,4 @@
-//! Conda helper wire protocol v2: one bounded transaction per process.
+//! Conda helper wire protocol v3: one bounded transaction per process.
 //!
 //! Length-prefixed JSON frames over stdio: an 8-byte little-endian `u64`
 //! length followed by that many bytes of UTF-8 JSON. Every message type uses
@@ -13,11 +13,13 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
 
-use gripsack_ir::workspace_v6::lock::{LockedCondaEnvironment, LockedVirtualPackage};
+use gripsack_ir::workspace_model::lock::{
+    LockedCondaEnvironment, LockedCondaSystemRequirements, LockedVirtualPackage,
+};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// The only protocol version this crate speaks.
-pub const PROTOCOL_VERSION: u64 = 2;
+pub const PROTOCOL_VERSION: u64 = 3;
 pub const FRAME_HEADER_BYTES: usize = std::mem::size_of::<u64>();
 
 /// Hard cap on one request frame: 32 MiB, i.e. 2× the portable lock cap
@@ -72,7 +74,7 @@ impl<T> Message<T> {
     }
 }
 
-/// `resolve` request: solve a conda closure from channels and host facts.
+/// `resolve` request: solve from channels and baseline-adjusted virtual facts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResolveRequest {
@@ -81,8 +83,10 @@ pub struct ResolveRequest {
     pub packages: BTreeMap<String, String>,
     /// Conda subdir, e.g. "linux-64".
     pub platform: String,
-    /// Host facts measured by the core.
+    /// Core-measured facts, with explicitly declared floors substituted.
     pub virtual_packages: Vec<LockedVirtualPackage>,
+    /// Exact declared floors; required even when empty.
+    pub system_requirements: LockedCondaSystemRequirements,
 }
 
 /// `import_pixi` request: import a captured pixi manifest + lock pair.
@@ -364,8 +368,58 @@ mod tests {
     use super::*;
 
     #[test]
+    fn resolve_protocol_requires_and_preserves_declared_system_policy() {
+        let declared: gripsack_ir::workspace_model::CondaSystemRequirements =
+            serde_json::from_value(serde_json::json!({
+                "libc":{"family":"glibc","version":"2.28"}, "linux":"4.18"
+            }))
+            .unwrap();
+        let request = Request::Resolve(ResolveRequest {
+            attempt: 7,
+            channels: vec!["conda-forge".into()],
+            packages: BTreeMap::from([("python".into(), "*".into())]),
+            platform: "linux-64".into(),
+            virtual_packages: vec![
+                LockedVirtualPackage {
+                    name: "__glibc".into(),
+                    version: "2.28".into(),
+                    build: "0".into(),
+                },
+                LockedVirtualPackage {
+                    name: "__linux".into(),
+                    version: "4.18".into(),
+                    build: "0".into(),
+                },
+            ],
+            system_requirements: declared.locked().unwrap(),
+        });
+        let mut frame = Vec::new();
+        write_request_frame(&mut frame, &request).unwrap();
+        assert_eq!(
+            read_request_frame(&mut frame.as_slice()).unwrap().unwrap(),
+            request
+        );
+        let mut wire = serde_json::to_value(Message {
+            protocol: PROTOCOL_VERSION,
+            payload: request,
+        })
+        .unwrap();
+        wire["payload"]
+            .as_object_mut()
+            .unwrap()
+            .remove("system_requirements");
+        let raw = serde_json::to_vec(&wire).unwrap();
+        let mut frame = (raw.len() as u64).to_le_bytes().to_vec();
+        frame.extend_from_slice(&raw);
+        assert!(matches!(
+            read_request_frame(&mut frame.as_slice()),
+            Err(FrameError::Malformed(_))
+        ));
+    }
+
+    #[test]
     fn unknown_fields_are_rejected() {
-        let raw = br#"{"protocol":2,"payload":{"kind":"resolve","attempt":1,"channels":[],"packages":{},"platform":"linux-64","virtual_packages":[],"bogus":1}}"#;
+        let raw = br#"{"protocol":3,"payload":{"kind":"resolve","attempt":1,"channels":[],"packages":{},"platform":"linux-64","virtual_packages":[],"system_requirements":{},"bogus":1}}"#;
         let mut frame = Vec::new();
         frame.extend_from_slice(&(raw.len() as u64).to_le_bytes());
         frame.extend_from_slice(raw);
@@ -377,12 +431,12 @@ mod tests {
 
     #[test]
     fn unsupported_versions_and_extra_response_frames_are_refused() {
-        let request = br#"{"protocol":1,"payload":{"kind":"resolve","attempt":1,"channels":[],"packages":{},"platform":"linux-64","virtual_packages":[]}}"#;
+        let request = br#"{"protocol":2,"payload":{"kind":"resolve","attempt":1,"channels":[],"packages":{},"platform":"linux-64","virtual_packages":[],"system_requirements":{}}}"#;
         let mut frame = (request.len() as u64).to_le_bytes().to_vec();
         frame.extend_from_slice(request);
         assert!(matches!(
             read_request_frame(&mut frame.as_slice()),
-            Err(FrameError::Version(1))
+            Err(FrameError::Version(2))
         ));
         let response = Response::Error(ErrorResponse {
             attempt: Some(1),

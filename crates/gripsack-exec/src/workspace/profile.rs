@@ -7,7 +7,7 @@ use super::{
 use crate::{Ctx, ExecError, LifecycleSession};
 use gripsack_ir::{
     Diagnostic, Ir, Span, codes,
-    workspace_v6::{ProfileOutput, WorkspaceOutput, WorkspaceSource},
+    workspace_model::{ProfileOutput, WorkspaceOutput, WorkspaceSource},
 };
 use std::time::Instant;
 
@@ -22,7 +22,7 @@ impl NativeProfiles {
         limits: gripsack_fetch::FetchLimits,
     ) -> Result<Option<Self>, ExecError> {
         let mut origins = std::collections::BTreeSet::new();
-        if let Some(workspace) = &ir.workspace_v6 {
+        if let Some(workspace) = &ir.workspace_catalog {
             for output in &workspace.outputs {
                 if !selected.is_empty() && !selected.iter().any(|name| name == output.name()) {
                     continue;
@@ -63,7 +63,7 @@ pub(crate) fn prepare_apply(
     ir: &Ir,
     ctx: &Ctx,
 ) -> Result<Option<(LifecycleSession, NativeProfiles)>, ExecError> {
-    let Some(workspace) = &ir.workspace_v6 else {
+    let Some(workspace) = &ir.workspace_catalog else {
         return Ok(None);
     };
     let mut selected = Vec::new();

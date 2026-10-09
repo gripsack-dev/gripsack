@@ -5,7 +5,7 @@ use crate::workspace::{
     consumer::{self, admit},
     realize::Realization,
 };
-use gripsack_ir::workspace_v6::{
+use gripsack_ir::workspace_model::{
     WorkspaceArg, WorkspaceCommand, WorkspacePath, identity::PackageDigest,
 };
 use gripsack_process::ProgramIdentity;

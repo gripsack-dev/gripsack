@@ -5,7 +5,7 @@
 //! (hashed) and provenance (spans, line maps, labels — never hashed).
 //!
 //! Production binding: the v6 identity encoder
-//! (gripsack-ir/src/workspace_v6/identity) frames every field through
+//! (gripsack-ir/src/workspace_model/identity) frames every field through
 //! `FrameBuffer` and normalizes every unordered collection (environment
 //! maps, unordered string sets, mutation locks) through
 //! `canonical_entries`, so these theorems bind the shipped digests.
@@ -110,7 +110,7 @@ pub proof fn lemma_encode_frames_injective(a: Seq<Seq<u8>>, b: Seq<Seq<u8>>)
 
 /// The 8-byte length header a field of `length` bytes carries — the
 /// exact bytes the streaming production encoder (`Encoder::field`,
-/// gripsack-ir/src/workspace_v6/identity/encode.rs) feeds the hash
+/// gripsack-ir/src/workspace_model/identity/encode.rs) feeds the hash
 /// before each payload. Zero allocation: the header is computed in
 /// place and the caller streams it straight into SHA-256.
 pub fn length_header(length: u64) -> (result: [u8; 8])

@@ -6,6 +6,8 @@ import type { Fetch } from "../fetch.ts";
 import { callerSpan } from "../module.ts";
 import type { Span } from "../module.ts";
 import type {
+  CondaSystemRequirements,
+  HostRuntimeRequirements,
   WorkspaceArg,
   WorkspaceCalendar,
   WorkspaceCommand,
@@ -15,7 +17,7 @@ import type {
   WorkspacePath,
   WorkspaceProducer,
   WorkspaceSource,
-  WorkspaceSourceV6,
+  AcquisitionSource,
 } from "./ir.ts";
 import { asPlatform } from "./target.ts";
 
@@ -399,7 +401,7 @@ export function asProducer(v: unknown, where: string): WorkspaceProducer {
     rejectUnknownFields(where, rec, ["kind", "provider"]);
     return {
       kind: "provider",
-      provider: asSourceV6(rec.provider, `${where}.provider`),
+      provider: asAcquisitionSource(rec.provider, `${where}.provider`),
     };
   }
   throw new Error(`${where}: producer must be a recipe output name or provider(fetch(...))`);
@@ -413,10 +415,54 @@ export function asFetch(v: unknown, where: string): Fetch {
   return v as Fetch;
 }
 
-/** A v6 acquisition source — the tagged union behind `RecipeNode.source`
+/** Validate the shared public/wire baseline without supplying host-derived defaults. */
+export function asSystemRequirements(v: unknown, where: string): CondaSystemRequirements {
+  const rec = asRecord(v, where);
+  rejectUnknownFields(where, rec, ["libc", "linux"]);
+  const version = (value: unknown, field: string): string => {
+    if (typeof value !== "string" || !/^[0-9]+(?:\.[0-9]+)*(?![\s\S])/.test(value)) {
+      throw new Error(`${field} must be a decimal dot-separated version`);
+    }
+    return value;
+  };
+  let libc: CondaSystemRequirements["libc"];
+  if (rec.libc !== undefined) {
+    const value = asRecord(rec.libc, `${where}.libc`);
+    rejectUnknownFields(`${where}.libc`, value, ["family", "version"]);
+    if (value.family !== "glibc") throw new Error(`${where}.libc.family must be "glibc"`);
+    libc = { family: "glibc", version: version(value.version, `${where}.libc.version`) };
+  }
+  return {
+    ...(libc !== undefined ? { libc } : {}),
+    ...(rec.linux !== undefined ? { linux: version(rec.linux, `${where}.linux`) } : {}),
+  };
+}
+
+/** Lower package-only host authority, preserving declared search order. */
+export function asHostRuntime(v: unknown, where: string): HostRuntimeRequirements {
+  const rec = asRecord(v, where);
+  rejectUnknownFields(where, rec, ["libraryDirectories"]);
+  const directories = rec.libraryDirectories;
+  if (!Array.isArray(directories) || directories.length === 0) {
+    throw new Error(`${where}.libraryDirectories must be a non-empty array`);
+  }
+  const seen = new Set<string>();
+  for (const directory of directories) {
+    if (typeof directory !== "string" || !directory.startsWith("/") ||
+      /[\\:;$\x00-\x1f\x7f]/.test(directory) ||
+      directory.slice(1).split("/").some((part) => part === "" || part === "." || part === "..")) {
+      throw new Error(`${where}.libraryDirectories must contain normalized absolute Linux directories other than "/"`);
+    }
+    if (seen.has(directory)) throw new Error(`${where}.libraryDirectories contains duplicate directory "${directory}"`);
+    seen.add(directory);
+  }
+  return { library_directories: [...directories] };
+}
+
+/** An acquisition source — the tagged union behind `RecipeNode.source`
  *  and the provider branch of {@link WorkspaceProducer}. The legacy bare
  *  `{fetch,span}` shape and the brew/pixi fetch kinds are rejected. */
-export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
+export function asAcquisitionSource(v: unknown, where: string): AcquisitionSource {
   const rec = asRecord(v, where);
   if (rec.kind === "fetch") {
     rejectUnknownFields(where, rec, ["kind", "fetch", "span"]);
@@ -427,10 +473,10 @@ export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
       );
     }
     asSpan(rec.span, where);
-    return v as WorkspaceSourceV6;
+    return v as AcquisitionSource;
   }
   if (rec.kind === "conda_environment") {
-    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "span"]);
+    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "span"]);
     const channels = rec.channels;
     if (!Array.isArray(channels) || channels.length === 0 ||
       channels.some((c) => typeof c !== "string" || c === "")) {
@@ -451,10 +497,18 @@ export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
     }
     if (rec.platforms !== undefined) {
       if (!Array.isArray(rec.platforms)) throw new Error(`${where}.platforms must be an array`);
-      rec.platforms.forEach((p, i) => asPlatform(p, `${where}.platforms[${i}]`));
+      rec.platforms.forEach((p, i) => {
+        const platform = asPlatform(p, `${where}.platforms[${i}]`);
+        if (rec.system_requirements !== undefined && platform.os !== "linux") {
+          throw new Error(`${where}.system_requirements supports only Linux platforms`);
+        }
+      });
+    }
+    if (rec.system_requirements !== undefined) {
+      asSystemRequirements(rec.system_requirements, `${where}.system_requirements`);
     }
     asSpan(rec.span, where);
-    return v as WorkspaceSourceV6;
+    return v as AcquisitionSource;
   }
   if (rec.kind === "pixi_lock") {
     rejectUnknownFields(where, rec, ["kind", "manifest", "lock", "environment", "span"]);
@@ -462,7 +516,7 @@ export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
     asName(rec.lock, `${where}.lock`);
     asName(rec.environment, `${where}.environment`);
     asSpan(rec.span, where);
-    return v as WorkspaceSourceV6;
+    return v as AcquisitionSource;
   }
   throw new Error(`${where}: source kind must be "fetch", "conda_environment" or "pixi_lock"`);
 }

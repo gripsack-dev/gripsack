@@ -121,6 +121,9 @@ enum Command {
     Shell(commands::ShellArgs),
     /// Invoke a named development task once (no generation)
     Task(commands::TaskArgs),
+    /// Execute an exact retained package for a generated command projection.
+    #[command(name = "__package-command", hide = true)]
+    RetainedPackage(commands::PackageCommandArgs),
     /// Update grip itself: tarball installs self-update in place;
     /// brew/cargo/mise installs get their manager's command
     SelfUpdate {
@@ -207,6 +210,7 @@ fn main() -> ExitCode {
         Command::Run(_) => "Run",
         Command::Shell(_) => "Shell",
         Command::Task(_) => "Task",
+        Command::RetainedPackage(_) => "PackageCommand",
         Command::SelfUpdate { .. } => "SelfUpdate",
         Command::Update { .. } => "Update",
         Command::Generations => "Generations",
@@ -218,8 +222,13 @@ fn main() -> ExitCode {
         Command::Trust { .. } => "Trust",
         Command::Hooks { .. } => "Hooks",
     };
-    let home = gripsack_store::gripsack_home();
-    let run = gripsack_trace::init(&home).ok();
+    // Retained wrappers name their private store explicitly; an absent or
+    // unrelated ambient HOME must not redirect their diagnostic state.
+    let run = match &command {
+        Command::RetainedPackage(args) => gripsack_trace::init(&args.home),
+        _ => gripsack_trace::init(&gripsack_store::gripsack_home()),
+    }
+    .ok();
     let _run_span = run.map(|r| gripsack_trace::run_span!(r, command_name).entered());
     match command {
         Command::Doctor => commands::doctor(palette),
@@ -311,6 +320,7 @@ fn main() -> ExitCode {
             Ok(repo) => commands::task(&repo, args, palette),
             Err(code) => code,
         },
+        Command::RetainedPackage(args) => commands::package_command(args, palette),
         Command::Trust { command } => commands::trust(command, palette),
         Command::Hooks { command } => commands::hooks(command, palette),
         Command::Plan {

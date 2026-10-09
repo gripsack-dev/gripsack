@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the production typed v6 collector, separately from policy closures.
+"""Check the production typed workspace collector, separately from policy closures.
 
 The output walk uses vstd's explicit String-key BTreeMap ordering/iteration
 model precondition. No source-completeness premise, callback, axiom, or copied
@@ -16,36 +16,36 @@ from verus_evidence import EvidenceError
 CRATE = ROOT / "crates/gripsack-ir"
 MIN_OBLIGATIONS = 30
 FAMILIES = {
-    "typed-output-collector": tuple("workspace_v6::graph::" + name for name in (
+    "typed-output-collector": tuple("workspace_model::graph::" + name for name in (
         "references", "push", "Collector::edge", "Collector::named",
         "Collector::argument", "Collector::arguments", "Collector::environment",
         "Collector::command", "Collector::steps", "Collector::file", "Collector::collect",
     )),
-    "typed-source-inputs": tuple("workspace_v6::graph::input::" + name for name in (
+    "typed-source-inputs": tuple("workspace_model::graph::input::" + name for name in (
         "argument_input_reference", "source_input_references", "output_source_input_references",
     )),
     "typed-catalog-binding": (
-        "workspace_v6::graph::kinds::kind_names",
-        "workspace_v6::graph::binding::output_name",
-        "workspace_v6::graph::binding::bind_reference",
-        "workspace_v6::graph::binding::output_kind",
+        "workspace_model::graph::kinds::kind_names",
+        "workspace_model::graph::binding::output_name",
+        "workspace_model::graph::binding::bind_reference",
+        "workspace_model::graph::binding::output_kind",
     ),
 }
 MUTANTS = (
-    Mutant("collector-missing-tree-source", "workspace_v6/graph.rs",
-           "workspace_v6::graph::Collector::file",
+    Mutant("collector-missing-tree-source", "workspace_model/graph.rs",
+           "workspace_model::graph::Collector::file",
            'Some(WorkspaceSource::Tree { output, .. }) => self.edge(edges, output,\n                kind_names(Kinds::Artifact), &file.span, GraphRole::Runtime, None),',
            'Some(WorkspaceSource::Tree { .. }) => {},'),
-    Mutant("collector-substituted-pixi-lock-input", "workspace_v6/graph/input.rs",
-           "workspace_v6::graph::input::source_input_references",
+    Mutant("collector-substituted-pixi-lock-input", "workspace_model/graph/input.rs",
+           "workspace_model::graph::input::source_input_references",
            'Some(InputReference { to: &value.lock, at, site: InputSite::PixiLock })',
            'Some(InputReference { to: &value.manifest, at, site: InputSite::PixiLock })'),
-    Mutant("collector-missing-image-entrypoint", "workspace_v6/graph.rs",
-           "workspace_v6::graph::Collector::collect",
+    Mutant("collector-missing-image-entrypoint", "workspace_model/graph.rs",
+           "workspace_model::graph::Collector::collect",
            '                self.arguments(edges, &value.config.entrypoint, &value.span, GraphRole::Runtime, Some(&value.target));',
            ''),
-    Mutant("collector-substituted-owner-index", "workspace_v6/graph/binding.rs",
-           "workspace_v6::graph::binding::bind_reference",
+    Mutant("collector-substituted-owner-index", "workspace_model/graph/binding.rs",
+           "workspace_model::graph::binding::bind_reference",
            'bind_output_index(names, output_name(edge.from), from)?',
            'bind_output_index(names, edge.to, from)?'),
 )

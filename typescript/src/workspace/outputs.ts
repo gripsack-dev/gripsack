@@ -1,4 +1,4 @@
-/** v5 named-output constructors: pure, frozen values with source spans. */
+/** v7 named-output constructors: pure, frozen values with source spans. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -36,7 +36,7 @@ import type {
   WorkspaceProducer,
   WorkspaceSpec,
   WorkspaceValue,
-  WorkspaceSourceV6,
+  AcquisitionSource,
   WorkspaceWeekday,
 } from "./ir.ts";
 import {
@@ -44,10 +44,12 @@ import {
   asCommand,
   asEnv,
   asFile,
+  asHostRuntime,
+  asSystemRequirements,
   asName,
   asNames,
   asProducer,
-  asSourceV6,
+  asAcquisitionSource,
   asRecord,
   duplicateError,
   freezeDeep,
@@ -65,29 +67,34 @@ export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
 
 /** Lower an authoring source — a bare `Fetch`, a plain
  *  CondaEnvironmentSpec/PixiLockSpec, or a pre-built
- *  `condaEnvironment(...)`/`pixiFromLock(...)` value — to the v6 tagged
+ *  `condaEnvironment(...)`/`pixiFromLock(...)` value — to the current tagged
  *  wire shape, stamping `span` on freshly wrapped variants. */
-function asSourceValue(source: unknown, span: Span, where: string): WorkspaceSourceV6 {
+function asSourceValue(source: unknown, span: Span, where: string): AcquisitionSource {
   const rec = asRecord(source, where);
   if (rec.kind === "fetch" || rec.kind === "conda_environment" || rec.kind === "pixi_lock") {
-    return asSourceV6(source, where);
+    return asAcquisitionSource(source, where);
   }
   if (typeof rec.kind === "string" && rec.kind !== "") {
     // a bare Fetch spec — the v6 fetch wrapper carries the provenance span
-    return asSourceV6({ kind: "fetch", fetch: source, span }, where);
+    return asAcquisitionSource({ kind: "fetch", fetch: source, span }, where);
   }
   if (rec.channels !== undefined || rec.packages !== undefined) {
+    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements"]);
     const conda = source as CondaEnvironmentSpec;
-    return asSourceV6({
+    return asAcquisitionSource({
       kind: "conda_environment",
       channels: conda.channels,
       packages: conda.packages,
       ...(conda.platforms ? { platforms: conda.platforms } : {}),
+      ...(conda.systemRequirements !== undefined
+        ? { system_requirements: asSystemRequirements(conda.systemRequirements, `${where}.systemRequirements`) }
+        : {}),
       span,
     }, where);
   }
   const pixiLock = source as PixiLockSpec;
-  return asSourceV6({
+  rejectUnknownFields(where, rec, ["manifest", "lock", "environment"]);
+  return asAcquisitionSource({
     kind: "pixi_lock",
     manifest: pixiLock.manifest,
     lock: pixiLock.lock,
@@ -106,7 +113,7 @@ export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSo
     );
   }
   const rec = asRecord(spec, "condaEnvironment(...)");
-  rejectUnknownFields("condaEnvironment(...)", rec, ["channels", "packages", "platforms"]);
+  rejectUnknownFields("condaEnvironment(...)", rec, ["channels", "packages", "platforms", "systemRequirements"]);
   return freezeDeep(asSourceValue(spec, span, "condaEnvironment(...)") as CondaEnvironmentSource);
 }
 
@@ -129,7 +136,7 @@ export function pixiFromLock(spec: PixiLockSpec): PixiLockSource {
  *  provenance, no synthetic recipe output. Accepts a `Fetch` (wrapped as
  *  `{"kind":"fetch",…}`) or a `condaEnvironment(...)`/`pixiFromLock(...)`
  *  source value. */
-export function provider(source: Fetch | WorkspaceSourceV6): WorkspaceProducer {
+export function provider(source: Fetch | AcquisitionSource): WorkspaceProducer {
   const span = callerSpan();
   if (!span) {
     throw new Error(
@@ -167,6 +174,10 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
   ]);
   const span = nodeSpan(spec.span, what);
   const source = asSourceValue(spec.source, span, `${what}: source`);
+  const target = asPlatform(spec.target, `${what}: target`);
+  if (source.kind === "conda_environment" && source.system_requirements !== undefined && target.os !== "linux") {
+    throw new Error(`${what}: Conda systemRequirements require a Linux target`);
+  }
   if (spec.output_kind !== "file" && spec.output_kind !== "tree") {
     throw new Error(`${what}: output_kind must be "file" or "tree"`);
   }
@@ -181,7 +192,7 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
     source,
     execution: asExecution(spec.execution, `${what}: execution`),
     output_kind: spec.output_kind,
-    target: asPlatform(spec.target, `${what}: target`),
+    target,
     ...(steps ? { steps } : {}),
     ...(checks ? { checks } : {}),
   };
@@ -196,7 +207,7 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
   asName(name, `${what}: name`);
   asRecord(spec, what);
   rejectUnknownFields(what, spec, [
-    "producer", "commands", "runtime", "target", "layout", "span",
+    "producer", "commands", "runtime", "hostRuntime", "target", "layout", "span",
   ]);
   const span = nodeSpan(spec.span, what);
   const producer = asProducer(spec.producer, `${what}: producer`);
@@ -206,6 +217,17 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     commands[k] = asName(v, `${what}: commands["${k}"]`);
   }
   const runtime = asNames(spec.runtime, `${what}: runtime`);
+  const target = asPlatform(spec.target, `${what}: target`);
+  if (producer.kind === "provider" && producer.provider.kind === "conda_environment" &&
+    producer.provider.system_requirements !== undefined && target.os !== "linux") {
+    throw new Error(`${what}: Conda systemRequirements require a Linux target`);
+  }
+  const hostRuntime = spec.hostRuntime === undefined
+    ? undefined
+    : asHostRuntime(spec.hostRuntime, `${what}: hostRuntime`);
+  if (hostRuntime !== undefined && (target.os !== "linux" || target.abi !== "gnu")) {
+    throw new Error(`${what}: hostRuntime requires an explicit Linux GNU target`);
+  }
   const node: PackageNode = {
     name,
     span,
@@ -213,7 +235,8 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     producer,
     commands,
     ...(runtime ? { runtime } : {}),
-    target: asPlatform(spec.target, `${what}: target`),
+    ...(hostRuntime !== undefined ? { host_runtime: hostRuntime } : {}),
+    target,
     layout: asLayout(spec.layout, `${what}: layout`),
   };
   return makeOutput(node);

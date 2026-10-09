@@ -44,7 +44,7 @@ import {
   weekly,
   workspace,
 } from "../src/workspace.ts";
-import type { WorkspaceArg, WorkspaceFile, WorkspaceValue } from "../src/workspace.ts";
+import type { CondaSystemRequirements, HostRuntimeSpec, WorkspaceArg, WorkspaceFile, WorkspaceValue } from "../src/workspace.ts";
 import { githubRelease, tarball } from "../src/fetch.ts";
 import type { HostFacts } from "../src/index.ts";
 import { thrownDiagnostic } from "./diagnostic.ts";
@@ -507,7 +507,7 @@ Deno.test("a provider-backed package needs no synthetic recipe", () => {
   assert.match(producer.provider.span.file, /workspace\.test\.ts$/);
 });
 
-Deno.test("recipe sources emit the v6 tagged fetch wrapper", () => {
+Deno.test("recipe sources emit the current tagged fetch wrapper", () => {
   const tools = recipe("tools", {
     source: tarball("https://example.invalid/t.tar.gz"),
     execution: hostExecution,
@@ -562,6 +562,113 @@ Deno.test("condaEnvironment emits the conda_environment wire and rejects bad spe
     () => condaEnvironment({ channels: ["conda-forge"], packages: { python: "" } }),
     /non-empty MatchSpec/,
   );
+});
+
+Deno.test("v7 Conda solve baselines lower strictly and inherit source provenance", () => {
+  const systemRequirements: CondaSystemRequirements = {
+    libc: { family: "glibc", version: "2.28" }, linux: "4.18",
+  };
+  const source = conda.environment({
+    channels: ["conda-forge"], packages: { python: "*" }, systemRequirements,
+  });
+  const output = pkg("python", {
+    producer: provider(source), commands: { python: "bin/python" },
+    target: linux, layout: { kind: "prefix_materialized" },
+  });
+  const envelope = emit(workspace({ outputs: [output] }));
+  assert.equal(envelope.ir_version, 7);
+  const wire = envelope.workspace.outputs[0].producer.provider;
+  assert.deepEqual(wire.system_requirements, systemRequirements);
+  assert.equal("systemRequirements" in wire, false);
+  assert.deepEqual(wire.span, source.span);
+  assert.equal("span" in wire.system_requirements, false);
+  systemRequirements.libc!.version = "2.39";
+  assert.equal(source.system_requirements!.libc!.version, "2.28");
+  assert.ok(Object.isFrozen(source.system_requirements!.libc));
+  const plain = recipe("baseline", {
+    source: { channels: ["conda-forge"], packages: { python: "*" },
+      systemRequirements: { linux: "5.14" } },
+    execution: hostExecution, output_kind: "tree", target: linux,
+    span: { file: "baseline.ts", line: 8 },
+  });
+  assert.deepEqual(plain.ir.source.span, plain.ir.span);
+  assert.deepEqual(
+    emit(workspace({ outputs: [plain] })).workspace.outputs[0].source.system_requirements,
+    { linux: "5.14" },
+  );
+  assert.equal("system_requirements" in conda.environment({
+    channels: ["conda-forge"], packages: { python: "*" },
+  }), false);
+  assert.throws(() => conda.environment({
+    channels: ["conda-forge"], packages: { python: "*" }, systemRequirements: {},
+    platforms: [{ os: "macos", arch: "aarch64" }],
+  }), /only Linux platforms/);
+  assert.throws(() => pkg("nonlinux", {
+    producer: provider(source), commands: {}, layout: { kind: "prefix_materialized" },
+    target: { os: "macos", arch: "aarch64" },
+  }), /require a Linux target/);
+  assert.throws(() => recipe("nonlinux", {
+    source, execution: hostExecution, output_kind: "tree",
+    target: { os: "macos", arch: "aarch64" },
+  }), /require a Linux target/);
+  assert.deepEqual(conda.environment({
+    channels: ["conda-forge"], packages: { python: "*" }, systemRequirements: {},
+  }).system_requirements, {});
+  for (const invalid of [
+    null, [], { cuda: "12" }, { libc: null }, { libc: [] },
+    { libc: { family: "musl", version: "1.2" } },
+    { libc: { family: "glibc" } },
+    { libc: { family: "glibc", version: "2.28", extra: true } },
+    { libc: { family: "glibc", version: ">=2.28" } },
+    { linux: "" }, { linux: 5.14 }, { linux: "5..14" }, { linux: "5.14\n" },
+  ]) {
+    assert.throws(() => conda.environment({
+      channels: ["conda-forge"], packages: { python: "*" },
+      systemRequirements: invalid as CondaSystemRequirements,
+    }));
+    assert.throws(() => provider({
+      kind: "conda_environment", channels: ["conda-forge"], packages: { python: "*" },
+      system_requirements: invalid as CondaSystemRequirements,
+      span: { file: "wire.ts", line: 1 },
+    }));
+  }
+});
+
+Deno.test("v7 host runtime authority is ordered package policy, never producer data", () => {
+  const producer = provider(tarball("https://example.invalid/tool.tar.gz"));
+  const spec = {
+    producer, commands: { tool: "bin/tool" },
+    target: { ...linux, abi: "gnu" } as const, layout: relocatable,
+    span: { file: "package.ts", line: 12 },
+  };
+  const libraryDirectories = ["/opt/bb/lib64", "/usr/local/lib"];
+  const output = pkg("tool", { ...spec, hostRuntime: { libraryDirectories } });
+  const wire = emit(workspace({ outputs: [output] })).workspace.outputs[0];
+  assert.deepEqual(wire.host_runtime, { library_directories: libraryDirectories });
+  assert.deepEqual(wire.span, spec.span);
+  assert.equal("hostRuntime" in wire, false);
+  assert.deepEqual(output.ir.producer, pkg("closed", spec).ir.producer);
+  assert.equal("host_runtime" in pkg("closed", spec).ir, false);
+  libraryDirectories.reverse();
+  assert.deepEqual(output.ir.host_runtime!.library_directories, ["/opt/bb/lib64", "/usr/local/lib"]);
+  assert.ok(Object.isFrozen(output.ir.host_runtime!.library_directories));
+  for (const invalid of [
+    null, [], {}, { libraryDirectories: [] }, { libraryDirectories: "/opt/lib" },
+    { libraryDirectories: ["/opt/lib"], extra: true },
+    ...["/", "relative", "/opt//lib", "/opt/lib/", "/opt/./lib", "/opt/../lib",
+      "/opt\\lib", "/opt:lib", "/opt;lib", "/opt/$LIB", "/opt/\0lib", "/opt/\nlib", "/opt/\x7flib"]
+      .map((path) => ({ libraryDirectories: [path] })),
+    { libraryDirectories: ["/opt/lib", "/opt/lib"] },
+    { libraryDirectories: [7] },
+  ]) {
+    assert.throws(() => pkg("invalid", { ...spec, hostRuntime: invalid as HostRuntimeSpec }));
+  }
+  for (const target of [linux, { ...linux, abi: "musl" } as const,
+    { os: "macos", arch: "x86_64", abi: "darwin" } as const]) {
+    assert.throws(() => pkg("invalid", {
+      ...spec, target, hostRuntime: { libraryDirectories: ["/opt/lib"] },
+    }), /explicit Linux GNU target/);
+  }
 });
 
 Deno.test("pixiFromLock emits the pixi_lock wire naming workspace inputs", () => {

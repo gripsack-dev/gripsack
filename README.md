@@ -86,9 +86,9 @@ Your first eval downloads the pinned, hash-verified Deno runtime
 
 ## Workspace production
 
-Core 0.44 accepts a typed `gripsack.ts` workspace with recipe,
-package, environment, task, image and profile outputs. Production does not
-create a personal generation:
+Core/SDK 0.46 emits IR v7 for typed `gripsack.ts` workspaces with recipe,
+package, environment, task, image and profile outputs. Strict v6 execution
+keeps its original semantics. Production does not create a personal generation:
 
 ```bash
 grip build service
@@ -117,6 +117,13 @@ automatic rollback after a post-activation failure. Task `checks` run as
 ordered postconditions after successful steps. Profile file-check stages,
 schedules and task prerequisites remain explicitly unavailable.
 
+Native Conda declarations can set
+`systemRequirements: { libc: { family: "glibc", version: "2.28" }, linux: "4.18" }`.
+These are explicit solve/runtime requirements, not an inference that every
+archive needs the updater's libc. Package version values are MatchSpecs
+(`"==25.07.1"`, not a bare `"25.07.1"`); frozen baseline changes require an
+explicit update and renewed review of captured inputs.
+
 Linux GNU dynamic commands need a loader with the sealed-launch controls
 (`--argv0`, `--glibc-hwcaps-mask`, `--inhibit-cache`, `--library-path`,
 `--inhibit-rpath`), measured from the bound loader itself rather than a glibc
@@ -129,20 +136,36 @@ images. Images use the fixed OCI exporter profile and are independently
 checked for content, configuration and image-local runtime closure; deleting
 the builder cache does not delete them.
 
-Linux x86_64 Conda/Pixi native and OCI journeys have runtime qualification.
-The supported platform scope is Linux and WSL under the owner's
-`PLATFORM-LINUX-WSL-2026-10-08` decision. macOS, its VM backend, launchd and
-native Mac Conda qualification are outside the active roadmap, CI and future
-release targets; revisiting them requires a new explicit support decision.
-Historical platform metadata/readers and release evidence retain their original
-meaning, without implying current Mac support.
+For reviewed native host libraries, Linux GNU packages may declare
+`hostRuntime: { libraryDirectories: ["/opt/bb/lib64"] }`. It grants only the
+named native runtime capability, not evaluator access or portable image
+content. The core still admits the dependency graph and sealed-loader lookup;
+host-dependent persistent commands re-enter the installed core on each launch.
+Host libraries remain mutable trusted inputs, not sealed package bytes.
 
-The current **0.45.0** prebuilt core is Linux x86_64, with measured Linux
-Conda helpers. The installer selects a complete artifact pair for supported
-Linux architectures; it rejects macOS rather than installing an old Mac
-release. Locally produced 0.45.0 assets have checksum/build receipts, not
-GitHub-hosted build attestations. See [plan0048](plan/0048-review-response-0.42.0.md)
-for the explicit scope amendment and source-bound qualification.
+Migration requires a real legacy apply that prunes old declarations before the
+workspace claims their destinations; `--take-over` does not transfer recorded
+ownership. For release trees that load physical siblings, use `trackedCopyTo`,
+not per-file symlink projections. The existing executable `repoFile` + `file`
+profile path can manage persistent launchers; no separate launcher constructor
+is required. [Persistent environments](https://gripsack.dev/docs/environments.html)
+and [migration](https://gripsack.dev/docs/workspace-migration.html) contain the
+complete recipes and staging/approval boundaries.
+
+Linux x86_64 Conda/Pixi native and OCI journeys have runtime qualification.
+The standing product scope is **Linux and WSL2 on x86_64 only**, under
+`PLATFORM-LINUX-X64-2026-10-09`. ARM, macOS and native Windows are outside
+the active scope; expansion requires a later explicit owner decision.
+Historical platform metadata/readers and release evidence retain their original
+meaning, without implying current support.
+
+The **0.46.0** release target is Linux x86_64/WSL, including its native
+Conda and BuildKit helpers. ARM artifacts are unavailable in this release,
+not qualified by emulation or inherited pins. The installer rejects ARM and
+macOS rather than silently selecting an older release. Locally produced
+assets have checksum/build receipts, not GitHub-hosted build attestations.
+See [plan0048](plan/0048-review-response-0.42.0.md) for
+`REL-X64-FIRST-0460-2026-10-08` and source-bound qualification.
 
 ## Source approval and migration
 
@@ -232,13 +255,13 @@ host-derived file access. `grip init` sanitizes the detected machine
 hostname to this spelling; role-named hosts such as `work.dev` remain
 valid.
 
-The v6 workspace path accepts a root `gripsack.ts` without a host shim.
-Use a matching 0.44 core and SDK for current production/package/environment
-commands; older cores do not admit the v6 writer. Native file-only profiles
-retain the same check, plan, apply and rollback lifecycle. See the
+The workspace path accepts a root `gripsack.ts` without a host shim.
+Use matching 0.46 core and SDK releases for the current v7 writer; older strict
+cores do not admit the new fields. Retained v6 execution and native v5 file
+profiles keep their original semantics. See the
 [dotfile workspace](examples/workspaces/01-dotfiles/gripsack.ts) and
-[workspace contract](typescript/README.md#a-workspace-is-a-function-ir-v6).
-Strict v3/v4/v5 readers preserve their historical meanings; the current SDK
+[workspace contract](typescript/README.md#a-workspace-is-a-function-ir-v7).
+Strict v3–v6 readers preserve their historical meanings; the current SDK
 does not silently add new fields to those retained formats.
 
 Evaluation runs in Deno, spawned deny-by-default: no env vars,

@@ -16,7 +16,7 @@ use gripsack_buildkit::{
 use gripsack_ir::{
     Diagnostic, Span, codes,
     workspace::{PlatformArch, PlatformOs},
-    workspace_v6::{
+    workspace_model::{
         RecipeExecution, WorkspaceAction, WorkspaceOutput, WorkspaceProducer, WorkspaceStep,
         identity::CheckDigest,
     },
@@ -156,7 +156,9 @@ pub(super) fn compile<'p, 'ir>(
             output: check_name,
             span: check.run.span(),
             line_map: match &check.run {
-                gripsack_ir::workspace_v6::WorkspaceCommand::RunBash { line_map, .. } => line_map,
+                gripsack_ir::workspace_model::WorkspaceCommand::RunBash { line_map, .. } => {
+                    line_map
+                }
                 _ => &[],
             },
         };

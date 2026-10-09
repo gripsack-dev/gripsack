@@ -4,10 +4,10 @@ use super::{CheckDigest, CommandPins, PackageDigest, PinGap, RecipePins};
 use crate::workspace::{
     PlatformAbi, PlatformArch, PlatformOs, RecipeOutputKind, WorkspacePlatform,
 };
-use crate::workspace_v6::lock::{DefinitionPins, ResolvedPinFields, WorkspaceLock};
-use crate::workspace_v6::{
-    CheckOutput, LockedSource, PackageLayoutV6, PackageOutput, RecipeExecution, RecipeOutput,
-    WorkspaceSourceV6, WorkspaceV6,
+use crate::workspace_model::lock::{DefinitionPins, ResolvedPinFields, WorkspaceLock};
+use crate::workspace_model::{
+    AcquisitionSource, CatalogPackageLayout, CheckOutput, LockedSource, PackageOutput,
+    RecipeExecution, RecipeOutput, WorkspaceCatalog,
 };
 use crate::{FetchSpec, HostFacts};
 use gripsack_policy::semantic::length_header;
@@ -212,26 +212,26 @@ impl Encoder {
             }
         }
     }
-    fn layout(&mut self, layout: &PackageLayoutV6) {
+    fn layout(&mut self, layout: &CatalogPackageLayout) {
         match layout {
-            PackageLayoutV6::Relocatable => self.field(b"relocatable"),
-            PackageLayoutV6::FixedPrefix { prefix } => {
+            CatalogPackageLayout::Relocatable => self.field(b"relocatable"),
+            CatalogPackageLayout::FixedPrefix { prefix } => {
                 self.field(b"fixed-prefix");
                 self.text(prefix.as_str());
             }
-            PackageLayoutV6::PrefixMaterialized => self.field(b"prefix-materialized"),
+            CatalogPackageLayout::PrefixMaterialized => self.field(b"prefix-materialized"),
         }
     }
-    /// The declared v6 acquisition source: variant tag plus every
+    /// The declared acquisition source: variant tag plus every
     /// semantic field. Channel order is priority order and stays
     /// declared-ordered; declaration locations never enter identity.
-    pub(super) fn source(&mut self, source: &WorkspaceSourceV6) {
+    pub(super) fn source(&mut self, source: &AcquisitionSource) {
         match source {
-            WorkspaceSourceV6::Fetch(fetch) => {
+            AcquisitionSource::Fetch(fetch) => {
                 self.field(b"fetch");
                 self.fetch(&fetch.fetch);
             }
-            WorkspaceSourceV6::CondaEnvironment(source) => {
+            AcquisitionSource::CondaEnvironment(source) => {
                 self.field(b"conda-environment");
                 self.number(source.channels.len() as u64);
                 for channel in &source.channels {
@@ -246,8 +246,21 @@ impl Encoder {
                 for platform in &source.platforms {
                     self.platform(platform);
                 }
+                // Preserve retained v6 identities when no baseline was declared.
+                if let Some(requirements) = &source.system_requirements {
+                    self.field(b"conda-system-requirements");
+                    self.optional(&requirements.linux);
+                    match &requirements.libc {
+                        Some(libc) => {
+                            self.field(b"libc");
+                            self.text(&libc.family);
+                            self.text(&libc.version);
+                        }
+                        None => self.field(b"no-libc"),
+                    }
+                }
             }
-            WorkspaceSourceV6::PixiLock(source) => {
+            AcquisitionSource::PixiLock(source) => {
                 self.field(b"pixi-lock");
                 self.text(&source.manifest);
                 self.text(&source.lock);
@@ -255,8 +268,8 @@ impl Encoder {
             }
         }
     }
-    /// The location-free locked source — identical semantic fold as
-    /// `source`, so a lock rewrite never shifts identities.
+    /// The location-free locked source. Conda baseline policy is persisted and
+    /// hashed in the locked closure, not duplicated in the source record.
     pub(super) fn locked_source(&mut self, source: &LockedSource) {
         match source {
             LockedSource::Fetch { fetch } => {
@@ -370,22 +383,76 @@ pub(super) fn package<D: AsRef<[u8; 32]>>(
     for dependency in closure {
         writer.field(dependency);
     }
+    // Preserve all retained v6 identities when no new policy is declared.
+    // Host search order is consumer authority, never producer source identity.
+    if let Some(policy) = &package.host_runtime {
+        writer.text("gripsack/v7/host-runtime");
+        writer.number(policy.library_directories.len() as u64);
+        for directory in &policy.library_directories {
+            writer.text(directory.as_str());
+        }
+    }
     Ok(())
 }
 pub(super) fn lock(lock: &WorkspaceLock) -> [u8; 32] {
     declarations::lock(lock)
 }
 pub(super) fn conda_closure(
-    environment: &crate::workspace_v6::lock::LockedCondaEnvironment,
+    environment: &crate::workspace_model::lock::LockedCondaEnvironment,
 ) -> [u8; 32] {
     declarations::conda_closure(environment)
 }
 pub(super) fn plan(
-    workspace: &WorkspaceV6,
+    workspace: &WorkspaceCatalog,
     facts: &HostFacts,
     definitions: &DefinitionPins,
     packages: &BTreeMap<String, PackageDigest>,
     lock: Option<&WorkspaceLock>,
 ) -> [u8; 32] {
     declarations::plan(workspace, facts, definitions, packages, lock)
+}
+
+#[cfg(test)]
+mod baseline_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn source_digest(source: &AcquisitionSource) -> [u8; 32] {
+        let mut writer = Encoder::new(b"baseline-test");
+        writer.source(source);
+        writer.finish()
+    }
+
+    #[test]
+    fn baseline_enters_identity_without_changing_legacy_source_bytes() {
+        let value = json!({
+            "kind":"conda_environment", "channels":["conda-forge"],
+            "packages":{"python":"*"}, "span":{"file":"baseline.ts","line":1}
+        });
+        let legacy: AcquisitionSource = serde_json::from_value(value.clone()).unwrap();
+        let mut writer = Encoder::new(b"baseline-test");
+        writer.locked_source(&legacy.locked());
+        assert_eq!(source_digest(&legacy), writer.finish());
+        let mut value = value;
+        value["system_requirements"] =
+            json!({"libc":{"family":"glibc","version":"2.28"},"linux":"4.18"});
+        let baseline: AcquisitionSource = serde_json::from_value(value.clone()).unwrap();
+        assert_ne!(source_digest(&legacy), source_digest(&baseline));
+        value["span"]["line"] = json!(99);
+        assert_eq!(
+            source_digest(&baseline),
+            source_digest(&serde_json::from_value(value.clone()).unwrap())
+        );
+        value["system_requirements"]["libc"]["version"] = json!("2.29");
+        assert_ne!(
+            source_digest(&baseline),
+            source_digest(&serde_json::from_value(value.clone()).unwrap())
+        );
+        value["system_requirements"]["libc"]["version"] = json!("2.28");
+        value["system_requirements"]["linux"] = json!("5.14");
+        assert_ne!(
+            source_digest(&baseline),
+            source_digest(&serde_json::from_value(value).unwrap())
+        );
+    }
 }

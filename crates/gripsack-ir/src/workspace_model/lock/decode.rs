@@ -1,5 +1,5 @@
 use crate::FetchSpec;
-use crate::workspace_v6::source::LockedSource;
+use crate::workspace_model::source::LockedSource;
 use serde::{
     Deserialize, Deserializer,
     de::{Error, MapAccess, Visitor},

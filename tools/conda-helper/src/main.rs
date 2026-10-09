@@ -1,11 +1,11 @@
 //! `gripsack-conda` helper: the out-of-process Rattler solver and installer.
 //!
-//! Speaks one-shot protocol v2 (one versioned length-prefixed request and
+//! Speaks one-shot protocol v3 (one versioned length-prefixed request and
 //! response over stdio), implemented by `gripsack_conda::protocol`.
 //!
 //! * `resolve` — queries channel repodata over anonymous rustls HTTPS and
 //!   solves via `rattler_solve` (resolvo backend, strict channel priority)
-//!   with the core-measured virtual packages as the virtual set.
+//!   with core-measured facts adjusted to explicit declared system floors.
 //! * `import_pixi` — validates captured Pixi manifest/lock satisfaction with
 //!   canonical upstream selection and MatchSpec semantics, without network.
 //! * `materialize` — frozen install from retained archives: rehashes every
@@ -26,7 +26,7 @@ use gripsack_conda::protocol::{
     self, ArchiveRef, ErrorResponse, ImportedResponse, MaterializeRequest, MaterializedPackage,
     MaterializedResponse, Request, ResolveRequest, ResolvedResponse, Response,
 };
-use gripsack_ir::workspace_v6::lock::{
+use gripsack_ir::workspace_model::lock::{
     BytecodePolicy, ChannelPriority, LockedCondaEnvironment, LockedCondaPackage, LockedNoArch,
     LockedRunExports, MaterializerPolicy, ReceiptPolicy,
 };
@@ -184,6 +184,20 @@ fn hex_lower(bytes: &[u8]) -> String {
 }
 
 async fn resolve(request: ResolveRequest) -> HResult<LockedCondaEnvironment> {
+    if (!request.system_requirements.virtual_packages.is_empty()
+        || request.system_requirements.archspec.is_some())
+        && !matches!(request.platform.as_str(), "linux-64" | "linux-aarch64")
+    {
+        return Err(fail(
+            "invalid_system_requirements",
+            "native Conda system requirements support only Linux".into(),
+        ));
+    }
+    gripsack_conda::virtuals::validate_solve_baseline(
+        &request.system_requirements,
+        &request.virtual_packages,
+    )
+    .map_err(|error| fail("invalid_system_requirements", error.to_string()))?;
     let mut channels = Vec::with_capacity(request.channels.len());
     let mut canonical_channels = Vec::with_capacity(request.channels.len());
     for raw in &request.channels {
@@ -324,7 +338,7 @@ async fn resolve(request: ResolveRequest) -> HResult<LockedCondaEnvironment> {
         platform: request.platform,
         channels: canonical_channels,
         channel_priority: ChannelPriority::Strict,
-        system_requirements: Default::default(),
+        system_requirements: request.system_requirements,
         virtual_packages: request.virtual_packages,
         packages,
         materializer: MaterializerPolicy {
@@ -591,7 +605,7 @@ async fn materialize(request: MaterializeRequest<'_>) -> HResult<MaterializedRes
     } = closure.materializer;
 
     let lock_digest = validate_sha256_hex(&request.lock_digest, "lock_digest")?;
-    if gripsack_ir::workspace_v6::identity::conda_closure_digest(&closure).to_string()
+    if gripsack_ir::workspace_model::identity::conda_closure_digest(&closure).to_string()
         != lock_digest
     {
         return Err(fail(
@@ -1087,4 +1101,26 @@ fn write_receipt(
         name: name.to_string(),
         conda_meta: format!("conda-meta/{receipt_name}"),
     })
+}
+
+#[cfg(test)]
+mod baseline_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn helper_rejects_wrong_baseline_facts_and_foreign_targets_before_repodata() {
+        let declared: gripsack_ir::workspace_model::CondaSystemRequirements =
+            serde_json::from_value(json!({"libc":{"family":"glibc","version":"2.28"}})).unwrap();
+        for (platform, version) in [("linux-64", "2.39"), ("osx-arm64", "2.28")] {
+            let request: ResolveRequest = serde_json::from_value(json!({
+                "attempt":1, "channels":[], "packages":{"python":"*"}, "platform":platform,
+                "virtual_packages":[{"name":"__glibc","version":version,"build":"0"}],
+                "system_requirements":declared.locked().unwrap()
+            }))
+            .unwrap();
+            let failure = resolve(request).await.unwrap_err();
+            assert_eq!(failure.code, "invalid_system_requirements");
+        }
+    }
 }

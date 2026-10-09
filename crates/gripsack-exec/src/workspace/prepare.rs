@@ -13,7 +13,7 @@ use super::{
 use crate::{Ctx, ExecError, LifecycleSession};
 use gripsack_ir::{
     Diagnostic, Ir, Span, codes,
-    workspace_v6::{
+    workspace_model::{
         identity::{
             self, ArtifactDigest, CheckDigest, CommandPins, PackageDigest, PackageProductionDigest,
             PinGap, RecipeDigest, RecipePins, ToolExecutable, ToolPin,
@@ -59,18 +59,20 @@ impl<'a> Prepared<'a> {
             return Err(ExecError::Gate(diagnostic));
         }
         let workspace = ir
-            .workspace_v6
+            .workspace_catalog
             .as_ref()
             .filter(|_| {
-                ir.ir_version == gripsack_ir::IR_VERSION
-                    && ir.workspace.is_none()
+                matches!(
+                    ir.ir_version,
+                    gripsack_ir::WORKSPACE_V6_VERSION | gripsack_ir::IR_VERSION
+                ) && ir.workspace.is_none()
                     && ir.workspace_v4.is_none()
                     && ir.modules.is_empty()
             })
             .ok_or_else(|| {
                 failure(
                     None,
-                    "selected-output production requires a current v6 workspace",
+                    "selected-output production requires a v6 or v7 catalog workspace",
                 )
             })?;
         let selection = Selection::admit(workspace, requested)?;
@@ -93,7 +95,7 @@ impl<'a> Prepared<'a> {
             if let Some((source, platform)) = source {
                 let pin = pins.lookup(platform, name, &source.locked())?;
                 let prepared = match source {
-                    WorkspaceSourceV6::Fetch(fetch) => {
+                    AcquisitionSource::Fetch(fetch) => {
                         let acquired =
                             acquire::acquire(ctx, name, fetch, ResolutionMode::Frozen(pin))?
                                 .publish(ctx, session, name)?;
@@ -113,7 +115,7 @@ impl<'a> Prepared<'a> {
                             conda: None,
                         }
                     }
-                    WorkspaceSourceV6::CondaEnvironment(_) | WorkspaceSourceV6::PixiLock(_) => {
+                    AcquisitionSource::CondaEnvironment(_) | AcquisitionSource::PixiLock(_) => {
                         let pin = pin.ok_or_else(|| ExecError::Step {
                             module: (*name).into(),
                             step: "conda".into(),
@@ -127,7 +129,7 @@ impl<'a> Prepared<'a> {
                             detail: "conda pin is missing its frozen closure".into(),
                         })?;
                         super::conda::admit_frozen(name, source, locked)?;
-                        if let WorkspaceSourceV6::PixiLock(declared) = source {
+                        if let AcquisitionSource::PixiLock(declared) = source {
                             super::conda::verify_pixi_inputs(
                                 ctx, session, workspace, name, declared, pin,
                             )?;
@@ -175,7 +177,7 @@ impl<'a> Prepared<'a> {
     }
 
     pub(super) fn identities(
-        workspace: &'a WorkspaceV6,
+        workspace: &'a WorkspaceCatalog,
         selection: Selection<'a>,
         definitions: &DefinitionPins,
         sources: BTreeMap<&'a str, PreparedSource>,

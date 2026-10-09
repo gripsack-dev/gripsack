@@ -14,19 +14,21 @@ pub const WORKSPACE_V4_VERSION: u32 = 4;
 /// profiles keep executing through it; v5 recipes stay read-only/E124
 /// and never gain v6 toolchain/options authority (plan/0052 §1.2).
 pub const WORKSPACE_V5_VERSION: u32 = 5;
+/// Retained executing workspace wire; new v7 authority is rejected by its reader.
+pub const WORKSPACE_V6_VERSION: u32 = 6;
 /// Current typed workspace and legacy-modules writer schema.
-pub const IR_VERSION: u32 = 6;
+pub const IR_VERSION: u32 = 7;
 /// The core retains versioned readers for every supported envelope.
 pub const ACCEPTED_IR_VERSIONS: std::ops::RangeInclusive<u32> = LEGACY_IR_VERSION..=IR_VERSION;
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CurrentIrV6 {
+struct CatalogIr {
     ir_version: u32,
     host: HostFacts,
     #[serde(default)]
     resources: Vec<Resource>,
-    workspace: crate::workspace_v6::WorkspaceV6,
+    workspace: crate::workspace_model::WorkspaceCatalog,
 }
 
 #[derive(serde::Deserialize)]
@@ -65,18 +67,25 @@ pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
             modules: BTreeMap::new(),
             workspace: None,
             workspace_v4: Some(legacy.workspace),
-            workspace_v6: None,
+            workspace_catalog: None,
         });
     }
-    // Current v6 workspace wire: its own typed family (`workspace_v6`),
-    // never deserialized into the retained v5 reader — a v6 declaration
-    // must not acquire v5 semantics or vice versa (plan/0052 §1.2).
+    // v6 and v7 share the catalog execution model. The versioned tagged
+    // reader rejects v7 fields in v6 before constructing this model.
     if let Ok(raw) = serde_json::from_str::<serde_json::Value>(json)
-        && raw.get("ir_version").and_then(|v| v.as_u64()) == Some(u64::from(IR_VERSION))
+        && raw
+            .get("ir_version")
+            .and_then(|v| v.as_u64())
+            .is_some_and(|version| {
+                version == u64::from(WORKSPACE_V6_VERSION) || version == u64::from(IR_VERSION)
+            })
         && raw.get("workspace").is_some()
     {
-        let current: CurrentIrV6 = serde_json::from_str(json).map_err(|e| {
-            Diagnostic::error(codes::MALFORMED, format!("invalid v6 workspace IR: {e}"))
+        let current: CatalogIr = serde_json::from_str(json).map_err(|e| {
+            Diagnostic::error(
+                codes::MALFORMED,
+                format!("invalid catalog workspace IR: {e}"),
+            )
         })?;
         return Ok(Ir {
             ir_version: current.ir_version,
@@ -85,7 +94,7 @@ pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
             modules: BTreeMap::new(),
             workspace: None,
             workspace_v4: None,
-            workspace_v6: Some(current.workspace),
+            workspace_catalog: Some(current.workspace),
         });
     }
     let ir: Ir = serde_json::from_str(json).map_err(|e| {

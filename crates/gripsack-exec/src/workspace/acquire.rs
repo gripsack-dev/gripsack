@@ -9,7 +9,7 @@ use gripsack_fetch::FetchIdentity;
 use gripsack_ir::{
     Diagnostic, FetchSpec, codes,
     workspace::{RecipeOutputKind, WorkspaceFetch},
-    workspace_v6::lock::{LockedPin, ResolvedPinFields},
+    workspace_model::lock::{LockedPin, ResolvedPinFields},
 };
 use gripsack_store as store;
 use std::{
@@ -138,7 +138,7 @@ pub(super) fn acquire(
             ));
         }
         ResolutionMode::Frozen(Some(pin)) => {
-            let gripsack_ir::workspace_v6::LockedSource::Fetch { fetch: locked } = &pin.source
+            let gripsack_ir::workspace_model::LockedSource::Fetch { fetch: locked } = &pin.source
             else {
                 return Err(failure(
                     "fetch source carries a non-fetch frozen pin".into(),

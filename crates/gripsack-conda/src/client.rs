@@ -12,9 +12,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use gripsack_ir::workspace_v6::{
+use gripsack_ir::workspace_model::{
     identity::conda_closure_digest,
-    lock::{LockedCondaEnvironment, LockedVirtualPackage},
+    lock::{LockedCondaEnvironment, LockedCondaSystemRequirements, LockedVirtualPackage},
 };
 
 use crate::protocol::{
@@ -111,7 +111,7 @@ impl CondaHelper {
     }
 
     /// `resolve`: solve a closure for `platform` from `channels`, grounded in
-    /// the core-measured `virtual_packages`. The returned environment is
+    /// the baseline-adjusted `virtual_packages`. The returned environment is
     /// advisory data; the core re-validates it.
     pub fn resolve(
         &self,
@@ -120,6 +120,7 @@ impl CondaHelper {
         packages: &BTreeMap<String, String>,
         platform: &str,
         virtual_packages: &[LockedVirtualPackage],
+        system_requirements: &LockedCondaSystemRequirements,
     ) -> Result<LockedCondaEnvironment, CondaError> {
         let request = Request::Resolve(ResolveRequest {
             attempt,
@@ -127,6 +128,7 @@ impl CondaHelper {
             packages: packages.clone(),
             platform: platform.to_string(),
             virtual_packages: virtual_packages.to_vec(),
+            system_requirements: system_requirements.clone(),
         });
         match self.exchange(&request)? {
             Response::Resolved(response) => {

@@ -767,6 +767,33 @@ source formula; the macOS cask is unchanged. Hosted full CI/macOS/fuzz are not
 claimed. The CI/provider research and user-owned checkout remain untouched.
 
 
+## 0.46 follow-up review response
+
+The external reviewer reports that0.45 resolved the original blocking paths
+on the actual glibc2.39 laptop and glibc2.28/el9-5.14 Space. This is external
+execution evidence, not our own private-host qualification. Native Conda solve
+baselines remain an explicit follow-up request.
+
+Plan0048§18 records all new items separately: declared host-runtime paths;
+explicitly applied legacy prune; native Conda system requirements; physical
+artifactTree layout; MatchSpecs; the existing X11 closure; managed launchers;
+and producer-specific cross-filesystem staging. The selected implementation
+keeps sealed package admission and existing ownership rules, rather than using
+unsealed execution or take-over as a shortcut. Strict v7 emission and preserved
+v6 execution/retained-state semantics are required for new declaration fields.
+The promoted0.46 core/helper bytes passed real native and frozen-consumer
+qualification on modern glibc and UBI8/glibc2.28, including retained-v6 rollback.
+Local gates are complete:555 flows, all96 persistence partitions, policy and
+collector proofs/calibrations, transaction induction, exact artifact/pin
+verification, audits and all14 package dry runs. Publication/public consumers
+remain open;0.46 is not yet announced.
+
+`PLATFORM-LINUX-X64-2026-10-09` makes Linux/WSL x86_64 the standing scope;
+ARM, macOS and native Windows remain unavailable, not emulated or inherited
+as passing. No fuzz/corpus replay is authorized. The owner requested the shared
+Buildbot/BuildKit/local-build migration after0.46; its plan and target-scope
+cutover are next, not additional changes to this release's runtime.
+
 ## Settled rejections (all eras)
 
 - **TOML/data-format frontend** — five times. TypeScript is the

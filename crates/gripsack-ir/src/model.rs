@@ -25,16 +25,16 @@ pub struct Ir {
     pub workspace: Option<crate::workspace::Workspace>,
     #[serde(skip)]
     pub workspace_v4: Option<crate::legacy_v4::LegacyWorkspaceV4>,
-    /// Current v6 typed workspace (schema/ir/v6.json) — the frontend
-    /// writer. Deserialized only by the version dispatch in parse.rs,
+    /// Shared v6/v7 catalog execution model. Strict versioned readers prevent
+    /// v6 envelopes from acquiring v7 authority. Deserialized by parse.rs,
     /// never by the retained v5 reader.
     #[serde(skip)]
-    pub workspace_v6: Option<crate::workspace_v6::WorkspaceV6>,
+    pub workspace_catalog: Option<crate::workspace_model::WorkspaceCatalog>,
 }
 
 impl Ir {
     pub fn has_workspace(&self) -> bool {
-        self.workspace.is_some() || self.workspace_v4.is_some() || self.workspace_v6.is_some()
+        self.workspace.is_some() || self.workspace_v4.is_some() || self.workspace_catalog.is_some()
     }
     /// Missing capabilities are refused before CLI or direct executor effects.
     pub fn workspace_execution_error(
@@ -54,7 +54,7 @@ impl Serialize for Ir {
         if [
             self.workspace.is_some(),
             self.workspace_v4.is_some(),
-            self.workspace_v6.is_some(),
+            self.workspace_catalog.is_some(),
         ]
         .into_iter()
         .filter(|present| *present)
@@ -71,8 +71,20 @@ impl Serialize for Ir {
         if self.workspace.is_some() && self.ir_version != crate::parse::WORKSPACE_V5_VERSION {
             return Err(S::Error::custom("retained workspace requires ir_version 5"));
         }
-        if self.workspace_v6.is_some() && self.ir_version != crate::parse::IR_VERSION {
-            return Err(S::Error::custom("current workspace requires ir_version 6"));
+        if let Some(workspace) = &self.workspace_catalog {
+            if !matches!(
+                self.ir_version,
+                crate::parse::WORKSPACE_V6_VERSION | crate::parse::IR_VERSION
+            ) {
+                return Err(S::Error::custom(
+                    "catalog workspace requires ir_version 6 or 7",
+                ));
+            }
+            if self.ir_version == crate::parse::WORKSPACE_V6_VERSION && workspace.requires_v7() {
+                return Err(S::Error::custom(
+                    "v7 declaration authority is forbidden in ir_version 6",
+                ));
+            }
         }
         if self.has_workspace() && !self.modules.is_empty() {
             return Err(S::Error::custom(
@@ -99,7 +111,7 @@ impl Serialize for Ir {
         if !omit_modules {
             state.serialize_field("modules", &self.modules)?;
         }
-        if let Some(workspace) = &self.workspace_v6 {
+        if let Some(workspace) = &self.workspace_catalog {
             state.serialize_field("workspace", workspace)?;
         } else if let Some(workspace) = &self.workspace_v4 {
             state.serialize_field("workspace", workspace)?;

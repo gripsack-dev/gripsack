@@ -15,7 +15,7 @@ mod resources;
 mod steps;
 mod verify_paths;
 mod workspace;
-mod workspace_v6;
+mod workspace_model;
 
 use crate::diagnostic::{Diagnostic, Severity};
 use crate::model::Ir;
@@ -36,6 +36,17 @@ const PASSES: &[fn(&Ir, &mut Vec<Diagnostic>)] = &[
 /// Pass 2 — run every sema pass, collecting all diagnostics.
 pub fn run(ir: &Ir) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    if ir.ir_version == crate::WORKSPACE_V6_VERSION
+        && ir
+            .workspace_catalog
+            .as_ref()
+            .is_some_and(|workspace| workspace.requires_v7())
+    {
+        diagnostics.push(Diagnostic::error(
+            crate::codes::MALFORMED,
+            "v7 declaration authority is forbidden in ir_version 6",
+        ));
+    }
     for pass in PASSES {
         pass(ir, &mut diagnostics);
     }

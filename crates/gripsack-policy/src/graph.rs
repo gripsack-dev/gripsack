@@ -357,7 +357,7 @@ pub proof fn lemma_reachable_visited(
 /// closure — a one-step path witnesses reachability and the closure is
 /// complete. This is the theorem behind the v6 admission check that
 /// fails REQUIRED_WORKSPACE_EDGE_MISSING when a declared producer/input
-/// is absent (gripsack-ir/src/sema/workspace_v6/graph.rs).
+/// is absent (gripsack-ir/src/sema/workspace_model/graph.rs).
 pub proof fn lemma_projected_build_edge_in_closure(
     n_nodes: nat,
     adjacency: Seq<Seq<int>>,

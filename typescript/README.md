@@ -33,22 +33,24 @@ export default defineEnv((ctx) => ({
 registered by import side effect — the function *returns* the
 environment, so `Inputs → Environment` is testable and cacheable.
 
-## A workspace is a function (IR v6)
+## A workspace is a function (IR v7)
 
-Use the matching 0.44 core and SDK for this workspace API. Older cores do not
-admit the v6 writer; retained v3/v4/v5 data keeps its versioned meaning.
+Use matching 0.46 core and SDK releases for the new baseline and host-runtime
+declarations. Older strict cores do not admit v7. The new core retains v6
+execution with its original closed field set, v5 native file profiles, v4
+read-only workspaces and historical module readers; older envelopes never
+acquire v7 authority.
 
-The 0.44.1 prebuilt-core release is Linux x86_64 first. Other platforms retain
-their last available core binary; keep its compatible SDK rather than assuming
-that installing the newest npm package upgrades the core. The workspace lock
-captures frontend identity, so an intentional SDK change can require explicit
-`grip update` and renewed source approval.
+Linux and WSL2 are the supported host scope. Installing the npm package does
+not upgrade the core binary. Workspace locks capture frontend identity, so
+an intentional SDK change can require explicit `grip update` and reviewed
+exact-digest source approval.
 
 A root `gripsack.ts` — preferred over `hosts/<name>.ts` when present —
 default-exports `defineWorkspace` and returns a `workspace({ outputs })`
 value. No hostname selection and no fake host file: the core injects
-the same facts/probes context, and the emitter produces the v6
-workspace envelope (`{ir_version: 6, host, workspace}`):
+the same facts/probes context, and the emitter produces the v7
+workspace envelope (`{ir_version: 7, host, workspace}`):
 
 ```ts
 // gripsack.ts
@@ -61,6 +63,10 @@ const ripgrep = pkg("ripgrep", {
   producer: provider(conda.environment({
     channels: ["conda-forge"],
     packages: { ripgrep: "*" },
+    systemRequirements: {
+      libc: { family: "glibc", version: "2.28" },
+      linux: "4.18",
+    },
   })),
   commands: { rg: "bin/rg" },
   target,
@@ -87,6 +93,18 @@ constructor is removed; retained legacy IR remains versioned data, not a
 second workspace producer API. Conda/Pixi native and image qualification is
 tracked separately in plan 0052; this authoring surface alone is not evidence
 that every consumer/platform is qualified.
+
+`packages` values are version MatchSpecs: use `"==25.07.1"` for exact equality,
+`"=25.07"` for a version-prefix match, `">=25.07.1,<26"` for a range, or `"*"`.
+A bare `"25.07.1"` is not a valid constraint. The resulting lock always fixes
+exact archive identities.
+
+`systemRequirements` explicitly selects the corresponding Linux solve
+virtuals; omitted libc/kernel capabilities still use updater measurements.
+The declared policy is recorded and checked on frozen use. A solve's measured
+`__glibc=2.39` is not by itself every selected archive's runtime floor. Native
+archive constraints, actual CPU/libc/kernel facts and sealed-loader controls
+remain separate checks. An explicit baseline is not universal portability proof.
 
 Outputs are the nine typed kinds — `recipe`, `pkg`, `environment`,
 `task`, `schedule`, `check`, `image`, `profile`, `hook` — each a pure,
@@ -140,6 +158,17 @@ Supported Linux targets may declare `abi: "gnu"` or `"musl"` and
 `minimum_os: { major, minor, patch? }`. Fixed-prefix packages use
 `{ kind: "fixed_prefix", prefix: "/opt/tool" }`; selecting one into an
 environment requires that environment's matching `prefix`.
+
+A Linux GNU package may explicitly declare
+`hostRuntime: { libraryDirectories: ["/opt/bb/lib64"] }` for reviewed host
+runtime dependencies and absolute ELF search paths. This is a host-coupled
+package policy, not portable retained content, an evaluator read grant or a
+BuildKit host mount. Undeclared directories remain refused. Native invocation
+re-admits the dependency graph and preserves sealed-loader search equivalence;
+host-dependent persistent wrappers re-enter the absolute installed core path.
+Keep that core path and private state available. Host libraries remain trusted,
+mutable host inputs, not sealed package bytes, and such packages cannot be
+silently placed into an OCI image.
 
 `grip check` evaluates and admits the workspace without a host file or
 `env.toml` and lists named outputs. Native **file-only profiles** now
@@ -220,8 +249,12 @@ the generation; rollback reuses retained package bytes without a worker.
 entries, with exclusions winning. It never replaces the destination directory:
 foreign children remain, removals use existing drift/prune policy, and expanded
 collisions fail before destination writes. Symlinks and special source entries
-are refused rather than followed. Profile hooks, schedules, staged file checks,
-host recipe execution and remaining platform qualification stay gated.
+are refused rather than followed. Per-file symlinks do not preserve the real
+sibling layout of a release tree: use `trackedCopyTo` for binaries that locate
+runtime files relative to their resolved executable path. This does not add a
+directory-level symlink or fixed-prefix relocation mechanism.
+Profile hooks and task postconditions execute; schedules, staged profile-file
+checks and host recipe execution remain explicitly gated.
 Historical v4 workspaces remain read-only pending A5 migration. `check` never
 bootstraps BuildKit or a scheduler. `adopt` does not edit workspace TypeScript
 automatically: declare the file policy and use explicit `apply --take-over`
@@ -237,9 +270,9 @@ each through the real `grip check`. The dotfile and native-tool profiles use
 the native lifecycle; the source-built tool uses the pinned BuildKit policy.
 Scheduler registration remains gated: a declared schedule activates nothing.
 
-The legacy `hosts/<name>.ts` path emits a v6 modules-compatibility
-envelope until the A5 migration. Strict v3/v4/v5 readers preserve historical
-wire meanings; current fields are not silently added to an older declaration.
+The legacy `hosts/<name>.ts` path emits a v7 modules-compatibility
+envelope. Strict retained readers preserve their versioned meanings;
+current fields are not silently added to an older declaration.
 
 `grip check --json` emits one versioned document on stdout:
 `{version: 1, ok, diagnostics, host?, outputs?, modules?, layouts?}`.

@@ -5,7 +5,7 @@
 # means nondeterminism, which fails everything. Pins are MEASURED from
 # the surviving artifacts — never fetched sidecars, never hand-entered.
 #
-#   dist.sh --dist DIR      build both Linux artifacts + .sha256 into DIR
+#   dist.sh --dist DIR      build Linux x86_64 artifact + .sha256 into DIR
 #   dist.sh --check         fail if the committed pins (bridge_pins.rs)
 #                           drift from a fresh deterministic build
 #   dist.sh --update-pins   run the full Go gate, then rewrite the
@@ -25,9 +25,9 @@ VERSION=${VERSION:-$(sed -n 's/^version = "\([0-9.]*\)"$/\1/p' "$REPO/Cargo.toml
 
 # triple ↔ host.rs AssetTarget ↔ GOOS/GOARCH. The bridge is CGO-free,
 # so the linux assets are libc-independent and serve the musl slots.
+# REL-X64-FIRST-0460-2026-10-08; expand only with a qualified release scope.
 TARGETS="
 linux amd64 x86_64-unknown-linux-musl LinuxX86_64Musl
-linux arm64 aarch64-unknown-linux-musl LinuxAarch64Musl
 "
 
 mode=--dist

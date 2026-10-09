@@ -332,7 +332,9 @@ def unit_rust(sites: PinSites) -> PinUnit:
     froms = sites.dockerfile_froms()
     native = sites.workflow_pins("toolchain")
     fuzz = sites.dockerfile_env("FUZZ_TOOLCHAIN")
-    if "rust" not in froms or not native or fuzz is None:
+    gnu_ref = sites.dockerfile_arg("GNU_RUST_IMAGE")
+    gnu = re.fullmatch(r"rust:(\d+\.\d+\.\d+)@sha256:([0-9a-f]{64})", gnu_ref or "")
+    if "rust" not in froms or not native or fuzz is None or gnu is None:
         return u.sites_missing()
     tag, pin_digest = froms["rust"]
     pinned = next(iter(native.values()))[0]
@@ -347,15 +349,34 @@ def unit_rust(sites: PinSites) -> PinUnit:
     ]
     native_vals = {v for vs in native.values() for v in vs}
 
+    def with_gnu_image(version: str) -> PinUnit:
+        """Never propose only half of the musl/GNU compiler update."""
+        digest = docker_hub_digest("library/rust", version)
+        if digest is None:
+            u.edits = []
+            return u.blocked(
+                f"GNU rust:{version} metadata unavailable; no partial compiler update",
+                f"pins: rust: GNU image for {version} unavailable")
+        u.sources.append(
+            f"https://registry-1.docker.io/v2/library/rust/manifests/{version} — `sha256:{digest}`")
+        wanted = f"rust:{version}@sha256:{digest}"
+        if gnu_ref != wanted:
+            u.edits.append(Edit("Dockerfile", f"ARG GNU_RUST_IMAGE={gnu_ref}",
+                                f"ARG GNU_RUST_IMAGE={wanted}"))
+            if u.status != "ready":
+                u.summary = f"GNU rust image refresh (rustc {version})"
+            u.status = "ready"
+        return u
+
     def diverged() -> PinUnit | None:
         """The coupled pins disagree among themselves with no bump to
         ride on — that never silently passes; only the full coupled
         bump normalizes it."""
-        if fuzz == pinned and native_vals == {pinned}:
+        if fuzz == pinned and native_vals == {pinned} and gnu.group(1) == pinned:
             return None
         return u.blocked(
             f"rust pins diverged without an upstream bump (native {sorted(native_vals)}, "
-            f"FUZZ_TOOLCHAIN {fuzz}, pinned base {pinned}) — only a deliberate coupled PR fixes this",
+            f"FUZZ_TOOLCHAIN {fuzz}, GNU image {gnu.group(1)}, pinned base {pinned}) — only a deliberate coupled PR fixes this",
             "pins: rust: coupled pins diverged without an upstream bump")
 
     def image_lagging(why: str) -> PinUnit:
@@ -371,13 +392,13 @@ def unit_rust(sites: PinSites) -> PinUnit:
             return d
         if cur == pin_digest:
             u.note = f"rustc {pinned} current (stable {stable[0]} not ahead)"
-            return u
+            return with_gnu_image(pinned)
         # tag moved under the same rustc: a rebuild. Prove the floating
         # tag still resolves to OUR version's image via the version tag.
         if docker_hub_digest("library/rust", f"{pinned}-{tag}") == cur:
             u.status, u.summary = "ready", f"rust:alpine digest refresh (rustc {pinned} unchanged)"
             u.edits = [Edit("Dockerfile", f"rust:{tag}@sha256:{pin_digest}", f"rust:{tag}@sha256:{cur}")]
-            return u
+            return with_gnu_image(pinned)
         return u.blocked(
             f"rust:{tag} moved to a build that is not {pinned} "
             f"(digest(rust:{pinned}-{tag}) != digest(rust:{tag})) — inspect manually",
@@ -398,7 +419,7 @@ def unit_rust(sites: PinSites) -> PinUnit:
     u.sources.append(f"digest(rust:{tag}) == digest(rust:{new}-{tag}) — identical manifests, "
                      "so the image's rustc IS the new native pin")
     u.summary = f"rust toolchain {pinned} → {new}"
-    u.note = f"docker builder digest, FUZZ_TOOLCHAIN and native pins move together to {new}."
+    u.note = f"musl/GNU builder digests, FUZZ_TOOLCHAIN and native pins move together to {new}."
     if fuzz != pinned:
         u.note += f" (FUZZ_TOOLCHAIN was {fuzz} — normalized to {new}.)"
     if native_vals != {pinned}:
@@ -421,7 +442,7 @@ def unit_rust(sites: PinSites) -> PinUnit:
     if f"({pinned})" in rc:
         u.edits.append(Edit(".github/workflows/release-core.yml", f"({pinned})", f"({new})"))
     u.status = "ready"
-    return u
+    return with_gnu_image(new)
 
 
 def unit_deno(sites: PinSites) -> PinUnit:

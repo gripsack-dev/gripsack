@@ -1,8 +1,8 @@
 //! Common package admission for environments, profiles and explicit task commands.
-use super::{ExecError, HostTarget, Package, PackageLayoutV6, Span, admit_target, gate};
+use super::{CatalogPackageLayout, ExecError, HostTarget, Package, Span, admit_target, gate};
 use gripsack_ir::{
     HostFacts,
-    workspace_v6::{identity::PackageDigest, lock::BytecodePolicy},
+    workspace_model::{identity::PackageDigest, lock::BytecodePolicy},
 };
 use std::{cell::RefCell, collections::BTreeSet, path::Path, sync::Arc, time::Instant};
 
@@ -11,7 +11,7 @@ use std::{cell::RefCell, collections::BTreeSet, path::Path, sync::Arc, time::Ins
 /// the cache records compatibility, not an independent source of byte trust.
 pub(in crate::workspace) struct NativeContext<'a> {
     pub(super) target: HostTarget,
-    home: &'a Path,
+    pub(super) home: &'a Path,
     admitted: RefCell<BTreeSet<PackageDigest>>,
     deadline: Instant,
     gnu_loader: RefCell<Option<Arc<gripsack_process::SelectedGnuLoader>>>,
@@ -82,13 +82,26 @@ impl<'a> NativeContext<'a> {
             if let Some(receipt) = &package.conda {
                 bytecode = Some(receipt.closure.materializer.bytecode);
             }
+            // Policy-dependent filesystem admission is never cached: ELF
+            // command admission reconstructs the host roots for every launch.
+            if package.host_runtime.is_some()
+                && (package.target.os != gripsack_ir::workspace::PlatformOs::Linux
+                    || package.target.abi != Some(gripsack_ir::workspace::PlatformAbi::Gnu)
+                    || self.target.os != gripsack_policy::target::TargetOs::Linux
+                    || self.target.abi != Some(super::BinaryAbi::Gnu))
+            {
+                return Err(gate(
+                    span,
+                    "host runtime directories require a native Linux GNU package",
+                ));
+            }
             if admitted.contains(&package.identity) {
                 continue;
             }
             admit_target(&package.target, &self.target, span, "package")?;
             match (&package.layout, &package.conda) {
-                (PackageLayoutV6::Relocatable, None) => {}
-                (PackageLayoutV6::PrefixMaterialized, Some(receipt)) => {
+                (CatalogPackageLayout::Relocatable, None) => {}
+                (CatalogPackageLayout::PrefixMaterialized, Some(receipt)) => {
                     crate::workspace::conda::admit_native(
                         receipt,
                         self.home,
@@ -98,19 +111,19 @@ impl<'a> NativeContext<'a> {
                     .map_err(|error| gate(span, error.to_string()))?;
                     super::platform::admit(&receipt.system, &self.target, span)?;
                 }
-                (PackageLayoutV6::PrefixMaterialized, None) => {
+                (CatalogPackageLayout::PrefixMaterialized, None) => {
                     return Err(gate(
                         span,
                         "prefix-materialized package has no independently validated Conda receipt",
                     ));
                 }
-                (PackageLayoutV6::Relocatable, Some(_)) => {
+                (CatalogPackageLayout::Relocatable, Some(_)) => {
                     return Err(gate(
                         span,
                         "a Conda final-prefix artifact cannot claim a relocatable layout",
                     ));
                 }
-                (PackageLayoutV6::FixedPrefix { prefix }, _) => {
+                (CatalogPackageLayout::FixedPrefix { prefix }, _) => {
                     return Err(gate(
                         span,
                         format!(

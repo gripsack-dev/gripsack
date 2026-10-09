@@ -219,6 +219,7 @@ Deno.test("driver evaluates a root gripsack.ts workspace with no fake host", () 
     assert.equal(r.status, 0, `driver failed:\n${r.stderr}`);
     const envelope = JSON.parse(r.stdout);
     assert.deepEqual(Object.keys(envelope.ir), ["ir_version", "host", "workspace"]);
+    assert.equal(envelope.ir.ir_version, 7);
     assert.equal(envelope.ir.modules, undefined, "workspace envelope never carries modules");
     assert.equal(envelope.ir.host.os, "linux");
     assert.equal("hostname" in envelope.ir.host, false);

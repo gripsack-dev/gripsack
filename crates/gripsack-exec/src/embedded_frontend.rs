@@ -621,9 +621,9 @@ import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
 /** One current frontend version (0052 §1): workspace and legacy
- *  module entrypoints both emit v6. Strict historical documents keep
- *  their versioned core readers; only v6 is written by this frontend. */
-export const IR_VERSION = 6;
+ *  module entrypoints both emit v7. Strict historical documents keep
+ *  their versioned core readers; only v7 is written by this frontend. */
+export const IR_VERSION = 7;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,
@@ -679,8 +679,8 @@ export function mergeTags(envTags: string[] | undefined, cliTags: string[]): str
   return [...(envTags ?? []), ...cliTags].filter((t, i, all) => all.indexOf(t) === i);
 }
 
-/** Serialize a returned environment as the v5 legacy-modules IR
- *  envelope (`{ir_version: 5, host, modules[, resources]}` — never a
+/** Serialize a returned environment as the v7 legacy-modules IR
+ *  envelope (`{ir_version: 7, host, modules[, resources]}` — never a
  *  `workspace` key; the schema admits exactly one of the two). This
  *  is the bounded compatibility path for `hosts/<name>.ts`
  *  entrypoints (0052 §2.1); new workspaces use `emitWorkspaceIr`.
@@ -814,6 +814,9 @@ export type {
   CheckSpec,
   CondaEnvironmentSource,
   CondaEnvironmentSpec,
+  CondaSystemRequirements,
+  HostRuntimeSpec,
+  HostRuntimeRequirements,
   EnvironmentSpec,
   ExecBuilder,
   ExecSpec,
@@ -864,7 +867,7 @@ export type {
   WorkspacePlatform,
   WorkspaceProducer,
   WorkspaceProductionPath,
-  WorkspaceSourceV6,
+  AcquisitionSource,
   WorkspaceRunBashCommand,
   WorkspaceSource,
   WorkspaceSpec,
@@ -1324,6 +1327,9 @@ export type {
   CheckSpec,
   CondaEnvironmentSource,
   CondaEnvironmentSpec,
+  CondaSystemRequirements,
+  HostRuntimeSpec,
+  HostRuntimeRequirements,
   Condition,
   Dependency,
   Dest,
@@ -1400,7 +1406,7 @@ export type {
   WorkspaceProductionPath,
   WorkspaceRunBashCommand,
   WorkspaceSource,
-  WorkspaceSourceV6,
+  AcquisitionSource,
   WorkspaceSpec,
   WorkspaceValue,
   WorkspaceWeekday,
@@ -2443,8 +2449,8 @@ function orList(kinds: readonly string[]): string {
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the v5 workspace IR envelope —
- *  `{ir_version: 5, host, workspace}`, never `modules` (the schema
+/** Serialize a workspace value as the v7 workspace IR envelope —
+ *  `{ir_version: 7, host, workspace}`, never `modules` (the schema
  *  admits exactly one of the two). Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
@@ -2839,7 +2845,7 @@ export function checkImageSelection(image: ImageNode, catalog: Map<string, Works
   }
 }
 "#),
-    ("src/workspace/ir.ts", r#"/** v6 workspace wire types; the core retains strict historical readers. */
+    ("src/workspace/ir.ts", r#"/** v7 workspace wire types; the core retains strict historical readers. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
@@ -2848,7 +2854,7 @@ import type { Span } from "../module.ts";
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v5.json $defs)
+// shared wire fragments (schema/ir/v7.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -2917,8 +2923,20 @@ export type PackageLayout =
   | { kind: "fixed_prefix"; prefix: string }
   | { kind: "prefix_materialized" };
 
+/** Ordered trusted Linux GNU host library roots; package policy, never producer identity.
+ * Nested values inherit the package span. No ambient loader search is enabled. */
+export interface HostRuntimeSpec { libraryDirectories: string[] }
+export interface HostRuntimeRequirements { library_directories: string[] }
+
+/** Linux solve baseline, not proof of the resulting archives' runtime minimum.
+ * Nested values inherit the acquisition source span. */
+export interface CondaSystemRequirements {
+  libc?: { family: "glibc"; version: string };
+  linux?: string;
+}
+
 // ---------------------------------------------------------------------------
-// v6 acquisition sources (wire shape: schema/ir/v6.json $defs/workspaceSourceV6)
+// Current acquisition sources (schema/ir/v7.json; retained in-memory V6 family)
 // ---------------------------------------------------------------------------
 
 /** Existing archive/git/github/file/plugin acquisition, wrapped with its
@@ -2932,6 +2950,7 @@ export interface CondaEnvironmentSource {
   channels: string[];
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
+  system_requirements?: CondaSystemRequirements;
   span: Span;
 }
 /** An explicit Pixi lock import: `manifest`/`lock` are workspace INPUT
@@ -2943,8 +2962,8 @@ export interface PixiLockSource {
   environment: string;
   span: Span;
 }
-/** How a v6 recipe or provider package obtains its payload. */
-export type WorkspaceSourceV6 = FetchSource | CondaEnvironmentSource | PixiLockSource;
+/** How a current recipe or provider package obtains its payload. */
+export type AcquisitionSource = FetchSource | CondaEnvironmentSource | PixiLockSource;
 
 export interface WorkspaceExecCommand {
   kind: "exec";
@@ -3016,16 +3035,16 @@ export type WorkspaceCalendar =
   | { kind: "weekly"; weekday: WorkspaceWeekday; time: string };
 
 // ---------------------------------------------------------------------------
-// output nodes (wire shape: schema/ir/v5.json $defs/*Output)
+// output nodes (wire shape: schema/ir/v7.json $defs/*Output)
 // ---------------------------------------------------------------------------
 
 export interface RecipeNode {
   name: string;
   span: Span;
   kind: "recipe";
-  /** The recipe's acquisition source — the v6 tagged union
-   *  (`workspaceSourceV6`); the legacy bare `{fetch,span}` shape is gone. */
-  source: WorkspaceSourceV6;
+  /** The recipe's acquisition source (`acquisitionSource` in the schema).
+   *  The legacy bare `{fetch,span}` shape is not admitted. */
+  source: AcquisitionSource;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
@@ -3038,7 +3057,7 @@ export interface RecipeNode {
  *  acquisition carrying its own provenance — no synthetic recipe. */
 export type WorkspaceProducer =
   | { kind: "recipe"; recipe: string }
-  | { kind: "provider"; provider: WorkspaceSourceV6 };
+  | { kind: "provider"; provider: AcquisitionSource };
 
 export interface PackageNode {
   name: string;
@@ -3047,6 +3066,7 @@ export interface PackageNode {
   producer: WorkspaceProducer;
   commands: Record<string, string>;
   runtime?: string[];
+  host_runtime?: HostRuntimeRequirements;
   target: WorkspacePlatform;
   layout: PackageLayout;
 }
@@ -3180,7 +3200,7 @@ export interface RecipeSpec {
   /** A `Fetch` (wrapped as `{"kind":"fetch",…}`), a plain
    *  {@link CondaEnvironmentSpec}/{@link PixiLockSpec}, or a pre-built
    *  `condaEnvironment(...)`/`pixiFromLock(...)` source value. */
-  source: Fetch | CondaEnvironmentSpec | PixiLockSpec | WorkspaceSourceV6;
+  source: Fetch | CondaEnvironmentSpec | PixiLockSpec | AcquisitionSource;
   execution: RecipeExecution;
   output_kind: "file" | "tree";
   target: WorkspacePlatform;
@@ -3197,6 +3217,7 @@ export interface CondaEnvironmentSpec {
   channels: string[];
   packages: Record<string, string>;
   platforms?: WorkspacePlatform[];
+  systemRequirements?: CondaSystemRequirements;
 }
 
 /** Authoring spec for an explicit Pixi lock import — see
@@ -3215,6 +3236,8 @@ export interface PackageSpec {
   commands: Record<string, string>;
   /** Explicit runtime closure — names of other `package` outputs. */
   runtime?: string[];
+  /** Explicit ordered host library authority, supported only for Linux GNU packages. */
+  hostRuntime?: HostRuntimeSpec;
   target: WorkspacePlatform;
   layout: PackageLayout;
   span?: Span;
@@ -3345,7 +3368,7 @@ export interface WorkspaceContext extends FactView {
 
 export type WorkspaceFn = (ctx: WorkspaceContext) => WorkspaceValue;
 "#),
-    ("src/workspace/outputs.ts", r#"/** v5 named-output constructors: pure, frozen values with source spans. */
+    ("src/workspace/outputs.ts", r#"/** v7 named-output constructors: pure, frozen values with source spans. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -3383,7 +3406,7 @@ import type {
   WorkspaceProducer,
   WorkspaceSpec,
   WorkspaceValue,
-  WorkspaceSourceV6,
+  AcquisitionSource,
   WorkspaceWeekday,
 } from "./ir.ts";
 import {
@@ -3391,10 +3414,12 @@ import {
   asCommand,
   asEnv,
   asFile,
+  asHostRuntime,
+  asSystemRequirements,
   asName,
   asNames,
   asProducer,
-  asSourceV6,
+  asAcquisitionSource,
   asRecord,
   duplicateError,
   freezeDeep,
@@ -3412,29 +3437,34 @@ export function targetPlatform(spec: WorkspacePlatform): WorkspacePlatform {
 
 /** Lower an authoring source — a bare `Fetch`, a plain
  *  CondaEnvironmentSpec/PixiLockSpec, or a pre-built
- *  `condaEnvironment(...)`/`pixiFromLock(...)` value — to the v6 tagged
+ *  `condaEnvironment(...)`/`pixiFromLock(...)` value — to the current tagged
  *  wire shape, stamping `span` on freshly wrapped variants. */
-function asSourceValue(source: unknown, span: Span, where: string): WorkspaceSourceV6 {
+function asSourceValue(source: unknown, span: Span, where: string): AcquisitionSource {
   const rec = asRecord(source, where);
   if (rec.kind === "fetch" || rec.kind === "conda_environment" || rec.kind === "pixi_lock") {
-    return asSourceV6(source, where);
+    return asAcquisitionSource(source, where);
   }
   if (typeof rec.kind === "string" && rec.kind !== "") {
     // a bare Fetch spec — the v6 fetch wrapper carries the provenance span
-    return asSourceV6({ kind: "fetch", fetch: source, span }, where);
+    return asAcquisitionSource({ kind: "fetch", fetch: source, span }, where);
   }
   if (rec.channels !== undefined || rec.packages !== undefined) {
+    rejectUnknownFields(where, rec, ["channels", "packages", "platforms", "systemRequirements"]);
     const conda = source as CondaEnvironmentSpec;
-    return asSourceV6({
+    return asAcquisitionSource({
       kind: "conda_environment",
       channels: conda.channels,
       packages: conda.packages,
       ...(conda.platforms ? { platforms: conda.platforms } : {}),
+      ...(conda.systemRequirements !== undefined
+        ? { system_requirements: asSystemRequirements(conda.systemRequirements, `${where}.systemRequirements`) }
+        : {}),
       span,
     }, where);
   }
   const pixiLock = source as PixiLockSpec;
-  return asSourceV6({
+  rejectUnknownFields(where, rec, ["manifest", "lock", "environment"]);
+  return asAcquisitionSource({
     kind: "pixi_lock",
     manifest: pixiLock.manifest,
     lock: pixiLock.lock,
@@ -3453,7 +3483,7 @@ export function condaEnvironment(spec: CondaEnvironmentSpec): CondaEnvironmentSo
     );
   }
   const rec = asRecord(spec, "condaEnvironment(...)");
-  rejectUnknownFields("condaEnvironment(...)", rec, ["channels", "packages", "platforms"]);
+  rejectUnknownFields("condaEnvironment(...)", rec, ["channels", "packages", "platforms", "systemRequirements"]);
   return freezeDeep(asSourceValue(spec, span, "condaEnvironment(...)") as CondaEnvironmentSource);
 }
 
@@ -3476,7 +3506,7 @@ export function pixiFromLock(spec: PixiLockSpec): PixiLockSource {
  *  provenance, no synthetic recipe output. Accepts a `Fetch` (wrapped as
  *  `{"kind":"fetch",…}`) or a `condaEnvironment(...)`/`pixiFromLock(...)`
  *  source value. */
-export function provider(source: Fetch | WorkspaceSourceV6): WorkspaceProducer {
+export function provider(source: Fetch | AcquisitionSource): WorkspaceProducer {
   const span = callerSpan();
   if (!span) {
     throw new Error(
@@ -3514,6 +3544,10 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
   ]);
   const span = nodeSpan(spec.span, what);
   const source = asSourceValue(spec.source, span, `${what}: source`);
+  const target = asPlatform(spec.target, `${what}: target`);
+  if (source.kind === "conda_environment" && source.system_requirements !== undefined && target.os !== "linux") {
+    throw new Error(`${what}: Conda systemRequirements require a Linux target`);
+  }
   if (spec.output_kind !== "file" && spec.output_kind !== "tree") {
     throw new Error(`${what}: output_kind must be "file" or "tree"`);
   }
@@ -3528,7 +3562,7 @@ export function recipe(name: string, spec: RecipeSpec): WorkspaceOutput<RecipeNo
     source,
     execution: asExecution(spec.execution, `${what}: execution`),
     output_kind: spec.output_kind,
-    target: asPlatform(spec.target, `${what}: target`),
+    target,
     ...(steps ? { steps } : {}),
     ...(checks ? { checks } : {}),
   };
@@ -3543,7 +3577,7 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
   asName(name, `${what}: name`);
   asRecord(spec, what);
   rejectUnknownFields(what, spec, [
-    "producer", "commands", "runtime", "target", "layout", "span",
+    "producer", "commands", "runtime", "hostRuntime", "target", "layout", "span",
   ]);
   const span = nodeSpan(spec.span, what);
   const producer = asProducer(spec.producer, `${what}: producer`);
@@ -3553,6 +3587,17 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     commands[k] = asName(v, `${what}: commands["${k}"]`);
   }
   const runtime = asNames(spec.runtime, `${what}: runtime`);
+  const target = asPlatform(spec.target, `${what}: target`);
+  if (producer.kind === "provider" && producer.provider.kind === "conda_environment" &&
+    producer.provider.system_requirements !== undefined && target.os !== "linux") {
+    throw new Error(`${what}: Conda systemRequirements require a Linux target`);
+  }
+  const hostRuntime = spec.hostRuntime === undefined
+    ? undefined
+    : asHostRuntime(spec.hostRuntime, `${what}: hostRuntime`);
+  if (hostRuntime !== undefined && (target.os !== "linux" || target.abi !== "gnu")) {
+    throw new Error(`${what}: hostRuntime requires an explicit Linux GNU target`);
+  }
   const node: PackageNode = {
     name,
     span,
@@ -3560,7 +3605,8 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     producer,
     commands,
     ...(runtime ? { runtime } : {}),
-    target: asPlatform(spec.target, `${what}: target`),
+    ...(hostRuntime !== undefined ? { host_runtime: hostRuntime } : {}),
+    target,
     layout: asLayout(spec.layout, `${what}: layout`),
   };
   return makeOutput(node);
@@ -4130,6 +4176,8 @@ import type { Fetch } from "../fetch.ts";
 import { callerSpan } from "../module.ts";
 import type { Span } from "../module.ts";
 import type {
+  CondaSystemRequirements,
+  HostRuntimeRequirements,
   WorkspaceArg,
   WorkspaceCalendar,
   WorkspaceCommand,
@@ -4139,7 +4187,7 @@ import type {
   WorkspacePath,
   WorkspaceProducer,
   WorkspaceSource,
-  WorkspaceSourceV6,
+  AcquisitionSource,
 } from "./ir.ts";
 import { asPlatform } from "./target.ts";
 
@@ -4523,7 +4571,7 @@ export function asProducer(v: unknown, where: string): WorkspaceProducer {
     rejectUnknownFields(where, rec, ["kind", "provider"]);
     return {
       kind: "provider",
-      provider: asSourceV6(rec.provider, `${where}.provider`),
+      provider: asAcquisitionSource(rec.provider, `${where}.provider`),
     };
   }
   throw new Error(`${where}: producer must be a recipe output name or provider(fetch(...))`);
@@ -4537,10 +4585,54 @@ export function asFetch(v: unknown, where: string): Fetch {
   return v as Fetch;
 }
 
-/** A v6 acquisition source — the tagged union behind `RecipeNode.source`
+/** Validate the shared public/wire baseline without supplying host-derived defaults. */
+export function asSystemRequirements(v: unknown, where: string): CondaSystemRequirements {
+  const rec = asRecord(v, where);
+  rejectUnknownFields(where, rec, ["libc", "linux"]);
+  const version = (value: unknown, field: string): string => {
+    if (typeof value !== "string" || !/^[0-9]+(?:\.[0-9]+)*(?![\s\S])/.test(value)) {
+      throw new Error(`${field} must be a decimal dot-separated version`);
+    }
+    return value;
+  };
+  let libc: CondaSystemRequirements["libc"];
+  if (rec.libc !== undefined) {
+    const value = asRecord(rec.libc, `${where}.libc`);
+    rejectUnknownFields(`${where}.libc`, value, ["family", "version"]);
+    if (value.family !== "glibc") throw new Error(`${where}.libc.family must be "glibc"`);
+    libc = { family: "glibc", version: version(value.version, `${where}.libc.version`) };
+  }
+  return {
+    ...(libc !== undefined ? { libc } : {}),
+    ...(rec.linux !== undefined ? { linux: version(rec.linux, `${where}.linux`) } : {}),
+  };
+}
+
+/** Lower package-only host authority, preserving declared search order. */
+export function asHostRuntime(v: unknown, where: string): HostRuntimeRequirements {
+  const rec = asRecord(v, where);
+  rejectUnknownFields(where, rec, ["libraryDirectories"]);
+  const directories = rec.libraryDirectories;
+  if (!Array.isArray(directories) || directories.length === 0) {
+    throw new Error(`${where}.libraryDirectories must be a non-empty array`);
+  }
+  const seen = new Set<string>();
+  for (const directory of directories) {
+    if (typeof directory !== "string" || !directory.startsWith("/") ||
+      /[\\:;$\x00-\x1f\x7f]/.test(directory) ||
+      directory.slice(1).split("/").some((part) => part === "" || part === "." || part === "..")) {
+      throw new Error(`${where}.libraryDirectories must contain normalized absolute Linux directories other than "/"`);
+    }
+    if (seen.has(directory)) throw new Error(`${where}.libraryDirectories contains duplicate directory "${directory}"`);
+    seen.add(directory);
+  }
+  return { library_directories: [...directories] };
+}
+
+/** An acquisition source — the tagged union behind `RecipeNode.source`
  *  and the provider branch of {@link WorkspaceProducer}. The legacy bare
  *  `{fetch,span}` shape and the brew/pixi fetch kinds are rejected. */
-export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
+export function asAcquisitionSource(v: unknown, where: string): AcquisitionSource {
   const rec = asRecord(v, where);
   if (rec.kind === "fetch") {
     rejectUnknownFields(where, rec, ["kind", "fetch", "span"]);
@@ -4551,10 +4643,10 @@ export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
       );
     }
     asSpan(rec.span, where);
-    return v as WorkspaceSourceV6;
+    return v as AcquisitionSource;
   }
   if (rec.kind === "conda_environment") {
-    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "span"]);
+    rejectUnknownFields(where, rec, ["kind", "channels", "packages", "platforms", "system_requirements", "span"]);
     const channels = rec.channels;
     if (!Array.isArray(channels) || channels.length === 0 ||
       channels.some((c) => typeof c !== "string" || c === "")) {
@@ -4575,10 +4667,18 @@ export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
     }
     if (rec.platforms !== undefined) {
       if (!Array.isArray(rec.platforms)) throw new Error(`${where}.platforms must be an array`);
-      rec.platforms.forEach((p, i) => asPlatform(p, `${where}.platforms[${i}]`));
+      rec.platforms.forEach((p, i) => {
+        const platform = asPlatform(p, `${where}.platforms[${i}]`);
+        if (rec.system_requirements !== undefined && platform.os !== "linux") {
+          throw new Error(`${where}.system_requirements supports only Linux platforms`);
+        }
+      });
+    }
+    if (rec.system_requirements !== undefined) {
+      asSystemRequirements(rec.system_requirements, `${where}.system_requirements`);
     }
     asSpan(rec.span, where);
-    return v as WorkspaceSourceV6;
+    return v as AcquisitionSource;
   }
   if (rec.kind === "pixi_lock") {
     rejectUnknownFields(where, rec, ["kind", "manifest", "lock", "environment", "span"]);
@@ -4586,7 +4686,7 @@ export function asSourceV6(v: unknown, where: string): WorkspaceSourceV6 {
     asName(rec.lock, `${where}.lock`);
     asName(rec.environment, `${where}.environment`);
     asSpan(rec.span, where);
-    return v as WorkspaceSourceV6;
+    return v as AcquisitionSource;
   }
   throw new Error(`${where}: source kind must be "fetch", "conda_environment" or "pixi_lock"`);
 }
@@ -4623,14 +4723,14 @@ export function duplicateError(name: string, first: Span, again: Span): Diagnost
 }
 "#),
     ("src/workspace.ts", r#"/** Workspace declarations (0052 A1): the supported surface for the
- *  v6 workspace frontend — pure value constructors for nine typed
+ *  v7 workspace frontend — pure value constructors for nine typed
  *  output variants plus the shared command/file grammar and current
  *  emitter. No global registry or import-order magic — the
  *  root `gripsack.ts` entrypoint RETURNS a {@link WorkspaceValue}
  *  built by {@link workspace}, and the driver turns that value into
  *  IR (JSON) via {@link emitWorkspaceIr}.
  *
- *  Wire shape is exactly `schema/ir/v6.json`: every node carries a
+ *  Wire shape is exactly `schema/ir/v7.json`: every node carries a
  *  mandatory provenance span, all structs reject unknown fields at
  *  construction time (JS callers and casts get the same boundary as
  *  the type-checker), and returned values are deeply frozen — an
@@ -4670,6 +4770,9 @@ export type {
   CheckSpec,
   CondaEnvironmentSource,
   CondaEnvironmentSpec,
+  CondaSystemRequirements,
+  HostRuntimeSpec,
+  HostRuntimeRequirements,
   EnvironmentSpec,
   ExecSpec,
   HookSpec,
@@ -4718,7 +4821,7 @@ export type {
   WorkspacePlatform,
   WorkspaceProducer,
   WorkspaceProductionPath,
-  WorkspaceSourceV6,
+  AcquisitionSource,
   WorkspaceRunBashCommand,
   WorkspaceSource,
   WorkspaceSpec,
@@ -4779,7 +4882,7 @@ export const pixi: { fromLock: typeof pixiFromLockImpl } = Object.assign(
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.45.0",
+  "version": "0.46.0",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",

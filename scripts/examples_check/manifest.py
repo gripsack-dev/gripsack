@@ -210,12 +210,72 @@ EXAMPLES = [
             ("output", "node", "producer.provider.kind", "conda_environment"),
             ("output", "node", "producer.provider.channels", ["conda-forge"]),
             ("output", "node", "producer.provider.packages", {"nodejs": "=26.10.0"}),
+            ("output", "node", "producer.provider.system_requirements.libc",
+             {"family": "glibc", "version": "2.28"}),
+            ("output", "node", "producer.provider.system_requirements.linux", "4.18"),
             ("output", "node", "commands", {"node": "bin/node"}),
             ("output", "node", "target", {"os": "linux", "arch": "x86_64", "abi": "gnu"}),
             ("output", "node", "layout.kind", "prefix_materialized"),
             ("output", "tools", "packages", ["node"]),
             ("output", "tools", "target", {"os": "linux", "arch": "x86_64", "abi": "gnu"}),
             ("output", "with-node", "environment", "tools"),
+        ],
+    },
+    {
+        "id": "environments-managed-launcher",
+        "file": "environments.md",
+        "locator": {"window": "gripsack.ts — managed launcher"},
+        "kind": "workspace",
+        "fixtures": {
+            "launchers/gripsack-node": {
+                "executable": (
+                    "#!/bin/sh\nset -eu\n"
+                    '. "${GRIPSACK_HOME:?}/current/env/profile.sh"\n'
+                    'exec node "$@"\n'
+                ),
+            },
+        },
+        "expect_outputs": {
+            "node": "package",
+            "tools": "environment",
+            "with-node": "profile",
+        },
+        "ir": [
+            ("output", "node", "producer.provider.system_requirements.libc",
+             {"family": "glibc", "version": "2.28"}),
+            ("output", "with-node", "environment", "tools"),
+            ("output", "with-node", "files[0].source",
+             {"kind": "repo_file", "path": "launchers/gripsack-node"}),
+            ("output", "with-node", "files[0].content.kind", "identity"),
+            ("output", "with-node", "files[0].destination",
+             {"kind": "symlink", "path": "~/.local/bin/gripsack-node"}),
+        ],
+    },
+    {
+        "id": "environments-physical-release-layout",
+        "file": "environments.md",
+        "locator": {"window": "gripsack.ts — physical release layout"},
+        "kind": "workspace",
+        "fixtures": {
+            "release/bin/sibling-tool": {
+                "executable": (
+                    "#!/bin/sh\nset -eu\n"
+                    'self=$(readlink -f "$0")\n'
+                    'base=$(dirname "$self")\n'
+                    'cat "$base/../lib/message"\n'
+                ),
+            },
+            "release/lib/message": "physical-siblings-ok\n",
+        },
+        "expect_outputs": {"release": "package", "release-files": "profile"},
+        "ir": [
+            ("output", "release", "producer.provider.fetch",
+             {"kind": "file", "path": "release"}),
+            ("output", "release-files", "files[0].source",
+             {"kind": "tree", "output": "release", "include": ["bin", "lib"]}),
+            ("output", "release-files", "files[0].content.kind", "identity"),
+            ("output", "release-files", "files[0].destination",
+             {"kind": "tracked_copy", "path": "~/.local/lib/sibling-release"}),
         ],
     },
     {

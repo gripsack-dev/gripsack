@@ -2,8 +2,8 @@ use super::{Compiler, Mount, Node, NodeIndex, Origin, failure};
 use crate::{ExecError, workspace::inputs::InputKind};
 use gripsack_ir::{
     Span,
-    workspace_v6::{
-        PackageLayoutV6, WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspacePath,
+    workspace_model::{
+        CatalogPackageLayout, WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspacePath,
     },
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -228,12 +228,12 @@ impl<'p, 'ir> Compiler<'p, 'ir> {
             return Err(failure(span, "command binding does not name a package"));
         };
         let path = match &package.layout {
-            PackageLayoutV6::Relocatable => format!(
+            CatalogPackageLayout::Relocatable => format!(
                 "/gripsack-packages/{}",
                 self.prepared.package_productions[name]
             ),
-            PackageLayoutV6::FixedPrefix { prefix } => prefix.as_str().to_owned(),
-            PackageLayoutV6::PrefixMaterialized => {
+            CatalogPackageLayout::FixedPrefix { prefix } => prefix.as_str().to_owned(),
+            CatalogPackageLayout::PrefixMaterialized => {
                 return Err(failure(
                     span,
                     "prefix-materialized packages bind their durable prefix at admission, not into an isolated build",

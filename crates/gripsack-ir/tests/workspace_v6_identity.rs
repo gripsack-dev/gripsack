@@ -1,7 +1,7 @@
 use gripsack_ir::{
     check,
-    workspace_v6::{
-        WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspaceSourceV6, WorkspaceStep,
+    workspace_model::{
+        AcquisitionSource, WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspaceStep,
         identity::{self, ArtifactDigest, CommandPins, DefinitionDigest, PinGap, RecipePins},
         lock::{DefinitionPins, ResolvedPinFields},
     },
@@ -48,7 +48,7 @@ fn document() -> serde_json::Value {
 #[test]
 fn recipe_identity_binds_required_check_policy_but_not_diagnostic_locations() {
     let ir = check(&document().to_string()).unwrap();
-    let workspace = ir.workspace_v6.unwrap();
+    let workspace = ir.workspace_catalog.unwrap();
     let WorkspaceOutput::Recipe(recipe) = &workspace.outputs[0] else {
         panic!("recipe fixture");
     };
@@ -79,7 +79,7 @@ fn recipe_identity_binds_required_check_policy_but_not_diagnostic_locations() {
     moved.name = "different-diagnostic-name".into();
     moved.span.file = "factory.ts".into();
     moved.span.line = 100;
-    if let WorkspaceSourceV6::Fetch(fetch) = &mut moved.source {
+    if let AcquisitionSource::Fetch(fetch) = &mut moved.source {
         fetch.span.file = "factory.ts".into();
     }
     if let WorkspaceStep::Command(WorkspaceCommand::Exec { span, .. }) = &mut moved.steps[0] {
@@ -113,7 +113,8 @@ fn recipe_identity_binds_required_check_policy_but_not_diagnostic_locations() {
 #[test]
 fn unresolved_inputs_and_checks_cannot_acquire_recipe_identity() {
     let ir = check(&document().to_string()).unwrap();
-    let WorkspaceOutput::Recipe(mut recipe) = ir.workspace_v6.unwrap().outputs.remove(0) else {
+    let WorkspaceOutput::Recipe(mut recipe) = ir.workspace_catalog.unwrap().outputs.remove(0)
+    else {
         panic!("recipe fixture");
     };
     let pins = OwnedPins {
@@ -166,7 +167,7 @@ fn unknown_authority_fields_remain_rejected_by_each_versioned_reader() {
 #[test]
 fn ordered_commands_and_resolved_definition_pins_invalidate_production() {
     let ir = check(&document().to_string()).unwrap();
-    let workspace = ir.workspace_v6.unwrap();
+    let workspace = ir.workspace_catalog.unwrap();
     let WorkspaceOutput::Recipe(mut recipe) = workspace.outputs[0].clone() else {
         panic!("recipe fixture");
     };
@@ -220,7 +221,7 @@ fn ordered_commands_and_resolved_definition_pins_invalidate_production() {
 #[test]
 fn inherited_check_execution_and_transitive_policy_changes_invalidate_reuse() {
     let ir = check(&document().to_string()).unwrap();
-    let workspace = ir.workspace_v6.unwrap();
+    let workspace = ir.workspace_catalog.unwrap();
     let WorkspaceOutput::Recipe(recipe) = &workspace.outputs[0] else {
         unreachable!();
     };
@@ -243,7 +244,7 @@ fn inherited_check_execution_and_transitive_policy_changes_invalidate_reuse() {
         ..Default::default()
     };
     let host = identity::check_digest(check, &commands, &recipe.execution).unwrap();
-    let mut isolated: gripsack_ir::workspace_v6::RecipeExecution = serde_json::from_value(serde_json::json!({
+    let mut isolated: gripsack_ir::workspace_model::RecipeExecution = serde_json::from_value(serde_json::json!({
         "kind":"isolated_linux","worker":"buildkit","platform":{"os":"linux","arch":"x86_64"},
         "toolchain":{"reference":format!("docker.io/library/toolchain@sha256:{}", "b".repeat(64))}
     })).unwrap();
@@ -252,7 +253,7 @@ fn inherited_check_execution_and_transitive_policy_changes_invalidate_reuse() {
         host, linux,
         "one check was reused across execution authorities"
     );
-    if let gripsack_ir::workspace_v6::RecipeExecution::IsolatedLinux { toolchain, .. } =
+    if let gripsack_ir::workspace_model::RecipeExecution::IsolatedLinux { toolchain, .. } =
         &mut isolated
     {
         toolchain.reference = format!("docker.io/library/toolchain@sha256:{}", "c".repeat(64));

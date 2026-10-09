@@ -49,8 +49,14 @@ impl Fixture {
     }
 
     fn resolve(&self) -> Result<LockedCondaEnvironment, CondaError> {
-        self.helper
-            .resolve(41, &[], &BTreeMap::new(), "linux-64", &[])
+        self.helper.resolve(
+            41,
+            &[],
+            &BTreeMap::new(),
+            "linux-64",
+            &[],
+            &Default::default(),
+        )
     }
 
     fn assert_reaped(&self) {
@@ -156,8 +162,8 @@ fn oversized_or_wrong_version_frame_never_admits_success() {
     ));
     let mut bytes = frame(&resolved(41, "linux-64"));
     let offset = bytes
-        .windows(b"\"protocol\":2".len())
-        .position(|part| part == b"\"protocol\":2")
+        .windows(b"\"protocol\":3".len())
+        .position(|part| part == b"\"protocol\":3")
         .unwrap();
     bytes[offset + b"\"protocol\":".len()] = b'1';
     let fixture = Fixture::new(&bytes, "exit 0", Duration::from_secs(5));

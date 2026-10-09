@@ -4,7 +4,7 @@
 use crate::{Ctx, ExecError, LifecycleSession, Repository};
 use gripsack_ir::{
     Diagnostic, codes,
-    workspace_v6::{InputOrigin, WorkspaceInput, identity::ArtifactDigest},
+    workspace_model::{InputOrigin, WorkspaceInput, identity::ArtifactDigest},
 };
 use gripsack_store::{self as store, source_bundle::SourceObject};
 use sha2::{Digest, Sha256};

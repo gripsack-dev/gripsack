@@ -3,7 +3,7 @@ use super::{
     AdmittedCommand, BinaryAbi, EXECUTABLE_BYTES, ExecError, NativeContext, Package,
     PinnedInterpreter, Span, elf, gate, macho, operational,
 };
-use gripsack_ir::workspace_v6::identity::ExecutableDigest;
+use gripsack_ir::workspace_model::identity::ExecutableDigest;
 use gripsack_process::{
     Sha256Digest,
     executable::{ExecutableFormat, Interpreter, classify},

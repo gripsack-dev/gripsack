@@ -83,6 +83,8 @@ def write_fixture(repo: Path, rel: str, spec) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(spec, str):
         target.write_text(spec, encoding="utf-8")
+    elif "executable" in spec:
+        write_executable(target, spec["executable"])
     elif "payload" in spec:
         with tarfile.open(target, "w:gz") as tar:
             for name, content in spec["payload"].items():

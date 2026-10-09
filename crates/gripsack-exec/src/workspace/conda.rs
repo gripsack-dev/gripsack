@@ -26,8 +26,8 @@ use crate::{Ctx, ExecError, LifecycleSession, UpdateMode};
 use gripsack_conda::CondaHelper;
 use gripsack_ir::{
     workspace::WorkspacePlatform,
-    workspace_v6::{
-        LockedSource, PixiLockSource, WorkspaceSourceV6, WorkspaceV6,
+    workspace_model::{
+        AcquisitionSource, LockedSource, PixiLockSource, WorkspaceCatalog,
         identity::conda_closure_digest,
         lock::{
             LockedCondaEnvironment, LockedCondaPackage, LockedPin, LockedVirtualPackage,
@@ -95,15 +95,21 @@ fn failure(output: &str, detail: impl Into<String>) -> ExecError {
 /// Reject an incoherent frozen selection before looking up archives or helpers.
 pub(super) fn admit_frozen(
     output: &str,
-    source: &WorkspaceSourceV6,
+    source: &AcquisitionSource,
     locked: &LockedCondaEnvironment,
 ) -> Result<(), ExecError> {
     let result = match source {
-        WorkspaceSourceV6::CondaEnvironment(declared) => {
+        AcquisitionSource::CondaEnvironment(declared) => {
+            let requirements = gripsack_conda::virtuals::declared_system_requirements(
+                declared.system_requirements.as_ref(),
+                &locked.platform,
+            )
+            .map_err(|error| failure(output, error.to_string()))?;
             gripsack_conda::virtuals::validate_frozen_request(
                 locked,
                 &root_specs(&declared.packages),
                 &declared.channels,
+                &requirements,
             )
         }
         _ => gripsack_conda::virtuals::validate_frozen_environment(locked, None),
@@ -617,9 +623,9 @@ pub(crate) fn resolve_update(
     ctx: &Ctx,
     session: &LifecycleSession,
     name: &str,
-    source: &WorkspaceSourceV6,
+    source: &AcquisitionSource,
     platform: &WorkspacePlatform,
-    workspace: &WorkspaceV6,
+    workspace: &WorkspaceCatalog,
     mode: UpdateMode,
 ) -> Result<LockedPin, ExecError> {
     let subdir = subdir(name, platform)?;
@@ -628,14 +634,21 @@ pub(crate) fn resolve_update(
     let attempt = u64::from_le_bytes(attempt);
     let mut locked_source = source.locked();
     let environment = match source {
-        WorkspaceSourceV6::CondaEnvironment(declared) => {
+        AcquisitionSource::CondaEnvironment(declared) => {
             if !declared.platforms.is_empty() && !declared.platforms.contains(platform) {
                 return Err(failure(
                     name,
                     "requesting platform is not in the declared conda platforms",
                 ));
             }
-            let facts = host_virtual_packages(name, platform)?;
+            let requirements = gripsack_conda::virtuals::declared_system_requirements(
+                declared.system_requirements.as_ref(),
+                subdir,
+            )
+            .map_err(|error| failure(name, error.to_string()))?;
+            let mut facts = host_virtual_packages(name, platform)?;
+            gripsack_conda::virtuals::apply_solve_baseline(&requirements, &mut facts)
+                .map_err(|error| failure(name, error.to_string()))?;
             let helper = helper(ctx, name)?;
             let environment = helper
                 .resolve(
@@ -644,6 +657,7 @@ pub(crate) fn resolve_update(
                     &declared.packages,
                     subdir,
                     &facts,
+                    &requirements,
                 )
                 .map_err(|error| failure(name, format!("conda solve: {error}")))?;
             gripsack_conda::virtuals::validate_solved_environment(
@@ -651,11 +665,12 @@ pub(crate) fn resolve_update(
                 &root_specs(&declared.packages),
                 &declared.channels,
                 &facts,
+                &requirements,
             )
             .map_err(|error| failure(name, error.to_string()))?;
             environment
         }
-        WorkspaceSourceV6::PixiLock(declared) => {
+        AcquisitionSource::PixiLock(declared) => {
             let read_input = |input_name: &str| -> Result<(Vec<u8>, String), ExecError> {
                 let declaration = workspace
                     .inputs
@@ -687,7 +702,7 @@ pub(crate) fn resolve_update(
             }
             environment
         }
-        WorkspaceSourceV6::Fetch(_) => {
+        AcquisitionSource::Fetch(_) => {
             return Err(failure(name, "fetch sources do not resolve through conda"));
         }
     };
@@ -740,7 +755,7 @@ pub(crate) fn resolve_update(
 pub(crate) fn verify_pixi_inputs(
     ctx: &Ctx,
     session: &LifecycleSession,
-    workspace: &WorkspaceV6,
+    workspace: &WorkspaceCatalog,
     output: &str,
     declared: &PixiLockSource,
     pin: &LockedPin,
@@ -777,4 +792,67 @@ pub(crate) fn verify_pixi_inputs(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod baseline_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn frozen_acquisition_binds_declared_baseline_before_archive_access() {
+        let declaration = json!({
+            "kind":"conda_environment", "channels":["conda-forge"], "packages":{"python":"*"},
+            "system_requirements":{"libc":{"family":"glibc","version":"2.28"},"linux":"4.18"},
+            "span":{"file":"workspace.ts","line":1}
+        });
+        let source: AcquisitionSource = serde_json::from_value(declaration.clone()).unwrap();
+        let AcquisitionSource::CondaEnvironment(declared) = &source else {
+            unreachable!()
+        };
+        let requirements = declared
+            .system_requirements
+            .as_ref()
+            .unwrap()
+            .locked()
+            .unwrap();
+        let mut locked: LockedCondaEnvironment = serde_json::from_value(json!({
+            "platform":"linux-64", "channels":["https://conda.anaconda.org/conda-forge"],
+            "channel_priority":"strict", "system_requirements":requirements,
+            "virtual_packages":[
+                {"name":"__glibc","version":"2.28","build":"0"},
+                {"name":"__linux","version":"4.18","build":"0"}
+            ],
+            "packages":[{
+                "name":"python","version":"3.12.7","build":"fixture_0","build_number":0,
+                "subdir":"linux-64","channel":"https://conda.anaconda.org/conda-forge",
+                "url":"https://conda.anaconda.org/conda-forge/linux-64/python-3.12.7-fixture_0.conda",
+                "sha256":"0".repeat(64),"depends":["__glibc >=2.17"],"constrains":[]
+            }],
+            "materializer":{"bytecode":"suppress","receipt":"normalized_conda_meta"}
+        })).unwrap();
+        assert!(admit_frozen("python", &source, &locked).is_ok());
+        for replacement in [
+            json!({}),
+            json!({"libc":{"family":"glibc","version":"2.29"},"linux":"4.18"}),
+            json!({"libc":{"family":"glibc","version":"2.28"},"linux":"5.14"}),
+        ] {
+            let mut changed = declaration.clone();
+            changed["system_requirements"] = replacement;
+            let changed: AcquisitionSource = serde_json::from_value(changed).unwrap();
+            assert!(admit_frozen("python", &changed, &locked).is_err());
+        }
+        let mut removed = declaration;
+        removed
+            .as_object_mut()
+            .unwrap()
+            .remove("system_requirements");
+        let removed: AcquisitionSource = serde_json::from_value(removed).unwrap();
+        assert!(admit_frozen("python", &removed, &locked).is_err());
+        // A retained v6 lock without declared floors remains executable; its
+        // updater fact is not promoted to a runtime glibc minimum.
+        locked.system_requirements = Default::default();
+        locked.virtual_packages[0].version = "2.39".into();
+        assert!(admit_frozen("python", &removed, &locked).is_ok());
+    }
 }

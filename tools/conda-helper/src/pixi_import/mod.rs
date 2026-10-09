@@ -2,7 +2,7 @@
 //! selection and spec conversion; Rattler owns record and MatchSpec semantics.
 use super::{HResult, fail, normalize_record};
 use gripsack_conda::protocol::ImportPixiRequest;
-use gripsack_ir::workspace_v6::lock::{
+use gripsack_ir::workspace_model::lock::{
     BytecodePolicy, ChannelPriority, LockedCondaEnvironment, LockedCondaSystemRequirements,
     LockedVirtualPackage, LockedVirtualPackageRequirement, MaterializerPolicy, ReceiptPolicy,
 };

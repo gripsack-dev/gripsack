@@ -1,7 +1,7 @@
 //! Definition identities bind captured code, not today's files or cache umask.
 //! Original permissions remain in source approval; capture preserves executability.
 use crate::{ExecError, Repository};
-use gripsack_ir::workspace_v6::{identity::DefinitionDigest, lock::DefinitionPins};
+use gripsack_ir::workspace_model::{identity::DefinitionDigest, lock::DefinitionPins};
 use gripsack_store::source_bundle::{SourceEntry, SourceFileBytes, SourceObject};
 use sha2::{Digest, Sha256};
 use std::{

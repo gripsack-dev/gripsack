@@ -1,5 +1,5 @@
-//! Explicit OS runtime authority for coherent Conda prefixes. This is not a
-//! general fallback to ld.so.cache, the operator's search path, or host packages.
+//! Narrow OS runtime authority for coherent Conda prefixes and packages with
+//! explicit GNU host-runtime policy; never ld.so.cache, PATH or host packages.
 use super::{BinaryAbi, ExecError, HostTarget, Span, elf, gate, operational, platform_loader};
 use crate::workspace::conda::SystemRuntime;
 use gripsack_policy::target::{TargetArch, TargetOs};
@@ -35,7 +35,7 @@ pub(super) fn admit(
         let path=library(name,host,span)?.ok_or_else(|| gate(span,format!(
             "Conda prefix requires {name:?} outside the explicit OS runtime; include that library in the frozen package closure"
         )))?;
-        let mut file = std::fs::File::open(&path).map_err(operational)?;
+        let mut file = std::fs::File::open(&path.canonical).map_err(operational)?;
         let status = file.metadata().map_err(operational)?;
         if !status.is_file() || status.len() > super::EXECUTABLE_BYTES {
             return Err(gate(
@@ -53,7 +53,7 @@ pub(super) fn library(
     name: &str,
     host: &HostTarget,
     span: &Span,
-) -> Result<Option<PathBuf>, ExecError> {
+) -> Result<Option<elf::SelectedLibrary>, ExecError> {
     if host.os != TargetOs::Linux || host.abi != Some(BinaryAbi::Gnu) {
         return Ok(None);
     }
@@ -62,7 +62,9 @@ pub(super) fn library(
         .file_name()
         .is_some_and(|base| base == name)
     {
-        return std::fs::canonicalize(loader).map(Some).map_err(operational);
+        return elf::SelectedLibrary::new(PathBuf::from(loader))
+            .map(Some)
+            .map_err(operational);
     }
     // These public SONAMEs belong to glibc. X11, OpenSSL, libstdc++, GPU
     // drivers and other independent packages never inherit this authority.
@@ -98,7 +100,7 @@ pub(super) fn library(
         ],
     };
     for directory in directories {
-        match Path::new(directory).join(name).canonicalize() {
+        match elf::SelectedLibrary::new(Path::new(directory).join(name)) {
             Ok(path) => return Ok(Some(path)),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(operational(error)),

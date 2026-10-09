@@ -1,9 +1,9 @@
 #!/bin/sh
 # gripsack installer — curl -fsSL https://gripsack.dev/install.sh | sh
 #
-# Detects Linux OS/arch (including WSL), downloads the matching static
-# binary from GitHub releases, verifies its checksum, and installs to
-# ~/.local/bin (override: GRIPSACK_BIN). macOS is not supported.
+# Detects Linux x86_64 (including WSL), downloads the static binary,
+# verifies its checksum, and installs to ~/.local/bin (override: GRIPSACK_BIN).
+# ARM awaits native release qualification; macOS is not supported.
 set -eu
 
 REPO="gripsack-dev/gripsack"
@@ -11,13 +11,8 @@ DEST="${GRIPSACK_BIN:-$HOME/.local/bin}"
 
 os="$(uname -s)"
 arch="$(uname -m)"
-case "$arch" in
-    x86_64|amd64) arch="x86_64" ;;
-    aarch64|arm64) arch="aarch64" ;;
-    *) echo "gripsack: unsupported architecture: $arch" >&2; exit 1 ;;
-esac
 case "$os" in
-    Linux)  TARGET="$arch-unknown-linux-musl" ;;
+    Linux) ;;
     Darwin)
         echo "gripsack: macOS is no longer supported; supported environments are Linux and WSL" >&2
         exit 1 ;;
@@ -26,6 +21,14 @@ case "$os" in
         exit 1 ;;
     *) echo "gripsack: unsupported OS: $os" >&2; exit 1 ;;
 esac
+case "$arch" in
+    x86_64|amd64) arch="x86_64" ;;
+    aarch64|arm64)
+        echo "gripsack: the current prebuilt release is Linux x86_64 only; ARM64 awaits native qualification" >&2
+        exit 1 ;;
+    *) echo "gripsack: unsupported architecture: $arch" >&2; exit 1 ;;
+esac
+TARGET="$arch-unknown-linux-musl"
 
 # A pushed tag is not a published artifact. Select the highest stable core tag
 # with both assets available for this target; only 404 permits trying an older one.

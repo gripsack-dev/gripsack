@@ -1,4 +1,4 @@
-//! The v6 named-output catalog (0052 §2.1, v6-design §§2.1–2.3): the
+//! Shared named-output catalog (0052 §2.1, v6-design §§2.1–2.3): the
 //! workspace envelope entry, the nine output types, plus inputs,
 //! mutation locks and the v6 execution/toolchain variants. Layout,
 //! target, calendar and fetch types are SHARED with the frozen v5
@@ -9,7 +9,7 @@
 use super::command::{TaskContext, WorkspaceArg, WorkspaceCommand, WorkspaceStep};
 use super::file::WorkspaceFile;
 use super::image::ImageOutput;
-use super::source::WorkspaceSourceV6;
+use super::source::AcquisitionSource;
 use crate::span::Span;
 use crate::workspace::{
     HostAccess, InstallPrefix, LinuxWorker, RecipeOutputKind, WorkspaceCalendar, WorkspacePlatform,
@@ -17,11 +17,11 @@ use crate::workspace::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Current v6 workspace entry: one catalog of named outputs, plus the
+/// Shared v6/v7 workspace entry: one catalog of named outputs, plus the
 /// input and mutation-lock declarations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct WorkspaceV6 {
+pub struct WorkspaceCatalog {
     /// Where the workspace itself was declared. Mandatory in v6.
     pub span: Span,
     /// Optional display name; never a producer or worktree identity.
@@ -37,6 +37,22 @@ pub struct WorkspaceV6 {
     /// them by (scope, key) (sema E126/E130).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mutation_locks: Vec<WorkspaceMutationLock>,
+}
+
+impl WorkspaceCatalog {
+    /// Shared catalog representation retains v6 execution, but new authority
+    /// may only be serialized or executed from an explicitly v7 envelope.
+    pub fn requires_v7(&self) -> bool {
+        self.outputs.iter().any(|output| match output {
+            WorkspaceOutput::Recipe(recipe) => recipe.source.requires_v7(),
+            WorkspaceOutput::Package(package) => {
+                package.host_runtime.is_some()
+                    || matches!(&package.producer, WorkspaceProducer::Provider { provider }
+                        if provider.requires_v7())
+            }
+            _ => false,
+        })
+    }
 }
 
 /// One declared workspace input (v6-design §2.1).
@@ -80,8 +96,8 @@ pub enum MutationLockScope {
     Store,
 }
 
-/// One declared v6 workspace output. The `kind` tag is closed by the
-/// tagged-field pass; the nine variants are the current v6 grammar.
+/// One declared catalog output. The `kind` tag is closed by the
+/// versioned tagged-field pass before constructing this shared model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceOutput {
@@ -129,9 +145,9 @@ impl WorkspaceOutput {
 pub struct RecipeOutput {
     pub name: String,
     pub span: Span,
-    /// How to obtain the payload — the v6 acquisition grammar with its
+    /// How to obtain the payload — the admitted acquisition grammar with its
     /// own declaration span.
-    pub source: WorkspaceSourceV6,
+    pub source: AcquisitionSource,
     pub execution: RecipeExecution,
     pub output_kind: RecipeOutputKind,
     pub target: WorkspacePlatform,
@@ -182,8 +198,15 @@ pub struct PackageOutput {
     /// Explicit runtime closure — names of `package` outputs (sema E126).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub runtime: Vec<String>,
+    /// Reviewed host GNU runtime dependence; absent retains closed admission.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "super::host_runtime::deserialize_policy"
+    )]
+    pub host_runtime: Option<super::HostRuntimeRequirements>,
     pub target: WorkspacePlatform,
-    pub layout: PackageLayoutV6,
+    pub layout: CatalogPackageLayout,
 }
 
 /// What produces a package's payload (plan/0052 §2.2: resolution and
@@ -196,7 +219,7 @@ pub enum WorkspaceProducer {
     /// A direct provider acquisition — the v6 source grammar with
     /// mandatory provenance. A provider-backed package needs no
     /// synthetic recipe output.
-    Provider { provider: WorkspaceSourceV6 },
+    Provider { provider: AcquisitionSource },
 }
 
 /// The v6 package layout (A3): the shared v5 pair stays with the frozen
@@ -205,7 +228,7 @@ pub enum WorkspaceProducer {
 /// time (never an author-declared literal and never relocatable).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum PackageLayoutV6 {
+pub enum CatalogPackageLayout {
     Relocatable,
     /// A fixed literal prefix declared for cross-target admission.
     FixedPrefix {

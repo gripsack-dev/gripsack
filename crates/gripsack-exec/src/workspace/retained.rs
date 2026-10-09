@@ -12,7 +12,9 @@ use crate::{ExecError, Repository};
 use gripsack_ir::{
     FetchSpec, Ir,
     workspace::RecipeOutputKind,
-    workspace_v6::{WorkspaceOutput, WorkspaceProducer, WorkspaceSourceV6, identity::CommandPins},
+    workspace_model::{
+        AcquisitionSource, WorkspaceOutput, WorkspaceProducer, identity::CommandPins,
+    },
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -32,7 +34,7 @@ pub(super) fn inspect<'a>(
         packages: BTreeMap::new(),
         inputs: BTreeMap::new(),
     };
-    let Some(workspace) = &ir.workspace_v6 else {
+    let Some(workspace) = &ir.workspace_catalog else {
         return Ok(realized);
     };
     if origins.is_empty() {
@@ -59,8 +61,9 @@ pub(super) fn inspect<'a>(
                 continue;
             };
             let pin = pins.lookup(target, name, &source.locked())?;
-            if let (WorkspaceSourceV6::PixiLock(declared), Some(pin)) = (source, pin) {
-                let gripsack_ir::workspace_v6::LockedSource::PixiLock(locked) = &pin.source else {
+            if let (AcquisitionSource::PixiLock(declared), Some(pin)) = (source, pin) {
+                let gripsack_ir::workspace_model::LockedSource::PixiLock(locked) = &pin.source
+                else {
                     return Err(super::file_failure(
                         output.span(),
                         "Pixi pin lost its locked source",
@@ -205,11 +208,11 @@ fn retained_source(
     repository: &Repository,
     home: &Path,
     name: &str,
-    source: &WorkspaceSourceV6,
-    pin: Option<&gripsack_ir::workspace_v6::lock::LockedPin>,
+    source: &AcquisitionSource,
+    pin: Option<&gripsack_ir::workspace_model::lock::LockedPin>,
     limits: gripsack_fetch::FetchLimits,
 ) -> Result<Option<PreparedSource>, ExecError> {
-    let WorkspaceSourceV6::Fetch(fetch) = source else {
+    let AcquisitionSource::Fetch(fetch) = source else {
         let Some(pin) = pin else {
             return Ok(None);
         };

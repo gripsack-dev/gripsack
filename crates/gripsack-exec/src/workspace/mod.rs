@@ -10,7 +10,7 @@ mod inputs;
 mod lowering;
 mod prepare;
 mod realize;
-pub use consumer::{ConsumerOutcome, ConsumerRequest, consume};
+pub use consumer::{ConsumerOutcome, ConsumerRequest, consume, run_package_command};
 pub use realize::{BuildOptions, BuildResult, BuiltOutput, build_workspace};
 mod content;
 mod declarations;
@@ -133,7 +133,7 @@ impl NativeProfiles {
                 }),
         )?;
         let outputs: BTreeMap<_, _> = ir
-            .workspace_v6
+            .workspace_catalog
             .as_ref()
             .into_iter()
             .flat_map(|workspace| &workspace.outputs)
@@ -186,7 +186,7 @@ impl NativeProfiles {
                         "profile environment requires protected package realization",
                     )
                 })?;
-                let Some(gripsack_ir::workspace_v6::WorkspaceOutput::Environment(environment)) =
+                let Some(gripsack_ir::workspace_model::WorkspaceOutput::Environment(environment)) =
                     outputs.get(name).copied()
                 else {
                     return Err(file_failure(

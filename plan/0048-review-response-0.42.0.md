@@ -886,6 +886,51 @@ and the Conda packager refused a retired Mac target before creating output.
 These focused results neither close unfinished Linux handover milestones nor
 claim a fresh full persistence/prover/hosted-CI/native-Mac campaign.
 
+### Owner release scope REL-X64-FIRST-0460-2026-10-08
+
+The owner explicitly selected **“Ship Linux x86_64 first”** for0.46.0 after
+native ARM qualification run37826268050 remained unallocated. Its audit job
+never started; the run was cancelled after the decision, not called passing.
+The owner reaffirmed that the external migration/0.46 release comes before
+the separate CI/BuildKit/local-build workflow redesign.
+
+- For0.46.0 only, the prebuilt core, Conda helper and BuildKit bridge release
+  inventory is Linux x86_64/WSL. This overrides the earlier requirement to
+  include Linux aarch64 in this release, not the permanent Linux-only/Mac
+  retirement decision. ARM remains unavailable and unqualified; neither QEMU
+  nor old pins are substituted for native evidence.
+- Current helper pins, native packaging targets, release workflow inventory
+  and installer admission follow that exact scope. The installer refuses ARM
+  before network/replacement rather than quietly selecting a historical
+  release. Published older tags and artifacts remain immutable.
+- Required local x86_64 runtime/security, dependency, packaging and proof
+  gates remain required. The96 Linux persistence partitions are not waived.
+  Checksums/local build receipts are not hosted build attestations. No
+  missing, cancelled or timed-out gate becomes passing evidence.
+- `REL-FUZZ-2026-09-27` still excludes fuzz-engine/corpus replay. No
+  CI-provider redesign or changes to the owner's plan0053 work are included.
+  A subsequent ARM release needs actual qualification and a deliberate
+  expansion of the artifact/pin inventory.
+
+### Standing owner scope PLATFORM-LINUX-X64-2026-10-09
+
+After selecting the x86-first0.46 release, the owner made the target decision
+standing: only Linux/WSL on x86_64 is needed. ARM, macOS and native Windows
+are outside active scope; future expansion may be landed after a new owner
+decision, not maintained as a current release blocker or passing claim.
+This supersedes the earlier “retain Linux aarch64” portions of the platform
+amendment and the temporary-only interpretation of `REL-X64-FIRST-0460`.
+The current0.46 artifact inventory was already x86-only; no Linux/common
+proof, runtime or96-partition persistence obligation is withdrawn.
+
+The owner requested the shared Buildbot/owned-worker migration **after0.46**
+and the external migration are unblocked. Its authoritative research is
+`../SHARED-BUILDBOT-CI-PLAN.md`; the older0053 snapshot is historical input,
+not a prohibition on the newly requested implementation. Controller/worker,
+durable candidate state, qualified owner bundles and optional publication
+belong to that next work. No infrastructure deployment or migration completion
+is claimed by this support decision.
+
 ### Owner exception MAC-NATIVE-QUAL-2026-10-02
 
 The owner explicitly authorized disabling blocking Mac tests temporarily and
@@ -3362,4 +3407,227 @@ Homebrew/macOS execution or hosted-build attestation is claimed. The exact
 private Space/kernel remains outside observed qualification. The inherited
 incomplete full-suite run remains incomplete; no new fuzz/corpus campaign was
 started. CI/provider migration and original user-owned edits remain untouched.
+
+
+## 18. External 0.45.0 follow-up — 0.46.0 execution record
+
+Received 2026-10-08. The reviewer reports actual execution on WSL Ubuntu24.04
+(glibc2.39) and RHEL8.10 Space (glibc2.28, el9 5.14 kernel, Landlock enabled):
+persistent Node/pyright activation, the complete X11 closure, sealed GNU
+commands, repeated Pixi imports, hooks including `fc-cache`, and passing/failing
+task checks now work on both hosts. Capture exclusions and unattended exact-digest
+approval also worked. This is **external reviewer evidence**, not an internally
+rerun private-host campaign or invented source-bound transcript. The review did
+not retest removed-Pixi diagnostics, broader legacy support or downgrades.
+
+An explicit Pixi solve baseline plus observed execution qualifies that closure
+on those hosts; it is not universal portability proof. Native
+`conda.environment` still needs a declarable baseline. Measured solve facts,
+declared target requirements, archive requirements and sealed-loader admission
+remain separate domains.
+
+### Responsibility and dependency map
+
+- Shared contract/Conda owner: strict writer v7, retained executing v6
+  admission, schema/Rust/TS parity, explicit Conda baseline and helper protocol
+  binding. Normalize current semantic-model names rather than extending types
+  misleadingly named for an obsolete wire version.
+- Native-runtime owner: package-scoped reviewed host-library requirements,
+  retained package receipt identity, sealed ELF lookup/equivalence and native
+  consumers. A mutable host-runtime allowance never becomes an evaluator grant,
+  implicit BuildKit mount or portable OCI runtime closure.
+- Retained invocation owner: native command admission, process-root leases and
+  an internal CLI entrypoint let newly host-dependent persistent wrappers
+  re-admit their exact retained package/receipt graph on every launch. No
+  unsealed fallback, projected-PATH lookup of the core, or persisted loader
+  authority. Existing policy-free wrappers retain their contract.
+- Publication owner: existing shared store/filesystem publication. Staging
+  investigation changes this owner only for a demonstrated cross-device defect;
+  no global `$TMPDIR` workaround or suppressed rename error.
+- Documentation owner: real legacy prune generations, physical release-tree
+  layout, MatchSpecs, closure dependencies and the existing managed-file
+  launcher mechanism. No ownership bypass or speculative launcher API.
+- Integration owner: all caller/version/receipt migrations, focused security
+  review, applicable Linux proofs/flows, public consumers and coordinated
+  core/SDK release. Linux/WSL scope and no-fuzz/corpus instruction remain;
+  plan0053 and original user-owned changes stay separate.
+
+| Leaf | Required result | State/evidence |
+|---|---|---|
+| UP46.1 | Explicit reviewed host-runtime library roots allow the reported absolute RUNPATH use case without weakening default sealed admission, closure/search equivalence, aliases or replay | **verified at candidate source** — real GNU alias/transitive-order security fixture, auxiliary-FD boundaries, 13/13 loader/projection flows; UBI8/glibc2.28 command/task/check/profile + transitive package + moved-core/reapply smokes below |
+| UP46.2 | Migration guide requires a separately approved and applied legacy prune before workspace ownership; explains temporary absence and `--take-over` limits | **verified** — stable0.45 legacy generation1 → applied empty generation2 → workspace generation3; actual ownership/file transitions, no takeover or manual unlink |
+| UP46.3 | `conda.environment.systemRequirements` drives selected solve virtuals, is recorded/bound in frozen state, and cannot be changed or forged silently | **verified at candidate source** — real protocol3 helper/local HTTPS solve records2.28/4.18 instead of updater2.41/6.18; changed-policy frozen consumers refuse, explicit update restores them; actual too-low solve refuses; unchanged42-archive implicit lock executes on glibc2.28 |
+| UP46.4 | Document physical sibling-layout loss under per-file artifactTree symlinks and a working trackedCopyTo release-tree pattern | **verified** — actual sibling-loading executable works under tracked copy; complete published-code card accepted by candidate packaged SDK and real core |
+| UP46.5a | Document required MatchSpec operators rather than accepting an ambiguous bare version | implemented in pending website changes |
+| UP46.5b | Retain explicit `xorg-libx11` closure guidance and fail-closed missing-library behavior | externally reconfirmed; no default behavior change requested |
+| UP46.5c | State activation contract and prove any existing profile-managed executable-file launcher; no invented dedicated helper or delivery promise | **verified** — stable0.45 managed executable Node26.10.0 launcher, clean noninteractive cwd/PATH and rollback; candidate packaged-SDK full card accepted |
+| UP46.5d | State producer-specific cross-filesystem staging/publication guarantees and whether TMPDIR override is necessary | **verified at shared publication owner** — real native Conda/Pixi, separate temp/store devices, TMPDIR unset; 42 exact archives and stable retained prefixes, no demonstrated core-owned EXDEV defect |
+| UP46.REL | Matching release, all affected callers/docs and honest source/artifact-bound verification | **locally qualified; publication pending** — reproducible promoted bytes, all555 flows and96 persistence partitions, policy/collector/TLAPS evidence, exact helper pins, audits and package preflight complete; registry/public consumers/site remain |
+
+### Candidate runtime and documentation evidence
+
+- GNU-native gate: the compiled ELF fixture exercised the real loader's
+  outside-root alias canary, safe alias origin, reviewed roots, retained
+  receipts and transitive package ordering; 1 comprehensive test passed.
+  Four auxiliary-input cases passed, including deadline/byte limits and
+  refusing a stdin alias without draining it. The required `gnu-test` lane
+  runs these on GNU userspace rather than pretending Alpine's compiler emits
+  GNU fixtures.
+- Real musl-core GNU-loader flows: **13 passed**, including nested
+  task/check/shell/profile projection, 192000 bytes of declared environment
+  values, empty/unset/overridden variables, stdin, argv, status and tampered
+  projection refusal.
+- `/tmp/gs046-native-smoke-ir30j8sr/evidence` records actual UBI8
+  glibc2.28-251.el8_10.43 execution. Core SHA256
+  `01284efbc09ba573958bb9caf7dc69c55770f09c69134dd67c9b51d80ccae7f5`:
+  absolute RUNPATH direct/task/check/profile and transitive-runtime fixtures
+  succeed; absent authority, malformed or missing libraries refuse before
+  stdout. Moving the bound core refuses even with an identical binary on
+  PATH; reapply from its new absolute path publishes generation2 and restores
+  launch, stdin and exit37. This is current WSL6.18 kernel evidence, not the
+  private el9-5.14 host or a final published-artifact claim.
+- `/tmp/gs046-doc-positive-b8yr72tj/evidence.json` records the stable0.45
+  prune/layout/managed-launcher positive scenarios. New documentation was
+  additionally checked with the packed0.46 SDK and candidate core: **11**
+  complete programs accepted by the driver and `grip check`; both deliberate
+  pin and missing-return calibrations passed. Four genuinely partial
+  fragments remain explicitly classified, not called executed.
+- `/tmp/gs0450-staging-xdev-30vkqln4` records network-disabled native
+  Conda/Pixi materialization with `/tmp` on another device, TMPDIR/TMP/TEMP
+  unset and 42 real frozen archives. Retained apply made no network requests
+  and preserved bytes/modes/inodes/mtime/link identity. The shared owner uses
+  same-filesystem rename or a synced destination-filesystem copy and atomic
+  sibling rename; no new staging workaround was added.
+- `/tmp/gs0460-conda-baseline-h6s1t8b_/qualification.json` records the real
+  protocol3 solve. Helper SHA256
+  `d88c77dd600b7ef0db4c27d17099e2f7660ea0ddf0b42615211a1a6a2f6bf15a`
+  came from two identical native release builds. All42 exact archive
+  identities remained unchanged. Repeated frozen check/run/apply (actual
+  pyright1.1.414) made zero network requests and preserved lock bytes.
+  Changing2.28→2.29 after source approval still caused E301 until explicit
+  update/reapproval; too-low2.17 failed actual archive constraints without
+  publishing a lock. Omitting the policy recorded updater facts, and that
+  unchanged implicit lock separately executed on actual UBI8/glibc2.28:
+  measured solve facts were not misrepresented as binary ABI minima.
+- `/tmp/gs0460-retained-evidence` records published0.45 apply followed by
+  candidate0.46 prune and rollback to generation1. The retained v6 package
+  hook executed again after original declaration/archive removal, and the
+  old file bytes were restored. No old binary was run against newer state.
+- The integrated local `test` gate passed fmt, clippy, all workspace/helper
+  tests, architecture checks and deterministic admission/protocol/mutant
+  calibrations. Deliberately killed mutants are not production test failures;
+  no fuzz engine or saved-corpus replay ran. The two initial integration
+  compile/lint failures (owned diagnostic sink and enum naming) were fixed
+  before this passing run.
+
+
+### Promoted candidate bytes and remaining gates
+
+Candidate runtime source is clean commit
+`d2161a0f450a56fcb74785627bf848e5d7fa79b3`. Two independent release builds in
+the same captured builder image
+`sha256:da09ae1c9e01165e7ed56226a5ec49b87a6e7556b7b33f4396dc7f13e57b168c`
+produced identical core SHA256
+`cb358c868139204bf26a87ee09939cacca93d9399fd613a6559a6a2674aca23c`.
+These exact bytes, not a later rebuild, are staged for publication.
+The nine-file x86-only inventory is in `/tmp/gs0460-artifact-inventory.json`;
+core archive SHA256 is
+`8f7e09f0c11bcde99043bd1877bb23089aeb9facfe4ee81f22e71dbe308d1761`.
+The helper's fresh two-build committed-pin check retained `d88c77dd…f15a`;
+the bridge's scoped two-build check retained `cda198af…2e54`.
+
+- `/tmp/gs0460-promoted-native-l9h66_i_/acceptance-receipt.json` binds the
+  promoted core to14 real native/transitive cases on each of glibc2.41 and
+  UBI8/glibc2.28 (49 command receipts each), plus13 focused GNU flows and
+  actual0.45 retained-v6 package-hook rollback after archive/source removal.
+- `/tmp/gs0460-promoted-conda-2n4k7uyw/qualification.json` binds promoted
+  core/helper bytes to35 native baseline commands:30 successes and five
+  expected refusals,42 exact archives, zero frozen network requests and
+  older-glibc execution. Existing0.45 Pixi frontend/import pins initially
+  refused; explicit offline update refreshed only `gripsack.lock`.
+  Upstream Pixi documents and42 archive identities remained byte-identical,
+  followed by12 successful frozen consumers across both userspaces.
+- Native dependency inspection passed. Fresh advisory checks found no
+  vulnerabilities in372 root and570 helper lock dependencies, or in the
+  promoted core's280 embedded dependencies.
+- All14 registry packages compiled in a complete-Git-context
+  `cargo publish --workspace --dry-run --locked`; no upload occurred.
+  The first dry run mounted a linked worktree without its external Git
+  metadata, causing Cargo to omit the tracked initializer `.gitignore`.
+  A standalone checkout restored the proper inventory and passed; no
+  initializer resource was removed to conceal the harness failure.
+- The release workflow's actual inventory verifier accepted the exact nine
+  staged files and rejected five attributed missing/extra-ARM/checksum/
+  manifest/license mutations. The rebuilt installer passed10 cases, including
+  zero-network/no-replacement ARM refusal. Unsupported ARM helper packaging
+  exited2 before creating an output directory.
+- Transaction induction passed301 pilot obligations and4816 generalized
+  obligations across42 modules, with calibrated negative witnesses. The
+  unchanged TLC model layer was cached, not freshly explored. Linux B0
+  completed all six real worker/OCI/runtime probes.
+
+The earlier serial non-corpus flow run and policy/calibration run reached an
+outer3600-second command deadline; neither is complete passing evidence.
+Final-source flow qualification is isolated by file, the96 persistence
+partitions retain their full existing cut/drift/recovery oracles, and the
+policy gate continues without that outer deadline. Final Rust/helper gates,
+these remaining campaigns, registry/public artifact/default-helper consumers,
+and live site verification remain release requirements.
+
+Completed final-source flow qualification:
+`/tmp/gs0460-flow-20261008T195958Z/summary.json` records **555 passed,
+zero failed/errors/skipped**, with a complete39-file inventory excluding
+golden/corpus and persistence. It joins545 fresh per-file JUnit outcomes
+with the already-passing exact-image10-case installer receipt; the current
+13-case GNU suite also passed. Every container bound source `d2161a0` and
+image `sha256:958b5d45a02fe1e7e3b93674ec3a40654e0578f64bfa235c01315a7b5939ac26`.
+The final-source Compose Rust/helper/calibration gate also passed after
+the x86-only pin change. All11 complete documentation examples passed again
+with the **promoted** core and packed SDK; four fragments remain classified.
+Policy calibration and the separate96-partition persistence campaign remain
+pending; the interrupted serial run is not used to fill either gap.
+
+Policy/collector proof completion: the combined run verified **444 policy
+obligations** and all **92** attributed policy calibrations, including refusal
+of an unrelated lemma as classifier evidence. Its next collector step exposed
+missing Verus datatype specifications for the two new metadata leaves.
+`workspace_model/graph/spec.rs` now gives `HostRuntimeRequirements` and
+`CondaSystemRequirements` the same opaque-leaf treatment as existing metadata:
+neither contains catalog/input references. No collector implementation,
+theorem, floor or completeness condition was weakened. This file is loaded
+only under `cfg(verus_keep_ghost)`; ordinary runtime code is unchanged.
+
+The failed collector step alone was resumed through the existing
+`check_collector_verus.py` in the pinned Verus0.2026.09.06/Rust1.98 tooling
+image. It verified **30 obligations** and rejected all **four** named collector
+mutants with the required attribution. This joins the completed policy
+evidence above; the initially failed Compose invocation is not relabelled
+successful, and its already-completed92 calibrations were not rerun.
+
+Persistence infrastructure incident: at2026-10-08T21:11:20Z, Docker recorded
+explicit `kill` events with signal9 for eight independent `apply-deploy-kill`
+containers. Their `OOMKilled` flags were false; healthy cut/recovery progress
+preceded the interruption. The API caller is unidentified. The containers
+inherited the source image's shared Compose project/service labels, so isolated
+ownership labels are required for subsequent attempts. Interrupted partitions
+are not passing receipts; their raw states/logs remain preserved while the
+complete inventory is finished.
+
+Final persistence admission completed on2026-10-09. The unmodified
+`check_ci_gate.py::admit_persistence` accepted all **96** source/image-bound
+receipts in `/tmp/gs0460-persistence-d2161a0`: **4692 fault cuts,
+9384 drift cases and18768 recovery invocations**. Measured scenario inventories
+were430/438/284/296/448/450 cuts. All eight externally interrupted attempts
+remain preserved and excluded; fresh complete retries passed under distinct
+Compose ownership labels. Already-live containers were adopted without
+rewriting their original invocation records. Resumed concurrency was explicitly
+bounded at12 with unchanged2-CPU/2-GiB container limits and120-second CLI
+deadlines. No oracle, cut or drift state was omitted.
+
+Final delivery inventory/closure validation, dependency-direction calibration
+and complete-gate admission calibration (**6 positive /188 negative**) passed.
+The source difference after runtime qualification is documentation plus the
+ghost-only collector datatype specifications described above. No promoted
+executable was rebuilt or substituted. All local release requirements are
+complete; publication and actual public consumers remain the next boundary.
 

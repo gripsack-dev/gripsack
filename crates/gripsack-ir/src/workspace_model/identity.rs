@@ -3,7 +3,7 @@
 //! bindings are supplied by the core; TypeScript pin claims are not authority.
 mod encode;
 use super::lock::{DefinitionPins, ResolvedPinFields, WorkspaceLock};
-use super::{CheckOutput, PackageOutput, RecipeExecution, RecipeOutput, WorkspaceV6};
+use super::{CheckOutput, PackageOutput, RecipeExecution, RecipeOutput, WorkspaceCatalog};
 use crate::HostFacts;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
@@ -218,7 +218,7 @@ pub fn lock_digest(lock: &WorkspaceLock) -> LockDigest {
     LockDigest(encode::lock(lock))
 }
 pub fn plan_digest(
-    workspace: &WorkspaceV6,
+    workspace: &WorkspaceCatalog,
     facts: &HostFacts,
     definitions: &DefinitionPins,
     packages: &BTreeMap<String, PackageDigest>,

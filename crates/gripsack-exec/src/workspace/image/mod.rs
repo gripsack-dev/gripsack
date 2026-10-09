@@ -17,7 +17,7 @@ use gripsack_buildkit::{
     oci::{self, BlobDigest, OciLimits},
     plan::ExporterPlan,
 };
-use gripsack_ir::{Diagnostic, codes, workspace_v6::ImageOutput};
+use gripsack_ir::{Diagnostic, codes, workspace_model::ImageOutput};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},

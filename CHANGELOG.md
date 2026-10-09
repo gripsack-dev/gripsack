@@ -3,6 +3,64 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [0.46.0] — 2026-10-09
+
+### Added
+
+- Linux GNU packages can declare `hostRuntime: { libraryDirectories:
+  ["/opt/bb/lib64"] }` for reviewed host libraries and absolute ELF search
+  paths. The allowance is package-scoped and follows explicit runtime
+  dependencies; absent it, sealed execution remains closed. Aliases,
+  transitive search paths and loader shadows cannot enlarge the declared
+  roots. Host-dependent packages cannot enter portable image closures.
+- `conda.environment` accepts `systemRequirements`, for example
+  `{ libc: { family: "glibc", version: "2.28" }, linux: "4.18" }`.
+  Declared fields replace the corresponding solve-time virtual packages;
+  omitted fields retain measured updater facts. The frozen lock records and
+  binds that policy. Changing it requires explicit update and renewed source
+  review/approval. Archive ABI/CPU requirements and loader admission remain
+  separate from the solve baseline.
+- Persistent wrappers for host-dependent packages re-admit the retained
+  package/receipt graph and host libraries on every invocation through the
+  absolute installed core path. They preserve declared environment values,
+  unset/empty distinctions, stdin, arguments and exit status without ambient
+  loader-variable or projected-PATH fallback. After moving the core, reapply
+  from its new location and refresh activation.
+
+### Compatibility and migration
+
+- The frontend now emits strict IR v7. The core retains executing v6,
+  file-profile v5, read-only v4 workspace and v3 module readers; v6 does not
+  silently admit the new authority fields. Policy-free package identities and
+  v1 receipts retain their existing representation. New host-dependent
+  packages use v2 package receipts; this is not a journal-format change.
+- Conda helper protocol 3 binds declared solve policy in requests and
+  responses. Core/helper/SDK release versions must be installed coherently.
+  Lock format v2 is unchanged. Downgrading an existing newer store remains
+  unsupported; use the current core for rollback.
+- A frontend upgrade can require an explicit Gripsack lock refresh even when
+  `pixi.toml` and `pixi.lock` are unchanged. Review/approve the upgraded source,
+  run `grip update`, then inspect/review/reapprove the generated `gripsack.lock`
+  before frozen consumers. Pixi imports retain the same upstream lock and
+  exact archives; do not edit fingerprints or regenerate Pixi's solve to
+  bypass a captured-frontend refusal.
+- The workspace migration guide now spells out a **separately applied legacy
+  prune generation** before ownership cutover. `--take-over` does not adopt
+  legacy-owned destinations, and the prune temporarily removes those paths.
+- Release trees that load physical siblings must use `artifactTree` with
+  `trackedCopyTo`; per-file `symlinkTo` does not preserve physical sibling
+  layout. Complete examples also show an executable, profile-managed
+  personal/service launcher using existing file APIs.
+- Conda guidance documents MatchSpec operators, explicit `xorg-libx11` for
+  the demonstrated pyright closure, and producer-specific staging guarantees.
+  Core-owned archive/Conda/Pixi publication handles cross-filesystem scratch
+  directories; a `$TMPDIR` override is not required for those paths. External
+  commands and third-party transports retain their own scratch contracts.
+- 0.46.0 ships Linux x86_64/WSL first. ARM artifacts are unavailable until
+  native qualification; the installer refuses ARM rather than silently
+  installing an older release. Linux/WSL remains the product scope; no macOS
+  distribution or qualification is promised.
+
 ## [0.45.0] — 2026-10-08
 
 ### Fixed

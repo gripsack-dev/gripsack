@@ -26,20 +26,20 @@ pub fn argument_input_reference<'a>(arg: &'a WorkspaceArg, at: &'a Span) -> (val
         | WorkspaceArg::Source { .. } | WorkspaceArg::Output { .. } => None,
     }
 }
-pub open spec fn source_inputs_spec<'a>(source: &'a WorkspaceSourceV6, at: &'a Span) -> Seq<Option<InputView<'a>>> {
+pub open spec fn source_inputs_spec<'a>(source: &'a AcquisitionSource, at: &'a Span) -> Seq<Option<InputView<'a>>> {
     match source {
-        WorkspaceSourceV6::Fetch(_) | WorkspaceSourceV6::CondaEnvironment(_) => seq![None, None],
-        WorkspaceSourceV6::PixiLock(value) => seq![
+        AcquisitionSource::Fetch(_) | AcquisitionSource::CondaEnvironment(_) => seq![None, None],
+        AcquisitionSource::PixiLock(value) => seq![
             Some(InputView { to: value.manifest@, at, site: InputSite::PixiManifest }),
             Some(InputView { to: value.lock@, at, site: InputSite::PixiLock })],
     }
 }
-pub fn source_input_references<'a>(source: &'a WorkspaceSourceV6, at: &'a Span) -> (values: [Option<InputReference<'a>>; 2])
+pub fn source_input_references<'a>(source: &'a AcquisitionSource, at: &'a Span) -> (values: [Option<InputReference<'a>>; 2])
     ensures values@.map_values(|v: Option<InputReference<'a>>| input_view(v)) =~= source_inputs_spec(source, at),
 {
     match source {
-        WorkspaceSourceV6::Fetch(_) | WorkspaceSourceV6::CondaEnvironment(_) => [None, None],
-        WorkspaceSourceV6::PixiLock(value) => [
+        AcquisitionSource::Fetch(_) | AcquisitionSource::CondaEnvironment(_) => [None, None],
+        AcquisitionSource::PixiLock(value) => [
             Some(InputReference { to: &value.manifest, at, site: InputSite::PixiManifest }),
             Some(InputReference { to: &value.lock, at, site: InputSite::PixiLock })],
     }

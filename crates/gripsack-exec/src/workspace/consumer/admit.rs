@@ -10,6 +10,8 @@ mod macho;
 mod native;
 mod platform;
 pub(in crate::workspace) use native::NativeContext;
+#[cfg(all(test, target_os = "linux", target_env = "gnu"))]
+mod host_runtime_tests;
 #[cfg(test)]
 mod tests;
 use super::super::{artifact::Package, realize::Realization};
@@ -17,8 +19,8 @@ use crate::ExecError;
 use gripsack_ir::{
     Diagnostic, Span, codes,
     workspace::WorkspacePlatform,
-    workspace_v6::{
-        EnvironmentOutput, PackageLayoutV6, WorkspaceArg, WorkspaceOutput,
+    workspace_model::{
+        CatalogPackageLayout, EnvironmentOutput, WorkspaceArg, WorkspaceOutput,
         identity::ExecutableDigest, lock::BytecodePolicy,
     },
 };
@@ -179,6 +181,7 @@ pub(in crate::workspace) struct EnvironmentPlan {
     declared_path: Vec<PathBuf>,
     declared_library_path: Vec<PathBuf>,
     closure: BTreeSet<PathBuf>,
+    launchers: BTreeMap<String, std::sync::Arc<super::launcher::Binding>>,
 }
 impl EnvironmentPlan {
     pub fn admit(
@@ -193,6 +196,7 @@ impl EnvironmentPlan {
         let mut owners: BTreeMap<&str, &WorkspaceOutput> = BTreeMap::new();
         let mut closure = BTreeSet::new();
         let mut bytecode = None;
+        let mut launchers = BTreeMap::new();
         for name in &declaration.packages {
             let output = outputs[name.as_str()];
             let package = realization.packages[name.as_str()].as_ref();
@@ -200,6 +204,8 @@ impl EnvironmentPlan {
                 .admit_package_closure(package, output.span())?
                 .or(bytecode);
             package.retain_into(&mut closure);
+            let binding =
+                super::launcher::Binding::capture(context.home, package)?.map(std::sync::Arc::new);
             for (command, provided) in &package.commands {
                 if let Some(previous) = owners.insert(command, output) {
                     return Err(ExecError::Gate(
@@ -213,6 +219,9 @@ impl EnvironmentPlan {
                             "conflicting export declared here",
                         ),
                     ));
+                }
+                if let Some(binding) = &binding {
+                    launchers.insert(command.clone(), std::sync::Arc::clone(binding));
                 }
                 commands.insert(
                     command.clone(),
@@ -265,6 +274,7 @@ impl EnvironmentPlan {
             declared_path,
             declared_library_path,
             closure,
+            launchers,
         })
     }
 
@@ -276,6 +286,7 @@ impl EnvironmentPlan {
             declared_path: Vec::new(),
             declared_library_path: Vec::new(),
             closure: BTreeSet::new(),
+            launchers: BTreeMap::new(),
         }
     }
 
@@ -341,9 +352,38 @@ impl EnvironmentPlan {
     /// multicall selector exported under another name, and its exact runtime
     /// search plan. The public alias is never substituted for the selector.
     pub fn write_commands(&self, bin_directory: &Path) -> Result<(), ExecError> {
+        let projection = if self.launchers.is_empty() {
+            None
+        } else {
+            let overlay = EnvironmentOverlay::admit(
+                self.entries.iter().cloned(),
+                [],
+                self.declared_library_path.iter().cloned(),
+            )
+            .map_err(operational)?;
+            Some(super::launcher::encode_projection(&overlay)?)
+        };
+        self.write_projected_commands(bin_directory, projection.as_deref())
+    }
+
+    fn write_projected_commands(
+        &self,
+        bin_directory: &Path,
+        projection: Option<&str>,
+    ) -> Result<(), ExecError> {
         use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
         for (name, command) in &self.commands {
+            if let Some(binding) = self.launchers.get(name) {
+                binding.write(
+                    bin_directory,
+                    name,
+                    projection.ok_or_else(|| {
+                        failure("managed command projection has no environment binding")
+                    })?,
+                )?;
+                continue;
+            }
             let destination = bin_directory.join(name);
             let libraries = std::env::join_paths(
                 command
@@ -418,6 +458,43 @@ impl EnvironmentPlan {
                 .map_err(operational)?;
         }
         Ok(())
+    }
+
+    /// A task/check's declarations extend the environment. Give that merged
+    /// overlay its own bin under the existing process lease, so nested launches
+    /// preserve its names without rewriting another step's live projection.
+    pub(super) fn project_command_environment(
+        &self,
+        base: &EnvironmentOverlay,
+        composed: EnvironmentOverlay,
+    ) -> Result<EnvironmentOverlay, ExecError> {
+        if self.launchers.is_empty() {
+            return Ok(composed);
+        }
+        let bin = base
+            .search_prefix()
+            .first()
+            .ok_or_else(|| failure("task environment has no leased command projection"))?;
+        let parent = bin
+            .parent()
+            .ok_or_else(|| failure("command projection has no leased parent"))?;
+        let directory = tempfile::Builder::new()
+            .prefix("command-")
+            .tempdir_in(parent)?
+            .keep();
+        let projection = super::launcher::encode_projection(&composed)?;
+        self.write_projected_commands(&directory, Some(&projection))?;
+        let search =
+            std::iter::once(directory).chain(composed.search_prefix().iter().skip(1).cloned());
+        EnvironmentOverlay::admit(
+            composed
+                .entries()
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone())),
+            search,
+            composed.library_prefix().iter().cloned(),
+        )
+        .map_err(operational)
     }
 
     /// Expose exactly the exported commands through `bin_directory` and build

@@ -17,8 +17,8 @@ pub(super) struct DeferredFile {
     output: String,
 }
 impl DeferredFile {
-    pub fn new(file: &gripsack_ir::workspace_v6::WorkspaceFile) -> Result<Self, ExecError> {
-        use gripsack_ir::{workspace::WorkspaceDestination, workspace_v6::WorkspaceSource};
+    pub fn new(file: &gripsack_ir::workspace_model::WorkspaceFile) -> Result<Self, ExecError> {
+        use gripsack_ir::{workspace::WorkspaceDestination, workspace_model::WorkspaceSource};
         let (path, mode, block) = match &file.destination {
             WorkspaceDestination::Symlink { path } => (path, Ownership::Owned, None),
             WorkspaceDestination::TrackedCopy { path } => (path, Ownership::TrackedCopy, None),

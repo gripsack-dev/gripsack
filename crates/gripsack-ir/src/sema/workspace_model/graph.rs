@@ -1,6 +1,6 @@
 use super::{fail, values};
-use crate::workspace_v6::graph::{bind_reference, references};
-use crate::{Diagnostic, Span, codes, workspace_v6::*};
+use crate::workspace_model::graph::{bind_reference, references};
+use crate::{Diagnostic, Span, codes, workspace_model::*};
 use gripsack_policy::{
     graph::{build_closure, roles::GraphRole},
     target::supports_target,
@@ -8,7 +8,7 @@ use gripsack_policy::{
 use std::collections::BTreeMap;
 
 pub(super) fn check<'a>(
-    workspace: &'a WorkspaceV6,
+    workspace: &'a WorkspaceCatalog,
     catalog: &BTreeMap<&'a str, &'a WorkspaceOutput>,
     inputs: &BTreeMap<&str, &WorkspaceInput>,
     out: &mut Vec<Diagnostic>,
@@ -93,7 +93,7 @@ pub(super) fn check<'a>(
             (edge.from, *target)
         {
             match &package.layout {
-                PackageLayoutV6::FixedPrefix { prefix } => {
+                CatalogPackageLayout::FixedPrefix { prefix } => {
                     if environment.prefix.as_ref() != Some(prefix) {
                         fail(
                             out,
@@ -103,7 +103,7 @@ pub(super) fn check<'a>(
                         );
                     }
                 }
-                PackageLayoutV6::PrefixMaterialized if environment.prefix.is_some() => {
+                CatalogPackageLayout::PrefixMaterialized if environment.prefix.is_some() => {
                     fail(
                         out,
                         codes::BAD_WORKSPACE_CONTEXT,
@@ -180,7 +180,7 @@ fn check_inputs_and_context(
     inputs: &BTreeMap<&str, &WorkspaceInput>,
     out: &mut Vec<Diagnostic>,
 ) {
-    use crate::workspace_v6::graph::input::{
+    use crate::workspace_model::graph::input::{
         argument_input_reference, output_source_input_references,
     };
     use gripsack_policy::workspace_command::{
@@ -216,7 +216,7 @@ fn check_inputs_and_context(
     } else {
         ExecutionContext::Host
     };
-    let check_owner = |check: &crate::workspace_v6::CheckOutput| {
+    let check_owner = |check: &crate::workspace_model::CheckOutput| {
         if matches!(
             catalog.get(check.subject.as_str()),
             Some(WorkspaceOutput::Recipe(_) | WorkspaceOutput::Package(_))

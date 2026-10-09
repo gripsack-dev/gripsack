@@ -13,7 +13,7 @@ pub(in crate::workspace) fn capture(
     }
     let receipt: PackageReceipt = read_receipt_readonly(home, &package.root, PACKAGE_RECEIPT)?
         .ok_or_else(|| failure("hook package receipt is missing"))?;
-    if receipt.version != RECEIPT_VERSION
+    if !receipt.supported_version()
         || receipt.package != package.identity
         || receipt.producer_root != package.producer.root
         || receipt.producer_payload != package.producer.payload
@@ -22,6 +22,7 @@ pub(in crate::workspace) fn capture(
         || receipt.target != package.target
         || receipt.layout != package.layout
         || receipt.conda != package.conda
+        || receipt.host_runtime != package.host_runtime
         || receipt.runtime.len() != package.runtime.len()
         || package
             .runtime
@@ -59,7 +60,7 @@ pub(in crate::workspace) fn restore(
     let root = store::content_path(home, "workspace-package", &identity.to_string());
     let receipt: PackageReceipt = read_receipt_readonly(home, &root, PACKAGE_RECEIPT)?
         .ok_or_else(|| failure("retained hook package receipt is missing"))?;
-    if receipt.version != RECEIPT_VERSION
+    if !receipt.supported_version()
         || receipt.package != identity
         || Sha256Digest::of(&serde_json::to_vec(&receipt)?) != *expected
     {
@@ -100,8 +101,47 @@ pub(in crate::workspace) fn restore(
         target: receipt.target,
         layout: receipt.layout,
         conda: receipt.conda,
+        host_runtime: receipt.host_runtime,
     });
     visiting.remove(&identity);
     loaded.insert(identity, Arc::clone(&package));
+    Ok(package)
+}
+
+/// A managed launcher authenticates the complete retained receipt graph using
+/// the v2 root receipt, not policy paths supplied as launch arguments.
+pub(in crate::workspace) fn restore_launcher(
+    home: &Path,
+    identity: PackageDigest,
+    expected: Sha256Digest,
+) -> Result<Arc<Package>, ExecError> {
+    let root = store::content_path(home, "workspace-package", &identity.to_string());
+    let receipt: PackageReceipt = read_receipt_readonly(home, &root, PACKAGE_RECEIPT)?
+        .ok_or_else(|| failure("retained launcher package receipt is missing"))?;
+    if receipt.version != 2
+        || !receipt.supported_version()
+        || receipt.package != identity
+        || Sha256Digest::of(&serde_json::to_vec(&receipt)?) != expected
+    {
+        return Err(failure(
+            "retained launcher package receipt identity differs",
+        ));
+    }
+    let mut receipts = receipt.runtime_receipts;
+    if receipts.insert(identity, expected).is_some() {
+        return Err(failure("retained launcher receipt graph contains itself"));
+    }
+    let package = restore(
+        home,
+        identity,
+        &receipts,
+        &mut BTreeMap::new(),
+        &mut BTreeSet::new(),
+    )?;
+    if !package.host_dependent() {
+        return Err(failure(
+            "retained launcher package has no host runtime policy",
+        ));
+    }
     Ok(package)
 }

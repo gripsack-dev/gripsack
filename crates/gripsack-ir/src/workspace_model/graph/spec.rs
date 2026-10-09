@@ -4,7 +4,7 @@
 use super::*;
 
 verus! {
-#[verifier::external_type_specification] pub struct ExWorkspace(WorkspaceV6);
+#[verifier::external_type_specification] pub struct ExWorkspace(WorkspaceCatalog);
 #[verifier::external_type_specification] pub struct ExOutput(WorkspaceOutput);
 #[verifier::external_type_specification] pub struct ExRecipe(RecipeOutput);
 #[verifier::external_type_specification] pub struct ExExecution(RecipeExecution);
@@ -23,7 +23,7 @@ verus! {
 #[verifier::external_type_specification] pub struct ExPath(WorkspacePath);
 #[verifier::external_type_specification] pub struct ExStep(WorkspaceStep);
 #[verifier::external_type_specification] pub struct ExAction(WorkspaceAction);
-#[verifier::external_type_specification] pub struct ExSource(WorkspaceSourceV6);
+#[verifier::external_type_specification] pub struct ExSource(AcquisitionSource);
 #[verifier::external_type_specification] pub struct ExConda(CondaEnvironmentSource);
 #[verifier::external_type_specification] pub struct ExPixi(PixiLockSource);
 #[verifier::external_type_specification] pub struct ExFileSource(WorkspaceSource);
@@ -36,7 +36,9 @@ verus! {
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExWorker(LinuxWorker);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExToolchain(ToolchainReference);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExOutputKind(RecipeOutputKind);
-#[verifier::external_type_specification] #[verifier::external_body] pub struct ExLayout(PackageLayoutV6);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExLayout(CatalogPackageLayout);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExHostRuntimeRequirements(HostRuntimeRequirements);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExCondaSystemRequirements(CondaSystemRequirements);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExContext(TaskContext);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExCalendar(WorkspaceCalendar);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExScope(ScheduleScope);
