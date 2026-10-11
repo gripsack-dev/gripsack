@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Build and pin-check helper artifacts
         run: VERSION="${GITHUB_REF_NAME#core-v}" tools/buildkit-bridge/dist.sh --check --dist dist
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dist-bridge
           path: dist/*
@@ -83,7 +83,7 @@ jobs:
           # shipped tree hits an advisory (plan/0022 §2)
           cargo audit bin "$bin"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dist-${{ matrix.target }}
           path: dist/*
