@@ -3788,3 +3788,10 @@ raw log `artifact://4930` and durable result under
 `buildbot-ci/evidence/core-compose-smoke-zgpq7qec`. This measured source7579293
 package is a focused producer check, not full admission of a later source.
 
+Candidate997181cf… / source57d3d94 passed eight gates, including the corrected
+B0 lane. The helper image then refused packaging before compilation because
+the compiler-layer split had omitted its architecture validator. Its stage
+now explicitly carries both required packaging validators
+(`check_architecture.py`, `check_native_binary.py`), without returning unrelated
+CI scripts to common Rust compilation inputs.
+

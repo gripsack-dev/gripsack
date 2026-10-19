@@ -296,6 +296,7 @@ FROM builder AS local-helper
 RUN apk add --no-cache python3 build-base binutils cmake perl linux-headers \
     xz-dev bzip2-dev zstd-dev
 COPY tools/conda-helper ./tools/conda-helper
+COPY scripts/check_architecture.py scripts/check_native_binary.py ./scripts/
 
 # Stripped static release binary.
 FROM builder AS release
