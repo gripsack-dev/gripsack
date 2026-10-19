@@ -51,7 +51,6 @@ COPY schema ./schema
 # without this COPY the embed is empty and every eval fails with
 # "no embedded frontend"
 COPY typescript ./typescript
-COPY scripts ./scripts
 
 # Real upstream LLB conformance is a test prerequisite, not a core/runtime
 # dependency. Ordinary bin/release stages deliberately do not copy this helper.
@@ -77,8 +76,10 @@ RUN cargo fmt --check \
 # The optional installer has its own dependency lock, but not an optional gate.
 RUN cargo fmt --manifest-path tools/conda-helper/Cargo.toml --all --check \
     && CARGO_TARGET_DIR=/app/target cargo clippy --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets -- -D warnings \
-    && CARGO_TARGET_DIR=/app/target cargo test --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets \
-    && python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
+    && CARGO_TARGET_DIR=/app/target cargo test --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets
+# CI-only script changes must not invalidate Rust compilation layers.
+COPY scripts ./scripts
+RUN python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
 # Published artifacts and coordinator/journal/GC admission boundaries
 # are checked and mutation-calibrated. Tool/build failures never qualify as
 # successful semantic negatives.
@@ -307,6 +308,7 @@ RUN cargo auditable build --release --locked -p gripsack \
 # +stable may provision a newer release even inside a digest-pinned image.
 FROM builder AS fuzz
 RUN apk add --no-cache bubblewrap python3 g++
+COPY scripts ./scripts
 ENV FUZZ_TOOLCHAIN=1.98.0
 CMD ["sh", "scripts/check_fuzz.sh"]
 

@@ -197,9 +197,15 @@ class Consumer:
             require((dist / f"{name}.sha256").read_text() == f"{sha(dist / name)}  {name}\n", f"checksum sidecar mismatch: {name}")
         for kind, name in (("conda", helper), ("bridge", bridge)):
             require(sha(dist / name) == pins[kind, "LinuxX86_64Musl"], f"{kind} differs from compiled source pin")
+        # Transported artifacts are immutable data, not executable files.
+        # Install the exact verified helper into this private consumer home.
+        self.helper = self.work / helper
+        shutil.copyfile(dist / helper, self.helper)
+        self.helper.chmod(0o555)
+        require(sha(self.helper) == sha(dist / helper), "installed helper differs from artifact")
         self.run([sys.executable, "-c",
                   "import runpy,sys; from pathlib import Path; runpy.run_path(sys.argv[1])['smoke'](Path(sys.argv[2]))",
-                  ROOT / "tools/conda-helper/package.py", dist / helper])
+                  ROOT / "tools/conda-helper/package.py", self.helper])
         spec = importlib.util.spec_from_file_location("conda_package", ROOT / "tools/conda-helper/package.py")
         package = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(package)
@@ -228,7 +234,7 @@ class Consumer:
         self.grip.parent.mkdir(parents=True)
         shutil.copy2(extracted / f"gripsack-{version}-{TARGET}/grip", self.grip)
         self.grip.chmod(0o755)
-        for binary in (self.grip, dist / helper, dist / bridge):
+        for binary in (self.grip, self.helper, dist / bridge):
             with binary.open("rb") as stream:
                 header = stream.read(20)
             require(header[:6] == b"\x7fELF\x02\x01" and header[18:20] == b"\x3e\x00",
@@ -265,7 +271,6 @@ class Consumer:
         self.receipt["components"] = {"core": version, "helper": helper_version, "sdk": sdk_version,
                                       "bridge": bridge_version, "installed_core_sha256": sha(self.grip)}
         self.sdk_tar = dist / sdk
-        self.helper = dist / helper
 
     def journeys(self):
         self.run([sys.executable, ROOT / "scripts/check_examples.py", "--site", self.args.site,

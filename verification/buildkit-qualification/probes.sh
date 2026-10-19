@@ -18,6 +18,8 @@ BRIDGE=$HERE/bridge/bridge-bin
 RESULTS=$HERE/results
 OWNER=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
 OWNER_LABEL=dev.gripsack.local-ci.b0-owner
+# Keep the daemon privileged, but write exported fixtures as the calling user.
+CLIENT_USER="$(id -u):$(id -g)"
 WORKER=
 WORKER_ID=
 CACHE=
@@ -181,9 +183,9 @@ run_bridge "$RESULTS/probe1-baseline.txt" baseline
 # --- probes 2, 3, 5 against worker #1 ------------------------------
 worker_start
 START=$(date +%s)
-run_bridge "$RESULTS/probe2.log" docker exec "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS" -pins "$HERE/pins.env" -probe graph
-run_bridge "$RESULTS/probe5.log" docker exec "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS" -pins "$HERE/pins.env" -probe policy
-run_bridge "$RESULTS/probe3.log" docker exec "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS" -pins "$HERE/pins.env" -probe executable
+run_bridge "$RESULTS/probe2.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS" -pins "$HERE/pins.env" -probe graph
+run_bridge "$RESULTS/probe5.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS" -pins "$HERE/pins.env" -probe policy
+run_bridge "$RESULTS/probe3.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS" -pins "$HERE/pins.env" -probe executable
 WORKER1_SECONDS=$(( $(date +%s) - START ))
 
 # --- probe 3 teardown: retained output survives worker+cache death --
@@ -195,14 +197,14 @@ echo "probe3 retained run after worker+cache removal: $OUT" | tee -a "$RESULTS/p
 # --- probe 4: two FRESH workers, clean reproduction ------------------
 worker_start
 S1=$(date +%s)
-run_bridge "$RESULTS/probe4-a.log" docker exec "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS/oci-a" -pins "$HERE/pins.env" -probe oci
+run_bridge "$RESULTS/probe4-a.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS/oci-a" -pins "$HERE/pins.env" -probe oci
 A_SECONDS=$(( $(date +%s) - S1 ))
 mv "$RESULTS/oci-a/oci-layout.tar" "$RESULTS/oci-1.tar"
 worker_destroy
 
 worker_start
 S2=$(date +%s)
-run_bridge "$RESULTS/probe4-b.log" docker exec "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS/oci-b" -pins "$HERE/pins.env" -probe oci
+run_bridge "$RESULTS/probe4-b.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS/oci-b" -pins "$HERE/pins.env" -probe oci
 B_SECONDS=$(( $(date +%s) - S2 ))
 mv "$RESULTS/oci-b/oci-layout.tar" "$RESULTS/oci-2.tar"
 worker_destroy

@@ -3761,3 +3761,30 @@ checks repair transport/ownership, not the still-required complete19-gate
 candidate qualification.
 
 
+The corrected7579293 candidate passed the first seven gates, including the
+complete paired audits and bridge reproducibility. B0 then exposed root-owned
+OCI output directories. Only its protocol client now runs with the calling
+UID/GID; the daemon remains privileged and disposable. All six real Linux
+probes passed in the focused run, including two clean workers, independent
+OCI verification and separate Docker execution. Raw results are retained in
+`buildbot-ci/evidence/b0-worker-uid-smoke-20261019`.
+
+Transported artifacts deliberately have no executable permission. The B0
+debug core and installed native helper now receive explicit executable copies,
+without changing archived bytes. The real helper protocol smoke passed after
+0444→0555 installation with the measured0dce6598… hash. Rust compilation layers
+no longer include unrelated CI scripts; actual complete qualification and
+timing measurements, not this Dockerfile dependency correction, determine any
+later performance claim.
+
+Compose's rendered JSON retains `$$` escapes; forwarding that shell text to
+`docker run` was not the release service's execution contract. Local packaging
+now runs the unchanged Compose release service with a source-verified immutable
+image override. The real focused build completed in3m21s, produced the expected
+0.46.1 tarball/checksum, and its installed binary passed native static admission,
+`grip --version` and network-disabled audit of282 embedded dependencies.
+Binary SHA256 `1948dce184e6397a3ce1a388cab61aab41025c59d6fd323523a4b43ff0a1a1c6`;
+raw log `artifact://4930` and durable result under
+`buildbot-ci/evidence/core-compose-smoke-zgpq7qec`. This measured source7579293
+package is a focused producer check, not full admission of a later source.
+

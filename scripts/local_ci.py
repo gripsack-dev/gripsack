@@ -94,6 +94,7 @@ def b0():
     target = ROOT / "target/debug"
     target.mkdir(parents=True)
     shutil.copy2(STATE / "debug/grip", target / "grip")
+    (target / "grip").chmod(0o555)
     run(["sh", "verification/buildkit-qualification/bridge/build.sh"])
     run(["sh", "verification/buildkit-qualification/probes.sh"])
     archive_tree(ROOT / "verification/buildkit-qualification/results", STATE / "b0-results.tar.gz")
@@ -113,10 +114,13 @@ def core():
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     # The release service remains the one authoritative tarball producer.
-    config = json.loads(capture(["docker", "compose", "config", "--format", "json"]))
-    container(builder, config["services"]["release"]["command"],
-              mounts=[(dist, "/dist", False)],
-              environment={"VERSION": profile()["version"], "TARGET": TARGET})
+    # Compose owns its $$ escaping; its rendered command is not a docker-run
+    # argv. Reuse the ordinary release service with a source-verified image.
+    override = STATE / "release-service.json"
+    record(override, {"services": {"release": {"image": builder, "pull_policy": "never"}}})
+    run(["docker", "compose", "-f", ROOT / "docker-compose.yml", "-f", override,
+         "run", "--no-deps", "--rm",
+         "-e", f"VERSION={profile()['version']}", "-e", f"TARGET={TARGET}", "release"])
     tools = load_image("local-tools")
     audit_receipt = json.loads((STATE / "audit.json").read_text())
     if (audit_receipt["source"] != source()
