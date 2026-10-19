@@ -290,13 +290,11 @@ RUN tar -xzf /tmp/audit.tgz -C /usr/local/bin --strip-components=1 \
 WORKDIR /app
 COPY . .
 
-# Existing helper packager runs natively here, with its two independent target
-# directories and exact pin/license/protocol checks unchanged.
+# Native helper tooling; the source is mounted read-only at canonical /src.
+# Its two independent target directories and pin/license/protocol checks remain.
 FROM builder AS local-helper
 RUN apk add --no-cache python3 build-base binutils cmake perl linux-headers \
     xz-dev bzip2-dev zstd-dev
-COPY tools/conda-helper ./tools/conda-helper
-COPY scripts/check_architecture.py scripts/check_native_binary.py ./scripts/
 
 # Stripped static release binary.
 FROM builder AS release

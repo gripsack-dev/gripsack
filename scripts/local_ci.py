@@ -104,8 +104,11 @@ def helper():
     image = build_image("local-helper")
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
-    container(image, ["python3", "tools/conda-helper/package.py", "--dist", "/out",
-                      "--target", TARGET, "--check"], mounts=[(dist, "/out", False)],
+    # Match package.py's canonical Docker wrapper: read-only /src, cwd /.
+    # The /app image layout produced reproducible but differently pinned bytes.
+    container(image, ["python3", "/src/tools/conda-helper/package.py", "--dist", "/out",
+                      "--target", TARGET, "--check"],
+              mounts=[(ROOT, "/src", True), (dist, "/out", False)], workdir="/",
               environment={"GRIPSACK_CONDA_PACKAGING_CONTAINER": "1"})
 
 

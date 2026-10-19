@@ -3795,3 +3795,16 @@ now explicitly carries both required packaging validators
 (`check_architecture.py`, `check_native_binary.py`), without returning unrelated
 CI scripts to common Rust compilation inputs.
 
+Candidate9a328032… / source8fbce84 then reproduced helper bytes6f3e856c… in
+both image-local/app builds, which correctly failed the existing0dce6598… pin.
+A controlled run using the **same tool image**, current source and lock but
+the canonical packager layout (read-only/src, cwd/) passed both independent
+builds, native/protocol validation and the unchanged pin. The output is again
+23,556,904 bytes with SHA256
+`0dce65984183b1e807b363b966b5802131e44e8db2bbe4cc510b2a8b9e99c842`.
+Local qualification now retains that canonical input layout instead of
+re-pinning an alternate build environment. Its source comes from the frozen
+worker checkout, not an image-local source copy. Raw inputs, manifest, all six
+assets and container identity are under
+`buildbot-ci/evidence/helper-canonical-layout-20261020/`.
+
