@@ -13,7 +13,6 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
-import tarfile
 import tempfile
 import uuid
 
@@ -69,13 +68,13 @@ def build_image(stage, *, export=False):
         context = Path(temporary)
         archive = context / "source.tar"
         run(["git", "archive", "--format=tar", "--output", archive, revision])
-        tree = context / "tree"
-        tree.mkdir()
-        with tarfile.open(archive) as bundle:
-            bundle.extractall(tree, filter="data")
-        run(["docker", "build", "--platform", "linux/amd64", "--progress=plain",
-             "--target", stage, "--label", f"{SOURCE_LABEL}={revision}",
-             "--iidfile", iid, tree])
+        # Do not extract under the worker's private umask: the data filter
+        # intentionally drops directory modes, turning source directories into
+        # root-owned 0700 paths after Docker COPY. Git's tar retains tracked modes.
+        with archive.open("rb") as context_input:
+            run(["docker", "build", "--platform", "linux/amd64", "--progress=plain",
+                 "--target", stage, "--label", f"{SOURCE_LABEL}={revision}",
+                 "--iidfile", iid, "-"], stdin=context_input)
     image = iid.read_text().strip()
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
         raise ValueError("Docker did not produce an immutable image ID")
@@ -110,7 +109,7 @@ def load_image(stage):
 
 
 def container(image, command, *, mounts=(), environment=None, workdir=None,
-              timeout=None, stdout=None, stderr=None, resources=()):
+              timeout=None, stdout=None, stderr=None, resources=(), user=None):
     owner = uuid.uuid4().hex
     directory = STATE / "containers"
     directory.mkdir(parents=True, exist_ok=True)
@@ -126,6 +125,8 @@ def container(image, command, *, mounts=(), environment=None, workdir=None,
     argv += ["--env", "CARGO_BUILD_JOBS=4"]
     if workdir:
         argv += ["--workdir", workdir]
+    if user is not None:
+        argv += ["--user", user]
     try:
         return run([*argv, image, *command], timeout=timeout, stdout=stdout, stderr=stderr)
     finally:

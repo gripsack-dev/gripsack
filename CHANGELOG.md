@@ -21,6 +21,9 @@ User-visible changes per release. Design archaeology lives in
   are explicit; signed promotion and public release remain separate.
 - Stage core/helper0.46.1 identities without publishing. SDK0.46.0 and IR7 are
   unchanged; published0.46.0 tags and artifacts remain immutable.
+- Preserve source directory permissions when sending Git-only build contexts
+  to Docker. Audit and installed-consumer exports use the worker's UID; the
+  frozen audit handoff includes both advisory and crate-index metadata.
 
 ## [0.46.0] — 2026-10-09
 

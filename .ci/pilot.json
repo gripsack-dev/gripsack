@@ -88,7 +88,7 @@
         "local-ci/images/local-tools.json"
       ],
       "outputs": [
-        "local-ci/advisory-db.tar.gz",
+        "local-ci/audit-snapshot.tar.gz",
         "local-ci/audit.json"
       ]
     },
@@ -153,7 +153,7 @@
         "local-ci/images/builder.json",
         "local-ci/images/local-tools.tar",
         "local-ci/images/local-tools.json",
-        "local-ci/advisory-db.tar.gz",
+        "local-ci/audit-snapshot.tar.gz",
         "local-ci/audit.json"
       ],
       "outputs": [

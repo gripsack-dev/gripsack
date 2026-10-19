@@ -274,7 +274,7 @@ ENV PATH="/app/e2e/.venv/bin:/usr/local/cargo/bin:$PATH"
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     file binutils zstd bzip2 xz-utils ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -s "$GRIPSACK_DENO" /usr/local/bin/deno
+    && install -m755 "$GRIPSACK_DENO" /usr/local/bin/deno
 ARG LOCAL_NODE_VERSION=22.23.2
 ARG LOCAL_NODE_SHA256=d60acfe00a2932254bb0ad20e01b0d74397a0875595de719654b214f4b03f307
 ADD --checksum=sha256:${LOCAL_NODE_SHA256} https://nodejs.org/dist/v${LOCAL_NODE_VERSION}/node-v${LOCAL_NODE_VERSION}-linux-x64.tar.xz /tmp/node.tar.xz

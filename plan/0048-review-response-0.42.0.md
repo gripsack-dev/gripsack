@@ -3737,3 +3737,27 @@ qualification. Public release and closure of original handover milestones
 remain unclaimed; final candidate measurements and gate results belong here
 after actual execution.
 
+First local integration candidate `6390b1a4…` / source `4b0988d` passed
+inventory, Rust, GNU-native, TypeScript and runtime-image preparation. The
+audit handoff then correctly failed: root-owned private Git pack files could
+not be archived by the worker. Running the export as the worker exposed a
+second boundary defect: extracting source with Python's data filter under
+umask077 discarded directory modes, producing root-owned0700 source paths
+inside Docker. Git-tar contexts now go directly to BuildKit; a real non-root
+container read the source and ran Rust1.98.0 with0755 source directories.
+Installed consumers likewise run as the worker, with a directly executable
+Deno rather than a link through root's private HOME.
+
+The helper's earlier `--no-fetch` audit had not populated its crate-index
+entries. Both graphs now fetch registry metadata, require one unchanged
+advisory revision, and export a combined audit snapshot. A real UID1000
+export passed both graphs; restoring its48,112,570-byte snapshot in another
+directory and disabling container networking passed both audits again.
+Snapshot SHA256 `811ef87f829026f441091bc67c8e9aabdf2306a59bf3eeee1c7ec220dfed446d`;
+RustSec revision remains `999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b`.
+Both retain the existing allowed `unsafe-libyaml` unmaintained warning;
+no vulnerabilities or missing-index errors were reported. These focused
+checks repair transport/ownership, not the still-required complete19-gate
+candidate qualification.
+
+
