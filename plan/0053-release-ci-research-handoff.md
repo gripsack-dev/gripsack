@@ -1,8 +1,39 @@
 # 0053 — CI and release-flow research handoff
 
-Status: **research requested; no migration or replacement workflow approved.**
-Evidence snapshot: 2026-10-04. The release owner is continuing 0.44.1 separately.
-This document is input to another agent, not an additional 0.44.1 release gate.
+Status: **local migration approved; trusted-code non-publishing pilot exercised;
+Gripsack qualification in progress.** The original research snapshot below is
+dated2026-10-04 and remains historical evidence, not current deployment authority.
+
+## Current execution — 2026-10-19
+
+The owner selected local Buildbot on the existing WSL/Docker workstation,
+Linux/WSL x86_64 only, with no fuzz/corpus replay. The external SSD is not
+available; no disk was formatted or personal Docker resources pruned.
+Signing/owner-channel promotion and public publisher migration remain separate.
+The shared contract is `../SHARED-BUILDBOT-CI-PLAN.md`; infrastructure source is
+the owner's private `tknawara/ci-infra` repository.
+
+The real Rootle pilot completed seven gates, installed its exact static
+artifact and passed96 consumer tests. Its captured inputs, completed receipts
+and artifacts survived a Docker outage and were restored into a new persistent
+directory. The restored worker replayed the same receipts without rebuilding.
+This is same-host recovery evidence, not an independent-disk, hostile-worker,
+Windows-reboot or signed-release claim.
+
+Gripsack's `.ci/pilot.json` preserves the full current Linux inventory through
+project-owned producers in `scripts/local_ci.py`, the96-partition dispatcher
+and actual installed-artifact consumers. Every gate binds explicit predecessor
+files; missing/foreign/corrupt evidence cannot become success. The runner
+keeps failed attempts, monotonic duration evidence and exact owned-resource
+cleanup. Existing Actions/branch-protection/release authority remains active
+until its replacement is qualified; no GitHub success status is synthesized.
+
+The owner separately chose to stage the newly identified Rustls/ZIP fixes
+without publishing. The core/helper0.46.1 candidate is unpublished; current
+0.46.0 tags and bytes remain unchanged. Plan0048§19 and STATUS carry the
+current execution record. Sections below retain the original research scope.
+
+## Historical release context — 2026-10-04
 
 **Subsequent owner decision:** the stalled 0.44.1 delivery may proceed without a
 fresh hosted full-CI campaign, under `REL-ALPHA-0441-2026-10-04` recorded in

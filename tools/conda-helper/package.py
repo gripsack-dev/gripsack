@@ -99,7 +99,7 @@ def main():
         dist.mkdir(parents=True, exist_ok=True)
         subprocess.run([
             "docker", "run", "--rm", "-v", f"{repo}:/src:ro", "-v", f"{dist}:/out",
-            "-e", "GRIPSACK_CONDA_PACKAGING_CONTAINER=1", LINUX_IMAGE,
+            "-e", "GRIPSACK_CONDA_PACKAGING_CONTAINER=1", "-e", "CARGO_BUILD_JOBS", LINUX_IMAGE,
             "sh", "-ec", 'apk add --no-cache python3 build-base binutils cmake perl linux-headers git xz-dev bzip2-dev zstd-dev && exec python3 /src/tools/conda-helper/package.py --dist /out --target "$1" ${2:+"$2"}',
             "package", args.target, *(["--check"] if args.check else []),
         ], check=True)
@@ -153,9 +153,13 @@ def main():
     if platform.system() == "Linux":
         manifest["build_image"] = LINUX_IMAGE
     notices = {}
-    for suffix, source in (("LICENSE-pixi", "LICENSE"), ("LICENSE-UV-MIT", "LICENSE-UV-MIT")):
+    for suffix, source in (
+        ("LICENSE-pixi", "pixi_git/LICENSE"),
+        ("LICENSE-UV-MIT", "pixi_git/LICENSE-UV-MIT"),
+        ("LICENSE-rattler", "rattler_package_streaming/LICENSE"),
+    ):
         notice = dist / f"{name}.{suffix}"
-        shutil.copyfile(here / "vendor/pixi_git" / source, notice)
+        shutil.copyfile(here / "vendor" / source, notice)
         notices[notice.name] = sha(notice)
     manifest["licenses"] = notices
     (dist / f"{name}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

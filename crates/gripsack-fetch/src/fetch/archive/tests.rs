@@ -115,6 +115,43 @@ fn zip_bytes(names: &[&str]) -> Vec<u8> {
 }
 
 #[test]
+fn zip_utf8_and_cp437_names_retain_safe_relative_paths() {
+    let root = tempfile::tempdir().unwrap();
+    let mut bytes = zip_bytes(&["utf8/café", "cp437/cafX"]);
+    // Both local and central-directory names use the same one-byte CP437 é.
+    for offset in 0..=bytes.len() - 10 {
+        if &bytes[offset..offset + 10] == b"cp437/cafX" {
+            bytes[offset + 9] = 0x82;
+        }
+    }
+    extract_bytes(&bytes, root.path(), "archive.zip", FetchLimits::default()).unwrap();
+    for name in ["utf8/café", "cp437/café"] {
+        assert_eq!(std::fs::read(root.path().join(name)).unwrap(), b"payload");
+    }
+}
+
+#[test]
+fn malformed_zip_names_are_rejected_before_materialization() {
+    for name in [b"../escape123", b"/absolute123", b"dir\\escape12"] {
+        let root = tempfile::tempdir().unwrap();
+        let out = root.path().join("out");
+        let mut bytes = zip_bytes(&["ok", "unsafe-nameX"]);
+        // Patch both headers so the ZIP writer cannot sanitize the fixture.
+        for offset in 0..=bytes.len() - name.len() {
+            if &bytes[offset..offset + name.len()] == b"unsafe-nameX" {
+                bytes[offset..offset + name.len()].copy_from_slice(name);
+            }
+        }
+        assert!(matches!(
+            extract_bytes(&bytes, &out, "archive.zip", FetchLimits::default()),
+            Err(FetchError::UnsafeArchive { .. })
+        ));
+        assert!(!out.exists());
+        assert!(!root.path().join("escape123").exists());
+    }
+}
+
+#[test]
 fn zip_entry_budget_precedes_directory_allocation() {
     let root = tempfile::tempdir().unwrap();
     let limits = FetchLimits {

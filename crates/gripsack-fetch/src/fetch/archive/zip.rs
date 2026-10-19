@@ -178,19 +178,20 @@ pub(super) fn extract(
     for index in 0..archive.len() {
         budget.entry()?;
         let raw = archive.by_index_raw(index)?;
+        let name = raw.name()?;
         if raw.encrypted() {
             return Err(paths::violation(
-                Path::new(raw.name()),
+                Path::new(name.as_ref()),
                 "encrypted ZIP entries are unsupported",
             ));
         }
-        if raw.name().contains('\\') {
+        if name.contains('\\') {
             return Err(paths::violation(
-                Path::new(raw.name()),
+                Path::new(name.as_ref()),
                 "ambiguous backslash path",
             ));
         }
-        let relative = paths::relative(Path::new(raw.name()))?;
+        let relative = paths::relative(Path::new(name.as_ref()))?;
         let is_dir = raw.is_dir();
         let is_link = raw.is_symlink();
         let mode = raw
@@ -257,7 +258,7 @@ pub(super) fn extract(
     // was opened; no later file write may traverse a created symlink.
     for index in 0..archive.len() {
         let raw = archive.by_index_raw(index)?;
-        let relative = paths::relative(Path::new(raw.name()))?;
+        let relative = paths::relative(Path::new(raw.name()?.as_ref()))?;
         if raw.is_dir() {
             paths::directories(&root, &relative)?;
             continue;
@@ -291,7 +292,7 @@ pub(super) fn extract(
     for index in 0..archive.len() {
         let raw = archive.by_index_raw(index)?;
         if raw.is_symlink() {
-            let relative = paths::relative(Path::new(raw.name()))?;
+            let relative = paths::relative(Path::new(raw.name()?.as_ref()))?;
             let target = graph
                 .symlink_target(&relative)
                 .ok_or_else(|| paths::violation(&relative, "validated ZIP link was lost"))?;

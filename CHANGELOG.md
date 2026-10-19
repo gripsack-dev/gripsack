@@ -3,6 +3,25 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [Unreleased]
+
+### Security
+
+- Stage Rustls0.23.46 and ZIP9.0.5 in both the core and Conda helper dependency
+  graphs. Existing archive containment, CRC, resource and permission checks
+  remain independent; malformed ZIP filenames fail before materialization.
+- Keep the helper's compatible Rattler/Pixi family with an attributed upstream
+  ZIP9 streaming backport. Helper distributions include its BSD license notice.
+
+### Development
+
+- Add a non-publishing Linux/WSL x86_64 local qualification profile using the
+  existing Rust, GNU, TypeScript, BuildKit, flow, formal, artifact and consumer
+  gates, including all96 persistence partitions. Candidate inputs and outputs
+  are explicit; signed promotion and public release remain separate.
+- Stage core/helper0.46.1 identities without publishing. SDK0.46.0 and IR7 are
+  unchanged; published0.46.0 tags and artifacts remain immutable.
+
 ## [0.46.0] — 2026-10-09
 
 ### Added

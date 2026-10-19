@@ -93,6 +93,41 @@ def admit_test_lanes(results: dict) -> None:
             raise GateFailure(f"required test lane did not succeed: {lane}={record!r}")
 
 
+def admit_persistence_partition(report: dict, source: str) -> tuple:
+    """Admit one completed partition; aggregate inventory agreement is separate."""
+    if not source:
+        raise GateFailure("missing persistence source revision")
+    if not isinstance(report, dict):
+        raise GateFailure("malformed persistence receipt")
+    key = tuple(report.get(field) for field in ("system", "scenario", "fault", "shard"))
+    if any(not isinstance(value, str) for value in key[:3]) or type(key[3]) is not int:
+        raise GateFailure("malformed persistence partition identity")
+    if (key[0] != "Linux" or key[1] not in PERSISTENCE_SCENARIOS
+            or key[2] not in ("error", "kill") or key[3] not in range(PERSISTENCE_SHARDS)):
+        raise GateFailure(f"unexpected persistence partition: {key}")
+    if report.get("source") != source or report.get("shards") != PERSISTENCE_SHARDS:
+        raise GateFailure(f"wrong persistence revision or partition count: {key}")
+    if report.get("machine") != "x86_64":
+        raise GateFailure(f"wrong persistence native architecture: {key}")
+    inventory = report.get("inventory")
+    if (not isinstance(inventory, list) or len(inventory) < PERSISTENCE_SHARDS
+            or any(not isinstance(row, list) or len(row) != 2
+                   or any(not isinstance(value, str) or not value for value in row)
+                   for row in inventory)):
+        raise GateFailure(f"missing or vacuous persistence inventory: {key}")
+    cuts = report.get("completed_cuts")
+    if (not isinstance(cuts, list) or any(type(cut) is not int for cut in cuts)
+            or cuts != list(range(key[3] + 1, len(inventory) + 1, PERSISTENCE_SHARDS))):
+        raise GateFailure(f"missing, overlapping or substituted persistence cuts: {key}")
+    drift = report.get("drift_states")
+    if drift != [False, True] or any(type(value) is not bool for value in drift):
+        raise GateFailure(f"missing persistence drift state: {key}")
+    seconds = report.get("seconds")
+    if type(seconds) not in (float, int) or not 0 < seconds < float("inf"):
+        raise GateFailure(f"missing persistence execution timing: {key}")
+    return key
+
+
 def admit_persistence(reports: list[dict], source: str) -> None:
     """Require all 96 Linux fault/cut partitions, not matrix roll-up alone."""
     if not source:
@@ -107,38 +142,15 @@ def admit_persistence(reports: list[dict], source: str) -> None:
     seen = set()
     inventories = {}
     for report in reports:
-        if not isinstance(report, dict):
-            raise GateFailure("malformed persistence receipt")
-        key = tuple(report.get(field) for field in ("system", "scenario", "fault", "shard"))
-        if any(not isinstance(value, str) for value in key[:3]) or type(key[3]) is not int:
-            raise GateFailure("malformed persistence partition identity")
-        if key not in expected or key in seen:
+        key = admit_persistence_partition(report, source)
+        if key in seen:
             raise GateFailure(f"unexpected or duplicate persistence partition: {key}")
         seen.add(key)
-        if report.get("source") != source or report.get("shards") != PERSISTENCE_SHARDS:
-            raise GateFailure(f"wrong persistence revision or partition count: {key}")
-        if report.get("machine") != "x86_64":
-            raise GateFailure(f"wrong persistence native architecture: {key}")
-        inventory = report.get("inventory")
-        if (not isinstance(inventory, list) or len(inventory) < PERSISTENCE_SHARDS
-                or any(not isinstance(row, list) or len(row) != 2
-                       or any(not isinstance(value, str) or not value for value in row)
-                       for row in inventory)):
-            raise GateFailure(f"missing or vacuous persistence inventory: {key}")
+        inventory = report["inventory"]
         # Fault mode and shard cannot change the baseline trace on a platform.
         baseline = inventories.setdefault(key[:2], inventory)
         if inventory != baseline:
             raise GateFailure(f"persistence trace inventory changed between partitions: {key}")
-        cuts = report.get("completed_cuts")
-        if (not isinstance(cuts, list) or any(type(cut) is not int for cut in cuts)
-                or cuts != list(range(key[3] + 1, len(inventory) + 1, PERSISTENCE_SHARDS))):
-            raise GateFailure(f"missing, overlapping or substituted persistence cuts: {key}")
-        drift = report.get("drift_states")
-        if drift != [False, True] or any(type(value) is not bool for value in drift):
-            raise GateFailure(f"missing persistence drift state: {key}")
-        seconds = report.get("seconds")
-        if type(seconds) not in (float, int) or not 0 < seconds < float("inf"):
-            raise GateFailure(f"missing persistence execution timing: {key}")
     if seen != expected:
         raise GateFailure(f"missing required persistence partitions: {sorted(expected - seen)!r}")
 

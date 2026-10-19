@@ -6,8 +6,10 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 . "$HERE/../pins.env"
-docker run --rm --network=host \
-  -v "$HERE":/src -w /src \
-  -e GOFLAGS=-mod=mod -e GOTOOLCHAIN=local -e GOCACHE=/tmp/gocache \
-  "$GOLANG_IMAGE" sh -c 'gofmt -w *.go && go mod tidy && go build -o bridge-bin .'
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$HERE":/src:ro -v "$HERE":/out -w /src \
+  -e GOFLAGS=-mod=readonly -e GOTOOLCHAIN=local -e GOCACHE=/tmp/gocache \
+  -e GOPATH=/tmp/gopath -e HOME=/tmp/home -e CGO_ENABLED=0 \
+  "$GOLANG_IMAGE" sh -ec 'test -z "$(gofmt -l *.go)" && go mod tidy -diff && go build -trimpath -buildvcs=false -o /out/bridge-bin .'
 echo "built $HERE/bridge-bin"

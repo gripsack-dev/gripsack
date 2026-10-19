@@ -3694,3 +3694,46 @@ gate/prover caches and raw trace dumps were not added. No fuzz/corpus, ARM,
 macOS, native Windows, private el9-kernel, physical-power-loss or hosted-build
 attestation claim was manufactured.
 
+
+## 19. Staged security and local CI readiness — 2026-10-19
+
+Owner decision: **stage fixes; finish CI first**. No new tags, registry
+packages, publisher credentials or modifications of public0.46.0 bytes are
+authorized. Source versions core/helper0.46.1 distinguish upcoming candidate
+artifacts; SDK0.46.0, IR7 and helper protocol3 are unchanged. This is not a
+security-hotfix release exception or a waiver of §6/§9/§10.
+
+Actual dependency audits of both released lock graphs reported Rustls
+RUSTSEC-2026-0346/0347/0348/0349 and ZIP RUSTSEC-2026-0367/0368/0369.
+They establish affected dependencies, not an exploit through Gripsack's
+independent extraction guards. Staged Cargo resolution selects Rustls0.23.46
+and ZIP9.0.5 in both graphs; both audit with zero vulnerabilities against
+RustSec999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b.
+
+Responsibility map:
+- Core fetch and frozen Conda archive admission keep their capability-relative,
+  link-graph, byte/metadata/decoder-budget, CRC and permission checks; ZIP9's
+  fallible borrowed filenames are admitted before materialization.
+- The helper retains its existing coherent Rattler/Pixi type family. Vendored
+  published `rattler_package_streaming`0.27.8 carries the narrowly attributed
+  upstream5e544a615715598004ba883bf63fb40d06c19b3f ZIP9 adaptation. Filename
+  errors propagate instead of upstream's `filter_map(Result::ok)`. Published
+  crate/source identity and exact BSD license remain recorded.
+- Native packagers own two-build measurements, static/protocol admission and
+  exact license assets, now including `LICENSE-rattler`. Only measured hashes
+  may update the0.46.1 Conda/bridge pin tables; old public pins are not reused
+  as evidence for new helper bytes.
+- Project scripts own the19-gate local qualification and existing validators;
+  Buildbot owns scheduling and immutable candidate/attempt transport. The
+ 96 persistence partitions, all measured cuts/drift cases, formal floors and
+  attributed negatives remain mandatory. No fuzz/corpus or other-platform
+  execution is authorized.
+
+Current evidence is retained under
+`/home/tarek/.local/share/buildbot-ci/evidence/` and
+`/home/tarek/workspace/release-evidence/gripsack/unreleased-0.46.1/`.
+Dependency audit success is not the complete runtime/native/formal/persistence
+qualification. Public release and closure of original handover milestones
+remain unclaimed; final candidate measurements and gate results belong here
+after actual execution.
+
