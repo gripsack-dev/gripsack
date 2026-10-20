@@ -302,8 +302,11 @@ class Consumer:
         # Frozen root caller: no automatic lock migration or mutable GitHub release install.
         self.approve(repo)
         self.run([self.grip, "check", "--host", "laptop"], cwd=repo)
-        conda = repo / "workspaces/conda"
-        install_sdk(conda, self.sdk)
+        # This published lock was captured against the embedded frontend.
+        # Installing a repository SDK would deliberately change its import pins.
+        conda = self.work / "example-conda"
+        shutil.copytree(self.args.example / "workspaces/conda", conda)
+        conda_before = snapshot(conda)
         lock = conda / "gripsack.lock"
         frozen = lock.read_bytes()
         self.approve(conda)
@@ -324,10 +327,13 @@ class Consumer:
         self.run([self.grip, "shell", "search"], cwd=conda, env=unavailable, input="rg --version\nexit\n")
         require(lock.read_bytes() == frozen, "frozen external lock was changed")
         require(all(snapshot(Path(path)) == content for path, content in retained.items()), "retained external prefix changed")
+        conda_after = snapshot(conda)
+        require(all(conda_after.get(path) == content for path, content in conda_before.items()),
+                "frozen external Conda source/lock changed")
         after = snapshot(repo)
         require(all(after.get(path) == content for path, content in before.items()), "original external source/locks changed")
         self.receipt["external_consumer"] = {"root": "check with candidate installed SDK; mutable plugin apply not run",
-            "conda": "frozen build/run/task/apply/apply; unavailable-helper retained build/gc/shell",
+            "conda": "embedded-frontend frozen build/run/task/apply/apply; unavailable-helper retained build/gc/shell",
             "frozen_lock_sha256": sha(lock), "retained_prefixes": retained,
             "network": "initial exact lock-pinned public archives fetched by core; retained reuse is not a network-namespace isolation claim"}
 

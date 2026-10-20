@@ -29,6 +29,8 @@ User-visible changes per release. Design archaeology lives in
 - Classify debug-only fault-control flows explicitly. Installed release
   consumers run release-applicable cases; the debug flow gate still executes
   the fault-injection cases without a waiver.
+- Keep published embedded-frontend locks in isolated consumer fixtures rather
+  than adding a repository SDK pin that changes their declared import identity.
 
 ## [0.46.0] — 2026-10-09
 

@@ -3829,3 +3829,14 @@ without granting them success. A real mixed-upload smoke retained the failed
 receipt, left the interrupted log unchanged, and kept gate admission false;
 all65 shared-infrastructure tests passed.
 
+The full consumer preflight next exposed a fixture error, not a lock-admission
+regression: it installed a repository SDK into the published Conda workspace,
+whose unchanged lock intentionally has only an embedded-frontend identity.
+Frozen check correctly refused the new import pin. A fresh isolated copy of
+the exact public workspace, without that extra SDK declaration, passed real
+`trust inspect`/exact approval/`check` with the original lock bytes unchanged
+(SHA256 `8b2711ca8083574c65b92b2751f15bb2a15a9fc1662299107fcd8f43b9a503b1`).
+The consumer now checks the installed-SDK legacy caller and embedded-frontend
+Conda caller in separate private trees. No update, solve, lock rewrite or
+weakened frontend/import comparison is used.
+
