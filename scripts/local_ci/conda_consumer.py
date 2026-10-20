@@ -142,7 +142,8 @@ export default defineWorkspace(() => workspace({
                     "Pixi import changed immutable archive identity")
             consumer.run([consumer.grip, "check"], cwd=repo, env=env)
             result = json.loads(consumer.run([consumer.grip, "build", "data", "--json"], cwd=repo, env=env))
-            require(result["ok"] is True and len(result["outputs"]) == 1, "missing materialized fixture output")
+            require([(output["name"], output["kind"]) for output in result["outputs"]] == [("data", "package")],
+                    "archive build did not return the requested package")
             prefix = Path(result["outputs"][0]["path"])
             require((prefix / "share/value").read_text() == f"{prefix}/retained-value\n", "real helper prefix relocation differs")
             original = snapshot(prefix)

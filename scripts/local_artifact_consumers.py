@@ -312,7 +312,8 @@ class Consumer:
         self.approve(conda)
         self.run([self.grip, "check"], cwd=conda)
         built = json.loads(self.run([self.grip, "build", "ripgrep", "--json"], cwd=conda))
-        require(built["ok"] is True, "external Conda build did not report success")
+        require([(output["name"], output["kind"]) for output in built["outputs"]] == [("ripgrep", "package")],
+                "external Conda build did not return the requested package")
         roots = [Path(output["path"]) for output in built["outputs"]]
         retained = {str(root): snapshot(root) for root in roots}
         result = self.run([self.grip, "run", "--env", "search", "--", "rg", "^needle$"],
