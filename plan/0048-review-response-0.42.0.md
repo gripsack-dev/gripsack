@@ -3808,3 +3808,24 @@ worker checkout, not an image-local source copy. Raw inputs, manifest, all six
 assets and container identity are under
 `buildbot-ci/evidence/helper-canonical-layout-20261020/`.
 
+After the owner-approved NVMe storage reset, candidate269c8075… / sourcead04b5e
+revalidated all13 completed gates with the exact selected control image.
+The installed consumer then passed artifact identities, native checks, npm
+installation and documentation/selfchecks, but its flow selection demanded
+two debug-only filesystem traces from the stripped release. Release fault
+controls are intentionally compiled out (`gripsack-fs/src/fault.rs`).
+The explicit `requires_fault_controls` marker now separates applicability:
+the actual release consumer flow selection passed81 cases with those two
+deselected; the same two fault cases passed against the exact debug artifact.
+The ordinary debug flow gate has no marker exclusion and retains both cases.
+Raw logs/JUnit/arguments are under
+`buildbot-ci/evidence/release-consumer-applicability-20261020/`.
+This is not a reduction of the full debug, formal or96-partition obligations.
+
+The interrupted old consumer attempt also lacked a committed receipt, which
+had blocked archival of the newer real failure. Shared CI retention now
+validates/retains committed attempts while preserving uncommitted diagnostics
+without granting them success. A real mixed-upload smoke retained the failed
+receipt, left the interrupted log unchanged, and kept gate admission false;
+all65 shared-infrastructure tests passed.
+

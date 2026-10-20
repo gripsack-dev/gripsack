@@ -9,3 +9,8 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+markers = [
+    "requires_fault_controls: exercises fault/trace controls compiled only into debug/test cores",
+]

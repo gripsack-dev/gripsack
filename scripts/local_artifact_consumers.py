@@ -279,14 +279,20 @@ class Consumer:
         junit = self.work / "installed-flows.xml"
         cases = ["test_journey_contracts.py", "test_generation_history.py", "test_workspace_packages.py",
                  "test_source_approval.py", "test_capture_policy.py"]
+        # Fault-control tests remain mandatory in the debug flow gate; the
+        # installed release intentionally does not contain those controls.
         self.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                  "-m", "not requires_fault_controls",
                   f"--basetemp={self.work / 'flows'}", f"--junitxml={junit}",
                   *(ROOT / "e2e" / name for name in cases)])
         suites = ET.parse(junit).getroot()
         tests = list(suites.iter("testcase"))
         require(tests and not any(child.tag in {"skipped", "error", "failure"} for test in tests for child in test),
                 "installed flow suite has skipped or failed cases")
-        self.receipt["installed_flows"] = {"cases": len(tests), "junit": str(junit), "sha256": sha(junit)}
+        self.receipt["installed_flows"] = {
+            "cases": len(tests), "junit": str(junit), "sha256": sha(junit),
+            "requires_fault_controls": "required in the separate debug flow gate; not part of this release run",
+        }
 
     def external_consumer(self):
         repo = self.work / "example"

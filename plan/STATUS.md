@@ -30,6 +30,9 @@ proof, integrity, source-approval and retained-state gates remain required.
 Published0.45/0.46 artifacts stay immutable. The owner subsequently approved
 the shared local CI migration under a trusted-code, non-publishing boundary;
 plan0053 records that implementation separately from release authority.
+The staged0.46.1 local profile keeps debug fault-control qualification distinct
+from installed-release consumption; both remain required. See0048§19 for the
+observed failures and focused release/debug evidence, not a full release claim.
 
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux

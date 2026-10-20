@@ -26,6 +26,9 @@ User-visible changes per release. Design archaeology lives in
   worker's UID; the frozen audit handoff includes advisory and crate-index data.
 - Keep CI-only scripts outside Rust compilation layers. Retain every gate and
   the independent clean-build requirements; this is not a measured speedup claim.
+- Classify debug-only fault-control flows explicitly. Installed release
+  consumers run release-applicable cases; the debug flow gate still executes
+  the fault-injection cases without a waiver.
 
 ## [0.46.0] — 2026-10-09
 
