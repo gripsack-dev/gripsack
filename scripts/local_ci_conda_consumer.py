@@ -86,7 +86,7 @@ def refused_build(consumer, repo, env, expected_detail):
 
 
 def consume_archives(consumer):
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(root / "e2e"))
     from test_http_policy import HttpFixture
     from local_artifact_consumers import sha, snapshot

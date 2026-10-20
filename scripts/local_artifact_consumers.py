@@ -138,7 +138,7 @@ class Consumer:
         for relative in ("Cargo.toml", "Cargo.lock", "typescript/package.json", "typescript/package-lock.json",
                          "tools/conda-helper/Cargo.toml", "tools/conda-helper/Cargo.lock",
                          "crates/gripsack-fetch/src/conda_pins.rs", "crates/gripsack-fetch/src/bridge_pins.rs",
-                         "scripts/local_artifact_consumers.py", "scripts/local_ci/conda_consumer.py"):
+                         "scripts/local_artifact_consumers.py", "scripts/local_ci_conda_consumer.py"):
             self.receipt["source"]["contracts"][relative] = sha(ROOT / relative)
         for tool in ("python3", "node", "npm", "deno", "rustc", "git", "readelf", "zstd"):
             self.run([tool, "--version"])
@@ -343,7 +343,7 @@ class Consumer:
         self.artifacts()
         self.journeys()
         self.external_consumer()
-        from local_ci.conda_consumer import consume_archives
+        from local_ci_conda_consumer import consume_archives
         consume_archives(self)
         self.receipt["status"] = "passed"
 
