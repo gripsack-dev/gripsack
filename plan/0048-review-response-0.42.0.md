@@ -3840,3 +3840,26 @@ The consumer now checks the installed-SDK legacy caller and embedded-frontend
 Conda caller in separate private trees. No update, solve, lock rewrite or
 weakened frontend/import comparison is used.
 
+The next preflight exposed two more consumer-harness defects: successful
+`build --json` returns named `outputs`, not the error envelope's `ok` field,
+and the `local_ci.py` dispatcher shadowed the namespace directory holding the
+Conda consumer. The consumers now validate the requested package output and use
+the standalone `local_ci_conda_consumer.py` module, with all imports and recorded
+source-contract paths migrated.
+
+Source `192b3eeb677e7681cf03e1693ae3bce07ee26aee` then passed the focused
+installed-native consumer run (85 actual commands; tool image
+`sha256:fc43b78231d6d20771fc459469d2ed90d4d5fd4b4c8bacf7eb3417be4d00cb92`):
+the published external ripgrep workspace completed frozen check/build/run/task,
+two applies, and retained build/gc/shell with the helper unavailable. Both real
+`.conda` and `.tar.bz2` fixtures passed Pixi import, prefix relocation and native
+receipt/tree admission; wrong helper, changed archive, unapproved source and
+approved stale input were rejected. Stopping their only acquisition origin and
+making the helper unavailable still allowed retained build/gc without changing
+locks or prefix bytes. Evidence:
+`buildbot-ci/evidence/native-consumer-preflight-192b3ee/`.
+The earlier docs/installed-release journey run passed all81 applicable cases.
+These focused runs used the prior private production artifacts only after
+checking equality of all production source/lock trees; they do not admit a new
+candidate or replace the complete19-gate/formal/repro/96-partition profile.
+
