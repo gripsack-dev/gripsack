@@ -41,10 +41,10 @@ including preserved forward-proxy behavior and untrusted-peer refusal.
 The native helper pin has been remeasured; the complete profile remains required.
 The complete candidate subsequently passed15 gates, including installed consumers
 and TLC, before a replaced upstream TLAPS asset failed its checksum. The new
-byte-pinned, independently checked prover is undergoing the unchanged full gate;
-the obsolete Isabelle build-tree workaround has been removed after a real
-relocation positive/negative smoke. Verus passed separately on immutablee5f88c5;
-that preflight is not a complete-candidate admission.
+byte-pinned, independently checked prover passed the unchanged full induction
+and calibration gate without the obsolete Isabelle build-tree workaround.
+Verus also passed separately on immutablee5f88c5. A new complete candidate,
+including reproducibility and the full persistence matrix, remains required.
 
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux

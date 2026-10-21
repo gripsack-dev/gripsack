@@ -3944,3 +3944,15 @@ The probe's logs/results are retained under
 `buildbot-ci/evidence/context-mode-smoke-3xj01pna/`; its three owned images and
 temporary fixture were removed. No broader build-speed benchmark is claimed.
 
+The complete Compose TLAPS gate subsequently passed with901ae51:301 pilot
+obligations;4816 generalized obligations across42 modules;3 pilot and5 inventory
+calibrations; attributed barrier/session/worker witnesses13/7/11/50 and their
+reachable TLC negatives. No external Isabelle options or old build tree were
+supplied. The full log SHA256 is
+`319a0f74f4c77258d55e9559814f9fa2de584f9dc6c0372d4350f428436fd3b6`;
+`prover-maintenance-20261021/qualification-result.json` retains the exact
+catalog/source markers. The independent Verus preflight log SHA256 is
+`7905215da768081197f73c53b331eca953db0ae32d0dcc6a92be5171c1d9a311`.
+These verified tool/input layers can be reused only through matching BuildKit
+inputs; no controller receipts are copied across candidate identities.
+
