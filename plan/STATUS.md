@@ -35,6 +35,10 @@ from installed-release consumption; both remain required. Focused installed
 Conda consumers passed frozen external execution, both archive formats, attributed
 negative cases and retained offline reuse. See0048§19 for exact source/evidence;
 full local qualification remains required, not inferred from these focused runs.
+Fresh certificate advisories subsequently blocked the candidate audit. Both
+patched lock graphs and all13 real HTTP/TLS flows now pass focused checks,
+including preserved forward-proxy behavior and untrusted-peer refusal.
+Affected native helper pins and the complete profile must be renewed.
 
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux

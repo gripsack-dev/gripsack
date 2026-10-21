@@ -240,6 +240,26 @@ def test_hash_mismatch_is_not_retried(sandbox, http_fixture):
     assert not (sandbox / '.local/share/gripsack/store').exists()
 
 
+def test_untrusted_tls_peer_is_rejected_before_http_without_retry(sandbox, tls_fixture, monkeypatch):
+    for name in ('SSL_CERT_FILE', 'SSL_CERT_DIR'):
+        monkeypatch.delenv(name, raising=False)
+    connections = []
+    accept = tls_fixture.server.get_request
+
+    def record_connection():
+        connections.append(True)
+        return accept()
+
+    monkeypatch.setattr(tls_fixture.server, 'get_request', record_connection)
+    repo = tarball_repo(sandbox, tls_fixture)
+    result = grip('update', '--check', '--host', 'testhost', cwd=repo)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert len(connections) == 1
+    assert tls_fixture.requests == []
+    assert not (repo / 'locks/testhost.lock').exists()
+    assert not (sandbox / '.local/share/gripsack/store').exists()
+
+
 def test_explicit_host_binding_controls_resolution_and_locked_cold_api_fetch(sandbox, tls_fixture, monkeypatch):
     server = tls_fixture
     monkeypatch.setenv('GH_ENTERPRISE_TOKEN', ENTERPRISE)

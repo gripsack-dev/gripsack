@@ -12,6 +12,10 @@ User-visible changes per release. Design archaeology lives in
   remain independent; malformed ZIP filenames fail before materialization.
 - Keep the helper's compatible Rattler/Pixi family with an attributed upstream
   ZIP9 streaming backport. Helper distributions include its BSD license notice.
+- Update certificate verification to rustls-webpki0.103.16 and trusted roots to
+  webpki-roots1.0.10 for RUSTSEC-2026-0382/0381. Supply patched Rustls through the
+  HTTP client's explicit TLS connector instead of its obsolete bundled roots;
+  preserve forward proxies, captured custom CAs, redirects and request budgets.
 
 ### Development
 

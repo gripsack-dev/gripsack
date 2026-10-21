@@ -20,12 +20,12 @@ thiserror.workspace = true
 tracing = "0.1"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-ureq = { version = "2", default-features = false, features = ["tls", "json"] }
-# pinned to ureq's TLS stack: bundled webpki roots + system roots
-# (SSL_CERT_FILE) so TLS-intercepting proxies verify (see http.rs)
+# Keep the existing forward-proxy HTTP semantics; TLS is supplied explicitly
+# through the connector API, without ureq's obsolete bundled root dependency.
+ureq = { version = "2.12.1", default-features = false, features = ["json"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "logging", "std", "tls12"] }
 rustls-native-certs = "0.8"
-webpki-roots = "1.0"
+webpki-roots = "1.0.10"
 
 toml.workspace = true
 gripsack-process.workspace = true

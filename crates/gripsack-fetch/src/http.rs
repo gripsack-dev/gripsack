@@ -7,6 +7,7 @@ mod failure;
 mod request;
 mod retry;
 mod roots;
+mod tls;
 pub(crate) use failure::safe_location;
 pub use failure::{HttpFailure, HttpFailureKind};
 pub(crate) use request::RequestKind;
@@ -172,7 +173,7 @@ impl Client {
             let tls = tls_config(&self.certificates);
             let builder = || {
                 ureq::AgentBuilder::new()
-                    .tls_config(Arc::clone(&tls))
+                    .tls_connector(Arc::clone(&tls))
                     .https_only(https_only)
                     .timeout_connect(Duration::from_secs(30))
                     .timeout(Duration::from_secs(600))
@@ -223,15 +224,20 @@ fn entry_matches(entry: &str, host: &str, port: Option<&str>) -> bool {
             .is_some_and(|prefix| prefix.ends_with('.'))
 }
 
-fn tls_config(locations: &roots::Locations) -> Arc<rustls::ClientConfig> {
+fn tls_config(locations: &roots::Locations) -> Arc<tls::Connector> {
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     locations.load(&mut roots);
-    Arc::new(
-        rustls::ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth(),
-    )
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let config = rustls::ClientConfig::builder_with_provider(provider)
+        // The fixed ring provider supports Rustls's default TLS 1.2/1.3 suites.
+        .with_safe_default_protocol_versions()
+        .expect("ring provider supports the default TLS protocol versions")
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    Arc::new(tls::Connector {
+        config: Arc::new(config),
+    })
 }
 
 #[cfg(test)]

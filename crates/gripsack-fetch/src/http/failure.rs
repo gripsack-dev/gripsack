@@ -233,6 +233,9 @@ pub(super) fn transport_kind(error: &ureq::Transport) -> HttpFailureKind {
         if cause.is::<rustls::Error>() {
             return HttpFailureKind::Tls;
         }
+        if cause.is::<rustls::pki_types::InvalidDnsNameError>() {
+            return HttpFailureKind::Dns;
+        }
         if let Some(error) = cause.downcast_ref::<std::io::Error>() {
             let kind = io_kind(error, false);
             if kind == HttpFailureKind::Tls {

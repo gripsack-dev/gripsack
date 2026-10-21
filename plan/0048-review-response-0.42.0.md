@@ -3863,3 +3863,36 @@ These focused runs used the prior private production artifacts only after
 checking equality of all production source/lock trees; they do not admit a new
 candidate or replace the complete19-gate/formal/repro/96-partition profile.
 
+On 2026-10-21, candidate
+`9637755d691e2562de40e1e0aff02f47ea33593997d6644595e52a8bff53b8ad`
+(source `2f0b815989f8d4b5a00fe9944ccea156f0ac6a07`) passed its first five
+gates, then failed against RustSec
+`e6f94f3760d5e6c54c1b05f204002263bc025524`: newly issued
+[RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382) and
+[RUSTSEC-2026-0381](https://rustsec.org/advisories/RUSTSEC-2026-0381) cover
+certificate-path verification and distrusted bundled roots. No new advisory
+ignore was added, and the unused persistence-restart injector was disarmed.
+
+Both graphs now select rustls-webpki0.103.16 and webpki-roots1.0.10.
+The obsolete0.26 root wrapper is removed by disabling the HTTP client's
+built-in TLS feature and using its supported connector interface. The small
+`http/tls.rs` adapter delegates verification/handshaking to patched Rustls,
+preserves socket access for deadlines and retains the original error chain.
+Root selection still combines the bundled roots with captured custom/system
+locations; the crypto provider is explicitly ring. No custom verifier,
+OpenSSL/native-tls, new credential route or retry policy is introduced.
+
+A broader ureq3 attempt passed the Rust gate but failed the real forward-proxy
+flow because it substituted CONNECT for ordinary forwarding. That attempt was
+discarded, not accommodated by weakening the test. The retained HTTP implementation
+then passed all13 real-binary HTTP/TLS flows, including a new untrusted-peer case
+that observes one TLS connection, no HTTP request and no published lock/store.
+Both final lock graphs audited clean against the same current advisory revision;
+the existing allowed unsafe-libyaml maintenance warning remains explicit.
+Evidence: `buildbot-ci/evidence/tls-certificate-patches-20261021/`.
+Current lock SHA256: core
+`3d3027487ff57282f09cfffba902f24f08b7374cc6334f026670cb8103c3afd4`,
+helper `ed085691883d3470dce564367a3fbf436e5ab4b688bba960d8690d3970f5a262`.
+These are focused checks. Affected helper pins must be measured again from
+independent canonical builds before a new complete qualification candidate.
+
