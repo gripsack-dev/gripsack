@@ -39,6 +39,12 @@ Fresh certificate advisories subsequently blocked the candidate audit. Both
 patched lock graphs and all13 real HTTP/TLS flows now pass focused checks,
 including preserved forward-proxy behavior and untrusted-peer refusal.
 The native helper pin has been remeasured; the complete profile remains required.
+The complete candidate subsequently passed15 gates, including installed consumers
+and TLC, before a replaced upstream TLAPS asset failed its checksum. The new
+byte-pinned, independently checked prover is undergoing the unchanged full gate;
+the obsolete Isabelle build-tree workaround has been removed after a real
+relocation positive/negative smoke. Verus passed separately on immutablee5f88c5;
+that preflight is not a complete-candidate admission.
 
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux

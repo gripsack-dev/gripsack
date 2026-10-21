@@ -25,8 +25,9 @@ User-visible changes per release. Design archaeology lives in
   are explicit; signed promotion and public release remain separate.
 - Stage core/helper0.46.1 identities without publishing. SDK0.46.0 and IR7 are
   unchanged; published0.46.0 tags and artifacts remain immutable.
-- Preserve source directory permissions when sending Git-only build contexts
-  to Docker. Audit, installed-consumer and BuildKit-client exports use the
+- Use canonical Git-only build-context modes matching ordinary checkouts,
+  preserving executable bits without private-umask extraction or permission-only
+  cache misses. Audit, installed-consumer and BuildKit-client exports use the
   worker's UID; the frozen audit handoff includes advisory and crate-index data.
 - Keep CI-only scripts outside Rust compilation layers. Retain every gate and
   the independent clean-build requirements; this is not a measured speedup claim.
@@ -37,6 +38,9 @@ User-visible changes per release. Design archaeology lives in
   than adding a repository SDK pin that changes their declared import identity.
   Validate native build output records and load the Conda consumer independently
   of the identically named CI dispatcher.
+- Refresh the byte-pinned TLAPS rolling-release input to revision901ae51 and
+  remove the obsolete external Isabelle options/build-tree workaround. The
+  exact-version, fresh-induction and attributed-mutant gates remain mandatory.
 
 ## [0.46.0] — 2026-10-09
 

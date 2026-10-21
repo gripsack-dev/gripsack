@@ -3908,3 +3908,39 @@ all three license assets and the lock-bound manifest were retained under
 unpublished helper pin, not any public artifact. Full qualification must still
 rebuild and verify it against the updated core pin before admission.
 
+Candidate `2e5a5a1a4a507ddf5b4e104fa334ca5b3435460e1e2a8e365e65a2cd591ee4be`
+passed its first15 gates, through installed consumers and TLC. TLAPS refused
+upstream's replacement of the rolling `1.6.0-pre` archive before executing
+proofs. The old13eff4e3… archive was not found in scoped local release/CI/cache
+storage, and the old GitHub asset is404 with no retained Actions artifact.
+
+Official [asset647831989](https://api.github.com/repos/tlaplus/tlapm/releases/assets/647831989)
+and an independent HTTPS download agree on46,758,585 bytes and SHA256
+`b3c2554d3dd2198772ea8c814639a024fe9c390eac0ec25f4f444ad446a7dd28`.
+The relocated executable actually reports `901ae51`; its full source revision
+is `901ae51ed5224f88d43a1a02969cd9be4ed1b48d`. The upstream comparison from
+d8b9747 changes only two test-runner files, not prover/backend code.
+In an isolated container without the old build tree or externally supplied
+Isabelle options, the bundle's Isabelle backend proved the positive arithmetic
+fixture and rejected the false fixture with attributed semantic evidence.
+The old workaround and additional Isabelle distribution download are removed.
+The existing exact-version check, obligation floors, full theorem catalog and
+all negative calibrations remain mandatory; complete TLAPS qualification is
+pending, not inferred from this smoke.
+
+Separately, the complete Verus gate passed on immutablee5f88c5: positive results
+444 and30, zero errors, all92 policy and4 collector calibrations. Raw evidence
+and the retained exact prover archive are under
+`buildbot-ci/evidence/prover-maintenance-20261021/`. This independent preflight
+does not substitute for admission of the next complete candidate.
+
+Build-context inspection found Git's default archive modes (0664/0775) differed
+from ordinary checkout modes (0644/0755), invalidating otherwise equivalent
+BuildKit inputs. An actual scratch-image comparison produced different layers
+for the default tar, then identical filesystem layers and a cached COPY with
+`git -c tar.umask=0022 archive`. Local CI now uses those canonical Git-only modes;
+tracked executable bits remain intact and no private-umask extraction returns.
+The probe's logs/results are retained under
+`buildbot-ci/evidence/context-mode-smoke-3xj01pna/`; its three owned images and
+temporary fixture were removed. No broader build-speed benchmark is claimed.
+

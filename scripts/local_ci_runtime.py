@@ -67,10 +67,11 @@ def build_image(stage, *, export=False):
     with tempfile.TemporaryDirectory(dir=contexts, prefix=f"{stage}-") as temporary:
         context = Path(temporary)
         archive = context / "source.tar"
-        run(["git", "archive", "--format=tar", "--output", archive, revision])
+        run(["git", "-c", "tar.umask=0022", "archive", "--format=tar", "--output", archive, revision])
         # Do not extract under the worker's private umask: the data filter
         # intentionally drops directory modes, turning source directories into
-        # root-owned 0700 paths after Docker COPY. Git's tar retains tracked modes.
+        # root-owned 0700 paths after Docker COPY. Canonical Git modes retain
+        # executable bits and match ordinary checkout contexts for cache reuse.
         with archive.open("rb") as context_input:
             run(["docker", "build", "--platform", "linux/amd64", "--progress=plain",
                  "--target", stage, "--label", f"{SOURCE_LABEL}={revision}",
