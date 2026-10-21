@@ -474,6 +474,7 @@
       "authority": "CI-owned candidate/gate subtree; partition checkpoints are not controller gate-success receipts",
       "admission": "candidate/source/image/dispatcher-bound exit-zero report and log digests, followed by original full96 union admission",
       "retained_log_bytes_per_partition": 16777216,
+      "docker_log_compression": false,
       "metadata_bytes_per_file": 65536,
       "fixtures": "never retained; private container filesystem only",
       "timing": "original boot-ID-bound monotonic nanoseconds; UTC observations are informational; ambiguous unfinished timing after boot changes expires without a fresh budget",

@@ -84,6 +84,9 @@ def validate_container(metadata, attempt):
             or metadata["HostConfig"]["MemorySwap"] != binding["partition_memory_bytes"]
             or metadata["HostConfig"]["NanoCpus"] != 1_000_000_000):
         raise ValueError("partition container ownership/image/command/mount/resource identity changed")
+    if metadata["HostConfig"].get("LogConfig") != {
+            "Type": "local", "Config": {"max-size": "16m", "max-file": "1", "compress": "false"}}:
+        raise ValueError("partition container logging policy changed")
     environment = dict(value.split("=", 1) for value in metadata["Config"]["Env"])
     expected_environment = environment_for(binding)
     if any(environment.get(key) != value for key, value in expected_environment.items()):
@@ -134,6 +137,7 @@ def create(checkpoint):
             "--cpus=1", f"--memory={binding['partition_memory_bytes']}",
             f"--memory-swap={binding['partition_memory_bytes']}",
             "--log-driver=local", "--log-opt=max-size=16m", "--log-opt=max-file=1",
+            "--log-opt=compress=false",
             "--mount", f"type=bind,src={attempt['mount']},dst=/persistence-reports"]
     for key, value in labels_for(attempt).items():
         argv += ["--label", f"{key}={value}"]

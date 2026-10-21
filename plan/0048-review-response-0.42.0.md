@@ -3956,3 +3956,22 @@ catalog/source markers. The independent Verus preflight log SHA256 is
 These verified tool/input layers can be reused only through matching BuildKit
 inputs; no controller receipts are copied across candidate identities.
 
+Candidate `2b216e229deec4e4ca924a2f728ac2ac15d7671b4d65229e617be53f931037b9`
+(source `cfb795bad383bee063b923383f3ececd026f6629`) passed all18 preceding
+gates, including full flows/consumers, all formal gates and core reproducibility.
+The final96 matrix failed before any test process started: Docker's local log
+driver defaults to compression, which is incompatible with `max-file=1`.
+The dispatcher now explicitly sets `compress=false`, retains the16 MiB bound,
+and checks the actual log configuration before attachment or cleanup. The
+profile and checkpoint binding disclose the uncompressed policy.
+
+All18 checkpoint boundary tests passed, including changed log-driver/size/
+compression refusals. A real `Linux-apply-deploy-error-0` partition then passed
+55 selected cuts across both drift states and reused the identical completed
+checkpoint without executing again. Completion SHA256:
+`ac419755dde747899fabf1d14dd55b6f29c3b9dce8263b6d3463fcd14e043c7c`.
+Evidence: `buildbot-ci/evidence/persistence-log-policy-20261021/`.
+Only the96 exactly journalled, never-started containers from the failed
+candidate were removed, without force; all original journals remain.
+This focused result is not full96 or worker-restart qualification.
+

@@ -41,6 +41,9 @@ User-visible changes per release. Design archaeology lives in
 - Refresh the byte-pinned TLAPS rolling-release input to revision901ae51 and
   remove the obsolete external Isabelle options/build-tree workaround. The
   exact-version, fresh-induction and attributed-mutant gates remain mandatory.
+- Explicitly disable compression for bounded single-file persistence logs.
+  Reattachment verifies the actual Docker log policy before accepting the
+  container; the full persistence inventory and log limits are unchanged.
 
 ## [0.46.0] — 2026-10-09
 

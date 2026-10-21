@@ -168,7 +168,9 @@ class CheckpointTests(unittest.TestCase):
                 "Mounts": [{"Type": "bind", "Source": attempt["mount"],
                             "Destination": "/persistence-reports", "RW": True}],
                 "HostConfig": {"Memory": 2147483648, "MemorySwap": 2147483648,
-                               "NanoCpus": 1_000_000_000}}
+                               "NanoCpus": 1_000_000_000,
+                               "LogConfig": {"Type": "local", "Config": {
+                                   "max-size": "16m", "max-file": "1", "compress": "false"}}}}
 
     def test_ownership_rejects_foreign_container_before_cleanup(self):
         attempt, _, _ = self.prepare()
@@ -179,7 +181,10 @@ class CheckpointTests(unittest.TestCase):
                      lambda value: value["Mounts"][0].update(Source="/somebody-elses-state"),
                      lambda value: value["Config"].update(Labels={}),
                      lambda value: value["Config"].update(Cmd=["different-program"]),
-                     lambda value: value["HostConfig"].update(Memory=0)]
+                     lambda value: value["HostConfig"].update(Memory=0),
+                     lambda value: value["HostConfig"]["LogConfig"].update(Type="none"),
+                     lambda value: value["HostConfig"]["LogConfig"]["Config"].update({"max-size": "1g"}),
+                     lambda value: value["HostConfig"]["LogConfig"]["Config"].update({"compress": "true"})]
         for mutate in mutations:
             actual = deepcopy(expected)
             mutate(actual)

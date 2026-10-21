@@ -40,7 +40,7 @@ def input_binding(revision, image):
         )},
         "shards": PERSISTENCE_SHARDS, "partition_timeout_seconds": PARTITION_SECONDS,
         "partition_memory_bytes": SLOT_MEMORY_BYTES, "partition_cpus": 1,
-        "retained_log_policy": "Docker local ring: 16 MiB x 1; checkpoint <=16 MiB",
+        "retained_log_policy": "Docker local uncompressed ring: 16 MiB x 1; checkpoint <=16 MiB",
     }
 
 

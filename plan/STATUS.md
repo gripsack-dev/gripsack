@@ -39,12 +39,11 @@ Fresh certificate advisories subsequently blocked the candidate audit. Both
 patched lock graphs and all13 real HTTP/TLS flows now pass focused checks,
 including preserved forward-proxy behavior and untrusted-peer refusal.
 The native helper pin has been remeasured; the complete profile remains required.
-The complete candidate subsequently passed15 gates, including installed consumers
-and TLC, before a replaced upstream TLAPS asset failed its checksum. The new
-byte-pinned, independently checked prover passed the unchanged full induction
-and calibration gate without the obsolete Isabelle build-tree workaround.
-Verus also passed separately on immutablee5f88c5. A new complete candidate,
-including reproducibility and the full persistence matrix, remains required.
+The corrected complete candidate passed18 gates, including installed consumers,
+TLC/TLAPS/Verus and core reproducibility. The final matrix could not start because
+Docker's default compression conflicts with a single log file. The explicit
+uncompressed bound passed checkpoint unit tests and a real partition covering
+both drift states; full96-partition and worker-restart admission remain required.
 
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux
