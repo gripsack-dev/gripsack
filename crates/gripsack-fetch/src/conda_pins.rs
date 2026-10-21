@@ -6,5 +6,5 @@ pub const CONDA_VERSION: &str = "0.46.1";
 // Unpublished candidate measured in two independent native release builds.
 pub const CONDA_SHA256: &[(AssetTarget, &str)] = &[(
     AssetTarget::LinuxX86_64Musl,
-    "0dce65984183b1e807b363b966b5802131e44e8db2bbe4cc510b2a8b9e99c842",
+    "30201b4aab67fb4a6a671a3a952704fd7d319534d78e72cc2a242a320881fbb9",
 )];

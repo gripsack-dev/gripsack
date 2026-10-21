@@ -38,7 +38,7 @@ full local qualification remains required, not inferred from these focused runs.
 Fresh certificate advisories subsequently blocked the candidate audit. Both
 patched lock graphs and all13 real HTTP/TLS flows now pass focused checks,
 including preserved forward-proxy behavior and untrusted-peer refusal.
-Affected native helper pins and the complete profile must be renewed.
+The native helper pin has been remeasured; the complete profile remains required.
 
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux

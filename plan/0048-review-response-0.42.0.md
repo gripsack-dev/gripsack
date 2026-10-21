@@ -3896,3 +3896,15 @@ helper `ed085691883d3470dce564367a3fbf436e5ab4b688bba960d8690d3970f5a262`.
 These are focused checks. Affected helper pins must be measured again from
 independent canonical builds before a new complete qualification candidate.
 
+The patched helper was measured from immutable source
+`f76a11286b8cf397abe3ccd5bd81c76b5473c7f7`, using the canonical read-only
+`/src` layout and tool image
+`sha256:c6c6ba940454ef6b6f5d8b17b041ba061b100a0e8736bb8395bbb6fea39033e1`.
+Both independent native release builds matched:
+`30201b4aab67fb4a6a671a3a952704fd7d319534d78e72cc2a242a320881fbb9`
+(23,556,904 bytes). Static admission and the real helper protocol smoke passed;
+all three license assets and the lock-bound manifest were retained under
+`tls-certificate-patches-20261021/helper-f76a112/`. This replaces the earlier
+unpublished helper pin, not any public artifact. Full qualification must still
+rebuild and verify it against the updated core pin before admission.
+
