@@ -117,7 +117,7 @@ jobs:
           payloads = core | bridge | conda
           expected = payloads | {f"{name}.sha256" for name in payloads}
           expected |= {f"{name}.{suffix}" for name in conda
-                       for suffix in ("manifest.json", "LICENSE-pixi", "LICENSE-UV-MIT")}
+                       for suffix in ("manifest.json", "LICENSE-pixi", "LICENSE-UV-MIT", "LICENSE-rattler")}
           actual = {path.name for path in dist.iterdir()}
           if actual != expected or any(not path.is_file() for path in dist.iterdir()):
               raise SystemExit(f"Release assets differ: missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}")
@@ -130,10 +130,14 @@ jobs:
               manifest = json.loads((dist / f"{name}.manifest.json").read_text())
               if manifest["asset"] != name or manifest["sha256"] != digest or manifest["reproducible_rounds"] != 2:
                   raise SystemExit(f"Conda measurement manifest mismatch: {name}")
-              for suffix, source in (("LICENSE-pixi", "LICENSE"), ("LICENSE-UV-MIT", "LICENSE-UV-MIT")):
+              for suffix, source in (
+                  ("LICENSE-pixi", "pixi_git/LICENSE"),
+                  ("LICENSE-UV-MIT", "pixi_git/LICENSE-UV-MIT"),
+                  ("LICENSE-rattler", "rattler_package_streaming/LICENSE"),
+              ):
                   notice = f"{name}.{suffix}"
                   contents = (dist / notice).read_bytes()
-                  if contents != (Path("tools/conda-helper/vendor/pixi_git") / source).read_bytes() or manifest["licenses"].get(notice) != hashlib.sha256(contents).hexdigest():
+                  if contents != (Path("tools/conda-helper/vendor") / source).read_bytes() or manifest["licenses"].get(notice) != hashlib.sha256(contents).hexdigest():
                       raise SystemExit(f"Conda license notice mismatch: {notice}")
           PY
 

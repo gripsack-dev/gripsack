@@ -3,6 +3,48 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
+## [Unreleased]
+
+### Security
+
+- Stage Rustls0.23.46 and ZIP9.0.5 in both the core and Conda helper dependency
+  graphs. Existing archive containment, CRC, resource and permission checks
+  remain independent; malformed ZIP filenames fail before materialization.
+- Keep the helper's compatible Rattler/Pixi family with an attributed upstream
+  ZIP9 streaming backport. Helper distributions include its BSD license notice.
+- Update certificate verification to rustls-webpki0.103.16 and trusted roots to
+  webpki-roots1.0.10 for RUSTSEC-2026-0382/0381. Supply patched Rustls through the
+  HTTP client's explicit TLS connector instead of its obsolete bundled roots;
+  preserve forward proxies, captured custom CAs, redirects and request budgets.
+
+### Development
+
+- Add a non-publishing Linux/WSL x86_64 local qualification profile using the
+  existing Rust, GNU, TypeScript, BuildKit, flow, formal, artifact and consumer
+  gates, including all96 persistence partitions. Candidate inputs and outputs
+  are explicit; signed promotion and public release remain separate.
+- Stage core/helper0.46.1 identities without publishing. SDK0.46.0 and IR7 are
+  unchanged; published0.46.0 tags and artifacts remain immutable.
+- Use canonical Git-only build-context modes matching ordinary checkouts,
+  preserving executable bits without private-umask extraction or permission-only
+  cache misses. Audit, installed-consumer and BuildKit-client exports use the
+  worker's UID; the frozen audit handoff includes advisory and crate-index data.
+- Keep CI-only scripts outside Rust compilation layers. Retain every gate and
+  the independent clean-build requirements; this is not a measured speedup claim.
+- Classify debug-only fault-control flows explicitly. Installed release
+  consumers run release-applicable cases; the debug flow gate still executes
+  the fault-injection cases without a waiver.
+- Keep published embedded-frontend locks in isolated consumer fixtures rather
+  than adding a repository SDK pin that changes their declared import identity.
+  Validate native build output records and load the Conda consumer independently
+  of the identically named CI dispatcher.
+- Refresh the byte-pinned TLAPS rolling-release input to revision901ae51 and
+  remove the obsolete external Isabelle options/build-tree workaround. The
+  exact-version, fresh-induction and attributed-mutant gates remain mandatory.
+- Explicitly disable compression for bounded single-file persistence logs.
+  Reattachment verifies the actual Docker log policy before accepting the
+  container; the full persistence inventory and log limits are unchanged.
+
 ## [0.46.0] — 2026-10-09
 
 ### Added

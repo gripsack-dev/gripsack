@@ -16,9 +16,10 @@ ARG GNU_RUST_IMAGE=rust:1.98.0@sha256:620dbcd124499c59e2406d3741574b5c5838cf9eb9
 # rust:alpine whose rustc is 1.98.0 (88d9e12ae 2026-08-18) — the same
 # toolchain CI's native jobs pin via dtolnay/rust-toolchain. Tags move;
 # digests do not. Updates are deliberate, proposed by scripts/check_pins.py
-# (upstream-watch workflow). The list covers amd64+arm64, so the arm
-# release runner resolves the same pin.
+# (upstream-watch workflow). The historical multi-architecture index remains
+# pinned; active qualification resolves only its linux/amd64 leaf.
 FROM rust:alpine@sha256:a10e64dd139b7387337c7fbe8aca31b959b57b2fd4c8ae20a02cf1d6ea424dce AS builder
+ENV CARGO_BUILD_JOBS=4
 RUN apk add --no-cache musl-dev git curl xz \
     && rustup component add clippy rustfmt
 # cargo-auditable embeds the dependency tree into the release binary
@@ -50,7 +51,6 @@ COPY schema ./schema
 # without this COPY the embed is empty and every eval fails with
 # "no embedded frontend"
 COPY typescript ./typescript
-COPY scripts ./scripts
 
 # Real upstream LLB conformance is a test prerequisite, not a core/runtime
 # dependency. Ordinary bin/release stages deliberately do not copy this helper.
@@ -76,8 +76,10 @@ RUN cargo fmt --check \
 # The optional installer has its own dependency lock, but not an optional gate.
 RUN cargo fmt --manifest-path tools/conda-helper/Cargo.toml --all --check \
     && CARGO_TARGET_DIR=/app/target cargo clippy --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets -- -D warnings \
-    && CARGO_TARGET_DIR=/app/target cargo test --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets \
-    && python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
+    && CARGO_TARGET_DIR=/app/target cargo test --locked --manifest-path tools/conda-helper/Cargo.toml --all-targets
+# CI-only script changes must not invalidate Rust compilation layers.
+COPY scripts ./scripts
+RUN python3 scripts/check_architecture.py --resolved-manifest tools/conda-helper/Cargo.toml
 # Published artifacts and coordinator/journal/GC admission boundaries
 # are checked and mutation-calibrated. Tool/build failures never qualify as
 # successful semantic negatives.
@@ -102,6 +104,7 @@ RUN cargo build --locked -p gripsack
 # Required GNU-native admission regressions; these cannot execute on Alpine.
 # The e2e stage separately exercises the shipped musl core on a GNU host.
 FROM ${GNU_RUST_IMAGE} AS gnu-test
+ENV CARGO_BUILD_JOBS=4
 WORKDIR /app
 COPY --from=builder /app /app
 RUN cargo test --locked -p gripsack-exec --lib workspace::consumer::admit::host_runtime_tests \
@@ -122,52 +125,20 @@ COPY specs ./specs
 COPY scripts/check_models.sh ./scripts/check_models.sh
 RUN sh scripts/check_models.sh /tla/tla2tools.jar
 
-# The inductive pilot and generalized recovery proofs use the same pinned TLC.
-# The rolling upstream asset is byte-pinned: replacement fails the checksum,
-# never silently upgrades the prover or its bundled Isabelle/Z3/LS4 backends.
-# Provenance: upstream re-published the mutable `1.6.0-pre` tag on
-# 2026-10-01, replacing tlapm 7824dab (sha256 a2860384…9331c, no longer
-# served anywhere; no Wayback snapshot exists) with tlapm bfa9468, and again
-# on 2026-10-06 with tlapm d8b9747. Each new digest below was fetched from
-# the official release URL and cross-checked against GitHub's own asset
-# metadata (asset id 616249697, 46,749,734 bytes, GitHub-reported digest
-# sha256:13eff4e3…d43c; independent HTTPS download matched; `tlapm --version`
-# = d8b9747). The complete induction + mutant gate (check_tlaps.py) MUST pass
-# under d8b9747 before this toolchain counts as qualified — no waiver, no
-# checksum removal.
+# The rolling upstream asset is byte-pinned; replacement must fail closed.
+# GitHub asset 647831989 (2026-10-16, 46,758,585 bytes) and an independent
+# HTTPS download matched this digest; the relocated binary reports 901ae51.
+# Its Isabelle2025 bundle is self-contained. The full induction and mutant
+# gate below must qualify this exact revision; no checksum or proof waiver.
 FROM model AS tlaps
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     python3 libgmp10 \
     && rm -rf /var/lib/apt/lists/*
-ARG TLAPS_SHA256=13eff4e3dd0a4570c1c33c46f052fd4eb3afad465eb201ebade607961f09d43c
+ARG TLAPS_SHA256=b3c2554d3dd2198772ea8c814639a024fe9c390eac0ec25f4f444ad446a7dd28
 ADD --checksum=sha256:${TLAPS_SHA256} https://github.com/tlaplus/tlapm/releases/download/1.6.0-pre/tlapm-1.6.0-pre-x86_64-linux-gnu.tar.gz /tmp/tlapm.tar.gz
-# The bfa9468 slim bundle ships `Isabelle-install` without the Isabelle2025
-# component option files, and its pre-built heaps resolve their parent heaps
-# and those option files through the upstream CI build path baked into the
-# heap bytes (observed: Poly/ML loadState ENOENT / parent-mismatch without
-# them). Harvest ONLY the `*/etc/options` files from the official pinned
-# Isabelle2025 distribution (the same pin upstream's deps/isabelle/dune.mk
-# builds against) and place the heaps at their baked location. Any upstream
-# re-publish changes bytes and fails the checksums above — fail-closed.
-ARG ISABELLE_SHA256=3d1d66de371823fe31aa8ae66638f73575bac244f00b31aee1dcb62f38147c56
-ADD --checksum=sha256:${ISABELLE_SHA256} https://isabelle.in.tum.de/website-Isabelle2025/dist/Isabelle2025_linux.tar.gz /tmp/isabelle.tar.gz
-RUN set -e; \
-    mkdir -p /opt/tlapm; \
-    tar -xzf /tmp/tlapm.tar.gz -C /opt/tlapm --strip-components=1; \
-    rm /tmp/tlapm.tar.gz; \
-    N=/opt/tlapm/lib/tlapm/backends/Isabelle-install; \
-    B=/home/runner/work/tlapm/tlapm/_build/default/deps/isabelle/Isabelle; \
-    mkdir -p "$B/heaps/polyml-5.9.1_x86_64_32-linux"; \
-    cp "$N/heaps/Pure" "$N/heaps/TLA+" "$N/heaps/Options" \
-       "$B/heaps/polyml-5.9.1_x86_64_32-linux/"; \
-    mkdir -p /tmp/isabelle-opt; \
-    tar -xzf /tmp/isabelle.tar.gz -C /tmp/isabelle-opt --wildcards \
-        'Isabelle2025/etc/options' 'Isabelle2025/*/etc/options'; \
-    cd /tmp/isabelle-opt/Isabelle2025; \
-    find . -path '*/etc/options' | while read -r f; do \
-      mkdir -p "$B/$(dirname "$f")"; cp "$f" "$B/$f"; \
-    done; \
-    rm -rf /tmp/isabelle-opt /tmp/isabelle.tar.gz
+RUN mkdir -p /opt/tlapm \
+    && tar -xzf /tmp/tlapm.tar.gz -C /opt/tlapm --strip-components=1 \
+    && rm /tmp/tlapm.tar.gz
 ENV PATH="/opt/tlapm/bin:$PATH"
 COPY scripts/check_tlaps.py scripts/tlaps_evidence.py scripts/tlaps_source.py scripts/tlaps_catalog.py ./scripts/
 RUN python3 scripts/check_tlaps.py
@@ -181,6 +152,7 @@ RUN python3 scripts/check_tlaps.py
 # all digest/version-pinned; the verifier's Rust (1.98.0) is the
 # repo's pinned toolchain.
 FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 AS verify
+ENV CARGO_BUILD_JOBS=4
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     curl ca-certificates unzip build-essential python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -242,7 +214,7 @@ RUN python3 -m zipfile -e /tmp/deno.zip /tmp/deno \
 # uv pinned to PyPI-published wheel digests (plan/0042 F) — official
 # metadata, no guessed checksums; refreshed deliberately by
 # scripts/check_pins.py. --require-hashes makes the digests the gate.
-# Both linux arches so the stage also builds on arm runners.
+# Keep the upstream wheel identities; active qualification is Linux x86_64.
 ARG UV_VERSION=0.12.10
 RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c --hash=sha256:bd0afae6918795c6a61a649e64d735e339f3d62f8310235da6f19eb3f66f323b\n' "$UV_VERSION" > /tmp/uv.req \
     && pip install --no-cache-dir --no-deps --require-hashes -r /tmp/uv.req \
@@ -260,6 +232,38 @@ ENV GRIPSACK_BIN=/usr/local/bin/grip
 WORKDIR /app/e2e
 CMD ["uv", "run", "--locked", "--no-sync", "pytest"]
 
+# Nonpublishing local qualification tools. Tool bytes are immutable; dependency
+# audits deliberately fetch the current advisory database and retain its revision.
+FROM ${GNU_RUST_IMAGE} AS local-rust-tools
+FROM e2e AS local-tools
+COPY --from=local-rust-tools /usr/local/rustup /usr/local/rustup
+COPY --from=local-rust-tools /usr/local/cargo /usr/local/cargo
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo
+ENV PATH="/app/e2e/.venv/bin:/usr/local/cargo/bin:$PATH"
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+    file binutils zstd bzip2 xz-utils ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && install -m755 "$GRIPSACK_DENO" /usr/local/bin/deno
+ARG LOCAL_NODE_VERSION=22.23.2
+ARG LOCAL_NODE_SHA256=d60acfe00a2932254bb0ad20e01b0d74397a0875595de719654b214f4b03f307
+ADD --checksum=sha256:${LOCAL_NODE_SHA256} https://nodejs.org/dist/v${LOCAL_NODE_VERSION}/node-v${LOCAL_NODE_VERSION}-linux-x64.tar.xz /tmp/node.tar.xz
+RUN tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
+    && rm /tmp/node.tar.xz
+ARG LOCAL_AUDIT_VERSION=0.22.2
+ARG LOCAL_AUDIT_SHA256=7fb9497f8594b389e5fce5ef9b92db08432996895b2e0c5a0167a69ed445c428
+ADD --checksum=sha256:${LOCAL_AUDIT_SHA256} https://github.com/rustsec/rustsec/releases/download/cargo-audit/v${LOCAL_AUDIT_VERSION}/cargo-audit-x86_64-unknown-linux-musl-v${LOCAL_AUDIT_VERSION}.tgz /tmp/audit.tgz
+RUN tar -xzf /tmp/audit.tgz -C /usr/local/bin --strip-components=1 \
+    "cargo-audit-x86_64-unknown-linux-musl-v${LOCAL_AUDIT_VERSION}/cargo-audit" \
+    && rm /tmp/audit.tgz
+WORKDIR /app
+COPY . .
+
+# Native helper tooling; the source is mounted read-only at canonical /src.
+# Its two independent target directories and pin/license/protocol checks remain.
+FROM builder AS local-helper
+RUN apk add --no-cache python3 build-base binutils cmake perl linux-headers \
+    xz-dev bzip2-dev zstd-dev
+
 # Stripped static release binary.
 FROM builder AS release
 RUN cargo auditable build --release --locked -p gripsack \
@@ -271,6 +275,7 @@ RUN cargo auditable build --release --locked -p gripsack \
 # +stable may provision a newer release even inside a digest-pinned image.
 FROM builder AS fuzz
 RUN apk add --no-cache bubblewrap python3 g++
+COPY scripts ./scripts
 ENV FUZZ_TOOLCHAIN=1.98.0
 CMD ["sh", "scripts/check_fuzz.sh"]
 

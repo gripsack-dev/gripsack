@@ -357,6 +357,7 @@ def test_legacy_trust_and_ambient_bypass_never_authorize_new_bytes(sandbox, monk
     checked(repo, "before", approve_source(repo))
 
 
+@pytest.mark.requires_fault_controls
 @pytest.mark.parametrize("fault", ["eio", "permission"])
 def test_capture_read_errors_never_become_missing_or_empty_source(sandbox, fault):
     repo = value_repo(sandbox / "repo")

@@ -66,14 +66,21 @@ mkdir "$out"
 REPRO_OUTPUT=$out
 export REPRO_OUTPUT
 
-# One image build; the captured image ID then pins BOTH runs.
-docker compose build repro
-
-image_ref=$(docker compose images -q repro 2>/dev/null || true)
-if [ -z "$image_ref" ]; then
-    image_ref=$(docker image inspect -f '{{.Id}}' "$(basename "$PWD")-repro" 2>/dev/null || true)
+# Local CI may restore the source-bound builder archive from a predecessor.
+# Ordinary Actions/operator invocation still builds its own image exactly once.
+if [ -n "${REPRO_IMAGE_ID:-}" ]; then
+    image_id=$(docker image inspect -f '{{.Id}}' "$REPRO_IMAGE_ID")
+    actual_source=$(docker image inspect -f '{{index .Config.Labels "dev.gripsack.local-ci.source"}}' "$image_id")
+    [ "$actual_source" = "$git_rev" ] || {
+        echo "FAIL: restored builder belongs to another source" >&2; exit 1; }
+else
+    docker compose build repro
+    image_ref=$(docker compose images -q repro 2>/dev/null || true)
+    if [ -z "$image_ref" ]; then
+        image_ref=$(docker image inspect -f '{{.Id}}' "$(basename "$PWD")-repro" 2>/dev/null || true)
+    fi
+    image_id=$(docker image inspect -f '{{.Id}}' "$image_ref" 2>/dev/null || true)
 fi
-image_id=$(docker image inspect -f '{{.Id}}' "$image_ref" 2>/dev/null || true)
 case "$image_id" in
     sha256:*) ;; # full immutable content-addressed ID
     *) echo "FAIL: could not capture the built image's identity (got: '$image_id'); refusing to claim same-image builds" >&2

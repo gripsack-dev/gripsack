@@ -7,8 +7,8 @@
 # independent python checker, and records versions/configuration and
 # measurements into results/.
 #
-# Probe 6 (Mac VM qualification) is NOT here: no Mac hardware on this
-# workstation; that lane stays blocked in the delivery ledger.
+# Mac VM qualification is outside the active platform scope
+# (PLATFORM-LINUX-X64-2026-10-09), not a missing Linux probe.
 #
 # Usage: sh probes.sh            (from verification/buildkit-qualification)
 set -eu
@@ -16,26 +16,53 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 BRIDGE=$HERE/bridge/bridge-bin
 RESULTS=$HERE/results
-PORT=127.0.0.1:12341
-WORKER=b0-buildkit
-CACHE=b0-buildkit-cache
+OWNER=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
+OWNER_LABEL=dev.gripsack.local-ci.b0-owner
+# Keep the daemon privileged, but write exported fixtures as the calling user.
+CLIENT_USER="$(id -u):$(id -g)"
+WORKER=
+WORKER_ID=
+CACHE=
+CIDFILE=
+ROUND=0
 OWNED_TAG=
-cleanup() {
-  docker rm -f -v "$WORKER" >/dev/null 2>&1 || true
-  docker volume rm "$CACHE" >/dev/null 2>&1 || true
-  if [ -n "$OWNED_TAG" ]; then
-    docker rmi "$OWNED_TAG" >/dev/null 2>&1 || true
+OWNED_IMAGE=
+worker_destroy() {
+  if [ -n "$CIDFILE" ] && [ -f "$CIDFILE" ]; then
+    WORKER_ID=$(cat "$CIDFILE")
+  fi
+  if [ -n "$WORKER_ID" ]; then
+    actual=$(docker inspect -f "{{index .Config.Labels \"$OWNER_LABEL\"}}" "$WORKER_ID") || return 1
+    [ "$actual" = "$OWNER" ] || { echo "FAIL: foreign B0 worker" >&2; return 1; }
+    docker rm -f -v "$WORKER_ID" >/dev/null || return 1
+    WORKER_ID=
+    CIDFILE=
+  fi
+  if [ -n "$CACHE" ]; then
+    actual=$(docker volume inspect -f "{{index .Labels \"$OWNER_LABEL\"}}" "$CACHE") || return 1
+    [ "$actual" = "$OWNER" ] || { echo "FAIL: foreign B0 cache" >&2; return 1; }
+    docker volume rm "$CACHE" >/dev/null || return 1
+    CACHE=
   fi
 }
-trap cleanup EXIT
+cleanup() {
+  worker_destroy || return 1
+  if [ -n "$OWNED_IMAGE" ]; then
+    actual=$(docker image inspect -f '{{.Id}}' "$OWNED_TAG") || return 1
+    [ "$actual" = "$OWNED_IMAGE" ] || { echo "FAIL: B0 image tag changed" >&2; return 1; }
+    docker rmi "$OWNED_TAG" >/dev/null || return 1
+    OWNED_IMAGE=
+    OWNED_TAG=
+  fi
+}
+trap 'status=$?; trap - EXIT; cleanup || status=1; exit "$status"' EXIT
 
 REPO=$(cd "$HERE/../.." && pwd)
 . "$HERE/pins.env"
 
-# Cold-start guarantee: no stale worker or cache volume from an earlier
-# aborted run may warm this one (the EXIT trap covers failure paths).
-docker rm -f -v "$WORKER" >/dev/null 2>&1 || true
-docker volume rm "$CACHE" >/dev/null 2>&1 || true
+# Fresh per-invocation worker/cache names; never delete a pre-existing resource.
+# Bridge execution uses docker exec, so a containerized operator needs no
+# assumption that its own loopback is the Docker daemon's published-port host.
 
 mkdir -p "$RESULTS"
 ENV_OUT="$RESULTS/environment.txt"
@@ -64,35 +91,46 @@ run_bridge() {
 }
 
 worker_start() {
+  ROUND=$((ROUND + 1))
+  WORKER="gripsack-b0-$OWNER-$ROUND"
+  cache_name="gripsack-b0-cache-$OWNER-$ROUND"
+  if docker container inspect "$WORKER" >/dev/null 2>&1 \
+      || docker volume inspect "$cache_name" >/dev/null 2>&1; then
+    echo "FAIL: B0 resource name already exists; refusing adoption" >&2; exit 1
+  fi
+  docker info --format '{{.ServerVersion}}' >/dev/null
+  docker volume create --label "$OWNER_LABEL=$OWNER" "$cache_name" >/dev/null
+  CACHE=$cache_name
+  CIDFILE="$RESULTS/worker-$ROUND.cid"
   docker run -d --privileged --platform linux/amd64 --name "$WORKER" \
+    --cidfile "$CIDFILE" --label "$OWNER_LABEL=$OWNER" \
     -v "$CACHE":/var/lib/buildkit \
-    -p "$PORT:12341" \
+    -v "$RESULTS":"$RESULTS" \
+    -v "$HERE/pins.env":"$HERE/pins.env":ro \
+    -v "$BRIDGE":/usr/local/bin/gripsack-b0-bridge:ro \
     "$BUILDKIT_IMAGE" --addr tcp://0.0.0.0:12341 >> "$ENV_OUT"
+  WORKER_ID=$(cat "$CIDFILE")
   # health: workers must answer over the TCP address before any probe
   # claims the lane; a container that never becomes healthy fails the run
   i=0
-  until docker exec "$WORKER" buildctl --addr tcp://127.0.0.1:12341 debug workers >/dev/null 2>&1; do
+  until docker exec "$WORKER_ID" buildctl --addr tcp://127.0.0.1:12341 debug workers >/dev/null 2>&1; do
     i=$((i + 1))
     if [ $i -ge 45 ]; then
       echo "FAIL: $WORKER never became healthy" >&2
-      docker logs "$WORKER" | tail -30 >&2
+      docker logs "$WORKER_ID" >&2
       exit 1
     fi
     sleep 1
   done
   # A working daemon without an observed worker list and actual version
   # is not a qualified worker; plain-sh tee must not hide either failure.
-  run_bridge "$RESULTS/worker-health.log" docker exec "$WORKER" \
+  run_bridge "$RESULTS/worker-health.log" docker exec "$WORKER_ID" \
     buildctl --addr tcp://127.0.0.1:12341 debug workers
   cat "$RESULTS/worker-health.log" >> "$ENV_OUT"
-  run_bridge "$RESULTS/buildkit-version.log" docker exec "$WORKER" buildkitd --version
+  run_bridge "$RESULTS/buildkit-version.log" docker exec "$WORKER_ID" buildkitd --version
   cat "$RESULTS/buildkit-version.log" >> "$ENV_OUT"
 }
 
-worker_destroy() {
-  docker rm -f -v "$WORKER" >/dev/null 2>&1 || true
-  docker volume rm "$CACHE" >/dev/null 2>&1 || true
-}
 
 # --- probe 1: baseline preservation --------------------------------
 # A word in a comment or an unsupported-input test is not a dependency.
@@ -145,9 +183,9 @@ run_bridge "$RESULTS/probe1-baseline.txt" baseline
 # --- probes 2, 3, 5 against worker #1 ------------------------------
 worker_start
 START=$(date +%s)
-run_bridge "$RESULTS/probe2.log" "$BRIDGE" -addr "tcp://$PORT" -out "$RESULTS" -pins "$HERE/pins.env" -probe graph
-run_bridge "$RESULTS/probe5.log" "$BRIDGE" -addr "tcp://$PORT" -out "$RESULTS" -pins "$HERE/pins.env" -probe policy
-run_bridge "$RESULTS/probe3.log" "$BRIDGE" -addr "tcp://$PORT" -out "$RESULTS" -pins "$HERE/pins.env" -probe executable
+run_bridge "$RESULTS/probe2.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS" -pins "$HERE/pins.env" -probe graph
+run_bridge "$RESULTS/probe5.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS" -pins "$HERE/pins.env" -probe policy
+run_bridge "$RESULTS/probe3.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS" -pins "$HERE/pins.env" -probe executable
 WORKER1_SECONDS=$(( $(date +%s) - START ))
 
 # --- probe 3 teardown: retained output survives worker+cache death --
@@ -159,14 +197,14 @@ echo "probe3 retained run after worker+cache removal: $OUT" | tee -a "$RESULTS/p
 # --- probe 4: two FRESH workers, clean reproduction ------------------
 worker_start
 S1=$(date +%s)
-run_bridge "$RESULTS/probe4-a.log" "$BRIDGE" -addr "tcp://$PORT" -out "$RESULTS/oci-a" -pins "$HERE/pins.env" -probe oci
+run_bridge "$RESULTS/probe4-a.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS/oci-a" -pins "$HERE/pins.env" -probe oci
 A_SECONDS=$(( $(date +%s) - S1 ))
 mv "$RESULTS/oci-a/oci-layout.tar" "$RESULTS/oci-1.tar"
 worker_destroy
 
 worker_start
 S2=$(date +%s)
-run_bridge "$RESULTS/probe4-b.log" "$BRIDGE" -addr "tcp://$PORT" -out "$RESULTS/oci-b" -pins "$HERE/pins.env" -probe oci
+run_bridge "$RESULTS/probe4-b.log" docker exec --user "$CLIENT_USER" "$WORKER_ID" /usr/local/bin/gripsack-b0-bridge -addr tcp://127.0.0.1:12341 -out "$RESULTS/oci-b" -pins "$HERE/pins.env" -probe oci
 B_SECONDS=$(( $(date +%s) - S2 ))
 mv "$RESULTS/oci-b/oci-layout.tar" "$RESULTS/oci-2.tar"
 worker_destroy
@@ -198,7 +236,6 @@ if docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
   echo "FAIL: Docker already has the B0 fixture tag $IMAGE_TAG" >&2
   exit 1
 fi
-OWNED_TAG=$IMAGE_TAG
 
 # Docker may re-encode config metadata, so its image ID need not be
 # the OCI config blob SHA. Inspect actual loaded layers/platform/runtime
@@ -210,13 +247,14 @@ if docker load -i "$RESULTS/docker-compat.tar" > "$RESULTS/probe4-load.txt" 2>&1
     echo "FAIL: Docker load did not publish the verified image tag" | tee "$RESULTS/probe4-runtime.txt"
     exit 1
   fi
+  OWNED_TAG=$IMAGE_TAG
+  OWNED_IMAGE=$(docker image inspect -f '{{.Id}}' "$OWNED_TAG")
   run_bridge "$RESULTS/probe4-runtime-check.log" python3 "$HERE/check_loaded.py" \
     "$RESULTS/probe4-verify.json" "$RESULTS/probe4-image-inspect.json"
   if docker run --rm "$IMAGE_TAG" cat /hello.txt > "$RESULTS/probe4-run.txt" 2>&1 \
       && [ "$(cat "$RESULTS/probe4-run.txt")" = "gripsack b0 oci fixture" ]; then
     cat "$RESULTS/probe4-run.txt"
-    docker rmi "$OWNED_TAG" >/dev/null
-    OWNED_TAG=
+    cleanup
     echo "separate-runtime: Docker loaded checked OCI layers/config via portable archive and ran image" | tee "$RESULTS/probe4-runtime.txt"
   else
     if [ -f "$RESULTS/probe4-run.txt" ]; then

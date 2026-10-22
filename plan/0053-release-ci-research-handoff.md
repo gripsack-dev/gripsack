@@ -1,8 +1,54 @@
 # 0053 — CI and release-flow research handoff
 
-Status: **research requested; no migration or replacement workflow approved.**
-Evidence snapshot: 2026-10-04. The release owner is continuing 0.44.1 separately.
-This document is input to another agent, not an additional 0.44.1 release gate.
+Status: **local migration approved; Rootle and Gripsack trusted-code,
+non-publishing pilots qualified.** The original research snapshot below is
+dated2026-10-04 and remains historical evidence, not current deployment authority.
+
+## Current execution — 2026-10-22
+
+The owner selected local Buildbot on the existing WSL/Docker workstation,
+Linux/WSL x86_64 only, with no fuzz/corpus replay. Docker and BuildKit now use
+the verified external NVMe; the owner authorized its format and a clean Docker
+store. Internal-system-disk identity was explicitly excluded. The incoming5 TB
+HDD is reserved for artifacts/backups and has not been operated on.
+Signing/owner-channel promotion and public publisher migration remain separate.
+The shared contract is `../SHARED-BUILDBOT-CI-PLAN.md`; infrastructure source is
+the owner's private `tknawara/ci-infra` repository.
+
+The real Rootle pilot completed seven gates, installed its exact static
+artifact and passed96 consumer tests. Its captured inputs, completed receipts
+and artifacts survived a Docker outage and were restored into a new persistent
+directory. The restored worker replayed the same receipts without rebuilding.
+This is same-host recovery evidence, not an independent-disk, hostile-worker,
+Windows-reboot or signed-release claim.
+
+Gripsack's `.ci/pilot.json` preserves the full current Linux inventory through
+project-owned producers in `scripts/local_ci.py`, the96-partition dispatcher
+and actual installed-artifact consumers. Every gate binds explicit predecessor
+files; missing/foreign/corrupt evidence cannot become success. The runner
+keeps failed attempts, monotonic duration evidence and exact owned-resource
+cleanup. Existing Actions/branch-protection/release authority remains active
+until its replacement is qualified; no GitHub success status is synthesized.
+
+Gripsack source `0c2a8321c2ef8f4b8a53cc7fb5ef06d7b72327f6` completed all19
+gates, including all96 persistence partitions, as candidate
+`af783bc77076a6be211629996255399204cf0a37638317e3acbd3f292a0a123d`.
+The controlled worker restart retained one completed checkpoint, reattached
+eight live partitions and completed the remaining87 freshly. Final admission
+rechecked the original receipt/report/log/attempt hashes. Qualification SHA256:
+`f411c611dd77dd93d47593b9a376e4552add9bf5bc84ae7b515c5bb486fa86e5`.
+The record explicitly denies publication authorization and signed-release status.
+
+The NVMe cache keeps GC enabled with256 GB retention. State admission still
+refuses low headroom; verified archived-success scratch reclamation preserved
+all source bundles, receipts, artifacts, checkpoints and resource journals.
+
+The owner separately chose to stage the newly identified Rustls/ZIP fixes
+without publishing. The core/helper0.46.1 candidate is unpublished; current
+0.46.0 tags and bytes remain unchanged. Plan0048§19 and STATUS carry the
+current execution record. Sections below retain the original research scope.
+
+## Historical release context — 2026-10-04
 
 **Subsequent owner decision:** the stalled 0.44.1 delivery may proceed without a
 fresh hosted full-CI campaign, under `REL-ALPHA-0441-2026-10-04` recorded in

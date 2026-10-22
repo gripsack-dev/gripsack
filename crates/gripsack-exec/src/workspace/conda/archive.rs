@@ -95,7 +95,7 @@ impl CondaArchive {
             let (mut info, mut payload, mut metadata) = (false, false, false);
             for index in 0..zip.len() {
                 let member = zip.by_index(index).map_err(invalid_error)?;
-                let name = member.name();
+                let name = member.name().map_err(invalid_error)?;
                 if name.starts_with("info-") && name.ends_with(".tar.zst") && !info {
                     info = true;
                     result.scan(zstd::stream::read::Decoder::new(member)?, Some(true))?;

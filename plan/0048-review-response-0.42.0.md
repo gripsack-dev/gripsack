@@ -3694,3 +3694,316 @@ gate/prover caches and raw trace dumps were not added. No fuzz/corpus, ARM,
 macOS, native Windows, private el9-kernel, physical-power-loss or hosted-build
 attestation claim was manufactured.
 
+
+## 19. Staged security and local CI readiness — 2026-10-19
+
+Owner decision: **stage fixes; finish CI first**. No new tags, registry
+packages, publisher credentials or modifications of public0.46.0 bytes are
+authorized. Source versions core/helper0.46.1 distinguish upcoming candidate
+artifacts; SDK0.46.0, IR7 and helper protocol3 are unchanged. This is not a
+security-hotfix release exception or a waiver of §6/§9/§10.
+
+Actual dependency audits of both released lock graphs reported Rustls
+RUSTSEC-2026-0346/0347/0348/0349 and ZIP RUSTSEC-2026-0367/0368/0369.
+They establish affected dependencies, not an exploit through Gripsack's
+independent extraction guards. Staged Cargo resolution selects Rustls0.23.46
+and ZIP9.0.5 in both graphs; both audit with zero vulnerabilities against
+RustSec999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b.
+
+Responsibility map:
+- Core fetch and frozen Conda archive admission keep their capability-relative,
+  link-graph, byte/metadata/decoder-budget, CRC and permission checks; ZIP9's
+  fallible borrowed filenames are admitted before materialization.
+- The helper retains its existing coherent Rattler/Pixi type family. Vendored
+  published `rattler_package_streaming`0.27.8 carries the narrowly attributed
+  upstream5e544a615715598004ba883bf63fb40d06c19b3f ZIP9 adaptation. Filename
+  errors propagate instead of upstream's `filter_map(Result::ok)`. Published
+  crate/source identity and exact BSD license remain recorded.
+- Native packagers own two-build measurements, static/protocol admission and
+  exact license assets, now including `LICENSE-rattler`. Only measured hashes
+  may update the0.46.1 Conda/bridge pin tables; old public pins are not reused
+  as evidence for new helper bytes.
+- Project scripts own the19-gate local qualification and existing validators;
+  Buildbot owns scheduling and immutable candidate/attempt transport. The
+ 96 persistence partitions, all measured cuts/drift cases, formal floors and
+  attributed negatives remain mandatory. No fuzz/corpus or other-platform
+  execution is authorized.
+
+Current evidence is retained under
+`/home/tarek/.local/share/buildbot-ci/evidence/` and
+`/home/tarek/workspace/release-evidence/gripsack/unreleased-0.46.1/`.
+Dependency audit success is not the complete runtime/native/formal/persistence
+qualification. Public release and closure of original handover milestones
+remain unclaimed; final candidate measurements and gate results belong here
+after actual execution.
+
+First local integration candidate `6390b1a4…` / source `4b0988d` passed
+inventory, Rust, GNU-native, TypeScript and runtime-image preparation. The
+audit handoff then correctly failed: root-owned private Git pack files could
+not be archived by the worker. Running the export as the worker exposed a
+second boundary defect: extracting source with Python's data filter under
+umask077 discarded directory modes, producing root-owned0700 source paths
+inside Docker. Git-tar contexts now go directly to BuildKit; a real non-root
+container read the source and ran Rust1.98.0 with0755 source directories.
+Installed consumers likewise run as the worker, with a directly executable
+Deno rather than a link through root's private HOME.
+
+The helper's earlier `--no-fetch` audit had not populated its crate-index
+entries. Both graphs now fetch registry metadata, require one unchanged
+advisory revision, and export a combined audit snapshot. A real UID1000
+export passed both graphs; restoring its48,112,570-byte snapshot in another
+directory and disabling container networking passed both audits again.
+Snapshot SHA256 `811ef87f829026f441091bc67c8e9aabdf2306a59bf3eeee1c7ec220dfed446d`;
+RustSec revision remains `999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b`.
+Both retain the existing allowed `unsafe-libyaml` unmaintained warning;
+no vulnerabilities or missing-index errors were reported. These focused
+checks repair transport/ownership, not the still-required complete19-gate
+candidate qualification.
+
+
+The corrected7579293 candidate passed the first seven gates, including the
+complete paired audits and bridge reproducibility. B0 then exposed root-owned
+OCI output directories. Only its protocol client now runs with the calling
+UID/GID; the daemon remains privileged and disposable. All six real Linux
+probes passed in the focused run, including two clean workers, independent
+OCI verification and separate Docker execution. Raw results are retained in
+`buildbot-ci/evidence/b0-worker-uid-smoke-20261019`.
+
+Transported artifacts deliberately have no executable permission. The B0
+debug core and installed native helper now receive explicit executable copies,
+without changing archived bytes. The real helper protocol smoke passed after
+0444→0555 installation with the measured0dce6598… hash. Rust compilation layers
+no longer include unrelated CI scripts; actual complete qualification and
+timing measurements, not this Dockerfile dependency correction, determine any
+later performance claim.
+
+Compose's rendered JSON retains `$$` escapes; forwarding that shell text to
+`docker run` was not the release service's execution contract. Local packaging
+now runs the unchanged Compose release service with a source-verified immutable
+image override. The real focused build completed in3m21s, produced the expected
+0.46.1 tarball/checksum, and its installed binary passed native static admission,
+`grip --version` and network-disabled audit of282 embedded dependencies.
+Binary SHA256 `1948dce184e6397a3ce1a388cab61aab41025c59d6fd323523a4b43ff0a1a1c6`;
+raw log `artifact://4930` and durable result under
+`buildbot-ci/evidence/core-compose-smoke-zgpq7qec`. This measured source7579293
+package is a focused producer check, not full admission of a later source.
+
+Candidate997181cf… / source57d3d94 passed eight gates, including the corrected
+B0 lane. The helper image then refused packaging before compilation because
+the compiler-layer split had omitted its architecture validator. Its stage
+now explicitly carries both required packaging validators
+(`check_architecture.py`, `check_native_binary.py`), without returning unrelated
+CI scripts to common Rust compilation inputs.
+
+Candidate9a328032… / source8fbce84 then reproduced helper bytes6f3e856c… in
+both image-local/app builds, which correctly failed the existing0dce6598… pin.
+A controlled run using the **same tool image**, current source and lock but
+the canonical packager layout (read-only/src, cwd/) passed both independent
+builds, native/protocol validation and the unchanged pin. The output is again
+23,556,904 bytes with SHA256
+`0dce65984183b1e807b363b966b5802131e44e8db2bbe4cc510b2a8b9e99c842`.
+Local qualification now retains that canonical input layout instead of
+re-pinning an alternate build environment. Its source comes from the frozen
+worker checkout, not an image-local source copy. Raw inputs, manifest, all six
+assets and container identity are under
+`buildbot-ci/evidence/helper-canonical-layout-20261020/`.
+
+After the owner-approved NVMe storage reset, candidate269c8075… / sourcead04b5e
+revalidated all13 completed gates with the exact selected control image.
+The installed consumer then passed artifact identities, native checks, npm
+installation and documentation/selfchecks, but its flow selection demanded
+two debug-only filesystem traces from the stripped release. Release fault
+controls are intentionally compiled out (`gripsack-fs/src/fault.rs`).
+The explicit `requires_fault_controls` marker now separates applicability:
+the actual release consumer flow selection passed81 cases with those two
+deselected; the same two fault cases passed against the exact debug artifact.
+The ordinary debug flow gate has no marker exclusion and retains both cases.
+Raw logs/JUnit/arguments are under
+`buildbot-ci/evidence/release-consumer-applicability-20261020/`.
+This is not a reduction of the full debug, formal or96-partition obligations.
+
+The interrupted old consumer attempt also lacked a committed receipt, which
+had blocked archival of the newer real failure. Shared CI retention now
+validates/retains committed attempts while preserving uncommitted diagnostics
+without granting them success. A real mixed-upload smoke retained the failed
+receipt, left the interrupted log unchanged, and kept gate admission false;
+all65 shared-infrastructure tests passed.
+
+The full consumer preflight next exposed a fixture error, not a lock-admission
+regression: it installed a repository SDK into the published Conda workspace,
+whose unchanged lock intentionally has only an embedded-frontend identity.
+Frozen check correctly refused the new import pin. A fresh isolated copy of
+the exact public workspace, without that extra SDK declaration, passed real
+`trust inspect`/exact approval/`check` with the original lock bytes unchanged
+(SHA256 `8b2711ca8083574c65b92b2751f15bb2a15a9fc1662299107fcd8f43b9a503b1`).
+The consumer now checks the installed-SDK legacy caller and embedded-frontend
+Conda caller in separate private trees. No update, solve, lock rewrite or
+weakened frontend/import comparison is used.
+
+The next preflight exposed two more consumer-harness defects: successful
+`build --json` returns named `outputs`, not the error envelope's `ok` field,
+and the `local_ci.py` dispatcher shadowed the namespace directory holding the
+Conda consumer. The consumers now validate the requested package output and use
+the standalone `local_ci_conda_consumer.py` module, with all imports and recorded
+source-contract paths migrated.
+
+Source `192b3eeb677e7681cf03e1693ae3bce07ee26aee` then passed the focused
+installed-native consumer run (85 actual commands; tool image
+`sha256:fc43b78231d6d20771fc459469d2ed90d4d5fd4b4c8bacf7eb3417be4d00cb92`):
+the published external ripgrep workspace completed frozen check/build/run/task,
+two applies, and retained build/gc/shell with the helper unavailable. Both real
+`.conda` and `.tar.bz2` fixtures passed Pixi import, prefix relocation and native
+receipt/tree admission; wrong helper, changed archive, unapproved source and
+approved stale input were rejected. Stopping their only acquisition origin and
+making the helper unavailable still allowed retained build/gc without changing
+locks or prefix bytes. Evidence:
+`buildbot-ci/evidence/native-consumer-preflight-192b3ee/`.
+The earlier docs/installed-release journey run passed all81 applicable cases.
+These focused runs used the prior private production artifacts only after
+checking equality of all production source/lock trees; they do not admit a new
+candidate or replace the complete19-gate/formal/repro/96-partition profile.
+
+On 2026-10-21, candidate
+`9637755d691e2562de40e1e0aff02f47ea33593997d6644595e52a8bff53b8ad`
+(source `2f0b815989f8d4b5a00fe9944ccea156f0ac6a07`) passed its first five
+gates, then failed against RustSec
+`e6f94f3760d5e6c54c1b05f204002263bc025524`: newly issued
+[RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382) and
+[RUSTSEC-2026-0381](https://rustsec.org/advisories/RUSTSEC-2026-0381) cover
+certificate-path verification and distrusted bundled roots. No new advisory
+ignore was added, and the unused persistence-restart injector was disarmed.
+
+Both graphs now select rustls-webpki0.103.16 and webpki-roots1.0.10.
+The obsolete0.26 root wrapper is removed by disabling the HTTP client's
+built-in TLS feature and using its supported connector interface. The small
+`http/tls.rs` adapter delegates verification/handshaking to patched Rustls,
+preserves socket access for deadlines and retains the original error chain.
+Root selection still combines the bundled roots with captured custom/system
+locations; the crypto provider is explicitly ring. No custom verifier,
+OpenSSL/native-tls, new credential route or retry policy is introduced.
+
+A broader ureq3 attempt passed the Rust gate but failed the real forward-proxy
+flow because it substituted CONNECT for ordinary forwarding. That attempt was
+discarded, not accommodated by weakening the test. The retained HTTP implementation
+then passed all13 real-binary HTTP/TLS flows, including a new untrusted-peer case
+that observes one TLS connection, no HTTP request and no published lock/store.
+Both final lock graphs audited clean against the same current advisory revision;
+the existing allowed unsafe-libyaml maintenance warning remains explicit.
+Evidence: `buildbot-ci/evidence/tls-certificate-patches-20261021/`.
+Current lock SHA256: core
+`3d3027487ff57282f09cfffba902f24f08b7374cc6334f026670cb8103c3afd4`,
+helper `ed085691883d3470dce564367a3fbf436e5ab4b688bba960d8690d3970f5a262`.
+These are focused checks. Affected helper pins must be measured again from
+independent canonical builds before a new complete qualification candidate.
+
+The patched helper was measured from immutable source
+`f76a11286b8cf397abe3ccd5bd81c76b5473c7f7`, using the canonical read-only
+`/src` layout and tool image
+`sha256:c6c6ba940454ef6b6f5d8b17b041ba061b100a0e8736bb8395bbb6fea39033e1`.
+Both independent native release builds matched:
+`30201b4aab67fb4a6a671a3a952704fd7d319534d78e72cc2a242a320881fbb9`
+(23,556,904 bytes). Static admission and the real helper protocol smoke passed;
+all three license assets and the lock-bound manifest were retained under
+`tls-certificate-patches-20261021/helper-f76a112/`. This replaces the earlier
+unpublished helper pin, not any public artifact. Full qualification must still
+rebuild and verify it against the updated core pin before admission.
+
+Candidate `2e5a5a1a4a507ddf5b4e104fa334ca5b3435460e1e2a8e365e65a2cd591ee4be`
+passed its first15 gates, through installed consumers and TLC. TLAPS refused
+upstream's replacement of the rolling `1.6.0-pre` archive before executing
+proofs. The old13eff4e3… archive was not found in scoped local release/CI/cache
+storage, and the old GitHub asset is404 with no retained Actions artifact.
+
+Official [asset647831989](https://api.github.com/repos/tlaplus/tlapm/releases/assets/647831989)
+and an independent HTTPS download agree on46,758,585 bytes and SHA256
+`b3c2554d3dd2198772ea8c814639a024fe9c390eac0ec25f4f444ad446a7dd28`.
+The relocated executable actually reports `901ae51`; its full source revision
+is `901ae51ed5224f88d43a1a02969cd9be4ed1b48d`. The upstream comparison from
+d8b9747 changes only two test-runner files, not prover/backend code.
+In an isolated container without the old build tree or externally supplied
+Isabelle options, the bundle's Isabelle backend proved the positive arithmetic
+fixture and rejected the false fixture with attributed semantic evidence.
+The old workaround and additional Isabelle distribution download are removed.
+The existing exact-version check, obligation floors, full theorem catalog and
+all negative calibrations remain mandatory; complete TLAPS qualification is
+pending, not inferred from this smoke.
+
+Separately, the complete Verus gate passed on immutablee5f88c5: positive results
+444 and30, zero errors, all92 policy and4 collector calibrations. Raw evidence
+and the retained exact prover archive are under
+`buildbot-ci/evidence/prover-maintenance-20261021/`. This independent preflight
+does not substitute for admission of the next complete candidate.
+
+Build-context inspection found Git's default archive modes (0664/0775) differed
+from ordinary checkout modes (0644/0755), invalidating otherwise equivalent
+BuildKit inputs. An actual scratch-image comparison produced different layers
+for the default tar, then identical filesystem layers and a cached COPY with
+`git -c tar.umask=0022 archive`. Local CI now uses those canonical Git-only modes;
+tracked executable bits remain intact and no private-umask extraction returns.
+The probe's logs/results are retained under
+`buildbot-ci/evidence/context-mode-smoke-3xj01pna/`; its three owned images and
+temporary fixture were removed. No broader build-speed benchmark is claimed.
+
+The complete Compose TLAPS gate subsequently passed with901ae51:301 pilot
+obligations;4816 generalized obligations across42 modules;3 pilot and5 inventory
+calibrations; attributed barrier/session/worker witnesses13/7/11/50 and their
+reachable TLC negatives. No external Isabelle options or old build tree were
+supplied. The full log SHA256 is
+`319a0f74f4c77258d55e9559814f9fa2de584f9dc6c0372d4350f428436fd3b6`;
+`prover-maintenance-20261021/qualification-result.json` retains the exact
+catalog/source markers. The independent Verus preflight log SHA256 is
+`7905215da768081197f73c53b331eca953db0ae32d0dcc6a92be5171c1d9a311`.
+These verified tool/input layers can be reused only through matching BuildKit
+inputs; no controller receipts are copied across candidate identities.
+
+Candidate `2b216e229deec4e4ca924a2f728ac2ac15d7671b4d65229e617be53f931037b9`
+(source `cfb795bad383bee063b923383f3ececd026f6629`) passed all18 preceding
+gates, including full flows/consumers, all formal gates and core reproducibility.
+The final96 matrix failed before any test process started: Docker's local log
+driver defaults to compression, which is incompatible with `max-file=1`.
+The dispatcher now explicitly sets `compress=false`, retains the16 MiB bound,
+and checks the actual log configuration before attachment or cleanup. The
+profile and checkpoint binding disclose the uncompressed policy.
+
+All18 checkpoint boundary tests passed, including changed log-driver/size/
+compression refusals. A real `Linux-apply-deploy-error-0` partition then passed
+55 selected cuts across both drift states and reused the identical completed
+checkpoint without executing again. Completion SHA256:
+`ac419755dde747899fabf1d14dd55b6f29c3b9dce8263b6d3463fcd14e043c7c`.
+Evidence: `buildbot-ci/evidence/persistence-log-policy-20261021/`.
+Only the96 exactly journalled, never-started containers from the failed
+candidate were removed, without force; all original journals remain.
+This focused result is not full96 or worker-restart qualification.
+
+### Complete local candidate admission — 2026-10-22
+
+Source `0c2a8321c2ef8f4b8a53cc7fb5ef06d7b72327f6` completed the entire
+19-gate Linux/WSL x86_64 profile as candidate
+`af783bc77076a6be211629996255399204cf0a37638317e3acbd3f292a0a123d`.
+The controller's immutable `qualification.json` has SHA256
+`f411c611dd77dd93d47593b9a376e4552add9bf5bc84ae7b515c5bb486fa86e5`
+and explicitly records `publication_authorized=false`, `signed_release=false`.
+All full flow/consumer, audit/native/helper/static, TLC/TLAPS/Verus and core
+reproducibility gates passed. The core package is SHA256
+`12b892ad9f115e33e001aac028ad644641b70ce29f97010a6a702ca71a1084ef`;
+its audit used the captured RustSec revision
+`4b587f00996ebe5c05a73eaef105ef241e876414`. The measured helper pin remains
+`30201b4aab67fb4a6a671a3a952704fd7d319534d78e72cc2a242a320881fbb9`.
+
+The full96 partition union passed with both drift states and no failures.
+During the matrix, a controlled worker restart preserved the first completed
+checkpoint exactly and resumed the same Buildbot request under master8.
+Final origins were87 fresh,8 reattached and1 retained checkpoint. The original
+completion, attempt, report and log hashes were rechecked after final admission.
+The persistence gate receipt is SHA256
+`73c91788bed6ffc150178f6b356a0af09eb8d65e302ac87304efb8041088b02f`.
+
+The complete artifact/receipt archive is under
+`buildbot-ci/archive/af783bc77076a6be211629996255399204cf0a37638317e3acbd3f292a0a123d/`.
+`buildbot-ci/evidence/gripsack-partition-recovery-final.json` retains the
+admitted qualification, complete dispatcher results and preserved restart
+witness. Public0.46.0 remains immutable; no new tag, registry publication,
+hosted-success attestation or signing/publisher-authority cutover occurred.
+Rootle/Strop cross-project work and the original178-ID semantic handover
+remain separately tracked rather than inferred complete from this pilot.
+
