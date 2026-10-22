@@ -3975,3 +3975,35 @@ Only the96 exactly journalled, never-started containers from the failed
 candidate were removed, without force; all original journals remain.
 This focused result is not full96 or worker-restart qualification.
 
+### Complete local candidate admission — 2026-10-22
+
+Source `0c2a8321c2ef8f4b8a53cc7fb5ef06d7b72327f6` completed the entire
+19-gate Linux/WSL x86_64 profile as candidate
+`af783bc77076a6be211629996255399204cf0a37638317e3acbd3f292a0a123d`.
+The controller's immutable `qualification.json` has SHA256
+`f411c611dd77dd93d47593b9a376e4552add9bf5bc84ae7b515c5bb486fa86e5`
+and explicitly records `publication_authorized=false`, `signed_release=false`.
+All full flow/consumer, audit/native/helper/static, TLC/TLAPS/Verus and core
+reproducibility gates passed. The core package is SHA256
+`12b892ad9f115e33e001aac028ad644641b70ce29f97010a6a702ca71a1084ef`;
+its audit used the captured RustSec revision
+`4b587f00996ebe5c05a73eaef105ef241e876414`. The measured helper pin remains
+`30201b4aab67fb4a6a671a3a952704fd7d319534d78e72cc2a242a320881fbb9`.
+
+The full96 partition union passed with both drift states and no failures.
+During the matrix, a controlled worker restart preserved the first completed
+checkpoint exactly and resumed the same Buildbot request under master8.
+Final origins were87 fresh,8 reattached and1 retained checkpoint. The original
+completion, attempt, report and log hashes were rechecked after final admission.
+The persistence gate receipt is SHA256
+`73c91788bed6ffc150178f6b356a0af09eb8d65e302ac87304efb8041088b02f`.
+
+The complete artifact/receipt archive is under
+`buildbot-ci/archive/af783bc77076a6be211629996255399204cf0a37638317e3acbd3f292a0a123d/`.
+`buildbot-ci/evidence/gripsack-partition-recovery-final.json` retains the
+admitted qualification, complete dispatcher results and preserved restart
+witness. Public0.46.0 remains immutable; no new tag, registry publication,
+hosted-success attestation or signing/publisher-authority cutover occurred.
+Rootle/Strop cross-project work and the original178-ID semantic handover
+remain separately tracked rather than inferred complete from this pilot.
+

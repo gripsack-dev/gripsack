@@ -30,20 +30,15 @@ proof, integrity, source-approval and retained-state gates remain required.
 Published0.45/0.46 artifacts stay immutable. The owner subsequently approved
 the shared local CI migration under a trusted-code, non-publishing boundary;
 plan0053 records that implementation separately from release authority.
-The staged0.46.1 local profile keeps debug fault-control qualification distinct
-from installed-release consumption; both remain required. Focused installed
-Conda consumers passed frozen external execution, both archive formats, attributed
-negative cases and retained offline reuse. See0048§19 for exact source/evidence;
-full local qualification remains required, not inferred from these focused runs.
-Fresh certificate advisories subsequently blocked the candidate audit. Both
-patched lock graphs and all13 real HTTP/TLS flows now pass focused checks,
-including preserved forward-proxy behavior and untrusted-peer refusal.
-The native helper pin has been remeasured; the complete profile remains required.
-The corrected complete candidate passed18 gates, including installed consumers,
-TLC/TLAPS/Verus and core reproducibility. The final matrix could not start because
-Docker's default compression conflicts with a single log file. The explicit
-uncompressed bound passed checkpoint unit tests and a real partition covering
-both drift states; full96-partition and worker-restart admission remain required.
+The staged core/helper0.46.1 candidate at
+`0c2a8321c2ef8f4b8a53cc7fb5ef06d7b72327f6` now has admitted local
+qualification: all19 gates, including installed consumers, the formal gates,
+reproducibility and all96 persistence partitions. A controlled worker restart
+preserved completed evidence and reattached live partition containers; the
+original checkpoint hashes still match after full union admission.
+Plan0048§19 records the exact candidate, artifacts, failures and recovery proof.
+This is a trusted-code, unsigned, non-publishing pilot—not public0.46.1,
+hosted-CI success, signing authority or closure of the original178 delivery IDs.
 
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux
@@ -123,7 +118,7 @@ the fetcher registry stay the north star.
 | 0050 | E0 task/schedule scope and proof targets | delivery closure pending | E0's scenario/vocabulary inventory and historical `ce3c7e0` systemd255 user-manager probe remain recorded in plan0050 and `verification/reports/2026-09-26-e0-systemd-ce3c7e0.log`; that probe is not an E3 scheduler or sleep/reboot/DST claim | Retained Linux/common E-row cases and proof catalogs remain required. Launchd/Mac portions are retired by the owner scope, not blocked on hardware | — |
 | 0051 | Linux BuildKit production and B-row qualification | runtime shipped0.44–0.46; delivery closure pending | `grip build`/`grip builder` and workspace consumers use checked whole-subgraph lowering, the bounded Rust/Go bridge, owned Linux workers and independent exports. PR173 and the0.44–0.46 records below supersede the early no-backend prototype. B0-01 retains its exact-source `ce3c7e0` six-case/negative receipts; plan0051 and the [immutable prototype ledger](https://github.com/gripsack-dev/gripsack/blob/fa3ada8f4f56a4274ee3a939d4642d30d54c6777/plan/STATUS.md#L109) preserve that history | B0–B6 row closure still requires named catalogs and conjunctive source-bound case/lane evidence; shipping implementation does not close rows. Mac/ARM portions are outside current scope | — |
 | 0052 | Workspace graph, command, diagnostic and native-runtime contract | runtime shipped0.44–0.46; A1/A2 closure pending | Current writer is IR7; retained6 execution,5 file profiles,4 read-only workspaces and3 modules remain distinct. Named recipes/packages, environments/profiles, native Conda/Pixi, tasks/checks/hooks and BuildKit-backed production ship with the0.46 scope. Earlier admission-only/file-only checkpoints remain historical in plan0052 and the [immutable prototype ledger](https://github.com/gripsack-dev/gripsack/blob/fa3ada8f4f56a4274ee3a939d4642d30d54c6777/plan/STATUS.md#L110) | Original A1/A2/A2-P row/milestone closure, source-bound semantic review and proof catalogs remain separate. No pending row is interpreted as permission to reimplement or weaken existing production behavior | — |
-| 0053 | CI and release-flow migration | local non-publishing pilot | Buildbot controller/worker, exact source/receipt admission, real Rootle qualification and same-host backup/restore exercised; Gripsack's complete Linux profile is staged | Gripsack qualification, remaining cross-project evidence, isolated signing/owner promotion and optional publisher cutover remain distinct; existing release authority is not retired | — |
+| 0053 | CI and release-flow migration | Rootle/Gripsack local pilots qualified | Buildbot controller/worker, exact source/receipt admission, real installed-artifact consumers, same-host backup/restore, and Gripsack's full19-gate/96-partition worker-recovery qualification exercised | Remaining cross-project evidence, isolated signing/owner promotion and optional publisher cutover remain distinct; existing release authority is not retired | — |
 
 **0048 R1 continuation (2026-09-29):** Source/policy-bound approval, copied
 read-only roots, retained runtime selection, immutable per-round inputs and
