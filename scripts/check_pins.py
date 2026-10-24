@@ -15,16 +15,15 @@ Modes:
   --apply    authorized CI only (gh + GH_TOKEN/GITHUB_TOKEN): edits are
              prepared on a throwaway `git worktree` of the default branch
              (the local checkout is never touched, dirty or not), pushed
-             to pins/<name>, the PR opened/reused by head branch, and
-             ci+repro dispatched on the branch — GITHUB_TOKEN PRs do not
-             trigger CI by themselves, but those workflows already
-             declare workflow_dispatch, so the dispatch needs only
-             actions:write. Pins that cannot move yet fail closed as
-             manual-work issues. Idempotent.
+             to pins/<name>, and the PR opened/reused by head branch.
+             Exact-source local qualification is required before integration;
+             no hosted build or fuzz/corpus replay is dispatched.
+             Pins that cannot move yet fail closed as manual-work issues.
+             Idempotent.
 
 Coupled pins move as ONE proposal each:
   rust    Dockerfile rust:alpine digest + FUZZ_TOOLCHAIN + the native
-          dtolnay/rust-toolchain pins (release-core.yml). The
+          dtolnay/rust-toolchain pins (ci.yml). The
           image's rustc must equal the native pin — proven by digest
           equality with the rust:<version>-alpine tag (identical
           manifests are identical images), not by running the image.
@@ -78,7 +77,6 @@ MANIFEST_ACCEPT = ", ".join([
 WORKFLOW_FILES = [
     ".github/workflows/ci.yml",
     ".github/workflows/release-core.yml",
-    ".github/workflows/release-typescript.yml",
     ".github/workflows/examples.yml",
 ]
 HOST_RS = "crates/gripsack-fetch/src/host.rs"
@@ -309,10 +307,10 @@ class PinUnit:
             "**Review checklist**",
             "- [ ] the sources above still resolve to these exact values",
             "- [ ] coupled pin sites all moved together in this PR",
-            "- [ ] `scripts/check_reproducible.sh` passes on this branch (the repro",
-            "      gate is dispatched on it — see the run links below)",
+            "- [ ] exact-source local qualification, including the required",
+            "      reproducibility gate, passes on this candidate",
             "",
-            "Gates dispatched on this branch by the proposer: `ci.yml`, `repro.yml`.",
+            "No hosted build is dispatched; this proposal is not qualification evidence.",
         ]
         return "\n".join(lines)
 
@@ -438,9 +436,6 @@ def unit_rust(sites: PinSites) -> PinUnit:
     if old_paren := re.search(r"\([0-9a-f]+ \d{4}-\d{2}-\d{2}\)", ci):
         u.edits.append(Edit(".github/workflows/ci.yml", old_paren.group(0),
                             re.search(r"\([^)]+\)$", full).group(0)))
-    rc = sites.text(".github/workflows/release-core.yml")
-    if f"({pinned})" in rc:
-        u.edits.append(Edit(".github/workflows/release-core.yml", f"({pinned})", f"({new})"))
     u.status = "ready"
     return with_gnu_image(new)
 

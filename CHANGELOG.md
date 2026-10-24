@@ -5,6 +5,75 @@ User-visible changes per release. Design archaeology lives in
 
 ## [Unreleased]
 
+### Added
+
+- `repoTree(path, { include, exclude })` discovers approved captured files and
+  safe internal aliases in the core. Logical destination paths and executability
+  survive traversal; added, removed and retargeted inputs need no generated
+  manifest or freshness command. Whole-source capture exclusions remain separate.
+- `templateFile(variables, resultDigest?)` renders a `repoFile` source directly,
+  preserving its executable classification without a duplicated inline body.
+- Profiles can declare `launchers: { directory, commands }` for an explicit
+  environment. Generated executable launchers work from editor/SSH PATH,
+  retain activation and runtime bindings, and re-admit packages on invocation.
+- `archiveRoot: { kind: "single_directory" }` selects one unambiguous real
+  archive directory for commands and artifact selectors. A locked release may
+  advance without editing version-bearing payload paths; existing strings stay
+  literal and ambiguous roots refuse.
+- Manual tasks support prerequisite graphs, per-invocation deduplication,
+  ordered checks, shared mutation locks, bounded execution and retained status/logs.
+- Profile file checks distinguish captured source, rendered candidate and
+  deployed subjects. Pre-flip failures compensate destination changes; later
+  failures retain activation evidence and require explicit recovery.
+- Generation-bound `apply`/`plan --migrate-from N` adopts exact current owned
+  links, including directory-link to physical-tree transitions. Replacement
+  content and runtimes prepare first; journaled recovery and retained predecessor
+  state preserve explicit rollback. This does not widen `--take-over`.
+
+### Fixed
+
+- Explicit takeover no longer gives an intact managed file its own deployed
+  bytes as a new user prior. Unrelated drift repair preserves original ownership
+  provenance for later undeclaration and rollback.
+- Identical complete profile state keeps its generation, including retained
+  file-check provenance. Required pre-flip verification can still run; known
+  failed late intents are not silently retried.
+- Conda/Pixi update preflights exact archives for unsupported lifecycle scripts
+  before prefix materialization, reporting the package, archive and script.
+  Package scripts remain refused; workspace hooks are a separate lifecycle.
+- ELF admission distinguishes static PIE from dynamically interpreted payloads
+  using interpreter/dependency evidence. Dynamic executables still require their
+  declared ABI and retained or explicitly reviewed runtime libraries.
+
+### Compatibility and migration
+
+- Install matching core/helper/SDK0.47.0 for IR8. Historical readers retain
+  their closed contracts; old envelopes do not acquire the new declaration fields.
+- Use `grip task run NAME`; inspection is `task list`, `task plan NAME`,
+  `task status INVOCATION` and `task log INVOCATION`. There is no legacy CLI shim.
+- Replace `treeFiles` and repository-owned tree manifests with `repoTree`.
+  Use `trackedCopyTo` when tools load physical siblings or filter font files by
+  extension; per-file store targets do not promise original names or directory
+  layout. The SDK guide includes the migration example and direct font path.
+- Review and approve changed captured inputs and refresh the Gripsack lock when
+  upgrading the frontend. `pixi.fromLock` imports the external lock unchanged;
+  it does not solve or upgrade those packages.
+- Directory ownership uses a distinct journal-v3 domain and retained generation
+  metadata. Use the current core for rollback; downgrading a newer store remains
+  unsupported. Foreign/drifted objects never become implicit deletion authority.
+- Existing profile selection (`grip apply claude`) and terminal `grip trust add`
+  reduce content-edit ceremony without scoped trust or automatic text approval.
+  The guide distinguishes changed-path inspection from a content diff. Recursive
+  capture-glob exclusions and mutable overlays are not part of this release.
+- GNU runtime guidance distinguishes library supply from ABI selection. LuaLS
+  releases that derive resource paths from their executable pathname require
+  an explicit complete tracked-copy tree and deployed-host wrapper; successful
+  host execution is not sealed closure proof.
+- Scheduling, portable artifact sharing and the remaining handover capabilities
+  are not advertised by this release. Local qualification and public promotion
+  are distinct; a published release still requires real signature and consumer
+  verification.
+
 ### Security
 
 - Stage Rustls0.23.46 and ZIP9.0.5 in both the core and Conda helper dependency
@@ -23,8 +92,13 @@ User-visible changes per release. Design archaeology lives in
   existing Rust, GNU, TypeScript, BuildKit, flow, formal, artifact and consumer
   gates, including all96 persistence partitions. Candidate inputs and outputs
   are explicit; signed promotion and public release remain separate.
-- Stage core/helper0.46.1 identities without publishing. SDK0.46.0 and IR7 are
-  unchanged; published0.46.0 tags and artifacts remain immutable.
+- Coordinate core, helper and SDK0.47.0 with IR8; published0.46 artifacts remain
+  immutable. The signing-only release workflow consumes qualified local bytes,
+  rather than recompiling a different hosted candidate.
+- Disable automatic duplicate hosted builds and scheduled fuzz execution;
+  retain explicitly dispatched diagnostics and metadata-only upstream watching.
+  Provision the byte-pinned attestation verifier before signing. Signing runs
+  remain separate from local qualification and do not block unrelated development.
 - Use canonical Git-only build-context modes matching ordinary checkouts,
   preserving executable bits without private-umask extraction or permission-only
   cache misses. Audit, installed-consumer and BuildKit-client exports use the

@@ -25,10 +25,11 @@ pub fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurvey, Exec
     }
     if let Some(native) = crate::workspace::NativeProfiles::prepare(
         ir,
-        ctx.repository.contents(),
+        &ctx.repository,
         &ctx.home,
         &ctx.only,
         ctx.fetch.limits(),
+        None,
         None,
     )? {
         return native.update_reports();

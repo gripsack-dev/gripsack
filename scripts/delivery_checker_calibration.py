@@ -14,8 +14,11 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from delivery_evidence import proof_catalog_digest
-from delivery_scope import AMENDMENT_ID, OUT_OF_SCOPE, effective_requirement
+from delivery_evidence import Violations, coverage_violations, proof_catalog_digest
+from delivery_scope import (
+    AMENDMENT_ID, OUT_OF_SCOPE, FUZZ_CASE_AMENDMENTS, FUZZ_RETAINED_CASES,
+    FUZZ_LANE_REQUIREMENTS, X64_CASE_AMENDMENTS, effective_requirement,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 CHECKER = REPO / "scripts/check_delivery.py"
@@ -153,6 +156,144 @@ def check(path: Path, ledger: dict, phrase: str, *args: str) -> None:
         )
 
 
+def scope_fixture(ledger: dict, path: Path, identity: str) -> dict:
+    """Synthetic passing applicable evidence, never a real qualification."""
+    result = copy.deepcopy(ledger)
+    req = row(result, identity)
+    active = effective_requirement(req)
+    if req["status"] != "verified":
+        req.setdefault("status_history", []).append(
+            {"from": req["status"], "to": "verified", "date": "2026-10-23"}
+        )
+    req["status"] = "verified"
+    req["lane_status"] = {lane: "verified" for lane in active["required_platform_capability_lanes"]}
+    req["evidence_records"] = [
+        record(req, lane, kind=kind)
+        for lane in req["lane_status"] for kind in req["evidence_kinds"]
+    ]
+    if "formal" in req["evidence_kinds"]:
+        floor = req["proof_expected_minimum"]
+        marker = (
+            f"fixture runner: 1 passed, 0 failed, 0 skipped; proof_checked={floor}; "
+            + "; ".join(req["proof_obligation_inventory"])
+            + f"; catalog: {proof_catalog_digest(req)}"
+        )
+        report = f"verification/reports/scope-{identity}.log"
+        data = (marker + "\n").encode()
+        (path.parent.parent / report).write_bytes(data)
+        for ev in req["evidence_records"]:
+            if ev["kind"] == "formal":
+                ev.update(report=report, report_marker=marker,
+                          report_sha256=hashlib.sha256(data).hexdigest())
+                ev["obligations"]["expected"] = ev["obligations"]["checked"] = floor
+    path.write_text(json.dumps(result))
+    accepted = run(path, "--validate")
+    if accepted.returncode:
+        raise AssertionError(f"projected {identity} fixture rejected:\n{accepted.stderr}")
+    return result
+
+
+def scope_calibration(original: dict, path: Path) -> None:
+    # Exercise evidence admission, not just matching policy strings. All twelve
+    # reviewed rows plus standalone fuzz lanes retain their non-fuzz obligations.
+    retained_clauses = {
+        "B6-03": ("native execution", "unsupported host/target/toolchain"),
+        "A1-07": ("including fuzz and future non-crates members", "schema/parser acceptance"),
+        "A1-08": ("full hostile context/edge corpus", "production-kernel phase-grant mutant"),
+        "A3-03": ("crossprocess positive/negative wire", "length and identity admission"),
+        "A4-01": ("collision/link/long-prefix", "Verus compatibility/closure mutations",
+                  "Apple Silicon incompatible-tag counterexamples", "unsupported architectures"),
+        "B1-03": ("Go race fixtures", "real Linux worker paths"),
+        "B2-02": ("actual decoder limits", "real Rust/Go/worker fixtures"),
+        "B5-04": ("Go race", "formal", "protected CI evidence"),
+        "E5-03": ("proof obligations are nonempty", "semantic mutants"),
+        "C3-02": ("bounded regression fixtures", "foreign drift"),
+        "C5-02": ("shrinking graph oracles", "silent truncation mutants", "TLC/TLAPS"),
+        "D2-05": ("bounded adversarial archive and registry descriptors", "actual production path"),
+        "D6-03": ("Verus/TLC/TLAPS", "semantic mutants", "with attribution"),
+    }
+    identities = (set(FUZZ_CASE_AMENDMENTS) | set(FUZZ_RETAINED_CASES)
+                  | FUZZ_LANE_REQUIREMENTS | {"B6-03"})
+    for identity in sorted(identities):
+        qualified = scope_fixture(original, path, identity)
+        req = row(qualified, identity)
+        active = effective_requirement(req)
+        original_req = row(original, identity)
+        if identity in FUZZ_CASE_AMENDMENTS or identity == "B6-03":
+            # Scoped receipts do not assert satisfaction of the original
+            # cross-architecture/fuzz clauses, even on the same retained lanes.
+            violations = Violations()
+            coverage_violations(original_req, req["evidence_records"], violations,
+                                set(active["required_platform_capability_lanes"]))
+            if not any("conjunctive cases without passing evidence" in item
+                       for item in violations.items):
+                raise AssertionError(f"{identity}: projection falsely satisfied original acceptance")
+            changes = (X64_CASE_AMENDMENTS if identity == "B6-03" else FUZZ_CASE_AMENDMENTS)
+            required_cases = [case for case in changes[identity].values() if case is not None]
+        elif identity in FUZZ_RETAINED_CASES:
+            required_cases = [original_req["case_and_proof_inventory"][index]
+                              for index in FUZZ_RETAINED_CASES[identity]]
+        else:
+            required_cases = active["case_and_proof_inventory"]
+        for case in required_cases:
+            missing = copy.deepcopy(qualified)
+            for ev in row(missing, identity)["evidence_records"]:
+                ev["cases_covered"] = [value for value in ev["cases_covered"] if value != case]
+            check(path, missing, "conjunctive cases without passing evidence", "--validate")
+        # Independent semantic witnesses catch accidental weakening of the
+        # projection itself: if a retained clause vanishes, deleting its
+        # evidence is a no-op and this expected rejection fails.
+        for clause in retained_clauses.get(identity, ()):
+            missing = copy.deepcopy(qualified)
+            for ev in row(missing, identity)["evidence_records"]:
+                ev["cases_covered"] = [case for case in ev["cases_covered"] if clause not in case]
+            check(path, missing, "conjunctive cases without passing evidence", "--validate")
+        excluded_lane = ("cross-target" if identity == "B6-03"
+                         else "fuzz" if identity in FUZZ_LANE_REQUIREMENTS else None)
+        if excluded_lane is not None:
+            forged = copy.deepcopy(qualified)
+            row(forged, identity)["lane_status"][excluded_lane] = "verified"
+            check(path, forged, "not verified", "--validate")
+        # Formal/model lanes and Go race cannot be omitted with fuzz.
+        for lane in active["required_platform_capability_lanes"]:
+            missing = copy.deepcopy(qualified)
+            row(missing, identity)["evidence_records"] = [
+                ev for ev in req["evidence_records"] if ev["lane"] != lane
+            ]
+            check(path, missing, "no passing source-bound", "--validate")
+        if "formal" in req["evidence_kinds"]:
+            missing = copy.deepcopy(qualified)
+            row(missing, identity)["evidence_records"] = [
+                ev for ev in req["evidence_records"] if ev["kind"] != "formal"
+            ]
+            check(path, missing, "no passing formal evidence", "--validate")
+
+    for amendment_index, field, value in (
+        (1, "retired_requirement_lanes", {"B6-03": ["cross-target", "linux-amd64"]}),
+        (2, "excluded_requirement_lanes", {"B1-03": ["protocol-fuzz-race"]}),
+        (2, "disposition", "verified"),
+        (2, "reviewed_without_exclusion", {}),
+    ):
+        forged = copy.deepcopy(original)
+        forged["scope_amendments"][amendment_index][field] = value
+        check(path, forged, "missing or unapproved scope amendment", "--validate")
+    for identity in dict.fromkeys(("B6-03", *FUZZ_CASE_AMENDMENTS, *FUZZ_RETAINED_CASES)):
+        changed = copy.deepcopy(original)
+        cases = row(changed, identity)["case_and_proof_inventory"]
+        cases[0], cases[1] = cases[1], cases[0]
+        check(path, changed, "original lane/case/evidence-kind/prerequisite inventory changed", "--validate")
+        changed = copy.deepcopy(original)
+        row(changed, identity)["mandatory_deliverable"] += " (waived)"
+        check(path, changed, "protected requirement inventory changed", "--validate")
+    forged = copy.deepcopy(original)
+    forged["scope_amendments"][2]["case_projection"]["A3-03"][0]["original_index"] = 2
+    check(path, forged, "missing or unapproved scope amendment", "--validate")
+    forged = copy.deepcopy(original)
+    forged["scope_amendments"][2]["case_projection"]["B1-03"][0]["required_case"] = "Go race waived"
+    check(path, forged, "missing or unapproved scope amendment", "--validate")
+    print("  fixed x64/fuzz projection admits scoped evidence, not original fuzz/cross results; every retained mixed case/lane/proof remains mandatory")
+
+
 def main() -> int:
     if run(LEDGER, "--validate").returncode != 0:
         raise AssertionError("real delivery inventory fails validation")
@@ -163,6 +304,7 @@ def main() -> int:
             if outcome.returncode != 0:
                 raise AssertionError(f"fully evidenced {milestone} fixture failed:\n{outcome.stderr}")
         print("  valid source-bound H0/A0 fixture closes; future rows remain pending")
+        scope_calibration(original, path)
 
         # E0-01 is a review-only inventory contract. Its actual source-
         # bound review may be sufficient without inventing a runner.
@@ -519,18 +661,41 @@ def main() -> int:
             raise AssertionError(f"identical-source reuse rejected:\n{accepted.stderr}")
         print("  identical-source evidence reuse across an evidence-only commit accepted")
 
-        (tmp / "scripts/calibration.py").write_text("print('changed behavior')\n")
-        subprocess.run(["git", "-C", directory, "add", "scripts/calibration.py"], check=True)
-        subprocess.run(
-            ["git", "-C", directory, "-c", "user.name=Checker Calibration",
-             "-c", "user.email=checker@localhost", "commit", "-q",
-             "-m", "change production source"], check=True,
-        )
-        changed_revision = subprocess.check_output(
-            ["git", "-C", directory, "rev-parse", "HEAD"], text=True,
-        ).strip()
-        check(path, reused, "source trees differ", "--close-milestone", "A0", "--release", changed_revision)
-        print("  changed-source reuse rejected despite an unchanged evidence receipt")
+        # Each root changes independently relative to the accepted baseline.
+        # In particular helper/bridge code and CI policy are behavior, not
+        # evidence-only metadata. Keep the original receipt and digest intact.
+        for source_path in (
+            "tools/conda-helper/calibration.rs",
+            "tools/buildkit-bridge/calibration.go",
+            ".ci/pilot.json",
+            "scripts/calibration.py",
+        ):
+            source = tmp / source_path
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("changed behavior\n")
+            subprocess.run(["git", "-C", directory, "add", source_path], check=True)
+            subprocess.run(
+                ["git", "-C", directory, "-c", "user.name=Checker Calibration",
+                 "-c", "user.email=checker@localhost", "commit", "-q",
+                 "-m", f"change behavior in {source_path}"], check=True,
+            )
+            changed_revision = subprocess.check_output(
+                ["git", "-C", directory, "rev-parse", "HEAD"], text=True,
+            ).strip()
+            check(path, reused, "source trees differ", "--close-milestone",
+                  "A0", "--release", changed_revision)
+            print(f"  changed-source reuse rejected for {source_path}")
+            # Restore the baseline tree with an ordinary removal commit so
+            # the next negative cannot pass merely due to a prior mutation.
+            if source_path == "scripts/calibration.py":
+                continue
+            source.unlink()
+            subprocess.run(["git", "-C", directory, "add", source_path], check=True)
+            subprocess.run(
+                ["git", "-C", directory, "-c", "user.name=Checker Calibration",
+                 "-c", "user.email=checker@localhost", "commit", "-q",
+                 "-m", f"restore baseline after {source_path}"], check=True,
+            )
     print("delivery checker calibration: active Linux fixtures accepted; scope/evidence forgeries rejected")
     return 0
 

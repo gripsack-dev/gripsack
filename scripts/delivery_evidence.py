@@ -28,7 +28,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Adding a new source root requires updating this inventory in review.
 SOURCE_ROOTS = (
     "Cargo.toml", "Cargo.lock", "Dockerfile", "docker-compose.yml",
-    "crates", "typescript", "schema", "scripts", "specs", "e2e",
+    "crates", "typescript", "schema", "scripts", "specs", "e2e", "tools", ".ci",
     "examples", "fuzz", ".github/workflows", "verification/buildkit-qualification",
 )
 

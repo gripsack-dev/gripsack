@@ -12,20 +12,25 @@ pub enum DirectoryOrigin { Literal, Artifact, LiveHost, ProductionSource, Stagin
 pub enum ArgumentPosition { Argument, Environment, Interpreter }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArgumentOrigin { Literal, Artifact, CapturedInput, PackageCommand, ProductionSource, StagingOutput }
-/// Production owns staging; an immutable recipe/package check subject supplies
-/// only its source binding, never writable output authority.
+/// Production owns staging; artifact and explicitly attached file checks
+/// receive only their subject binding. A deployed file subject is observed
+/// host state, not an immutable package or writable production output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommandOwner { Production, ImmutableSubject, Invocation }
+pub enum CommandOwner { Production, ImmutableSubject, FileSubject, Invocation }
+
+pub open spec fn permitted_production_binding(owner: CommandOwner, origin: ArgumentOrigin) -> bool {
+    owner == CommandOwner::Production
+        || ((owner == CommandOwner::ImmutableSubject || owner == CommandOwner::FileSubject)
+            && origin == ArgumentOrigin::ProductionSource)
+        || (origin != ArgumentOrigin::ProductionSource && origin != ArgumentOrigin::StagingOutput)
+}
 
 pub fn admit_production_binding(owner: CommandOwner, origin: ArgumentOrigin) -> (admitted: bool)
-    ensures admitted == (
-        owner == CommandOwner::Production
-        || (owner == CommandOwner::ImmutableSubject && origin == ArgumentOrigin::ProductionSource)
-        || (origin != ArgumentOrigin::ProductionSource && origin != ArgumentOrigin::StagingOutput)
-    ),
+    ensures admitted == permitted_production_binding(owner, origin),
 {
     matches!(owner, CommandOwner::Production)
-        || matches!((owner, origin), (CommandOwner::ImmutableSubject, ArgumentOrigin::ProductionSource))
+        || (matches!(owner, CommandOwner::ImmutableSubject | CommandOwner::FileSubject)
+            && matches!(origin, ArgumentOrigin::ProductionSource))
         || !matches!(origin, ArgumentOrigin::ProductionSource | ArgumentOrigin::StagingOutput)
 }
 
@@ -79,5 +84,9 @@ pub proof fn interpreter_and_environment_roles_are_disjoint(origin: ArgumentOrig
 pub proof fn isolated_execution_never_admits_live_host_directory(origin: DirectoryOrigin)
     requires permitted_directory(ExecutionContext::IsolatedLinux, origin),
     ensures origin != DirectoryOrigin::LiveHost,
+{}
+
+pub proof fn file_subject_cannot_acquire_writable_output()
+    ensures !permitted_production_binding(CommandOwner::FileSubject, ArgumentOrigin::StagingOutput),
 {}
 }

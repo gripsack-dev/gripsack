@@ -1,12 +1,12 @@
 /** Workspace declarations (0052 A1): the supported surface for the
- *  v7 workspace frontend — pure value constructors for nine typed
+ *  v8 workspace frontend — pure value constructors for nine typed
  *  output variants plus the shared command/file grammar and current
  *  emitter. No global registry or import-order magic — the
  *  root `gripsack.ts` entrypoint RETURNS a {@link WorkspaceValue}
  *  built by {@link workspace}, and the driver turns that value into
  *  IR (JSON) via {@link emitWorkspaceIr}.
  *
- *  Wire shape is exactly `schema/ir/v7.json`: every node carries a
+ *  Wire shape is exactly `schema/ir/v8.json`: every node carries a
  *  mandatory provenance span, all structs reject unknown fields at
  *  construction time (JS callers and casts get the same boundary as
  *  the type-checker), and returned values are deeply frozen — an
@@ -35,13 +35,16 @@ export {
   literalText,
   managedBlock,
   repoFile,
+  repoTree,
   symlinkTo,
   templateText,
+  templateFile,
   trackedCopyTo,
 } from "./workspace/files.ts";
-export { treeFiles } from "./workspace/tree.ts";
-export type { TreeFilesOptions } from "./workspace/tree.ts";
 export type {
+  ArchiveRootPolicy,
+  ProfileLaunchers,
+  RepoTreeSelection,
   BashBody,
   CheckSpec,
   CondaEnvironmentSource,

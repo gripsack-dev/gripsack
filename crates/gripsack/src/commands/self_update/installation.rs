@@ -1,6 +1,7 @@
 //! Pinned installation identity and capability-relative coordination/publication.
 
 use cap_std::fs::MetadataExt as _;
+use cap_std::fs::OpenOptionsExt as _;
 use gripsack_fs::{Dir, cap_std};
 use std::io::{self, Read};
 use std::os::fd::AsRawFd;
@@ -98,6 +99,7 @@ impl Installation {
         let name = format!(".grip-self-update-{digest}.flock");
         let mut options = cap_std::fs::OpenOptions::new();
         options.write(true).create(true).truncate(false);
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
         // Use the existing workspace flock mechanism's syscall, but open the
         // coordination file relative to the pinned parent, not an ambient path.
         let file = self.dir.open_with(&name, &options)?;

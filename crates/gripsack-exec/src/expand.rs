@@ -63,9 +63,16 @@ pub(crate) struct DestinationDeclaration<'a> {
 pub(crate) fn check_destinations<'a>(
     declarations: impl IntoIterator<Item = DestinationDeclaration<'a>>,
 ) -> Result<(), crate::ctx::ExecError> {
+    check_destinations_with(declarations, gripsack_store::canonical_dest)
+}
+
+pub(crate) fn check_destinations_with<'a>(
+    declarations: impl IntoIterator<Item = DestinationDeclaration<'a>>,
+    resolve: impl Fn(&str) -> std::io::Result<std::path::PathBuf>,
+) -> Result<(), crate::ctx::ExecError> {
     let mut owners: BTreeMap<String, Vec<DestinationDeclaration<'a>>> = BTreeMap::new();
     for declaration in declarations {
-        let path = gripsack_store::canonical_dest(declaration.path).map_err(|error| {
+        let path = resolve(declaration.path).map_err(|error| {
             crate::ctx::ExecError::Gate(
                 gripsack_ir::Diagnostic::error(
                     gripsack_ir::codes::BAD_DESTINATION,

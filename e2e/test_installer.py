@@ -1,261 +1,159 @@
-"""Install the actual shell entrypoint against offline release HTTP fixtures.
+"""Real standalone installer with offline HTTP and an explicit verifier double.
 
-The fixed GitHub origins are redirected; curl, checksums, tar and install are
-real. Platform-refusal cases control uname's OS result. These tests qualify
-selection/preservation, not native grip execution.
+These tests prove admission/control flow and preservation, NOT cryptographic
+success. Release promotion additionally requires real-gh signed-candidate smoke.
 """
-
-from __future__ import annotations
-
-import hashlib
-import json
 import os
-import platform
-import shutil
-import subprocess
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
-from conftest import make_toolchain_tarball
-
-
-class InstallerReleases:
-    def __init__(self, root: Path):
-        self.root = root
-        self.tags: list[str] = []
-        self.assets: dict[str, tuple[int, bytes]] = {}
-        self.truncated_catalog = False
-        self.requests: list[str] = []
-        machine = platform.machine()
-        assert machine in {"x86_64", "amd64", "aarch64", "arm64"}
-        arch = "aarch64" if machine in {"aarch64", "arm64"} else "x86_64"
-        assert platform.system() == "Linux"
-        self.target = f"{arch}-unknown-linux-musl"
-        owner = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                owner.requests.append(self.path)
-                catalog = self.path.startswith("/api/repos/")
-                if catalog:
-                    status = 200
-                    body = json.dumps([
-                        {"ref": f"refs/tags/{tag}"} for tag in owner.tags
-                    ], indent=2).encode()
-                else:
-                    status, body = owner.assets.get(self.path, (404, b"not published"))
-                self.send_response(status)
-                length = len(body) + (20 if catalog and owner.truncated_catalog else 0)
-                self.send_header("Content-Length", str(length))
-                self.send_header("Connection", "close")
-                self.end_headers()
-                self.wfile.write(body)
-                self.close_connection = True
-
-            def log_message(self, *args):
-                pass
-
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-
-    def asset_path(self, version: str, suffix: str = "") -> str:
-        name = f"gripsack-{version}-{self.target}.tar.gz{suffix}"
-        return f"/releases/download/core-v{version}/{name}"
-
-    def publish(self, version: str, *, bad_checksum: bool = False) -> bytes:
-        payload = f"#!/bin/sh\necho grip {version}\n".encode()
-        name = f"gripsack-{version}-{self.target}"
-        archive = make_toolchain_tarball(
-            self.root / f"{version}.tar.gz", {f"{name}/grip": payload}
-        ).read_bytes()
-        digest = "0" * 64 if bad_checksum else hashlib.sha256(archive).hexdigest()
-        self.assets[self.asset_path(version)] = (200, archive)
-        self.assets[self.asset_path(version, ".sha256")] = (
-            200, f"{digest}  {name}.tar.gz\n".encode()
-        )
-        return payload
-
-    def close(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=5)
+from release_fixture import REPO, Releases, archive
 
 
 @pytest.fixture
 def installer(tmp_path):
-    releases = InstallerReleases(tmp_path)
-    real_curl = shutil.which("curl")
-    assert real_curl, "installer verification requires the real curl client"
-    real_uname = shutil.which("uname")
-    assert real_uname, "installer verification requires uname"
-    tools = tmp_path / "tools"
-    tools.mkdir()
-    curl = tools / "curl"
-    base = f"http://127.0.0.1:{releases.server.server_port}"
-    curl.write_text(
-        "#!/usr/bin/env python3\n"
-        "import os, sys\n"
-        "args = []\n"
-        "for value in sys.argv[1:]:\n"
-        "    if value.startswith('https://api.github.com/'):\n"
-        f"        value = {base!r} + '/api' + value.removeprefix('https://api.github.com')\n"
-        "    elif value.startswith('https://github.com/gripsack-dev/gripsack/'):\n"
-        f"        value = {base!r} + value.removeprefix('https://github.com/gripsack-dev/gripsack')\n"
-        "    elif value.startswith(('https://', 'http://')):\n"
-        "        raise SystemExit('unexpected network origin in installer fixture')\n"
-        "    args.append(value)\n"
-        f"os.execv({real_curl!r}, [{real_curl!r}, *args])\n"
-    )
-    curl.chmod(0o755)
-    home = tmp_path / "home"
-    home.mkdir()
-    destination = home / "bin" / "grip"
+    server = Releases()
+    server.serve("9.9.9", archive("9.9.9"))
+    destination = tmp_path / "bin/grip"
     destination.parent.mkdir()
-    env = dict(os.environ)
-    for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy",
-                "GITHUB_TOKEN", "GH_TOKEN"):
-        env.pop(key, None)
-    env.update(HOME=str(home), CURL_HOME=str(home), GRIPSACK_BIN=str(destination.parent),
-               TMPDIR=str(tmp_path), PATH=f"{tools}{os.pathsep}{env['PATH']}",
-               NO_PROXY="127.0.0.1,localhost", no_proxy="127.0.0.1,localhost")
-    script = Path(__file__).resolve().parent.parent / "install.sh"
+    destination.write_bytes(b"old executable\n")
+    environment = server.environment(tmp_path)
+    environment["GRIPSACK_BIN"] = str(destination.parent)
 
-    def run(*, os_name: str | None = None, architecture: str | None = None):
-        uname = tools / "uname"
-        if os_name is None and architecture is None:
-            uname.unlink(missing_ok=True)
-        else:
-            uname.write_text(
-                "#!/usr/bin/env python3\n"
-                "import os, sys\n"
-                f"if sys.argv[1:] == ['-s'] and {os_name is not None!r}:\n"
-                f"    print({os_name!r})\n"
-                f"elif sys.argv[1:] == ['-m'] and {architecture is not None!r}:\n"
-                f"    print({architecture!r})\n"
-                "else:\n"
-                f"    os.execv({real_uname!r}, [{real_uname!r}, *sys.argv[1:]])\n"
-            )
-            uname.chmod(0o755)
-        return subprocess.run(["sh", str(script)], cwd=tmp_path, env=env,
-                              capture_output=True, text=True, timeout=30)
-
+    def run(**extra):
+        return subprocess.run(["sh", str(REPO / "install.sh")], env=environment | extra,
+                              capture_output=True, text=True, timeout=60)
     try:
-        yield releases, destination, run
+        yield server, destination, environment, run
     finally:
-        releases.close()
+        server.release_tarball()
+        server._server.shutdown()
+        server._server.server_close()
 
 
-def test_installer_skips_unpublished_tags_and_selects_highest_available_version(installer):
-    releases, destination, run = installer
-    releases.tags = ["core-v2.1.0", "core-v3.0.0", "ts-v99.0.0", "core-v2.10.0"]
-    releases.publish("2.1.0")
-    expected = releases.publish("2.10.0")
+def test_valid_candidate_installs_verified_payload_without_executing_it(installer):
+    server, destination, _, run = installer
+    payload = b"#!/bin/sh\nexit 93\n"
+    server.serve("9.9.9", archive("9.9.9", payload))
     result = run()
     assert result.returncode == 0, result.stderr
-    assert destination.read_bytes() == expected
+    assert destination.read_bytes() == payload
     assert os.access(destination, os.X_OK)
 
 
-def test_installer_skips_a_platform_asset_pair_missing_its_archive(installer):
-    releases, destination, run = installer
-    releases.tags = ["core-v3.0.0", "core-v2.0.0"]
-    releases.publish("3.0.0")
-    del releases.assets[releases.asset_path("3.0.0")]
-    expected = releases.publish("2.0.0")
+@pytest.mark.parametrize("mutation", ["wrong-repo", "wrong-workflow", "wrong-ref", "wrong-source", "wrong-policy",
+                                      "incompatible-helper", "incompatible-ir", "incompatible-sdk", "missing-gate",
+                                      "missing-signature", "invalid-signature", "tampered-asset", "missing-asset", "extra-asset",
+                                      "corrupt-extraction"])
+def test_rejected_candidate_preserves_old_installation(installer, mutation):
+    server, destination, _, run = installer
+    assets = server.releases["9.9.9"]["assets"]
+    original = destination.read_bytes()
+    changes = {
+        "wrong-repo": lambda m: m.update(repository="attacker/gripsack"),
+        "wrong-workflow": lambda m: m["signer"].update(workflow=".github/workflows/other.yml"),
+        "wrong-ref": lambda m: m["signer"].update(ref="refs/heads/main"),
+        "wrong-source": lambda m: m["source"].update(commit="0" * 40),
+        "wrong-policy": lambda m: m.update(policy="checksum-only"),
+        "incompatible-helper": lambda m: m["compatible"].update(conda="0.0.1"),
+        "incompatible-ir": lambda m: m["compatible"]["ir"].update(writer=99),
+        "incompatible-sdk": lambda m: m["packages"][0].update(version="0.0.1"),
+        "missing-gate": lambda m: m["gates"].pop(),
+    }
+    if mutation in changes:
+        server.mutate_manifest("9.9.9", changes[mutation])
+    elif mutation == "missing-signature":
+        del assets["gripsack-release-9.9.9.json.sigstore.json"]
+    elif mutation == "invalid-signature":
+        assets["gripsack-release-9.9.9.json.sigstore.json"] = b"not a signature"
+    elif mutation == "extra-asset":
+        assets["unqualified"] = b"extra"
+    elif mutation == "missing-asset":
+        del assets["grip-buildkit-bridge-9.9.9-x86_64-unknown-linux-musl"]
+    elif mutation == "tampered-asset":
+        assets["grip-buildkit-bridge-9.9.9-x86_64-unknown-linux-musl"] = b"BRIDGE"
+    elif mutation == "corrupt-extraction":
+        server.serve("9.9.9", b"not a tar archive")
     result = run()
-    assert result.returncode == 0, result.stderr
-    assert destination.read_bytes() == expected
-
-
-def test_installer_does_not_select_prerelease_tags(installer):
-    releases, destination, run = installer
-    releases.tags = ["core-v9.0.0-rc.1", "core-v2.0.0"]
-    releases.publish("9.0.0-rc.1")
-    expected = releases.publish("2.0.0")
-    result = run()
-    assert result.returncode == 0, result.stderr
-    assert destination.read_bytes() == expected
-
-
-def test_installer_rejects_bad_checksum_without_downgrade_or_replacement(installer):
-    releases, destination, run = installer
-    releases.tags = ["core-v3.0.0", "core-v2.0.0"]
-    releases.publish("3.0.0", bad_checksum=True)
-    releases.publish("2.0.0")
-    original = b"operator's existing executable\n"
-    destination.write_bytes(original)
-    result = run()
-    assert result.returncode != 0
+    assert result.returncode != 0, result.stdout
     assert destination.read_bytes() == original
 
 
-@pytest.mark.parametrize("status", [403, 500])
-def test_installer_does_not_treat_server_errors_as_missing_releases(installer, status):
-    releases, destination, run = installer
-    releases.tags = ["core-v3.0.0", "core-v2.0.0"]
-    releases.assets[releases.asset_path("3.0.0", ".sha256")] = (status, b"server refused")
-    releases.publish("2.0.0")
-    original = b"operator's existing executable\n"
-    destination.write_bytes(original)
+@pytest.mark.parametrize("reason", ["wrong-signer", "wrong-repository-certificate", "wrong-tag-certificate", "wrong-source-certificate", "bad-signature", "missing-signature"])
+def test_verifier_refusal_is_never_a_checksum_fallback(installer, reason):
+    _, destination, _, run = installer
+    result = run(FIXTURE_SIGNATURE_FAILURE=reason)
+    assert result.returncode != 0
+    assert destination.read_bytes() == b"old executable\n"
+
+
+def test_verified_but_wrong_custom_predicate_is_rejected(installer):
+    _, destination, _, run = installer
+    assert run(FIXTURE_WRONG_PREDICATE="1").returncode != 0
+    assert destination.read_bytes() == b"old executable\n"
+
+
+def test_missing_verifier_fails_before_any_network(installer):
+    server, destination, environment, run = installer
+    gh = Path(environment["PATH"].split(os.pathsep)[0]) / "gh"
+    gh.write_text("#!/bin/sh\necho 'gh version 2.0.0'\n")
     result = run()
     assert result.returncode != 0
-    assert destination.read_bytes() == original
+    assert not server.requests
+    assert destination.read_bytes() == b"old executable\n"
 
 
-def test_installer_rejects_a_truncated_tag_response_before_installation(installer):
-    releases, destination, run = installer
-    releases.tags = ["core-v2.0.0"]
-    releases.publish("2.0.0")
-    releases.truncated_catalog = True
-    original = b"operator's existing executable\n"
-    destination.write_bytes(original)
-    result = run()
-    assert result.returncode != 0
-    assert destination.read_bytes() == original
+@pytest.mark.parametrize("system,machine", [("Darwin", "x86_64"), ("Linux", "aarch64")])
+def test_unsupported_platform_fails_before_network(installer, system, machine):
+    server, destination, environment, run = installer
+    uname = Path(environment["PATH"].split(os.pathsep)[0]) / "uname"
+    uname.write_text(f'#!/bin/sh\nif [ "$1" = -s ]; then echo {system}; else echo {machine}; fi\n')
+    uname.chmod(0o755)
+    assert run().returncode != 0
+    assert not server.requests
+    assert destination.read_bytes() == b"old executable\n"
 
 
-def test_installer_preserves_existing_binary_when_no_target_assets_are_published(installer):
-    releases, destination, run = installer
-    releases.tags = ["core-v3.0.0", "core-v2.0.0"]
-    original = b"operator's existing executable\n"
-    destination.write_bytes(original)
-    result = run()
-    assert result.returncode != 0
-    assert destination.read_bytes() == original
+def test_absent_verifier_is_a_hard_error(monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import release_consumer
+    monkeypatch.setattr(release_consumer.shutil, "which", lambda _: None)
+    with pytest.raises(ValueError, match="no unsigned fallback"):
+        release_consumer.verifier()
 
 
-def test_installer_refuses_macos_before_network_or_replacement(installer):
-    releases, destination, run = installer
-    releases.target = releases.target.removesuffix("-unknown-linux-musl") + "-apple-darwin"
-    releases.tags = ["core-v0.43.0"]
-    releases.publish("0.43.0")
-    original = b"operator's existing executable\n"
-    destination.write_bytes(original)
-    original_mode = destination.stat().st_mode
+def test_interrupted_atomic_replace_preserves_old_bytes(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import release_consumer
+    source = tmp_path / "candidate"
+    source.write_bytes(b"new executable")
+    destination = tmp_path / "grip"
+    destination.write_bytes(b"old executable")
+    def interrupted(*args, **kwargs):
+        raise InterruptedError("injected before rename commit")
+    monkeypatch.setattr(release_consumer.os, "replace", interrupted)
+    with pytest.raises(InterruptedError):
+        release_consumer.publish(source, destination)
+    assert destination.read_bytes() == b"old executable"
+    assert not list(tmp_path.glob(".grip-install-*"))
 
-    result = run(os_name="Darwin")
 
-    assert result.returncode != 0
-    assert releases.requests == []
-    assert destination.read_bytes() == original
-    assert destination.stat().st_mode == original_mode
-
-
-def test_installer_refuses_unqualified_arm_before_network_or_replacement(installer):
-    releases, destination, run = installer
-    releases.target = "aarch64-unknown-linux-musl"
-    releases.tags = ["core-v0.45.0"]
-    releases.publish("0.45.0")
-    original = b"operator's existing executable\n"
-    destination.write_bytes(original)
-    original_mode = destination.stat().st_mode
-
-    result = run(os_name="Linux", architecture="aarch64")
-
-    assert result.returncode != 0
-    assert releases.requests == [], "do not silently fall back to a historical ARM release"
-    assert destination.read_bytes() == original
-    assert destination.stat().st_mode == original_mode
+def test_postcommit_durability_error_never_rolls_back(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "scripts"))
+    import release_consumer
+    source = tmp_path / "candidate"
+    source.write_bytes(b"new executable")
+    destination = tmp_path / "grip"
+    destination.write_bytes(b"old executable")
+    real = release_consumer.os.fsync
+    def fsync(fd):
+        import stat
+        if stat.S_ISDIR(release_consumer.os.fstat(fd).st_mode):
+            raise OSError("injected directory durability failure")
+        real(fd)
+    monkeypatch.setattr(release_consumer.os, "fsync", fsync)
+    with pytest.raises(release_consumer.PublicationCommittedError):
+        release_consumer.publish(source, destination)
+    assert destination.read_bytes() == b"new executable"

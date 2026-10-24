@@ -137,6 +137,141 @@ def test_static_native_execution_does_not_require_gnu_loader_controls(sandbox):
     assert result.returncode == 37, result.stdout + result.stderr
 
 
+def compiled_native_payload(sandbox, kind):
+    """Real GNU-linked images; no static libc development package is required."""
+    source = sandbox / "native.c"
+    source.write_text(r'''
+        #ifdef DEPENDENCY
+        extern int reviewed(void);
+        #endif
+        __attribute__((noreturn)) void _start(void) {
+            int status = 0;
+            #ifdef DEPENDENCY
+            if (reviewed() != 42) status = 9;
+            #endif
+            const char message[] = "native-admitted\n";
+            __asm__ volatile("syscall" : : "a"(1L), "D"(1L), "S"(message),
+                             "d"(sizeof(message) - 1) : "rcx", "r11", "memory");
+            __asm__ volatile("syscall" : : "a"(60L), "D"((long)status)
+                             : "rcx", "r11", "memory");
+            __builtin_unreachable();
+        }
+    ''')
+    flags = ["-nostdlib", "-fno-stack-protector"]
+    if kind == "static-exec":
+        flags += ["-static", "-fno-pie", "-no-pie"]
+    elif kind.startswith("static-pie"):
+        flags += ["-static-pie", "-fPIE"]
+    else:
+        flags += ["-pie", "-fPIE"]
+    if kind in ("static-pie-runpath", "static-pie-rpath"):
+        dtags = "--enable-new-dtags" if kind.endswith("-runpath") else "--disable-new-dtags"
+        flags += [f"-Wl,{dtags},-rpath,/unadmitted/inert-static-path"]
+    if kind == "static-pie-audit":
+        flags += ["-Wl,--audit,unadmitted-audit.so"]
+    if kind == "foreign-loader":
+        flags += ["-Wl,--dynamic-linker,/unadmitted/foreign-loader.so"]
+    dependencies = kind in ("dependency", "missing-dependency", "dependency-no-loader")
+    library = sandbox / "libreview.so"
+    if dependencies:
+        library_source = sandbox / "dependency.c"
+        library_source.write_text("int reviewed(void) { return 42; }\n")
+        subprocess.run(
+            ["/usr/bin/cc", "-nostdlib", "-shared", "-fPIC", "-Wl,-soname,libreview.so",
+             str(library_source), "-o", str(library)],
+            check=True, capture_output=True,
+        )
+        flags += ["-DDEPENDENCY", str(library)]
+    if kind == "dependency-no-loader":
+        flags += ["-Wl,--no-dynamic-linker"]
+    program = sandbox / "native-probe"
+    subprocess.run(
+        ["/usr/bin/cc", str(source), *flags, "-o", str(program)],
+        check=True, capture_output=True,
+    )
+    # Guard fixture meaning independently of Gripsack's classifier. In
+    # particular, PT_DYNAMIC/ET_DYN are not evidence of an external loader.
+    inventory = subprocess.run(
+        ["readelf", "-h", "-l", "-d", str(program)],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    assert re.search(r"Type:\s+" + ("EXEC" if kind == "static-exec" else "DYN"), inventory)
+    assert ("INTERP" in inventory) == (
+        not kind.startswith("static-") and kind != "dependency-no-loader"
+    )
+    assert ("(NEEDED)" in inventory) == dependencies
+    if kind == "static-pie-runpath":
+        assert "(RUNPATH)" in inventory and "/unadmitted/inert-static-path" in inventory
+    if kind == "static-pie-rpath":
+        assert "(RPATH)" in inventory and "/unadmitted/inert-static-path" in inventory
+    if kind == "static-pie-audit":
+        assert "(AUDIT)" in inventory
+    files = {"bin/probe": program.read_bytes()}
+    if kind == "dependency":
+        files["lib/libreview.so"] = library.read_bytes()
+    return files
+
+
+def native_command_checks(sandbox, files, abi):
+    repo = declare(sandbox, files, abi=abi)
+    built = grip("build", "tools", "--json", cwd=repo)
+    assert built.returncode == 0, built.stdout + built.stderr
+    retained = Path(json.loads(built.stdout)["outputs"][0]["path"])
+    script = make_toolchain_tarball(
+        sandbox / "script.tar.gz",
+        {"bin/script": ("#!" + str(retained / "bin/probe") + "\n").encode()},
+    )
+    target = '{os:"linux",arch:"x86_64"' + (',abi:"gnu"}' if abi else '}')
+    (repo / "gripsack.ts").write_text('''import {
+      defineWorkspace, workspace, pkg, provider, tarball, check, task, exec, packageCommand, lit,
+    } from "@gripsack/core";
+    export default defineWorkspace(() => {
+      const target = ''' + target + ''';
+      return workspace({outputs:[
+        pkg("tools",{producer:provider(tarball('''
+        + json.dumps((sandbox / "native.tar.gz").as_uri()) + ''')),
+          commands:{probe:"bin/probe"},target,layout:{kind:"relocatable"}}),
+        pkg("scripts",{producer:provider(tarball(''' + json.dumps(script.as_uri()) + ''')),
+          commands:{script:"bin/script"},runtime:["tools"],target,layout:{kind:"relocatable"}}),
+        check("direct",{subject:"tools",run:exec({argv:[packageCommand("tools","probe")]})}),
+        check("interpreter",{subject:"scripts",run:exec({argv:[packageCommand("scripts","script")]})}),
+        task("direct-check",{steps:[exec({argv:[lit("/bin/true")]})],checks:["direct"]}),
+        task("interpreter-check",{steps:[exec({argv:[lit("/bin/true")]})],checks:["interpreter"]}),
+      ]});
+    });
+    ''')
+    updated = grip("update", "scripts", cwd=repo)
+    assert updated.returncode == 0, updated.stdout + updated.stderr
+    return repo
+
+
+@pytest.mark.parametrize("kind,abi,admitted", [
+    ("static-exec", None, True),
+    ("static-pie", None, True),
+    ("static-pie-runpath", None, True),
+    ("static-pie-rpath", None, True),
+    ("static-pie-audit", None, False),
+    ("interpreted-pie", None, False),
+    ("interpreted-pie", "gnu", True),
+    ("dependency", None, False),
+    ("dependency", "gnu", True),
+    ("missing-dependency", "gnu", False),
+    ("dependency-no-loader", "gnu", False),
+    ("foreign-loader", "gnu", False),
+])
+def test_compiler_images_share_package_and_script_interpreter_admission(sandbox, kind, abi, admitted):
+    repo = native_command_checks(sandbox, compiled_native_payload(sandbox, kind), abi)
+    for task in ("direct-check", "interpreter-check"):
+        result = grip("task", "run", task, cwd=repo)
+        if admitted:
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert result.stdout == "native-admitted\n"
+        else:
+            assert result.returncode != 0
+            assert "E128" in result.stderr
+            assert "native-admitted" not in result.stdout
+
+
 def test_host_runtime_projected_environment_survives_nested_and_profile_launch(sandbox, monkeypatch):
     libraries = sandbox / "reviewed-host-libraries"
     libraries.mkdir()
@@ -223,7 +358,7 @@ def test_host_runtime_projected_environment_survives_nested_and_profile_launch(s
                      capture_output=True, text=True, timeout=120)
     assert shell.returncode == 0, shell.stdout + shell.stderr
     assert shell.stdout == "shell override|<unset>|<unset>|<unset>|/reviewed prefix|42|192000\n"
-    task_result = grip("task", "nested", cwd=repo)
+    task_result = grip("task", "run", "nested", cwd=repo)
     assert task_result.returncode == 0, task_result.stdout + task_result.stderr
     assert task_result.stdout.splitlines() == [
         "task override||step overlay|<unset>|/reviewed prefix|42|192000",

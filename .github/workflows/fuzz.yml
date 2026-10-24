@@ -1,14 +1,14 @@
 name: fuzz
 
-# Scheduled coverage-guided fuzzing (plan/0042 E): the persistent
+# Manual coverage-guided fuzzing (plan/0042 E): the persistent
 # targets under fuzz/ in libFuzzer `scheduled` mode — bounded per
 # target (FUZZ_SECONDS, 300s here), OS-contained via bubblewrap,
 # fail-closed: no uncontained fallback, ever. Mutated corpora and
 # crash artifacts stay inside the runner's temporary directories and
 # are discarded — fuzz state never lands in commits.
 #
-# The deterministic replay runs on every push in ci.yml (check_fuzz);
-# this workflow is the longer, time-boxed exploration.
+# Never dispatch for the no-fuzz/corpus release. There is no automatic replay
+# or exploration; this retained tool is outside current release qualification.
 
 on:
   workflow_dispatch:
@@ -16,8 +16,6 @@ on:
       seconds:
         description: "libFuzzer seconds per target"
         default: "300"
-  schedule:
-    - cron: "0 6 * * 3" # Wednesdays 06:00 UTC (offset from the Monday watches)
 
 permissions:
   contents: read

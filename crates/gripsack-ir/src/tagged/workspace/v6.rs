@@ -42,7 +42,10 @@ pub(super) fn acquisition_source(
     version: WorkspaceWireVersion,
     out: &mut Vec<Diagnostic>,
 ) {
-    let fields = if matches!(version, WorkspaceWireVersion::CurrentV7) {
+    let fields = if matches!(
+        version,
+        WorkspaceWireVersion::CurrentV7 | WorkspaceWireVersion::CurrentV8
+    ) {
         acquisition_source_fields_v7
     } else {
         acquisition_source_fields

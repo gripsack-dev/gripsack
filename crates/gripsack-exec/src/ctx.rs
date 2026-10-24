@@ -29,6 +29,8 @@ pub struct Ctx {
     /// absorbed — `grip adopt` passes exactly what it generated, so an
     /// adopt apply can never clobber unrelated drift.
     pub take_over_entries: Option<std::collections::BTreeSet<String>>,
+    /// Explicit legacy ownership migration, bound to this exact predecessor.
+    pub migrate_from: Option<gripsack_store::GenerationId>,
     /// Max concurrent modules in the scheduler (0007 §5). None = cores.
     /// `--jobs` on the CLI; GRIPSACK_JOBS for CI.
     pub jobs: Option<usize>,

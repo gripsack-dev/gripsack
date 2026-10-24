@@ -621,9 +621,9 @@ import type { ProbeBuilder } from "./probe.ts";
 import { declaredResources } from "./resources.ts";
 
 /** One current frontend version (0052 §1): workspace and legacy
- *  module entrypoints both emit v7. Strict historical documents keep
- *  their versioned core readers; only v7 is written by this frontend. */
-export const IR_VERSION = 7;
+ *  module entrypoints both emit v8. Strict historical documents keep
+ *  their versioned core readers; only v8 is written by this frontend. */
+export const IR_VERSION = 8;
 
 /** The context a `defineEnv` function receives (0013 D5/D6): every
  *  host observation arrives here — facts and tags core-injected,
@@ -679,8 +679,8 @@ export function mergeTags(envTags: string[] | undefined, cliTags: string[]): str
   return [...(envTags ?? []), ...cliTags].filter((t, i, all) => all.indexOf(t) === i);
 }
 
-/** Serialize a returned environment as the v7 legacy-modules IR
- *  envelope (`{ir_version: 7, host, modules[, resources]}` — never a
+/** Serialize a returned environment as the v8 legacy-modules IR
+ *  envelope (`{ir_version: 8, host, modules[, resources]}` — never a
  *  `workspace` key; the schema admits exactly one of the two). This
  *  is the bounded compatibility path for `hosts/<name>.ts`
  *  entrypoints (0052 §2.1); new workspaces use `emitWorkspaceIr`.
@@ -795,14 +795,15 @@ export {
   provider,
   recipe,
   repoFile,
+  repoTree,
   runBash,
   schedule,
   symlinkTo,
   targetPlatform,
   task,
   templateText,
+  templateFile,
   trackedCopyTo,
-  treeFiles,
   weekly,
   workspace,
 } from "./workspace.ts";
@@ -844,7 +845,9 @@ export type {
   WorkspaceInputRef,
   WorkspaceMutationLock,
   WorkspaceFileCheck,
-  TreeFilesOptions,
+  ArchiveRootPolicy,
+  ProfileLaunchers,
+  RepoTreeSelection,
   WorkspaceAbi,
   WorkspaceArg,
   WorkspaceArtifactRef,
@@ -1314,8 +1317,9 @@ export const symlinkTo = api.symlinkTo;
 export const targetPlatform = api.targetPlatform;
 export const task = api.task;
 export const templateText = api.templateText;
+export const templateFile = api.templateFile;
 export const trackedCopyTo = api.trackedCopyTo;
-export const treeFiles = api.treeFiles;
+export const repoTree = api.repoTree;
 export const weekly = api.weekly;
 export const workspace = api.workspace;
 
@@ -1379,7 +1383,9 @@ export type {
   WorkspaceInputRef,
   WorkspaceMutationLock,
   WorkspaceFileCheck,
-  TreeFilesOptions,
+  ArchiveRootPolicy,
+  ProfileLaunchers,
+  RepoTreeSelection,
   Trigger,
   Verify,
   WorkspaceAbi,
@@ -2271,6 +2277,7 @@ import { checkTargetsAndLayouts } from "./target.ts";
 import { asInput } from "./bindings.ts";
 import { rejectUnknownFields } from "../fields.ts";
 import { checkImageSelection } from "./image.ts";
+import { checkFileBindings } from "./file-checks.ts";
 
 /** Catalog roles never conflate publication checks or retention with
  * production closure. Ordered local commands are intra-output and
@@ -2449,8 +2456,8 @@ function orList(kinds: readonly string[]): string {
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the v7 workspace IR envelope —
- *  `{ir_version: 7, host, workspace}`, never `modules` (the schema
+/** Serialize a workspace value as the v8 workspace IR envelope —
+ *  `{ir_version: 8, host, workspace}`, never `modules` (the schema
  *  admits exactly one of the two). Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
@@ -2501,6 +2508,7 @@ export function emitWorkspaceIr(
     if (prev) throw duplicateError(name, prev.span, node.span);
     catalog.set(name, node);
   }
+  checkFileBindings(catalog);
 
   // typed references: existence + expected kinds
   const depEdges: Edge[] = [];
@@ -2550,6 +2558,22 @@ export function emitWorkspaceIr(
         });
       }
       if (isDependency(e.role)) depEdges.push(e);
+    }
+    if (node.kind === "profile" && node.launchers !== undefined) {
+      const environment = catalog.get(node.environment!);
+      if (environment?.kind === "environment") {
+        for (const command of node.launchers.commands) {
+          const exporters = environment.packages.filter((name) => {
+            const selected = catalog.get(name);
+            return selected?.kind === "package" && Object.hasOwn(selected.commands, command);
+          });
+          if (exporters.length !== 1) {
+            throw errorAt(diagnosticCodes.unknownWorkspaceRef,
+              `profile '${node.name}': launcher '${command}' must have exactly one environment export (found ${exporters.length})`,
+              node.span, "launchers declared here");
+          }
+        }
+      }
     }
     if (node.kind === "recipe" || node.kind === "task") {
       for (const step of node.steps ?? []) if ("command" in step) collectCommandKeys(step.command);
@@ -2628,6 +2652,67 @@ export function emitWorkspaceIr(
   );
 }
 "#),
+    ("src/workspace/file-checks.ts", r#"import { diagnosticCodes, errorAt } from "../diagnostic.ts";
+import type { CheckNode, WorkspaceArg, WorkspaceOutputNode } from "./ir.ts";
+
+/** A file subject exists only at an explicit attachment to its owning profile. */
+export function checkFileBindings(catalog: ReadonlyMap<string, WorkspaceOutputNode>): void {
+  const attached = new Set<string>();
+  for (const profile of catalog.values()) {
+    if (profile.kind !== "profile") continue;
+    for (const file of profile.files ?? []) {
+      for (const binding of file.checks ?? []) {
+        const check = catalog.get(binding.check);
+        if (check?.kind !== "check") continue; // Shared reference admission diagnoses this.
+        if (check.subject !== profile.name) {
+          throw errorAt(diagnosticCodes.badWorkspaceContext,
+            "a profile file check must name its owning profile as the check subject",
+            binding.span, "file check attached here");
+        }
+        attached.add(check.name);
+        if (binding.subject === "source" && file.source === undefined) {
+          throw errorAt(diagnosticCodes.badWorkspaceContext,
+            "a source check requires a captured file source", binding.span, "file check attached here");
+        }
+        if (binding.subject === "rendered" && binding.stage !== "pre_flip") {
+          throw errorAt(diagnosticCodes.badWorkspaceContext,
+            "rendered file validation must run before deployment at pre_flip",
+            binding.span, "file check attached here");
+        }
+      }
+    }
+  }
+  for (const output of catalog.values()) {
+    if (output.kind === "recipe" || output.kind === "task") {
+      for (const name of output.checks ?? []) {
+        if (attached.has(name)) {
+          throw errorAt(diagnosticCodes.badWorkspaceContext,
+            "a profile-bound file check cannot serve as a recipe validator or task postcondition",
+            output.span, "check consumed in a different lifecycle here");
+        }
+      }
+    }
+    if (output.kind !== "check" || catalog.get(output.subject)?.kind !== "profile") continue;
+    const fileSubject = attached.has(output.name);
+    const argument = (value: WorkspaceArg): void => {
+      if (value.kind === "output" ||
+          (value.kind === "source" && (!fileSubject || value.selector !== "."))) {
+        reject(output, "a file check may use sourcePath(\".\") only for its explicitly attached file, never writable output");
+      }
+    };
+    if (output.run.kind === "exec") output.run.argv.forEach(argument);
+    else argument(output.run.interpreter);
+    Object.values(output.run.env ?? {}).forEach(argument);
+    if (output.run.cwd?.kind === "source" || output.run.cwd?.kind === "output") {
+      reject(output, "an attached file cannot supply a working directory or writable output");
+    }
+  }
+}
+
+function reject(check: CheckNode, message: string): never {
+  throw errorAt(diagnosticCodes.badWorkspaceContext, message, check.run.span, "file subject used here");
+}
+"#),
     ("src/workspace/files.ts", r#"/** v5 profile file origins, content transforms and destination policy. */
 
 import { rejectUnknownFields } from "../fields.ts";
@@ -2637,6 +2722,7 @@ import type {
   WorkspaceFile,
   WorkspaceFileSpec,
   WorkspaceSource,
+  RepoTreeSelection,
 } from "./ir.ts";
 import {
   asContent,
@@ -2660,6 +2746,17 @@ import { asPatterns } from "./bindings.ts";
 /** A typed repository file origin. */
 export function repoFile(path: string): WorkspaceSource {
   return freezeDeep({ kind: "repo_file", path: asRepoFilePath(path, "repoFile(path)") });
+}
+
+/** A captured repository tree, enumerated only by the core. */
+export function repoTree(path: string, selection: RepoTreeSelection = {}): WorkspaceSource {
+  asRecord(selection, "repoTree(selection)");
+  rejectUnknownFields("repoTree(selection)", selection, ["include", "exclude"]);
+  return freezeDeep(asSource({
+    kind: "repo_tree", path,
+    include: selection.include === undefined ? [] : selection.include,
+    exclude: selection.exclude === undefined ? [] : selection.exclude,
+  }, "repoTree(...)"));
 }
 
 /** A file inside another output's artifact. */
@@ -2705,6 +2802,17 @@ export function templateText(
     }
   }
   return freezeDeep({ kind: "template", template, variables, ...(resultDigest === undefined ? {} : { result_digest: asSha256(resultDigest, "templateText(resultDigest)") }) });
+}
+
+/** Render the approved captured source bytes with bound variables. */
+export function templateFile(
+  variables: Record<string, string>,
+  resultDigest?: string,
+): WorkspaceContent {
+  return freezeDeep(asContent({
+    kind: "template_file", variables,
+    ...(resultDigest === undefined ? {} : { result_digest: resultDigest }),
+  }, "templateFile(...)"));
 }
 
 /** Store-owned, read-only destination; edits go through the declaration. */
@@ -2845,7 +2953,7 @@ export function checkImageSelection(image: ImageNode, catalog: Map<string, Works
   }
 }
 "#),
-    ("src/workspace/ir.ts", r#"/** v7 workspace wire types; the core retains strict historical readers. */
+    ("src/workspace/ir.ts", r#"/** v8 workspace wire types; the core retains strict historical readers. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
@@ -2854,7 +2962,7 @@ import type { Span } from "../module.ts";
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v7.json $defs)
+// shared wire fragments (schema/ir/v8.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -2936,7 +3044,7 @@ export interface CondaSystemRequirements {
 }
 
 // ---------------------------------------------------------------------------
-// Current acquisition sources (schema/ir/v7.json; retained in-memory V6 family)
+// Current acquisition sources (schema/ir/v8.json; retained in-memory V6 family)
 // ---------------------------------------------------------------------------
 
 /** Existing archive/git/github/file/plugin acquisition, wrapped with its
@@ -2994,12 +3102,14 @@ export interface TaskContext { kind: "host"; mutable_paths: string[] }
 
 export type WorkspaceSource =
   | { kind: "repo_file"; path: string }
+  | { kind: "repo_tree"; path: string; include: string[]; exclude: string[] }
   | { kind: "artifact_file"; output: string; selector: string }
   | { kind: "tree"; output: string; include: string[]; exclude?: string[] };
 
 export type WorkspaceContent =
   | { kind: "identity" }
   | { kind: "literal"; text: string }
+  | { kind: "template_file"; variables: Record<string, string>; result_digest?: string }
   | { kind: "template"; template: string; variables: Record<string, string>; result_digest?: string };
 
 export type WorkspaceDestination =
@@ -3059,6 +3169,18 @@ export type WorkspaceProducer =
   | { kind: "recipe"; recipe: string }
   | { kind: "provider"; provider: AcquisitionSource };
 
+
+export interface RepoTreeSelection {
+  include?: readonly string[];
+  exclude?: readonly string[];
+}
+
+export interface ArchiveRootPolicy { kind: "single_directory" }
+
+export interface ProfileLaunchers {
+  directory: string;
+  commands: readonly string[];
+}
 export interface PackageNode {
   name: string;
   span: Span;
@@ -3069,6 +3191,7 @@ export interface PackageNode {
   host_runtime?: HostRuntimeRequirements;
   target: WorkspacePlatform;
   layout: PackageLayout;
+  archive_root?: ArchiveRootPolicy;
 }
 
 export interface EnvironmentNode {
@@ -3146,6 +3269,7 @@ export interface ProfileNode {
   kind: "profile";
   files?: WorkspaceFile[];
   environment?: string;
+  launchers?: ProfileLaunchers;
   schedules?: string[];
   hooks?: string[];
 }
@@ -3240,6 +3364,7 @@ export interface PackageSpec {
   hostRuntime?: HostRuntimeSpec;
   target: WorkspacePlatform;
   layout: PackageLayout;
+  archiveRoot?: ArchiveRootPolicy;
   span?: Span;
 }
 
@@ -3296,6 +3421,7 @@ export interface ProfileSpec {
   files?: WorkspaceFile[];
   /** Name of the `environment` output this profile selects. */
   environment?: string;
+  launchers?: ProfileLaunchers;
   /** Names of `schedule` outputs registered with the profile. */
   schedules?: string[];
   /** Names of `hook` outputs. */
@@ -3368,7 +3494,7 @@ export interface WorkspaceContext extends FactView {
 
 export type WorkspaceFn = (ctx: WorkspaceContext) => WorkspaceValue;
 "#),
-    ("src/workspace/outputs.ts", r#"/** v7 named-output constructors: pure, frozen values with source spans. */
+    ("src/workspace/outputs.ts", r#"/** v8 named-output constructors: pure, frozen values with source spans. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -3414,6 +3540,7 @@ import {
   asCommand,
   asEnv,
   asFile,
+  asDestinationPath,
   asHostRuntime,
   asSystemRequirements,
   asName,
@@ -3577,7 +3704,7 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
   asName(name, `${what}: name`);
   asRecord(spec, what);
   rejectUnknownFields(what, spec, [
-    "producer", "commands", "runtime", "hostRuntime", "target", "layout", "span",
+    "producer", "commands", "runtime", "hostRuntime", "archiveRoot", "target", "layout", "span",
   ]);
   const span = nodeSpan(spec.span, what);
   const producer = asProducer(spec.producer, `${what}: producer`);
@@ -3598,6 +3725,16 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
   if (hostRuntime !== undefined && (target.os !== "linux" || target.abi !== "gnu")) {
     throw new Error(`${what}: hostRuntime requires an explicit Linux GNU target`);
   }
+  const layout = asLayout(spec.layout, `${what}: layout`);
+  if (spec.archiveRoot !== undefined) {
+    const policy = asRecord(spec.archiveRoot, `${what}: archiveRoot`);
+    rejectUnknownFields(`${what}: archiveRoot`, policy, ["kind"]);
+    if (policy.kind !== "single_directory") throw new Error(`${what}: archiveRoot.kind must be single_directory`);
+    if (layout.kind !== "relocatable" ||
+      (producer.kind === "provider" && producer.provider.kind !== "fetch")) {
+      throw new Error(`${what}: archiveRoot requires a native relocatable package`);
+    }
+  }
   const node: PackageNode = {
     name,
     span,
@@ -3607,7 +3744,8 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     ...(runtime ? { runtime } : {}),
     ...(hostRuntime !== undefined ? { host_runtime: hostRuntime } : {}),
     target,
-    layout: asLayout(spec.layout, `${what}: layout`),
+    layout,
+    ...(spec.archiveRoot === undefined ? {} : { archive_root: spec.archiveRoot }),
   };
   return makeOutput(node);
 }
@@ -3729,7 +3867,7 @@ export function profile(name: string, spec: ProfileSpec): WorkspaceOutput<Profil
   const what = `profile("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["files", "environment", "schedules", "hooks", "span"]);
+  rejectUnknownFields(what, spec, ["files", "environment", "launchers", "schedules", "hooks", "span"]);
   const span = nodeSpan(spec.span, what);
   const files = spec.files?.length
     ? spec.files.map((f, i) => asFile(f, `${what}: files[${i}]`))
@@ -3737,6 +3875,25 @@ export function profile(name: string, spec: ProfileSpec): WorkspaceOutput<Profil
   const envName = spec.environment !== undefined
     ? asName(spec.environment, `${what}: environment`)
     : undefined;
+  if (spec.launchers !== undefined) {
+    const launchers = asRecord(spec.launchers, `${what}: launchers`);
+    rejectUnknownFields(`${what}: launchers`, launchers, ["directory", "commands"]);
+    const directory = asDestinationPath(launchers.directory, `${what}: launchers.directory`);
+    if (/[\\\x00-\x1f\x7f]/.test(directory)) throw new Error(`${what}: launchers.directory must be a normalized destination path`);
+    if (envName === undefined) throw new Error(`${what}: launchers require an environment`);
+    if (!Array.isArray(launchers.commands) || launchers.commands.length === 0) {
+      throw new Error(`${what}: launchers.commands must be nonempty`);
+    }
+    const seen = new Set<string>();
+    for (const command of launchers.commands) {
+      if (typeof command !== "string" || !command || /[/\\\x00-\x20\x7f]/.test(command) ||
+        command === "." || command === "..") {
+        throw new Error(`${what}: launcher command must be a single command name`);
+      }
+      if (seen.has(command)) throw new Error(`${what}: duplicate launcher command '${command}'`);
+      seen.add(command);
+    }
+  }
   const schedules = asNames(spec.schedules, `${what}: schedules`);
   const hooks = asNames(spec.hooks, `${what}: hooks`);
   const node: ProfileNode = {
@@ -3745,6 +3902,7 @@ export function profile(name: string, spec: ProfileSpec): WorkspaceOutput<Profil
     kind: "profile",
     ...(files ? { files } : {}),
     ...(envName !== undefined ? { environment: envName } : {}),
+    ...(spec.launchers === undefined ? {} : { launchers: spec.launchers }),
     ...(schedules ? { schedules } : {}),
     ...(hooks ? { hooks } : {}),
   };
@@ -4012,6 +4170,9 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
         const recipe = catalog.get(node.producer.recipe)!;
         if (recipe.kind === "recipe") {
           requireCompatibleTarget(`package '${node.name}' producer target mismatch`, node, recipe);
+          if (node.archive_root !== undefined && recipe.source.kind !== "fetch") {
+            guard(node, () => { throw new Error(`package '${node.name}': archiveRoot requires a native relocatable package`); });
+          }
         }
       }
     }
@@ -4040,132 +4201,6 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
       }
     }
   }
-}
-"#),
-    ("src/workspace/tree.ts", r#"/** Bounded eval-time tree expansion for workspace profile files
- * (0052 §2.2 FileDecl tree origin; Epic A §3.3): walk a captured
- * repository directory and return explicit per-file declarations.
- *
- * The IR stays per-file — no directory-shaped ownership is invented,
- * and the tree never claims unrelated children: adding or removing a
- * file changes exactly that file's declaration at the next eval.
- * Enumeration is stable (sorted at each depth), every entry carries the
- * caller's declaration span, and symlinks/special files are rejected
- * rather than followed so a repo link can never pull outside content
- * into the captured inventory. Artifact-side trees (an output not yet
- * realized) cannot be enumerated at eval time and remain A2-owned. */
-
-import { lstatSync, readdirSync } from "node:fs";
-import { file, identity, repoFile, symlinkTo, trackedCopyTo } from "./files.ts";
-import type { WorkspaceFile } from "./ir.ts";
-import { asDestinationPath } from "./validate.ts";
-
-export interface TreeFilesOptions {
-  /** Restrict expansion to these subtrees/paths (relative to `src`,
-   *  normalized). Omit to admit the whole directory. */
-  include?: string[];
-  /** Skip these subtrees/paths; wins over `include`. */
-  exclude?: string[];
-  /** Destination policy applied to every entry (default tracked_copy). */
-  mode?: "symlink" | "tracked_copy";
-  /** Admission cap on expanded entries (default and maximum 10 000). */
-  maxEntries?: number;
-}
-
-const MAX_TREE_ENTRIES = 10_000;
-
-/** A repo-relative directory: `"."` (the repo root) or normalized
- *  relative POSIX segments. */
-function asRepoDirPath(path: string, where: string): string {
-  if (
-    path === "." ||
-    !(path.startsWith("/") || path.includes("\\") || path.includes("\0") ||
-      path.split("/").some((part) => part === "" || part === "." || part === ".."))
-  ) {
-    return path;
-  }
-  throw new Error(
-    `${where}: repository directory must be "." or a normalized relative POSIX path ` +
-      `(no leading "/", backslash, NUL, empty, "." or ".." segments) — got ${JSON.stringify(path)}`,
-  );
-}
-
-/** Segment-prefix match: "a/b" covers "a/b" and "a/b/c", never "a/bc". */
-function covered(segments: readonly string[], pattern: readonly string[]): boolean {
-  return pattern.length <= segments.length &&
-    pattern.every((part, index) => part === segments[index]);
-}
-
-export function treeFiles(
-  src: string,
-  to: string,
-  options: TreeFilesOptions = {},
-): WorkspaceFile[] {
-  const what = "treeFiles(src, to)";
-  const root = asRepoDirPath(src, `${what}: src`);
-  const mode = options.mode ?? "tracked_copy";
-  const maxEntries = Math.min(options.maxEntries ?? MAX_TREE_ENTRIES, MAX_TREE_ENTRIES);
-  const patterns = (list: string[] | undefined, label: string): string[][] =>
-    (list ?? []).map((pattern) => {
-      if (pattern === ".") {
-        throw new Error(`${what}: ${label} pattern "." is redundant — omit it to admit the whole tree`);
-      }
-      return asRepoDirPath(pattern, `${what}: ${label}`).split("/");
-    });
-  const include = patterns(options.include, "include");
-  const exclude = patterns(options.exclude, "exclude");
-  // Validate the destination shape even for an empty tree.
-  asDestinationPath(to, `${what}: to`);
-  const policy = mode === "symlink" ? symlinkTo : trackedCopyTo;
-  const rootKind = lstatSync(root, { throwIfNoEntry: false });
-  if (!rootKind || !rootKind.isDirectory()) {
-    throw new Error(
-      `${what}: src ${JSON.stringify(src)} must be an existing directory inside the evaluated repository`,
-    );
-  }
-
-  const atRoot = root === ".";
-  const files: WorkspaceFile[] = [];
-  const walk = (relative: readonly string[]): void => {
-    const directory = atRoot
-      ? (relative.length === 0 ? "." : relative.join("/"))
-      : [root, ...relative].join("/");
-    for (const name of readdirSync(directory).sort()) {
-      const entryPath = `${directory}/${name}`;
-      const kind = lstatSync(entryPath);
-      if (kind.isDirectory()) {
-        walk([...relative, name]);
-        continue;
-      }
-      if (!kind.isFile()) {
-        throw new Error(
-          `${what}: ${JSON.stringify(entryPath)} is not a regular file or directory ` +
-            `(symlinks and special entries are never followed into a captured tree)`,
-        );
-      }
-      const segments = [...relative, name];
-      if (exclude.some((pattern) => covered(segments, pattern))) continue;
-      if (include.length > 0 && !include.some((pattern) => covered(segments, pattern))) {
-        continue;
-      }
-      if (files.length === maxEntries) {
-        throw new Error(
-          `${what}: expanding ${JSON.stringify(src)} exceeded the ${maxEntries} entry cap ` +
-            `(pass a smaller tree or narrow include/exclude)`,
-        );
-      }
-      const relativePath = segments.join("/");
-      files.push(
-        file({
-          source: repoFile(atRoot ? relativePath : `${root}/${relativePath}`),
-          content: identity(),
-          destination: policy(`${to}/${relativePath}`),
-        }),
-      );
-    }
-  };
-  walk([]);
-  return files;
 }
 "#),
     ("src/workspace/validate.ts", r#"/** Runtime structural guards for current workspace authoring values. */
@@ -4422,6 +4457,24 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
     asRepoFilePath(rec.path, `${where}.path`);
     return v as WorkspaceSource;
   }
+  if (rec.kind === "repo_tree") {
+    rejectUnknownFields(where, rec, ["kind", "path", "include", "exclude"]);
+    const path = rec.path === "." ? "." : asRepoFilePath(rec.path, `${where}.path`);
+    if (/[*?[\]{}\x00-\x1f\x7f]/.test(path)) {
+      throw new Error(`${where}.path must be normalized without controls or glob characters`);
+    }
+    for (const key of ["include", "exclude"] as const) {
+      const patterns = rec[key];
+      if (!Array.isArray(patterns)) throw new Error(`${where}.${key} must be an array`);
+      patterns.forEach((pattern, index) => {
+        const prefix = asRepoFilePath(pattern, `${where}.${key}[${index}]`);
+        if (/[*?[\]{}\x00-\x1f\x7f]/.test(prefix)) {
+          throw new Error(`${where}.${key}[${index}] must be a normalized segment prefix, not a glob`);
+        }
+      });
+    }
+    return v as WorkspaceSource;
+  }
   if (rec.kind === "artifact_file") {
     rejectUnknownFields(where, rec, ["kind", "output", "selector"]);
     asName(rec.output, `${where}.output`);
@@ -4439,7 +4492,7 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
     }
     return v as WorkspaceSource;
   }
-  throw new Error(`${where}: kind must be "repo_file", "artifact_file" or "tree"`);
+  throw new Error(`${where}: kind must be "repo_file", "repo_tree", "artifact_file" or "tree"`);
 }
 
 export function asContent(v: unknown, where: string): WorkspaceContent {
@@ -4453,9 +4506,11 @@ export function asContent(v: unknown, where: string): WorkspaceContent {
     if (typeof rec.text !== "string") throw new Error(`${where}.text must be a string`);
     return v as WorkspaceContent;
   }
-  if (rec.kind === "template") {
-    rejectUnknownFields(where, rec, ["kind", "template", "variables", "result_digest"]);
-    if (typeof rec.template !== "string") throw new Error(`${where}.template must be a string`);
+  if (rec.kind === "template" || rec.kind === "template_file") {
+    rejectUnknownFields(where, rec, rec.kind === "template"
+      ? ["kind", "template", "variables", "result_digest"]
+      : ["kind", "variables", "result_digest"]);
+    if (rec.kind === "template" && typeof rec.template !== "string") throw new Error(`${where}.template must be a string`);
     if (rec.result_digest !== undefined) asSha256(rec.result_digest, `${where}.result_digest`);
     const vars = asRecord(rec.variables, `${where}.variables`);
     for (const [k, val] of Object.entries(vars)) {
@@ -4465,7 +4520,7 @@ export function asContent(v: unknown, where: string): WorkspaceContent {
     }
     return v as WorkspaceContent;
   }
-  throw new Error(`${where}: kind must be "identity", "literal" or "template"`);
+  throw new Error(`${where}: kind must be "identity", "literal", "template" or "template_file"`);
 }
 
 export function asDestination(v: unknown, where: string): WorkspaceDestination {
@@ -4513,8 +4568,12 @@ export function asFile(v: unknown, where: string): WorkspaceFile {
   rejectUnknownFields(where, rec, ["span", "source", "content", "destination", "checks"]);
   asSpan(rec.span, where);
   const content = asContent(rec.content, `${where}.content`);
-  if (rec.source !== undefined) asSource(rec.source, `${where}.source`);
-  else if (content.kind !== "literal") {
+  if (rec.source !== undefined) {
+    const source = asSource(rec.source, `${where}.source`);
+    if ((source.kind === "tree" || source.kind === "repo_tree") && content.kind !== "identity") {
+      throw new Error(`${where}: tree sources require identity content`);
+    }
+  } else if (content.kind !== "literal") {
     throw new Error(
       `${where}: source is required unless content is literalText(...) — ` +
         `a ${content.kind} content has no bytes without an origin`,
@@ -4723,14 +4782,14 @@ export function duplicateError(name: string, first: Span, again: Span): Diagnost
 }
 "#),
     ("src/workspace.ts", r#"/** Workspace declarations (0052 A1): the supported surface for the
- *  v7 workspace frontend — pure value constructors for nine typed
+ *  v8 workspace frontend — pure value constructors for nine typed
  *  output variants plus the shared command/file grammar and current
  *  emitter. No global registry or import-order magic — the
  *  root `gripsack.ts` entrypoint RETURNS a {@link WorkspaceValue}
  *  built by {@link workspace}, and the driver turns that value into
  *  IR (JSON) via {@link emitWorkspaceIr}.
  *
- *  Wire shape is exactly `schema/ir/v7.json`: every node carries a
+ *  Wire shape is exactly `schema/ir/v8.json`: every node carries a
  *  mandatory provenance span, all structs reject unknown fields at
  *  construction time (JS callers and casts get the same boundary as
  *  the type-checker), and returned values are deeply frozen — an
@@ -4759,13 +4818,16 @@ export {
   literalText,
   managedBlock,
   repoFile,
+  repoTree,
   symlinkTo,
   templateText,
+  templateFile,
   trackedCopyTo,
 } from "./workspace/files.ts";
-export { treeFiles } from "./workspace/tree.ts";
-export type { TreeFilesOptions } from "./workspace/tree.ts";
 export type {
+  ArchiveRootPolicy,
+  ProfileLaunchers,
+  RepoTreeSelection,
   BashBody,
   CheckSpec,
   CondaEnvironmentSource,
@@ -4882,7 +4944,7 @@ export const pixi: { fromLock: typeof pixiFromLockImpl } = Object.assign(
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.46.0",
+  "version": "0.47.0",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",

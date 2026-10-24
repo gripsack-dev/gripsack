@@ -15,6 +15,15 @@ use tracing::{info, info_span};
 /// locks/apply.flock` (finding A): two concurrent applies serialize,
 /// never lose a manifest update.
 pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
+    if ctx.migrate_from.is_some()
+        && (!ir.has_workspace() || ctx.take_over || ctx.take_over_entries.is_some())
+    {
+        return Err(ExecError::Step {
+            module: "*".into(),
+            step: "migrate".into(),
+            detail: "--migrate-from requires workspace profiles and cannot grant take-over".into(),
+        });
+    }
     if let Some(diagnostic) =
         ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Apply)
     {
@@ -101,11 +110,12 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         Some(profiles) => Some(profiles),
         None => crate::workspace::NativeProfiles::prepare(
             ir,
-            ctx.repository.contents(),
+            &ctx.repository,
             &ctx.home,
             &ctx.only,
             ctx.fetch.limits(),
             None,
+            ctx.migrate_from,
         )?,
     };
     // the allocator is NOT current+1 (0026 §3): after a rollback,
@@ -131,6 +141,11 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         ),
         None => None,
     };
+    let mut migration = native
+        .as_ref()
+        .map(|native| native.migration(&ctx.home, ctx.migrate_from, prev_manifest.as_ref()))
+        .transpose()?
+        .flatten();
     let prev_modules: BTreeMap<String, store::ModuleState> = prev_manifest
         .as_ref()
         .map(|g| g.modules.clone())
@@ -144,6 +159,9 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     } else {
         prev_modules.clone()
     };
+    if let Some(migration) = &migration {
+        migration.release_entries(&mut modules);
+    }
     // The ready-queue scheduler (0007 §5): modules run as their
     // dependencies finish, N = cores, resources via flock. The flip
     // below stays the single barrier.
@@ -179,19 +197,26 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
         next_gen,
         store::journal::RunOp::Apply,
     )?;
-    let execution = if let Some(native) = &native {
-        native.deploy(ctx, &selection, &prev_modules)
-    } else {
-        crate::schedule::run_all(
-            ir,
-            &steps_by_module,
-            &order,
-            ctx,
-            &selection,
-            &prev_modules,
-            &lock,
-        )
-    };
+    let execution = (|| {
+        if let Some(previous) = &prev_manifest {
+            for receipt in &previous.directory_transitions {
+                store::journal::directory::bind_existing(&selection, receipt)?;
+            }
+        }
+        if let Some(native) = &native {
+            native.deploy(ctx, &selection, &prev_modules, migration.as_mut())
+        } else {
+            crate::schedule::run_all(
+                ir,
+                &steps_by_module,
+                &order,
+                ctx,
+                &selection,
+                &prev_modules,
+                &lock,
+            )
+        }
+    })();
     let outcome = match execution {
         Ok(outcome) => outcome,
         Err(error) => {
@@ -244,12 +269,14 @@ pub fn apply(ir: &Ir, ctx: &Ctx) -> Result<ApplyResult, ExecError> {
     // error from it means nothing flipped, so it compensates too.
     match pre_flip(
         ctx,
+        &session,
         &selection,
         &prev_manifest,
         &modules,
         next,
         lock_dirty.then_some(&lock),
         &reports[deployment_reports_start..],
+        native.as_ref(),
     ) {
         Ok(Some(_generation)) => {}
         // vacuous run: nothing journaled, nothing flipped — the
@@ -442,14 +469,17 @@ fn compensate(ctx: &Ctx) {
 /// Lock write, prune, manifest, and the generation-local env profile —
 /// everything fallible between the scheduler and the flip. Ok(None)
 /// is the vacuous (satisfied) run.
+#[allow(clippy::too_many_arguments)]
 fn pre_flip(
     ctx: &Ctx,
+    session: &crate::LifecycleSession,
     journal: &store::journal::JournalRun<'_>,
     prev_manifest: &Option<store::Generation>,
     modules: &BTreeMap<String, store::ModuleState>,
     next: store::GenerationId,
     lock: Option<&crate::lockfile::Lockfile>,
     deployment_reports: &[crate::report::StepReport],
+    native: Option<&crate::workspace::NativeProfiles>,
 ) -> Result<Option<store::Generation>, ExecError> {
     // pins are fetch outcomes — they must land before anything can
     // short-circuit later (the satisfied early-return used to skip
@@ -463,8 +493,36 @@ fn pre_flip(
     // manifest but gone now are removed — only if the file still matches
     // the recorded hash (user edits are never deleted). Every prune
     // mutation is journaled like a deploy (0025 §B).
+    let active_directories = store::journal::directory::receipts(journal)?;
     if let Some(prev) = prev_manifest {
-        prune_undeclared(prev, modules, journal)?;
+        prune_undeclared(prev, modules, journal, &active_directories)?;
+    }
+    let mut directory_transitions = Vec::new();
+    for receipt in active_directories {
+        let leaves: Vec<_> = modules
+            .values()
+            .flat_map(|state| &state.entries)
+            .filter_map(|entry| {
+                entry
+                    .key()
+                    .strip_prefix(&receipt.destination)
+                    .ok()
+                    .filter(|relative| !relative.as_os_str().is_empty())
+                    .map(std::path::Path::to_owned)
+            })
+            .collect();
+        if leaves.is_empty() {
+            crate::deploy::directory_retirement::retire(journal, &receipt)?;
+        } else {
+            directory_transitions.push(store::journal::directory::finish(
+                journal,
+                &receipt.destination,
+                leaves,
+            )?);
+        }
+    }
+    if let Some(native) = native {
+        native.run_pre_flip_checks(ctx, session)?;
     }
     // test-only kill switch: the prune→flip crash window's e2e (0025)
     crate::util::crash_hook("after-prune");
@@ -484,12 +542,27 @@ fn pre_flip(
             crate::report::ReportKind::Installed | crate::report::ReportKind::Configured
         )
     });
-    if prev_manifest.as_ref().map(|g| &g.modules) == Some(modules) && !touched_disk {
+    let migration_receipt = ctx
+        .migrate_from
+        .map(|predecessor| store::generations::MigrationReceipt { predecessor })
+        .or_else(|| {
+            prev_manifest
+                .as_ref()
+                .and_then(|previous| previous.migration.clone())
+        });
+    if prev_manifest.as_ref().is_some_and(|previous| {
+        previous.modules == *modules
+            && previous.directory_transitions == directory_transitions
+            && previous.migration == migration_receipt
+    }) && !touched_disk
+    {
         return Ok(None);
     }
     let generation = store::Generation {
         number: next,
         modules: modules.clone(),
+        directory_transitions,
+        migration: migration_receipt,
     };
     // the generation publishes as ONE object (0027 §8): manifest and
     // profile stage under generations/.staging-<N> and rename into
@@ -511,6 +584,7 @@ fn prune_undeclared(
     prev: &store::Generation,
     modules: &BTreeMap<String, store::ModuleState>,
     journal: &store::journal::JournalRun<'_>,
+    directory_transitions: &[store::journal::directory::DirectoryTransition],
 ) -> Result<(), ExecError> {
     let home_dir = journal.home();
     let declared: BTreeSet<std::path::PathBuf> = modules
@@ -533,6 +607,15 @@ fn prune_undeclared(
         .collect();
     for (name, state) in &prev.modules {
         for entry in &state.entries {
+            if directory_transitions
+                .iter()
+                .any(|receipt| receipt.destination == entry.key())
+            {
+                continue;
+            }
+            if store::journal::directory::is_directory(journal, &entry.key())? {
+                continue;
+            }
             // preserved drift was never written by gripsack — prune
             // never touches it (0029 §2; before this, the recorded
             // observed hash made the intact check pass and prune

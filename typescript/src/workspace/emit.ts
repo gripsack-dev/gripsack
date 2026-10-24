@@ -22,6 +22,7 @@ import { checkTargetsAndLayouts } from "./target.ts";
 import { asInput } from "./bindings.ts";
 import { rejectUnknownFields } from "../fields.ts";
 import { checkImageSelection } from "./image.ts";
+import { checkFileBindings } from "./file-checks.ts";
 
 /** Catalog roles never conflate publication checks or retention with
  * production closure. Ordered local commands are intra-output and
@@ -200,8 +201,8 @@ function orList(kinds: readonly string[]): string {
     : `one of ${kinds.map((k) => `'${k}'`).join(", ")}`;
 }
 
-/** Serialize a workspace value as the v7 workspace IR envelope —
- *  `{ir_version: 7, host, workspace}`, never `modules` (the schema
+/** Serialize a workspace value as the v8 workspace IR envelope —
+ *  `{ir_version: 8, host, workspace}`, never `modules` (the schema
  *  admits exactly one of the two). Admission mirrors the decoded core:
  *  every typed reference is checked against the catalog (unknown names,
  *  wrong output kinds), artifact selectors must be normalized relative
@@ -252,6 +253,7 @@ export function emitWorkspaceIr(
     if (prev) throw duplicateError(name, prev.span, node.span);
     catalog.set(name, node);
   }
+  checkFileBindings(catalog);
 
   // typed references: existence + expected kinds
   const depEdges: Edge[] = [];
@@ -301,6 +303,22 @@ export function emitWorkspaceIr(
         });
       }
       if (isDependency(e.role)) depEdges.push(e);
+    }
+    if (node.kind === "profile" && node.launchers !== undefined) {
+      const environment = catalog.get(node.environment!);
+      if (environment?.kind === "environment") {
+        for (const command of node.launchers.commands) {
+          const exporters = environment.packages.filter((name) => {
+            const selected = catalog.get(name);
+            return selected?.kind === "package" && Object.hasOwn(selected.commands, command);
+          });
+          if (exporters.length !== 1) {
+            throw errorAt(diagnosticCodes.unknownWorkspaceRef,
+              `profile '${node.name}': launcher '${command}' must have exactly one environment export (found ${exporters.length})`,
+              node.span, "launchers declared here");
+          }
+        }
+      }
     }
     if (node.kind === "recipe" || node.kind === "task") {
       for (const step of node.steps ?? []) if ("command" in step) collectCommandKeys(step.command);

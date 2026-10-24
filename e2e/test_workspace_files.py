@@ -32,7 +32,8 @@ def run(repo, *args):
 
 
 def manifest(sandbox):
-    return json.loads((sandbox / ".local/share/gripsack/current/manifest.json").read_text())
+    wire = json.loads((sandbox / ".local/share/gripsack/current/manifest.json").read_text())
+    return wire.get("generation", wire)
 
 
 def rendered_profile(value, link="~/.linked"):

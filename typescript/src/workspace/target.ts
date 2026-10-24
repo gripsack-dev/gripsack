@@ -160,6 +160,9 @@ export function checkTargetsAndLayouts(catalog: Map<string, WorkspaceOutputNode>
         const recipe = catalog.get(node.producer.recipe)!;
         if (recipe.kind === "recipe") {
           requireCompatibleTarget(`package '${node.name}' producer target mismatch`, node, recipe);
+          if (node.archive_root !== undefined && recipe.source.kind !== "fetch") {
+            guard(node, () => { throw new Error(`package '${node.name}': archiveRoot requires a native relocatable package`); });
+          }
         }
       }
     }

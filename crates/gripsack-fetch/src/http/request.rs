@@ -13,7 +13,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub(crate) enum RequestKind<'a> {
     GithubMetadata,
     Metadata,
-    Text,
     Artifact {
         api_url: Option<&'a str>,
     },
@@ -30,7 +29,6 @@ impl RequestKind<'_> {
         match self {
             Self::GithubMetadata => "github-metadata",
             Self::Metadata => "metadata",
-            Self::Text => "text",
             Self::Artifact { .. } | Self::RegistryArtifact { .. } => "artifact",
             Self::Tool { .. } => "tool",
         }
@@ -523,7 +521,7 @@ mod tests {
             let end = Instant::now() + Duration::from_millis(500);
             let started = end - super::super::retry::OPERATION_TIMEOUT;
             let consumed = Cell::new(false);
-            let result = client.consume_at(&url, RequestKind::Text, 8, started, |reader| {
+            let result = client.consume_at(&url, RequestKind::Metadata, 8, started, |reader| {
                 let mut body = String::new();
                 reader.read_to_string(&mut body)?;
                 consumed.set(true);
@@ -556,7 +554,7 @@ mod tests {
                 let started = end - super::super::retry::OPERATION_TIMEOUT;
                 let result = shared.consume_at(
                     "http://127.0.0.1:9/never-requested",
-                    RequestKind::Text,
+                    RequestKind::Metadata,
                     8,
                     started,
                     |_| Ok(()),

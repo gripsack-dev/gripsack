@@ -64,7 +64,9 @@ impl<'a> Prepared<'a> {
             .filter(|_| {
                 matches!(
                     ir.ir_version,
-                    gripsack_ir::WORKSPACE_V6_VERSION | gripsack_ir::IR_VERSION
+                    gripsack_ir::WORKSPACE_V6_VERSION
+                        | gripsack_ir::WORKSPACE_V7_VERSION
+                        | gripsack_ir::IR_VERSION
                 ) && ir.workspace.is_none()
                     && ir.workspace_v4.is_none()
                     && ir.modules.is_empty()
@@ -72,7 +74,7 @@ impl<'a> Prepared<'a> {
             .ok_or_else(|| {
                 failure(
                     None,
-                    "selected-output production requires a v6 or v7 catalog workspace",
+                    "selected-output production requires an executable catalog workspace",
                 )
             })?;
         let selection = Selection::admit(workspace, requested)?;

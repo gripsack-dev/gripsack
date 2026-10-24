@@ -25,6 +25,45 @@ pub(super) fn validate(
             manifest.number
         )));
     }
+    if manifest
+        .migration
+        .as_ref()
+        .is_some_and(|receipt| receipt.predecessor >= generation)
+    {
+        return Err(invalid(
+            "migration predecessor must precede its generation".into(),
+        ));
+    }
+    let directory_roots: BTreeSet<&Path> = manifest
+        .directory_transitions
+        .iter()
+        .map(|receipt| receipt.destination.as_path())
+        .collect();
+    if directory_roots.len() != manifest.directory_transitions.len() {
+        return Err(invalid("duplicate directory transition roots".into()));
+    }
+    for transition in &manifest.directory_transitions {
+        transition.validate()?;
+        if transition
+            .destination
+            .ancestors()
+            .skip(1)
+            .any(|root| directory_roots.contains(root))
+        {
+            return Err(invalid("overlapping directory transition roots".into()));
+        }
+        if transition.predecessor_generation >= generation {
+            return Err(invalid(
+                "directory predecessor must precede its generation".into(),
+            ));
+        }
+        let root = home.join(crate::STORE_DIR);
+        if !transition.predecessor_target.starts_with(&root) {
+            return Err(invalid(
+                "directory predecessor is outside retained store".into(),
+            ));
+        }
+    }
     let mut destinations: BTreeMap<String, DestinationClaim<'_>> = BTreeMap::new();
     for (name, state) in &manifest.modules {
         if state.build_only

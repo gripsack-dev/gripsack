@@ -7,9 +7,8 @@
 # on a stable pins/<name> bot branch (never auto-merged); where data is
 # missing or coupled pins cannot move together, it fails closed as a
 # manual-work issue. Deliberate proposals, never silent floating
-# upgrades. GITHUB_TOKEN-created PRs do not trigger CI by themselves,
-# so the proposer dispatches ci.yml + repro.yml (both already declare
-# workflow_dispatch) on the candidate branch — hence actions:write.
+# upgrades. Proposals require exact-source local qualification before integration;
+# maintenance never dispatches hosted product builds or fuzz/corpus replay.
 
 on:
   workflow_dispatch:
@@ -45,7 +44,6 @@ jobs:
       contents: write        # push pins/* bot branches
       issues: write          # manual-work issues for fail-closed pins
       pull-requests: write   # open/reuse the pin-update PRs
-      actions: write         # dispatch ci+repro on the candidate branch
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Propose pin-update PRs (plan/0042 F)

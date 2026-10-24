@@ -33,11 +33,7 @@ pub(in crate::workspace::consumer) fn admit_command(
         gripsack_ir::workspace::PlatformAbi::Musl => BinaryAbi::Musl,
         gripsack_ir::workspace::PlatformAbi::Darwin => BinaryAbi::Darwin,
     });
-    let payload = package
-        .producer
-        .payload
-        .canonicalize()
-        .map_err(operational)?;
+    let payload = package.payload().canonicalize().map_err(operational)?;
     let path = payload.join(selector);
     let canonical = path.canonicalize().map_err(|error| {
         gate(
@@ -133,7 +129,7 @@ fn admit_script(
         if !visited.insert(&owner.root) {
             continue;
         }
-        let payload = owner.producer.payload.canonicalize().map_err(operational)?;
+        let payload = owner.payload().canonicalize().map_err(operational)?;
         if canonical.starts_with(&payload) {
             context.admit_package_closure(owner, span)?;
             let (executable, metadata) = read_executable(&canonical, span)?;

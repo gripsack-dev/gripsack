@@ -61,6 +61,12 @@ pub fn capture<'a>(
     destination: &'a Path,
     expected: Option<&ObjectIdentity>,
 ) -> io::Result<CapturedPrior<'a>> {
+    // A logical child must never resolve through the predecessor symlink or
+    // through a replacement ancestor, even if the caller opened that path.
+    let (directory, name) = match super::directory::bound_parent(run, destination)? {
+        Some(bound) => bound,
+        None => (directory, name),
+    };
     if destination.to_str().is_none() {
         return Err(io::Error::other(format!(
             "destination {} is not valid UTF-8 — refusing to journal it (the object is untouched)",

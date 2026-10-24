@@ -36,6 +36,8 @@ pub(crate) fn exercise(s: &Sandbox, input: &[u8]) {
             &Generation {
                 number: GenerationId::new(number),
                 modules: BTreeMap::from([("m".to_owned(), state)]),
+                directory_transitions: Vec::new(),
+                migration: None,
             },
         )
         .unwrap();

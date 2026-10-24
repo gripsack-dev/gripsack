@@ -27,6 +27,9 @@ ASSUME PREV # TARGET
 
 \* This pilot has one destination and one recovery. Independence of
 \* destinations and repeated crashes require the separate M-V6 composition.
+\* OwnedDirectory / GeneralRecoveryProofs supply the hierarchy composition;
+\* DirectoryHierarchy supplies finite live/stable link-to-directory crash
+\* seams. A directory must never be encoded as another flat CONTENTS value.
 CONSTANTS CPRIOR, CDEPLOYED, CEDITED
 CONSTANT NONE               \* a model value: compares cleanly with records
 ABSENT == "absent"          \* the destination does not exist

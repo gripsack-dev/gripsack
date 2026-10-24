@@ -16,6 +16,7 @@ pub use environment::{EnvironmentContribution, StructuredEnvironment};
 mod inventory;
 mod publication;
 mod selection;
+mod wire;
 pub use current::{CommittedSelection, current, current_in, current_selection_in, flip};
 pub(crate) use inventory::admit_manifest_at;
 pub use inventory::{GenerationDirectory, admit_manifest, list, read_manifest};
@@ -162,95 +163,22 @@ pub struct ModuleState {
     pub build_closure: Vec<PathBuf>,
 }
 
+/// Exact retained predecessor needed to reverse an explicitly approved migration.
+/// This immutable recovery root is not discharged by a failed/terminal hook.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MigrationReceipt {
+    #[serde(with = "crate::generation_wire")]
+    pub predecessor: GenerationId,
+}
+
 /// A generation: an immutable record of one profile state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Generation {
     pub number: GenerationId,
     pub modules: BTreeMap<String, ModuleState>,
-}
-
-const WORKSPACE_MANIFEST_VERSION: u32 = 2;
-
-impl Serialize for Generation {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        #[derive(Serialize)]
-        struct Manifest<'a> {
-            #[serde(with = "crate::generation_wire")]
-            number: GenerationId,
-            modules: &'a BTreeMap<String, ModuleState>,
-        }
-        #[derive(Serialize)]
-        struct Versioned<'a> {
-            version: u32,
-            generation: Manifest<'a>,
-        }
-        let manifest = Manifest {
-            number: self.number,
-            modules: &self.modules,
-        };
-        if self
-            .modules
-            .values()
-            .flat_map(|state| &state.intents)
-            .any(|intent| intent.action.requires_v2())
-        {
-            Versioned {
-                version: WORKSPACE_MANIFEST_VERSION,
-                generation: manifest,
-            }
-            .serialize(serializer)
-        } else {
-            manifest.serialize(serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Generation {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Manifest {
-            #[serde(with = "crate::generation_wire")]
-            number: GenerationId,
-            modules: BTreeMap<String, ModuleState>,
-        }
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Versioned {
-            version: u32,
-            generation: Manifest,
-        }
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Wire {
-            Versioned(Versioned),
-            Legacy(Manifest),
-        }
-        let (manifest, current) = match Wire::deserialize(deserializer)? {
-            Wire::Versioned(value) if value.version == WORKSPACE_MANIFEST_VERSION => {
-                (value.generation, true)
-            }
-            Wire::Versioned(_) => {
-                return Err(serde::de::Error::custom("unsupported manifest version"));
-            }
-            Wire::Legacy(value) => (value, false),
-        };
-        if !current
-            && manifest
-                .modules
-                .values()
-                .flat_map(|state| &state.intents)
-                .any(|intent| intent.action.requires_v2())
-        {
-            return Err(serde::de::Error::custom(
-                "workspace actions require manifest version 2",
-            ));
-        }
-        Ok(Self {
-            number: manifest.number,
-            modules: manifest.modules,
-        })
-    }
+    pub directory_transitions: Vec<crate::journal::directory::DirectoryTransition>,
+    pub migration: Option<MigrationReceipt>,
 }
 
 #[cfg(test)]
@@ -287,6 +215,8 @@ mod tests {
         Generation {
             number: GenerationId::new(n),
             modules,
+            directory_transitions: Vec::new(),
+            migration: None,
         }
     }
 
@@ -443,7 +373,7 @@ mod tests {
         );
         assert!(serde_json::from_value::<Generation>(wire["generation"].clone()).is_err());
         let mut unsupported = wire.clone();
-        unsupported["version"] = 3.into();
+        unsupported["version"] = u32::MAX.into();
         assert!(serde_json::from_value::<Generation>(unsupported).is_err());
         let mut null = wire;
         null["version"] = serde_json::Value::Null;

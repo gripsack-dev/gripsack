@@ -74,17 +74,15 @@ def test_typo_field_reports_declaration_site_on_both_surfaces(sandbox):
     assert "frontend eval failed" not in terminal.stderr
     assert not (sandbox / ".config/demo/settings.conf").exists()
 
-def test_treefiles_expands_a_captured_repo_directory_into_admitted_files(sandbox):
-    """A1-11: bounded eval-time tree expansion — explicit per-file v5
-    entries with stable enumeration, admitted by `grip check` without
-    any executor or home mutation."""
+def test_repotree_declares_captured_selection_without_home_mutation(sandbox):
+    """Core-side captured discovery accepts internal aliases, never escapes."""
     repo = write_repo(
         sandbox,
         "tree",
-        'import { defineWorkspace, workspace, profile, treeFiles } from "@gripsack/core";\n'
+        'import { defineWorkspace, workspace, profile, file, repoTree, identity, trackedCopyTo } from "@gripsack/core";\n'
         "export default defineWorkspace(() => workspace({ outputs: [\n"
         '  profile("dotfiles", { files: [\n'
-        '    ...treeFiles("configs", "~/.config/demo", { exclude: ["skipped"] }),\n'
+        '    file({ source: repoTree("configs", { exclude: ["skipped"] }), content: identity(), destination: trackedCopyTo("~/.config/demo") }),\n'
         "  ] }),\n"
         "] }));\n",
     )
@@ -98,12 +96,13 @@ def test_treefiles_expands_a_captured_repo_directory_into_admitted_files(sandbox
     assert "dotfiles" in terminal.stdout
     assert not (sandbox / ".config/demo").exists()
 
-    # a repo symlink inside the captured tree is an authoring failure,
-    # never followed out of the repo
-    os.symlink(repo / "configs" / "a.conf", repo / "configs" / "leak.conf")
-    hostile = grip("check", cwd=repo)
+    os.symlink("a.conf", repo / "configs" / "alias.conf")
+    admitted = grip("plan", cwd=repo)
+    assert admitted.returncode == 0, admitted.stderr
+    os.symlink("/etc/passwd", repo / "configs" / "leak.conf")
+    hostile = grip("plan", cwd=repo)
     assert hostile.returncode != 0
-    assert "not a regular file or directory" in hostile.stderr
+    assert not (sandbox / ".config/demo").exists()
 
 
 def test_wrong_kind_reference_reports_both_sites_on_both_surfaces(sandbox):

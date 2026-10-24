@@ -182,6 +182,7 @@ pub(in crate::workspace) struct EnvironmentPlan {
     declared_library_path: Vec<PathBuf>,
     closure: BTreeSet<PathBuf>,
     launchers: BTreeMap<String, std::sync::Arc<super::launcher::Binding>>,
+    packages: Vec<std::sync::Arc<Package>>,
 }
 impl EnvironmentPlan {
     pub fn admit(
@@ -197,9 +198,11 @@ impl EnvironmentPlan {
         let mut closure = BTreeSet::new();
         let mut bytecode = None;
         let mut launchers = BTreeMap::new();
+        let mut packages = Vec::new();
         for name in &declaration.packages {
             let output = outputs[name.as_str()];
             let package = realization.packages[name.as_str()].as_ref();
+            packages.push(std::sync::Arc::clone(&realization.packages[name.as_str()]));
             bytecode = context
                 .admit_package_closure(package, output.span())?
                 .or(bytecode);
@@ -245,6 +248,30 @@ impl EnvironmentPlan {
             .values()
             .find_map(|command| command.gnu_loader.as_ref());
         for (key, argument) in &declaration.env {
+            match argument {
+                WorkspaceArg::Artifact { output, .. } => {
+                    if let Some(artifact) = realization.recipes.get(output.as_str()) {
+                        closure.extend(artifact.retention.iter().cloned());
+                    } else if let Some(package) = realization.packages.get(output.as_str()) {
+                        package.retain_into(&mut closure);
+                    }
+                }
+                WorkspaceArg::Input { input } => {
+                    if let Some(path) = realization.inputs.get(input.as_str()) {
+                        let root = path
+                            .ancestors()
+                            .find(|path| {
+                                gripsack_store::paths::validate_store_root(context.home, path)
+                                    .is_ok()
+                            })
+                            .ok_or_else(|| {
+                                failure("environment input has no retained store root")
+                            })?;
+                        closure.insert(root.to_path_buf());
+                    }
+                }
+                _ => {}
+            }
             if let Some(loader) = gnu_loader {
                 loader
                     .check_environment_key(std::ffi::OsStr::new(key))
@@ -275,6 +302,7 @@ impl EnvironmentPlan {
             declared_library_path,
             closure,
             launchers,
+            packages,
         })
     }
 
@@ -287,6 +315,7 @@ impl EnvironmentPlan {
             declared_library_path: Vec::new(),
             closure: BTreeSet::new(),
             launchers: BTreeMap::new(),
+            packages: Vec::new(),
         }
     }
 
@@ -346,6 +375,25 @@ impl EnvironmentPlan {
             ));
         }
         Ok(variables)
+    }
+
+    /// Explicit profile launchers freeze activation values and the complete
+    /// receipt graph, unlike historical projections that grant ambient names.
+    pub(in crate::workspace) fn write_managed_commands(
+        &self,
+        home: &Path,
+        directory: &Path,
+        names: &[String],
+    ) -> Result<(), ExecError> {
+        super::launcher::ProfileEnvironment {
+            commands: &self.commands,
+            packages: &self.packages,
+            entries: &self.entries,
+            search_directories: &self.declared_path,
+            library_directories: &self.declared_library_path,
+            retention: &self.closure,
+        }
+        .write(home, directory, names)
     }
 
     /// Shared projection preserves the selected program's argv0, including a
@@ -576,7 +624,7 @@ pub(super) fn artifact_payload(name: &str, realization: &Realization) -> Option<
     realization
         .packages
         .get(name)
-        .map(|package| package.producer.payload.clone())
+        .map(|package| package.payload().to_path_buf())
 }
 
 fn absolute_directories(value: &str, span: &Span, key: &str) -> Result<Vec<PathBuf>, ExecError> {

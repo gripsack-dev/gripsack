@@ -5,6 +5,7 @@
 //! (user config `~/.config/gripsack/config.toml`); the current
 //! generation is never touched.
 
+mod directory_roots;
 mod inventory;
 #[cfg(test)]
 mod root_model;
@@ -92,10 +93,11 @@ pub fn gc(
     // or it under-reports collectable paths). The kernel (0046): pruned
     // generations come from the inventory and never name the current
     // generation — proved, not reviewed.
-    let pruned: std::collections::BTreeSet<store::GenerationId> =
+    let mut pruned: std::collections::BTreeSet<store::GenerationId> =
         gripsack_policy::retention::plan_prune(generations, current, keep)
             .into_iter()
             .collect();
+    let manifests = directory_roots::admit(&generation_directory, &home_cap, home, &mut pruned)?;
     report.generations_removed = pruned.iter().copied().collect();
 
     // Root computation (the trusted adapter around the proven deletion
@@ -103,17 +105,7 @@ pub fn gc(
     // closures, and their prior blobs. Completeness of these roots at
     // production time is a separate obligation (handoff §5.3).
     let mut referenced: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for n in generations.as_slice() {
-        // fail CLOSED: an unparseable manifest must abort gc — dropping
-        // its pins would collect referenced store paths and leave
-        // dangling symlinks across the user's home (review finding G)
-        let manifest = generation_directory
-            .admit_manifest(&home_cap, home, *n)
-            .map_err(|e| ExecError::Step {
-                module: format!("generation {n}"),
-                step: "gc".into(),
-                detail: format!("manifest admission failed — refusing to collect: {e}"),
-            })?;
+    for (n, manifest) in &manifests {
         if pruned.contains(n) {
             continue;
         }
@@ -148,6 +140,9 @@ pub fn gc(
     // before the first deletion. Effects use the very same pinned directories.
     if !dry_run {
         generation_directory.prune(&report.generations_removed)?;
+        // Receipt namespaces are retired only AFTER their generations are
+        // durably pruned; a crash must not strand a still-retained target.
+        directory_roots::retire(&manifests, &pruned)?;
     }
     store_plan.collect(dry_run, &mut report)?;
     prior_plan.collect(dry_run, &mut report)?;
@@ -238,6 +233,8 @@ mod tests {
         store::Generation {
             number: GenerationId::new(n),
             modules,
+            directory_transitions: Vec::new(),
+            migration: None,
         }
     }
 

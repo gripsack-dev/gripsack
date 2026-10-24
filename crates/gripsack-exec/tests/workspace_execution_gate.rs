@@ -57,6 +57,7 @@ fn every_direct_executor_entry_rejects_before_home_mutation() {
             on_progress: None,
             take_over: false,
             take_over_entries: None,
+            migrate_from: None,
             jobs: Some(1),
             fetch: Default::default(),
             home_dir: Default::default(),
@@ -77,6 +78,7 @@ fn every_direct_executor_entry_rejects_before_home_mutation() {
             &gripsack_exec::lockfile::Lockfile::default(),
             Default::default(),
             &[],
+            None,
         );
         assert!(
             matches!(&ops, Err(ExecError::Gate(d)) if d.code == codes::WORKSPACE_EXEC_UNAVAILABLE)

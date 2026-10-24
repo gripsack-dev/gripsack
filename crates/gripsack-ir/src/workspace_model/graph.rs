@@ -214,7 +214,7 @@ impl<'a> Collector<'a> {
                 role: GraphRole::Runtime, command: None, selector: Some(selector), target: None }),
             Some(WorkspaceSource::Tree { output, .. }) => self.edge(edges, output,
                 kind_names(Kinds::Artifact), &file.span, GraphRole::Runtime, None),
-            Some(WorkspaceSource::RepoFile { .. }) | None => {}
+            Some(WorkspaceSource::RepoFile { .. } | WorkspaceSource::RepoTree { .. }) | None => {}
         }
         let ghost initial = views(edges@);
         let mut i = 0;

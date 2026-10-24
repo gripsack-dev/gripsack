@@ -4,7 +4,7 @@
   "profile": "linux-x64-trusted-pilot",
   "platform": "linux-x86_64",
   "policy": "PLATFORM-LINUX-X64-2026-10-09",
-  "version": "0.46.1",
+  "version": "0.47.0",
   "gates": [
     {
       "id": "inventory",
@@ -102,8 +102,8 @@
       "timeout_seconds": 0,
       "inputs": [],
       "outputs": [
-        "dist/grip-buildkit-bridge-0.46.1-x86_64-unknown-linux-musl",
-        "dist/grip-buildkit-bridge-0.46.1-x86_64-unknown-linux-musl.sha256"
+        "dist/grip-buildkit-bridge-0.47.0-x86_64-unknown-linux-musl",
+        "dist/grip-buildkit-bridge-0.47.0-x86_64-unknown-linux-musl.sha256"
       ]
     },
     {
@@ -131,12 +131,12 @@
       "timeout_seconds": 0,
       "inputs": [],
       "outputs": [
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.sha256",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.manifest.json",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.LICENSE-pixi",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.LICENSE-rattler",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.sha256",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.manifest.json",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.LICENSE-pixi",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.LICENSE-rattler",
         "local-ci/images/local-helper.json"
       ]
     },
@@ -157,8 +157,8 @@
         "local-ci/audit.json"
       ],
       "outputs": [
-        "dist/gripsack-0.46.1-x86_64-unknown-linux-musl.tar.gz",
-        "dist/gripsack-0.46.1-x86_64-unknown-linux-musl.tar.gz.sha256",
+        "dist/gripsack-0.47.0-x86_64-unknown-linux-musl.tar.gz",
+        "dist/gripsack-0.47.0-x86_64-unknown-linux-musl.tar.gz.sha256",
         "local-ci/core-artifact.json"
       ]
     },
@@ -189,7 +189,7 @@
         "local-ci/images/local-tools.json"
       ],
       "outputs": [
-        "dist/gripsack-core-0.46.0.tgz"
+        "dist/gripsack-core-0.47.0.tgz"
       ]
     },
     {
@@ -221,17 +221,17 @@
         "local-ci/external/site.bundle",
         "local-ci/external/example.bundle",
         "local-ci/external/sources.json",
-        "dist/gripsack-0.46.1-x86_64-unknown-linux-musl.tar.gz",
-        "dist/gripsack-0.46.1-x86_64-unknown-linux-musl.tar.gz.sha256",
-        "dist/grip-buildkit-bridge-0.46.1-x86_64-unknown-linux-musl",
-        "dist/grip-buildkit-bridge-0.46.1-x86_64-unknown-linux-musl.sha256",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.sha256",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.manifest.json",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.LICENSE-pixi",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
-        "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.LICENSE-rattler",
-        "dist/gripsack-core-0.46.0.tgz"
+        "dist/gripsack-0.47.0-x86_64-unknown-linux-musl.tar.gz",
+        "dist/gripsack-0.47.0-x86_64-unknown-linux-musl.tar.gz.sha256",
+        "dist/grip-buildkit-bridge-0.47.0-x86_64-unknown-linux-musl",
+        "dist/grip-buildkit-bridge-0.47.0-x86_64-unknown-linux-musl.sha256",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.sha256",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.manifest.json",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.LICENSE-pixi",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
+        "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.LICENSE-rattler",
+        "dist/gripsack-core-0.47.0.tgz"
       ],
       "outputs": [
         "local-ci/consumers.json",
@@ -404,55 +404,71 @@
         "local-ci/persistence/logs.tar.gz",
         "local-ci/persistence/dispatch.json"
       ]
+    },
+    {
+      "id": "publication-packages",
+      "argv": ["python3", "scripts/release_prepare.py", "gate"],
+      "timeout_seconds": 0,
+      "inputs": [
+        "local-ci/images/local-tools.tar",
+        "local-ci/images/local-tools.json",
+        "dist/gripsack-core-0.47.0.tgz"
+      ],
+      "outputs": [
+        "local-ci/publication/packages.tar.gz",
+        "local-ci/publication/index.json",
+        "dist/install.sh"
+      ]
     }
   ],
   "artifacts": [
-    "dist/gripsack-0.46.1-x86_64-unknown-linux-musl.tar.gz",
-    "dist/gripsack-0.46.1-x86_64-unknown-linux-musl.tar.gz.sha256",
-    "dist/grip-buildkit-bridge-0.46.1-x86_64-unknown-linux-musl",
-    "dist/grip-buildkit-bridge-0.46.1-x86_64-unknown-linux-musl.sha256",
-    "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl",
-    "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.sha256",
-    "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.manifest.json",
-    "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.LICENSE-pixi",
-    "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
-    "dist/gripsack-conda-0.46.1-x86_64-unknown-linux-musl.LICENSE-rattler",
-    "dist/gripsack-core-0.46.0.tgz"
+    "dist/gripsack-0.47.0-x86_64-unknown-linux-musl.tar.gz",
+    "dist/gripsack-0.47.0-x86_64-unknown-linux-musl.tar.gz.sha256",
+    "dist/grip-buildkit-bridge-0.47.0-x86_64-unknown-linux-musl",
+    "dist/grip-buildkit-bridge-0.47.0-x86_64-unknown-linux-musl.sha256",
+    "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl",
+    "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.sha256",
+    "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.manifest.json",
+    "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.LICENSE-pixi",
+    "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
+    "dist/gripsack-conda-0.47.0-x86_64-unknown-linux-musl.LICENSE-rattler",
+    "dist/gripsack-core-0.47.0.tgz",
+    "dist/install.sh"
   ],
   "external_inputs": {
     "repositories": {
       "site": {
         "url": "https://github.com/gripsack-dev/gripsack-dev.github.io.git",
-        "commit": "ea3bba667827bee71b27798015510fdae3f19879"
+        "commit": "0a7dfcdb536ba582788255f384f5a9158e3ea250"
       },
       "example": {
         "url": "https://github.com/gripsack-dev/example-env-typescript.git",
-        "commit": "4d6590d8a1326bbd63562dd428651fd796a12989"
+        "commit": "23a2ac452249c3d4ed5c169110bf5cc088dd0a3f"
       }
     },
     "sdk": {
       "name": "@gripsack/core",
-      "version": "0.46.0"
+      "version": "0.47.0"
     },
     "core": {
       "crate": "gripsack",
       "binary": "grip",
-      "version": "0.46.1",
+      "version": "0.47.0",
       "target": "x86_64-unknown-linux-musl"
     },
     "helper": {
       "crate": "gripsack-conda",
-      "version": "0.46.1",
+      "version": "0.47.0",
       "target": "x86_64-unknown-linux-musl"
     },
     "bridge": {
       "binary": "grip-buildkit-bridge",
-      "version": "0.46.1",
+      "version": "0.47.0",
       "target": "x86_64-unknown-linux-musl"
     },
-    "ir_version": 7,
+    "ir_version": 8,
     "fuzz_exclusion": "REL-FUZZ-2026-09-27",
-    "authority": "local nonpublishing reviewed-code qualification; ordinary Actions remain authoritative",
+    "authority": "LOCAL-QUALIFICATION-AUTHORITY-2026-10-23",
     "buildkit_cache": "retained; build output records cache hits, not fresh RUN execution",
     "persistence_budget": {
       "partitions": 96,

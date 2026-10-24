@@ -171,6 +171,7 @@ pub fn inspect_known(
                 &gripsack_store::gripsack_home(),
                 &[],
                 limits,
+                None,
             )
             .map(|native| native.map_or_else(Vec::new, |native| native.layout_evidence()));
         }

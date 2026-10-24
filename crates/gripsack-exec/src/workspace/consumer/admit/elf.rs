@@ -38,17 +38,27 @@ pub(super) fn admit(
             "ELF audit/filter dependencies are outside the admitted DT_NEEDED closure",
         ));
     }
-    if metadata.interpreter.is_none()
-        && metadata.needed_libraries.is_empty()
-        && metadata.rpaths.is_empty()
-        && metadata.runpaths.is_empty()
-    {
+    // ET_DYN also describes static PIE. With neither a loader nor dependencies
+    // (and no audit/filter extensions above), path tags cannot select objects.
+    // Keep them inert rather than requiring a loader ABI for a static image.
+    if metadata.interpreter.is_none() && metadata.needed_libraries.is_empty() {
         return Ok(Runtime::default());
     }
     let abi = declared_abi.ok_or_else(|| {
         gate(
             span,
-            "dynamic executable has no declared ABI; an omitted ABI is not a wildcard",
+            format!(
+                "dynamic executable has no declared ABI; an omitted ABI is not a wildcard; \
+                 ELF evidence: object={:?}, PT_INTERP={:?}, DT_NEEDED={:?}, \
+                 DT_RPATH={:?}, DT_RUNPATH={:?}; declare the target ABI matching the \
+                 actual loader, not the archive filename; ABI selection does not grant \
+                 runtime libraries",
+                metadata.object,
+                metadata.interpreter,
+                metadata.needed_libraries,
+                metadata.rpaths,
+                metadata.runpaths,
+            ),
         )
     })?;
     let loader = platform_loader(host.os, host.arch, abi)
@@ -585,7 +595,16 @@ fn resolve_library(
     }
     Err(gate(
         span,
-        format!("needed library {name:?} is absent from the retained runtime closure"),
+        format!(
+            "needed library {name:?} is absent from the retained runtime closure; \
+             include it in the package payload or an explicit runtime package edge \
+             (lib/ or lib64/), or declare a reviewed hostRuntime.libraryDirectories root \
+             containing it; host roots grant mutable directory authority and are \
+             re-admitted on retained invocation; abi:\"gnu\" selects the loader, not \
+             ambient libraries; libm needs declared OS-runtime authority, while \
+             libgcc_s, libstdc++ and X11 are outside the narrow OS set and \
+             require explicit closure authority"
+        ),
     ))
 }
 fn origin_paths(

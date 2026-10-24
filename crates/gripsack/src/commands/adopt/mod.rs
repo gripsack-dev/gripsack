@@ -329,6 +329,7 @@ fn finish_adoption(
         palette,
         &[],
         outcome.fetch.limits(),
+        None,
     ) {
         Ok(section) => println!("{section}"),
         Err(error) => {
@@ -368,6 +369,8 @@ fn finish_adoption(
                 &store::Generation {
                     number: store::GenerationId::new(0),
                     modules: Default::default(),
+                    directory_transitions: Vec::new(),
+                    migration: None,
                 },
             )
         })

@@ -425,6 +425,25 @@ fn preserved_drift_never_authorizes_an_update() {
             for prev in [None, Some(("1", false)), Some(("3", true))] {
                 for take_over in [false, true] {
                     let plan = plan_copy(desired, live, prev, take_over);
+                    let intact = live.is_some_and(|live| {
+                        prev.is_some_and(|(written, preserved)| !preserved && live == written)
+                    });
+                    assert_eq!(
+                        plan == CopyPlan::TakeOver,
+                        take_over && live.is_some() && !intact,
+                        "acquisition scope: desired={desired} live={live:?} prev={prev:?}"
+                    );
+                    if intact {
+                        assert_eq!(
+                            plan,
+                            if live == Some(desired) {
+                                CopyPlan::Satisfied
+                            } else {
+                                CopyPlan::Update
+                            },
+                            "intact lineage must survive take-over={take_over}"
+                        );
+                    }
                     // a preserved-drift record may only yield Preserve
                     // (or Satisfied, when the user converged by hand)
                     if prev.is_some_and(|(_, p)| p) {

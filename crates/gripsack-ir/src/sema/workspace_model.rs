@@ -1,5 +1,7 @@
 //! Current-wire admission. Historical readers retain their own wire meaning;
 //! common target/name-index/edge-role policy remains one production kernel.
+mod ergonomics;
+mod file_checks;
 mod graph;
 mod image;
 mod values;
@@ -41,6 +43,17 @@ pub(super) fn check(workspace: &WorkspaceCatalog, diagnostics: &mut Vec<Diagnost
                 .with_label(Some(previous.span().clone()), "first declaration")
                 .with_label(Some(output.span().clone()), "conflicting declaration"),
             );
+        }
+    }
+    for output in &workspace.outputs {
+        match output {
+            WorkspaceOutput::Package(package) => {
+                ergonomics::package(package, &catalog, diagnostics)
+            }
+            WorkspaceOutput::Profile(profile) => {
+                ergonomics::profile(profile, &catalog, diagnostics)
+            }
+            _ => {}
         }
     }
     let mut inputs = BTreeMap::new();

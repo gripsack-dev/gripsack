@@ -127,6 +127,6 @@ def test_task_declared_path_cannot_shadow_selected_environment_commands(sandbox)
     ''')
     updated = grip("update", "tools", cwd=repo)
     assert updated.returncode == 0, updated.stdout + updated.stderr
-    result = grip("task", "nested", cwd=repo)
+    result = grip("task", "run", "nested", cwd=repo)
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout == "admitted-probe"

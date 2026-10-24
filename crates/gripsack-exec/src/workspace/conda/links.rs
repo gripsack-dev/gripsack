@@ -28,6 +28,66 @@ pub(super) fn directories(
     Ok(directories)
 }
 
+pub(super) enum Entry<'a> {
+    Symlink(&'a str),
+    Directory,
+    File,
+}
+
+/// Component-wise lookup shared by installed-link validation and archive
+/// lifecycle admission. `follow_final = false` models symlink_metadata:
+/// the existence of a final dangling symlink still counts.
+pub(super) fn resolve<'a>(
+    path: &str,
+    prefix: Option<&str>,
+    follow_final: bool,
+    lookup: impl Fn(&str) -> Option<Entry<'a>>,
+) -> Result<bool, String> {
+    let mut pending: VecDeque<String> = path.split('/').map(str::to_owned).collect();
+    let mut resolved = Vec::new();
+    let mut traversals = 0;
+    while let Some(component) = pending.pop_front() {
+        match component.as_str() {
+            "" | "." => continue,
+            ".." => {
+                if resolved.pop().is_none() {
+                    return Err(format!("symlink {path:?} escapes its prefix"));
+                }
+                continue;
+            }
+            _ => {}
+        }
+        resolved.push(component);
+        let candidate = resolved.join("/");
+        match lookup(&candidate) {
+            Some(Entry::Symlink(_)) if pending.is_empty() && !follow_final => return Ok(true),
+            Some(Entry::Symlink(target)) => {
+                traversals += 1;
+                if traversals > 40 {
+                    return Err(format!("symlink {path:?} cycles or exceeds 40 traversals"));
+                }
+                resolved.pop();
+                let target = if target.starts_with('/') {
+                    resolved.clear();
+                    prefix
+                        .and_then(|prefix| target.strip_prefix(prefix))
+                        .and_then(|rest| rest.strip_prefix('/'))
+                        .ok_or_else(|| format!("symlink {path:?} escapes its final prefix"))?
+                } else {
+                    target
+                };
+                for part in target.split('/').rev() {
+                    pending.push_front(part.into());
+                }
+            }
+            Some(Entry::Directory) => {}
+            Some(Entry::File) if pending.is_empty() => {}
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
+}
+
 pub(super) fn verify(
     expected: &BTreeMap<String, ExpectedFile>,
     directories: &BTreeSet<String>,
@@ -37,52 +97,19 @@ pub(super) fn verify(
         if !matches!(file.content, Content::Symlink(_)) {
             continue;
         }
-        let mut pending: VecDeque<String> = path.split('/').map(str::to_owned).collect();
-        let mut resolved = Vec::new();
-        let mut traversals = 0;
-        while let Some(component) = pending.pop_front() {
-            match component.as_str() {
-                "" | "." => continue,
-                ".." => {
-                    if resolved.pop().is_none() {
-                        return Err(format!("symlink {path:?} escapes its prefix"));
-                    }
-                    continue;
-                }
-                _ => {}
+        let exists = resolve(path, Some(prefix), true, |candidate| {
+            match expected.get(candidate).map(|file| &file.content) {
+                Some(Content::Symlink(target)) => Some(Entry::Symlink(target)),
+                Some(Content::Directory) => Some(Entry::Directory),
+                Some(_) => Some(Entry::File),
+                None if directories.contains(candidate) => Some(Entry::Directory),
+                None => None,
             }
-            resolved.push(component);
-            let candidate = resolved.join("/");
-            match expected.get(&candidate).map(|file| &file.content) {
-                Some(Content::Symlink(target)) => {
-                    traversals += 1;
-                    // Match the Unix kernel's bounded link traversal, rejecting cycles.
-                    if traversals > 40 {
-                        return Err(format!("symlink {path:?} cycles or exceeds 40 traversals"));
-                    }
-                    resolved.pop();
-                    let target = if target.starts_with('/') {
-                        resolved.clear();
-                        target
-                            .strip_prefix(prefix)
-                            .and_then(|rest| rest.strip_prefix('/'))
-                            .ok_or_else(|| format!("symlink {path:?} escapes its final prefix"))?
-                    } else {
-                        target.as_str()
-                    };
-                    for part in target.split('/').rev() {
-                        pending.push_front(part.into());
-                    }
-                }
-                Some(Content::Directory) => {}
-                Some(_) if pending.is_empty() => {}
-                None if directories.contains(&candidate) => {}
-                _ => {
-                    return Err(format!(
-                        "symlink {path:?} resolves through missing/non-directory {candidate:?}"
-                    ));
-                }
-            }
+        })?;
+        if !exists {
+            return Err(format!(
+                "symlink {path:?} resolves through missing/non-directory path"
+            ));
         }
     }
     Ok(())

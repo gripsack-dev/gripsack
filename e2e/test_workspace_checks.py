@@ -35,7 +35,7 @@ def test_checks_execute_after_successful_task_every_invocation(sandbox):
     assert static.returncode == 0, static.stdout + static.stderr
     assert not effect.exists()
     for count in (1, 2):
-        invoked = grip("task", "invoke", cwd=repo)
+        invoked = grip("task", "run", "invoke", cwd=repo)
         assert invoked.returncode == 0, invoked.stdout + invoked.stderr
         assert effect.read_text().splitlines() == ["task", "check-one", "check-two"] * count
     assert not (sandbox / ".local/share/gripsack/current").exists()
@@ -44,7 +44,7 @@ def test_checks_execute_after_successful_task_every_invocation(sandbox):
 def test_failed_task_does_not_run_postconditions(sandbox):
     repo, effect = sandbox / "checks", sandbox / "effects"
     declare(repo, effect, task_status=7)
-    invoked = grip("task", "invoke", cwd=repo)
+    invoked = grip("task", "run", "invoke", cwd=repo)
     assert invoked.returncode == 7, invoked.stdout + invoked.stderr
     assert effect.read_text().splitlines() == ["task"]
 
@@ -53,7 +53,7 @@ def test_failed_check_stops_later_checks_and_is_not_cached(sandbox):
     repo, effect = sandbox / "checks", sandbox / "effects"
     declare(repo, effect, check_status=9)
     for count in (1, 2):
-        invoked = grip("task", "invoke", cwd=repo)
+        invoked = grip("task", "run", "invoke", cwd=repo)
         assert invoked.returncode == 9, invoked.stdout + invoked.stderr
         assert effect.read_text().splitlines() == ["task", "check-one"] * count
     assert not (sandbox / ".local/share/gripsack/current").exists()
@@ -80,9 +80,9 @@ def test_task_check_source_path_binds_its_immutable_package_subject(sandbox):
     ]}));\n''')
     updated = grip("update", "data", cwd=repo)
     assert updated.returncode == 0, updated.stdout + updated.stderr
-    passed = grip("task", "invoke", cwd=repo)
+    passed = grip("task", "run", "invoke", cwd=repo)
     assert passed.returncode == 0, passed.stdout + passed.stderr
     expected.write_bytes(b"different\n")
-    failed = grip("task", "invoke", cwd=repo)
+    failed = grip("task", "run", "invoke", cwd=repo)
     assert failed.returncode == 1, failed.stdout + failed.stderr
     assert not (sandbox / ".local/share/gripsack/current").exists()

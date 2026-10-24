@@ -1,257 +1,129 @@
 name: release-core
+run-name: release-request-${{ inputs.request_id }}
 
 on:
-  # Dispatch against an existing core-v* tag when its commit deliberately
-  # skipped automatic CI. The tag and its source stay immutable.
   workflow_dispatch:
-  push:
-    tags: ["core-v*"]
-permissions:
-  contents: write
-  # artifact attestations (plan/0020 §5.8): the release tarballs get
-  # a signed provenance statement GitHub can verify client-side
-  id-token: write
-  attestations: write
+    inputs:
+      request_id:
+        description: Immutable release request SHA256
+        required: true
+        type: string
+      bundle_url:
+        description: HTTPS location of the nominated immutable local bundle
+        required: true
+        type: string
+      bundle_sha256:
+        description: Exact transport bundle SHA256
+        required: true
+        type: string
+      manifest_sha256:
+        description: Exact release manifest SHA256
+        required: true
+        type: string
+      source_commit:
+        description: Qualified source commit; dispatch on its existing core tag
+        required: true
+        type: string
+      tag:
+        description: Existing immutable core-vX.Y.Z tag
+        required: true
+        type: string
+      candidate_id:
+        description: Source-bound local qualification candidate SHA256
+        required: true
+        type: string
 
-# Two core tags cut at once (0.4.1 + 0.5.0) raced the homebrew-tap
-# push and one lost — serialize; the newer tag waits.
+permissions:
+  contents: read
+
 concurrency:
   group: release-core
   cancel-in-progress: false
 
 jobs:
-  conda:
-    uses: ./.github/workflows/qualify-conda-helper.yml
-    with:
-      check_pins: true
-
-  # The BuildKit bridge helper the pinned core provisions lazily:
-  # deterministic per-platform artifacts from the pinned Go image,
-  # verified byte-exact against the committed pins the core embeds
-  # (crates/gripsack-fetch/src/bridge_pins.rs). Drift — or an empty pin
-  # table — fails HERE, before any core binary is built: a release can
-  # never pair core bytes with unverified helper bytes.
-  bridge:
+  signing-publishing:
     runs-on: ubuntu-24.04
+    # Owner approval applies to the immutable nomination, not to a hosted build.
+    environment: release
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CANDIDATE_ROOT: ${{ runner.temp }}/gripsack-candidate
+      CANDIDATE_ARCHIVE: ${{ runner.temp }}/gripsack-candidate.tar.gz
+      PREDICATE_PATH: ${{ runner.temp }}/gripsack-predicate.json
+      PUBLICATION_RESULT: ${{ runner.temp }}/gripsack-publication.json
+    permissions:
+      contents: write
+      statuses: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Build and pin-check helper artifacts
-        run: VERSION="${GITHUB_REF_NAME#core-v}" tools/buildkit-bridge/dist.sh --check --dist dist
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: dist-bridge
-          path: dist/*
-  # REL-X64-FIRST-0460-2026-10-08: this release qualifies Linux x86_64 only.
-  # ARM artifacts remain unavailable until a subsequent native qualification.
-  build:
-    needs: [bridge, conda]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04 }
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      # plan/0022: shipped binaries embed their dependency tree
-      # (cargo-auditable); the verify step below audits the SHIPPED
-      # binary itself (cargo audit bin), proving the embed landed on
-      # the exact artifact users download. Prebuilt installs only —
-      # from-source tool builds break on new toolchains (audit.yml's
-      # lesson).
-      - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
-        with:
-          tool: cargo-audit
-      - name: Build (linux musl, docker)
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install byte-pinned attestation verifier
+        shell: bash
         run: |
-          docker compose run --build --rm \
-            -e "VERSION=${GITHUB_REF_NAME#core-v}" \
-            -e "TARGET=${{ matrix.target }}" release
-
-      - name: "Verify binary (linux: must be fully static)"
-        run: |
-          cd dist
-          sha256sum -c gripsack-*.tar.gz.sha256
-          tmp="$(mktemp -d)"
-          tar -xzf gripsack-*-${{ matrix.target }}.tar.gz -C "$tmp"
-          bin="$(find "$tmp" -type f -name grip | head -1)"
-          file "$bin"
-          python3 ../scripts/check_native_binary.py "$bin"
-          "$bin" --version
-          # fails the release if the SBOM embed is missing or the
-          # shipped tree hits an advisory (plan/0022 §2)
-          cargo audit bin "$bin"
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: dist-${{ matrix.target }}
-          path: dist/*
-
-  release:
-    needs: build
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Assemble artifacts
-        run: |
-          mkdir -p dist
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: dist-*
-          path: dist
-          merge-multiple: true
-
-      - name: Verify exact Linux release inventory and checksums
-        run: |
-          python3 - <<'PY'
-          import hashlib, json, os
-          from pathlib import Path
-          version = os.environ["GITHUB_REF_NAME"].removeprefix("core-v")
-          targets = {"x86_64-unknown-linux-musl"}
-          dist = Path("dist")
-          core = {f"gripsack-{version}-{target}.tar.gz" for target in targets}
-          bridge = {f"grip-buildkit-bridge-{version}-{target}" for target in targets}
-          conda = {f"gripsack-conda-{version}-{target}" for target in targets}
-          payloads = core | bridge | conda
-          expected = payloads | {f"{name}.sha256" for name in payloads}
-          expected |= {f"{name}.{suffix}" for name in conda
-                       for suffix in ("manifest.json", "LICENSE-pixi", "LICENSE-UV-MIT", "LICENSE-rattler")}
-          actual = {path.name for path in dist.iterdir()}
-          if actual != expected or any(not path.is_file() for path in dist.iterdir()):
-              raise SystemExit(f"Release assets differ: missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}")
-          for name in sorted(payloads):
-              digest = hashlib.sha256((dist / name).read_bytes()).hexdigest()
-              if (dist / f"{name}.sha256").read_text() != f"{digest}  {name}\n":
-                  raise SystemExit(f"Release sidecar mismatch: {name}")
-          for name in sorted(conda):
-              digest = hashlib.sha256((dist / name).read_bytes()).hexdigest()
-              manifest = json.loads((dist / f"{name}.manifest.json").read_text())
-              if manifest["asset"] != name or manifest["sha256"] != digest or manifest["reproducible_rounds"] != 2:
-                  raise SystemExit(f"Conda measurement manifest mismatch: {name}")
-              for suffix, source in (
-                  ("LICENSE-pixi", "pixi_git/LICENSE"),
-                  ("LICENSE-UV-MIT", "pixi_git/LICENSE-UV-MIT"),
-                  ("LICENSE-rattler", "rattler_package_streaming/LICENSE"),
-              ):
-                  notice = f"{name}.{suffix}"
-                  contents = (dist / notice).read_bytes()
-                  if contents != (Path("tools/conda-helper/vendor") / source).read_bytes() or manifest["licenses"].get(notice) != hashlib.sha256(contents).hexdigest():
-                      raise SystemExit(f"Conda license notice mismatch: {notice}")
-          PY
-
-      # signed build provenance for every tarball (plan/0020 §5.8):
-      # verifiable with `gh attestation verify <file> -R gripsack-dev/gripsack`
-      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        with:
-          subject-path: dist/gripsack-*.tar.gz
-      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        with:
-          subject-path: dist/grip-buildkit-bridge-*
-
-      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        with:
-          subject-path: dist/gripsack-conda-*-unknown-linux-musl
-      # crates.io before the GitHub release: it is the irreversible
-      # artifact. The guard fails a mistagged release instead of
-      # publishing the wrong version.
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
-        with:
-          toolchain: "1.98.0"
-
-      - name: Publish to crates.io (dependency order)
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          pkg="$(cargo metadata --no-deps --format-version 1 \
-            | jq -r '.packages[] | select(.name == "gripsack") | .version')"
-          test "core-v$pkg" = "$GITHUB_REF_NAME" || {
-            echo "::error::tag $GITHUB_REF_NAME != crate version core-v$pkg"; exit 1; }
-          # the workspace publishes in dependency order; the retry loop
-          # absorbs crates.io's new-crate rate limit. A sibling-
-          # dependency miss is sparse-index lag: poll the index for
-          # THAT version instead of burning blind retries — a fixed
-          # budget lost to index lag on the 0.42.0 policy→ir hop.
-          # re-runs tolerate "already exists"; anything else fails loudly.
-          failed=""
-          for crate in gripsack-fs gripsack-policy gripsack-ir gripsack-process \
-                       griplint gripsack-config gripsack-store gripsack-fetch \
-                       gripsack-trace gripsack-buildkit gripsack-conda gripsack-lint \
-                       gripsack-exec gripsack; do
-            ok=""
-            for attempt in $(seq 1 12); do
-              if out="$(cargo publish -p "$crate" 2>&1)"; then
-                ok=1; break
-              fi
-              echo "$out" | tail -5
-              if echo "$out" | grep -q "already exists"; then
-                echo "$crate already published — skipping"; ok=1; break
-              fi
-              echo "::warning::publish of $crate failed (attempt $attempt); backing off"
-              miss="$(echo "$out" | grep -o 'requirement `gripsack[A-Za-z-]* = "[^"]*"' | head -1 || true)"
-              if [ -n "$miss" ]; then
-                dep="$(echo "$miss" | cut -d'`' -f2 | cut -d' ' -f1)"
-                want="$(echo "$miss" | grep -o '[0-9][0-9.]*[0-9]')"
-                case ${#dep} in
-                  1) ipath="1/$dep";;
-                  2) ipath="2/$dep";;
-                  3) ipath="3/$(printf '%s' "$dep" | cut -c1)/$dep";;
-                  *) ipath="$(printf '%s' "$dep" | cut -c1-2)/$(printf '%s' "$dep" | cut -c3-4)/$dep";;
-                esac
-                for poll in $(seq 1 40); do
-                  if curl -fsSL "https://index.crates.io/$ipath" 2>/dev/null \
-                     | grep -q "\"vers\":\"$want\""; then
-                    echo "index sees $dep $want"; break
-                  fi
-                  [ "$poll" = 40 ] && echo "::warning::index still missing $dep $want"
-                  sleep 30
-                done
-              else
-                sleep 90
-              fi
-            done
-            [ -n "$ok" ] || failed="$failed $crate"
-          done
-          [ -z "$failed" ] || { echo "::error::failed to publish:$failed"; exit 1; }
-
-      - name: Create GitHub release
+          ARCHIVE="$RUNNER_TEMP/gh_2.102.0_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --max-time 300 --max-filesize 100000000 \
+            https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz -o "$ARCHIVE"
+          printf '%s  %s\n' bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386 "$ARCHIVE" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/release-gh"
+          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP/release-gh" gh_2.102.0_linux_amd64/bin/gh
+          echo "$RUNNER_TEMP/release-gh/gh_2.102.0_linux_amd64/bin" >> "$GITHUB_PATH"
+      - name: Require reviewed attestation verifier capabilities
+        run: python3 -c 'import sys; sys.path.insert(0, "scripts"); from release_consumer import verifier; verifier()'
+      - name: Re-admit exact candidate and independent local-qualification witness
+        id: admission
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "gripsack ${GITHUB_REF_NAME#core-v}" \
-            --generate-notes
-
-      # Keep the tap in sync: bump the formula's version + crate sha256.
-      # Needs HOMEBREW_TAP_TOKEN (fine-grained PAT, contents:write on
-      # gripsack-dev/homebrew-tap) — GITHUB_TOKEN is repo-scoped.
-      - name: Bump homebrew formula
+          BUNDLE_URL: ${{ inputs.bundle_url }}
+          BUNDLE_SHA256: ${{ inputs.bundle_sha256 }}
+          MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: python3 scripts/release_hosted.py admit --archive "$CANDIDATE_ARCHIVE" --bundle "$CANDIDATE_ROOT" --predicate "$PREDICATE_PATH"
+      - name: Sign release manifest
+        id: attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4; custom predicate, NOT build provenance
+        with:
+          subject-path: ${{ steps.admission.outputs.manifest }}
+          predicate-type: https://gripsack.dev/attestations/local-qualification/v1
+          predicate-path: ${{ env.PREDICATE_PATH }}
+      - name: Verify signed candidate before registry mutations
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ATTESTATION_BUNDLE: ${{ steps.attestation.outputs.bundle-path }}
+        run: python3 scripts/release_hosted.py verify --bundle "$CANDIDATE_ROOT" --signature "$ATTESTATION_BUNDLE"
+      - name: Publish qualified packages
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: python3 scripts/release_publish.py --bundle "$CANDIDATE_ROOT" --result "$PUBLICATION_RESULT"
+      - name: Publish qualified release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ATTESTATION_BUNDLE: ${{ steps.attestation.outputs.bundle-path }}
+        run: python3 scripts/release_hosted.py publish --bundle "$CANDIDATE_ROOT" --publication "$PUBLICATION_RESULT" --signature "$ATTESTATION_BUNDLE"
+      - name: Promote verified source formula
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        if: env.HAS_TAP_TOKEN != ''
         run: |
-          ver="${GITHUB_REF_NAME#core-v}"
-          sha="$(curl -fsSL "https://static.crates.io/crates/gripsack/gripsack-$ver.crate" | sha256sum | cut -d' ' -f1)"
-          gh repo clone gripsack-dev/homebrew-tap /tmp/tap -- --depth 1
-          sed -i -e "s|gripsack-[0-9.]*\.crate|gripsack-$ver.crate|" \
-                 -e "s|sha256 \"[0-9a-f]*\"|sha256 \"$sha\"|" \
-                 /tmp/tap/Formula/gripsack.rb
-          cd /tmp/tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/gripsack.rb
-          git commit -m "gripsack $ver"
-          git push "https://x-access-token:${GH_TOKEN}@github.com/gripsack-dev/homebrew-tap.git" HEAD:main
-
-      # The site's version chip reads the releases API at build time —
-      # a rebuild dispatch keeps gripsack.dev current (rootle pattern).
-      # Non-fatal while SITE_REPO_TOKEN is unset — it must never fail a release.
-      - name: Ping the site to redeploy
-        continue-on-error: true
+          test -n "$GH_TOKEN" || { echo 'HOMEBREW_TAP_TOKEN is required for formula promotion' >&2; exit 1; }
+          python3 scripts/release_hosted.py promote --bundle "$CANDIDATE_ROOT" --channel tap
+      - name: Request compatible site promotion
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
         run: |
-          gh api repos/gripsack-dev/gripsack-dev.github.io/dispatches \
-            -f event_type=rebuild
+          test -n "$GH_TOKEN" || { echo 'SITE_REPO_TOKEN is required for site promotion' >&2; exit 1; }
+          python3 scripts/release_hosted.py promote --bundle "$CANDIDATE_ROOT" --channel site
+      - name: Retain partial publication observation
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-publication-${{ inputs.request_id }}
+          path: ${{ env.PUBLICATION_RESULT }}
+          if-no-files-found: ignore

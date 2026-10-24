@@ -7,6 +7,7 @@ import type {
   WorkspaceFile,
   WorkspaceFileSpec,
   WorkspaceSource,
+  RepoTreeSelection,
 } from "./ir.ts";
 import {
   asContent,
@@ -30,6 +31,17 @@ import { asPatterns } from "./bindings.ts";
 /** A typed repository file origin. */
 export function repoFile(path: string): WorkspaceSource {
   return freezeDeep({ kind: "repo_file", path: asRepoFilePath(path, "repoFile(path)") });
+}
+
+/** A captured repository tree, enumerated only by the core. */
+export function repoTree(path: string, selection: RepoTreeSelection = {}): WorkspaceSource {
+  asRecord(selection, "repoTree(selection)");
+  rejectUnknownFields("repoTree(selection)", selection, ["include", "exclude"]);
+  return freezeDeep(asSource({
+    kind: "repo_tree", path,
+    include: selection.include === undefined ? [] : selection.include,
+    exclude: selection.exclude === undefined ? [] : selection.exclude,
+  }, "repoTree(...)"));
 }
 
 /** A file inside another output's artifact. */
@@ -75,6 +87,17 @@ export function templateText(
     }
   }
   return freezeDeep({ kind: "template", template, variables, ...(resultDigest === undefined ? {} : { result_digest: asSha256(resultDigest, "templateText(resultDigest)") }) });
+}
+
+/** Render the approved captured source bytes with bound variables. */
+export function templateFile(
+  variables: Record<string, string>,
+  resultDigest?: string,
+): WorkspaceContent {
+  return freezeDeep(asContent({
+    kind: "template_file", variables,
+    ...(resultDigest === undefined ? {} : { result_digest: resultDigest }),
+  }, "templateFile(...)"));
 }
 
 /** Store-owned, read-only destination; edits go through the declaration. */

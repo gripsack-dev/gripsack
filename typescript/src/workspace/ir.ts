@@ -1,4 +1,4 @@
-/** v7 workspace wire types; the core retains strict historical readers. */
+/** v8 workspace wire types; the core retains strict historical readers. */
 
 import type { FactView } from "../conditions.ts";
 import type { HostFacts } from "../facts.ts";
@@ -7,7 +7,7 @@ import type { Span } from "../module.ts";
 import type { ProbeBuilder } from "../probe.ts";
 
 // ---------------------------------------------------------------------------
-// shared wire fragments (schema/ir/v7.json $defs)
+// shared wire fragments (schema/ir/v8.json $defs)
 // ---------------------------------------------------------------------------
 
 /** Literal string argument or path. Valid as both. */
@@ -89,7 +89,7 @@ export interface CondaSystemRequirements {
 }
 
 // ---------------------------------------------------------------------------
-// Current acquisition sources (schema/ir/v7.json; retained in-memory V6 family)
+// Current acquisition sources (schema/ir/v8.json; retained in-memory V6 family)
 // ---------------------------------------------------------------------------
 
 /** Existing archive/git/github/file/plugin acquisition, wrapped with its
@@ -147,12 +147,14 @@ export interface TaskContext { kind: "host"; mutable_paths: string[] }
 
 export type WorkspaceSource =
   | { kind: "repo_file"; path: string }
+  | { kind: "repo_tree"; path: string; include: string[]; exclude: string[] }
   | { kind: "artifact_file"; output: string; selector: string }
   | { kind: "tree"; output: string; include: string[]; exclude?: string[] };
 
 export type WorkspaceContent =
   | { kind: "identity" }
   | { kind: "literal"; text: string }
+  | { kind: "template_file"; variables: Record<string, string>; result_digest?: string }
   | { kind: "template"; template: string; variables: Record<string, string>; result_digest?: string };
 
 export type WorkspaceDestination =
@@ -212,6 +214,18 @@ export type WorkspaceProducer =
   | { kind: "recipe"; recipe: string }
   | { kind: "provider"; provider: AcquisitionSource };
 
+
+export interface RepoTreeSelection {
+  include?: readonly string[];
+  exclude?: readonly string[];
+}
+
+export interface ArchiveRootPolicy { kind: "single_directory" }
+
+export interface ProfileLaunchers {
+  directory: string;
+  commands: readonly string[];
+}
 export interface PackageNode {
   name: string;
   span: Span;
@@ -222,6 +236,7 @@ export interface PackageNode {
   host_runtime?: HostRuntimeRequirements;
   target: WorkspacePlatform;
   layout: PackageLayout;
+  archive_root?: ArchiveRootPolicy;
 }
 
 export interface EnvironmentNode {
@@ -299,6 +314,7 @@ export interface ProfileNode {
   kind: "profile";
   files?: WorkspaceFile[];
   environment?: string;
+  launchers?: ProfileLaunchers;
   schedules?: string[];
   hooks?: string[];
 }
@@ -393,6 +409,7 @@ export interface PackageSpec {
   hostRuntime?: HostRuntimeSpec;
   target: WorkspacePlatform;
   layout: PackageLayout;
+  archiveRoot?: ArchiveRootPolicy;
   span?: Span;
 }
 
@@ -449,6 +466,7 @@ export interface ProfileSpec {
   files?: WorkspaceFile[];
   /** Name of the `environment` output this profile selects. */
   environment?: string;
+  launchers?: ProfileLaunchers;
   /** Names of `schedule` outputs registered with the profile. */
   schedules?: string[];
   /** Names of `hook` outputs. */

@@ -17,6 +17,17 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+mod task_cli;
+pub use task_cli::{TaskArgs, task};
+
+enum NativeRequest<'a> {
+    Consumer(ConsumerRequest<'a>),
+    Task {
+        name: &'a str,
+        policy: gripsack_exec::TaskRunPolicy,
+        json: bool,
+    },
+}
 
 #[derive(Debug, clap::Args)]
 pub struct RunArgs {
@@ -45,23 +56,6 @@ pub struct RunArgs {
 pub struct ShellArgs {
     /// Environment output for the interactive shell.
     pub env: String,
-    #[arg(long)]
-    pub repo: Option<String>,
-    /// Operator-selected bridge, needed only when the closure must be built.
-    #[arg(long)]
-    pub bridge: Option<PathBuf>,
-    #[arg(long, default_value = "2")]
-    pub builder_cpus: NonZeroU16,
-    #[arg(long, default_value = "4096")]
-    pub builder_memory_mib: NonZeroU64,
-    #[arg(long, default_value = "1800")]
-    pub timeout_seconds: NonZeroU64,
-}
-
-#[derive(Debug, clap::Args)]
-pub struct TaskArgs {
-    /// Task output to invoke once.
-    pub task: String,
     #[arg(long)]
     pub repo: Option<String>,
     /// Operator-selected bridge, needed only when the closure must be built.
@@ -124,7 +118,7 @@ pub fn run(repo: &Path, args: RunArgs, palette: Palette) -> ExitCode {
     inner(
         repo,
         palette,
-        request,
+        NativeRequest::Consumer(request),
         args.bridge,
         args.builder_cpus,
         args.builder_memory_mib,
@@ -146,20 +140,7 @@ pub fn shell(repo: &Path, args: ShellArgs, palette: Palette) -> ExitCode {
     inner(
         repo,
         palette,
-        request,
-        args.bridge,
-        args.builder_cpus,
-        args.builder_memory_mib,
-        args.timeout_seconds,
-    )
-}
-
-pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
-    let request = ConsumerRequest::Task { task: &args.task };
-    inner(
-        repo,
-        palette,
-        request,
+        NativeRequest::Consumer(request),
         args.bridge,
         args.builder_cpus,
         args.builder_memory_mib,
@@ -170,7 +151,7 @@ pub fn task(repo: &Path, args: TaskArgs, palette: Palette) -> ExitCode {
 fn inner(
     repo: &Path,
     palette: Palette,
-    request: ConsumerRequest<'_>,
+    request: NativeRequest<'_>,
     bridge: Option<PathBuf>,
     cpus: NonZeroU16,
     memory_mib: NonZeroU64,
@@ -211,10 +192,10 @@ fn inner(
         Err(code) => return code,
     };
     let only = vec![match &request {
-        ConsumerRequest::Run { environment, .. } | ConsumerRequest::Shell { environment, .. } => {
-            (*environment).to_owned()
-        }
-        ConsumerRequest::Task { task } => (*task).to_owned(),
+        NativeRequest::Consumer(
+            ConsumerRequest::Run { environment, .. } | ConsumerRequest::Shell { environment, .. },
+        ) => (*environment).to_owned(),
+        NativeRequest::Task { name, .. } => (*name).to_owned(),
     }];
     let ctx = Ctx {
         home: gripsack_store::gripsack_home(),
@@ -224,6 +205,7 @@ fn inner(
         host: outcome.host,
         take_over: false,
         take_over_entries: None,
+        migrate_from: None,
         jobs: None,
         fetch: outcome.fetch,
         on_progress: None,
@@ -238,9 +220,17 @@ fn inner(
         },
         deadline,
     };
-    match consume(&ir, &ctx, &options, &request) {
-        Ok(outcome) => propagate(&outcome.receipt, outcome.root_retained),
-        Err(error) => report_execution_error(error, sink),
+    match request {
+        NativeRequest::Consumer(request) => match consume(&ir, &ctx, &options, &request) {
+            Ok(outcome) => propagate(&outcome.receipt, outcome.root_retained),
+            Err(error) => report_execution_error(error, sink),
+        },
+        NativeRequest::Task { name, policy, json } => {
+            match gripsack_exec::run_task(&ir, &ctx, &options, name, policy) {
+                Ok(report) => task_cli::finish(report, json),
+                Err(error) => report_execution_error(error, sink),
+            }
+        }
     }
 }
 

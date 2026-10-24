@@ -72,6 +72,9 @@ enum Command {
         /// Overwrite foreign/drifted tracked_copy destinations
         #[arg(long)]
         take_over: bool,
+        /// Migrate intact legacy-owned paths from this exact current generation
+        #[arg(long, conflicts_with = "take_over")]
+        migrate_from: Option<gripsack_store::GenerationId>,
         /// Max concurrent modules (default: cores; env GRIPSACK_JOBS)
         #[arg(long)]
         jobs: Option<usize>,
@@ -106,6 +109,9 @@ enum Command {
         /// Read IR JSON directly (frontend debugging)
         #[arg(long)]
         ir: Option<PathBuf>,
+        /// Preview migration of intact legacy-owned paths from this generation
+        #[arg(long, conflicts_with = "ir")]
+        migrate_from: Option<gripsack_store::GenerationId>,
         /// Env repo path or git URL (default: current directory)
         #[arg(long)]
         repo: Option<String>,
@@ -126,11 +132,7 @@ enum Command {
     RetainedPackage(commands::PackageCommandArgs),
     /// Update grip itself: tarball installs self-update in place;
     /// brew/cargo/mise installs get their manager's command
-    SelfUpdate {
-        /// Report only, don't write
-        #[arg(long)]
-        check: bool,
-    },
+    SelfUpdate(commands::self_update::SelfUpdateArgs),
     /// Refresh source pins and captured workspace frontend/import pins
     Update {
         #[arg(long)]
@@ -211,7 +213,7 @@ fn main() -> ExitCode {
         Command::Shell(_) => "Shell",
         Command::Task(_) => "Task",
         Command::RetainedPackage(_) => "PackageCommand",
-        Command::SelfUpdate { .. } => "SelfUpdate",
+        Command::SelfUpdate(_) => "SelfUpdate",
         Command::Update { .. } => "Update",
         Command::Generations => "Generations",
         Command::Gc { .. } => "Gc",
@@ -253,6 +255,7 @@ fn main() -> ExitCode {
             repo,
             modules,
             take_over,
+            migrate_from,
             jobs,
         } => match commands::resolve_repo(repo.as_deref()) {
             Ok(repo) => commands::apply(
@@ -262,6 +265,7 @@ fn main() -> ExitCode {
                     modules,
                     take_over,
                     take_over_entries: None,
+                    migrate_from,
                     jobs,
                 },
                 palette,
@@ -291,7 +295,7 @@ fn main() -> ExitCode {
             commands::init(&dir.unwrap_or_else(|| PathBuf::from(".")), palette)
         }
         Command::Generations => commands::generations(),
-        Command::SelfUpdate { check } => commands::self_update::self_update(palette, check),
+        Command::SelfUpdate(args) => commands::self_update::self_update(palette, args),
         Command::Update {
             host,
             repo,
@@ -316,7 +320,7 @@ fn main() -> ExitCode {
             Ok(repo) => commands::shell(&repo, args, palette),
             Err(code) => code,
         },
-        Command::Task(mut args) => match commands::resolve_repo(args.repo.take().as_deref()) {
+        Command::Task(mut args) => match args.resolve_repository() {
             Ok(repo) => commands::task(&repo, args, palette),
             Err(code) => code,
         },
@@ -336,6 +340,7 @@ fn main() -> ExitCode {
             host,
             modules,
             repo,
+            migrate_from,
         } => {
             let repo = match commands::resolve_repo(repo.as_deref()) {
                 Ok(r) => r,
@@ -406,7 +411,7 @@ fn main() -> ExitCode {
                 palette.dim(&commands::render_host_inputs(&outcome.host_inputs))
             );
             let waves = gripsack_exec::waves(&ir).unwrap_or_default();
-            if modules.is_empty() || ir.has_workspace() {
+            if modules.is_empty() || ir.has_workspace() || migrate_from.is_some() {
                 match render::diff_section(
                     &ir,
                     &repository,
@@ -415,6 +420,7 @@ fn main() -> ExitCode {
                     palette,
                     &modules,
                     outcome.fetch.limits(),
+                    migrate_from,
                 ) {
                     Ok(section) => println!("{section}"),
                     Err(gripsack_exec::ExecError::Gate(diagnostic)) => {

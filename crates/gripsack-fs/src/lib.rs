@@ -25,6 +25,8 @@
 //! through them.
 
 mod directories;
+mod identity;
+pub use identity::{DirectoryObjectIdentity, directory_object_identity};
 mod publication;
 pub use publication::{DurableFileWrite, StagedFileWrite, SyncedFileWrite, VisibleFileWrite};
 mod scoped;
@@ -33,7 +35,7 @@ pub use streamed::{atomic_copy_with_mode, publication_occurred};
 pub mod fault;
 pub use directories::{
     create_dir_all, fsync_dir, fsync_pinned_dir, open_or_create, remove_file, rename,
-    rename_noreplace,
+    rename_noreplace, rename_noreplace_between,
 };
 use fault::{Boundary, operation};
 pub use scoped::{open_dir_nofollow, open_file_nofollow};

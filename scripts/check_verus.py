@@ -16,6 +16,9 @@ MIN_OBLIGATIONS = 440
 # Actual successful SMT function queries, excluding generated clone/spec-only
 # helpers. One family cannot disappear behind growth in an unrelated module.
 FAMILIES = {
+    "task": tuple("task::" + name for name in (
+        "prerequisite_succeeded", "admit_conflict", "admit_task_edge",
+    )),
     "recovery": tuple("selection::" + name for name in (
         "TransactionId::from_bytes", "TransactionId::as_bytes",
         "SelectionIdentity::legacy", "SelectionIdentity::transaction",
@@ -185,6 +188,13 @@ class Mutant:
 
 
 MUTANTS = (
+    Mutant("task-false-success", "task.rs", "task::prerequisite_succeeded",
+           "    matches!(state, TaskState::Succeeded)\n",
+           "    matches!(state, TaskState::Succeeded | TaskState::SkippedBusy)\n"),
+    Mutant("task-omitted-edge", "task.rs", "task::admit_task_edge",
+           "    target_is_task && host_context\n", "    host_context\n"),
+    Mutant("task-conflict-admission", "task.rs", "task::admit_conflict",
+           "    !held && !unknown\n", "    !held\n"),
     Mutant("conda-native-terminal", "conda_admission.rs", "conda_admission::terminal_succeeded",
            "    matches!(terminal, NativeTerminal::Exited(0))\n", "    matches!(terminal, NativeTerminal::Exited(_))\n"),
     Mutant("conda-terminal-bypass", "conda_admission.rs", "conda_admission::admit_response",
@@ -245,6 +255,9 @@ MUTANTS = (
            "IntentState::Started { attempt } => IntentState::Superseded { last_attempt: Some(*attempt) },",
            "IntentState::Started { attempt } => IntentState::Started { attempt: *attempt },"),
     Mutant("ownership-drift", "ownership.rs", "ownership::plan_copy", "Some((written, false)) if live == written => CopyPlan::Update,", "Some((written, true)) if live == written => CopyPlan::Update,"),
+    Mutant("ownership-intact-takeover", "ownership.rs", "ownership::plan_copy",
+           "Some((written, false)) if live == written => {}",
+           "Some((written, true)) if live == written => {}"),
     Mutant("gc-roots-in-deletion", "retention.rs", "retention::plan_delete", "if !contains_identity(referenced, c) {", "if contains_identity(referenced, c) {"),
     Mutant("gc-newest-prefix", "retention.rs", "retention::plan_prune",
            "let g = generations[i];", "let g = generations[generations.len() - 1 - i];"),

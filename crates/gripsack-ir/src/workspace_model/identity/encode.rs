@@ -6,8 +6,8 @@ use crate::workspace::{
 };
 use crate::workspace_model::lock::{DefinitionPins, ResolvedPinFields, WorkspaceLock};
 use crate::workspace_model::{
-    AcquisitionSource, CatalogPackageLayout, CheckOutput, LockedSource, PackageOutput,
-    RecipeExecution, RecipeOutput, WorkspaceCatalog,
+    AcquisitionSource, ArchiveRootPolicy, CatalogPackageLayout, CheckOutput, LockedSource,
+    PackageOutput, RecipeExecution, RecipeOutput, WorkspaceCatalog,
 };
 use crate::{FetchSpec, HostFacts};
 use gripsack_policy::semantic::length_header;
@@ -43,6 +43,13 @@ impl Encoder {
                 self.text(value);
             }
             None => self.field(b"none"),
+        }
+    }
+    fn archive_root(&mut self, policy: &Option<ArchiveRootPolicy>) {
+        // Absence emits no bytes, preserving every retained package/plan identity.
+        if let Some(ArchiveRootPolicy::SingleDirectory) = policy {
+            self.field(b"gripsack/v8/archive-root");
+            self.field(b"single-directory");
         }
     }
     pub(super) fn finish(self) -> [u8; 32] {
@@ -392,6 +399,7 @@ pub(super) fn package<D: AsRef<[u8; 32]>>(
             writer.text(directory.as_str());
         }
     }
+    writer.archive_root(&package.archive_root);
     Ok(())
 }
 pub(super) fn lock(lock: &WorkspaceLock) -> [u8; 32] {

@@ -12,6 +12,8 @@ mod gnu_loader;
 mod lifecycle;
 mod native;
 mod pressure;
+#[cfg(target_os = "linux")]
+mod task;
 
 fn command(body: &str) -> Command {
     let mut command = Command::new("/bin/sh");

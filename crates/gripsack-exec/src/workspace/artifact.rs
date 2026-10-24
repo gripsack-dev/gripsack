@@ -2,11 +2,13 @@
 //! identities never enter receipts or keys, and payloads never point into a
 //! disposable builder cache. Every publication requires lifecycle authority.
 use crate::{Ctx, ExecError, LifecycleSession};
+mod archive_root;
 pub(super) mod hook;
 use gripsack_ir::{
     workspace::{RecipeOutputKind, WorkspacePlatform},
     workspace_model::{
-        CatalogPackageLayout, HostRuntimeRequirements, PackageOutput, RecipeExecution,
+        ArchiveRootPolicy, CatalogPackageLayout, HostRuntimeRequirements, PackageOutput,
+        RecipeExecution,
         identity::{self, ExecutableDigest, PackageDigest, RecipeDigest},
         lock::ResolvedPinFields,
     },
@@ -22,6 +24,9 @@ use std::{
 };
 
 const RECEIPT_VERSION: u32 = 1;
+const PACKAGE_RECEIPT_BASE: u32 = 1;
+const PACKAGE_RECEIPT_HOST_RUNTIME: u32 = 2;
+const PACKAGE_RECEIPT_ARCHIVE_ROOT: u32 = 3;
 const MAX_RECEIPT_BYTES: u64 = 1024 * 1024;
 const RECIPE_RECEIPT: &str = "recipe.json";
 const PACKAGE_RECEIPT: &str = "package.json";
@@ -53,6 +58,9 @@ pub(super) struct Package {
     pub identity: PackageDigest,
     pub root: PathBuf,
     pub producer: Arc<Artifact>,
+    pub archive_root: Option<ArchiveRootPolicy>,
+    pub selected_root: Option<String>,
+    pub selected_payload: Option<PathBuf>,
     pub commands: BTreeMap<String, ProvidedCommand>,
     pub runtime: Vec<Arc<Package>>,
     pub target: WorkspacePlatform,
@@ -62,6 +70,11 @@ pub(super) struct Package {
     pub conda: Option<super::conda::CondaRuntimeReceipt>,
 }
 impl Package {
+    pub fn payload(&self) -> &Path {
+        self.selected_payload
+            .as_deref()
+            .unwrap_or(&self.producer.payload)
+    }
     pub fn host_dependent(&self) -> bool {
         self.host_runtime.is_some() || self.runtime.iter().any(|package| package.host_dependent())
     }
@@ -78,7 +91,7 @@ impl Package {
     pub fn command(&self, name: &str) -> Option<PathBuf> {
         self.commands
             .get(name)
-            .map(|command| self.producer.payload.join(&command.selector))
+            .map(|command| self.payload().join(&command.selector))
     }
 }
 
@@ -110,16 +123,24 @@ struct PackageReceipt {
     host_runtime: Option<HostRuntimeRequirements>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     runtime_receipts: BTreeMap<PackageDigest, gripsack_process::Sha256Digest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    archive_root: Option<ArchiveRootPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    selected_root: Option<String>,
 }
 
 impl PackageReceipt {
     // Keep policy-free v1 receipts byte-for-byte serializable for retained hooks.
     fn supported_version(&self) -> bool {
         self.version
-            == if self.host_runtime.is_some() || !self.runtime_receipts.is_empty() {
-                2
+            == if self.archive_root.is_some() && self.selected_root.is_some() {
+                PACKAGE_RECEIPT_ARCHIVE_ROOT
+            } else if self.archive_root.is_some() || self.selected_root.is_some() {
+                return false;
+            } else if self.host_runtime.is_some() || !self.runtime_receipts.is_empty() {
+                PACKAGE_RECEIPT_HOST_RUNTIME
             } else {
-                1
+                PACKAGE_RECEIPT_BASE
             }
     }
 }
@@ -263,14 +284,29 @@ pub(super) fn publish_package(
         ),
     };
     let identity = identity.map_err(|error| failure(error.to_string()))?;
-    let commands = inspect_commands(declaration, &producer.payload)?;
+    let selected_root = archive_root::select(
+        declaration.archive_root.as_ref(),
+        &declaration.layout,
+        &producer.payload,
+    )?;
+    if declaration.archive_root.is_some() && conda.is_some() {
+        return Err(failure(
+            "archive root selection cannot reinterpret a materialized prefix",
+        ));
+    }
+    let commands = inspect_selected_commands(
+        declaration,
+        &archive_root::payload(&producer.payload, selected_root.as_deref()),
+    )?;
     let root = store::content_path(&ctx.home, "workspace-package", &identity.to_string());
     let runtime_receipts = runtime_receipts(&ctx.home, declaration, &runtime)?;
     let receipt = PackageReceipt {
-        version: if declaration.host_runtime.is_some() || !runtime_receipts.is_empty() {
-            2
+        version: if declaration.archive_root.is_some() {
+            PACKAGE_RECEIPT_ARCHIVE_ROOT
+        } else if declaration.host_runtime.is_some() || !runtime_receipts.is_empty() {
+            PACKAGE_RECEIPT_HOST_RUNTIME
         } else {
-            1
+            PACKAGE_RECEIPT_BASE
         },
         package: identity,
         producer_root: producer.root.clone(),
@@ -286,6 +322,8 @@ pub(super) fn publish_package(
         conda: conda.cloned(),
         host_runtime: declaration.host_runtime.clone(),
         runtime_receipts,
+        archive_root: declaration.archive_root,
+        selected_root,
     };
     match read_receipt::<PackageReceipt>(ctx, &root, PACKAGE_RECEIPT)? {
         Some(existing) if existing != receipt => {
@@ -307,7 +345,13 @@ pub(super) fn publish_package(
     Ok(Arc::new(Package {
         identity,
         root,
+        selected_payload: receipt
+            .selected_root
+            .as_deref()
+            .map(|name| producer.payload.join(name)),
         producer,
+        archive_root: receipt.archive_root,
+        selected_root: receipt.selected_root,
         commands: receipt.commands,
         runtime,
         target: receipt.target,
@@ -332,7 +376,15 @@ pub(super) fn retained_package(
     else {
         return Ok(None);
     };
-    let commands = inspect_commands(declaration, &producer.payload)?;
+    let selected_root = archive_root::select(
+        declaration.archive_root.as_ref(),
+        &declaration.layout,
+        &producer.payload,
+    )?;
+    let commands = inspect_selected_commands(
+        declaration,
+        &archive_root::payload(&producer.payload, selected_root.as_deref()),
+    )?;
     let expected_runtime = runtime
         .iter()
         .map(|package| (package.identity, package.root.clone()))
@@ -350,6 +402,9 @@ pub(super) fn retained_package(
         || receipt.conda != conda
         || receipt.host_runtime != declaration.host_runtime
         || receipt.runtime_receipts != runtime_receipts
+        || receipt.archive_root != declaration.archive_root
+        || receipt.selected_root != selected_root
+        || (receipt.archive_root.is_some() && conda.is_some())
     {
         return Err(failure(
             "retained package differs from its frozen identity/producer/runtime receipt",
@@ -358,7 +413,13 @@ pub(super) fn retained_package(
     Ok(Some(Arc::new(Package {
         identity,
         root,
+        selected_payload: receipt
+            .selected_root
+            .as_deref()
+            .map(|name| producer.payload.join(name)),
         producer,
+        archive_root: receipt.archive_root,
+        selected_root: receipt.selected_root,
         commands,
         runtime,
         target: declaration.target.clone(),
@@ -384,6 +445,21 @@ fn runtime_receipts(
 }
 
 pub(super) fn inspect_commands(
+    declaration: &PackageOutput,
+    payload: &Path,
+) -> Result<BTreeMap<String, ProvidedCommand>, ExecError> {
+    let selected_root = archive_root::select(
+        declaration.archive_root.as_ref(),
+        &declaration.layout,
+        payload,
+    )?;
+    inspect_selected_commands(
+        declaration,
+        &archive_root::payload(payload, selected_root.as_deref()),
+    )
+}
+
+fn inspect_selected_commands(
     declaration: &PackageOutput,
     payload: &Path,
 ) -> Result<BTreeMap<String, ProvidedCommand>, ExecError> {

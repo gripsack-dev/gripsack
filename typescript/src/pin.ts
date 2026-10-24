@@ -76,8 +76,9 @@ export const symlinkTo = api.symlinkTo;
 export const targetPlatform = api.targetPlatform;
 export const task = api.task;
 export const templateText = api.templateText;
+export const templateFile = api.templateFile;
 export const trackedCopyTo = api.trackedCopyTo;
-export const treeFiles = api.treeFiles;
+export const repoTree = api.repoTree;
 export const weekly = api.weekly;
 export const workspace = api.workspace;
 
@@ -141,7 +142,9 @@ export type {
   WorkspaceInputRef,
   WorkspaceMutationLock,
   WorkspaceFileCheck,
-  TreeFilesOptions,
+  ArchiveRootPolicy,
+  ProfileLaunchers,
+  RepoTreeSelection,
   Trigger,
   Verify,
   WorkspaceAbi,

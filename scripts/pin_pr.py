@@ -5,11 +5,8 @@ Everything happens on a throwaway `git worktree` of the default branch:
 the local checkout — dirty, mid-flight, or on a feature branch — is
 never touched or mutated. Idempotent by construction: the bot branch is
 reset to the base before the edits are applied, PRs are looked up by
-head branch, and gates are re-dispatched only when a new commit
-actually landed. Never merges; a PR created with GITHUB_TOKEN does not
-trigger CI by itself, so the proposer dispatches the two workflows that
-already declare workflow_dispatch (ci.yml, repro.yml) on the candidate
-branch — that needs only actions:write, no other convention."""
+head branch. Never merges or dispatches hosted builds: proposals require
+exact-source local qualification before integration."""
 
 from __future__ import annotations
 
@@ -18,11 +15,8 @@ import os
 import shutil
 import subprocess
 import tempfile
-import time
-from datetime import datetime, timezone
 
 REPO = "gripsack-dev/gripsack"
-GATES = ("ci.yml", "repro.yml")
 BOT = ("github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com")
 
 
@@ -75,22 +69,6 @@ def _default_branch() -> str:
     return json.loads(gh(["repo", "view", "--json", "defaultBranchRef"]))["defaultBranchRef"]["name"]
 
 
-def _run_link(workflow: str, branch: str, since: str) -> str | None:
-    """Best-effort URL of the run dispatched just now (may not be indexed
-    yet; absence only omits the link from the PR body)."""
-    for _ in range(3):
-        time.sleep(6)
-        try:
-            rows = json.loads(gh(["run", "list", "--workflow", workflow, "--branch", branch,
-                                  "--limit", "5", "--json", "url,createdAt"], check=False) or "[]")
-        except json.JSONDecodeError:
-            rows = []
-        for r in rows:
-            if r.get("createdAt", "") >= since:
-                return r["url"]
-    return None
-
-
 def _close_superseded(key: str, pr_url: str) -> None:
     rows = json.loads(gh(["issue", "list", "--search", f'in:title "pins: {key}"',
                           "--state", "open", "--json", "number"], check=False) or "[]")
@@ -102,7 +80,7 @@ def _close_superseded(key: str, pr_url: str) -> None:
 
 def publish(key: str, propose) -> str:
     """Push the unit's edits to pins/<key> (reset to the default branch),
-    reuse-or-create the PR, dispatch the gates. `propose(root)` rebuilds
+    reuse-or-create the PR. `propose(root)` rebuilds
     the unit against the fetched base — the worktree parse is
     authoritative for the PR, not the local checkout. Returns the PR URL,
     or a no-op explanation. Raises PublishError on any failure."""
@@ -127,24 +105,16 @@ def publish(key: str, propose) -> str:
              "reviewed bump; never auto-merged."], cwd=tmp)
         git(["push", "--force", "origin", f"HEAD:{branch}"], cwd=tmp)
 
-        since = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        dispatch_notes = []
-        for wf in GATES:
-            gh(["workflow", "run", wf, "--ref", branch])
-            dispatch_notes.append((wf, _run_link(wf, branch, since)))
-        links = "\n".join(f"- {wf}: {url}" if url else f"- {wf}: dispatched (run not indexed yet)"
-                          for wf, url in dispatch_notes)
-
         existing = json.loads(gh(["pr", "list", "--head", branch, "--state", "open",
                                   "--json", "number,url"]) or "[]")
         if existing:
             url = existing[0]["url"]
             gh(["pr", "comment", str(existing[0]["number"]),
-                "--body", f"Branch updated; gates re-dispatched:\n{links}"], check=False)
+                "--body", "Branch updated; exact-source local qualification is required before integration."], check=False)
             return f"{url} (updated)"
         url = gh(["pr", "create", "--base", base, "--head", branch,
                   "--title", f"pins: {unit.summary}",
-                  "--body", unit.pr_body() + f"\n\n**Gates dispatched on this branch**\n{links}"])
+                  "--body", unit.pr_body()])
         _close_superseded(key, url)
         return url
     finally:

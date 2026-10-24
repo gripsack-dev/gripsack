@@ -23,6 +23,8 @@ pub(in crate::workspace) fn capture(
         || receipt.layout != package.layout
         || receipt.conda != package.conda
         || receipt.host_runtime != package.host_runtime
+        || receipt.archive_root != package.archive_root
+        || receipt.selected_root != package.selected_root
         || receipt.runtime.len() != package.runtime.len()
         || package
             .runtime
@@ -77,6 +79,15 @@ pub(in crate::workspace) fn restore(
             "retained hook package payload differs from its frozen receipt",
         ));
     }
+    let selected_root =
+        archive_root::select(receipt.archive_root.as_ref(), &receipt.layout, &payload)?;
+    if selected_root != receipt.selected_root
+        || (receipt.archive_root.is_some() && receipt.conda.is_some())
+    {
+        return Err(failure(
+            "retained package archive root differs from its receipt",
+        ));
+    }
     let mut runtime = Vec::with_capacity(receipt.runtime.len());
     for (&dependency, path) in &receipt.runtime {
         let package = restore(home, dependency, receipts, loaded, visiting)?;
@@ -90,12 +101,15 @@ pub(in crate::workspace) fn restore(
     let package = Arc::new(Package {
         identity,
         root,
+        selected_payload: selected_root.as_deref().map(|name| payload.join(name)),
         producer: Arc::new(Artifact {
             root: receipt.producer_root.clone(),
             payload,
             tree: receipt.tree,
             retention: BTreeSet::from([receipt.producer_root]),
         }),
+        archive_root: receipt.archive_root,
+        selected_root,
         commands: receipt.commands,
         runtime,
         target: receipt.target,
@@ -108,8 +122,8 @@ pub(in crate::workspace) fn restore(
     Ok(package)
 }
 
-/// A managed launcher authenticates the complete retained receipt graph using
-/// the v2 root receipt, not policy paths supplied as launch arguments.
+/// A legacy host-runtime launcher authenticates its retained receipt graph.
+/// Explicit profile launchers instead restore their versioned activation graph.
 pub(in crate::workspace) fn restore_launcher(
     home: &Path,
     identity: PackageDigest,
@@ -118,8 +132,7 @@ pub(in crate::workspace) fn restore_launcher(
     let root = store::content_path(home, "workspace-package", &identity.to_string());
     let receipt: PackageReceipt = read_receipt_readonly(home, &root, PACKAGE_RECEIPT)?
         .ok_or_else(|| failure("retained launcher package receipt is missing"))?;
-    if receipt.version != 2
-        || !receipt.supported_version()
+    if !receipt.supported_version()
         || receipt.package != identity
         || Sha256Digest::of(&serde_json::to_vec(&receipt)?) != expected
     {

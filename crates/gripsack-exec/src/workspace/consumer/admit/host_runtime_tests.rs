@@ -56,8 +56,11 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
         ExecutableDigest::parse(&Sha256Digest::of(&std::fs::read(&program).unwrap()).to_string())
             .unwrap();
     let mut package = Package {
+        archive_root: None,
+        selected_root: None,
         identity: serde_json::from_str(&format!("\"{}\"", "0".repeat(64))).unwrap(),
         root: gripsack_store::content_path(&root, "workspace-package", &"0".repeat(64)),
+        selected_payload: None,
         producer: Arc::new(Artifact {
             root: payload.clone(),
             payload: payload.clone(),
@@ -376,8 +379,11 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
     );
     package.host_runtime = None;
     package.runtime.push(Arc::new(Package {
+        archive_root: None,
+        selected_root: None,
         identity: serde_json::from_str(&format!("\"{}\"", "2".repeat(64))).unwrap(),
         root: gripsack_store::content_path(&root, "workspace-package", &"2".repeat(64)),
+        selected_payload: None,
         producer: Arc::new(Artifact {
             root: runtime_payload.clone(),
             payload: runtime_payload.clone(),
@@ -401,8 +407,11 @@ fn compiled_host_runpath_requires_scoped_policy_and_readmits_each_launch() {
         &shadow_payload.join("lib/libbridge.so"),
     );
     package.runtime.push(Arc::new(Package {
+        archive_root: None,
+        selected_root: None,
         identity: serde_json::from_str(&format!("\"{}\"", "4".repeat(64))).unwrap(),
         root: gripsack_store::content_path(&root, "workspace-package", &"4".repeat(64)),
+        selected_payload: None,
         producer: Arc::new(Artifact {
             root: shadow_payload.clone(),
             payload: shadow_payload.clone(),

@@ -143,14 +143,18 @@ content. The core still admits the dependency graph and sealed-loader lookup;
 host-dependent persistent commands re-enter the installed core on each launch.
 Host libraries remain mutable trusted inputs, not sealed package bytes.
 
-Migration requires a real legacy apply that prunes old declarations before the
-workspace claims their destinations; `--take-over` does not transfer recorded
-ownership. For release trees that load physical siblings, use `trackedCopyTo`,
-not per-file symlink projections. The existing executable `repoFile` + `file`
-profile path can manage persistent launchers; no separate launcher constructor
-is required. [Persistent environments](https://gripsack.dev/docs/environments.html)
-and [migration](https://gripsack.dev/docs/workspace-migration.html) contain the
-complete recipes and staging/approval boundaries.
+For legacy ownership cutover, review `grip plan PROFILE --migrate-from N` and
+apply with the same explicit current generation. Retain predecessor recovery
+data until functional verification succeeds; late activation failures require
+explicit recovery. `--take-over` does not transfer recorded ownership. The older
+prune-first alternative requires a separately applied legacy generation.
+
+Use `trackedCopyTo` for physical sibling trees and extension-sensitive fonts;
+per-file symlink targets do not promise the original filename. Profiles can
+declare an environment plus `launchers: { directory, commands }` for ordinary
+sealed tool commands. Self-locating releases such as LuaLS still need an explicit
+deployed-host wrapper. The [SDK migration guide](typescript/README.md#reviewer-migration-delete-plumbing-keep-verification)
+covers templates, captured trees, launchers, scoped profile apply and recovery.
 
 Linux x86_64 Conda/Pixi native and OCI journeys have runtime qualification.
 The standing product scope is **Linux and WSL2 on x86_64 only**, under
@@ -256,12 +260,12 @@ hostname to this spelling; role-named hosts such as `work.dev` remain
 valid.
 
 The workspace path accepts a root `gripsack.ts` without a host shim.
-Use matching 0.46 core and SDK releases for the current v7 writer; older strict
-cores do not admit the new fields. Retained v6 execution and native v5 file
-profiles keep their original semantics. See the
+Use matching 0.47 core and SDK releases for the current v8 writer; older strict
+cores do not admit the new fields. Retained v7/v6 execution and native v5 file
+profiles keep their original closed field sets. See the
 [dotfile workspace](examples/workspaces/01-dotfiles/gripsack.ts) and
-[workspace contract](typescript/README.md#a-workspace-is-a-function-ir-v7).
-Strict v3–v6 readers preserve their historical meanings; the current SDK
+[workspace contract](typescript/README.md#a-workspace-is-a-function-ir-v8).
+Strict v3–v7 readers preserve their historical meanings; the current SDK
 does not silently add new fields to those retained formats.
 
 Evaluation runs in Deno, spawned deny-by-default: no env vars,

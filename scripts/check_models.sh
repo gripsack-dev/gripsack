@@ -81,6 +81,96 @@ check DestinationWrites.tla cfg/destination-writes.cfg
 check DestinationWrites.tla cfg/destination-writes-lost-prior.cfg OriginalPriorPreserved
 check DestinationWrites.tla cfg/destination-writes-lost-before.cfg NoPartialRecovery
 check DestinationWrites.tla cfg/destination-writes-witness.cfg NeverTwoWrites
+# Journal v3: actual inode-bound parent/child topology, independent durable
+# fields, child-first recovery, fail-closed foreign occupants and old formats.
+for case in hierarchy empty filesystem-identity birth-identity filesystem-kind missing-fsid missing-birth v1 v2 completion empty-completion; do
+    check DirectoryHierarchy.tla "cfg/directory-$case.cfg"
+done
+check DirectoryHierarchy.tla cfg/directory-missing-intent.cfg MutationHasDurableIntent
+check DirectoryHierarchy.tla cfg/directory-missing-preparation.cfg PreparedIdentityBeforeMutation
+check DirectoryHierarchy.tla cfg/directory-ancestor-substitution.cfg ForeignLeavesPreserved
+check DirectoryHierarchy.tla cfg/directory-inode-only.cfg AncestorIdentityBound
+check DirectoryHierarchy.tla cfg/directory-birth-ignored.cfg AncestorIdentityBound
+check DirectoryHierarchy.tla cfg/directory-filesystem-kind-ignored.cfg AncestorIdentityBound
+check DirectoryHierarchy.tla cfg/directory-parent-first.cfg ChildBeforeParent
+check DirectoryHierarchy.tla cfg/directory-foreign-child.cfg ForeignChildrenPreserved
+check DirectoryHierarchy.tla cfg/directory-early-cleanup.cfg RestorationBeforeCleanup
+check DirectoryHierarchy.tla cfg/directory-legacy-authority.cfg V3AuthorityOnly
+check DirectoryHierarchy.tla cfg/directory-wrong-target.cfg ForeignParentPreserved
+check DirectoryHierarchy.tla cfg/directory-install-witness.cfg NeverInstalled
+check DirectoryHierarchy.tla cfg/directory-repeat-write-witness.cfg NeverRepeatedWrite
+check DirectoryHierarchy.tla cfg/directory-repeat-recovery-witness.cfg NeverInterruptedRecovery
+# Reverse cutover retains the empty exact inode, and reverses recovery order:
+# reinstall its ancestor before restoring bound leaf priors.
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse.cfg
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-empty.cfg
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-child-first.cfg ParentBeforeChildRestore
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-nonempty.cfg EmptyBeforeStaging
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-drop-stage.cfg CommittedStageRetained
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-missing-intent.cfg ReverseMutationHasIntent
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-foreign-stage.cfg ForeignPreserved
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-stage-witness.cfg NeverStaged
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-reactivation-witness.cfg NeverReactivated
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-root-replay.cfg RootUndoNeverReplacesRestoredDirectory
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-parent-before-root.cfg RootNormalizedBeforeParentRestore
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-older-file-witness.cfg NeverOlderFileTarget
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-older-absent-witness.cfg NeverOlderAbsentTarget
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-original-contents-witness.cfg NeverOriginalStageChildRestored
+check ReverseDirectoryHierarchy.tla cfg/directory-reverse-target-nonempty.cfg TargetReactivationEmpty
+# Retained reactivation preserves the target inode even on rollback. Exchange
+# between distinct generation incarnations is not the single-inode model.
+check IncarnationExchange.tla cfg/directory-exchange.cfg
+check IncarnationExchange.tla cfg/directory-exchange-empty.cfg
+check IncarnationExchange.tla cfg/directory-reactivate-absent.cfg
+check IncarnationExchange.tla cfg/directory-reactivate-file.cfg
+check IncarnationExchange.tla cfg/directory-reactivate-link.cfg
+check IncarnationExchange.tla cfg/directory-exchange-destroy-target.cfg RetainedTargetNeverDestroyed
+check IncarnationExchange.tla cfg/directory-exchange-nonempty-target.cfg OnlyEmptyTargetStaged
+check IncarnationExchange.tla cfg/directory-exchange-wrong-prior.cfg ExactCapturedPrior
+check IncarnationExchange.tla cfg/directory-exchange-wrong-incarnation.cfg LeafBindsIncarnation
+check IncarnationExchange.tla cfg/directory-exchange-missing-intent.cfg ExchangeIntentBeforeInstall
+check IncarnationExchange.tla cfg/directory-exchange-install-witness.cfg NeverTargetInstalled
+check IncarnationExchange.tla cfg/directory-exchange-commit-witness.cfg NeverExchangeCommitted
+check IncarnationExchange.tla cfg/directory-exchange-incarnations-witness.cfg NeverBothIncarnations
+check IncarnationExchange.tla cfg/directory-exchange-restage-witness.cfg NeverTargetRestaged
+check IncarnationExchange.tla cfg/directory-exchange-original-contents-witness.cfg NeverOriginalStageChildRestored
+check IncarnationExchange.tla cfg/directory-exchange-target-nonempty.cfg OnlyEmptyTargetInstalled
+# Ordinary tree growth uses node-level evolution, not a frozen leaf list or
+# full-root exchange. Include borrowed ancestry, foreign siblings and history.
+for case in grow foreign-sibling remove retarget reverse reverse-borrowed; do
+    check DirectoryEvolution.tla "cfg/directory-evolve-$case.cfg"
+done
+check DirectoryEvolution.tla cfg/directory-evolve-missing-barrier.cfg MutationHasDurableEvolve
+check DirectoryEvolution.tla cfg/directory-evolve-ancestor.cfg HierarchyBound
+check DirectoryEvolution.tla cfg/directory-evolve-parent-first.cfg ChildBeforeParent
+check DirectoryEvolution.tla cfg/directory-evolve-borrowed-delete.cfg BorrowedNeverRemoved
+check DirectoryEvolution.tla cfg/directory-evolve-foreign-child.cfg ForeignChildrenPreserved
+check DirectoryEvolution.tla cfg/directory-evolve-leaf-identity.cfg ForeignLeavesPreserved
+check DirectoryEvolution.tla cfg/directory-evolve-leaf-ancestor.cfg OldLeavesAfterShapeRestore
+check DirectoryEvolution.tla cfg/directory-evolve-discard-published.cfg PublishedIdentitiesRetained
+check DirectoryEvolution.tla cfg/directory-evolve-grow-witness.cfg NeverGrewNested
+check DirectoryEvolution.tla cfg/directory-evolve-remove-witness.cfg NeverRemovedOld
+check DirectoryEvolution.tla cfg/directory-evolve-retarget-witness.cfg NeverRetargeted
+check DirectoryEvolution.tla cfg/directory-evolve-foreign-commit-witness.cfg NeverForeignSiblingCommit
+check DirectoryEvolution.tla cfg/directory-evolve-history-witness.cfg NeverHistoryRollback
+check DirectoryEvolution.tla cfg/directory-evolve-root-stage-witness.cfg NeverRootStaged
+check DirectoryEvolution.tla cfg/directory-evolve-reactivation-witness.cfg NeverHistoryRollback
+check DirectoryEvolution.tla cfg/directory-evolve-published-abort-witness.cfg NeverPublishedAbortStage
+check DirectoryEvolution.tla cfg/directory-evolve-repeat-recovery-witness.cfg NeverRepeatedEvolutionRecovery
+check DirectoryEvolution.tla cfg/directory-evolve-original-contents-witness.cfg NeverOriginalStageChildRestored
+check DirectoryEvolution.tla cfg/directory-evolve-target-nonempty.cfg TargetInstallationEmpty
+check DirectoryEvolution.tla cfg/directory-evolve-discard-foreign.cfg ForeignStageChildrenPreserved
+# The same generalized hierarchy actions used by TLAPS also get finite
+# discovery instances; these do not replace the operational durability seam.
+check OwnedDirectoryMC.tla cfg/generalized/directory-empty.cfg
+check OwnedDirectoryMC.tla cfg/generalized/directory-nested.cfg
+check OwnedDirectoryMC.tla cfg/generalized/directory-missing-intent.cfg DirectorySafety
+check OwnedDirectoryMC.tla cfg/generalized/directory-parent-first.cfg DirectorySafety
+check OwnedDirectoryMC.tla cfg/generalized/directory-ancestor-substitution.cfg DirectorySafety
+check RetainedDirectoryMC.tla cfg/generalized/directory-retained.cfg
+check RetainedDirectoryMC.tla cfg/generalized/direct-migration-receipt.cfg
+check IncarnationDomainMC.tla cfg/generalized/incarnation-exchange.cfg
+check IncarnationDomainMC.tla cfg/generalized/incarnation-evolve-borrowed.cfg
 check ProcessSupervision.tla ProcessSupervision.cfg
 check ProcessSupervision.tla ProcessSupervision.ignore-deadline.cfg temporal:Terminates
 check ProcessSupervision.tla ProcessSupervision.inherited-pipe.cfg temporal:Terminates
@@ -88,6 +178,13 @@ check ProcessSupervision.tla ProcessSupervision.reap-first.cfg PidAuthority
 check ProcessSupervision.tla ProcessSupervision.cleanup-failure-witness.cfg NeverCleanupFailure
 check ProcessSupervision.tla ProcessSupervision.inherited-witness.cfg NeverInherited
 check ProcessSupervision.tla ProcessSupervision.linger-witness.cfg NeverLinger
+# Manual tasks compose the same supervisor with persistent mutation ownership.
+check ManualTaskLifetime.tla cfg/manual-task-lifetime.cfg
+check ManualTaskLifetime.tla cfg/manual-task-overlap.cfg NoOverlap
+check ManualTaskLifetime.tla cfg/manual-task-drop-unknown.cfg UnknownRetained
+check ManualTaskLifetime.tla cfg/manual-task-unknown-witness.cfg NeverUnknown
+check ManualTaskLifetime.tla cfg/manual-task-cleanup-unknown-witness.cfg NeverCleanupUnknown
+check ManualTaskLifetime.tla cfg/manual-task-sequential-witness.cfg NeverSequential
 check UpdatePublication.tla UpdatePublication.cfg
 check UpdatePublication.tla UpdatePublication.stale-recheck.cfg NoDowngrade
 check UpdatePublication.tla UpdatePublication.premature-rename.cfg AtomicReady

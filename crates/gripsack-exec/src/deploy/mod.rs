@@ -1,7 +1,10 @@
 //! Deploy: ownership modes, drift, destinations (0001 §3.7).
 
+pub(crate) mod directory_retirement;
 mod entry;
 pub(crate) use entry::{DeploymentInput, deploy_entry};
+mod migration;
+pub use migration::{Migration, MigrationEntry};
 pub(crate) mod remove;
 pub(crate) mod restore;
 
@@ -54,9 +57,9 @@ pub(crate) fn observe(
 /// (which drives these through materialized filesystem states) and
 /// the Verus proofs share it. The authority rules (0029 §2, 0033 R7):
 /// preserved drift NEVER promotes to authority — reconvergence
-/// (live == desired) is the only way back; a managed update requires
-/// agreement with the last managed write; explicit take-over always
-/// absorbs, capturing the origin even when the bytes already match.
+/// (live == desired) or explicit acquisition ends drift; a managed update
+/// requires agreement with the last managed write. Take-over acquires only
+/// foreign/drifted objects, even when their bytes already match the desired.
 pub(crate) use gripsack_policy::ownership::{CopyPlan, LinkPlan, plan_copy, plan_link};
 
 /// A read-only observation by plain path (0035 F7): the preview's

@@ -25,9 +25,9 @@ pub struct Ir {
     pub workspace: Option<crate::workspace::Workspace>,
     #[serde(skip)]
     pub workspace_v4: Option<crate::legacy_v4::LegacyWorkspaceV4>,
-    /// Shared v6/v7 catalog execution model. Strict versioned readers prevent
-    /// v6 envelopes from acquiring v7 authority. Deserialized by parse.rs,
-    /// never by the retained v5 reader.
+    /// Shared v6/v7/v8 catalog execution model. Strict versioned readers prevent
+    /// historical envelopes from acquiring later authority. Deserialized by
+    /// parse.rs, never by the retained v5 reader.
     #[serde(skip)]
     pub workspace_catalog: Option<crate::workspace_model::WorkspaceCatalog>,
 }
@@ -74,15 +74,22 @@ impl Serialize for Ir {
         if let Some(workspace) = &self.workspace_catalog {
             if !matches!(
                 self.ir_version,
-                crate::parse::WORKSPACE_V6_VERSION | crate::parse::IR_VERSION
+                crate::parse::WORKSPACE_V6_VERSION
+                    | crate::parse::WORKSPACE_V7_VERSION
+                    | crate::parse::IR_VERSION
             ) {
                 return Err(S::Error::custom(
-                    "catalog workspace requires ir_version 6 or 7",
+                    "catalog workspace requires ir_version 6, 7 or 8",
                 ));
             }
             if self.ir_version == crate::parse::WORKSPACE_V6_VERSION && workspace.requires_v7() {
                 return Err(S::Error::custom(
                     "v7 declaration authority is forbidden in ir_version 6",
+                ));
+            }
+            if self.ir_version < crate::parse::IR_VERSION && workspace.requires_v8() {
+                return Err(S::Error::custom(
+                    "v8 declaration authority is forbidden before ir_version 8",
                 ));
             }
         }

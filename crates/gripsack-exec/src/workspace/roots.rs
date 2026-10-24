@@ -276,6 +276,17 @@ impl ProcessLease {
     pub fn duplicate_handle(&self) -> std::io::Result<std::fs::File> {
         self.lock.duplicate_handle()
     }
+    /// Release an invocation that launched no subprocess. Artifact-only tasks
+    /// have no process receipt to manufacture. Callers must not use this after
+    /// handing a duplicate to process supervision, including failed launches.
+    pub fn release_unlaunched(self, session: &LifecycleSession) -> Result<(), ExecError> {
+        if self.home != session.home() || self.build.is_some() {
+            return Err(error(
+                "unlaunched release requires this home's native invocation lease",
+            ));
+        }
+        remove_root(session, RootKind::Process, &self.id)
+    }
     pub fn retain(
         &self,
         session: &LifecycleSession,
@@ -445,7 +456,7 @@ fn read_record(
     Ok(Some(record))
 }
 
-fn remove_build_staging(home: &gripsack_fs::Dir, id: &RootId) -> Result<(), ExecError> {
+pub(super) fn remove_build_staging(home: &gripsack_fs::Dir, id: &RootId) -> Result<(), ExecError> {
     let parent = match gripsack_fs::open_dir_nofollow(home, Path::new(BUILD_STAGING_DIRECTORY)) {
         Ok(parent) => parent,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),

@@ -62,7 +62,23 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
     let Some(journal) = Journal::open(home)? else {
         return Ok(Vec::new());
     };
-    let entries = read_uncommitted(&journal)?;
+    let mut entries = read_uncommitted(&journal)?;
+    let directories = super::directory::read_records(&journal)?;
+    // A rollback can restore the directory's older ownership origin after
+    // reinstating its predecessor link. Undo that flat root write first, then
+    // restore the exact staged directory, then restore its child priors.
+    entries.sort_by_key(|(_, entry)| {
+        (
+            !super::directory_recovery::is_reverse_root(&directories, Path::new(&entry.dest)),
+            std::cmp::Reverse(Path::new(&entry.dest).components().count()),
+        )
+    });
+    let root_entries = entries
+        .iter()
+        .take_while(|(_, entry)| {
+            super::directory_recovery::is_reverse_root(&directories, Path::new(&entry.dest))
+        })
+        .count();
     // the commit decision by EXACT transaction identity (0026 §4):
     // current == target committed, current == previous uncommitted,
     // anything else is ambiguous and BLOCKS (fail closed — the
@@ -70,7 +86,14 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
     // corruption or tampering, never a branch to guess). A marker
     // missing `previous_generation` fails closed at parse — torn or
     // corrupt, never mistaken for a fresh-machine run.
-    let committed = match run_marker(&journal)? {
+    let marker = run_marker(&journal)?;
+    if !directories.is_empty() && marker.is_none() {
+        return Err(io::Error::other(
+            "directory journal lacks its transaction marker; evidence retained",
+        ));
+    }
+    let target_generation = marker.as_ref().map(|marker| marker.target.generation());
+    let committed = match marker {
         Some(marker) => {
             marker.admit_recovery()?;
             // the ONE current-pointer reader (0030 §H10): recovery
@@ -108,10 +131,14 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
         // barrier. A later reader sees the new pointer in the kernel cache;
         // seal that observation before durable cleanup destroys the journal.
         gripsack_fs::fsync_dir(home, Path::new("."))?;
+        super::directory_lifecycle::committed(&directories)?;
         cleanup(
             &journal.directory,
-            entries.iter().map(|(path, _)| path.as_path()),
-            CleanupProgress::new(CleanupScope::Committed, entries.len()),
+            entries
+                .iter()
+                .map(|(path, _)| path.as_path())
+                .chain(directories.iter().map(|(path, _)| path.as_path())),
+            CleanupProgress::new(CleanupScope::Committed, entries.len() + directories.len()),
         )?;
         lines.push(RecoveryNote {
             severity: NoteSeverity::Info,
@@ -121,8 +148,35 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
         });
         return Ok(lines);
     }
-    let mut progress = CleanupProgress::new(CleanupScope::Uncommitted, entries.len());
+    let retain_prepared =
+        if let Some(target) = target_generation.filter(|_| !directories.is_empty()) {
+            match crate::generations::admit_manifest_at(home, home_path, target) {
+                Ok(_) => true,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+                Err(error) => return Err(error),
+            }
+        } else {
+            false
+        };
+    if root_entries == 0 {
+        super::directory_recovery::recover_before_leaves(
+            &directories,
+            &entries,
+            home,
+            retain_prepared,
+        )?;
+    }
+    let mut progress =
+        CleanupProgress::new(CleanupScope::Uncommitted, entries.len() + directories.len());
     for (index, (_, entry)) in entries.iter().enumerate() {
+        if index == root_entries && root_entries != 0 {
+            super::directory_recovery::recover_before_leaves(
+                &directories,
+                &entries,
+                home,
+                retain_prepared,
+            )?;
+        }
         let action = CleanupAction::ReconcileEntry { index };
         if progress.action() != action {
             return Err(cleanup_order_error());
@@ -131,7 +185,24 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
         // the drift check and the restore share ONE pinned parent
         // inode: a parent symlink swapped between decide() and
         // restore() cannot redirect the recovery write (plan/0021)
-        let (dest_dir, dest_name) = dest_capability(dest)?;
+        if super::directory_recovery::recovered_reverse_root(&directories, dest)?
+            || super::directory_recovery::unreachable_leaf(
+                &directories,
+                dest,
+                &entry.prior,
+                home,
+                &entries,
+            )?
+        {
+            if !progress.acknowledge(action, true) {
+                return Err(cleanup_order_error());
+            }
+            continue;
+        }
+        let (dest_dir, dest_name) = match super::directory::recovery_parent(&directories, dest)? {
+            Some(bound) => bound,
+            None => dest_capability(dest)?,
+        };
         match decide(&dest_dir, &dest_name, entry, home)? {
             Recovery::Restore(what) => {
                 restore(&dest_dir, &dest_name, &entry.prior, home)?;
@@ -175,9 +246,26 @@ pub fn reconcile(home: &Dir, home_path: &Path) -> io::Result<Vec<RecoveryNote>> 
             return Err(cleanup_order_error());
         }
     }
+    if root_entries != 0 && root_entries == entries.len() {
+        super::directory_recovery::recover_before_leaves(
+            &directories,
+            &entries,
+            home,
+            retain_prepared,
+        )?;
+    }
+    super::directory_recovery::recover_after_leaves(&directories, home, retain_prepared)?;
+    for index in entries.len()..entries.len() + directories.len() {
+        if !progress.acknowledge(CleanupAction::ReconcileEntry { index }, true) {
+            return Err(cleanup_order_error());
+        }
+    }
     cleanup(
         &journal.directory,
-        entries.iter().map(|(path, _)| path.as_path()),
+        entries
+            .iter()
+            .map(|(path, _)| path.as_path())
+            .chain(directories.iter().map(|(path, _)| path.as_path())),
         progress,
     )?;
     Ok(lines)
@@ -269,7 +357,12 @@ pub(crate) fn decide_from(
     }
 }
 
-fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> io::Result<()> {
+pub(super) fn restore(
+    dest_dir: &Dir,
+    dest_name: &Path,
+    prior: &PriorSerde,
+    home: &Dir,
+) -> io::Result<()> {
     match prior {
         PriorSerde::Absent => {
             // remove_file never removes a directory; a dest that grew
@@ -300,7 +393,11 @@ fn restore(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde, home: &Dir) -> 
 /// Seal an observed prior before cleanup, including a partially completed
 /// restoration from an earlier process. Regular bytes need their own barrier;
 /// absence/link identity needs the pinned parent-directory barrier.
-fn seal_observed_prior(dest_dir: &Dir, dest_name: &Path, prior: &PriorSerde) -> io::Result<()> {
+pub(super) fn seal_observed_prior(
+    dest_dir: &Dir,
+    dest_name: &Path,
+    prior: &PriorSerde,
+) -> io::Result<()> {
     if matches!(prior, PriorSerde::File { .. }) {
         let file = gripsack_fs::open_file_nofollow(dest_dir, dest_name)?;
         gripsack_fs::fault::operation(gripsack_fs::fault::Boundary::FileSync, dest_name, || {

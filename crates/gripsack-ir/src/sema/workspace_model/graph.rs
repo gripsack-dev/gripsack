@@ -19,9 +19,13 @@ pub(super) fn check<'a>(
         .enumerate()
         .map(|(index, name)| (*name, index))
         .collect();
+    let attached = super::file_checks::attachments(catalog, out);
+    if !out.is_empty() {
+        return;
+    }
     let edges = references(workspace);
     for output in &workspace.outputs {
-        check_inputs_and_context(output, catalog, inputs, out);
+        check_inputs_and_context(output, catalog, inputs, &attached, out);
         if let WorkspaceOutput::Image(image) = output {
             super::image::selection(image, catalog, out);
         }
@@ -178,6 +182,7 @@ fn check_inputs_and_context(
     output: &WorkspaceOutput,
     catalog: &BTreeMap<&str, &WorkspaceOutput>,
     inputs: &BTreeMap<&str, &WorkspaceInput>,
+    attached: &std::collections::BTreeSet<&str>,
     out: &mut Vec<Diagnostic>,
 ) {
     use crate::workspace_model::graph::input::{
@@ -216,16 +221,16 @@ fn check_inputs_and_context(
     } else {
         ExecutionContext::Host
     };
-    let check_owner = |check: &crate::workspace_model::CheckOutput| {
-        if matches!(
-            catalog.get(check.subject.as_str()),
-            Some(WorkspaceOutput::Recipe(_) | WorkspaceOutput::Package(_))
-        ) {
-            CommandOwner::ImmutableSubject
-        } else {
-            CommandOwner::Invocation
-        }
-    };
+    let check_owner =
+        |check: &crate::workspace_model::CheckOutput| match catalog.get(check.subject.as_str()) {
+            Some(WorkspaceOutput::Recipe(_) | WorkspaceOutput::Package(_)) => {
+                CommandOwner::ImmutableSubject
+            }
+            Some(WorkspaceOutput::Profile(_)) if attached.contains(check.name.as_str()) => {
+                CommandOwner::FileSubject
+            }
+            _ => CommandOwner::Invocation,
+        };
     let owner = match output {
         WorkspaceOutput::Recipe(_) => CommandOwner::Production,
         WorkspaceOutput::Check(check) => check_owner(check),
@@ -237,12 +242,22 @@ fn check_inputs_and_context(
                    out: &mut Vec<Diagnostic>| {
         for argument in value.arguments() {
             arg(argument, value.span(), inputs, out);
+            if owner == CommandOwner::FileSubject
+                && matches!(argument, WorkspaceArg::Source { selector } if selector != ".")
+            {
+                fail(
+                    out,
+                    codes::BAD_WORKSPACE_CONTEXT,
+                    value.span(),
+                    "a file check's source binding names only its attached file; use sourcePath(\".\")",
+                );
+            }
             if !admit_production_binding(owner, argument.policy_origin()) {
                 fail(
                     out,
                     codes::BAD_WORKSPACE_CONTEXT,
                     value.span(),
-                    "source bindings require production or an immutable recipe/package check subject; output bindings require a production owner",
+                    "source bindings require production or an admitted artifact/file check subject; output bindings require a production owner",
                 );
             }
             if let (Some(required), WorkspaceArg::PackageCommand { package, .. }) =
@@ -278,7 +293,9 @@ fn check_inputs_and_context(
             DirectoryOrigin::StagingOutput => ArgumentOrigin::StagingOutput,
             _ => ArgumentOrigin::Literal,
         };
-        if !admit_production_binding(owner, binding) {
+        if !admit_production_binding(owner, binding)
+            || (owner == CommandOwner::FileSubject && origin == DirectoryOrigin::ProductionSource)
+        {
             fail(
                 out,
                 codes::BAD_WORKSPACE_CONTEXT,

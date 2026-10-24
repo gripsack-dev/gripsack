@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply one reviewed owner amendment without rewriting imported requirements.
+"""Apply fixed reviewed owner amendments without rewriting imported requirements.
 
 This is not a waiver registry. The original lane/case/kind/prerequisite inventory
 is fingerprinted; only the explicit projection below changes active acceptance.
@@ -117,6 +117,87 @@ CASE_AMENDMENTS = {
     },
 }
 
+# The later standing architecture decision removes cross-architecture execution,
+# not the mixed B6-03 native/cross identity and unsupported-target admission case.
+X64_AMENDMENT_ID = "PLATFORM-LINUX-X64-2026-10-09"
+X64_CASE_AMENDMENTS = {
+    "B6-03": {
+        0: None,
+        1: None,
+        2: "cache/receipt and CLI correctly identify native execution; unsupported host/target/toolchain combinations fail before any accidental execution, without claiming cross/emulated/remote production",
+    },
+}
+X64_AMENDMENT = {
+    "id": X64_AMENDMENT_ID,
+    "authority": "plan/0048 Standing owner scope PLATFORM-LINUX-X64-2026-10-09",
+    "active_support": ["Linux x86_64", "WSL2 Linux x86_64 execution environment"],
+    "retired_requirement_lanes": {"B6-03": ["cross-target"]},
+    "case_projection": {"B6-03": [
+        {"original_index": 0, "disposition": "out_of_scope", "clause": "real explicit source/worker/target architecture pair and pinned cross toolchain/emulator policy"},
+        {"original_index": 1, "disposition": "out_of_scope", "clause": "resulting target artifact executes on a compatible distinct target runtime"},
+        {"original_index": 2, "disposition": "retained_native_and_invalid_target", "required_case": X64_CASE_AMENDMENTS["B6-03"][2]},
+    ]},
+    "retained": "all Linux x86_64/common runtime, invalid-target, proof and 96-partition persistence obligations",
+    "revisit": "only a new explicit owner decision and native qualification; no emulated or historical pass",
+}
+
+# Exact reviewed leaves, indexed in the unchanged original inventory. These are
+# mixed obligations: only engine/corpus execution is waived, never whole cases.
+# Ordinary schema/type and hostile-context regressions remain required. The
+# owner's later explicit golden-replay exclusion is recorded in plan0048 §17.
+FUZZ_AMENDMENT_ID = "REL-FUZZ-2026-09-27"
+FUZZ_CASE_AMENDMENTS = {
+    "A1-07": {3: "v3/v4/v5 schema/parser acceptance exercises every admitted output kind with negative drift calibration; ordinary TypeScript type and emitter regressions remain required"},
+    "A3-03": {3: "real crossprocess positive/negative wire fixtures exercise length and identity admission"},
+    "A4-01": {4: "synthetic collision/link/long-prefix fixtures plus named Verus compatibility/closure mutations exercise the same production boundary"},
+    "B1-03": {5: "actual Rust and Go decoders/state adapters run Go race fixtures; real Linux worker paths remain mandatory"},
+    "B2-02": {4: "actual decoder limits and real Rust/Go/worker fixtures demonstrate the validation boundary, not a golden protobuf snapshot"},
+    "B5-04": {0: "all applicable B0–B5 rows and global gates have exact-source production, native Linux, runtime, formal, Go race and protected CI evidence"},
+    "E5-03": {1: "actual proof obligations are nonempty and named semantic mutants reject"},
+    "C3-02": {3: "managed-block proposed bytes and existing foreign drift stay separate through the one shared operation planner; adversarial decoders run bounded regression fixtures"},
+    "C5-02": {2: "shrinking graph oracles reject unknown-equal, PATH reorder, removed edge, stale binding and silent truncation mutants"},
+    "D2-05": {3: "bounded adversarial archive and registry descriptors exercise actual production path, not a mock parser or syntax-only failure"},
+    "D6-03": {2: "nonempty production Verus/TLC/TLAPS proofs and semantic mutants reject intended properties with attribution"},
+}
+FUZZ_EXCLUDED_CLAUSES = {
+    "A1-07": "saved TypeScript golden IR corpus replay",
+    "A3-03": "actual decoder fuzz seeds/campaigns",
+    "A4-01": "formula-metadata parser fuzz fixtures",
+    "B1-03": "persisted fuzz seeds, bounded fuzz",
+    "B2-02": "persisted corrupt-LLB fuzz",
+    "B5-04": "decoder fuzz",
+    "E5-03": "relevant decoded IR/unit/plist/journal fuzz seeds/campaigns",
+    "C3-02": "fuzz fixtures (not bounded regression fixtures)",
+    "C5-02": "strict snapshot/JSON/TOML/saved-plan decoder fuzz replays",
+    "D2-05": "fuzz (not bounded adversarial archive and registry descriptors)",
+    "D6-03": "manifest/envelope/descriptor/path/registry fuzz campaigns",
+}
+FUZZ_RETAINED_CASES = {"A1-07": [1], "A1-08": [5]}
+# Standalone fuzz lanes occur also on rows with no embedded fuzz clause. Their
+# deterministic cases remain required on every retained lane. In particular,
+# protocol-fuzz-race is NOT removed: Go race and protocol boundaries still run.
+FUZZ_LANE_REQUIREMENTS = frozenset({
+    "A3-03", "A4-01", "A5-04", "B5-04", "E5-03", "C1-01", "C1-04",
+    "C3-02", "C3-04", "C5-02", "D1-01", "D2-05", "D3-01", "D3-03", "D6-03",
+})
+FUZZ_AMENDMENT = {
+    "id": FUZZ_AMENDMENT_ID,
+    "authority": "plan/0048 sections 15 and 17 explicit golden-replay exclusion; owner continuation reaffirmed in plan/0054",
+    "disposition": "not_run_owner_waived",
+    "applies_to": "feedback releases in this handover continuation only; not unrelated future releases",
+    "excluded_requirement_lanes": {rid: ["fuzz"] for rid in sorted(FUZZ_LANE_REQUIREMENTS)},
+    "case_projection": {
+        rid: [{"original_index": index, "excluded_clause": FUZZ_EXCLUDED_CLAUSES[rid],
+               "required_case": replacement, "disposition": "not_run_owner_waived"}
+              for index, replacement in changes.items()]
+        for rid, changes in FUZZ_CASE_AMENDMENTS.items()
+    },
+    "reviewed_without_exclusion": FUZZ_RETAINED_CASES,
+    "retained": "fuzz workspace dependency policy, ordinary schema/type/emitter and deterministic hostile-context regressions, boundary/property, Go race, fault, model, Verus/TLAPS and persistence obligations",
+    "meaning": "projected closure is not original fuzz completion; original inventories, historical evidence, runners and corpora remain intact",
+}
+AMENDMENTS = [AMENDMENT, X64_AMENDMENT, FUZZ_AMENDMENT]
+
 
 def baseline_digest(ledger: dict) -> str:
     fields = ("id", "required_platform_capability_lanes", "case_and_proof_inventory",
@@ -135,15 +216,21 @@ def baseline_digest(ledger: dict) -> str:
 
 
 def scope_violations(ledger: dict, violations) -> bool:
-    authorized = ledger.get("scope_amendments") == [AMENDMENT]
+    authorized = ledger.get("scope_amendments") == AMENDMENTS
     if not authorized:
-        violations.add("ledger", f"missing or unapproved scope amendment: expected only {AMENDMENT_ID}")
+        violations.add("ledger", "missing or unapproved scope amendment: expected only "
+                       + ", ".join(amendment["id"] for amendment in AMENDMENTS))
     intact = baseline_digest(ledger) == BASELINE_SHA256
     if not intact:
         violations.add("ledger", "original lane/case/evidence-kind/prerequisite inventory changed; reviewed scope baseline required")
     for req in ledger["requirements"]:
         if req["id"] in OUT_OF_SCOPE and req.get("status") == "verified":
             violations.add(req["id"], f"out_of_scope under {AMENDMENT_ID} cannot count as verified")
+        lane_status = req.get("lane_status", {})
+        if req["id"] in FUZZ_LANE_REQUIREMENTS and lane_status.get("fuzz") == "verified":
+            violations.add(req["id"], f"fuzz is not_run_owner_waived under {FUZZ_AMENDMENT_ID}, not verified")
+        if req["id"] == "B6-03" and lane_status.get("cross-target") == "verified":
+            violations.add(req["id"], f"cross-target is out_of_scope under {X64_AMENDMENT_ID}, not verified")
     return authorized and intact
 
 
@@ -152,10 +239,17 @@ def effective_requirement(req: dict) -> dict | None:
     if req["id"] in OUT_OF_SCOPE:
         return None
     active = dict(req)
-    lanes = [lane for lane in req["required_platform_capability_lanes"] if lane not in RETIRED_LANES]
+    excluded_lanes = set(RETIRED_LANES)
+    if req["id"] == "B6-03":
+        excluded_lanes.add("cross-target")
+    if req["id"] in FUZZ_LANE_REQUIREMENTS:
+        excluded_lanes.add("fuzz")
+    lanes = [lane for lane in req["required_platform_capability_lanes"] if lane not in excluded_lanes]
     original = req["case_and_proof_inventory"]
-    changes = {original[index]: replacement for index, replacement
-               in CASE_AMENDMENTS.get(req["id"], {}).items()}
+    indexed_changes = dict(CASE_AMENDMENTS.get(req["id"], {}))
+    indexed_changes.update(X64_CASE_AMENDMENTS.get(req["id"], {}))
+    indexed_changes.update(FUZZ_CASE_AMENDMENTS.get(req["id"], {}))
+    changes = {original[index]: replacement for index, replacement in indexed_changes.items()}
 
     def cases(items: list[str]) -> list[str]:
         return [changes.get(case, case) for case in items if changes.get(case, case) is not None]

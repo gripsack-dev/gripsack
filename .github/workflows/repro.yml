@@ -1,5 +1,8 @@
 name: repro
 
+# Manual investigation only; local qualification retains the required
+# reproducibility gate. Shipping a core tag must not rebuild its product.
+
 # Two-clean-build reproducibility comparison (plan/0042 F): the release
 # target compiled twice from scratch with every input held fixed — same
 # digest-pinned builder image (one image build, used by both runs),
@@ -15,10 +18,6 @@ name: repro
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 6 * * 2" # Tuesdays 06:00 UTC (offset from Mon/Wed workflows)
-  push:
-    tags: ["core-v*"]
 
 permissions:
   contents: read

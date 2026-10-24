@@ -8,7 +8,7 @@ subprocesses, read-only within your repo). Every host observation
 value; effects are explicit probe requests the core binds and feeds
 back ([plan/0013](https://github.com/gripsack-dev/gripsack/tree/main/plan)).
 
-The supported `grip` hosts are Linux and WSL2. macOS and native Windows are
+The supported `grip` hosts are Linux and WSL2 on x86_64. macOS and native Windows are
 outside the current support scope. Historical target metadata remains readable;
 it does not grant a supported execution platform.
 
@@ -33,15 +33,15 @@ export default defineEnv((ctx) => ({
 registered by import side effect — the function *returns* the
 environment, so `Inputs → Environment` is testable and cacheable.
 
-## A workspace is a function (IR v7)
+## A workspace is a function (IR v8)
 
-Use matching 0.46 core and SDK releases for the new baseline and host-runtime
-declarations. Older strict cores do not admit v7. The new core retains v6
-execution with its original closed field set, v5 native file profiles, v4
-read-only workspaces and historical module readers; older envelopes never
-acquire v7 authority.
+Use matching **0.47.0 core and SDK** releases for captured templates/trees,
+archive-root selection and managed profile launchers. Older strict cores do not
+admit v8. The new core retains strict v7/v6/v5 execution with each version's
+original field set, v4 read-only workspaces and v3 historical modules; older
+envelopes never acquire v8 authority.
 
-Linux and WSL2 are the supported host scope. Installing the npm package does
+Linux and WSL2 on x86_64 are the supported host scope. Installing the npm package does
 not upgrade the core binary. Workspace locks capture frontend identity, so
 an intentional SDK change can require explicit `grip update` and reviewed
 exact-digest source approval.
@@ -49,8 +49,8 @@ exact-digest source approval.
 A root `gripsack.ts` — preferred over `hosts/<name>.ts` when present —
 default-exports `defineWorkspace` and returns a `workspace({ outputs })`
 value. No hostname selection and no fake host file: the core injects
-the same facts/probes context, and the emitter produces the v7
-workspace envelope (`{ir_version: 7, host, workspace}`):
+the same facts/probes context, and the emitter produces the v8
+workspace envelope (`{ir_version: 8, host, workspace}`):
 
 ```ts
 // gripsack.ts
@@ -93,6 +93,14 @@ constructor is removed; retained legacy IR remains versioned data, not a
 second workspace producer API. Conda/Pixi native and image qualification is
 tracked separately in plan 0052; this authoring surface alone is not evidence
 that every consumer/platform is qualified.
+
+For `pixi.fromLock`, `grip update` imports the selected external lock; it does
+**not** solve, upgrade packages or rewrite `pixi.lock`. To change packages,
+update the external manifest/lock with your chosen Pixi workflow first, then
+review those files, run `grip update`, and approve the changed captured inputs.
+Frozen builds use the imported identities without solving. Keep explicit
+runtime dependencies such as pyright's `xorg-libx11`; no broad host fallback is
+implied by an environment import.
 
 `packages` values are version MatchSpecs: use `"==25.07.1"` for exact equality,
 `"=25.07"` for a version-prefix match, `">=25.07.1,<26"` for a range, or `"*"`.
@@ -146,9 +154,9 @@ given a false `line_map`. JavaScript evaluates template expressions
 before calling a tag: do not put `${…}` expressions in `bashBody`.
 The frontend rejects them when invoked, but this is **not** a static
 pre-evaluation check. Recipe commands execute only through explicit production;
-the native file-profile path below does not execute command declarations.
+profile hooks and attached file checks have their own lifecycle stages below.
 
-Recipe execution is explicit. In 0.44, production recipes declare
+Recipe execution is explicit. Production recipes declare
 `kind: "isolated_linux"`, `worker: "buildkit"`, a Linux `platform`, and
 `toolchain: { reference: "<registry/image>@sha256:<digest>" }`. They do not run
 during `grip check`. A `{ kind: "host", access: "unconfined" }` declaration is
@@ -169,6 +177,17 @@ host-dependent persistent wrappers re-enter the absolute installed core path.
 Keep that core path and private state available. Host libraries remain trusted,
 mutable host inputs, not sealed package bytes, and such packages cannot be
 silently placed into an OCI image.
+
+An ABI selects compatibility and the loader, not ambient library access.
+For GNU releases requiring `libm.so.6`, `libgcc_s.so.1` or `libstdc++.so.6`,
+retain compatible libraries in the package or an explicit `runtime: ["runtime"]`
+package edge, or review a host library directory containing them. For example,
+`/usr/lib/x86_64-linux-gnu` is an explicit Ubuntu host-dependent choice, not a
+portable default; review RHEL's `/usr/lib64` separately. X11 still needs its own
+closure dependency (`xorg-libx11` for the reported pyright environment).
+An `ET_DYN` ELF header alone does not imply dynamic execution: static PIE without
+an interpreter or needed libraries is admitted as static; dynamically interpreted
+payloads must declare their actual ABI.
 
 `grip check` evaluates and admits the workspace without a host file or
 `env.toml` and lists named outputs. Native **file-only profiles** now
@@ -245,6 +264,125 @@ directly into the existing generation transaction. It does not require a manual
 pre-build. Exported command aliases and literal environment values persist with
 the generation; rollback reuses retained package bytes without a worker.
 
+### Captured files, trees and stable package roots
+
+Keep the body in one captured file, not duplicated in a TypeScript string:
+
+```ts
+file({
+  source: repoFile("scripts/editor-theme.sh.tmpl"),
+  content: templateFile({ theme: "dark" }),
+  destination: trackedCopyTo("~/.local/bin/editor-theme"),
+});
+```
+
+`templateFile(variables, resultDigest?)` renders `{{ theme }}` from the approved
+source bytes. An executable `repoFile` remains executable through rendering
+and either tracked-copy or symlink deployment. Preserve the executable bit in
+your repository; this is normalized executable classification, not arbitrary
+mode/owner/ACL preservation. `literalText` has no executable source and produces
+0644 files; `templateText` embeds a body instead of reading a captured template.
+The optional result digest is checked, not an authority bypass. Neither form
+needs evaluation-time `readFileSync`, Deno I/O or subprocesses.
+
+```ts
+file({
+  source: repoTree(".claude/skills", {
+    include: ["d2"],
+    exclude: ["d2/scratch"],
+  }),
+  content: identity(),
+  destination: trackedCopyTo("~/.claude/skills"),
+});
+```
+
+Includes/excludes are literal, normalized segment prefixes relative to the
+selected tree, **not globs**: `d2` includes that subtree, not `d20`; `*.d2`
+does not mean “all D2 files”. Empty/omitted includes select all; exclusions win.
+Safe internal file/directory aliases expand to logical destinations:
+`d2/recipes/theme.d2 -> ../theme.d2` deploys `d2/recipes/theme.d2` backed by the
+captured target's bytes/mode. Trees require `identity()`, not per-file templates.
+The core rejects escapes, dangling targets, cycles, collisions and budget
+violations. Add/remove/retarget changes participate in captured identity and
+the deployment diff. Each expanded file is owned separately; foreign siblings
+are not replaced.
+
+Selection does **not** bypass whole-source capture. Capture rejects unsafe
+aliases/cycles before `repoTree` can filter them. Exclude an irrelevant outbound
+`.venv` link at the capture boundary with `env.toml`:
+
+```toml
+[capture]
+exclude = [".venv"]
+```
+
+These literal repository-relative exclusions become approved capture policy;
+they are not `.gitignore` rules or grants to read the excluded tree. Keep an
+alias's target in the approved bundle. The current SDK replaces `treeFiles`
+with `repoTree`; no compatibility walker or generated manifest is needed.
+
+For a release archive with one versioned top-level directory:
+
+```ts
+const linuxMusl = targetPlatform({ os: "linux", arch: "x86_64", abi: "musl" });
+const rg = pkg("ripgrep", {
+  producer: provider(githubRelease({
+    repo: "BurntSushi/ripgrep",
+    asset: "ripgrep-{version.bare}-x86_64-unknown-linux-musl.tar.gz",
+  })),
+  archiveRoot: { kind: "single_directory" },
+  commands: { rg: "rg" },
+  target: linuxMusl,
+  layout: { kind: "relocatable" },
+});
+```
+
+`archiveRoot` selects exactly one real payload directory for a native relocatable
+package. Root-level files/metadata siblings, multiple roots and symlink roots
+are refused, not silently stripped. Commands, `artifactFile` and `artifactTree`
+selectors all use that same receipt-bound root. A reviewed `grip update` can
+therefore change the resolved version/root without editing `"rg"`. Existing
+selectors such as `"ripgrep-15.2.0-x86_64-unknown-linux-musl/rg"` remain **literal**;
+remove that prefix explicitly when opting into the policy. Asset placeholders
+do not interpolate command/artifact selectors. This declaration is not a claim
+that the upstream binary has been exercised on your host.
+
+### Managed profile launchers
+
+Select an environment and explicitly choose both the destination and commands:
+
+```ts
+const search = environment("search", { packages: ["ripgrep"], target: linuxMusl });
+const personal = profile("personal", {
+  environment: "search",
+  launchers: { directory: "~/.local/bin", commands: ["rg"] },
+});
+// Return rg, search and personal in workspace.outputs.
+```
+
+Only uniquely resolved exports from that environment become launchers; missing
+or ambiguous commands fail before mutation. Use `/usr/local/bin` only as an
+explicit operator choice with appropriate destination permissions, not as an
+implicit privilege grant. Put the chosen directory on your editor/SSH `PATH`;
+the core does not edit those programs' environments.
+
+The core owns executable launcher bodies, activation bindings and retained
+package roots. Launchers re-enter the absolute installed core path and re-admit
+the package/runtime contract on each invocation; they do not find `grip` via
+`PATH`, recursively call the public command name, or fall back to an unsealed
+shell wrapper. Keep that core path and private state available. If the core
+moves/disappears, restore it or reapply using the replacement core; do not hand
+edit the launcher. Rollback/GC retain the generation's dependencies.
+
+Sealed invocation does not promise the original `/proc/self/exe` pathname.
+LuaLS3.19.2's compiled bootstrap uses that pathname to find `bin/main.lua`;
+granting its libraries does not fix this self-location requirement. For that
+release, retain the complete tree with `trackedCopyTo` (including `bin/main.lua`,
+root `main.lua` and `changelog.md`), use one executable captured `templateFile`
+wrapper to invoke the deployed binary, and check that explicit host path.
+Keep runtime-written log/meta data outside the store. This is deliberate host
+execution, not sealed closure proof or a managed-launcher fallback.
+
 `artifactTree` expands selected paths/subtrees into individual owned file
 entries, with exclusions winning. It never replaces the destination directory:
 foreign children remain, removals use existing drift/prune policy, and expanded
@@ -253,12 +391,65 @@ are refused rather than followed. Per-file symlinks do not preserve the real
 sibling layout of a release tree: use `trackedCopyTo` for binaries that locate
 runtime files relative to their resolved executable path. This does not add a
 directory-level symlink or fixed-prefix relocation mechanism.
-Profile hooks and task postconditions execute; schedules, staged profile-file
-checks and host recipe execution remain explicitly gated.
+
+Use tracked copies for extension-sensitive data consumers too. Per-file store
+blobs do not promise the source filename or extension. A font tree deployed with
+`trackedCopyTo("~/.local/share/fonts/inter")` preserves its relative filenames as
+real files; point `TYPST_FONT_PATHS` at that destination instead of maintaining a
+second dereferenced font-copy cache. Both artifact and captured repository trees
+can use this policy. Tracked copies retain ownership and drift checks; they are
+not a reproducible mutable package-manager overlay.
+
+Profile hooks, task postconditions and attached profile-file checks execute.
+Schedules and host recipe execution remain explicitly gated.
 Historical v4 workspaces remain read-only pending A5 migration. `check` never
 bootstraps BuildKit or a scheduler. `adopt` does not edit workspace TypeScript
 automatically: declare the file policy and use explicit `apply --take-over`
 when reversible adoption of a foreign tracked-copy destination is intended.
+
+### File checks and manual tasks
+
+Attach a named `check` to `file({ checks: [...] })`, for example
+`{ check: "validate-editor", subject: "rendered", stage: "pre_flip" }`.
+The corresponding `check("validate-editor", { subject: "dotfiles", run: ... })`
+names the owning profile. Its typed command may use a declared `packageCommand`
+or an explicitly selected host executable; the latter is host execution, not
+sealed package-closure proof. `sourcePath(".")` refers to that attached file,
+not a writable output or working directory.
+
+Available stages are `pre_flip`, `post_link` and `post_activate`. Source checks
+need a captured source; rendered checks must be `pre_flip` and validate before
+destination mutation. A deployed `pre_flip` check runs after candidate writes
+but before the generation flip, within journal compensation. `post_link` and
+`post_activate` run through the activation lifecycle; a late failure is not a
+promise of automatic rollback. A profile-bound check cannot also be a recipe
+validator or task postcondition.
+
+```sh
+grip task list
+grip task plan format-now
+grip task run format-now --closed-stdin
+grip task status INVOCATION_ID
+grip task log INVOCATION_ID
+```
+
+Use the exact invocation ID returned by `run`; `status` reads its durable
+receipt and `log` reads its bounded private stdout/stderr log. `list`/`plan`
+inspect declarations without package realization or running postconditions.
+`run` creates a fresh invocation, not a cached task success. Task `deps` are
+unordered prerequisite task names; they must succeed within that invocation,
+while `steps` are ordered locally and `checks` are invocation postconditions.
+Declare live paths with `context: { kind: "host", mutable_paths: [...] }` and
+shared mutation keys with `locks: [lock("user", "editor-config")]` (or `"store"`
+scope). The complete graph's keys are admitted before effects, not inferred
+from command text; locks grant no execution authority. `--skip-busy` permits
+skipping an active conflict, not bypassing an unknown interrupted owner.
+`--timeout-seconds` bounds realization, prerequisites and verification together.
+Interrupted outcomes remain unknown, not fabricated success.
+
+`schedule(...)` and `profile({ schedules: [...] })` are declarations only:
+registration/execution is unavailable. Use explicit manual tasks; do not infer
+a running timer from a successful `grip check`.
 
 Four [graduated workspaces](../examples/workspaces/) use the real SDK
 without a hostname shim or a synthetic package: [dotfiles only](../examples/workspaces/01-dotfiles/gripsack.ts),
@@ -270,7 +461,7 @@ each through the real `grip check`. The dotfile and native-tool profiles use
 the native lifecycle; the source-built tool uses the pinned BuildKit policy.
 Scheduler registration remains gated: a declared schedule activates nothing.
 
-The legacy `hosts/<name>.ts` path emits a v7 modules-compatibility
+The legacy `hosts/<name>.ts` path emits a v8 modules-compatibility
 envelope. Strict retained readers preserve their versioned meanings;
 current fields are not silently added to an older declaration.
 
@@ -283,6 +474,96 @@ per file. Out-of-repo labels remain visible without reading their
 contents; JSON carries diagnostic facts, not source-file bytes.
 Operational failures such as a denied trust gate still report stderr
 and may have no structured diagnostic in the JSON document.
+
+### Reviewer migration: delete plumbing, keep verification
+
+| Before: user-owned maintenance | After: reviewed declaration |
+|---|---|
+| `scripts/generate-tree-manifest.mjs`, `lib/tree-manifest.generated.ts`, traversal helper and freshness checks | `file({ source: repoTree(...), content: identity(), destination: trackedCopyTo(...) })` |
+| Captured script plus duplicated inline template body and parity checker | One executable `repoFile` plus `templateFile(variables)` |
+| Handwritten activation/PATH wrappers | Profile `environment` plus explicit `launchers.directory` / `launchers.commands` |
+| Versioned archive prefixes repeated in commands/artifact selectors | Opt-in `archiveRoot`, then root-relative literal selectors |
+| Dereferenced font-copy cache solely to recover filename extensions | Deploy the font tree with `trackedCopyTo` and point the consumer at that physical destination |
+
+1. Install matching 0.47.0 core/SDK (or remove a deliberate npm pin to use the
+   matching embedded frontend). Retain the previous generation and recovery
+   data; an SDK change is not itself a lock refresh or source approval.
+2. Replace declarations as above. Keep captured template bodies and executable
+   bits; keep physical sibling trees on `trackedCopyTo`. Remove only the
+   obsolete generator/manifest/parity/wrapper implementations and their checks,
+   retaining one small consumer integration test of actual installed behavior.
+   Do not delete unrelated legacy ownership records or use `--take-over` as a
+   blanket symlink migration tool.
+3. Inspect `grip trust inspect --json`, review the source inventory/policy and
+   use exact-digest approval. Run `grip update` when frontend/import pins or
+   external resolutions change, review the lock diff, then inspect/approve the
+   new snapshot when required. A frozen Pixi import still does not upgrade it.
+4. Run `grip check`, `grip plan personal`, then `grip apply personal` for your
+   selected profile. Verify the actual deployed commands, file modes, logical
+   alias destinations and sibling resources before dropping recovery data.
+   These are migration instructions, not a claim of reviewer-host qualification.
+
+For a current legacy generation `N`, review `grip plan personal --migrate-from N`
+before `grip apply personal --migrate-from N`. This explicit ownership transition
+prepares replacements before releasing old paths and retains predecessor recovery
+data. Keep that generation until functional verification succeeds. Destination
+changes are not atomic across the whole profile: commands can be temporarily
+unavailable during cutover. Stop dependent invocations until verification passes.
+Pre-flip failures compensate; late activation failure needs explicit recovery
+such as `grip rollback N`, not an assumed automatic rollback. The older prune-first
+sequence remains a separate legacy apply with a longer gap between generations.
+
+The [dotfiles example](../examples/workspaces/01-dotfiles/gripsack.ts) is a small
+offline CLI smoke target: typed `editorFiles(theme)` returns ordinary file
+values and an executable captured template prints the selected theme. Copy it to
+a scratch repository preserving executable bits. To also exercise a safe internal
+alias, create it in that scratch copy before capture:
+
+```sh
+mkdir -p dotfiles/editor/recipes
+ln -s ../theme.toml dotfiles/editor/recipes/theme.toml
+```
+
+With isolated `HOME` and `GRIPSACK_HOME`, approve that copy, then run `grip check`,
+`grip plan dotfiles`, `grip apply dotfiles` and
+`"$HOME/.local/bin/editor-theme"`. The optional alias deploys as a physical file
+alongside `theme.toml` under `$HOME/.config/editor/assets`; adding it needs no
+manifest regeneration. The checkout itself remains compatible with the local
+release gate's no-source-symlink policy. No upstream editor/formatter is run.
+
+### Frequent content edits: select a profile, not a trust bypass
+
+Keep frequently edited files in their own ordinary profile within the same
+workspace, alongside tool and editor profiles:
+
+```ts
+const claude = profile("claude", {
+  files: [file({
+    source: repoTree(".claude/skills"),
+    content: identity(),
+    destination: trackedCopyTo("~/.claude/skills"),
+  })],
+});
+// Include claude alongside the other outputs in workspace.outputs.
+```
+
+`grip plan claude` and `grip apply claude` select that profile; they do not apply
+or prune unselected profiles. With no selection, apply processes the whole
+declared profile graph. A legacy wrapper such as `install.sh claude` must forward
+to that profile name rather than assuming old module names exist in the workspace.
+
+In a terminal, `grip trust add` already captures the source, shows its digests,
+policy and changed inventory paths, then asks for approval in one command.
+It is not necessary to run a separate `trust inspect` first. The terminal summary
+shows at most 20 paths; use `grip trust inspect --json` for the complete
+`.approval.changes` list and policy. Review the actual changed content too:
+inventory changes are not a line-by-line content diff.
+
+Approval still covers the exact whole source bundle and policy. Changes outside
+the selected profile remain visible and require review; a text file or
+non-executable mode is not a trust exemption. Subtree approval and recursive
+capture-glob exclusions are not 0.47 APIs. `[capture].exclude` remains literal,
+and capture does not automatically inherit `.gitignore`.
 
 ## Probes are requests, not effects
 
@@ -334,7 +615,7 @@ do not authorize evaluation.
 | hosts | `defineEnv`, `Env`, `EnvContext`, `EnvFn` |
 | workspace | `defineWorkspace`, `workspace`, `WorkspaceValue`, `WorkspaceContext` |
 | outputs | `recipe`, `pkg`, `environment`, `task`, `schedule`, `check`, `image`, `profile`, `hook`, `provider`, `targetPlatform` |
-| commands/files | `exec` (object or fluent), `bash`, `bashBody`, `runBash`, `file`, `lit`, `artifact`, `hostPath`, `packageCommand`, `repoFile`, `artifactFile`, `identity`, `literalText`, `templateText`, `symlinkTo`, `trackedCopyTo`, `managedBlock`, `daily`, `weekly` |
+| commands/files | `exec` (object or fluent), `bash`, `bashBody`, `runBash`, `file`, `lit`, `artifact`, `hostPath`, `packageCommand`, `repoFile`, `repoTree`, `artifactFile`, `artifactTree`, `identity`, `literalText`, `templateText`, `templateFile`, `symlinkTo`, `trackedCopyTo`, `managedBlock`, `daily`, `weekly` |
 | legacy modules | `module`, `ModuleSpec`, `ModuleValue` (A5 migration inventory) |
 | probes | `ctx.probe` (`executable`, `file_exists`), `ProbeBuilder`, `ProbeKind` |
 | facts | `HostFacts` (core-injected), `when`, `hasTag`, `Condition` |
@@ -373,11 +654,11 @@ Build closures follow build edges transitively, with graph-ordered
 PATH and deduplicated members. Runtime deps of a build tool still
 deploy normally. This is not a hermetic environment.
 
-Core/TypeScript **0.36.0 uses IR v3**. Remove module/step `retries`:
-the field was accepted but did not execute retries; it is now rejected.
-Update a pinned `@gripsack/core` to `^0.36.0`, or remove it to use the
-embedded frontend. v1/v2 input is rejected before decoding. Dependency
-purposes still use `for`, not `edge`, with `dep(name, { for: "build" })`.
+Historical core/TypeScript **0.36.0 used IR v3**. Module/step `retries` was
+removed: the field was accepted but did not execute retries; it is rejected.
+This is historical reader guidance, not a recommendation to downgrade a current
+SDK pin. v1/v2 input is rejected before decoding. Dependency purposes still
+use `for`, not `edge`, with `dep(name, { for: "build" })`.
 Old lockfiles and generations remain readable; rollback restores files
 without rebuilding. GC retains closure paths for every retained generation.
 

@@ -1,12 +1,11 @@
 """0042 F: durable concurrent self-update against the REAL CLI.
 
-The installed executable is a copy of the real `grip`; updates come
-from a loopback GitHub-releases fixture serving sha-verified tarballs
-whose `grip` is a tiny executable version peer (it must answer
-`--version` with exactly `grip X.Y.Z`). Two processes start from the
-same old inode; API/download barriers force one updater to publish
-while the other waits on the per-executable coordination lock, proving
-the under-lock re-check: no downgrade, no second overwrite.
+The installed executable is a copy of the real `grip`; updates pass the shared
+standalone admission code against offline HTTP and an explicit gh test double.
+This is consumer and concurrency evidence, NOT cryptographic proof. Real gh
+must additionally verify a real signed release candidate before promotion.
+Two processes start from the same old inode; API/download barriers force one
+updater to publish while the other waits on the per-executable lock.
 
 Publication faults are driven through the real operation trace
 (GRIPSACK_FS_TRACE/GRIPSACK_FS_CUT, debug builds only): a cut before
@@ -19,29 +18,18 @@ sandbox (TMPDIR included).
 from __future__ import annotations
 
 import gzip
-import hashlib
 import io
 import json
-import os
 import shutil
 import stat
 import subprocess
 import tarfile
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 from conftest import GRIP
+from release_fixture import Releases as SelfUpdateReleases
 
-TRIPLES = (
-    "x86_64-unknown-linux-musl",
-    "aarch64-unknown-linux-musl",
-    "x86_64-unknown-linux-gnu",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-apple-darwin",
-    "aarch64-apple-darwin",
-)
 
 
 def version_peer(version: str) -> bytes:
@@ -74,107 +62,6 @@ def custom_tarball(members: list[tarfile.TarInfo], contents: list[bytes]) -> byt
     return buf.getvalue()
 
 
-class SelfUpdateReleases:
-    """Loopback GitHub-releases API behind GRIPSACK_UPDATE_API. Serves
-    the newest core-v* release (ts-v tags ship alongside and must not
-    win), the platform tarball and its mandatory sha256 sidecar. Every
-    served version stays downloadable after a newer one becomes latest.
-
-    `hold_tarball()` parks the next tarball response inside the server
-    thread AFTER its payload was captured — the client holds the
-    self-update lock mid-download until `release_tarball()`."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self.releases: dict[str, dict[str, bytes]] = {}
-        self.latest = ""
-        self.requests: list[str] = []
-        self._holding = False
-        self.tarball_entered = threading.Event()
-        self.tarball_release = threading.Event()
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
-        threading.Thread(target=self._server.serve_forever, daemon=True).start()
-
-    @property
-    def base(self) -> str:
-        return f"http://127.0.0.1:{self._server.server_port}"
-
-    def serve(self, version: str, tarball: bytes) -> None:
-        sha = hashlib.sha256(tarball).hexdigest()
-        base = self.base
-        assets = []
-        for triple in TRIPLES:
-            assets.append({
-                "name": f"gripsack-{version}-{triple}.tar.gz",
-                "browser_download_url": f"{base}/dl/{version}/t.tar.gz",
-                "url": f"{base}/api/{version}/{triple}",
-            })
-            assets.append({
-                "name": f"gripsack-{version}-{triple}.tar.gz.sha256",
-                "browser_download_url": f"{base}/dl/{version}/t.sha256",
-                "url": f"{base}/api/{version}/{triple}.sha256",
-            })
-        listing = json.dumps([
-            {"tag_name": "ts-v0.0.0", "assets": []},
-            {"tag_name": f"core-v{version}", "assets": assets},
-        ]).encode()
-        with self._lock:
-            self.releases[version] = {
-                "listing": listing,
-                "tarball": tarball,
-                "sidecar": f"{sha}  gripsack.tar.gz\n".encode(),
-            }
-            self.latest = version
-
-    def hold_tarball(self) -> None:
-        self.tarball_release.clear()
-        self.tarball_entered.clear()
-        self._holding = True
-
-    def release_tarball(self) -> None:
-        self._holding = False
-        self.tarball_release.set()
-
-    def count(self, suffix: str) -> int:
-        with self._lock:
-            return sum(1 for r in self.requests if r.split("?")[0].endswith(suffix))
-
-    def _handler(self):
-        fixture = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                path = self.path.split("?")[0]
-                with fixture._lock:
-                    fixture.requests.append(self.path)
-                    latest = fixture.latest
-                    served = dict(fixture.releases)
-                    hold = fixture._holding
-                if path.startswith("/repos/"):
-                    body = served[latest]["listing"]
-                elif path.endswith(".sha256"):
-                    body = served[latest]["sidecar"]
-                elif path.endswith(".tar.gz"):
-                    body = served[latest]["tarball"]
-                    if hold:
-                        # the payload is already captured; the client is
-                        # now parked holding the self-update lock
-                        fixture.tarball_entered.set()
-                        if not fixture.tarball_release.wait(180):
-                            self.send_error(500, "barrier timeout")
-                            return
-                else:
-                    self.send_error(404)
-                    return
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def log_message(self, *a):
-                pass
-
-        return Handler
 
 
 def install_real_cli(sandbox: Path) -> Path:
@@ -189,11 +76,10 @@ def install_real_cli(sandbox: Path) -> Path:
 
 def cli_env(sandbox: Path, server: SelfUpdateReleases, **extra: str) -> dict:
     (sandbox / "tmp").mkdir(exist_ok=True)
-    env = dict(os.environ)
+    env = server.environment(sandbox)
     env.update({
         "HOME": str(sandbox),
         "GRIPSACK_HOME": str(sandbox / ".local/share/gripsack"),
-        "GRIPSACK_UPDATE_API": server.base,
         "TMPDIR": str(sandbox / "tmp"),
     })
     env.update(extra)
@@ -250,7 +136,7 @@ def test_waiting_older_updater_never_downgrades_or_overwrites(sandbox):
         server.serve("2.0.0", release_tarball("2.0.0"))
         p2 = subprocess.Popen([str(exe), "self-update"], env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        wait_for(lambda: server.count(".sha256") >= 2, what="P2's resolution")
+        wait_for(lambda: server.count(".sigstore.json") >= 3, what="P2's verified resolution")
         # P2 has resolved and can only be parked on the coordination lock
         assert p2.poll() is None, f"P2 finished early: {p2.poll()}"
         assert exe.read_bytes() == original, "P2 must not publish while P1 holds the lock"
@@ -277,24 +163,6 @@ def test_waiting_older_updater_never_downgrades_or_overwrites(sandbox):
         server._server.shutdown()
 
 
-def publication_cuts(trace: list[tuple[int, str, str, str]], exe: Path) -> dict[str, int]:
-    """Ordinals of the executable swap's durability boundaries. The
-    streamed write traces its DESTINATION name — the bare `grip` the
-    installation pins — and its DirSync traces the parent rel path."""
-    swap = [row for row in trace if row[3] == exe.name and row[2] in
-            {"Write", "Mode", "FileSync", "FilePublish"}]
-    assert swap, f"no publication boundaries for {exe.name} in the trace"
-    publish = [row for row in swap if row[2] == "FilePublish"]
-    assert [row[1] for row in publish] == ["Before", "After"], publish
-    index = trace.index(publish[1])
-    dirsync = [row for row in trace[index + 1:] if row[2] == "DirSync"][:2]
-    assert [row[1] for row in dirsync] == ["Before", "After"], dirsync
-    return {
-        "prepublish": publish[0][0],
-        "postpublish": publish[1][0],
-        "predirsync": dirsync[0][0],
-        "postdirsync": dirsync[1][0],
-    }
 
 
 def test_waiting_newer_updater_wins_after_the_reprobe(sandbox):
@@ -317,7 +185,7 @@ def test_waiting_newer_updater_wins_after_the_reprobe(sandbox):
         server.serve("3.0.0", release_tarball("3.0.0"))
         p2 = subprocess.Popen([str(exe), "self-update"], env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        wait_for(lambda: server.count(".sha256") >= 2, what="P2's resolution")
+        wait_for(lambda: server.count(".sigstore.json") >= 3, what="P2's verified resolution")
         assert p2.poll() is None, f"P2 finished early: {p2.poll()}"
         assert exe.read_bytes() == original
 

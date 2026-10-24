@@ -126,8 +126,25 @@ pub fn rename(from_dir: &Dir, from: &Path, to_dir: &Dir, to: &Path) -> io::Resul
 /// this so a staged private directory can never replace a path that
 /// appeared concurrently — replacing it would steal a foreign name.
 pub fn rename_noreplace(dir: &Dir, from: &Path, to: &Path) -> io::Result<()> {
+    rename_noreplace_between(dir, from, dir, to)
+}
+
+/// No-clobber publication between two pinned directories on one filesystem.
+/// The caller seals both namespaces before releasing its recovery evidence.
+pub fn rename_noreplace_between(
+    from_dir: &Dir,
+    from: &Path,
+    to_dir: &Dir,
+    to: &Path,
+) -> io::Result<()> {
     operation(Boundary::TreePublish, to, || {
-        rustix::fs::renameat_with(dir, from, dir, to, rustix::fs::RenameFlags::NOREPLACE)
-            .map_err(io::Error::from)
+        rustix::fs::renameat_with(
+            from_dir,
+            from,
+            to_dir,
+            to,
+            rustix::fs::RenameFlags::NOREPLACE,
+        )
+        .map_err(io::Error::from)
     })
 }

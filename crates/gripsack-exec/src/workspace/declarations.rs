@@ -107,7 +107,15 @@ impl<'a> Files<'a> {
                     .iter()
                     // Tree roots are containers, not directory ownership claims.
                     // Exact file destinations are checked after bounded expansion.
-                    .filter(|file| !matches!(file.source, Some(v6::WorkspaceSource::Tree { .. })))
+                    .filter(|file| {
+                        !matches!(
+                            file.source,
+                            Some(
+                                v6::WorkspaceSource::Tree { .. }
+                                    | v6::WorkspaceSource::RepoTree { .. }
+                            )
+                        )
+                    })
                     .map(|file| (&file.span, &file.destination)),
             )
     }
@@ -148,20 +156,24 @@ impl<'a> Files<'a> {
                     source,
                     content,
                     destination: &file.destination,
+                    checks: &[],
                 }))
             })
             .chain(self.current.iter().map(move |file| {
-                if !file.checks.is_empty() {
-                    return Err(super::file_failure(
-                        &file.span,
-                        "file-check execution requires its lifecycle adapter",
-                    ));
-                }
                 let source = match &file.source {
                     None => None,
                     Some(v6::WorkspaceSource::RepoFile { path }) => {
                         Some(Source::RepoFile { path: path.clone() })
                     }
+                    Some(v6::WorkspaceSource::RepoTree {
+                        path,
+                        include,
+                        exclude,
+                    }) => Some(Source::RepoTree {
+                        path: path.clone(),
+                        include: include.clone(),
+                        exclude: exclude.clone(),
+                    }),
                     Some(v6::WorkspaceSource::ArtifactFile { output, selector }) => {
                         let Some((path, identity)) =
                             artifact_file(output, selector, realization, &file.span)?
@@ -216,12 +228,20 @@ impl<'a> Files<'a> {
                         variables,
                         result_digest: result_digest.as_deref(),
                     },
+                    v6::WorkspaceContent::TemplateFile {
+                        variables,
+                        result_digest,
+                    } => Content::TemplateFile {
+                        variables,
+                        result_digest: result_digest.as_deref(),
+                    },
                 };
                 Ok(Captured::Known(File {
                     span: &file.span,
                     source,
                     content,
                     destination: &file.destination,
+                    checks: &file.checks,
                 }))
             }))
     }
@@ -232,6 +252,16 @@ impl<'a> Files<'a> {
 pub(super) enum Source {
     RepoFile {
         path: String,
+    },
+    RepoTree {
+        path: String,
+        include: Vec<String>,
+        exclude: Vec<String>,
+    },
+    /// Resolved repository-relative target and logical alias attribution.
+    RepoTreeFile {
+        path: String,
+        identity: String,
     },
     /// A file inside a realized recipe/package payload. `identity` binds the
     /// producing object digest and selector, never the host store path.
@@ -262,12 +292,18 @@ pub(super) enum Content<'a> {
         #[serde(skip_serializing_if = "Option::is_none")]
         result_digest: Option<&'a str>,
     },
+    TemplateFile {
+        variables: &'a BTreeMap<String, String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result_digest: Option<&'a str>,
+    },
 }
 pub(super) struct File<'a> {
     pub span: &'a Span,
     pub source: Option<Source>,
     pub content: Content<'a>,
     pub destination: &'a v5::WorkspaceDestination,
+    pub checks: &'a [v6::WorkspaceFileCheck],
 }
 
 /// The realized payload path plus its stable object identity (recipe tree
@@ -282,7 +318,7 @@ fn artifact_root<'a>(
     }
     if let Some(package) = realization.packages.get(output) {
         return Some((
-            package.producer.payload.clone(),
+            package.payload().to_path_buf(),
             package.identity.to_string(),
         ));
     }

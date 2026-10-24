@@ -274,6 +274,8 @@ fn crash_after_flip_but_before_cleanup_reads_committed() {
     let manifest = crate::generations::Generation {
         number: crate::GenerationId::new(1),
         modules: Default::default(),
+        directory_transitions: Vec::new(),
+        migration: None,
     };
     crate::generations::write_manifest(&cap(&home), &manifest).unwrap();
     crate::generations::flip(run).unwrap();
@@ -364,6 +366,8 @@ fn manifest(n: u64) -> crate::generations::Generation {
     crate::generations::Generation {
         number: crate::GenerationId::new(n),
         modules: Default::default(),
+        directory_transitions: Vec::new(),
+        migration: None,
     }
 }
 

@@ -23,6 +23,8 @@ pub enum Enforcement {
 pub enum ProcessDisposition {
     Exited,
     Deadline,
+    /// A supervisor cancellation was forwarded, followed by bounded cleanup.
+    Cancelled,
     InputLimit,
     LineLimit,
     StdoutLimit,

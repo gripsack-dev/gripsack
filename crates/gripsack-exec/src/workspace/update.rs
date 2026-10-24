@@ -31,7 +31,9 @@ pub(crate) fn update(ir: &Ir, ctx: &Ctx, mode: UpdateMode) -> Result<UpdateSurve
         .filter(|_| {
             matches!(
                 ir.ir_version,
-                gripsack_ir::WORKSPACE_V6_VERSION | gripsack_ir::IR_VERSION
+                gripsack_ir::WORKSPACE_V6_VERSION
+                    | gripsack_ir::WORKSPACE_V7_VERSION
+                    | gripsack_ir::IR_VERSION
             ) && ir.workspace.is_none()
                 && ir.workspace_v4.is_none()
                 && ir.modules.is_empty()

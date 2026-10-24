@@ -80,8 +80,12 @@ impl<'a> Exchange<'a> {
         guard: &mut Guard,
         mut deadline: super::OperationDeadline,
         callback: &mut impl FnMut(&[u8]) -> Control,
+        session: Option<&super::task::Session>,
     ) -> StopReason {
         loop {
+            if let Some(reason) = session.and_then(|session| session.observe(guard)) {
+                return reason;
+            }
             if deadline.remaining().is_none() {
                 return StopReason::Deadline;
             }

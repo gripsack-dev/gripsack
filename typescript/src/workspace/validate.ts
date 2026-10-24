@@ -252,6 +252,24 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
     asRepoFilePath(rec.path, `${where}.path`);
     return v as WorkspaceSource;
   }
+  if (rec.kind === "repo_tree") {
+    rejectUnknownFields(where, rec, ["kind", "path", "include", "exclude"]);
+    const path = rec.path === "." ? "." : asRepoFilePath(rec.path, `${where}.path`);
+    if (/[*?[\]{}\x00-\x1f\x7f]/.test(path)) {
+      throw new Error(`${where}.path must be normalized without controls or glob characters`);
+    }
+    for (const key of ["include", "exclude"] as const) {
+      const patterns = rec[key];
+      if (!Array.isArray(patterns)) throw new Error(`${where}.${key} must be an array`);
+      patterns.forEach((pattern, index) => {
+        const prefix = asRepoFilePath(pattern, `${where}.${key}[${index}]`);
+        if (/[*?[\]{}\x00-\x1f\x7f]/.test(prefix)) {
+          throw new Error(`${where}.${key}[${index}] must be a normalized segment prefix, not a glob`);
+        }
+      });
+    }
+    return v as WorkspaceSource;
+  }
   if (rec.kind === "artifact_file") {
     rejectUnknownFields(where, rec, ["kind", "output", "selector"]);
     asName(rec.output, `${where}.output`);
@@ -269,7 +287,7 @@ export function asSource(v: unknown, where: string): WorkspaceSource {
     }
     return v as WorkspaceSource;
   }
-  throw new Error(`${where}: kind must be "repo_file", "artifact_file" or "tree"`);
+  throw new Error(`${where}: kind must be "repo_file", "repo_tree", "artifact_file" or "tree"`);
 }
 
 export function asContent(v: unknown, where: string): WorkspaceContent {
@@ -283,9 +301,11 @@ export function asContent(v: unknown, where: string): WorkspaceContent {
     if (typeof rec.text !== "string") throw new Error(`${where}.text must be a string`);
     return v as WorkspaceContent;
   }
-  if (rec.kind === "template") {
-    rejectUnknownFields(where, rec, ["kind", "template", "variables", "result_digest"]);
-    if (typeof rec.template !== "string") throw new Error(`${where}.template must be a string`);
+  if (rec.kind === "template" || rec.kind === "template_file") {
+    rejectUnknownFields(where, rec, rec.kind === "template"
+      ? ["kind", "template", "variables", "result_digest"]
+      : ["kind", "variables", "result_digest"]);
+    if (rec.kind === "template" && typeof rec.template !== "string") throw new Error(`${where}.template must be a string`);
     if (rec.result_digest !== undefined) asSha256(rec.result_digest, `${where}.result_digest`);
     const vars = asRecord(rec.variables, `${where}.variables`);
     for (const [k, val] of Object.entries(vars)) {
@@ -295,7 +315,7 @@ export function asContent(v: unknown, where: string): WorkspaceContent {
     }
     return v as WorkspaceContent;
   }
-  throw new Error(`${where}: kind must be "identity", "literal" or "template"`);
+  throw new Error(`${where}: kind must be "identity", "literal", "template" or "template_file"`);
 }
 
 export function asDestination(v: unknown, where: string): WorkspaceDestination {
@@ -343,8 +363,12 @@ export function asFile(v: unknown, where: string): WorkspaceFile {
   rejectUnknownFields(where, rec, ["span", "source", "content", "destination", "checks"]);
   asSpan(rec.span, where);
   const content = asContent(rec.content, `${where}.content`);
-  if (rec.source !== undefined) asSource(rec.source, `${where}.source`);
-  else if (content.kind !== "literal") {
+  if (rec.source !== undefined) {
+    const source = asSource(rec.source, `${where}.source`);
+    if ((source.kind === "tree" || source.kind === "repo_tree") && content.kind !== "identity") {
+      throw new Error(`${where}: tree sources require identity content`);
+    }
+  } else if (content.kind !== "literal") {
     throw new Error(
       `${where}: source is required unless content is literalText(...) — ` +
         `a ${content.kind} content has no bytes without an origin`,

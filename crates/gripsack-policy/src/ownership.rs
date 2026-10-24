@@ -6,8 +6,8 @@
 //! The contracts below are the AUTHORITY RULES, not the branch
 //! structure (handoff §5.2): preserved drift never authorizes; a
 //! managed update requires agreement with the last managed write;
-//! explicit take-over always absorbs; reconvergence (live == desired)
-//! is the only way back from drift.
+//! explicit take-over absorbs foreign/drifted objects, never intact
+//! managed writes; reconvergence (live == desired) also ends drift.
 
 use vstd::prelude::*;
 
@@ -24,7 +24,7 @@ pub enum CopyPlan {
     Update,
     /// Live is foreign or drifted: preserve and report.
     Preserve,
-    /// Explicit user consent to absorb whatever is live.
+    /// Explicit user consent to absorb a foreign or drifted object.
     TakeOver,
 }
 
@@ -43,17 +43,20 @@ pub fn plan_copy(
     ensures
         // nothing live means create, whatever the lineage says
         (result == CopyPlan::Fresh) <==> live.is_none(),
-        // explicit consent/absorb ALWAYS captures the origin — even
-        // when the bytes already match (adopt relies on this to open
-        // the epoch)
-        (result == CopyPlan::TakeOver) <==> (take_over && live.is_some()),
-        // live IS the desired content (reconvergence) and no take-over
-        // was requested
+        // Explicit consent captures foreign/drifted origins, including
+        // desired bytes not yet owned. Intact managed writes keep lineage.
+        (result == CopyPlan::TakeOver) <==>
+            (take_over && live.is_some()
+            && !(prev.is_some() && !prev.unwrap().1
+                && live.unwrap()@ == prev.unwrap().0@)),
+        // Reconvergence is satisfied unless this is a fresh acquisition.
         (result == CopyPlan::Satisfied) <==>
-            (!take_over && live.is_some() && live.unwrap()@ == desired@),
-        // managed, and live is our last write: the clean update path
+            (live.is_some() && live.unwrap()@ == desired@
+            && (!take_over || (prev.is_some() && !prev.unwrap().1
+                && live.unwrap()@ == prev.unwrap().0@))),
+        // Managed live content permits an update regardless of the flag.
         (result == CopyPlan::Update) <==>
-            (!take_over && live.is_some() && live.unwrap()@ != desired@
+            (live.is_some() && live.unwrap()@ != desired@
             && prev.is_some() && !prev.unwrap().1
             && live.unwrap()@ == prev.unwrap().0@),
         // preserved drift never authorizes — only reconvergence
@@ -67,7 +70,10 @@ pub fn plan_copy(
         return CopyPlan::Fresh;
     };
     if take_over {
-        return CopyPlan::TakeOver;
+        match prev {
+            Some((written, false)) if live == written => {}
+            _ => return CopyPlan::TakeOver,
+        }
     }
     if live == desired {
         return CopyPlan::Satisfied;
@@ -76,9 +82,6 @@ pub fn plan_copy(
         // managed and live is our last write: the clean update path
         // (never a fresh take-over — the epoch's origin stands)
         Some((written, false)) if live == written => CopyPlan::Update,
-        // explicit consent outranks preservation: --take-over absorbs
-        // whatever is live and begins a new epoch with it as origin
-        _ if take_over => CopyPlan::TakeOver,
         _ => CopyPlan::Preserve,
     }
 }

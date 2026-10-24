@@ -82,6 +82,7 @@ fn build_inner(repo: &Path, args: BuildArgs, sink: &mut DiagnosticSink) -> Resul
         host: outcome.host,
         take_over: false,
         take_over_entries: None,
+        migrate_from: None,
         jobs: None,
         fetch: outcome.fetch,
         on_progress: Some(Box::new(move |name, event| {

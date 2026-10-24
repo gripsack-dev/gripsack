@@ -12,7 +12,7 @@ mod tests;
 
 use super::archive::{CondaArchive, MAX_ENTRY_BYTES};
 use crate::ExecError;
-use gripsack_ir::workspace_model::lock::LockedCondaEnvironment;
+use gripsack_ir::workspace_model::lock::{LockedCondaEnvironment, LockedCondaPackage};
 use gripsack_process::executable;
 use gripsack_store as store;
 use inventory::{Content, ExpectedFile, PythonLayout};
@@ -133,10 +133,84 @@ fn compare_file(
     Ok(())
 }
 
+fn archive_failure(
+    output: &str,
+    record: &LockedCondaPackage,
+    detail: impl std::fmt::Display,
+) -> ExecError {
+    failure(
+        output,
+        format!(
+            "package {} version {} build {} URL {} SHA-256 {}: {detail}",
+            record.name, record.version, record.build, record.url, record.sha256
+        ),
+    )
+}
+
+/// Admit the exact bytes, using the same bounded parser and lifecycle policy
+/// as independent installed-tree validation. No extraction or helper execution.
+pub(super) fn admit_archive(
+    output: &str,
+    record: &LockedCondaPackage,
+    path: &Path,
+) -> Result<CondaArchive, ExecError> {
+    let archive = CondaArchive::open(path, &record.sha256)
+        .map_err(|error| archive_failure(output, record, error))?;
+    inventory::admit_scripts(record, &archive)
+        .map_err(|error| archive_failure(output, record, error))?;
+    Ok(archive)
+}
+
+/// Keep the private hash-verified spools through materialization so independent
+/// validation compares against the admitted bytes without decompressing again.
+pub(super) fn admit_archives(
+    output: &str,
+    locked: &LockedCondaEnvironment,
+    archives: &BTreeMap<String, PathBuf>,
+) -> Result<BTreeMap<String, CondaArchive>, ExecError> {
+    let mut readers = BTreeMap::new();
+    let mut expanded = 0;
+    let mut entries = 0;
+    for record in &locked.packages {
+        if !readers.contains_key(&record.sha256) {
+            let path = archives
+                .get(&record.sha256)
+                .ok_or_else(|| archive_failure(output, record, "archive is not retained"))?;
+            let reader = admit_archive(output, record, path)?;
+            expanded += reader.expanded_bytes;
+            entries += reader.info.len() + reader.payload.len();
+            if expanded > MAX_CLOSURE_BYTES || entries > MAX_CLOSURE_ENTRIES {
+                return Err(archive_failure(
+                    output,
+                    record,
+                    "archive closure exceeds expanded byte/entry bound",
+                ));
+            }
+            readers.insert(record.sha256.clone(), reader);
+        } else {
+            inventory::admit_scripts(record, &readers[&record.sha256])
+                .map_err(|error| archive_failure(output, record, error))?;
+        }
+    }
+    Ok(readers)
+}
+
 pub(crate) fn validate_tree(
     output: &str,
     locked: &LockedCondaEnvironment,
     archives: &BTreeMap<String, PathBuf>,
+    tree_root: &Path,
+    final_prefix: &str,
+    modes: FileModes,
+) -> Result<ValidatedTree, ExecError> {
+    let readers = admit_archives(output, locked, archives)?;
+    validate_admitted_tree(output, locked, &readers, tree_root, final_prefix, modes)
+}
+
+pub(super) fn validate_admitted_tree(
+    output: &str,
+    locked: &LockedCondaEnvironment,
+    readers: &BTreeMap<String, CondaArchive>,
     tree_root: &Path,
     final_prefix: &str,
     modes: FileModes,
@@ -162,33 +236,16 @@ pub(crate) fn validate_tree(
         ));
     }
     let python = PythonLayout::from_lock(locked).map_err(|detail| failure(output, detail))?;
-    let mut readers = BTreeMap::new();
     let mut expected = BTreeMap::new();
-    let mut expanded = 0;
     let mut package_files: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
     for record in &locked.packages {
-        let archive_path = archives
-            .get(&record.sha256)
-            .ok_or_else(|| failure(output, format!("{} archive is not retained", record.name)))?;
-        if !readers.contains_key(&record.sha256) {
-            let reader = CondaArchive::open(archive_path, &record.sha256)
-                .map_err(|error| failure(output, format!("{}: {error}", record.name)))?;
-            expanded += reader.expanded_bytes;
-            if expanded > MAX_CLOSURE_BYTES {
-                return Err(failure(
-                    output,
-                    "archive closure exceeds expanded byte bound",
-                ));
-            }
-            readers.insert(record.sha256.clone(), reader);
-        }
         let inventory = inventory::inventory(
             record,
             &readers[&record.sha256],
             python.as_ref(),
             final_prefix,
         )
-        .map_err(|detail| failure(output, format!("{}: {detail}", record.name)))?;
+        .map_err(|detail| archive_failure(output, record, detail))?;
         package_files.insert(&record.sha256, inventory.keys().cloned().collect());
         for (path, file) in inventory {
             if expected.insert(path.clone(), file).is_some() {

@@ -81,6 +81,36 @@ def test_public_literal_hook_executes_and_readonly_commands_do_not(sandbox):
     assert outcomes(repo) == rows
 
 
+def test_complete_noop_preserves_identity_but_repair_is_a_new_activation(sandbox):
+    repo = sandbox / "hooks"
+    effect = sandbox / "effects"
+    destination = sandbox / ".workspace-hook-owned"
+    declare(repo, [("after", "post_link", append(effect))])
+    run(repo, "apply")
+    home = sandbox / ".local/share/gripsack"
+    original = json.loads((home / "current/manifest.json").read_text())
+    metadata = destination.stat()
+    original_rows = outcomes(repo)
+    for _ in range(2):
+        run(repo, "apply")
+        assert json.loads((home / "current/manifest.json").read_text()) == original
+        assert (destination.stat().st_ino, destination.stat().st_mtime_ns) == (
+            metadata.st_ino, metadata.st_mtime_ns)
+        assert outcomes(repo) == original_rows
+    # Identical retained identity does not erase an actual host repair event.
+    destination.unlink()
+    run(repo, "apply")
+    repaired = json.loads((home / "current/manifest.json").read_text())
+    assert repaired["modules"] == original["modules"]
+    assert repaired["number"] != original["number"]
+    assert destination.read_text() == "active"
+    assert len(effect.read_text().splitlines()) == 2
+    assert len(outcomes(repo)) == 2
+    run(repo, "apply")
+    assert json.loads((home / "current/manifest.json").read_text()) == repaired
+    assert len(effect.read_text().splitlines()) == 2
+
+
 def test_hooks_run_after_flip_in_declared_order_and_inert_hooks_stay_inert(sandbox):
     repo = sandbox / "hooks"
     effect = sandbox / "order"

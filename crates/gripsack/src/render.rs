@@ -525,6 +525,7 @@ impl CheckReport {
 /// the current generation (0004 pass 5 — the diff that sells the
 /// architecture). Config entries hash offline; fetched modules show
 /// their store-path satisfaction without a fetch.
+#[allow(clippy::too_many_arguments)]
 pub fn diff_section(
     ir: &Ir,
     repository: &gripsack_exec::Repository,
@@ -533,6 +534,7 @@ pub fn diff_section(
     palette: Palette,
     selected: &[String],
     limits: gripsack_fetch::FetchLimits,
+    migrate_from: Option<gripsack_store::GenerationId>,
 ) -> Result<String, gripsack_exec::ExecError> {
     let home = gripsack_store::gripsack_home();
     let current = gripsack_store::current_generation(&home)?
@@ -585,6 +587,7 @@ pub fn diff_section(
         &lock,
         limits,
         selected,
+        migrate_from,
     )?;
     let mut by_module: std::collections::BTreeMap<&str, Vec<String>> =
         std::collections::BTreeMap::new();

@@ -17,13 +17,15 @@ const CONTEXT_VERSION: u32 = 1;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Context {
+pub(in crate::workspace) struct Context {
     version: u32,
-    pub command: super::command::Command,
-    pub program: ProgramIdentity,
+    pub(super) command: super::command::Command,
+    pub(super) program: ProgramIdentity,
     packages: BTreeMap<String, PackageDigest>,
     receipts: BTreeMap<PackageDigest, Sha256Digest>,
     roots: BTreeMap<PathBuf, store::hash::PayloadHash>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(in crate::workspace) file_check: Option<crate::workspace::profile_checks::FileCheckInputs>,
 }
 
 pub(super) fn capture(
@@ -111,7 +113,25 @@ pub(super) fn capture(
         packages,
         receipts,
         roots,
+        file_check: None,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(in crate::workspace) fn capture_file(
+    original: &WorkspaceCommand,
+    bound: &WorkspaceCommand,
+    inputs: crate::workspace::profile_checks::FileCheckInputs,
+    realization: &Realization,
+    home: &Path,
+    host: &admit::NativeContext<'_>,
+    options: &crate::workspace::BuildOptions<'_>,
+) -> Result<Context, ExecError> {
+    let mut context = capture(bound, realization, home, host, options)?;
+    context.command.retain_subject(original);
+    context.version = 2;
+    context.file_check = Some(inputs);
+    Ok(context)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -163,7 +183,11 @@ fn retain_path(home: &Path, path: &Path, roots: &mut BTreeSet<PathBuf>) -> Resul
     Ok(())
 }
 
-pub(super) fn read(home: &Path, path: &Path, digest: Sha256Digest) -> Result<Context, ExecError> {
+pub(in crate::workspace) fn read(
+    home: &Path,
+    path: &Path,
+    digest: Sha256Digest,
+) -> Result<Context, ExecError> {
     let root = path
         .parent()
         .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?;
@@ -197,7 +221,10 @@ pub(super) fn read(home: &Path, path: &Path, digest: Sha256Digest) -> Result<Con
         .into());
     }
     let context: Context = serde_json::from_slice(&bytes)?;
-    if context.version != CONTEXT_VERSION {
+    if !matches!(
+        (context.version, context.file_check.is_some()),
+        (1, false) | (2, true)
+    ) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "unsupported retained hook context version",
@@ -218,7 +245,7 @@ pub(super) fn read(home: &Path, path: &Path, digest: Sha256Digest) -> Result<Con
 }
 
 impl Context {
-    pub(super) fn encode(&self) -> io::Result<Vec<u8>> {
+    pub(in crate::workspace) fn encode(&self) -> io::Result<Vec<u8>> {
         struct Encoder(Vec<u8>);
         impl io::Write for Encoder {
             fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {

@@ -237,7 +237,12 @@ mod tests {
             store::journal::RunOp::Apply,
         )
         .unwrap();
-        let (_report, _prior) = execute_op(&run, op.as_executable().unwrap()).unwrap();
+        let (_report, prior) = execute_op(&run, op.as_executable().unwrap()).unwrap();
+        assert_eq!(
+            prior.is_some(),
+            op.authority() == Some(Authority::TakeOver),
+            "only a genuine acquisition captures a manifest prior"
+        );
         let after = store::journal::live_identity(&dest_dir, &dest_name).unwrap();
         match op.kind() {
             OpKind::Write { .. } | OpKind::Link { .. } | OpKind::MergeUpsert { .. } => {
@@ -258,6 +263,49 @@ mod tests {
                 Some(produced.hash.as_str()),
                 "the manifest receipt does not describe what execution left"
             );
+        }
+    }
+
+    #[test]
+    fn legacy_template_receipts_do_not_acquire_intact_owned_bytes() {
+        for preserved in [false, true] {
+            for live_mode in [0o600, 0o640] {
+                for take_over in [false, true] {
+                    let dir = tempfile::tempdir().unwrap();
+                    let home = dir.path();
+                    let dest = materialize(home, &Live::File("old", live_mode));
+                    let entry = entry(Ownership::Template, &dest);
+                    let mut prev = prev_entry(&PrevCase(Some(("old", preserved)))).unwrap();
+                    prev.ownership = store::StoredOwnership::Legacy(Ownership::Template);
+                    prev.hash = store::canonical_bytes_hash(b"old").into();
+                    prev.file_mode = Some(0o600);
+                    let view = DestView {
+                        module: "m",
+                        entry: &entry,
+                        dest: dest.clone(),
+                        home,
+                        observed: crate::deploy::observe_readonly(&dest).unwrap(),
+                        prev: Some(&prev),
+                        take_over,
+                    };
+                    let op = plan_entry_op(
+                        &view,
+                        ModeInput::Write {
+                            content: b"new",
+                            permissions: crate::ops::WritePermissions::Exact(0o600),
+                        },
+                    )
+                    .unwrap();
+                    let expected = if !preserved && live_mode == 0o600 {
+                        ("write", Some(Authority::Update))
+                    } else if take_over {
+                        ("write", Some(Authority::TakeOver))
+                    } else {
+                        ("preserved", None)
+                    };
+                    assert_eq!(actual_shape(op.kind(), op.authority()), expected);
+                }
+            }
         }
     }
 
@@ -415,6 +463,7 @@ mod tests {
                 &lock,
                 Default::default(),
                 &[],
+                None,
             )
             .unwrap();
             ir.modules
@@ -434,6 +483,7 @@ mod tests {
                 &lock,
                 Default::default(),
                 &[],
+                None,
             )
             .unwrap();
             let compiler: Vec<_> = build.iter().filter(|o| o.module == "compiler").collect();
@@ -471,6 +521,7 @@ mod tests {
             on_progress: None,
             take_over: false,
             take_over_entries: Default::default(),
+            migrate_from: None,
             jobs: Some(1),
             home_dir: std::sync::OnceLock::new(),
             fetch: std::sync::Arc::new(gripsack_fetch::FetchContext::new(Default::default())),

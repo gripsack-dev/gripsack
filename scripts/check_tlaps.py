@@ -103,7 +103,7 @@ def catalog_calibrations(work: Path, proved: Path) -> None:
     empty_floor['units']['UndoCellProofs']['minimum_obligations'] = 0
     mutations.append(('zero proof obligation floor', empty_floor))
     missing_root = copy.deepcopy(original)
-    missing_root['roots'].remove('GeneralRecoveryProofs')
+    missing_root['roots'].remove('IncarnationRecoveryProofs')
     mutations.append(('unreachable required proof unit', missing_root))
     for label, document in mutations:
         manifest.write_text(json.dumps(document))

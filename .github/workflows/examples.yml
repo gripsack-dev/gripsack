@@ -1,13 +1,9 @@
 name: examples
 
-# API canary: the example env repos under gripsack-dev are applied (or
-# typechecked) on every change — if we break the frontend API or the IR
-# contract, this fails.
+# Manual external-caller diagnostics only. Exact-source local qualification,
+# not this hosted rebuild, is integration and release acceptance authority.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-  pull_request:
 
 jobs:
   typescript-env:

@@ -20,7 +20,9 @@ impl NativeProfiles {
         home: &std::path::Path,
         selected: &[String],
         limits: gripsack_fetch::FetchLimits,
+        migrate_from: Option<gripsack_store::GenerationId>,
     ) -> Result<Option<Self>, ExecError> {
+        let predecessor = Self::migration_predecessor(home, migrate_from)?;
         let mut origins = std::collections::BTreeSet::new();
         if let Some(workspace) = &ir.workspace_catalog {
             for output in &workspace.outputs {
@@ -48,13 +50,15 @@ impl NativeProfiles {
         let retained = super::retained::inspect(ir, repository, home, &origins, limits)?;
         Self::prepare_with(
             ir,
-            repository.contents(),
+            repository,
             home,
             selected,
             limits,
             Some(&retained),
             true,
             Instant::now() + gripsack_process::Limits::default().timeout,
+            predecessor.as_ref(),
+            None,
         )
     }
 }
@@ -66,6 +70,7 @@ pub(crate) fn prepare_apply(
     let Some(workspace) = &ir.workspace_catalog else {
         return Ok(None);
     };
+    let predecessor = NativeProfiles::migration_predecessor(&ctx.home, ctx.migrate_from)?;
     let mut selected = Vec::new();
     let mut needs_production = false;
     for output in &workspace.outputs {
@@ -84,6 +89,7 @@ pub(crate) fn prepare_apply(
         admit(profile)?;
         needs_production |= !profile.hooks.is_empty()
             || profile.environment.is_some()
+            || profile.files.iter().any(|file| !file.checks.is_empty())
             || profile.files.iter().any(|file| {
                 matches!(
                     file.source,
@@ -117,15 +123,34 @@ pub(crate) fn prepare_apply(
         deadline: Instant::now() + gripsack_process::Limits::default().timeout,
     };
     let mut held = realize::realize_held(ir, ctx, &options, &selected)?;
+    let check_retention = if workspace.outputs.iter().any(|output| {
+        matches!(output, WorkspaceOutput::Profile(profile)
+            if selected.contains(&profile.name) && profile.files.iter().any(|file| !file.checks.is_empty()))
+    }) {
+        Some(super::roots::RetentionSet::admit(
+            &held.session,
+            held.closures.iter().flat_map(|(_, paths)| paths.iter().cloned()),
+        )?)
+    } else {
+        None
+    };
+    let protection = check_retention
+        .as_ref()
+        .map(|closure| super::profile_checks::Protection {
+            session: &held.session,
+            closure,
+        });
     let mut native = NativeProfiles::prepare_with(
         ir,
-        ctx.repository.contents(),
+        &ctx.repository,
         &ctx.home,
         &ctx.only,
         ctx.fetch.limits(),
         Some(&held.realization),
         false,
         options.deadline,
+        predecessor.as_ref(),
+        protection.as_ref(),
     )?
     .ok_or_else(|| {
         unavailable(
@@ -149,18 +174,14 @@ pub(crate) fn prepare_apply(
 }
 
 pub(super) fn admit(profile: &ProfileOutput) -> Result<(), ExecError> {
+    super::profile_launchers::destinations(profile)?;
     if !profile.schedules.is_empty() {
         return Err(unavailable(
             &profile.span,
             "profile schedule registration is not available",
         ));
     }
-    if let Some(file) = profile.files.iter().find(|file| !file.checks.is_empty()) {
-        return Err(unavailable(
-            &file.span,
-            "profile file-check execution requires its stage-specific adapter",
-        ));
-    }
+    super::profile_checks::admit(profile)?;
     Ok(())
 }
 fn unavailable(span: &Span, message: impl Into<String>) -> ExecError {

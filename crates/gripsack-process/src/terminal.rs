@@ -26,26 +26,46 @@ impl fmt::Display for SafeCharacter {
     }
 }
 
+struct SafeText<'a> {
+    value: &'a str,
+    quoted: bool,
+}
+
+impl<'a> SafeText<'a> {
+    fn new(value: &'a str) -> Self {
+        Self {
+            value,
+            quoted: value.chars().any(control),
+        }
+    }
+}
+
+impl fmt::Display for SafeText<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if !self.quoted {
+            return formatter.write_str(self.value);
+        }
+        formatter.write_str("\"")?;
+        for character in self.value.chars() {
+            if matches!(character, '\\' | '"') {
+                formatter.write_str("\\")?;
+            }
+            write!(formatter, "{}", SafeCharacter(character))?;
+        }
+        formatter.write_str("\"")
+    }
+}
+
+/// Escape borrowed untrusted text directly into the renderer without copying it.
+pub fn display(value: &str) -> impl fmt::Display + '_ {
+    SafeText::new(value)
+}
+
 /// Preserve ordinary owned values without another allocation. A value that can
 /// forge prompt lines is quoted/escaped, matching the original trust prompt.
 pub fn tame(value: String) -> String {
-    if !value.chars().any(control) {
-        return value;
-    }
-    struct Quoted<'a>(&'a str);
-    impl fmt::Display for Quoted<'_> {
-        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str("\"")?;
-            for character in self.0.chars() {
-                if matches!(character, '\\' | '"') {
-                    formatter.write_str("\\")?;
-                }
-                write!(formatter, "{}", SafeCharacter(character))?;
-            }
-            formatter.write_str("\"")
-        }
-    }
-    format!("{}", Quoted(&value))
+    let text = SafeText::new(&value);
+    if text.quoted { text.to_string() } else { value }
 }
 
 /// Render a bounded captured byte stream. LF retains normal output lines;

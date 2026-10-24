@@ -144,10 +144,6 @@ impl FetchContext {
         crate::resolve::resolve_brew(self, formula)
     }
 
-    pub fn resolve_self_release(&self) -> Result<crate::SelfRelease, crate::resolve::ResolveError> {
-        crate::resolve::resolve_self_release(self)
-    }
-
     pub fn resolve_plugin_release(
         &self,
         repo: &str,

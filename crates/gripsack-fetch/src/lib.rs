@@ -39,7 +39,7 @@ pub use http::{HttpFailure, HttpFailureKind, RetryStopReason};
 pub use identity::{DownloadHash, FetchIdentity};
 pub use limits::FetchLimits;
 pub use placeholders::{PlaceholderError, expand_platform};
-pub use resolve::{ResolvedRelease, SelfRelease};
+pub use resolve::ResolvedRelease;
 
 use std::path::PathBuf;
 

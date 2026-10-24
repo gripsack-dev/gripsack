@@ -1,5 +1,9 @@
 //! Capture each declared repository source once; render candidates independently
 //! of their destination policy. Only immutable candidates enter the store.
+mod repository;
+mod selection;
+#[cfg(test)]
+mod tests;
 mod tree;
 use super::declarations::{Content, File, Source};
 use crate::ctx::ExecError;
@@ -174,11 +178,13 @@ pub(super) fn prepare_into(
     root: &Path,
     files: &mut Vec<PreparedFile>,
 ) -> Result<(), ExecError> {
-    if matches!(file.source, Some(Source::Tree { .. })) {
-        tree::prepare_into(capture, file, root, files)
-    } else {
-        files.push(prepare_file(capture, file, root)?);
-        Ok(())
+    match file.source {
+        Some(Source::Tree { .. }) => tree::prepare_into(capture, file, root, files),
+        Some(Source::RepoTree { .. }) => repository::prepare_into(capture, file, root, files),
+        _ => {
+            files.push(prepare_file(capture, file, root)?);
+            Ok(())
+        }
     }
 }
 
@@ -188,9 +194,11 @@ fn prepare_file(
     root: &Path,
 ) -> Result<PreparedFile, ExecError> {
     let source = match &file.source {
-        Some(Source::RepoFile { path }) => Some(capture.file(path)?),
+        Some(Source::RepoFile { path } | Source::RepoTreeFile { path, .. }) => {
+            Some(capture.file(path)?)
+        }
         Some(Source::ArtifactFile { path, .. }) => Some(capture.artifact(path)?),
-        Some(Source::Tree { .. }) => {
+        Some(Source::Tree { .. } | Source::RepoTree { .. }) => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "tree origin must expand before file preparation",
@@ -243,17 +251,22 @@ fn prepare_file(
                     variables,
                     &file.span.file,
                 )?;
-                if let Some(expected) = result_digest
-                    && gripsack_process::Sha256Digest::of(&rendered)
-                        != gripsack_process::Sha256Digest::parse(expected)?
-                {
-                    return Err(io::Error::new(
+                write_rendered(&output, &rendered, executable, result_digest)?;
+            }
+            Content::TemplateFile {
+                variables,
+                result_digest,
+            } => {
+                let source = source.ok_or_else(|| {
+                    io::Error::new(
                         io::ErrorKind::InvalidData,
-                        "rendered content does not match its declared result digest",
+                        "template_file content requires a captured source",
                     )
-                    .into());
-                }
-                write_private(&output, &rendered, executable)?;
+                })?;
+                let template = std::fs::read(&source.path)?;
+                let rendered =
+                    crate::template::render_template(&template, variables, &file.span.file)?;
+                write_rendered(&output, &rendered, executable, result_digest)?;
             }
         }
         write_private(&directory.join("recipe.json"), &recipe, false)?;
@@ -282,6 +295,26 @@ fn prepare_file(
         },
         block_id,
     })
+}
+
+fn write_rendered(
+    path: &Path,
+    rendered: &[u8],
+    executable: bool,
+    result_digest: Option<&str>,
+) -> Result<(), ExecError> {
+    if let Some(expected) = result_digest
+        && gripsack_process::Sha256Digest::of(rendered)
+            != gripsack_process::Sha256Digest::parse(expected)?
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "rendered content does not match its declared result digest",
+        )
+        .into());
+    }
+    write_private(path, rendered, executable)?;
+    Ok(())
 }
 
 fn write_private(path: &Path, bytes: &[u8], executable: bool) -> io::Result<()> {

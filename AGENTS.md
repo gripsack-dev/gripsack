@@ -48,7 +48,7 @@ archived.
 | Path | Contents |
 |---|---|
 | `plan/` | numbered decision docs — read before changing behavior; `plan/STATUS.md` is the landed/deferred/rejected ledger — update it in the same PR |
-| `schema/ir/v7.json` | Current emitted typed workspace or legacy-modules contract. Strict v6 retains its executing semantics, v5 native file profiles remain executable, v4 workspaces stay read-only, and v3 module maps remain readable; old versions never acquire v7 authority |
+| `schema/ir/v8.json` | Current emitted workspace or legacy-modules contract. Strict v7/v6 retain their executing semantics, v5 native file profiles remain executable, v4 workspaces stay read-only, and v3 module maps remain readable; old versions never acquire v8 declaration authority |
 | `crates/gripsack-ir` | IR types + validation (mirrors the schema) |
 | `crates/gripsack-store` | store paths, generations, GC |
 | `crates/gripsack-exec` | Native workflows, consumers and whole-subgraph production coordination |
@@ -88,7 +88,7 @@ archived.
   its emitting source location (`span: {file, line, col?}` on the
   current wire); nested field values inherit their declaring node's
   location. Legacy v3 optional spans remain readable, never a reason
-  to omit v4/v5/v6 provenance.
+  to omit v4/v5/v6/v7/v8 provenance.
 - The core never evaluates code and never sees credentials. The
   frontend runs sandboxed (no env vars, no network, no subprocesses);
   host facts arrive via the inputs envelope, effects as probes. The
@@ -111,15 +111,26 @@ the baseline, not permission to bypass plan 0048's stronger gates.
 
 ## Workflow
 
-- `main` is protected: PRs only, `test` check required. The repo owner
-  merges with admin override — bot PRs (demo artifacts) never get CI,
-  that's expected.
-- The `demo` workflow re-renders `demos/demo.gif` and opens a reused
-  `demo/artifacts` PR — merge those to keep the README current.
-- Releases: two artifacts, two tag namespaces.
-  - Core: tag `core-vX.Y.Z` matching the `gripsack` crate version →
-    musl tarball verified → crates.io → GitHub release.
-  - TypeScript: tag `ts-vX.Y.Z` matching `typescript/package.json` →
-    npm `@gripsack/core` (needs the `NPM_TOKEN` secret).
+- Exact-source local qualification is integration/release acceptance authority
+  (`LOCAL-QUALIFICATION-AUTHORITY-2026-10-23`, plan0054). The project-owned
+  `.ci/pilot.json` and local gate commands retain the full Linux/native/formal
+  requirements and all 96 persistence partitions; retiring hosted triggers
+  does not waive them. Fuzz/corpus replay remains excluded for this release.
+- `ci`, `examples`, `repro` and `demo` are explicit manual diagnostics or
+  maintenance only, not automatic acceptance. Do not dispatch them for release
+  qualification. Pin-update proposals never dispatch hosted builds.
+- Before landing this cutover, the owner must reconcile authenticated branch
+  protection's legacy required `test` context with real local admission, not
+  fabricate a successful hosted status or remove qualification enforcement.
+- Releases use immutable `core-vX.Y.Z` and the coordinated locally prepared
+  core/SDK/helper bundle. GitHub approves, signs and publishes those bytes via
+  `release-core.yml`; there is no independent `ts-v*` publication for this flow.
+- Configure the protected `release` environment before dispatch: trusted reviewer,
+  selected `core-v*` tag policy and deliberate administrator-bypass policy.
+  A sole owner who dispatches and approves must not enable `prevent_self_review`;
+  enabling it requires a genuinely separate authorized reviewer.
+- Site promotion carries the actual signing `GITHUB_RUN_ID` as integer `run_id`,
+  alongside release tag and manifest digest. These are selectors; the site must
+  authenticate the published signature/workflow/source, not trust the payload.
 - The website lives in `gripsack-dev/gripsack-dev.github.io` — edit
   there, not here.

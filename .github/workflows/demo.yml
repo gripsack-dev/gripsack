@@ -1,16 +1,9 @@
 name: demo
 
-# Re-render the demo GIF when the CLI or the demo tooling changes, so the
-# README always shows the current look.
+# Explicit maintenance only; landing or shipping source never rebuilds demos.
+# Existing GIFs are historical captures, not evidence of the current release.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "crates/**"
-      - "demos/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
 
 permissions:
   contents: write

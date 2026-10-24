@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "ergonomics_tests.rs"]
+mod ergonomics_tests;
+
 use super::{Encoder, PackageDigest, commands};
 use crate::workspace_model::lock::{
     BytecodePolicy, ChannelPriority, DefinitionPins, LockedCondaEnvironment, LockedNoArch,
@@ -76,6 +80,16 @@ fn file(writer: &mut Encoder, value: &WorkspaceFile) {
             writer.field(b"repo-file");
             writer.text(path);
         }
+        Some(WorkspaceSource::RepoTree {
+            path,
+            include,
+            exclude,
+        }) => {
+            writer.field(b"gripsack/v8/repo-tree");
+            writer.text(path);
+            strings(writer, include, false);
+            strings(writer, exclude, false);
+        }
         Some(WorkspaceSource::ArtifactFile { output, selector }) => {
             writer.field(b"artifact-file");
             writer.text(output);
@@ -105,6 +119,18 @@ fn file(writer: &mut Encoder, value: &WorkspaceFile) {
         } => {
             writer.field(b"template");
             writer.text(template);
+            writer.number(variables.len() as u64);
+            for (key, value) in variables {
+                writer.text(key);
+                writer.text(value);
+            }
+            writer.optional(result_digest);
+        }
+        WorkspaceContent::TemplateFile {
+            variables,
+            result_digest,
+        } => {
+            writer.field(b"gripsack/v8/template-file");
             writer.number(variables.len() as u64);
             for (key, value) in variables {
                 writer.text(key);
@@ -177,6 +203,7 @@ fn output(writer: &mut Encoder, output: &WorkspaceOutput) {
                 writer.text(path);
             }
             strings(writer, &value.runtime, false);
+            writer.archive_root(&value.archive_root);
         }
         WorkspaceOutput::Environment(value) => {
             writer.platform(&value.target);
@@ -266,6 +293,11 @@ fn output(writer: &mut Encoder, output: &WorkspaceOutput) {
             writer.number(value.files.len() as u64);
             for value in &value.files {
                 file(writer, value);
+            }
+            if let Some(launchers) = &value.launchers {
+                writer.field(b"gripsack/v8/profile-launchers");
+                writer.text(&launchers.directory);
+                strings(writer, &launchers.commands, false);
             }
         }
         WorkspaceOutput::Hook(value) => {

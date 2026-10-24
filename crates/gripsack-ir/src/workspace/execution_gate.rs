@@ -150,16 +150,14 @@ fn native_profile(output: &WorkspaceOutput) -> bool {
 /// deploys environment selections and artifact/tree file origins through the
 /// common realization service. `plan` previews the SAME profiles offline:
 /// produced content renders as explicit deferred operations and no builder,
-/// download, solve or activation runs. Hooks share durable post-flip activation;
-/// schedules and staged file checks keep their own executor lanes.
+/// download, solve or activation runs. Staged checks preserve pre-flip subject
+/// validation or durable post-flip activation; schedules have their own lane.
 fn current_v6_output(
     workspace: &crate::workspace_model::WorkspaceCatalog,
     operation: WorkspaceOperation,
 ) -> Option<DeclaredCapability<'_>> {
     use crate::workspace_model::{RecipeExecution, WorkspaceOutput};
-    let deployable = |profile: &crate::workspace_model::ProfileOutput| {
-        profile.schedules.is_empty() && profile.files.iter().all(|file| file.checks.is_empty())
-    };
+    let deployable = |profile: &crate::workspace_model::ProfileOutput| profile.schedules.is_empty();
     let mut first_non_profile: Option<&WorkspaceOutput> = None;
     let mut has_deployable_profile = false;
     for output in &workspace.outputs {
@@ -236,6 +234,17 @@ fn historical_output<'a>(ir: &'a Ir) -> Option<DeclaredCapability<'a>> {
 }
 
 pub(crate) fn execution_error(ir: &Ir, operation: WorkspaceOperation) -> Option<Diagnostic> {
+    if ir.ir_version < crate::IR_VERSION
+        && ir
+            .workspace_catalog
+            .as_ref()
+            .is_some_and(|workspace| workspace.requires_v8())
+    {
+        return Some(Diagnostic::error(
+            codes::MALFORMED,
+            "v8 declaration authority is forbidden before ir_version 8",
+        ));
+    }
     if ir.ir_version == crate::WORKSPACE_V6_VERSION
         && ir
             .workspace_catalog
@@ -251,7 +260,7 @@ pub(crate) fn execution_error(ir: &Ir, operation: WorkspaceOperation) -> Option<
     // that are not selected must not acquire effects or block another output.
     if matches!(
         ir.ir_version,
-        crate::WORKSPACE_V6_VERSION | crate::IR_VERSION
+        crate::WORKSPACE_V6_VERSION | crate::WORKSPACE_V7_VERSION | crate::IR_VERSION
     ) && ir.workspace_catalog.is_some()
         && ir.workspace.is_none()
         && ir.workspace_v4.is_none()

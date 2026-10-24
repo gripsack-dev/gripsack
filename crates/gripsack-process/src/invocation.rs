@@ -179,6 +179,70 @@ impl<'a> Invocation<'a> {
         activation: Option<&ActivationEnvironment>,
         on_bytes: impl FnMut(&[u8]) -> Control,
     ) -> io::Result<NativeOutcome> {
+        self.run_input(arguments, input, activation, None, on_bytes)
+    }
+
+    /// Run a retained verification with closed stdin and bounded signal cleanup.
+    /// Like `run_task`, this owns process-control signal handling for the call;
+    /// callers must not run concurrent signal supervisors and must retain the
+    /// process root whenever cleanup is unconfirmed.
+    pub fn run_verification(
+        &self,
+        arguments: &[&OsStr],
+        on_bytes: impl FnMut(&[u8]) -> Control,
+    ) -> io::Result<NativeOutcome> {
+        if self.role != ProcessRole::Verify || self.leases.retention.is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "supervised verification requires the verification role and a retained process root",
+            ));
+        }
+        self.run_input(
+            arguments,
+            NativeInput::Bytes(b""),
+            None,
+            Some(false),
+            on_bytes,
+        )
+    }
+
+    /// Run a finite task with bounded output and the admitted absolute deadline.
+    /// Inherited stdin is passed directly to the child, never read by the
+    /// supervisor. Otherwise stdin is closed. A retained consumer root is
+    /// required; callers must keep it on unconfirmed cleanup.
+    ///
+    /// Like interactive execution, this owns process-control signal handling
+    /// for the duration of the call. Do not run concurrent signal supervisors.
+    /// Callbacks must return promptly; they cannot be preempted.
+    pub fn run_task(
+        &self,
+        arguments: &[&OsStr],
+        inherit_stdin: bool,
+        on_bytes: impl FnMut(&[u8]) -> Control,
+    ) -> io::Result<NativeOutcome> {
+        if self.role != ProcessRole::Task || self.leases.retention.is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "bounded tasks require the task role and a retained consumer root",
+            ));
+        }
+        self.run_input(
+            arguments,
+            NativeInput::Bytes(b""),
+            None,
+            Some(inherit_stdin),
+            on_bytes,
+        )
+    }
+
+    fn run_input(
+        &self,
+        arguments: &[&OsStr],
+        input: NativeInput<'_>,
+        activation: Option<&ActivationEnvironment>,
+        task_stdin: Option<bool>,
+        on_bytes: impl FnMut(&[u8]) -> Control,
+    ) -> io::Result<NativeOutcome> {
         if activation.is_some() && self.role != ProcessRole::Hook {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -261,35 +325,42 @@ impl<'a> Invocation<'a> {
             error: None,
             cleanup_cause: None,
         };
-        let (success, stderr, stderr_truncated) =
-            match super::run_raw(&mut command, input, limits, on_bytes) {
-                Ok(Outcome {
-                    status,
-                    reason,
-                    stderr,
-                    stderr_truncated,
-                }) => {
-                    let success = matches!(reason, StopReason::Exited)
-                        && status.is_some_and(|status| status.success());
-                    receipt.disposition = disposition(&reason);
-                    receipt.exit_code = status.and_then(|status| status.code());
-                    receipt.signal = status.and_then(|status| status.signal());
-                    receipt.error = match &reason {
-                        StopReason::Io(error) | StopReason::Cleanup { error, .. } => {
-                            Some(super::NativeIoError::capture(error))
-                        }
-                        _ => None,
-                    };
-                    if let StopReason::Cleanup { cause, .. } = &reason {
-                        receipt.cleanup_cause = Some(disposition(cause));
+        let result = super::supervise(
+            &mut command,
+            input,
+            limits,
+            super::OutputMode::Raw,
+            task_stdin,
+            on_bytes,
+        );
+        let (success, stderr, stderr_truncated) = match result {
+            Ok(Outcome {
+                status,
+                reason,
+                stderr,
+                stderr_truncated,
+            }) => {
+                let success = matches!(reason, StopReason::Exited)
+                    && status.is_some_and(|status| status.success());
+                receipt.disposition = disposition(&reason);
+                receipt.exit_code = status.and_then(|status| status.code());
+                receipt.signal = status.and_then(|status| status.signal());
+                receipt.error = match &reason {
+                    StopReason::Io(error) | StopReason::Cleanup { error, .. } => {
+                        Some(super::NativeIoError::capture(error))
                     }
-                    (success, stderr, stderr_truncated)
+                    _ => None,
+                };
+                if let StopReason::Cleanup { cause, .. } = &reason {
+                    receipt.cleanup_cause = Some(disposition(cause));
                 }
-                Err(error) => {
-                    receipt.error = Some(super::NativeIoError::capture(&error));
-                    (false, Vec::new(), false)
-                }
-            };
+                (success, stderr, stderr_truncated)
+            }
+            Err(error) => {
+                receipt.error = Some(super::NativeIoError::capture(&error));
+                (false, Vec::new(), false)
+            }
+        };
         Ok(NativeOutcome {
             success,
             stderr,
@@ -303,6 +374,7 @@ fn disposition(reason: &StopReason) -> ProcessDisposition {
     match reason {
         StopReason::Exited => ProcessDisposition::Exited,
         StopReason::Deadline => ProcessDisposition::Deadline,
+        StopReason::Cancelled => ProcessDisposition::Cancelled,
         StopReason::InputLimit => ProcessDisposition::InputLimit,
         StopReason::LineLimit => ProcessDisposition::LineLimit,
         StopReason::StdoutLimit => ProcessDisposition::StdoutLimit,

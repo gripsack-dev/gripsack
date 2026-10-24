@@ -17,6 +17,26 @@ pub(super) struct DeferredFile {
     output: String,
 }
 impl DeferredFile {
+    pub fn destination(&self) -> &str {
+        &self.entry.to
+    }
+
+    pub fn launcher(path: String, span: gripsack_ir::Span, environment: String) -> Self {
+        Self {
+            entry: gripsack_ir::Entry {
+                from: String::new(),
+                to: path,
+                mode: Ownership::TrackedCopy,
+                vars: Default::default(),
+                marker: None,
+                span: Some(span),
+            },
+            block: None,
+            tree: false,
+            output: format!("managed launcher for environment {environment:?}"),
+        }
+    }
+
     pub fn new(file: &gripsack_ir::workspace_model::WorkspaceFile) -> Result<Self, ExecError> {
         use gripsack_ir::{workspace::WorkspaceDestination, workspace_model::WorkspaceSource};
         let (path, mode, block) = match &file.destination {
@@ -89,6 +109,7 @@ impl NativeProfiles {
         home: &Path,
         previous: Option<&store::Generation>,
         adopting: &BTreeSet<String>,
+        migration: Option<&crate::deploy::Migration>,
     ) -> Result<Vec<Op>, ExecError> {
         let empty = BTreeMap::new();
         let modules = previous.map_or(&empty, |generation| &generation.modules);
@@ -97,6 +118,17 @@ impl NativeProfiles {
         let mut declared_paths = BTreeSet::new();
         let mut declared_blocks = BTreeSet::new();
         let mut unknown_trees = Vec::new();
+        if let Some(migration) = migration {
+            for destination in migration.directory_destinations() {
+                declared_paths.insert(destination.clone());
+                operations.push(Op::new(
+                    "*".into(), destination.clone(), destination.to_string_lossy().into_owned(),
+                    Ownership::Owned, OpKind::Deferred, None, None,
+                    store::journal::Intended::Removed, None,
+                    Some("journaled transition: exact retained directory link → inode-owned real directory; child writes follow preparation".into()),
+                ));
+            }
+        }
         for (owner, profile) in &self.profiles {
             if let Some(environment) = &profile.deferred_environment {
                 operations.push(Op::new(owner.clone(), PathBuf::new(), String::new(), Ownership::Owned,
@@ -110,11 +142,31 @@ impl NativeProfiles {
                     Some(format!("{}:{}: hook {hook:?} → post-flip activation (runtime admission deferred; no hook performed)",
                         profile.span.file, profile.span.line))));
             }
+            for check in &profile.deferred_checks {
+                operations.push(Op::new(
+                    owner.clone(), PathBuf::new(), String::new(), Ownership::Owned,
+                    OpKind::Deferred, None, None, store::journal::Intended::Removed, None,
+                    Some(format!("{}:{}: file check {:?}, subject={:?}, stage={:?} (runtime check context deferred; no check performed)",
+                        check.span.file, check.span.line, check.check, check.subject, check.stage)),
+                ));
+            }
             for file in &profile.deferred {
                 let entry = &file.entry;
-                let dest = store::canonical_dest(&entry.to).map_err(|error| {
-                    file_failure(entry.span.as_ref().unwrap_or(&profile.span), error)
-                })?;
+                let dest = migration
+                    .map_or_else(
+                        || {
+                            store::journal::directory::canonical_for_receipts(
+                                previous.map_or(&[], |generation| {
+                                    generation.directory_transitions.as_slice()
+                                }),
+                                &entry.to,
+                            )
+                        },
+                        |migration| migration.destination(&entry.to),
+                    )
+                    .map_err(|error| {
+                        file_failure(entry.span.as_ref().unwrap_or(&profile.span), error)
+                    })?;
                 let key = store::OwnershipKey::new(
                     dest.clone(),
                     file.block.as_ref().map(store::ManagedBlockId::as_str),
@@ -122,22 +174,29 @@ impl NativeProfiles {
                 if file.tree {
                     // A tree root is a container, never a managed file. Resolve
                     // a directory alias so prior physical children stay covered.
-                    let root = match std::fs::metadata(&dest) {
-                        Ok(metadata) if metadata.is_dir() => dest.canonicalize()?,
-                        Ok(_) => {
-                            return Err(file_failure(
-                                entry.span.as_ref().unwrap_or(&profile.span),
-                                "tree destination root is not a directory",
-                            ));
-                        }
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => dest.clone(),
-                        Err(error) => {
-                            return Err(file_failure(
-                                entry.span.as_ref().unwrap_or(&profile.span),
-                                error,
-                            ));
-                        }
-                    };
+                    let root =
+                        if migration.is_some_and(|migration| migration.entry(&dest).is_some()) {
+                            dest.clone()
+                        } else {
+                            match std::fs::metadata(&dest) {
+                                Ok(metadata) if metadata.is_dir() => dest.canonicalize()?,
+                                Ok(_) => {
+                                    return Err(file_failure(
+                                        entry.span.as_ref().unwrap_or(&profile.span),
+                                        "tree destination root is not a directory",
+                                    ));
+                                }
+                                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                    dest.clone()
+                                }
+                                Err(error) => {
+                                    return Err(file_failure(
+                                        entry.span.as_ref().unwrap_or(&profile.span),
+                                        error,
+                                    ));
+                                }
+                            }
+                        };
                     unknown_trees.push(root);
                     operations.push(Op::new(
                         owner.clone(),
@@ -163,7 +222,11 @@ impl NativeProfiles {
                     entry,
                     dest: dest.clone(),
                     home,
-                    observed: crate::deploy::observe_readonly(&dest)?,
+                    observed: if migration.is_some_and(|migration| migration.owns_child(&dest)) {
+                        None
+                    } else {
+                        super::directory_changes::preview_observation(self, previous, &dest, home)?
+                    },
                     prev: lineage.get(&key).copied(),
                     take_over: adopting.contains(&entry.to),
                 };
@@ -172,8 +235,19 @@ impl NativeProfiles {
             for file in &profile.files {
                 let entry = &file.entry;
                 let span = entry.span.as_ref().unwrap_or(&profile.span);
-                let dest =
-                    store::canonical_dest(&entry.to).map_err(|error| file_failure(span, error))?;
+                let dest = migration
+                    .map_or_else(
+                        || {
+                            store::journal::directory::canonical_for_receipts(
+                                previous.map_or(&[], |generation| {
+                                    generation.directory_transitions.as_slice()
+                                }),
+                                &entry.to,
+                            )
+                        },
+                        |migration| migration.destination(&entry.to),
+                    )
+                    .map_err(|error| file_failure(span, error))?;
                 let key = store::OwnershipKey::new(
                     dest.clone(),
                     file.block_id.as_ref().map(store::ManagedBlockId::as_str),
@@ -188,23 +262,34 @@ impl NativeProfiles {
                     entry,
                     dest: dest.clone(),
                     home,
-                    observed: crate::deploy::observe_readonly(&dest)?,
+                    observed: if migration.is_some_and(|migration| migration.owns_child(&dest)) {
+                        None
+                    } else {
+                        super::directory_changes::preview_observation(self, previous, &dest, home)?
+                    },
                     prev: lineage.get(&key).copied(),
                     take_over: adopting.contains(&entry.to),
                 };
+                let authorization = migration.and_then(|migration| migration.entry(&dest));
+                if let Some(authorization) = authorization {
+                    authorization.reobserve(&view)?;
+                }
                 if entry.mode == Ownership::Owned
                     && (!profile.deferred.is_empty()
                         || profile.deferred_environment.is_some()
-                        || !profile.deferred_hooks.is_empty())
+                        || !profile.deferred_hooks.is_empty()
+                        || !profile.deferred_checks.is_empty())
                 {
-                    operations.push(deferred(&view, format!("{}:{}: profile content identity awaits deferred files/environment/hooks; captured file bytes are known",
+                    operations.push(deferred(&view, format!("{}:{}: profile content identity awaits deferred files/environment/hooks/checks; captured file bytes are known",
                         span.file, span.line)));
                     continue;
                 }
                 let operation = match entry.mode {
                     Ownership::Owned => {
                         let target = profile.store_path.join(&entry.from);
-                        let already = std::fs::read_link(&dest).is_ok_and(|path| path == target);
+                        let already = !migration
+                            .is_some_and(|migration| migration.owns_child(&dest))
+                            && std::fs::read_link(&dest).is_ok_and(|path| path == target);
                         plan_entry_op(
                             &view,
                             ModeInput::Link {
@@ -223,13 +308,18 @@ impl NativeProfiles {
                         };
                         #[cfg(not(unix))]
                         let executable = false;
-                        plan_entry_op(
-                            &view,
-                            ModeInput::Write {
+                        let input = match authorization {
+                            Some(authorization) => ModeInput::MigrationWrite {
+                                authorization,
                                 content: &content,
                                 permissions: WritePermissions::Source { executable },
                             },
-                        )?
+                            None => ModeInput::Write {
+                                content: &content,
+                                permissions: WritePermissions::Source { executable },
+                            },
+                        };
+                        plan_entry_op(&view, input)?
                     }
                     Ownership::Merge => {
                         let payload = std::fs::read_to_string(&source)?;

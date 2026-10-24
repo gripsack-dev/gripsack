@@ -61,6 +61,11 @@ pub use source::preflight::{
 pub use update::{UpdateMode, update};
 pub use util::LifecycleSession;
 pub use workspace::roots::{BuildRecovery, recover_builder_roots};
+pub use workspace::{
+    AttemptId, BusyPolicy, InvocationId, TaskExecutionBinding, TaskNodeReport, TaskOutputMode,
+    TaskPlan, TaskReport, TaskRevision, TaskRunPolicy, TaskStatus, TaskStdin, plan_task,
+    read_task_log, read_task_report, run_task,
+};
 pub use workspace::{BuildOptions, BuildResult, BuiltOutput, build_workspace};
 pub use workspace::{ConsumerOutcome, ConsumerRequest, consume, run_package_command};
 

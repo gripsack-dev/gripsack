@@ -16,8 +16,10 @@ pub const WORKSPACE_V4_VERSION: u32 = 4;
 pub const WORKSPACE_V5_VERSION: u32 = 5;
 /// Retained executing workspace wire; new v7 authority is rejected by its reader.
 pub const WORKSPACE_V6_VERSION: u32 = 6;
+/// Retained executing workspace wire; new v8 authority is rejected by its reader.
+pub const WORKSPACE_V7_VERSION: u32 = 7;
 /// Current typed workspace and legacy-modules writer schema.
-pub const IR_VERSION: u32 = 7;
+pub const IR_VERSION: u32 = 8;
 /// The core retains versioned readers for every supported envelope.
 pub const ACCEPTED_IR_VERSIONS: std::ops::RangeInclusive<u32> = LEGACY_IR_VERSION..=IR_VERSION;
 
@@ -70,14 +72,14 @@ pub fn parse(json: &str) -> Result<Ir, Diagnostic> {
             workspace_catalog: None,
         });
     }
-    // v6 and v7 share the catalog execution model. The versioned tagged
-    // reader rejects v7 fields in v6 before constructing this model.
+    // Catalog versions share the normalized execution model. Versioned
+    // tagged readers reject later authority before constructing this model.
     if let Ok(raw) = serde_json::from_str::<serde_json::Value>(json)
         && raw
             .get("ir_version")
             .and_then(|v| v.as_u64())
             .is_some_and(|version| {
-                version == u64::from(WORKSPACE_V6_VERSION) || version == u64::from(IR_VERSION)
+                (u64::from(WORKSPACE_V6_VERSION)..=u64::from(IR_VERSION)).contains(&version)
             })
         && raw.get("workspace").is_some()
     {

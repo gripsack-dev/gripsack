@@ -37,6 +37,8 @@ verus! {
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExToolchain(ToolchainReference);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExOutputKind(RecipeOutputKind);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExLayout(CatalogPackageLayout);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExArchiveRoot(ArchiveRootPolicy);
+#[verifier::external_type_specification] #[verifier::external_body] pub struct ExLaunchers(ProfileLaunchers);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExHostRuntimeRequirements(HostRuntimeRequirements);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExCondaSystemRequirements(CondaSystemRequirements);
 #[verifier::external_type_specification] #[verifier::external_body] pub struct ExContext(TaskContext);
@@ -138,7 +140,7 @@ pub open spec fn file_edges<'a>(owner: &'a WorkspaceOutput, file: &'a WorkspaceF
             selector: Some(selector@), ..bare(owner, output@, artifact_kinds(), &file.span, GraphRole::Runtime, None) }),
         Some(WorkspaceSource::Tree { output, .. }) => ISet::empty().insert(
             bare(owner, output@, artifact_kinds(), &file.span, GraphRole::Runtime, None)),
-        Some(WorkspaceSource::RepoFile { .. }) | None => ISet::empty(),
+        Some(WorkspaceSource::RepoFile { .. } | WorkspaceSource::RepoTree { .. }) | None => ISet::empty(),
     };
     origin.union(file_check_edges(owner, file.checks@))
 }

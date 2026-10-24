@@ -7,6 +7,10 @@
 (* filesystem cases exercise both crash windows with actual blob/record IO. *)
 (* This finite TLC check is not the generalized M-V6/TLAPS theorem.          *)
 (***************************************************************************)
+\* The unchanged v2 calibrations remain the repeated-write leaf seam.
+\* DirectoryHierarchy adds v3 durable prepared inode identity, predecessor
+\* link replacement, ancestor-bound versions of these leaf writes, and
+\* child-before-parent interrupted recovery; directories are not Values here.
 EXTENDS Naturals, FiniteSets
 CONSTANTS ORIGINAL, FIRST, SECOND, FOREIGN, NONE, BadPrior, BadBefore
 ASSUME Cardinality({ORIGINAL, FIRST, SECOND, FOREIGN, NONE}) = 5

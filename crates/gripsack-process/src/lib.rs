@@ -33,6 +33,7 @@ mod exec_payload;
 pub mod executable;
 mod image;
 mod interactive;
+mod task;
 pub use image::{ProgramIdentity, SelectedGnuLoader, SelectedProgram};
 mod invocation;
 pub use invocation::{ActivationEnvironment, Invocation, NativeInput, NativeOutcome};
@@ -96,6 +97,8 @@ pub enum StopReason {
     /// Leader exited and the pipes drained; not a protocol-success verdict.
     Exited,
     Deadline,
+    /// A cancellation signal reached the task supervisor and was forwarded.
+    Cancelled,
     InputLimit,
     LineLimit,
     StdoutLimit,
@@ -144,7 +147,7 @@ pub fn run(
     limits: Limits,
     on_line: impl FnMut(&[u8]) -> Control,
 ) -> io::Result<Outcome> {
-    supervise(command, input, limits, OutputMode::Lines, on_line)
+    supervise(command, input, limits, OutputMode::Lines, None, on_line)
 }
 
 /// Supervise an arbitrary byte stream without line framing or a line buffer.
@@ -156,7 +159,7 @@ pub fn run_raw(
     limits: Limits,
     on_bytes: impl FnMut(&[u8]) -> Control,
 ) -> io::Result<Outcome> {
-    supervise(command, input, limits, OutputMode::Raw, on_bytes)
+    supervise(command, input, limits, OutputMode::Raw, None, on_bytes)
 }
 
 #[derive(Clone, Copy)]
@@ -170,6 +173,7 @@ fn supervise(
     input: &[u8],
     limits: Limits,
     output: OutputMode,
+    task_stdin: Option<bool>,
     mut on_line: impl FnMut(&[u8]) -> Control,
 ) -> io::Result<Outcome> {
     let empty = |reason| Outcome {
@@ -194,8 +198,13 @@ fn supervise(
     if active_deadline.remaining().is_none() {
         return Ok(empty(StopReason::Deadline));
     }
+    let mut session = task_stdin.map(task::Session::new).transpose()?;
     command
-        .stdin(Stdio::piped())
+        .stdin(match task_stdin {
+            Some(true) => Stdio::inherit(),
+            Some(false) => Stdio::null(),
+            None => Stdio::piped(),
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
@@ -203,8 +212,12 @@ fn supervise(
     // Install before any post-spawn fallible operation. Child::drop does not wait.
     let (mut guard, pipes) = lifecycle::Guard::new(child, end);
     let mut exchange = exchange::Exchange::new(pipes, input, input_transfer, limits, output);
-    let reason = match exchange.configure() {
-        Ok(()) => exchange.drive(&mut guard, active_deadline, &mut on_line),
+    let configured = session
+        .as_mut()
+        .map_or(Ok(()), |session| session.enter(&mut guard))
+        .and_then(|()| exchange.configure());
+    let reason = match configured {
+        Ok(()) => exchange.drive(&mut guard, active_deadline, &mut on_line, session.as_ref()),
         Err(error) => StopReason::Io(error),
     };
     exchange.close_input();

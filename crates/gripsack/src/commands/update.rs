@@ -49,6 +49,7 @@ pub fn update(
         on_progress: None,
         take_over: false,
         take_over_entries: None,
+        migrate_from: None,
         jobs: None,
         fetch: std::sync::Arc::clone(&outcome.fetch),
     };

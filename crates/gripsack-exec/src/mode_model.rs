@@ -23,6 +23,7 @@ fn context(home: &Path) -> Ctx {
         on_progress: None,
         take_over: false,
         take_over_entries: None,
+        migrate_from: None,
         jobs: Some(1),
         home_dir: Default::default(),
         fetch: Default::default(),

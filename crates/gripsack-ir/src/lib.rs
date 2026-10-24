@@ -1,7 +1,7 @@
 //! The IR contract between frontends and the core: types, spans,
 //! diagnostics, and the compiler passes every IR document goes through
 //! (plan/0001 §3.2, 0004, 0007). The schemas live in `schema/ir/`
-//! (v3 legacy modules, retained strict v4/v5 workspaces, current v6
+//! (v3 legacy modules, retained strict v4/v5/v6/v7 workspaces, current v8
 //! workspace — plan/0052); change all sides together
 //! (`.agents/skills/gripsack-ir`).
 //!
@@ -9,7 +9,7 @@
 //! frontend (typescript)
 //!     │  evals your modules, emits JSON with spans
 //!     ▼
-//! parse        E000 malformed · E100 wrong ir_version (accepts 3..=7)
+//! parse        E000 malformed · E100 wrong ir_version (accepts 3..=8)
 //!     ▼
 //! sema::run    ordered passes, one concern each:
 //!     steps        E103 both-shapes · E106 dup/reserved ids · E104 refs
@@ -45,7 +45,7 @@ pub use host_name::HostName;
 pub use model::*;
 pub use parse::{
     ACCEPTED_IR_VERSIONS, IR_VERSION, LEGACY_IR_VERSION, WORKSPACE_V4_VERSION,
-    WORKSPACE_V5_VERSION, WORKSPACE_V6_VERSION, parse,
+    WORKSPACE_V5_VERSION, WORKSPACE_V6_VERSION, WORKSPACE_V7_VERSION, parse,
 };
 /// Backwards-compatible alias: pass 2 is `sema::run`.
 pub use sema::run as validate;

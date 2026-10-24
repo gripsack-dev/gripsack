@@ -17,11 +17,11 @@ The IR is a three-party contract. Any change lands in **one PR** touching:
 
 - **Structural changes** are compatible within a version ONLY if the
   prior declared reader explicitly tolerates that extension point. The
-  retained v3–v6 readers and current v7 reader are strict
+  retained v3–v7 readers and current v8 reader are strict
   (`deny_unknown_fields` plus versioned tagged admission); even an optional
   structural field needs a new version or proven reader negotiation
-  (plan/0003 §8). V6 keeps its original executing semantics and rejects v7
-  authority; v5 retains native file profiles and v4 workspaces stay read-only.
+  (plan/0003 §8). V6/v7 keep their original executing semantics and reject
+  v8 declaration authority; v5 retains native files and v4 stays read-only.
 - **Breaking changes** (rename, removal, meaning change, or a field an
   older strict reader rejects) bump `ir_version` and add
   `schema/ir/v<N+1>.json`; keep old schemas and versioned readers. The

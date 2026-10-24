@@ -19,6 +19,7 @@ use super::{allowed_fetch_fields, check_tagged_at, raw_node_span};
 use crate::diagnostic::Diagnostic;
 
 mod v6;
+mod v8;
 type FieldRule = fn(&str) -> Option<&'static [&'static str]>;
 
 #[derive(Clone, Copy)]
@@ -27,6 +28,7 @@ pub(super) enum WorkspaceWireVersion {
     CurrentV5,
     CurrentV6,
     CurrentV7,
+    CurrentV8,
 }
 
 /// Workspace output kinds → allowed keys (the tag plus the variant's
@@ -190,7 +192,9 @@ fn check_workspace_command(
     let span = command_span.as_ref();
     let current_v6 = matches!(
         version,
-        WorkspaceWireVersion::CurrentV6 | WorkspaceWireVersion::CurrentV7
+        WorkspaceWireVersion::CurrentV6
+            | WorkspaceWireVersion::CurrentV7
+            | WorkspaceWireVersion::CurrentV8
     );
     let command_fields: FieldRule = if current_v6 {
         v6::command_fields
@@ -236,7 +240,9 @@ pub(super) fn check(
     let legacy_v4 = matches!(version, WorkspaceWireVersion::LegacyV4);
     let current_v6 = matches!(
         version,
-        WorkspaceWireVersion::CurrentV6 | WorkspaceWireVersion::CurrentV7
+        WorkspaceWireVersion::CurrentV6
+            | WorkspaceWireVersion::CurrentV7
+            | WorkspaceWireVersion::CurrentV8
     );
     if current_v6 {
         v6::inputs(value, out);
@@ -251,12 +257,16 @@ pub(super) fn check(
     } else {
         allowed_workspace_arg_fields
     };
-    let source_fields: FieldRule = if current_v6 {
+    let source_fields: FieldRule = if matches!(version, WorkspaceWireVersion::CurrentV8) {
+        v8::source_fields
+    } else if current_v6 {
         v6::source_fields
     } else {
         allowed_workspace_source_fields
     };
-    let content_fields: FieldRule = if current_v6 {
+    let content_fields: FieldRule = if matches!(version, WorkspaceWireVersion::CurrentV8) {
+        v8::content_fields
+    } else if current_v6 {
         v6::content_fields
     } else {
         allowed_workspace_content_fields
@@ -283,6 +293,8 @@ pub(super) fn check(
         let output_span = raw_node_span(output);
         let allowed: fn(&str) -> Option<&'static [&'static str]> = if legacy_v4 {
             allowed_workspace_output_fields_v4
+        } else if matches!(version, WorkspaceWireVersion::CurrentV8) {
+            v8::output_fields
         } else if matches!(version, WorkspaceWireVersion::CurrentV7) {
             v6::output_fields_v7
         } else if current_v6 {
@@ -326,6 +338,17 @@ pub(super) fn check(
                 }
             }
             "package" => {
+                if matches!(version, WorkspaceWireVersion::CurrentV8)
+                    && let Some(root) = output.get("archive_root")
+                {
+                    check_tagged_at(
+                        root,
+                        &path,
+                        v8::archive_root_fields,
+                        output_span.as_ref(),
+                        out,
+                    );
+                }
                 if !legacy_v4 && let Some(layout) = output.get("layout") {
                     let layout_fields: FieldRule = if current_v6 {
                         v6::layout_fields
@@ -404,14 +427,35 @@ pub(super) fn check(
                 }
             }
             "profile" => {
+                if matches!(version, WorkspaceWireVersion::CurrentV8)
+                    && let Some(launchers) = output.get("launchers")
+                {
+                    v8::launchers(launchers, &path, output_span.as_ref(), out);
+                }
                 if let Some(files) = output.get("files").and_then(|f| f.as_array()) {
                     for file in files {
                         // The file declaration's own span, else the profile's.
                         let file_span = raw_node_span(file).or_else(|| output_span.clone());
                         if let Some(source) = file.get("source") {
+                            if !matches!(version, WorkspaceWireVersion::CurrentV8) {
+                                v8::reject_historical_variant(
+                                    source,
+                                    &path,
+                                    file_span.as_ref(),
+                                    out,
+                                );
+                            }
                             check_tagged_at(source, &path, source_fields, file_span.as_ref(), out);
                         }
                         if let Some(content) = file.get("content") {
+                            if !matches!(version, WorkspaceWireVersion::CurrentV8) {
+                                v8::reject_historical_variant(
+                                    content,
+                                    &path,
+                                    file_span.as_ref(),
+                                    out,
+                                );
+                            }
                             check_tagged_at(
                                 content,
                                 &path,

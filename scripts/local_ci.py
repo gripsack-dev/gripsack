@@ -49,6 +49,13 @@ def inventory():
     run(["python3", "scripts/check_architecture.py", "--self-check"])
     run(["python3", "scripts/check_ci_gate.py", "--self-check"])
     run(["python3", "-m", "unittest", "discover", "-s", "scripts", "-p", "test_local_ci_checkpoints.py"])
+    # The selected worker image owns this immutable adapter package. Do not
+    # inherit a repository/operator PYTHONPATH into its admission regressions.
+    runtime = Path("/opt/ci")
+    if not (runtime / "ci_infra/records.py").is_file():
+        raise ValueError("release admission qualification requires the selected CI runtime at /opt/ci")
+    run(["python3", "-m", "unittest", "discover", "-s", "scripts", "-p", "test_release_*.py"],
+        env={**os.environ, "PYTHONPATH": str(runtime)})
 
 
 def images():

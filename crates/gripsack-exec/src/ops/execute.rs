@@ -7,8 +7,14 @@ use crate::ctx::ExecError;
 use crate::report::ReportKind;
 
 /// The destination-capability pair an op pins (0027 §5, 0030 §P0-1).
-fn dest_capability(dest: &Path) -> std::io::Result<(gripsack_fs::Dir, PathBuf)> {
-    crate::deploy::dest_capability(dest)
+fn dest_capability(
+    run: &store::journal::JournalRun<'_>,
+    dest: &Path,
+) -> std::io::Result<(gripsack_fs::Dir, PathBuf)> {
+    match store::journal::directory::destination_capability(run, dest)? {
+        Some(bound) => Ok(bound),
+        None => crate::deploy::dest_capability(dest),
+    }
 }
 
 /// Execute one op under the journal (0034): the precondition is the
@@ -64,7 +70,7 @@ pub(crate) fn execute_op(
             ))
         }
         OpKind::Link { target } => {
-            let (dest_dir, dest_name) = dest_capability(op.dest())
+            let (dest_dir, dest_name) = dest_capability(run, op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
             // 0015 §4: a genuine take-over records what was there first
             let prior = if op.authority() == Some(Authority::TakeOver) {
@@ -96,7 +102,7 @@ pub(crate) fn execute_op(
                     )));
                 }
             };
-            let (dest_dir, dest_name) = dest_capability(op.dest())
+            let (dest_dir, dest_name) = dest_capability(run, op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
             let prior = if op.authority() == Some(Authority::TakeOver) {
                 crate::deploy::restore::capture_prior(&dest_dir, &dest_name, home_dir)?
@@ -130,7 +136,7 @@ pub(crate) fn execute_op(
             let owner = block_id
                 .as_ref()
                 .map_or(op.module(), store::ManagedBlockId::as_str);
-            let (dest_dir, dest_name) = dest_capability(op.dest())
+            let (dest_dir, dest_name) = dest_capability(run, op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
             let captured =
                 store::journal::capture(run, dest_dir, dest_name, op.dest(), op.observed())?;
@@ -170,7 +176,7 @@ pub(crate) fn execute_op(
         OpKind::Remove(target) => {
             // the variant CARRIES the removal authority (0046) — no
             // expect, no invalid state
-            let (dest_dir, dest_name) = dest_capability(op.dest())
+            let (dest_dir, dest_name) = dest_capability(run, op.dest())
                 .map_err(|e| fail(format!("cannot open {} parent: {e}", op.declared_to())))?;
             let captured =
                 store::journal::capture(run, dest_dir, dest_name, op.dest(), op.observed())?;

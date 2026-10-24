@@ -12,6 +12,8 @@
 //! deployment; live == target is a no-op; anything else is user
 //! drift — preserved and reported, never overwritten.
 
+mod directory_transitions;
+
 use crate::ctx::ExecError;
 use gripsack_store as store;
 use std::collections::{BTreeMap, BTreeSet};
@@ -193,18 +195,84 @@ fn restore_destinations(
     let home = journal.home();
     let home_path = journal.home_path();
     preflight(target)?;
-    let current_by_dest = current.map(by_destination).unwrap_or_default();
+    let current_directories = current
+        .map(|generation| generation.directory_transitions.as_slice())
+        .unwrap_or_default();
+    let mut predecessors = BTreeMap::new();
+    for transition in current_directories {
+        if let std::collections::btree_map::Entry::Vacant(slot) =
+            predecessors.entry(transition.predecessor_generation)
+        {
+            let predecessor =
+                store::generations::admit_manifest(home_path, transition.predecessor_generation)?;
+            preflight(&predecessor)?;
+            slot.insert(predecessor);
+        }
+    }
+    let mut current_by_dest = current.map(by_destination).unwrap_or_default();
+    for transition in current_directories {
+        let predecessor = &predecessors[&transition.predecessor_generation];
+        let (name, state, entry) = predecessor
+            .modules
+            .iter()
+            .find_map(|(name, state)| {
+                state
+                    .entries
+                    .iter()
+                    .find(|entry| entry.key() == transition.destination)
+                    .map(|entry| (name, state, entry))
+            })
+            .ok_or_else(|| {
+                std::io::Error::other("directory transition lost its predecessor ownership lineage")
+            })?;
+        if state.store_path.join(&entry.from) != transition.predecessor_target
+            || entry.preserved_drift
+            || entry.ownership.policy() != gripsack_ir::Ownership::Owned
+        {
+            return Err(std::io::Error::other(
+                "directory predecessor lineage no longer matches receipt",
+            )
+            .into());
+        }
+        current_by_dest.insert(entry.ownership_key(name), (name, entry, &state.store_path));
+    }
     let target_by_dest = by_destination(target);
-    let dests: BTreeSet<store::OwnershipKey> = current_by_dest
+    let exchanged =
+        directory_transitions::prepare(journal, &current_by_dest, current_directories, target)?;
+    let mut dests: Vec<store::OwnershipKey> = current_by_dest
         .keys()
         .chain(target_by_dest.keys())
         .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect();
-    let mut notes = Vec::new();
+    dests.sort_by_key(|key| std::cmp::Reverse(key.destination().components().count()));
+    let mut notes = exchanged.notes;
     for dest in dests {
+        if target
+            .directory_transitions
+            .iter()
+            .any(|transition| transition.destination == dest.destination())
+        {
+            // The directory domain, not a flat unlink, owns this old link.
+            continue;
+        }
+        if let Some(transition) = current_directories
+            .iter()
+            .find(|transition| transition.destination == dest.destination())
+            && !target
+                .directory_transitions
+                .iter()
+                .any(|target| target.destination == transition.destination)
+        {
+            store::journal::reverse_directory(journal, transition)?;
+        }
         match (current_by_dest.get(&dest), target_by_dest.get(&dest)) {
             // only the current generation deploys it: the prune rule
             (Some((name, entry, sp)), None) => {
+                if exchanged.released.contains(&dest) {
+                    continue;
+                }
                 // preserved drift was never written by gripsack —
                 // rollback and prune never touch it (0029 §2)
                 if entry.preserved_drift {

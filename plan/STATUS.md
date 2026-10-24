@@ -40,6 +40,16 @@ Plan0048§19 records the exact candidate, artifacts, failures and recovery proof
 This is a trusted-code, unsigned, non-publishing pilot—not public0.46.1,
 hosted-CI success, signing authority or closure of the original178 delivery IDs.
 
+The later owner decision `LOCAL-QUALIFICATION-AUTHORITY-2026-10-23`
+makes complete exact-source local qualification the standing acceptance authority.
+Plan0054 coordinates the0.47.0/IR8 reviewer packet and signing-only GitHub
+promotion; the historical0.46.1 result above does not qualify that new source.
+The owner reconfirmed release-first on2026-10-24 after reviewer feedback15–18:
+ship the current qualified packet and supported font/profile guidance, then
+address capture exclusions and focused trust review. Mutable overlays and the
+full website/README sweep remain later work. No0.47 release, live authority
+cutover or original-handover closure is claimed by implementation alone.
+
 Historical focused cutover checks (2026-10-08): delivery inventory and scope/closure
 calibration, CI admission (6 positive/188 negative cases), exact Linux
 packaging-contract calibration and rebuilt installer flows (9/9). Both Linux
@@ -119,6 +129,7 @@ the fetcher registry stay the north star.
 | 0051 | Linux BuildKit production and B-row qualification | runtime shipped0.44–0.46; delivery closure pending | `grip build`/`grip builder` and workspace consumers use checked whole-subgraph lowering, the bounded Rust/Go bridge, owned Linux workers and independent exports. PR173 and the0.44–0.46 records below supersede the early no-backend prototype. B0-01 retains its exact-source `ce3c7e0` six-case/negative receipts; plan0051 and the [immutable prototype ledger](https://github.com/gripsack-dev/gripsack/blob/fa3ada8f4f56a4274ee3a939d4642d30d54c6777/plan/STATUS.md#L109) preserve that history | B0–B6 row closure still requires named catalogs and conjunctive source-bound case/lane evidence; shipping implementation does not close rows. Mac/ARM portions are outside current scope | — |
 | 0052 | Workspace graph, command, diagnostic and native-runtime contract | runtime shipped0.44–0.46; A1/A2 closure pending | Current writer is IR7; retained6 execution,5 file profiles,4 read-only workspaces and3 modules remain distinct. Named recipes/packages, environments/profiles, native Conda/Pixi, tasks/checks/hooks and BuildKit-backed production ship with the0.46 scope. Earlier admission-only/file-only checkpoints remain historical in plan0052 and the [immutable prototype ledger](https://github.com/gripsack-dev/gripsack/blob/fa3ada8f4f56a4274ee3a939d4642d30d54c6777/plan/STATUS.md#L110) | Original A1/A2/A2-P row/milestone closure, source-bound semantic review and proof catalogs remain separate. No pending row is interpreted as permission to reimplement or weaken existing production behavior | — |
 | 0053 | CI and release-flow migration | Rootle/Gripsack local pilots qualified | Buildbot controller/worker, exact source/receipt admission, real installed-artifact consumers, same-host backup/restore, and Gripsack's full19-gate/96-partition worker-recovery qualification exercised | Remaining cross-project evidence, isolated signing/owner promotion and optional publisher cutover remain distinct; existing release authority is not retired | — |
+| 0054 | Workspace ergonomics and original handover completion | in progress; no release claim | Gripsack-only continuation records every reviewer item, the current0.46 resolutions, strict IR8 captured templates/trees, stable archive roots and managed launchers, generation-bound migration and original178-row reconciliation | Readable consumer declarations and deletion of generators/duplicated bodies/launcher plumbing are acceptance criteria; original proofs/gates and signing/storage authority boundaries remain required | — |
 
 **0048 R1 continuation (2026-09-29):** Source/policy-bound approval, copied
 read-only roots, retained runtime selection, immutable per-round inputs and

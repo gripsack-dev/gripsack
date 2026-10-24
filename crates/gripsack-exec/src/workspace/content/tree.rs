@@ -1,15 +1,13 @@
-//! Artifact-side counterpart of treeFiles: bounded segment-prefix selection,
+//! Artifact tree selection retains its historical regular-file-only policy:
 //! stable per-file expansion, and no implicit ownership of a whole directory.
+use super::selection::{MAX_EXPANDED_FILES, destination};
 use super::{Capture, File, PreparedFile, Source, prepare_file};
 use crate::ExecError;
-use gripsack_ir::workspace::WorkspaceDestination;
 use std::{
     collections::BTreeMap,
     io,
     path::{Path, PathBuf},
 };
-
-const MAX_EXPANDED_FILES: usize = 10_000;
 
 pub(super) fn prepare_into(
     capture: &mut Capture,
@@ -83,20 +81,7 @@ pub(super) fn prepare_into(
         }
     }
     for (relative, path) in selected {
-        let destination = match declaration.destination {
-            WorkspaceDestination::Symlink { path } => WorkspaceDestination::Symlink {
-                path: join_destination(path, &relative),
-            },
-            WorkspaceDestination::TrackedCopy { path } => WorkspaceDestination::TrackedCopy {
-                path: join_destination(path, &relative),
-            },
-            WorkspaceDestination::ManagedBlock { path, marker } => {
-                WorkspaceDestination::ManagedBlock {
-                    path: join_destination(path, &relative),
-                    marker: marker.clone(),
-                }
-            }
-        };
+        let destination = destination(declaration.destination, &relative);
         let leaf = File {
             span: declaration.span,
             source: Some(Source::ArtifactFile {
@@ -105,13 +90,11 @@ pub(super) fn prepare_into(
             }),
             content: declaration.content,
             destination: &destination,
+            checks: declaration.checks,
         };
         prepared.push(prepare_file(capture, &leaf, stage)?);
     }
     Ok(())
-}
-fn join_destination(root: &str, relative: &str) -> String {
-    format!("{}/{relative}", root.trim_end_matches('/'))
 }
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)

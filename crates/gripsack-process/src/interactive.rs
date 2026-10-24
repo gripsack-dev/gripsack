@@ -54,11 +54,11 @@ extern "C" fn record(signal: libc::c_int) {
 
 /// Installed handlers plus the dispositions they replace. Restoration happens
 /// exactly once, on drop, in reverse signal order.
-struct SignalWatch {
+pub(super) struct SignalWatch {
     saved: Vec<(libc::c_int, libc::sigaction)>,
 }
 impl SignalWatch {
-    fn install() -> io::Result<Self> {
+    pub(super) fn install() -> io::Result<Self> {
         RECEIVED.store(0, Ordering::Relaxed);
         let mut saved = Vec::with_capacity(OBSERVED_SIGNALS.len());
         for &signal in &OBSERVED_SIGNALS {
@@ -80,7 +80,7 @@ impl SignalWatch {
         }
         Ok(Self { saved })
     }
-    fn take() -> u64 {
+    pub(super) fn take() -> u64 {
         RECEIVED.swap(0, Ordering::Relaxed)
     }
 }
@@ -354,7 +354,7 @@ fn relay_continue(pid: libc::pid_t, terminal: Option<&Terminal>) {
     }
 }
 
-fn observed(mask: u64) -> impl Iterator<Item = libc::c_int> {
+pub(super) fn observed(mask: u64) -> impl Iterator<Item = libc::c_int> {
     OBSERVED_SIGNALS
         .into_iter()
         .filter(move |signal| mask & (1u64 << signal) != 0)

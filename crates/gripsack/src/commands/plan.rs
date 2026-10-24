@@ -129,6 +129,7 @@ fn native_preview(
         palette,
         selected,
         Default::default(),
+        None,
     ) {
         Ok(section) => {
             println!("{section}");

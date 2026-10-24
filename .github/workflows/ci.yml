@@ -1,5 +1,9 @@
 name: ci
 
+# Manual diagnostics only, not integration or release acceptance authority.
+# Exact-source local qualification owns all required gates and 96 persistence
+# partitions. Never dispatch this workflow for the no-fuzz/corpus release.
+
 on:
   workflow_dispatch:
     inputs:
@@ -10,9 +14,6 @@ on:
         options:
           - none
           - REL-FUZZ-2026-09-27
-  push:
-    branches: [main]
-  pull_request:
 
 permissions:
   contents: read
@@ -27,8 +28,8 @@ jobs:
   # suite and every formal gate SERIALLY — run 36774936349 died at the 6h
   # job timeout inside E2E (~66%, before the persistence matrix finished and
   # before model/TLAPS/Verus ever started). The lanes below run in parallel;
-  # `test` remains the protected required check as an aggregate that cannot
-  # go green unless every lane succeeded (never skipped/failed/cancelled).
+  # `test` is a diagnostic aggregate, not protected acceptance authority,
+  # and cannot pass unless every lane succeeded.
   core:
     runs-on: ubuntu-latest
     steps:
@@ -126,7 +127,7 @@ jobs:
       - name: Required formal gate (${{ matrix.gate }})
         run: docker compose run --build --rm "${{ matrix.gate }}"
 
-  # Protected required check: pure aggregate over the parallel lanes.
+  # Manual diagnostic aggregate over the parallel lanes.
   # if: always() plus an explicit per-lane result admission — a failed,
   # cancelled or skipped lane can never let this go green.
   test:
@@ -149,7 +150,7 @@ jobs:
   # Bounded, deterministic fuzz replay (plan/0042 E): the checked-in
   # seed corpus through the real targets, OS-contained by bubblewrap —
   # fail-closed, no uncontained fallback. Longer coverage-guided runs
-  # are scheduled in fuzz.yml, not here.
+  # available manually in fuzz.yml, not here.
   fuzz:
     # Only explicit manual feedback dispatches may omit this lane. Unknown
     # waiver inputs also omit execution, but the final gate rejects them.

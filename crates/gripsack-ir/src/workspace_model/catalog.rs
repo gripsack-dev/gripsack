@@ -53,6 +53,21 @@ impl WorkspaceCatalog {
             _ => false,
         })
     }
+
+    /// Authority introduced in v8 must never enter retained v7/v6 envelopes.
+    pub fn requires_v8(&self) -> bool {
+        self.outputs.iter().any(|output| match output {
+            WorkspaceOutput::Package(package) => package.archive_root.is_some(),
+            WorkspaceOutput::Profile(profile) => {
+                profile.launchers.is_some()
+                    || profile.files.iter().any(|file| {
+                        matches!(file.source, Some(super::WorkspaceSource::RepoTree { .. }))
+                            || matches!(file.content, super::WorkspaceContent::TemplateFile { .. })
+                    })
+            }
+            _ => false,
+        })
+    }
 }
 
 /// One declared workspace input (v6-design §2.1).
@@ -207,6 +222,19 @@ pub struct PackageOutput {
     pub host_runtime: Option<super::HostRuntimeRequirements>,
     pub target: WorkspacePlatform,
     pub layout: CatalogPackageLayout,
+    /// Select a stable root from the immutable native producer payload.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "super::source::present"
+    )]
+    pub archive_root: Option<ArchiveRootPolicy>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ArchiveRootPolicy {
+    SingleDirectory,
 }
 
 /// What produces a package's payload (plan/0052 §2.2: resolution and
@@ -330,12 +358,26 @@ pub struct ProfileOutput {
     /// Name of an `environment` output (sema E126).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<String>,
+    /// Managed command entries resolved through this profile's environment.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "super::source::present"
+    )]
+    pub launchers: Option<ProfileLaunchers>,
     /// Names of `schedule` outputs (sema E126).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub schedules: Vec<String>,
     /// Names of `hook` outputs (sema E126).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfileLaunchers {
+    pub directory: String,
+    pub commands: Vec<String>,
 }
 
 /// A lifecycle hook. `post_link`/`post_activate`/`on_remove` semantics

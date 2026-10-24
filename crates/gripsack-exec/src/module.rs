@@ -310,6 +310,7 @@ impl<'a> ModuleRun<'a> {
                                 journal: self.journal,
                                 owner: self.name,
                                 store_path: &self.store_path,
+                                migration: None,
                                 entry,
                                 previous: self.prev_map,
                                 version: self.version.as_deref(),

@@ -14,6 +14,7 @@ pub(crate) struct DeploymentInput<'a> {
     pub previous: &'a std::collections::BTreeMap<store::OwnershipKey, &'a store::DeployedEntry>,
     pub version: Option<&'a str>,
     pub block_id: Option<&'a store::ManagedBlockId>,
+    pub migration: Option<&'a super::Migration>,
 }
 
 /// One content-backed file; workspace and legacy callers share every
@@ -31,6 +32,7 @@ pub(crate) fn deploy_entry(
         previous,
         version,
         block_id,
+        migration,
     } = input;
     let ownership = store::StoredOwnership::for_entry(&entry.mode, block_id)?;
     let prepared =
@@ -51,11 +53,14 @@ pub(crate) fn deploy_entry(
     let source = prepared.path;
     // the canonical physical key (0030 §P0-1): one observation, one
     // transition, one journal key per physical object
-    let dest = store::canonical_dest(&entry.to).map_err(|e| ExecError::Step {
-        module: module.to_string(),
-        step: "deploy".into(),
-        detail: format!("destination {:?}: {e}", entry.to),
-    })?;
+    let dest =
+        store::journal::directory::canonical_destination(journal, &entry.to).map_err(|e| {
+            ExecError::Step {
+                module: module.to_string(),
+                step: "deploy".into(),
+                detail: format!("destination {:?}: {e}", entry.to),
+            }
+        })?;
     let key = store::OwnershipKey::new(
         dest.clone(),
         (entry.mode == Ownership::Merge)
@@ -164,12 +169,20 @@ pub(crate) fn deploy_entry(
         dest: dest.clone(),
         home: &ctx.home,
         observed: {
-            let (dest_dir, dest_name) = dest_capability(&dest)?;
+            let (dest_dir, dest_name) =
+                match store::journal::directory::destination_capability(journal, &dest)? {
+                    Some(capability) => capability,
+                    None => dest_capability(&dest)?,
+                };
             observe(&dest_dir, &dest_name)?
         },
         prev,
         take_over: ctx.takes_over(&entry.to),
     };
+    let migration_entry = migration.and_then(|migration| migration.entry(&dest));
+    if let Some(authorization) = migration_entry {
+        authorization.reobserve(&view)?;
+    }
     let op = match &entry.mode {
         Ownership::Owned => {
             let already = std::fs::read_link(&dest)
@@ -197,15 +210,22 @@ pub(crate) fn deploy_entry(
             };
             #[cfg(not(unix))]
             let src_exec = false;
-            crate::ops::plan_entry_op(
-                &view,
-                crate::ops::ModeInput::Write {
+            let input = match migration_entry {
+                Some(authorization) => crate::ops::ModeInput::MigrationWrite {
+                    authorization,
                     content,
                     permissions: crate::ops::WritePermissions::Source {
                         executable: src_exec,
                     },
                 },
-            )?
+                None => crate::ops::ModeInput::Write {
+                    content,
+                    permissions: crate::ops::WritePermissions::Source {
+                        executable: src_exec,
+                    },
+                },
+            };
+            crate::ops::plan_entry_op(&view, input)?
         }
         Ownership::Merge => {
             let payload = std::fs::read_to_string(&source)

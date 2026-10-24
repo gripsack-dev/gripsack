@@ -57,6 +57,8 @@ pub(super) fn run(root: FixtureRoot, case: FixtureCase, mode: SimulationMode) ->
                 &store::Generation {
                     number: generation,
                     modules: Default::default(),
+                    directory_transitions: Vec::new(),
+                    migration: None,
                 },
             )?;
             let _prepared = store::activation::prepare(

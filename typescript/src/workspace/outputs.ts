@@ -1,4 +1,4 @@
-/** v7 named-output constructors: pure, frozen values with source spans. */
+/** v8 named-output constructors: pure, frozen values with source spans. */
 
 import { rejectUnknownFields } from "../fields.ts";
 import type { Fetch } from "../fetch.ts";
@@ -44,6 +44,7 @@ import {
   asCommand,
   asEnv,
   asFile,
+  asDestinationPath,
   asHostRuntime,
   asSystemRequirements,
   asName,
@@ -207,7 +208,7 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
   asName(name, `${what}: name`);
   asRecord(spec, what);
   rejectUnknownFields(what, spec, [
-    "producer", "commands", "runtime", "hostRuntime", "target", "layout", "span",
+    "producer", "commands", "runtime", "hostRuntime", "archiveRoot", "target", "layout", "span",
   ]);
   const span = nodeSpan(spec.span, what);
   const producer = asProducer(spec.producer, `${what}: producer`);
@@ -228,6 +229,16 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
   if (hostRuntime !== undefined && (target.os !== "linux" || target.abi !== "gnu")) {
     throw new Error(`${what}: hostRuntime requires an explicit Linux GNU target`);
   }
+  const layout = asLayout(spec.layout, `${what}: layout`);
+  if (spec.archiveRoot !== undefined) {
+    const policy = asRecord(spec.archiveRoot, `${what}: archiveRoot`);
+    rejectUnknownFields(`${what}: archiveRoot`, policy, ["kind"]);
+    if (policy.kind !== "single_directory") throw new Error(`${what}: archiveRoot.kind must be single_directory`);
+    if (layout.kind !== "relocatable" ||
+      (producer.kind === "provider" && producer.provider.kind !== "fetch")) {
+      throw new Error(`${what}: archiveRoot requires a native relocatable package`);
+    }
+  }
   const node: PackageNode = {
     name,
     span,
@@ -237,7 +248,8 @@ export function pkg(name: string, spec: PackageSpec): WorkspaceOutput<PackageNod
     ...(runtime ? { runtime } : {}),
     ...(hostRuntime !== undefined ? { host_runtime: hostRuntime } : {}),
     target,
-    layout: asLayout(spec.layout, `${what}: layout`),
+    layout,
+    ...(spec.archiveRoot === undefined ? {} : { archive_root: spec.archiveRoot }),
   };
   return makeOutput(node);
 }
@@ -359,7 +371,7 @@ export function profile(name: string, spec: ProfileSpec): WorkspaceOutput<Profil
   const what = `profile("${name}")`;
   asName(name, `${what}: name`);
   asRecord(spec, what);
-  rejectUnknownFields(what, spec, ["files", "environment", "schedules", "hooks", "span"]);
+  rejectUnknownFields(what, spec, ["files", "environment", "launchers", "schedules", "hooks", "span"]);
   const span = nodeSpan(spec.span, what);
   const files = spec.files?.length
     ? spec.files.map((f, i) => asFile(f, `${what}: files[${i}]`))
@@ -367,6 +379,25 @@ export function profile(name: string, spec: ProfileSpec): WorkspaceOutput<Profil
   const envName = spec.environment !== undefined
     ? asName(spec.environment, `${what}: environment`)
     : undefined;
+  if (spec.launchers !== undefined) {
+    const launchers = asRecord(spec.launchers, `${what}: launchers`);
+    rejectUnknownFields(`${what}: launchers`, launchers, ["directory", "commands"]);
+    const directory = asDestinationPath(launchers.directory, `${what}: launchers.directory`);
+    if (/[\\\x00-\x1f\x7f]/.test(directory)) throw new Error(`${what}: launchers.directory must be a normalized destination path`);
+    if (envName === undefined) throw new Error(`${what}: launchers require an environment`);
+    if (!Array.isArray(launchers.commands) || launchers.commands.length === 0) {
+      throw new Error(`${what}: launchers.commands must be nonempty`);
+    }
+    const seen = new Set<string>();
+    for (const command of launchers.commands) {
+      if (typeof command !== "string" || !command || /[/\\\x00-\x20\x7f]/.test(command) ||
+        command === "." || command === "..") {
+        throw new Error(`${what}: launcher command must be a single command name`);
+      }
+      if (seen.has(command)) throw new Error(`${what}: duplicate launcher command '${command}'`);
+      seen.add(command);
+    }
+  }
   const schedules = asNames(spec.schedules, `${what}: schedules`);
   const hooks = asNames(spec.hooks, `${what}: hooks`);
   const node: ProfileNode = {
@@ -375,6 +406,7 @@ export function profile(name: string, spec: ProfileSpec): WorkspaceOutput<Profil
     kind: "profile",
     ...(files ? { files } : {}),
     ...(envName !== undefined ? { environment: envName } : {}),
+    ...(spec.launchers === undefined ? {} : { launchers: spec.launchers }),
     ...(schedules ? { schedules } : {}),
     ...(hooks ? { hooks } : {}),
   };

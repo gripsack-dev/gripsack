@@ -14,6 +14,7 @@ pub struct ApplyOptions {
     pub modules: Vec<String>,
     pub take_over: bool,
     pub take_over_entries: Option<std::collections::BTreeSet<String>>,
+    pub migrate_from: Option<gripsack_store::GenerationId>,
     pub jobs: Option<usize>,
 }
 
@@ -24,6 +25,7 @@ impl ApplyOptions {
             modules: vec![],
             take_over: false,
             take_over_entries: Some(entries),
+            migrate_from: None,
             jobs,
         }
     }
@@ -119,6 +121,7 @@ fn apply_evaluated(
         host: outcome.host.clone(),
         take_over: opts.take_over,
         take_over_entries: opts.take_over_entries,
+        migrate_from: opts.migrate_from,
         fetch: std::sync::Arc::clone(&outcome.fetch),
         jobs: opts.jobs.or_else(|| {
             std::env::var("GRIPSACK_JOBS")

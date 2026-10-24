@@ -3,6 +3,10 @@
 \* count. Only this liveness wrapper assumes a finite crash/edit budget,
 \* successful scheduled I/O, one requested write per destination, admitted
 \* generations and no foreign writer of private control metadata.
+\* DirectoryHierarchy.FairSpec separately explores dirty hierarchy recovery
+\* windows and repeated child writes. Its Spec has unbounded crashes; its
+\* completion property excludes foreign interference rather than promising
+\* completion when an untracked child or substituted ancestor blocks rmdir.
 EXTENDS JournalLifecycle
 
 CONSTANTS PreviousGeneration, TargetGeneration, TargetTransaction, WorkKind,

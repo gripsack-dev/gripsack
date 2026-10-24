@@ -126,6 +126,176 @@ completion explorers. Their finite crash budgets, finite work, successful
 scheduled I/O and fairness assumptions are not production retry limits.
 The old hard-coded `MultiDestination` transition engine is removed.
 
+The journal-v3 directory cutover separates these model boundaries:
+
+- `OwnedDirectory` / `OwnedDirectoryProofs` describe arbitrary finite
+  strict, transitively closed ancestor domains at the acknowledged durable
+  effect boundary. `GeneralRecoveryProofs` joins this hierarchy with the
+  retained lifecycle: leaf mutation/restoration requires its bound ancestor
+  identities. Forward hierarchy leaf release follows stable ordinary journal
+  cleanup. Reverse staging instead suspends a physically absent, durably removed
+  child while preserving its ordinary undo journal and ancestor binding; parent
+  reinstallation precedes reacquiring leaf recovery authority. Converted link
+  roots restore their exact predecessor links, while newly owned descendant
+  directories restore absence; a nonempty restored descendant prevents parent
+  removal. These are proof-source obligations, not a claim that the new
+  obligations have been discharged.
+  `RetainedDirectory` / `RetainedDirectoryProofs` additionally cover retained
+  exact empty staging identities, reactivation and predecessor-root protection.
+  Generic recovery receipts cover both directory transitions and direct
+  migrations, including the zero-directory case. Their admitted transitive
+  predecessor lineage remains protected against generation pruning as well as
+  payload collection; receipt release is forbidden while its owning generation
+  remains in visible or stable retained history. The predecessor-generation
+  veto excludes the owning generation itself, avoiding circular retention.
+  These source obligations likewise require the parent proof gate.
+- `IncarnationDomain` / `IncarnationDomainProofs` are the generalized
+  multi-incarnation seam: arbitrary logical roots may each have multiple exact
+  directory identities. `IncarnationRecoveryProofs` joins those actions directly
+  with the ordinary `RetentionLifecycle` / `UndoCell` transitions. Its source
+  obligations cover Forward, Reverse, Reactivate and Exchange; immediate
+  absent/file/link/original-inode capture; durable Exchange before installation;
+  retained-target restaging; ordinary root normalization before original-inode
+  restoration; root replay suppression; and subsequent bound original-leaf undo.
+  Evolve extends this same authority with dynamic declared/prior node sets,
+  borrowed ancestor identities distinct from ownership, original/target shape
+  snapshots, exact staged-node transitions, and publication-before-selection
+  receipt protection. Prepared receipts can be published even before directory
+  intent creation; their identities must survive abort regardless of whether
+  installation began. Published Forward identities therefore restage rather
+  than being removed. `IncarnationEvolutionProofs` supplies action obligations
+  to the existing incarnation induction, not a second ownership authority or
+  a frozen initial leaf inventory.
+  Original-container compensation is distinct from target installation:
+  returning the exact staged original inode may carry its foreign children
+  home without deleting or replacing them. A foreign replacement of the stage
+  identity still refuses restoration. New/retained target installation,
+  retirement and destruction remain empty-only; foreign stage contents never
+  grant target-install authority.
+  The `OwnedDirectory` and `RetainedDirectory` proofs remain single-incarnation
+  slices, not sufficient evidence for exchange. This new generalized seam has
+  not been executed or discharged by the model-editing worker.
+- `DirectoryHierarchy` explores the concrete uncommitted or verification-failed
+  cutover: an exact predecessor link and an exclusively prepared qualified identity,
+  separate preparation/intent barriers, unlink and installation, two recorded
+  writes per child, independent visible/stable parent, leaf and journal fields,
+  and child-before-parent recovery. Process interruption preserves visible
+  state; power interruption loses fields not independently written back.
+  Safety has no crash bound. Its separate fair completion wrapper allows two
+  interruptions of dirty recovery windows, excludes external interference,
+  and assumes successful scheduled I/O. Foreign parent replacements, exact
+  predecessor retargeting, edited leaves and untracked children are preserved;
+  conflicting directory recovery retains its intent rather than recursively
+  deleting the tree. Empty and two-child domains, same-inode/different-FSID
+  substitution, filesystem-kind mismatch, reused-inode birth-time mismatch,
+  missing-FSID/BTIME preparation refusal, and v1/v2 rejection are explicit finite
+  cases. Dropped-birth and dropped-filesystem-kind identity checks have separate
+  attributed mutants.
+- `ReverseDirectoryHierarchy` models the distinct Reverse direction, with
+  Bound leaf ancestry: durably remove children, move only the exact empty
+  directory to staging, then restore the predecessor link. A committed reverse
+  retains the stage; a subsequent durable activation intent can reinstall that
+  same inode. Uncommitted reverse recovery instead reinstalls and seals the
+  staged parent **before** restoring leaf priors. An earlier absent/file rollback
+  target is a separately journaled flat root write after predecessor restoration.
+  Recovery first normalizes that root to the exact predecessor link, then
+  reinstalls the staged directory and restores child priors. Repeated recovery
+  skips flat-root undo once the exact directory has already returned, preventing
+  its replacement by an intermediate link. Root undo evidence survives until
+  stable restoration. Parent and staging substitutions and edited leaves fail
+  closed with recovery evidence retained. Crashes can repeat without a counter
+  during writing and recovery. The final reactivation handoff checks same-inode
+  reuse; interrupted reactivation and distinct inode exchange are modeled
+  separately below. Mutants invert either recovery ordering, replay root
+  undo over a restored directory, stage a nonempty directory, drop the committed
+  stage, omit durable reverse intent, or consume a foreign stage. Reachability
+  witnesses require staging, same-inode reactivation and earlier absent/file
+  root targets.
+- `IncarnationExchange` models two distinct directory incarnations at one
+  pathname, rather than assuming the current and retained generations share
+  an inode. A durable Exchange intent captures the immediate prior as absent,
+  exact file identity, exact link target or the current directory identity.
+  Current child removals precede staging the current inode; target child
+  writes bind the newly installed retained inode. Interrupted recovery removes
+  owned target child writes, stages the exact empty target inode (never rmdir,
+  because its immutable generation still references it), restores the captured
+  parent/current inode, then restores original child priors. Both inode
+  inventories and their leaf journals have visible/stable states; crashes
+  may recur throughout writing and recovery. Foreign parent and target-leaf
+  edits retain evidence and are preserved. Mutants destroy the retained target,
+  stage nonempty children, restore the wrong captured prior, cross incarnation
+  bindings or install before durable Exchange intent. Separate witnesses
+  require target installation, commit, simultaneous current-stage/target-home
+  identities and target restaging. File identity abstracts captured bytes and
+  mode; receipt lineage/GC and byte-level parser admission remain their
+  respective generalized/runtime obligations.
+- `DirectoryEvolution` explores ordinary nested growth, removal, retargeting
+  and a second retained-history rollback epoch without exchanging an unchanged
+  root. Every owned node has an exact identity and an exclusive sibling stage
+  outside the subtree. Evolve intent is durable before any node transition;
+  births are parent-first and retirement is child-first, exact and empty-only.
+  Borrowed existing directories never acquire deletion authority. Unrelated
+  foreign root children do not block safe growth elsewhere, while foreign
+  children inside a retiring node prevent its removal. Tracked leaf changes
+  check live prior/intended values and exact ancestor identities; foreign edits
+  remain untouched. Recovery clears changed-target children, restores the
+  original shape, then restores its old child priors. Whole-root reverse
+  flattens owned nodes into separate stages root-last; retained reactivation
+  reinstalls root-first. Publication may precede Evolve intent creation.
+  Published-but-unselected nodes remain staged after abort; only unpublished
+  new identities are eligible for destruction.
+  Reverse, exchange and evolution explorers track foreign stage children
+  separately from stage identity replacement. Identity-bound contents follow
+  an original container safely home during compensation. Each explorer has a
+  reachability witness for this restoration and a negative nonempty-target
+  installation calibration; evolution also rejects destruction of a foreign
+  occupied unpublished stage.
+  Visible/stable shape and payload fields admit repeated interruptions. A
+  saturating two-restart witness records repeated dirty recovery interruption
+  but never limits crash actions. Its calibrated negatives remove the Evolve
+  barrier, ancestor/child ordering, borrowed protection, live leaf identity
+  checks, foreign-child preservation, or published-identity retention. Positive
+  domains and false-invariant witnesses cover nested growth, removal,
+  retargeting, foreign-sibling commit, history rollback, root flattening,
+  reactivation and published unselected abort retention.
+
+The finite hierarchy gate retains all prior `Transaction`, `DestinationWrites`
+and `RepeatedRecovery` cases. Its negative calibrations individually remove
+preparation or intent durability, ancestor identity, child-first or empty-only
+removal, restoration-before-cleanup, exact predecessor matching, or v3-only
+authority. Additional deliberately false invariants require reachable directory
+installation, repeated child writes and repeated interrupted recovery. The
+operational finite model is not a proved refinement of the generalized model
+or the Rust executor; parser admission and filesystem adapter correspondence
+remain separate requirements. The runtime assumptions are exclusive prepared
+inode ownership, faithful exact link observations and qualified directory
+identities comprising filesystem kind, `fstatvfs` FSID, inode, and required
+`statx` birth seconds/nanoseconds. Neither `st_dev` nor mount ID supplies durable
+authority. Missing FSID or BTIME refuses preparation. Finite tuples and named
+IDs represent opaque qualified tokens; they do not prove the observer or
+filesystem supplies them reliably. Reboot/remount and filesystem qualification
+remain unrun. Journal bytes and parent namespace barriers must be honored by
+storage, and cooperating core writers must be excluded. Durable external
+leaf/extra-child edits in the Forward explorer
+start from a durably installed parent. The Reverse, incarnation-exchange and
+evolution explorers treat a rename's source/staging identity transition
+atomically and acknowledge `SealTree` only after all affected parent namespaces
+are sealed; they do not prove a partial
+cross-directory fsync implementation. No portable filesystem compare-and-swap
+or physical power-loss certification is inferred from an abstract action.
+
+Commands for the parent verification run (not executed by the model-editing
+worker):
+
+```sh
+docker compose run --build --rm model
+docker compose run --build --rm tlaps
+```
+
+The model gate invokes `scripts/check_models.sh /path/to/tla2tools.jar`; it
+registers every new positive, attributed invariant mutant and reachability
+witness. Existing theorem floors and legacy model calibrations are retained.
+
 The joined cooperating-core model excludes outside writes to private
 control metadata. The standalone journal model additionally covers admitted
 unexpected selections and refusal; malformed-byte admission is exercised by

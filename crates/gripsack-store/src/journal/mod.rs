@@ -21,7 +21,24 @@
 //! 4. **reconcile** — restore uncommitted known intermediate/final states;
 //!    preserve foreign edits. v1 entries retain their original three-way
 //!    interpretation; v2 adds an explicit immediate pre-state.
+//!
+//! Directory v3 records form a separate inode-bound hierarchy domain. They
+//! never reinterpret v1/v2 leaf priors as directory deletion authority.
 
+pub mod directory;
+mod directory_binding;
+mod directory_evolution;
+mod directory_exchange;
+mod directory_lifecycle;
+mod directory_nodes;
+mod directory_prepare;
+mod directory_recovery;
+mod directory_resolve;
+mod directory_shape;
+mod directory_shape_observe;
+mod directory_wire;
+pub use directory_lifecycle::retire_staging as retire_directory_staging;
+pub use directory_lifecycle::reverse as reverse_directory;
 pub mod marker;
 mod marker_wire;
 mod mutation;
@@ -206,7 +223,10 @@ fn read_uncommitted(journal: &Journal) -> io::Result<Vec<(PathBuf, Entry)>> {
     let mut quarantined: Vec<String> = Vec::new();
     for entry in entries {
         let name = entry?.file_name();
-        if name == storage::RUN_MARKER || name == "quarantine" {
+        if name == storage::RUN_MARKER
+            || name == "quarantine"
+            || name.to_string_lossy().starts_with("directory-")
+        {
             continue;
         }
         let rel = PathBuf::from(&name);
@@ -354,7 +374,7 @@ pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<Obje
             };
             Ok(Some(ObjectIdentity::Link(target.to_string())))
         }
-        Ok(meta) => {
+        Ok(meta) if meta.is_file() => {
             // mode-aware (0031): the journal's file identity covers
             // the full permission set — a chmod between the drift
             // decision and the mutation aborts the run, and
@@ -365,6 +385,10 @@ pub fn live_identity(dest_dir: &Dir, dest_name: &Path) -> io::Result<Option<Obje
                 crate::hash::canonical_bytes_identity(&dest_dir.read(dest_name)?, mode),
             )))
         }
+        Ok(_) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "leaf journal identity is neither a regular file nor a symlink; object preserved",
+        )),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
@@ -387,6 +411,9 @@ fn prior_identity(prior: &PriorSerde, home: &Dir) -> io::Result<Option<ObjectIde
 
 #[cfg(test)]
 mod admission_tests;
+
+#[cfg(test)]
+mod directory_tests;
 
 #[cfg(test)]
 mod protocol_tests;

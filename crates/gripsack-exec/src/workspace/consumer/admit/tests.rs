@@ -50,8 +50,11 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
     let payload = directory.path().canonicalize().unwrap();
     std::fs::create_dir(payload.join("lib")).unwrap();
     let package = Package {
+        archive_root: None,
+        selected_root: None,
         identity: serde_json::from_str(&format!("\"{}\"", "0".repeat(64))).unwrap(),
         root: payload.clone(),
+        selected_payload: None,
         producer: Arc::new(Artifact {
             root: payload.clone(),
             payload: payload.clone(),
@@ -97,6 +100,70 @@ fn native_runtime_libraries_require_compatible_objects_and_contained_targets() {
         line: 12,
         col: None,
     };
+    // Path tags alone do not activate a loader, but the static shortcut must
+    // still reject incompatible headers and all non-DT_NEEDED loader inputs.
+    let static_image = ExecutableMetadata {
+        interpreter: None,
+        needed_libraries: Vec::new(),
+        runpaths: vec!["/unadmitted/static-path".into()],
+        ..metadata.clone()
+    };
+    let admit_static = |image: &ExecutableMetadata| {
+        elf::admit(
+            image,
+            &payload.join("program"),
+            &payload,
+            &package,
+            None,
+            &host,
+            &span,
+        )
+    };
+    for object in [ObjectKind::Executable, ObjectKind::SharedObject] {
+        let image = ExecutableMetadata {
+            object: Some(object),
+            ..static_image.clone()
+        };
+        let runtime = admit_static(&image).unwrap();
+        assert!(runtime.gnu_loader.is_none() && runtime.directories.is_empty());
+    }
+    for incompatible in [
+        ExecutableMetadata {
+            class: Some(WordClass::ThirtyTwo),
+            ..static_image.clone()
+        },
+        ExecutableMetadata {
+            arch: Some(ExecutableArch::Aarch64),
+            ..static_image.clone()
+        },
+        ExecutableMetadata {
+            endianness: Some(Endianness::Big),
+            ..static_image.clone()
+        },
+        ExecutableMetadata {
+            object: Some(ObjectKind::Relocatable),
+            ..static_image.clone()
+        },
+        ExecutableMetadata {
+            has_entry_point: false,
+            ..static_image.clone()
+        },
+    ] {
+        assert!(admit_static(&incompatible).is_err());
+    }
+    use gripsack_process::executable::ElfLoaderExtension;
+    for extension in [
+        ElfLoaderExtension::Audit("outside.so".into()),
+        ElfLoaderExtension::DependencyAudit("outside.so".into()),
+        ElfLoaderExtension::AuxiliaryFilter("outside.so".into()),
+        ElfLoaderExtension::Filter("outside.so".into()),
+    ] {
+        let image = ExecutableMetadata {
+            elf_loader_extensions: vec![extension],
+            ..static_image.clone()
+        };
+        assert!(admit_static(&image).is_err());
+    }
     let admit = |metadata: &ExecutableMetadata| {
         elf::admit(
             metadata,

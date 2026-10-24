@@ -48,6 +48,32 @@ without publishing. The core/helper0.46.1 candidate is unpublished; current
 0.46.0 tags and bytes remain unchanged. Plan0048§19 and STATUS carry the
 current execution record. Sections below retain the original research scope.
 
+### Recovery observation — 2026-10-23
+
+After the workstation interruption, both selected services were stopped with
+exit127 and Docker Desktop file-bind mount errors. Their configuration and
+credential sources remained regular files; the scheduler had no incomplete
+requests. The storage admission check passed on the same external daemon.
+The canonical `python3 -m ci_infra up` restarted the selected image without
+upgrading it, recreating credentials or repairing the database. The worker
+reconnected to master8; the dashboard rendered the retained successful Gripsack
+build and no running builds.
+
+`status af783bc77076a6be211629996255399204cf0a37638317e3acbd3f292a0a123d`
+re-admitted all19 retained gates. Its qualification checksum still matches the
+value above. A fresh uncached BuildKit build and restricted container run also
+passed content, link, mode and architecture checks; their temporary image and
+context were removed. This is recovery and retained-evidence admission, not
+a fresh full qualification or proof of unattended Windows/WSL startup.
+The durable operational record is
+`~/.local/share/buildbot-ci/evidence/buildbot-recovery-20261023.json`.
+
+The owner requested Gripsack-only continuation, folding the expanded external
+review into the original handover. Readable declarations and removal of
+consumer-owned generators, duplicated templates and launcher plumbing are
+acceptance criteria. Other projects remain separate; no original requirement
+or release-signing boundary is waived by this continuation.
+
 ## Historical release context — 2026-10-04
 
 **Subsequent owner decision:** the stalled 0.44.1 delivery may proceed without a

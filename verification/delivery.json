@@ -8,6 +8,12 @@
   "index_integrity": "CHECKSUMS.sha256 verified 2026-09-24 before import",
   "normative_authority": "The complete six specifications, including detailed prose and all named acceptance cases. This generated index cannot narrow them."
  },
+ "semantic_reconciliation": {
+  "report": "verification/reports/2026-10-23-h0-semantic-review.json",
+  "kind": "review",
+  "admission": "unbound_review_pending_integrated_commit",
+  "catalog_semantics": "required:: names specify concrete obligations, not implemented theorem names or solver results. Floors count the listed required named obligations, not measured solver leaves. Actual theorem mappings, correspondence, mutants and fresh source-bound evidence remain mandatory. Existing A3-03 names/floor are preserved."
+ },
  "scope_amendments": [
   {
    "id": "PLATFORM-LINUX-WSL-2026-10-08",
@@ -21,6 +27,58 @@
    },
    "application": "scripts/delivery_scope.py; original inventories and evidence remain historical authority",
    "revisit": "only a new explicit owner decision; no automatic Mac resumption"
+  },
+  {
+   "id": "PLATFORM-LINUX-X64-2026-10-09",
+   "authority": "plan/0048 Standing owner scope PLATFORM-LINUX-X64-2026-10-09",
+   "active_support": ["Linux x86_64", "WSL2 Linux x86_64 execution environment"],
+   "retired_requirement_lanes": {"B6-03": ["cross-target"]},
+   "case_projection": {"B6-03": [
+    {"original_index": 0, "disposition": "out_of_scope", "clause": "real explicit source/worker/target architecture pair and pinned cross toolchain/emulator policy"},
+    {"original_index": 1, "disposition": "out_of_scope", "clause": "resulting target artifact executes on a compatible distinct target runtime"},
+    {"original_index": 2, "disposition": "retained_native_and_invalid_target", "required_case": "cache/receipt and CLI correctly identify native execution; unsupported host/target/toolchain combinations fail before any accidental execution, without claiming cross/emulated/remote production"}
+   ]},
+   "retained": "all Linux x86_64/common runtime, invalid-target, proof and 96-partition persistence obligations",
+   "revisit": "only a new explicit owner decision and native qualification; no emulated or historical pass"
+  },
+  {
+   "id": "REL-FUZZ-2026-09-27",
+   "authority": "plan/0048 sections 15 and 17 explicit golden-replay exclusion; owner continuation reaffirmed in plan/0054",
+   "disposition": "not_run_owner_waived",
+   "applies_to": "feedback releases in this handover continuation only; not unrelated future releases",
+   "excluded_requirement_lanes": {
+    "A3-03": ["fuzz"],
+    "A4-01": ["fuzz"],
+    "A5-04": ["fuzz"],
+    "B5-04": ["fuzz"],
+    "C1-01": ["fuzz"],
+    "C1-04": ["fuzz"],
+    "C3-02": ["fuzz"],
+    "C3-04": ["fuzz"],
+    "C5-02": ["fuzz"],
+    "D1-01": ["fuzz"],
+    "D2-05": ["fuzz"],
+    "D3-01": ["fuzz"],
+    "D3-03": ["fuzz"],
+    "D6-03": ["fuzz"],
+    "E5-03": ["fuzz"]
+   },
+   "case_projection": {
+    "A1-07": [{"original_index": 3, "excluded_clause": "saved TypeScript golden IR corpus replay", "required_case": "v3/v4/v5 schema/parser acceptance exercises every admitted output kind with negative drift calibration; ordinary TypeScript type and emitter regressions remain required", "disposition": "not_run_owner_waived"}],
+    "A3-03": [{"original_index": 3, "excluded_clause": "actual decoder fuzz seeds/campaigns", "required_case": "real crossprocess positive/negative wire fixtures exercise length and identity admission", "disposition": "not_run_owner_waived"}],
+    "A4-01": [{"original_index": 4, "excluded_clause": "formula-metadata parser fuzz fixtures", "required_case": "synthetic collision/link/long-prefix fixtures plus named Verus compatibility/closure mutations exercise the same production boundary", "disposition": "not_run_owner_waived"}],
+    "B1-03": [{"original_index": 5, "excluded_clause": "persisted fuzz seeds, bounded fuzz", "required_case": "actual Rust and Go decoders/state adapters run Go race fixtures; real Linux worker paths remain mandatory", "disposition": "not_run_owner_waived"}],
+    "B2-02": [{"original_index": 4, "excluded_clause": "persisted corrupt-LLB fuzz", "required_case": "actual decoder limits and real Rust/Go/worker fixtures demonstrate the validation boundary, not a golden protobuf snapshot", "disposition": "not_run_owner_waived"}],
+    "B5-04": [{"original_index": 0, "excluded_clause": "decoder fuzz", "required_case": "all applicable B0–B5 rows and global gates have exact-source production, native Linux, runtime, formal, Go race and protected CI evidence", "disposition": "not_run_owner_waived"}],
+    "E5-03": [{"original_index": 1, "excluded_clause": "relevant decoded IR/unit/plist/journal fuzz seeds/campaigns", "required_case": "actual proof obligations are nonempty and named semantic mutants reject", "disposition": "not_run_owner_waived"}],
+    "C3-02": [{"original_index": 3, "excluded_clause": "fuzz fixtures (not bounded regression fixtures)", "required_case": "managed-block proposed bytes and existing foreign drift stay separate through the one shared operation planner; adversarial decoders run bounded regression fixtures", "disposition": "not_run_owner_waived"}],
+    "C5-02": [{"original_index": 2, "excluded_clause": "strict snapshot/JSON/TOML/saved-plan decoder fuzz replays", "required_case": "shrinking graph oracles reject unknown-equal, PATH reorder, removed edge, stale binding and silent truncation mutants", "disposition": "not_run_owner_waived"}],
+    "D2-05": [{"original_index": 3, "excluded_clause": "fuzz (not bounded adversarial archive and registry descriptors)", "required_case": "bounded adversarial archive and registry descriptors exercise actual production path, not a mock parser or syntax-only failure", "disposition": "not_run_owner_waived"}],
+    "D6-03": [{"original_index": 2, "excluded_clause": "manifest/envelope/descriptor/path/registry fuzz campaigns", "required_case": "nonempty production Verus/TLC/TLAPS proofs and semantic mutants reject intended properties with attribution", "disposition": "not_run_owner_waived"}]
+   },
+   "reviewed_without_exclusion": {"A1-07": [1], "A1-08": [5]},
+   "retained": "fuzz workspace dependency policy, ordinary schema/type/emitter and deterministic hostile-context regressions, boundary/property, Go race, fault, model, Verus/TLAPS and persistence obligations",
+   "meaning": "projected closure is not original fuzz completion; original inventories, historical evidence, runners and corpora remain intact"
   }
  ],
  "status_values": [
@@ -37,9 +95,9 @@
   "Every applicable requirement, prerequisite and global gate must be verified with actual nonempty source/tool/input-bound reports.",
   "Missing tools, manager, prover or required CI enforcement keep applicable Linux/WSL2 gates blocked/unverified. Retired Mac work is out_of_scope under PLATFORM-LINUX-WSL-2026-10-08, never verified.",
   "Mocks, skipped/xfail/optional jobs, empty runs, unexecuted cached proofs and handwritten pass flags cannot replace required evidence.",
-  "Only PLATFORM-LINUX-WSL-2026-10-08 is admitted as active owner scope; its exact application is fixed in scripts/delivery_scope.py. No generic waiver changes acceptance.",
+  "Only the three fixed owner amendments PLATFORM-LINUX-WSL-2026-10-08, PLATFORM-LINUX-X64-2026-10-09 and REL-FUZZ-2026-09-27 are admitted; their exact clause/lane application is fixed in scripts/delivery_scope.py. No generic waiver changes acceptance; no-fuzz is not_run_owner_waived, never passing evidence.",
   "Independent ready work and clearly labeled partial slices may proceed while another lane or future scope is pending.",
-  "The index is generated from delivery tables; full detailed prose remains mandatory as applied by the explicit Linux/WSL2 owner amendment. The immutable bundle and original row inventories remain unchanged historical authority. Neither the index nor scope retirement proves correctness."
+  "The index is generated from delivery tables; full detailed prose remains mandatory as applied by the explicit Linux/WSL x86_64 scope and named continuation fuzz exception. Original inventories remain unchanged historical authority; deterministic cases, native unsupported-target admission and all retained proof obligations remain required. Neither the index nor an exclusion proves correctness."
  ],
  "global_gate_ids": [
   "G-01",
@@ -479,6 +537,44 @@
   },
   {
    "id": "G-03",
+   "proof_obligations_by_milestone": {
+    "H0": {"names": ["required::H0::closure_requires_all_applicable_rows", "required::H0::changed_behavior_rejects_evidence_reuse"], "minimum": 2},
+    "A0": {"names": ["target::release_at_most", "target::supports_target"], "minimum": 2},
+    "A1": {"names": ["required::A1::semantic_encoding_injective", "required::A1::context_cannot_grant_effects", "required::A1::required_edges_survive_projection", "required::A1::pure_lock_scope_key_equivalence"], "minimum": 4},
+    "A2": {"names": ["required::A2::validated_protected_publication", "required::A2::retained_output_never_overwritten", "required::A2::rendered_validation_precedes_deployment", "required::A2::complete_runtime_roots"], "minimum": 4},
+    "A2-P": {"names": ["required::A2P::composition_preserves_order", "required::A2P::independent_selections", "required::A2P::process_roots_until_confirmed_exit"], "minimum": 3},
+    "A3": {"names": ["conda_admission::terminal_succeeded", "conda_admission::admit_response", "required::A3::final_prefix_lock_receipt_binding"], "minimum": 3},
+    "A4": {"names": ["required::A4::compatible_bottle_selection", "required::A4::complete_supported_runtime_closure", "required::A4::unsupported_layout_rejected"], "minimum": 3},
+    "A5": {"names": ["required::A5::historical_receipt_meanings_preserved", "required::A5::migration_preserves_ownership_and_roots", "required::A5::native_closure_requires_all_proof_families"], "minimum": 3},
+    "A6": {"names": ["required::A6::wheel_admission_preserves_prefix_ownership", "required::A6::bundle_reconstruction_binds_original_archives"], "minimum": 2},
+    "A7": {"names": ["required::A7::source_build_requires_locked_dependencies", "required::A7::produced_archive_reenters_conda_admission"], "minimum": 2},
+    "B0": {"names": ["required::B0::declared_policy_matches_checked_llb", "required::B0::retained_output_independent_of_worker"], "minimum": 2},
+    "B1": {"names": ["required::B1::live_lease_prevents_stop_replace_delete", "required::B1::stale_attempt_cannot_publish", "required::B1::unknown_writer_retains_protection"], "minimum": 3},
+    "B2": {"names": ["required::B2::checked_graph_preserves_required_edges", "required::B2::checked_options_restrict_authority", "required::B2::submitted_bytes_equal_checked_bytes", "required::B2::valid_supported_graph_is_accepted"], "minimum": 4},
+    "B3": {"names": ["required::B3::validators_gate_publication", "required::B3::runtime_closure_survives_worker_removal"], "minimum": 2},
+    "B4": {"names": ["required::B4::image_plan_preserves_runtime_roots", "required::B4::image_prefix_materialization_binding", "required::B4::descriptor_diffid_domains_distinct"], "minimum": 3},
+    "B5": {"names": ["required::B5::submission_fence_blocks_new_work", "required::B5::late_result_cannot_publish", "required::B5::native_outer_scheduler_guarantees_preserved"], "minimum": 3},
+    "B6": {"names": ["required::B6::remote_session_scope_admission", "required::B6::cache_hit_requires_current_policy", "required::B6::registry_export_requires_explicit_authority"], "minimum": 3},
+    "E0": {"names": ["required::E0::unavailable_manager_cannot_register", "required::E0::skip_and_unknown_are_not_success"], "minimum": 2},
+    "E1": {"names": ["required::E1::readiness_requires_verified_prerequisites", "required::E1::complete_lock_set_all_or_release", "required::E1::invocation_dedup_preserves_arguments_and_environment"], "minimum": 3},
+    "E2": {"names": ["required::E2::effective_unit_matches_admitted_schedule", "required::E2::installed_bytes_equal_checked_bytes", "required::E2::preview_grants_no_registration_authority"], "minimum": 3},
+    "E3": {"names": ["required::E3::active_revision_and_lease_admission_atomic", "required::E3::stale_callback_cannot_launch", "required::E3::retired_revision_roots_protect_live_invocations"], "minimum": 3},
+    "E4": {"names": ["required::E4::shared_build_cancellation_preserves_other_demand", "required::E4::failed_replacement_preserves_prepared_job"], "minimum": 2},
+    "E5": {"names": ["required::E5::manual_timer_lock_identity_shared", "required::E5::scheduled_closure_requires_active_revision_and_root_proofs"], "minimum": 2},
+    "C0": {"names": ["required::C0::unknown_never_establishes_equality", "required::C0::ordered_fields_remain_semantic"], "minimum": 2},
+    "C1": {"names": ["required::C1::comparison_equivalence_matches_admitted_fields", "required::C1::partial_snapshot_cannot_claim_complete_equality", "required::C1::source_content_policy_domains_distinct"], "minimum": 3},
+    "C2": {"names": ["required::C2::impact_sound_over_old_and_new_edges", "required::C2::impact_complete_over_declared_relation", "required::C2::order_only_edge_not_content_dependency"], "minimum": 3},
+    "C3": {"names": ["required::C3::truncated_unknown_cannot_render_complete_noop", "required::C3::structural_equality_does_not_erase_byte_change"], "minimum": 2},
+    "C4": {"names": ["required::C4::execution_bound_to_reviewed_scope", "required::C4::stale_binding_cannot_publish", "required::C4::recipe_bound_output_remains_unknown_until_validated"], "minimum": 3},
+    "C5": {"names": ["required::C5::predicted_impacts_match_receipt_relation", "required::C5::comparison_closure_preserves_binding_and_unknown_guarantees"], "minimum": 2},
+    "D0": {"names": ["required::D0::layout_and_host_abi_admitted_separately", "required::D0::signature_is_not_execution_authority"], "minimum": 2},
+    "D1": {"names": ["required::D1::runtime_component_reachability_exact", "required::D1::component_dag_avoids_recursive_digest", "required::D1::compatibility_admission_biconditional"], "minimum": 3},
+    "D2": {"names": ["required::D2::materialization_preserves_original_payload", "required::D2::prefix_mismatch_rejects_before_exposure"], "minimum": 2},
+    "D3": {"names": ["required::D3::verified_payload_equals_admitted_payload", "required::D3::key_hint_cannot_grant_authority", "required::D3::warm_receipt_requires_current_trust"], "minimum": 3},
+    "D4": {"names": ["required::D4::substitution_binds_recipe_result_and_policy", "required::D4::admitted_publication_protects_complete_roots", "required::D4::cancelled_attempt_cannot_publish"], "minimum": 3},
+    "D5": {"names": ["required::D5::environment_import_carries_no_host_authority", "required::D5::rematerialization_receipt_distinct_from_signed_archive", "required::D5::frozen_result_not_overwritten"], "minimum": 3},
+    "D6": {"names": ["required::D6::recipient_runtime_roots_independent_of_producer", "required::D6::sharing_closure_preserves_trust_and_publication_proofs"], "minimum": 2}
+   },
    "owner_milestone": "global",
    "closure_scope": "all_scopes",
    "source_document": "gripsack-architecture-projects-and-nix-gaps.md",
@@ -1128,6 +1224,8 @@
   },
   {
    "id": "A1-01",
+   "proof_obligation_inventory": ["required::A1_01::unknown_context_fields_rejected", "required::A1_01::output_kind_admission_preserves_role"],
+   "proof_expected_minimum": 2,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -1210,6 +1308,8 @@
   },
   {
    "id": "A1-02",
+   "proof_obligation_inventory": ["required::A1_02::required_edges_survive_projection", "required::A1_02::invalid_reference_kind_rejected", "required::A1_02::incompatible_target_layout_rejected"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -1503,6 +1603,8 @@
   },
   {
    "id": "A1-03",
+   "proof_obligation_inventory": ["required::A1_03::fluent_object_semantic_equivalence", "required::A1_03::argv_environment_boundaries_preserved", "required::A1_03::bash_requires_pinned_interpreter_and_options"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -1606,6 +1708,8 @@
   },
   {
    "id": "A1-04",
+   "proof_obligation_inventory": ["required::A1_04::semantic_encoding_injective", "required::A1_04::provenance_excluded_from_recipe_identity", "required::A1_04::semantic_change_invalidates_identity", "required::A1_04::consumer_destination_excluded_from_producer"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -1635,6 +1739,8 @@
   },
   {
    "id": "A1-05",
+   "proof_obligation_inventory": ["required::A1_05::transitive_pins_bind_identity", "required::A1_05::frozen_realization_cannot_float", "required::A1_05::worker_instance_excluded_from_portable_lock"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -1665,6 +1771,8 @@
   },
   {
    "id": "A1-06",
+   "proof_obligation_inventory": ["required::A1_06::rejection_preserves_declaring_subject", "required::A1_06::diagnostic_projection_preserves_admission_outcome"],
+   "proof_expected_minimum": 2,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -1891,6 +1999,8 @@
   },
   {
    "id": "A1-07",
+   "proof_obligation_inventory": ["required::A1_07::closure_requires_every_applicable_case", "required::A1_07::source_mismatch_cannot_reuse_evidence", "required::A1_07::zero_or_skipped_obligations_cannot_close"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -1996,6 +2106,8 @@
   },
   {
    "id": "A1-08",
+   "proof_obligation_inventory": ["required::A1_08::context_cannot_grant_effects", "required::A1_08::command_reference_implies_runtime_edges", "required::A1_08::task_success_not_recipe_data"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2070,6 +2182,8 @@
   },
   {
    "id": "A1-09",
+   "proof_obligation_inventory": ["required::A1_09::module_move_preserves_semantics", "required::A1_09::ordered_steps_preserve_sequence", "required::A1_09::phase_flag_cannot_grant_effects"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2099,6 +2213,8 @@
   },
   {
    "id": "A1-10",
+   "proof_obligation_inventory": ["required::A1_10::list_and_explicit_sequence_equivalent", "required::A1_10::task_prerequisites_remain_unordered", "required::A1_10::check_owner_preserves_lifecycle"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2177,6 +2293,8 @@
   },
   {
    "id": "A1-11",
+   "proof_obligation_inventory": ["required::A1_11::source_origin_not_inferred_from_path", "required::A1_11::rendered_result_binds_source_and_variables", "required::A1_11::merge_observation_not_cached_content", "required::A1_11::tree_ownership_limited_to_selected_entries"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2378,6 +2496,8 @@
   },
   {
    "id": "A1-12",
+   "proof_obligation_inventory": ["required::A1_12::reachable_scope_key_interning_equivalent", "required::A1_12::import_order_cannot_change_lock_identity", "required::A1_12::mutation_lock_cannot_grant_backend_policy"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A1",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2434,6 +2554,8 @@
   },
   {
    "id": "A2-02",
+   "proof_obligation_inventory": ["required::A2_02::validated_protected_publication", "required::A2_02::retained_output_never_overwritten", "required::A2_02::failed_validation_cannot_publish", "required::A2_02::stale_producer_cannot_publish"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "A2",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2465,6 +2587,8 @@
   },
   {
    "id": "A2-03",
+   "proof_obligation_inventory": ["required::A2_03::all_consumer_root_constructors_complete", "required::A2_03::runtime_closure_retained", "required::A2_03::publication_gc_protection_continuous", "required::A2_03::unfinished_recovery_roots_retained"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "A2",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2546,6 +2670,8 @@
   },
   {
    "id": "A2-06",
+   "proof_obligation_inventory": ["required::A2_06::rendered_validation_precedes_deployment", "required::A2_06::merge_preserves_foreign_bytes", "required::A2_06::drift_cannot_promote_ownership", "required::A2_06::rollback_uses_retained_content_not_current_source", "required::A2_06::failed_preparation_preserves_selection"],
+   "proof_expected_minimum": 5,
    "owner_milestone": "A2",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2664,6 +2790,8 @@
   },
   {
    "id": "A2-P-02",
+   "proof_obligation_inventory": ["required::A2P_02::composition_preserves_order", "required::A2P_02::conflicting_exports_require_explicit_override", "required::A2P_02::incompatible_command_rejected"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A2-P",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2692,6 +2820,8 @@
   },
   {
    "id": "A2-P-03",
+   "proof_obligation_inventory": ["required::A2P_03::independent_selections", "required::A2P_03::roots_acquired_before_launch", "required::A2P_03::process_roots_until_confirmed_exit", "required::A2P_03::unknown_descendants_prevent_release"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "A2-P",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -2892,6 +3022,8 @@
   },
   {
    "id": "A4-01",
+   "proof_obligation_inventory": ["required::A4_01::compatible_bottle_selection", "required::A4_01::complete_supported_runtime_closure", "required::A4_01::closure_uses_one_metadata_snapshot", "required::A4_01::unsupported_layout_rejected"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "A4",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -3052,6 +3184,8 @@
   },
   {
    "id": "A5-04",
+   "proof_obligation_inventory": ["required::A5_04::native_closure_requires_all_proof_families", "required::A5_04::historical_receipt_meanings_preserved", "required::A5_04::migration_preserves_ownership_and_roots"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "A5",
    "closure_scope": "foundation",
    "source_document": "gripsack-frontend-ecosystems-epic.md",
@@ -3862,6 +3996,8 @@
   },
   {
    "id": "B1-04",
+   "proof_obligation_inventory": ["required::B1_04::live_lease_prevents_stop_replace_delete", "required::B1_04::stale_attempt_cannot_publish", "required::B1_04::incomplete_export_cannot_publish", "required::B1_04::unknown_writer_retains_protection", "required::B1_04::cleanup_requires_owned_instance"],
+   "proof_expected_minimum": 5,
    "owner_milestone": "B1",
    "closure_scope": "foundation",
    "source_document": "gripsack-builder-epic.md",
@@ -3973,6 +4109,8 @@
   },
   {
    "id": "B2-03",
+   "proof_obligation_inventory": ["required::B2_03::checked_graph_preserves_required_edges", "required::B2_03::operation_arguments_mounts_and_outputs_match", "required::B2_03::checked_options_restrict_authority", "required::B2_03::submitted_bytes_equal_checked_bytes", "required::B2_03::valid_supported_graph_is_accepted"],
+   "proof_expected_minimum": 5,
    "owner_milestone": "B2",
    "closure_scope": "foundation",
    "source_document": "gripsack-builder-epic.md",
@@ -4337,6 +4475,8 @@
   },
   {
    "id": "B5-01",
+   "proof_obligation_inventory": ["required::B5_01::submission_fence_blocks_new_work", "required::B5_01::late_result_cannot_publish", "required::B5_01::native_outer_scheduler_guarantees_preserved"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "B5",
    "closure_scope": "foundation",
    "source_document": "gripsack-builder-epic.md",
@@ -4422,6 +4562,8 @@
   },
   {
    "id": "B5-04",
+   "proof_obligation_inventory": ["required::B5_04::combined_closure_requires_lease_checker_publication_proofs", "required::B5_04::native_workflows_cannot_require_worker_authority"],
+   "proof_expected_minimum": 2,
    "owner_milestone": "B5",
    "closure_scope": "foundation",
    "source_document": "gripsack-builder-epic.md",
@@ -4911,6 +5053,8 @@
   },
   {
    "id": "E1-05",
+   "proof_obligation_inventory": ["required::E1_05::readiness_requires_verified_prerequisites", "required::E1_05::invocation_dedup_preserves_arguments_and_environment", "required::E1_05::artifact_runtime_edges_complete", "required::E1_05::skip_cancel_unknown_not_success", "required::E1_05::complete_lock_set_all_or_release"],
+   "proof_expected_minimum": 5,
    "owner_milestone": "E1",
    "closure_scope": "tasks_schedules",
    "source_document": "gripsack-tasks-scheduling-epic.md",
@@ -4965,6 +5109,8 @@
   },
   {
    "id": "E1-07",
+   "proof_obligation_inventory": ["required::E1_07::ordered_action_failure_blocks_successors", "required::E1_07::postconditions_follow_all_commands", "required::E1_07::same_scope_key_shares_exclusion", "required::E1_07::phase_and_cache_fields_cannot_grant_task_authority"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "E1",
    "closure_scope": "tasks_schedules",
    "source_document": "gripsack-tasks-scheduling-epic.md",
@@ -5273,6 +5419,8 @@
   },
   {
    "id": "E3-04",
+   "proof_obligation_inventory": ["required::E3_04::job_root_contains_runner_and_runtime_closure", "required::E3_04::registration_protection_transferred_before_exposure", "required::E3_04::retired_revision_roots_protect_live_invocations", "required::E3_04::age_or_pid_alone_cannot_release"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "E3",
    "closure_scope": "tasks_schedules",
    "source_document": "gripsack-tasks-scheduling-epic.md",
@@ -5301,6 +5449,8 @@
   },
   {
    "id": "E3-05",
+   "proof_obligation_inventory": ["required::E3_05::active_revision_and_lease_admission_atomic", "required::E3_05::stale_callback_cannot_launch", "required::E3_05::admitted_run_pinned_across_update", "required::E3_05::unknown_registration_retains_previous_revision"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "E3",
    "closure_scope": "tasks_schedules",
    "source_document": "gripsack-tasks-scheduling-epic.md",
@@ -5517,6 +5667,8 @@
   },
   {
    "id": "E5-03",
+   "proof_obligation_inventory": ["required::E5_03::scheduled_closure_requires_active_revision_and_root_proofs", "required::E5_03::manual_timer_lock_identity_shared", "required::E5_03::missing_timing_evidence_cannot_close"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "E5",
    "closure_scope": "tasks_schedules",
    "source_document": "gripsack-tasks-scheduling-epic.md",
@@ -5736,6 +5888,8 @@
   },
   {
    "id": "C1-04",
+   "proof_obligation_inventory": ["required::C1_04::comparison_equivalence_matches_admitted_fields", "required::C1_04::partial_snapshot_cannot_claim_complete_equality", "required::C1_04::ordered_fields_remain_semantic"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "C1",
    "closure_scope": "semantic_change",
    "source_document": "gripsack-semantic-change-epic.md",
@@ -5791,6 +5945,8 @@
   },
   {
    "id": "C1-06",
+   "proof_obligation_inventory": ["required::C1_06::source_content_policy_domains_distinct", "required::C1_06::legacy_absent_binding_remains_unknown", "required::C1_06::normalized_label_move_preserves_semantics", "required::C1_06::check_stage_and_lock_scope_remain_semantic"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "C1",
    "closure_scope": "semantic_change",
    "source_document": "gripsack-semantic-change-epic.md",
@@ -5898,6 +6054,8 @@
   },
   {
    "id": "C2-04",
+   "proof_obligation_inventory": ["required::C2_04::impact_sound_over_old_and_new_edges", "required::C2_04::impact_complete_over_declared_relation", "required::C2_04::removed_runtime_and_validator_edges_preserved", "required::C2_04::order_only_edge_not_content_dependency"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "C2",
    "closure_scope": "semantic_change",
    "source_document": "gripsack-semantic-change-epic.md",
@@ -6190,6 +6348,8 @@
   },
   {
    "id": "C4-05",
+   "proof_obligation_inventory": ["required::C4_05::execution_bound_to_reviewed_scope", "required::C4_05::stale_binding_cannot_publish", "required::C4_05::artifact_and_recipe_binding_distinct", "required::C4_05::binding_revalidated_before_new_effects", "required::C4_05::saved_plan_cannot_restore_takeover_authority"],
+   "proof_expected_minimum": 5,
    "owner_milestone": "C4",
    "closure_scope": "semantic_change",
    "source_document": "gripsack-semantic-change-epic.md",
@@ -6277,6 +6437,8 @@
   },
   {
    "id": "C5-02",
+   "proof_obligation_inventory": ["required::C5_02::truncated_unknown_cannot_render_complete_noop", "required::C5_02::comparison_closure_preserves_binding_and_unknown_guarantees", "required::C5_02::predicted_impacts_match_receipt_relation"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "C5",
    "closure_scope": "semantic_change",
    "source_document": "gripsack-semantic-change-epic.md",
@@ -6528,6 +6690,8 @@
   },
   {
    "id": "D1-04",
+   "proof_obligation_inventory": ["required::D1_04::runtime_component_reachability_sound", "required::D1_04::runtime_component_reachability_complete", "required::D1_04::component_dag_avoids_recursive_digest", "required::D1_04::compatibility_admission_biconditional"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "D1",
    "closure_scope": "artifact_sharing",
    "source_document": "gripsack-artifact-sharing-epic.md",
@@ -6875,6 +7039,8 @@
   },
   {
    "id": "D4-04",
+   "proof_obligation_inventory": ["required::D4_04::import_gc_protection_continuous", "required::D4_04::selected_versions_retain_independent_roots", "required::D4_04::failed_late_attempt_cannot_publish", "required::D4_04::consumer_roots_independent_of_producer"],
+   "proof_expected_minimum": 4,
    "owner_milestone": "D4",
    "closure_scope": "artifact_sharing",
    "source_document": "gripsack-artifact-sharing-epic.md",
@@ -6904,6 +7070,8 @@
   },
   {
    "id": "D4-05",
+   "proof_obligation_inventory": ["required::D4_05::substitution_binds_recipe_result_and_policy", "required::D4_05::verified_payload_equals_admitted_payload", "required::D4_05::warm_receipt_requires_current_trust", "required::D4_05::admitted_publication_protects_complete_roots", "required::D4_05::cancelled_attempt_cannot_publish"],
+   "proof_expected_minimum": 5,
    "owner_milestone": "D4",
    "closure_scope": "artifact_sharing",
    "source_document": "gripsack-artifact-sharing-epic.md",
@@ -7193,6 +7361,8 @@
   },
   {
    "id": "D6-03",
+   "proof_obligation_inventory": ["required::D6_03::sharing_closure_preserves_trust_and_publication_proofs", "required::D6_03::recipient_runtime_roots_independent_of_producer", "required::D6_03::missing_registry_runtime_evidence_cannot_close"],
+   "proof_expected_minimum": 3,
    "owner_milestone": "D6",
    "closure_scope": "artifact_sharing",
    "source_document": "gripsack-artifact-sharing-epic.md",

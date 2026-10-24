@@ -16,6 +16,15 @@ pub enum WorkspaceSource {
     RepoFile {
         path: String,
     },
+    /// Captured repository subtree with normalized segment-prefix selection.
+    /// Empty includes select every entry; exclusions take precedence.
+    RepoTree {
+        path: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        include: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        exclude: Vec<String>,
+    },
     /// A file inside another output's artifact — the output must exist
     /// in the catalog (sema E126).
     ArtifactFile {
@@ -50,6 +59,16 @@ pub enum WorkspaceContent {
         template: String,
         variables: BTreeMap<String, String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        result_digest: Option<String>,
+    },
+    /// Render the captured source bytes, retaining their executable class.
+    TemplateFile {
+        variables: BTreeMap<String, String>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "super::source::present"
+        )]
         result_digest: Option<String>,
     },
 }

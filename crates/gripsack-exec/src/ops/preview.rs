@@ -11,6 +11,7 @@ use store::journal::Intended;
 /// payloads can't hash without fetching: their ops render deferred
 /// (the decision pins at apply, 0014's contract). `adopting` scopes
 /// take-over to the adopt flow's destinations (0015 §7 S6).
+#[allow(clippy::too_many_arguments)]
 pub fn preview_ops(
     ir: &gripsack_ir::Ir,
     repository: &crate::Repository,
@@ -19,6 +20,7 @@ pub fn preview_ops(
     lock: &crate::lockfile::Lockfile,
     limits: gripsack_fetch::FetchLimits,
     selected: &[String],
+    migrate_from: Option<store::GenerationId>,
 ) -> Result<Vec<Op>, ExecError> {
     if let Some(diagnostic) =
         ir.workspace_execution_error(gripsack_ir::workspace::WorkspaceOperation::Plan)
@@ -27,10 +29,23 @@ pub fn preview_ops(
     }
     let repo = repository.contents();
     let home = store::gripsack_home();
-    if let Some(native) =
-        crate::workspace::NativeProfiles::prepare_preview(ir, repository, &home, selected, limits)?
-    {
-        return native.preview(&home, prev, adopting);
+    if let Some(native) = crate::workspace::NativeProfiles::prepare_preview(
+        ir,
+        repository,
+        &home,
+        selected,
+        limits,
+        migrate_from,
+    )? {
+        let migration = native.migration(&home, migrate_from, prev)?;
+        return native.preview(&home, prev, adopting, migration.as_ref());
+    }
+    if migrate_from.is_some() {
+        return Err(ExecError::Step {
+            module: "*".into(),
+            step: "migrate".into(),
+            detail: "--migrate-from requires a workspace profile selection".into(),
+        });
     }
     let mut ops = Vec::new();
     // the destination-global lineage map (0030 §H4): the previous

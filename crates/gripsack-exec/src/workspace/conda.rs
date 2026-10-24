@@ -557,7 +557,9 @@ pub(super) fn materialize_locked(
             true,
         ));
     }
-    // 3. Stage through the helper, then validate independently.
+    // 3. Reject unsupported archive lifecycles before staging or invoking the
+    // helper. Reuse these exact private spools for independent tree validation.
+    let admitted_archives = validate::admit_archives(output, locked, &archives)?;
     let owned_staging;
     let staging = match image_staging {
         Some(staging) => {
@@ -587,10 +589,10 @@ pub(super) fn materialize_locked(
             &archive_args,
         )
         .map_err(|error| failure(output, format!("conda materialize: {error}")))?;
-    let validated = validate::validate_tree(
+    let validated = validate::validate_admitted_tree(
         output,
         locked,
-        &archives,
+        &admitted_archives,
         &staging,
         &prefix_text,
         validate::FileModes::Staged,
@@ -613,6 +615,32 @@ pub(super) fn materialize_locked(
         admitted.artifact.payload = staging;
     }
     Ok(admitted)
+}
+
+/// Complete archive admission before update can register roots or return a pin.
+fn admit_update_archives(
+    name: &str,
+    ctx: &Ctx,
+    environment: &LockedCondaEnvironment,
+    mode: UpdateMode,
+) -> Result<Vec<PathBuf>, ExecError> {
+    let mut objects = Vec::with_capacity(environment.packages.len());
+    for record in &environment.packages {
+        if mode == UpdateMode::Publish {
+            let object = retain_archive(name, ctx, record)?;
+            validate::admit_archive(name, record, &object.join("archive"))?;
+            objects.push(object);
+        } else {
+            let download = ctx
+                .fetch
+                .download_verified(&record.url, &record.sha256)
+                .map_err(|error| {
+                    failure(name, format!("{} archive download: {error}", record.name))
+                })?;
+            validate::admit_archive(name, record, download.file.path())?;
+        }
+    }
+    Ok(objects)
 }
 
 /// Explicit update: solve/import through the helper, retain every
@@ -716,20 +744,9 @@ pub(crate) fn resolve_update(
         ));
     }
     admit_frozen(name, source, &environment)?;
-    // Retain every archive before the pin can name it. Check mode
-    // verifies availability without publishing store objects or roots.
-    let mut objects = Vec::with_capacity(environment.packages.len());
-    for record in &environment.packages {
-        if mode == UpdateMode::Publish {
-            objects.push(retain_archive(name, ctx, record)?);
-        } else {
-            ctx.fetch
-                .download_verified(&record.url, &record.sha256)
-                .map_err(|error| {
-                    failure(name, format!("{} archive download: {error}", record.name))
-                })?;
-        }
-    }
+    // Retain and admit every exact archive before the pin can name it. Check
+    // mode enforces the same policy without publishing store objects or roots.
+    let objects = admit_update_archives(name, ctx, &environment, mode)?;
     if mode == UpdateMode::Publish {
         let retention: std::collections::BTreeSet<PathBuf> = objects.into_iter().collect();
         let retention = RetentionSet::admit(session, retention)?;

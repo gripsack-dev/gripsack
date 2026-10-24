@@ -1,14 +1,26 @@
-//! Native project consumers: `run`, `shell` and basic single-command tasks.
-//! One launch path serves all three: realize the selected closure through the
-//! common service (no consumer-caused rebuild and never a personal
-//! generation), admit host target + executable layout, register a supervised
-//! process root that survives parent death and GC, then launch through the
-//! shared selected-executable/exec-payload/interactive admission. The
-//! checkout stays live and writable; host task access is not hermetic.
+//! Native project consumers and bounded invocation-local task graphs.
+//! Consumers share realization, selected-executable admission and retained
+//! process roots, never personal generations or a per-vertex build scheduler.
+//! Project run/shell sessions remain interactive; tasks use finite supervised
+//! invocations including their prerequisites and postconditions. The checkout
+//! stays live and writable: host task access is not a hermetic sandbox.
 pub(super) mod admit;
 pub(super) mod command;
 mod launcher;
 pub use launcher::run_package_command;
+mod task_graph;
+mod task_locks;
+mod task_report;
+mod tasks;
+pub use task_graph::{TaskPlan, TaskRevision, plan_task};
+pub use task_report::{
+    AttemptId, InvocationId, TaskExecutionBinding, TaskNodeReport, TaskReport, TaskStatus,
+    read_task_log, read_task_report,
+};
+pub use tasks::{BusyPolicy, TaskOutputMode, TaskRunPolicy, TaskStdin, run_task};
+mod bindings;
+pub(in crate::workspace) use bindings::task_argument;
+use bindings::{admit_package_command, bind_admitted_program, task_cwd};
 
 use super::{
     realize::{self, Realization},
@@ -16,11 +28,8 @@ use super::{
 };
 use crate::{Ctx, ExecError, LifecycleSession};
 use gripsack_ir::{
-    Diagnostic, Ir, Span, codes,
-    workspace_model::{
-        TaskContext, TaskOutput, WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspacePath,
-        WorkspaceStep,
-    },
+    Ir, Span,
+    workspace_model::{WorkspaceArg, WorkspaceCommand, WorkspaceOutput, WorkspacePath},
 };
 use gripsack_process::{
     EnvironmentOverlay, Invocation, Limits, ProcessLeases, ProcessReceipt, ProcessRole,
@@ -43,17 +52,11 @@ pub enum ConsumerRequest<'a> {
         environment: &'a str,
         shell: OsString,
     },
-    Task {
-        task: &'a str,
-    },
 }
 
 pub struct ConsumerOutcome {
-    /// The last launched process receipt. Task steps run in declaration
-    /// order and stop at the first failure, whose receipt this is.
+    /// The supervised run/shell/package-command process receipt.
     pub receipt: ProcessReceipt,
-    /// Steps completed before this outcome (0 for run/shell).
-    pub completed_steps: usize,
     /// True when cleanup could not be confirmed: the process root stays
     /// registered rather than lying about retention.
     pub root_retained: bool,
@@ -79,7 +82,6 @@ pub fn consume(
         ConsumerRequest::Run { environment, .. } | ConsumerRequest::Shell { environment, .. } => {
             environment
         }
-        ConsumerRequest::Task { task } => task,
     };
     if ctx.only.len() != 1 || ctx.only[0] != *root_name {
         return Err(failure(
@@ -102,19 +104,6 @@ pub fn consume(
                 other.span(),
                 format!(
                     "run/shell selects an environment; {root_name:?} is {}",
-                    other.kind()
-                ),
-            ));
-        }
-        (ConsumerRequest::Task { .. }, WorkspaceOutput::Task(task)) => {
-            admit_task_shape(task)?;
-            task.environment.as_deref()
-        }
-        (ConsumerRequest::Task { .. }, other) => {
-            return Err(gate(
-                other.span(),
-                format!(
-                    "task selects a task output; {root_name:?} is {}",
                     other.kind()
                 ),
             ));
@@ -153,11 +142,7 @@ pub fn consume(
     let retention = RetentionSet::admit(&held.session, closure)?;
     roots::register_project_root(&held.session, &selection_id, &retention)?;
     held.finish_build()?;
-    let realize::HeldRealization {
-        realization,
-        session,
-        ..
-    } = held;
+    let realize::HeldRealization { session, .. } = held;
     match request {
         ConsumerRequest::Run { argv, .. } => run_launch(
             ctx,
@@ -171,42 +156,7 @@ pub fn consume(
         ConsumerRequest::Shell { shell, .. } => {
             shell_launch(ctx, session, &plan, shell, &live_checkout(ctx)?, options)
         }
-        ConsumerRequest::Task { task } => {
-            let WorkspaceOutput::Task(declaration) = outputs[task] else {
-                unreachable!("task kind checked");
-            };
-            task_launch(
-                ctx,
-                session,
-                declaration,
-                &plan,
-                &outputs,
-                &realization,
-                &host,
-                options,
-                retention.paths(),
-            )
-        }
     }
-}
-
-/// Explicit, named refusals for task shapes owned by later lanes. Nothing
-/// here is silently skipped.
-fn admit_task_shape(task: &TaskOutput) -> Result<(), ExecError> {
-    if !task.deps.is_empty() {
-        return Err(unavailable(
-            &task.span,
-            "task prerequisite execution belongs to E1; invoke prerequisites separately",
-        ));
-    }
-    if !task.mutation_locks.is_empty() {
-        return Err(unavailable(
-            &task.span,
-            "mutation-lock enforcement belongs to its executor lane",
-        ));
-    }
-    let TaskContext::Host { .. } = &task.context;
-    Ok(())
 }
 
 fn run_launch(
@@ -274,348 +224,6 @@ fn shell_launch(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-fn task_launch(
-    ctx: &Ctx,
-    session: LifecycleSession,
-    task: &TaskOutput,
-    plan: &admit::EnvironmentPlan,
-    outputs: &BTreeMap<&str, &WorkspaceOutput>,
-    realization: &Realization,
-    host: &admit::NativeContext<'_>,
-    options: &super::BuildOptions<'_>,
-    retention: &BTreeSet<PathBuf>,
-) -> Result<ConsumerOutcome, ExecError> {
-    let checkout = live_checkout(ctx)?;
-    let mut completed = 0usize;
-    let outcome = with_process_root(ctx, session, retention.clone(), |bin, leases| {
-        let base_overlay = plan.materialize(bin, None).map_err(operational)?;
-        let mut last: Option<ConsumerOutcome> = None;
-        for step in &task.steps {
-            match step {
-                WorkspaceStep::Action(action) => {
-                    let gripsack_ir::workspace_model::WorkspaceAction::EnsureArtifact {
-                        output,
-                        span,
-                    } = action;
-                    if !realization.recipes.contains_key(output.as_str())
-                        && !realization.packages.contains_key(output.as_str())
-                    {
-                        return Err(gate(
-                            span,
-                            format!(
-                                "ensure_artifact names {output:?}, which is not in this invocation's realized closure"
-                            ),
-                        ));
-                    }
-                }
-                WorkspaceStep::Command(command) => {
-                    let outcome = task_command(
-                        command,
-                        None,
-                        plan,
-                        realization,
-                        host,
-                        &checkout,
-                        options,
-                        &base_overlay,
-                        &leases,
-                    )?;
-                    let success = outcome.success;
-                    last = Some(ConsumerOutcome {
-                        receipt: outcome.receipt,
-                        completed_steps: completed,
-                        root_retained: false,
-                    });
-                    if !success {
-                        return Ok(last.expect("recorded"));
-                    }
-                }
-            }
-            completed += 1;
-        }
-        // Postconditions belong to this invocation, never to cached build
-        // success. They run only after every task step succeeds and retain
-        // the same supervised process roots as the task itself.
-        for name in &task.checks {
-            let Some(WorkspaceOutput::Check(check)) = outputs.get(name.as_str()).copied() else {
-                return Err(gate(&task.span, format!("missing task check {name:?}")));
-            };
-            let outcome = task_command(
-                &check.run,
-                Some(&check.subject),
-                plan,
-                realization,
-                host,
-                &checkout,
-                options,
-                &base_overlay,
-                &leases,
-            )?;
-            let success = outcome.success;
-            last = Some(ConsumerOutcome {
-                receipt: outcome.receipt,
-                completed_steps: completed,
-                root_retained: false,
-            });
-            if !success {
-                return Ok(last.expect("recorded check outcome"));
-            }
-        }
-        last.ok_or_else(|| failure("task produced no process outcome"))
-    });
-    outcome.map(|mut outcome| {
-        outcome.completed_steps = completed;
-        outcome
-    })
-}
-
-#[allow(clippy::too_many_arguments)]
-fn task_command(
-    command: &WorkspaceCommand,
-    subject: Option<&str>,
-    plan: &admit::EnvironmentPlan,
-    realization: &Realization,
-    host: &admit::NativeContext<'_>,
-    checkout: &Path,
-    options: &super::BuildOptions<'_>,
-    base_overlay: &EnvironmentOverlay,
-    leases: &ProcessLeases,
-) -> Result<gripsack_process::NativeOutcome, ExecError> {
-    let command::PreparedCommand {
-        program,
-        argv,
-        overlay,
-        cwd,
-    } = command::prepare(
-        command,
-        subject,
-        plan,
-        realization,
-        host,
-        checkout,
-        options,
-        base_overlay,
-    )?;
-    let overlay = plan.project_command_environment(base_overlay, overlay)?;
-    let invocation = Invocation::admit(
-        options.environment,
-        ProcessRole::Task,
-        &program,
-        &cwd,
-        consumer_limits(options.deadline),
-    )?
-    .with_overlay(overlay)
-    .retain_leases(clone_leases(leases)?)?;
-    let borrowed: Vec<&OsStr> = argv.iter().map(OsString::as_os_str).collect();
-    invocation.run_interactive(&borrowed).map_err(operational)
-}
-
-/// Resolve one argument value to exact bytes. Empty and spaced literals are
-/// preserved verbatim; artifact/package/input bindings become absolute
-/// store paths inside the realized closure.
-pub(in crate::workspace) fn task_argument(
-    argument: &WorkspaceArg,
-    subject: Option<&str>,
-    realization: &Realization,
-    host: &admit::NativeContext<'_>,
-    span: &Span,
-) -> Result<OsString, ExecError> {
-    Ok(match argument {
-        WorkspaceArg::Literal { value } => OsString::from(value),
-        WorkspaceArg::Artifact { output, selector } => {
-            let payload = admit::artifact_payload(output, realization)
-                .ok_or_else(|| gate(span, format!("artifact {output:?} is not realized")))?;
-            OsString::from(admit::utf8_path(
-                &inside_payload(&payload, selector, span)?,
-                span,
-            )?)
-        }
-        WorkspaceArg::PackageCommand {
-            package,
-            command,
-            sha256,
-        } => {
-            let admitted = admit_package_command(
-                package,
-                command,
-                sha256.as_deref(),
-                realization,
-                host,
-                span,
-            )?;
-            OsString::from(admit::utf8_path(&admitted.path, span)?)
-        }
-        WorkspaceArg::Input { input } => {
-            let path = realization
-                .inputs
-                .get(input.as_str())
-                .ok_or_else(|| gate(span, format!("input {input:?} is not captured")))?;
-            OsString::from(admit::utf8_path(path, span)?)
-        }
-        WorkspaceArg::Source { selector } => {
-            let subject = subject.ok_or_else(|| gate(span, "task command has no check subject"))?;
-            let payload = admit::artifact_payload(subject, realization)
-                .ok_or_else(|| gate(span, format!("check subject {subject:?} has no artifact")))?;
-            OsString::from(admit::utf8_path(
-                &inside_payload(&payload, selector, span)?,
-                span,
-            )?)
-        }
-        WorkspaceArg::Output { .. } => {
-            return Err(gate(
-                span,
-                "production source/output bindings are unavailable to tasks",
-            ));
-        }
-    })
-}
-
-fn admit_package_command(
-    package: &str,
-    command: &str,
-    claim: Option<&str>,
-    realization: &Realization,
-    host: &admit::NativeContext<'_>,
-    span: &Span,
-) -> Result<admit::AdmittedCommand, ExecError> {
-    let realized = realization.packages.get(package).ok_or_else(|| {
-        gate(
-            span,
-            format!("package {package:?} is not in the realized closure"),
-        )
-    })?;
-    let provided = realized.commands.get(command).ok_or_else(|| {
-        gate(
-            span,
-            format!("package {package:?} does not export command {command:?}"),
-        )
-    })?;
-    if let Some(claim) = claim
-        && gripsack_ir::workspace_model::identity::ExecutableDigest::parse(claim)
-            .map(|claim| claim != provided.executable)
-            .unwrap_or(true)
-    {
-        return Err(gate(
-            span,
-            format!(
-                "package command {command:?} digest claim differs from its publication receipt"
-            ),
-        ));
-    }
-    admit::admit_command(
-        realized,
-        &provided.selector,
-        &provided.executable,
-        host,
-        span,
-    )
-}
-
-fn bind_admitted_program(
-    command: &admit::AdmittedCommand,
-    options: &super::BuildOptions<'_>,
-) -> Result<SelectedProgram, ExecError> {
-    let selected = SelectedProgram::select(
-        options.environment,
-        &command.path,
-        Some(gripsack_process::Sha256Digest::from_bytes(
-            *command.executable.bytes(),
-        )),
-        options.deadline,
-    )
-    .map_err(operational)?;
-    if let Some(interpreter) = &command.interpreter
-        && (!selected.is_script()
-            || selected.identity().executable_sha256 != interpreter.executable)
-    {
-        return Err(failure(
-            "selected package interpreter differs from its admitted bytes",
-        ));
-    }
-    if let Some(loader) = &command.gnu_loader {
-        let libraries = std::env::join_paths(&command.library_dirs).map_err(operational)?;
-        selected
-            .with_gnu_loader(std::sync::Arc::clone(loader), &libraries)
-            .map_err(operational)
-    } else if let Some(directories) = &command.macho_library_dirs {
-        selected
-            .with_macho_libraries(directories)
-            .map_err(operational)
-    } else {
-        Ok(selected)
-    }
-}
-
-fn inside_payload(payload: &Path, selector: &str, span: &Span) -> Result<PathBuf, ExecError> {
-    let canonical = payload.join(selector).canonicalize().map_err(|_| {
-        gate(
-            span,
-            format!("artifact selector {selector:?} does not resolve"),
-        )
-    })?;
-    if !canonical.starts_with(payload) {
-        return Err(gate(span, "artifact selector escapes its payload"));
-    }
-    Ok(canonical)
-}
-
-fn task_cwd(
-    cwd: Option<&WorkspacePath>,
-    subject: Option<&str>,
-    realization: &Realization,
-    checkout: &Path,
-    span: &Span,
-) -> Result<PathBuf, ExecError> {
-    let candidate = match cwd {
-        // The default is the live, writable checkout — development tasks
-        // never run against a frozen capture.
-        None => checkout.to_path_buf(),
-        Some(WorkspacePath::Literal { value }) => {
-            let path = PathBuf::from(value);
-            if path.is_absolute() {
-                path
-            } else {
-                checkout.join(path)
-            }
-        }
-        Some(WorkspacePath::Host { path }) => {
-            let path = PathBuf::from(path);
-            if !path.is_absolute() {
-                return Err(gate(span, "host working directory must be absolute"));
-            }
-            path
-        }
-        Some(WorkspacePath::Artifact { output, selector }) => {
-            let payload = admit::artifact_payload(output, realization)
-                .ok_or_else(|| gate(span, format!("artifact {output:?} is not realized")))?;
-            payload.join(selector)
-        }
-        Some(WorkspacePath::Source { selector }) => {
-            let subject = subject.ok_or_else(|| gate(span, "task command has no check subject"))?;
-            let payload = admit::artifact_payload(subject, realization)
-                .ok_or_else(|| gate(span, format!("check subject {subject:?} has no artifact")))?;
-            inside_payload(&payload, selector, span)?
-        }
-        Some(WorkspacePath::Output { .. }) => {
-            return Err(gate(
-                span,
-                "production source/output directories are unavailable to tasks",
-            ));
-        }
-    };
-    if !candidate.is_dir() {
-        return Err(gate(
-            span,
-            format!(
-                "working directory {} is not a directory",
-                candidate.display()
-            ),
-        ));
-    }
-    Ok(candidate)
-}
-
 /// Resolve a program name: an environment command first (its exact admitted
 /// bytes and library closure), then an absolute path or an operator-PATH
 /// name — the same order the composed PATH gives the child. Host programs
@@ -650,7 +258,6 @@ fn resolve_program<'p>(
 fn single_outcome(outcome: gripsack_process::NativeOutcome) -> ConsumerOutcome {
     ConsumerOutcome {
         receipt: outcome.receipt,
-        completed_steps: 0,
         root_retained: false,
     }
 }
@@ -749,13 +356,6 @@ fn absolute_directories(value: &str, span: &Span, key: &str) -> Result<Vec<PathB
         directories.push(path);
     }
     Ok(directories)
-}
-
-fn unavailable(span: &Span, detail: impl Into<String>) -> ExecError {
-    ExecError::Gate(
-        Diagnostic::error(codes::WORKSPACE_EXEC_UNAVAILABLE, detail.into())
-            .with_label(Some(span.clone()), "unavailable task shape declared here"),
-    )
 }
 
 fn gate(span: &Span, detail: impl Into<String>) -> ExecError {

@@ -23,8 +23,8 @@ from examples_check.extract import CheckFailure
 ROOT = Path(__file__).resolve().parent.parent
 TARGET = "x86_64-unknown-linux-musl"
 EXTERNAL = {
-    "site": ("https://github.com/gripsack-dev/gripsack-dev.github.io", "ea3bba667827bee71b27798015510fdae3f19879"),
-    "example": ("https://github.com/gripsack-dev/example-env-typescript", "4d6590d8a1326bbd63562dd428651fd796a12989"),
+    "site": ("https://github.com/gripsack-dev/gripsack-dev.github.io", "0a7dfcdb536ba582788255f384f5a9158e3ea250"),
+    "example": ("https://github.com/gripsack-dev/example-env-typescript", "23a2ac452249c3d4ed5c169110bf5cc088dd0a3f"),
 }
 
 
@@ -65,7 +65,7 @@ class Consumer:
             "schema": 1, "status": "running", "work": str(self.work),
             "platform": platform.platform(), "commands": [], "artifacts": {},
             "limits": [
-                "Private non-publishing candidate, not a signed or promoted release; no public 0.46.1 consumer claim.",
+                "Private non-publishing candidate, not a signed or promoted release.",
                 "Linux/WSL x86_64 only; no ARM, macOS, Windows, private el9 kernel or glibc hardware qualification.",
                 "No fuzz engine or corpus replay (REL-FUZZ-2026-09-27).",
                 "Bridge bytes/static admission only here; protected BuildKit solves belong to their separate gate.",
@@ -278,7 +278,11 @@ class Consumer:
                   "--deno", self.env["GRIPSACK_DENO"], "--selfcheck", "--keep"])
         junit = self.work / "installed-flows.xml"
         cases = ["test_journey_contracts.py", "test_generation_history.py", "test_workspace_packages.py",
-                 "test_source_approval.py", "test_capture_policy.py"]
+                 "test_source_approval.py", "test_capture_policy.py",
+                 "test_workspace_captured_files.py", "test_workspace_archive_roots.py",
+                 "test_workspace_managed_launchers.py", "test_workspace_file_checks.py",
+                 "test_workspace_migration.py", "test_workspace_directory_evolution.py",
+                 "test_task_graphs.py", "test_workspace_gnu_loader.py"]
         # Fault-control tests remain mandatory in the debug flow gate; the
         # installed release intentionally does not contain those controls.
         self.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
@@ -319,7 +323,7 @@ class Consumer:
         result = self.run([self.grip, "run", "--env", "search", "--", "rg", "^needle$"],
                           cwd=conda, input="other\nneedle\n")
         require(result.strip() == "needle", "real packaged ripgrep execution differs")
-        self.run([self.grip, "task", "version"], cwd=conda)
+        self.run([self.grip, "task", "run", "version"], cwd=conda)
         self.run([self.grip, "apply", "personal"], cwd=conda)
         self.run([self.grip, "apply", "personal"], cwd=conda)
         unavailable = dict(self.env, GRIPSACK_CONDA_HELPER=str(self.work / "unavailable-helper"))

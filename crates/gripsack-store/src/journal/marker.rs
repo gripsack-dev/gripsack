@@ -23,6 +23,9 @@ pub struct JournalRun<'a> {
     home_path: &'a Path,
     pub(super) journal: Journal,
     pub(super) marker_record: DurableRecord,
+    /// Only records durably published by this run enter this cache. Sharing
+    /// read guards avoids rescanning a growing journal for every leaf write.
+    pub(super) directories: std::sync::RwLock<Vec<super::directory_wire::DirectoryRecord>>,
     reservation: SelectionReservation,
 }
 
@@ -95,6 +98,7 @@ pub fn begin_run<'a>(
         journal,
         marker_record,
         reservation,
+        directories: std::sync::RwLock::new(Vec::new()),
     })
 }
 
@@ -103,6 +107,10 @@ pub fn begin_run<'a>(
 pub fn commit_run(committed: crate::CommittedSelection<'_>) -> io::Result<()> {
     let directory = committed.journal_directory();
     crate::private_state::restrict_directory(directory, Path::new("journal"))?;
+    let journal = Journal {
+        directory: directory.try_clone()?,
+    };
+    super::directory_lifecycle::committed(&super::directory::read_records(&journal)?)?;
     let entries = directory.read_dir(".")?;
     let mut entry_paths = Vec::new();
     for entry in entries {
@@ -196,22 +204,40 @@ fn cleanup_step(
 /// crash window.
 pub fn end_run(run: JournalRun<'_>) -> io::Result<()> {
     run.journal.restrict()?;
+    let directories = super::directory::read_records(&run.journal)?;
+    if directories
+        .iter()
+        .any(|(_, record)| record.direction != super::directory::Direction::Bound)
+    {
+        return Err(io::Error::other(
+            "cannot end a run with a directory transition",
+        ));
+    }
     for entry in run.journal.directory.read_dir(".")? {
         let name = entry?.file_name();
         if name != RUN_MARKER
             && Path::new(&name)
                 .extension()
                 .is_some_and(|value| value == "json")
+            && !directories.iter().any(|(path, _)| path == Path::new(&name))
         {
             return Err(io::Error::other(
                 "cannot end a journal run with outstanding destination entries",
             ));
         }
     }
+    let mut progress = CleanupProgress::new(CleanupScope::Uncommitted, directories.len());
+    for (index, (_, record)) in directories.iter().enumerate() {
+        let parent = record.transition.parent()?;
+        gripsack_fs::fsync_dir(&parent, Path::new("."))?;
+        if !progress.acknowledge(CleanupAction::ReconcileEntry { index }, true) {
+            return Err(cleanup_order_error());
+        }
+    }
     cleanup(
         &run.journal.directory,
-        std::iter::empty(),
-        CleanupProgress::new(CleanupScope::Uncommitted, 0),
+        directories.iter().map(|(path, _)| path.as_path()),
+        progress,
     )
 }
 

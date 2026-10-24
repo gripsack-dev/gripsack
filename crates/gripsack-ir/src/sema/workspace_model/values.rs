@@ -356,7 +356,12 @@ pub(super) fn check(workspace: &WorkspaceCatalog, out: &mut Vec<Diagnostic>) {
                 profile
                     .files
                     .iter()
-                    .filter(|file| !matches!(file.source, Some(WorkspaceSource::Tree { .. })))
+                    .filter(|file| {
+                        !matches!(
+                            file.source,
+                            Some(WorkspaceSource::Tree { .. } | WorkspaceSource::RepoTree { .. })
+                        )
+                    })
                     .map(|file| (&file.span, &file.destination))
             }),
         out,
@@ -364,6 +369,7 @@ pub(super) fn check(workspace: &WorkspaceCatalog, out: &mut Vec<Diagnostic>) {
 }
 fn profile_file(file: &WorkspaceFile, out: &mut Vec<Diagnostic>) {
     span(&file.span, out);
+    super::ergonomics::file(file, out);
     if !matches!(file.content, WorkspaceContent::Literal { .. }) && file.source.is_none() {
         invalid(
             out,
@@ -396,6 +402,10 @@ fn profile_file(file: &WorkspaceFile, out: &mut Vec<Diagnostic>) {
         _ => {}
     }
     if let WorkspaceContent::Template {
+        result_digest: Some(digest),
+        ..
+    }
+    | WorkspaceContent::TemplateFile {
         result_digest: Some(digest),
         ..
     } = &file.content

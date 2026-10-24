@@ -70,6 +70,8 @@ fn history() -> (tempfile::TempDir, PathBuf) {
             &store::Generation {
                 number: GenerationId::new(number),
                 modules,
+                directory_transitions: Vec::new(),
+                migration: None,
             },
         )
         .unwrap();

@@ -36,6 +36,17 @@ const PASSES: &[fn(&Ir, &mut Vec<Diagnostic>)] = &[
 /// Pass 2 — run every sema pass, collecting all diagnostics.
 pub fn run(ir: &Ir) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    if ir.ir_version < crate::IR_VERSION
+        && ir
+            .workspace_catalog
+            .as_ref()
+            .is_some_and(|workspace| workspace.requires_v8())
+    {
+        diagnostics.push(Diagnostic::error(
+            crate::codes::MALFORMED,
+            "v8 declaration authority is forbidden before ir_version 8",
+        ));
+    }
     if ir.ir_version == crate::WORKSPACE_V6_VERSION
         && ir
             .workspace_catalog

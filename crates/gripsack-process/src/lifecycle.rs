@@ -37,6 +37,27 @@ impl Guard {
         (guard, pipes)
     }
 
+    pub(super) fn pid(&self) -> libc::pid_t {
+        self.pid
+    }
+
+    /// Forward only while the leader still pins the group's identity. This
+    /// does not consume the lifecycle's final SIGKILL/cleanup transition.
+    pub(super) fn forward(&mut self, signal: libc::c_int) -> io::Result<()> {
+        self.observe()?;
+        if !matches!(self.state.signal_action(), SignalAction::Signal) {
+            return Ok(());
+        }
+        // SAFETY: observe retained exclusive wait ownership; no reap intervenes.
+        if unsafe { libc::killpg(self.pid, signal) } < 0 {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() != Some(libc::ESRCH) {
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
     pub fn observe(&mut self) -> io::Result<bool> {
         match self.state.observe_action() {
             ObserveAction::Unavailable => {

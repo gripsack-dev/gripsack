@@ -225,7 +225,7 @@ def test_excluded_declared_input_has_no_live_tree_fallback(sandbox, kind, alias)
     else:
         exclude(repo, ".venv")
     approve_source(repo)
-    result = grip("task", "consume", cwd=repo, approve=False)
+    result = grip("task", "run", "consume", cwd=repo, approve=False)
     assert result.returncode != 0, result.stdout + result.stderr
     assert "excluded by capture policy" in result.stderr, result.stdout + result.stderr
     assert "EXCLUDED_INPUT" not in result.stdout

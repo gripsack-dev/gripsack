@@ -11,6 +11,7 @@ struct Member {
     bytes: Vec<u8>,
     link: Option<&'static str>,
     mode: u32,
+    directory: bool,
 }
 impl Member {
     fn file(path: &'static str, bytes: &[u8]) -> Self {
@@ -19,6 +20,7 @@ impl Member {
             bytes: bytes.to_vec(),
             link: None,
             mode: 0o644,
+            directory: false,
         }
     }
     fn link(path: &'static str, target: &'static str) -> Self {
@@ -27,6 +29,14 @@ impl Member {
             bytes: Vec::new(),
             link: Some(target),
             mode: 0o777,
+            directory: false,
+        }
+    }
+    fn directory(path: &'static str) -> Self {
+        Self {
+            directory: true,
+            mode: 0o755,
+            ..Self::file(path, b"")
         }
     }
 }
@@ -39,6 +49,9 @@ fn tar(members: &[Member]) -> Vec<u8> {
         if let Some(target) = member.link {
             header.set_entry_type(tar::EntryType::Symlink);
             header.set_link_name(target).unwrap();
+        }
+        if member.directory {
+            header.set_entry_type(tar::EntryType::Directory);
         }
         header.set_cksum();
         archive
@@ -103,7 +116,7 @@ impl Fixture {
                     .as_bytes(),
             ));
         } else {
-            let paths: Vec<_> = payload.iter().map(|entry| json!({"_path":entry.path,"path_type":if entry.link.is_some() {"softlink"} else {"hardlink"}})).collect();
+            let paths: Vec<_> = payload.iter().map(|entry| json!({"_path":entry.path,"path_type":if entry.link.is_some() {"softlink"} else if entry.directory {"directory"} else {"hardlink"}})).collect();
             info.push(Member::file(
                 "info/paths.json",
                 &serde_json::to_vec(&json!({"paths_version":1,"paths":paths})).unwrap(),
@@ -130,7 +143,10 @@ impl Fixture {
         for member in &payload {
             let path = tree.join(member.path);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
-            if let Some(target) = member.link {
+            if member.directory {
+                fs::create_dir(&path).unwrap();
+                fs::set_permissions(path, fs::Permissions::from_mode(member.mode)).unwrap();
+            } else if let Some(target) = member.link {
                 symlink(target, path).unwrap();
             } else {
                 fs::write(&path, &member.bytes).unwrap();
@@ -389,4 +405,321 @@ fn mach_runtime_receipt_records_absolute_host_needs_not_relative_install_names()
     let validated = fixture.validate().unwrap();
     assert_eq!(validated.system.libraries, ["/usr/lib/libSystem.B.dylib"]);
     assert_eq!(validated.system.loaders, ["/usr/lib/dyld"]);
+}
+
+#[test]
+fn lifecycle_admission_rejects_all_policy_paths_in_both_formats() {
+    for conda in [false, true] {
+        for path in [
+            "info/recipe/pre-link.sh",
+            "info/recipe/post-link.sh",
+            "info/recipe/pre-unlink.sh",
+            "info/recipe/pre-link.bat",
+            "info/recipe/post-link.bat",
+            "info/recipe/pre-unlink.bat",
+            "bin/.fixture-pre-link.sh",
+            "bin/.fixture-post-link.sh",
+            "bin/.fixture-pre-unlink.sh",
+            "Scripts/.fixture-pre-link.bat",
+            "Scripts/.fixture-post-link.bat",
+            "Scripts/.fixture-pre-unlink.bat",
+            "etc/conda/activate.d/hook",
+            "etc/conda/deactivate.d/hook",
+            "etc/activate.d/hook",
+            "etc/deactivate.d/hook",
+        ] {
+            // A non-executable empty file still requires refusal. A symlink
+            // (including a dangling alias) must not bypass existence policy.
+            for member in [Member::file(path, b""), Member::link(path, "absent")] {
+                let fixture = Fixture::new(vec![member], conda, false);
+                let record = &fixture.locked.packages[0];
+                let error = match admit_archive(
+                    "reviewer-manim",
+                    record,
+                    &fixture.archives[&record.sha256],
+                ) {
+                    Err(error) => error.to_string(),
+                    Ok(_) => panic!("admitted lifecycle path {path}"),
+                };
+                for required in [
+                    "reviewer-manim",
+                    "fixture",
+                    "version 1.0",
+                    "build 0",
+                    &record.sha256,
+                    path,
+                ] {
+                    assert!(error.contains(required), "{error}");
+                }
+                fixture.refused(path);
+            }
+        }
+        for path in [
+            "etc/conda/activate.d",
+            "etc/conda/deactivate.d",
+            "etc/activate.d",
+            "etc/deactivate.d",
+        ] {
+            let fixture = Fixture::new(vec![Member::directory(path)], conda, false);
+            let record = &fixture.locked.packages[0];
+            assert!(admit_archive("fixture", record, &fixture.archives[&record.sha256]).is_err());
+        }
+    }
+}
+
+#[test]
+fn lifecycle_admission_preserves_policy_exclusions_and_private_archive_bytes() {
+    for conda in [false, true] {
+        let fixture = Fixture::new(
+            [
+                "share/post-link.sh",
+                "bin/.other-post-link.sh",
+                "bin/.fixture-post-link.bat",
+                "Scripts/.fixture-post-link.sh",
+                "etc/conda/activate.d-example/hook",
+                "etc/activate.d.example",
+            ]
+            .into_iter()
+            .map(|path| Member::file(path, b"ordinary data"))
+            .chain([Member::link("share/alias", "post-link.sh")])
+            .collect(),
+            conda,
+            false,
+        );
+        let readers = admit_archives("fixture", &fixture.locked, &fixture.archives).unwrap();
+        // Subsequent comparison must use the exact admitted private spool,
+        // not rescan a pathname a helper could have replaced.
+        for path in fixture.archives.values() {
+            fs::remove_file(path).unwrap();
+        }
+        validate_admitted_tree(
+            "fixture",
+            &fixture.locked,
+            &readers,
+            &fixture.tree,
+            "/final prefix",
+            FileModes::Staged,
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn lifecycle_preflight_reuses_hash_path_and_container_admission() {
+    let fixture = Fixture::new(vec![Member::file("data", b"data")], true, false);
+    let mut record = fixture.locked.packages[0].clone();
+    let path = &fixture.archives[&record.sha256];
+    // Bypass tar::Builder's pathname normalization only to construct hostile
+    // input; production still uses the sole bounded archive parser.
+    let mut header = tar::Header::new_gnu();
+    let unsafe_path = b"etc//activate.d/hook";
+    header.as_mut_bytes()[..unsafe_path.len()].copy_from_slice(unsafe_path);
+    header.set_mode(0o644);
+    header.set_size(0);
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_cksum();
+    let mut encoder = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::fast());
+    encoder.write_all(header.as_bytes()).unwrap();
+    encoder.write_all(&[0; 1024]).unwrap();
+    let unsafe_archive = encoder.finish().unwrap();
+    let cases = [
+        (
+            encode(
+                &[],
+                &[Member::file("./info/recipe/post-link.sh", b"")],
+                true,
+            ),
+            "info/recipe/post-link.sh",
+        ),
+        (unsafe_archive, "unsafe path"),
+        (
+            encode(
+                &[],
+                &[Member::file("data", b""), Member::file("data", b"")],
+                true,
+            ),
+            "duplicate archive path",
+        ),
+        (b"not a package".to_vec(), "neither .conda nor .tar.bz2"),
+        (b"PK malformed".to_vec(), "conda archive"),
+        (b"BZh malformed".to_vec(), "package fixture"),
+    ];
+    for (bytes, required) in cases {
+        record.sha256 = gripsack_process::Sha256Digest::of(&bytes).to_string();
+        fs::write(path, bytes).unwrap();
+        let error = match admit_archive("fixture", &record, path) {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("admitted invalid archive"),
+        };
+        assert!(error.contains(required), "{error}");
+    }
+    record.sha256 = "0".repeat(64);
+    let error = match admit_archive("fixture", &record, path) {
+        Err(error) => error.to_string(),
+        Ok(_) => panic!("admitted changed digest"),
+    };
+    assert!(error.contains("differs from its frozen SHA-256"), "{error}");
+}
+
+#[test]
+fn cold_frozen_lifecycle_refusal_precedes_native_and_image_staging() {
+    use super::super::{CondaDestination, archive_object, materialize_locked, native_location};
+    for conda in [false, true] {
+        let fixture = Fixture::new(
+            vec![Member::file("info/recipe/post-link.sh", b"exit 99\n")],
+            conda,
+            false,
+        );
+        let root = fixture._temporary.path();
+        let ctx = crate::Ctx {
+            home: root.join("home"),
+            repository: crate::Repository::direct(root.to_path_buf()),
+            only: vec![],
+            host: gripsack_ir::HostName::parse("testhost").unwrap(),
+            on_progress: None,
+            take_over: false,
+            take_over_entries: None,
+            migrate_from: None,
+            jobs: Some(1),
+            fetch: Default::default(),
+            home_dir: Default::default(),
+        };
+        let session = crate::LifecycleSession::acquire(&ctx.home).unwrap();
+        let record = &fixture.locked.packages[0];
+        let object = archive_object(&ctx.home, &record.sha256);
+        fs::create_dir_all(&object).unwrap();
+        fs::copy(&fixture.archives[&record.sha256], object.join("archive")).unwrap();
+        let (_, prefix) = native_location("fixture", &ctx.home, &fixture.locked).unwrap();
+        let image = root.join("uncreated-image-staging");
+        for destination in [
+            CondaDestination::Native,
+            CondaDestination::Image {
+                prefix: "/opt/fixture",
+                staging: &image,
+            },
+        ] {
+            let error =
+                match materialize_locked(&ctx, &session, "fixture", &fixture.locked, destination) {
+                    Err(error) => error.to_string(),
+                    Ok(_) => panic!("materialized unsupported lifecycle"),
+                };
+            assert!(error.contains("info/recipe/post-link.sh"), "{error}");
+            assert!(!prefix.exists());
+            assert!(!image.exists());
+        }
+    }
+}
+
+#[test]
+fn both_update_modes_require_archive_admission_and_accept_independent_clean_control() {
+    use super::super::admit_update_archives;
+    for conda in [false, true] {
+        for mode in [crate::UpdateMode::Check, crate::UpdateMode::Publish] {
+            for script in [false, true] {
+                let member = if script {
+                    Member::file("info/recipe/post-link.sh", b"exit 99\n")
+                } else {
+                    Member::file("share/data", b"clean")
+                };
+                let mut fixture = Fixture::new(vec![member], conda, false);
+                let root = fixture._temporary.path();
+                let record = &mut fixture.locked.packages[0];
+                record.url = format!("file://{}", fixture.archives[&record.sha256].display());
+                let ctx = crate::Ctx {
+                    home: root.join("home"),
+                    repository: crate::Repository::direct(root.to_path_buf()),
+                    only: vec![],
+                    host: gripsack_ir::HostName::parse("testhost").unwrap(),
+                    on_progress: None,
+                    take_over: false,
+                    take_over_entries: None,
+                    migrate_from: None,
+                    jobs: Some(1),
+                    fetch: Default::default(),
+                    home_dir: Default::default(),
+                };
+                let result = admit_update_archives("fixture", &ctx, &fixture.locked, mode);
+                if script {
+                    let error = result.unwrap_err().to_string();
+                    assert!(error.contains("info/recipe/post-link.sh"), "{error}");
+                } else {
+                    let objects = result.unwrap();
+                    assert_eq!(objects.is_empty(), mode == crate::UpdateMode::Check);
+                }
+                if mode == crate::UpdateMode::Check {
+                    assert!(
+                        !ctx.home.exists(),
+                        "check mode published an archive or root"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn recipe_policy_does_not_reject_unrelated_recipe_sources() {
+    for conda in [false, true] {
+        let fixture = Fixture::new(vec![Member::file("data", b"data")], conda, false);
+        let mut record = fixture.locked.packages[0].clone();
+        let path = &fixture.archives[&record.sha256];
+        let info = [
+            Member::file("info/recipe/post-link.sh.example", b"example"),
+            Member::file("info/recipe/build.sh", b"build-only"),
+            Member::file("info/recipe/nested/post-link.sh", b"nested source"),
+        ];
+        let bytes = encode(&info, &[], conda);
+        record.sha256 = gripsack_process::Sha256Digest::of(&bytes).to_string();
+        fs::write(path, bytes).unwrap();
+        admit_archive("fixture", &record, path).unwrap();
+    }
+}
+
+#[test]
+fn lifecycle_paths_cannot_hide_behind_directory_aliases() {
+    for conda in [false, true] {
+        for (members, required) in [
+            (
+                vec![
+                    Member::link("info/recipe", "scripts"),
+                    Member::file("info/scripts/post-link.sh", b""),
+                ],
+                "info/recipe/post-link.sh",
+            ),
+            (
+                vec![
+                    Member::link("bin", "share/bin"),
+                    Member::file("share/bin/.fixture-pre-link.sh", b""),
+                ],
+                "bin/.fixture-pre-link.sh",
+            ),
+            (
+                vec![
+                    Member::link("etc", "share/etc"),
+                    Member::file("share/etc/conda/activate.d/hook", b""),
+                ],
+                "etc/conda/activate.d",
+            ),
+            (vec![Member::link("bin", "bin")], "cycles or exceeds"),
+            (vec![Member::link("bin", "../outside")], "escapes"),
+        ] {
+            let fixture = Fixture::new(members, conda, false);
+            let record = &fixture.locked.packages[0];
+            let error = match admit_archive("fixture", record, &fixture.archives[&record.sha256]) {
+                Err(error) => error.to_string(),
+                Ok(_) => panic!("admitted hidden lifecycle path"),
+            };
+            assert!(error.contains(required), "{error}");
+        }
+        let fixture = Fixture::new(
+            vec![
+                Member::link("bin", "share/bin"),
+                Member::file("share/bin/ordinary", b"data"),
+            ],
+            conda,
+            false,
+        );
+        let record = &fixture.locked.packages[0];
+        admit_archive("fixture", record, &fixture.archives[&record.sha256]).unwrap();
+    }
 }

@@ -2,7 +2,7 @@
 //! The retained context is immutable input evidence, not launch authority:
 //! replay verifies it and repeats native executable/layout admission.
 mod command;
-mod snapshot;
+pub(super) mod snapshot;
 
 use super::{consumer, realize::Realization};
 use crate::ExecError;
@@ -23,6 +23,13 @@ pub(super) struct PreparedHook {
     trigger: Trigger,
 }
 impl PreparedHook {
+    pub(super) fn new(file: String, digest: Sha256Digest, trigger: Trigger) -> Self {
+        Self {
+            file,
+            digest,
+            trigger,
+        }
+    }
     pub(super) fn record(self, profile: &Path) -> store::IntentRecord {
         store::IntentRecord {
             action: ActivationAction::WorkspaceHook {
@@ -89,13 +96,54 @@ pub(crate) fn run(
     environment: &OperatorEnvironment,
     stdout: impl FnMut(&[u8]) -> gripsack_process::Control,
 ) -> io::Result<gripsack_process::NativeOutcome> {
+    let context = snapshot::read(home, path, digest).map_err(io::Error::other)?;
+    let root = path
+        .parent()
+        .ok_or_else(|| io::Error::other("hook context has no root"))?;
+    run_context(
+        &context,
+        root,
+        home,
+        Some(activation),
+        environment,
+        Instant::now() + Limits::default().timeout,
+        None,
+        stdout,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_context(
+    context: &snapshot::Context,
+    root: &Path,
+    home: &Path,
+    activation: Option<&ActivationEnvironment>,
+    environment: &OperatorEnvironment,
+    deadline: Instant,
+    leases: Option<gripsack_process::ProcessLeases>,
+    stdout: impl FnMut(&[u8]) -> gripsack_process::Control,
+) -> io::Result<gripsack_process::NativeOutcome> {
     let options = super::BuildOptions {
         environment,
         bridge: None,
         worker: Default::default(),
-        deadline: Instant::now() + Limits::default().timeout,
+        deadline,
     };
-    let context = snapshot::read(home, path, digest).map_err(io::Error::other)?;
+    let observation = context
+        .file_check
+        .as_ref()
+        .map(|inputs| inputs.observe(root))
+        .transpose()
+        .map_err(io::Error::other)?;
+    let subject = observation
+        .as_ref()
+        .map(|value| {
+            value
+                .path()
+                .to_str()
+                .ok_or_else(|| io::Error::other("file-check subject is not UTF-8"))
+        })
+        .transpose()?;
     let facts = crate::facts::detect();
     let facts = gripsack_ir::HostFacts {
         os: facts.os.into(),
@@ -107,7 +155,15 @@ pub(crate) fn run(
         .map_err(io::Error::other)?;
     let realization = context.realization(home).map_err(io::Error::other)?;
     let base = gripsack_process::EnvironmentOverlay::admit(Vec::new(), Vec::new(), Vec::new())?;
-    let command = context.command.decode();
+    let mut command = context.command.decode(subject).map_err(io::Error::other)?;
+    if let Some(inputs) = &context.file_check {
+        match &mut command {
+            gripsack_ir::workspace_model::WorkspaceCommand::Exec { span, .. }
+            | gripsack_ir::workspace_model::WorkspaceCommand::RunBash { span, .. } => {
+                *span = inputs.command_span.clone();
+            }
+        }
+    }
     let prepared = consumer::command::prepare(
         &command,
         None,
@@ -127,7 +183,11 @@ pub(crate) fn run(
     }
     let invocation = Invocation::admit(
         environment,
-        ProcessRole::Hook,
+        if context.file_check.is_some() && activation.is_none() {
+            ProcessRole::Verify
+        } else {
+            ProcessRole::Hook
+        },
         &prepared.program,
         &prepared.cwd,
         Limits {
@@ -136,6 +196,18 @@ pub(crate) fn run(
         },
     )?
     .with_overlay(prepared.overlay);
+    let invocation = match leases {
+        Some(leases) => invocation.retain_leases(leases)?,
+        None => invocation,
+    };
     let argv: Vec<_> = prepared.argv.iter().map(OsString::as_os_str).collect();
-    invocation.run(&argv, NativeInput::Bytes(b""), Some(activation), stdout)
+    let outcome = if context.file_check.is_some() && activation.is_none() {
+        invocation.run_verification(&argv, stdout)?
+    } else {
+        invocation.run(&argv, NativeInput::Bytes(b""), activation, stdout)?
+    };
+    if let Some(observation) = observation {
+        observation.unchanged()?;
+    }
+    Ok(outcome)
 }

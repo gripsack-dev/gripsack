@@ -1,4 +1,4 @@
-//! Managed projections re-admit mutable host runtime policy on every invocation.
+//! Retained launchers re-admit native packages on every invocation.
 use super::{ConsumerOutcome, admit, bind_admitted_program};
 use crate::{ExecError, workspace::artifact};
 use gripsack_ir::{Span, workspace_model::identity::PackageDigest};
@@ -13,6 +13,9 @@ use std::{
     time::Instant,
 };
 
+mod profile;
+pub(super) use profile::ProfileEnvironment;
+
 const MAX_PROJECTION_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -20,6 +23,8 @@ const MAX_PROJECTION_BYTES: usize = 4 * 1024 * 1024;
 struct Projection {
     variables: Vec<String>,
     library_directories: Vec<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    activation: Option<profile::Activation>,
 }
 
 /// Bind the names granted by an explicit declaration, not arbitrary ambient
@@ -37,8 +42,13 @@ pub(super) fn encode_projection(overlay: &EnvironmentOverlay) -> Result<String, 
             })
             .collect::<Result<_, _>>()?,
         library_directories: overlay.library_prefix().to_vec(),
+        activation: None,
     };
-    let mut encoded = serde_json::to_string(&projection)?;
+    encode(&projection)
+}
+
+fn encode(projection: &Projection) -> Result<String, ExecError> {
+    let mut encoded = serde_json::to_string(projection)?;
     encoded.push('\n');
     if encoded.len() > MAX_PROJECTION_BYTES {
         return Err(super::failure(
@@ -78,30 +88,48 @@ fn projected_overlay(
 ) -> Result<EnvironmentOverlay, ExecError> {
     let mut entries = Vec::new();
     let mut libraries = command.library_dirs.clone();
+    let mut search = Vec::new();
     if let Some(projection) = projection {
-        // Reuse the overlay's reserved-key/name validator even for unset keys.
-        let names = EnvironmentOverlay::admit(
-            projection
-                .variables
-                .into_iter()
-                .map(|name| (OsString::from(name), OsString::new())),
-            [],
-            [],
-        )?;
-        for name in names.entries().keys() {
+        if let Some(activation) = projection.activation {
+            entries.extend(
+                activation
+                    .entries
+                    .into_iter()
+                    .map(|(name, value)| (OsString::from(name), OsString::from(value))),
+            );
+            search = activation.search_directories;
             if let Some(loader) = &command.gnu_loader {
-                loader
-                    .check_environment_key(name)
-                    .map_err(|error| super::gate(span, error.to_string()))?;
+                for (name, _) in &entries {
+                    loader
+                        .check_environment_key(name)
+                        .map_err(|error| super::gate(span, error.to_string()))?;
+                }
             }
-            if let Some(value) = std::env::var_os(name) {
-                entries.push((name.clone(), value));
+        } else {
+            // Historical projections grant names, never captured ambient values.
+            let names = EnvironmentOverlay::admit(
+                projection
+                    .variables
+                    .into_iter()
+                    .map(|name| (OsString::from(name), OsString::new())),
+                [],
+                [],
+            )?;
+            for name in names.entries().keys() {
+                if let Some(loader) = &command.gnu_loader {
+                    loader
+                        .check_environment_key(name)
+                        .map_err(|error| super::gate(span, error.to_string()))?;
+                }
+                if let Some(value) = std::env::var_os(name) {
+                    entries.push((name.clone(), value));
+                }
             }
         }
         libraries.extend(projection.library_directories);
     }
     admit::bytecode::apply(command.bytecode, &mut entries, span)?;
-    EnvironmentOverlay::admit(entries, [], libraries).map_err(super::operational)
+    EnvironmentOverlay::admit(entries, search, libraries).map_err(super::operational)
 }
 
 pub(super) struct Binding {
@@ -120,12 +148,24 @@ impl Binding {
         }
         let mut receipts = BTreeMap::new();
         artifact::hook::capture(home, package, &mut receipts)?;
-        Ok(Some(Self {
-            core: std::env::current_exe()?,
+        Ok(Some(Self::retained(
+            home,
+            package.identity,
+            receipts[&package.identity],
+        )?))
+    }
+
+    fn retained(
+        home: &Path,
+        package: PackageDigest,
+        receipt: Sha256Digest,
+    ) -> Result<Self, ExecError> {
+        Ok(Self {
+            core: std::env::current_exe()?.canonicalize()?,
             home: home.to_path_buf(),
-            package: package.identity,
-            receipt: receipts[&package.identity],
-        }))
+            package,
+            receipt,
+        })
     }
 
     pub(super) fn write(
@@ -143,10 +183,15 @@ impl Binding {
             .home
             .to_str()
             .ok_or_else(|| super::failure("home path is not UTF-8"))?;
+        let repair = format!(
+            "gripsack: bound core {core} is missing or not executable; reinstall grip and reapply the declaring profile to regenerate its managed launchers"
+        );
         let mut wrapper = std::fs::File::create_new(directory.join(name))?;
         write!(
             wrapper,
-            "#!/bin/sh\nexec {} __package-command --home {} --package {} --receipt {} --command {} --environment-sha256 {} -- \"$@\" 3<<'GRIP_PROJECTED_ENV'\n{}GRIP_PROJECTED_ENV\n",
+            "#!/bin/sh\nif [ ! -x {} ]; then printf '%s\\n' {} >&2; exit 127; fi\nexec {} __package-command --home {} --package {} --receipt {} --command {} --environment-sha256 {} -- \"$@\" 3<<'GRIP_PROJECTED_ENV'\n{}GRIP_PROJECTED_ENV\n",
+            crate::env::ShellLiteral(core),
+            crate::env::ShellLiteral(&repair),
             crate::env::ShellLiteral(core),
             crate::env::ShellLiteral(home),
             self.package,
@@ -173,9 +218,22 @@ pub fn run_package_command(
     environment: &OperatorEnvironment,
 ) -> Result<ConsumerOutcome, ExecError> {
     let deadline = Instant::now() + Limits::default().timeout;
-    let projection = read_projection(projection, deadline)?;
+    let mut projection = read_projection(projection, deadline)?;
+    if projection.as_ref().is_some_and(|projection| {
+        projection.activation.is_some() && !projection.variables.is_empty()
+    }) {
+        return Err(super::failure(
+            "exact profile activation cannot grant ambient variable names",
+        ));
+    }
     let session = crate::LifecycleSession::acquire(home)?;
-    let package = artifact::hook::restore_launcher(home, package, receipt)?;
+    let package = match projection
+        .as_ref()
+        .and_then(|projection| projection.activation.as_ref())
+    {
+        Some(activation) => activation.restore(home, package, receipt)?,
+        None => artifact::hook::restore_launcher(home, package, receipt)?,
+    };
     let provided = package
         .commands
         .get(command)
@@ -207,11 +265,35 @@ pub fn run_package_command(
         deadline,
     };
     let selected = bind_admitted_program(&command, &options)?;
-    let overlay = projected_overlay(projection, &command, &span)?;
     let mut closure = BTreeSet::new();
     package.retain_into(&mut closure);
+    if let Some(activation) = projection
+        .as_ref()
+        .and_then(|projection| projection.activation.as_ref())
+    {
+        activation.admit(home, &host, &span, &mut closure)?;
+    }
     let retention = crate::workspace::roots::RetentionSet::admit(&session, closure)?;
     let lease = crate::workspace::roots::ProcessLease::register(&session, &retention, None)?;
+    let staged = if let Some(projected) = projection
+        .as_ref()
+        .filter(|projected| projected.activation.is_some())
+    {
+        let encoded = encode(projected)?;
+        let activation = projected.activation.as_ref().expect("filtered activation");
+        Some(activation.materialize(home, &lease, &encoded)?)
+    } else {
+        None
+    };
+    if let Some(bin) = staged {
+        projection
+            .as_mut()
+            .and_then(|projected| projected.activation.as_mut())
+            .expect("staged activation")
+            .search_directories
+            .insert(0, bin);
+    }
+    let overlay = projected_overlay(projection, &command, &span)?;
     let handle = lease.duplicate_handle()?;
     drop(session);
     let outcome = Invocation::admit(
@@ -232,9 +314,15 @@ pub fn run_package_command(
     .run_interactive(arguments)?;
     let session = crate::LifecycleSession::acquire(home)?;
     let mut outcome = super::single_outcome(outcome);
+    let staging_id = lease.id().as_str().to_owned();
     if let Err(error) = lease.release(&session, &outcome.receipt) {
         outcome.root_retained = true;
         tracing::warn!(%error, "package command root retained after unconfirmed cleanup");
+    }
+    if !outcome.root_retained {
+        profile::remove_staging(home, &staging_id).unwrap_or_else(|error| {
+            tracing::warn!(%error, "completed launcher staging could not be removed");
+        });
     }
     Ok(outcome)
 }
@@ -242,6 +330,21 @@ pub fn run_package_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn historical_projection_grants_names_without_capturing_values() {
+        let overlay = EnvironmentOverlay::admit(
+            [(OsString::from("EXPLICIT"), OsString::from("not frozen"))],
+            [],
+            [],
+        )
+        .unwrap();
+        let encoded = encode_projection(&overlay).unwrap();
+        let projection: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(projection["variables"], serde_json::json!(["EXPLICIT"]));
+        assert!(projection.get("activation").is_none());
+        assert!(!encoded.contains("not frozen"));
+    }
 
     #[test]
     fn missing_absolute_core_never_falls_back_to_projected_path() {
@@ -280,6 +383,11 @@ mod tests {
         assert!(
             !marker.exists(),
             "projected PATH must never rediscover the core"
+        );
+        assert!(
+            String::from_utf8(result.stderr)
+                .unwrap()
+                .contains("reapply")
         );
     }
 }

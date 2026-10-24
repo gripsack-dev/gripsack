@@ -107,7 +107,7 @@ pub fn build_workspace(
                 BuiltOutput {
                     name: name.clone(),
                     kind: "package",
-                    path: package.producer.payload.clone(),
+                    path: package.payload().to_path_buf(),
                     commands: package
                         .commands
                         .keys()

@@ -147,25 +147,93 @@ fn document(archive: &CondaArchive, name: &str) -> Result<Option<Vec<u8>>, Strin
         .map_err(|error| error.to_string())
 }
 
-fn script(path: &str, name: &str) -> bool {
-    [
-        "etc/conda/activate.d",
-        "etc/conda/deactivate.d",
-        "etc/activate.d",
-        "etc/deactivate.d",
-    ]
-    .iter()
-    .any(|prefix| {
-        path == *prefix
-            || path
-                .strip_prefix(prefix)
-                .is_some_and(|rest| rest.starts_with('/'))
-    }) || ["pre-link", "post-link", "pre-unlink"].iter().any(|phase| {
-        path == format!("info/recipe/{phase}.sh")
-            || path == format!("info/recipe/{phase}.bat")
-            || path == format!("bin/.{name}-{phase}.sh")
-            || path == format!("Scripts/.{name}-{phase}.bat")
-    })
+const ACTIVATION_DIRECTORIES: [&str; 4] = [
+    "etc/conda/activate.d",
+    "etc/conda/deactivate.d",
+    "etc/activate.d",
+    "etc/deactivate.d",
+];
+
+fn script_paths(name: &str) -> impl Iterator<Item = String> + '_ {
+    ["pre-link", "post-link", "pre-unlink"]
+        .into_iter()
+        .flat_map(move |phase| {
+            [
+                format!("info/recipe/{phase}.sh"),
+                format!("info/recipe/{phase}.bat"),
+                format!("bin/.{name}-{phase}.sh"),
+                format!("Scripts/.{name}-{phase}.bat"),
+            ]
+        })
+}
+
+/// Shared archive admission; existence, not executable mode or entry kind,
+/// determines whether a package requires unsupported lifecycle behavior.
+pub(super) fn admit_scripts(
+    record: &LockedCondaPackage,
+    archive: &CondaArchive,
+) -> Result<(), String> {
+    let scripts: Vec<_> = script_paths(&record.name).collect();
+    for path in archive.info.keys().chain(archive.payload.keys()) {
+        if scripts.contains(path)
+            || ACTIVATION_DIRECTORIES.iter().any(|prefix| {
+                path.as_str() == *prefix
+                    || path
+                        .strip_prefix(*prefix)
+                        .is_some_and(|rest| rest.starts_with('/'))
+            })
+        {
+            return Err(format!("unsupported link/activation script {path:?}"));
+        }
+    }
+    // Parent directory aliases also expose lifecycle paths to the helper's
+    // symlink_metadata checks. Resolve components without extracting anything,
+    // using the same bounded link walker as independent installed validation.
+    if archive
+        .info
+        .values()
+        .chain(archive.payload.values())
+        .any(|entry| matches!(entry.kind, EntryKind::Symlink { .. }))
+    {
+        for suspect in ACTIVATION_DIRECTORIES
+            .iter()
+            .copied()
+            .chain(scripts.iter().map(String::as_str))
+        {
+            let exists = super::links::resolve(suspect, None, false, |path| {
+                let entry = archive.info.get(path).or_else(|| archive.payload.get(path));
+                match entry.map(|entry| &entry.kind) {
+                    Some(EntryKind::Symlink { target }) => {
+                        Some(super::links::Entry::Symlink(target))
+                    }
+                    Some(EntryKind::Directory) => Some(super::links::Entry::Directory),
+                    Some(EntryKind::File { .. }) => Some(super::links::Entry::File),
+                    None => {
+                        // Tar archives may omit explicit directory entries.
+                        let prefix = format!("{path}/");
+                        [&archive.info, &archive.payload]
+                            .into_iter()
+                            .any(|entries| {
+                                entries
+                                    .range::<str, _>((
+                                        std::ops::Bound::Included(prefix.as_str()),
+                                        std::ops::Bound::Unbounded,
+                                    ))
+                                    .next()
+                                    .is_some_and(|(entry, _)| entry.starts_with(&prefix))
+                            })
+                            .then_some(super::links::Entry::Directory)
+                    }
+                }
+            })?;
+            if exists {
+                return Err(format!(
+                    "unsupported link/activation script {suspect:?} via archive alias"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn paths(archive: &CondaArchive) -> Result<Vec<PathEntry>, String> {
@@ -248,11 +316,7 @@ pub(super) fn inventory(
     python: Option<&PythonLayout>,
     final_prefix: &str,
 ) -> Result<BTreeMap<String, ExpectedFile>, String> {
-    for path in archive.info.keys().chain(archive.payload.keys()) {
-        if script(path, &record.name) {
-            return Err(format!("unsupported link/activation script {path:?}"));
-        }
-    }
+    admit_scripts(record, archive)?;
     let index = document(archive, "index.json")?.ok_or("missing info/index.json")?;
     let index: serde_json::Value =
         serde_json::from_slice(&index).map_err(|error| error.to_string())?;
