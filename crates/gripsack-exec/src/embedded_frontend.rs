@@ -4944,7 +4944,7 @@ export const pixi: { fromLock: typeof pixiFromLockImpl } = Object.assign(
 "#),
     ("package.json", r#"{
   "name": "@gripsack/core",
-  "version": "0.47.0",
+  "version": "0.48.0",
   "description": "gripsack typescript frontend — typed module DSL, emits IR",
   "license": "MIT",
   "type": "module",
