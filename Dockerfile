@@ -227,6 +227,7 @@ RUN cd e2e && uv sync --locked
 COPY e2e ./e2e
 COPY examples ./examples
 COPY install.sh ./install.sh
+COPY scripts ./scripts
 ENV GRIPSACK_E2E_IN_DOCKER=1
 ENV GRIPSACK_BIN=/usr/local/bin/grip
 WORKDIR /app/e2e
