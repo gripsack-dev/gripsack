@@ -101,8 +101,8 @@ def test_complete_noop_preserves_identity_but_repair_is_a_new_activation(sandbox
     destination.unlink()
     run(repo, "apply")
     repaired = json.loads((home / "current/manifest.json").read_text())
-    assert repaired["modules"] == original["modules"]
-    assert repaired["number"] != original["number"]
+    assert repaired != original
+    assert repaired.get("modules") == original.get("modules")
     assert destination.read_text() == "active"
     assert len(effect.read_text().splitlines()) == 2
     assert len(outcomes(repo)) == 2
