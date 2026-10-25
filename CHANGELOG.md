@@ -3,7 +3,8 @@
 User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
-## [Unreleased]
+
+## [0.48.0] — 2026-10-25
 
 ### Added
 
@@ -16,6 +17,28 @@ User-visible changes per release. Design archaeology lives in
   authority, entrypoints and admitted SDK roots refuse glob matches instead
   of being omitted, and an excluded path disappears from the inventory just
   as a literal exclusion.
+- `grip trust inspect|add --focus PREFIX` filters the changed-inventory
+  display to one repository subtree. The focused listing keeps full
+  inventory paths, prints an unhidden summary (count plus a digest of the
+  elided changes) and every policy/runtime/native disclosure line, and the
+  recorded approval still binds the exact whole bundle and policy digests;
+  JSON output adds `focus` and changes nothing else.
+
+### Compatibility and migration
+
+- Mutable overlays are guidance, not a capability: self-updating tool trees
+  use the explicit update-and-snapshot workflow — pinned repository base,
+  `trackedCopyTo` deployment, manual re-capture into reviewed source,
+  re-apply — and no workspace command snapshots a live destination; the lock
+  pins resolutions, never destination content.
+- Install matching core/helper/SDK0.48.0. The Linux Conda helper is measured
+  at SHA-256 `2040d10d1c6f6842252f55b50f79319716e3d584a50962e755a1bc7cccd00c51`
+  (two reproducible pinned builds); the bridge pin rides `core-v0.48.0` with
+  its measured artifact unchanged.
+## [Unreleased]
+
+### Added
+
 - `repoTree(path, { include, exclude })` discovers approved captured files and
   safe internal aliases in the core. Logical destination paths and executability
   survive traversal; added, removed and retargeted inputs need no generated
@@ -73,12 +96,6 @@ User-visible changes per release. Design archaeology lives in
 - Existing profile selection (`grip apply claude`) and terminal `grip trust add`
   reduce content-edit ceremony without scoped trust or automatic text approval.
   The guide distinguishes changed-path inspection from a content diff.
-  Mutable overlays are guidance, not a capability: self-updating tool trees
-  use the explicit
-  update-and-snapshot workflow — pinned repository base, `trackedCopyTo`
-  deployment, manual re-capture into reviewed source, re-apply — and no
-  workspace command snapshots a live destination; the lock pins resolutions,
-  never destination content.
 - GNU runtime guidance distinguishes library supply from ABI selection. LuaLS
   releases that derive resource paths from their executable pathname require
   an explicit complete tracked-copy tree and deployed-host wrapper; successful
