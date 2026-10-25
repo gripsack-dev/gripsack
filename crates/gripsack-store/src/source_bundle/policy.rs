@@ -189,7 +189,10 @@ impl SourceCapturePolicy {
                     "capture exclusion {value:?} intersects required configuration, lock authority or entrypoints"
                 )));
             }
-            if components.iter().any(|part| part.contains('*') || part.contains('?')) {
+            if components
+                .iter()
+                .any(|part| part.contains('*') || part.contains('?'))
+            {
                 if components
                     .iter()
                     .any(|part| part.contains("**") && *part != "**")
@@ -268,15 +271,11 @@ impl SourceCapturePolicy {
         } else {
             relative
         };
-        if relative
-            .ancestors()
-            .filter_map(Path::to_str)
-            .any(|path| {
-                self.literals
-                    .binary_search_by(|value| value.as_str().cmp(path))
-                    .is_ok()
-            })
-        {
+        if relative.ancestors().filter_map(Path::to_str).any(|path| {
+            self.literals
+                .binary_search_by(|value| value.as_str().cmp(path))
+                .is_ok()
+        }) {
             return true;
         }
         self.matches_pattern(relative)

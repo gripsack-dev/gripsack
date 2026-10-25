@@ -405,10 +405,8 @@ keep_generations = 20
 
     #[test]
     fn capture_exclusions_are_explicit_repository_configuration_only() {
-        let env = parse_env(
-            "[capture]\nexclude = ['.venv', 'node_modules/@gripsack/core']\n",
-        )
-        .unwrap();
+        let env =
+            parse_env("[capture]\nexclude = ['.venv', 'node_modules/@gripsack/core']\n").unwrap();
         assert_eq!(
             env.capture.exclude,
             [".venv", "node_modules/@gripsack/core"]

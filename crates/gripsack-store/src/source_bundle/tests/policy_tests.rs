@@ -128,15 +128,11 @@ fn glob_exclusions_omit_nested_caches_exactly_like_literal_subtrees() {
         assert!(exclusions.iter().any(|excluded| excluded == path), "{path}");
     }
     assert!(!captured.repository().join(".ruff_cache").exists());
-    assert!(
-        !captured
-            .inventory()
-            .entries()
-            .iter()
-            .any(|entry| entry.path.starts_with("repo/.ruff_cache")
-                || entry.path.starts_with("repo/pkg/sub/__pycache__")
-                || entry.path.starts_with("repo/tools/__pycache__"))
-    );
+    assert!(!captured.inventory().entries().iter().any(|entry| {
+        entry.path.starts_with("repo/.ruff_cache")
+            || entry.path.starts_with("repo/pkg/sub/__pycache__")
+            || entry.path.starts_with("repo/tools/__pycache__")
+    }));
     assert!(captured.inventory().entry("repo/docs").is_some());
     assert_eq!(
         captured
@@ -171,7 +167,10 @@ fn glob_aliases_into_exclusions_and_replaced_ancestors_are_refused() {
     )
     .unwrap_err()
     .to_string();
-    assert!(error.contains("excluded subtree repo/pkg/__pycache__"), "{error}");
+    assert!(
+        error.contains("excluded subtree repo/pkg/__pycache__"),
+        "{error}"
+    );
 
     // A non-suffix-anchored glob must pin its ancestors as real directories:
     // an alias there could re-expose excluded bytes under the target's
@@ -196,7 +195,9 @@ fn glob_aliases_into_exclusions_and_replaced_ancestors_are_refused() {
 fn glob_exclusions_cannot_bypass_sdk_root_rules_or_pins() {
     let fixture = Fixture::new();
     for spelling in ["**/core", "node_modules/**", "node_modules/@gripsack/cor?"] {
-        let error = capture(&fixture, &policy(&[spelling])).unwrap_err().to_string();
+        let error = capture(&fixture, &policy(&[spelling]))
+            .unwrap_err()
+            .to_string();
         assert!(
             error.contains("excluded SDK location"),
             "{spelling}: {error}"
@@ -206,16 +207,17 @@ fn glob_exclusions_cannot_bypass_sdk_root_rules_or_pins() {
     let error = capture(&fixture, &policy(&["node_modules/@gripsack/x*"]))
         .unwrap_err()
         .to_string();
-    assert!(
-        error.contains("real directory ancestors"),
-        "{error}"
-    );
+    assert!(error.contains("real directory ancestors"), "{error}");
     // A glob that could carve the repo spelling of an admitted package root
     // is refused exactly like a literal exclusion there. The root must be a
     // real in-repo directory, as the auxiliary-root literal test sets up.
     let package = fixture.repo.join("embedded-sdk");
     fs::create_dir(&package).unwrap();
-    fs::write(package.join("package.json"), br#"{"name":"@gripsack/core"}"#).unwrap();
+    fs::write(
+        package.join("package.json"),
+        br#"{"name":"@gripsack/core"}"#,
+    )
+    .unwrap();
     let error = SourceBundle::capture(
         &fixture.repo,
         &fixture.frontend,
@@ -225,10 +227,7 @@ fn glob_exclusions_cannot_bypass_sdk_root_rules_or_pins() {
     )
     .unwrap_err()
     .to_string();
-    assert!(
-        error.contains("overlaps an admitted pin root"),
-        "{error}"
-    );
+    assert!(error.contains("overlaps an admitted pin root"), "{error}");
 }
 
 #[test]

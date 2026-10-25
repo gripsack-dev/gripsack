@@ -54,6 +54,7 @@ pub enum TrustCommand {
     },
     /// Revoke recorded approvals, including old path-only entries.
     Remove { path: String },
+}
 
 pub fn trust(command: TrustCommand, palette: Palette) -> ExitCode {
     let home = gripsack_store::gripsack_home();
