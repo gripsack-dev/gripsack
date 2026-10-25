@@ -229,6 +229,8 @@ struct Inspection<'a> {
     policy: &'a EvaluationPolicy,
     provenance: &'a GitProvenance,
     inventory: &'a SourceInventory,
+    capture_exclusions: &'a [String],
+    runtime_access: &'a gripsack_process::RuntimeAccess,
     approval: ApprovalInspection,
     focus: Option<&'a str>,
 }
