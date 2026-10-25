@@ -412,7 +412,7 @@
       "inputs": [
         "local-ci/images/local-tools.tar",
         "local-ci/images/local-tools.json",
-        "dist/gripsack-core-0.47.0.tgz"
+        "dist/gripsack-core-0.48.0.tgz"
       ],
       "outputs": [
         "local-ci/publication/packages.tar.gz",
