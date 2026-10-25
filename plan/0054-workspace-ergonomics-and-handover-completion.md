@@ -269,6 +269,19 @@ permission to call Gripsack done with hidden follow-ups.
   candidate8fbee020… are therefore ineligible for release; the corrected
   source requalifies from a new frozen candidate under the same authority.
 
+### Owner direction 2026-10-25 — local signer next cycle
+
+After0.47/0.48 ship through the existing signing workflow, the owner wants
+GitHub removed from the release path entirely: a dedicated mini PC becomes
+the signer/verifier host. Concretely for0.49+: implement an owner-key
+Sigstore signing path (local key on the signer host, no GitHub OIDC), a
+matching verifier contract in install/self-update (fail closed on either
+authority during migration), and retire the hosted attestation workflow.
+The0.47/0.48 releases are NOT held for this: local qualification remains
+the acceptance authority, GitHub remains the ~ten-minute signer for exactly
+these two releases, and no release ships without complete local gates —
+the installer would refuse its own unsigned bytes regardless.
+
 
 ## Queued milestone website and documentation refresh
 
