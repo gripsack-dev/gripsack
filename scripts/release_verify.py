@@ -233,22 +233,33 @@ class Verification:
     def signed_manifest(self, surface):
         version = self.record["binding"]["tag"].removeprefix("core-v")
         from release_operator import GitHub, validate_run
-        self.run = validate_run(GitHub().api(f"repos/{schema.REPOSITORY}/actions/runs/{self.args.run_id}"), self.record)
-        if self.run.get("status") != "completed" or self.run.get("conclusion") != "success":
-            raise Pending("signing/publishing workflow has not successfully completed")
-        run_path = self.root / "workflow-run.json"
-        run_path.write_bytes(schema.canonical(self.run))
         # These are trusted verifier calls, never candidate programs. Public API
         # selection and source decoding use the installer's existing implementation.
         release = consumer.select_release(version)
-        self.receipt["identity"] = evidence.identity(self.record, self.args.run_id, release["id"])
-        surface["identity"] = self.receipt["identity"]
         assets = consumer.release_assets(release)
         directory = self.root / "downloads"
         directory.mkdir()
         name = f"gripsack-release-{version}.json"
-        require(name in assets and name + ".sigstore.json" in assets, "signed manifest not yet published")
-        # Fetch setup commands are retained separately, not confused with the two
+        hosted_name = name + ".sigstore.json"
+        local_name = name + consumer.LOCAL_SIGNATURE_SUFFIX
+        hosted = hosted_name in assets
+        local = local_name in assets
+        require(name in assets and (hosted or local), "signed manifest not yet published")
+        # Dual accepted authorities: a hosted attestation run or the pinned
+        # owner key. Each present authority is fully validated; neither the
+        # inventory nor the verification admits digest-only substitutes.
+        run_path = self.root / "workflow-run.json"
+        if hosted:
+            require(self.args.run_id is not None, "hosted attestation authority requires --run-id")
+            self.run = validate_run(GitHub().api(f"repos/{schema.REPOSITORY}/actions/runs/{self.args.run_id}"), self.record)
+            if self.run.get("status") != "completed" or self.run.get("conclusion") != "success":
+                raise Pending("signing/publishing workflow has not successfully completed")
+            run_path.write_bytes(schema.canonical(self.run))
+        else:
+            self.run = None
+        self.receipt["identity"] = evidence.identity(self.record, self.args.run_id, release["id"])
+        surface["identity"] = self.receipt["identity"]
+        # Fetch setup commands are retained separately, not confused with the
         # cryptographic verification invocations admitted by the observer.
         setup = self.new_surface("transport_setup")
         path = directory / name
@@ -257,16 +268,26 @@ class Verification:
         evidence.bound_manifest(self.manifest, schema.digest(path), self.record)
         source = consumer.tag_source(release["tag_name"])
         require(source == self.manifest["source"], "release source differs")
-        require(set(assets) == {Path(a["path"]).name for a in self.manifest["artifacts"]} | {name, name + ".sigstore.json"},
-                "release assets inventory differs")
+        expected = {Path(a["path"]).name for a in self.manifest["artifacts"]} | {name}
+        expected |= ({hosted_name} if hosted else set()) | ({local_name} if local else set())
+        require(set(assets) == expected, "release assets inventory differs")
         self.assets = assets
         self.receipt["manifest"] = evidence.reference(self.root, path)
-        signature = directory / (name + ".sigstore.json")
-        self.runner.download(setup, "signature", evidence.public_asset_url(version, signature.name), signature, consumer.MAX_JSON)
-        self.runner.run(setup, "verifier_version", ["gh", "--version"])
-        counter = iter(("attestation_bundle", "attestation_repository"))
-        consumer.verify_attestation(path, self.manifest, signature,
-            command_runner=lambda args: self.runner.run(surface, next(counter), args, timeout=330))
+        if hosted:
+            signature = directory / hosted_name
+            self.runner.download(setup, "signature", evidence.public_asset_url(version, signature.name), signature, consumer.MAX_JSON)
+            self.runner.run(setup, "verifier_version", ["gh", "--version"])
+            counter = iter(("attestation_bundle", "attestation_repository"))
+            consumer.verify_attestation(path, self.manifest, signature,
+                command_runner=lambda args: self.runner.run(surface, next(counter), args, timeout=330))
+        if local:
+            signature = directory / local_name
+            self.runner.download(setup, "signature", evidence.public_asset_url(version, signature.name), signature, consumer.MAX_JSON)
+            self.runner.run(setup, "verifier_version", ["cosign", "--version"])
+            counter = iter(("local_signature",))
+            consumer.local_verifier()
+            consumer.verify_local_signature(path, self.manifest, signature, scratch=self.root / "cosign-local",
+                command_runner=lambda args: self.runner.run(surface, next(counter), args, timeout=330))
         release_path, source_path = self.root / "release.json", self.root / "tag-source.json"
         release_path.write_bytes(schema.canonical(release))
         source_path.write_bytes(schema.canonical(source))
@@ -274,8 +295,9 @@ class Verification:
         proof = retain_source(self.root, self.root / "source-proof", self.args.source, evidence.CORE_RECIPES)
         surface["data"] = {"bundle": evidence.reference(self.root, signature),
                            "release": evidence.reference(self.root, release_path),
-                           "tag_source": evidence.reference(self.root, source_path), "source_proof": proof,
-                           "workflow_run": evidence.reference(self.root, run_path)}
+                           "tag_source": evidence.reference(self.root, source_path), "source_proof": proof}
+        if hosted:
+            surface["data"]["workflow_run"] = evidence.reference(self.root, run_path)
         # Transport setup is a retained diagnostic, not a caller-created surface.
         setup_path = self.root / "transport-setup.json"
         setup_path.write_bytes(schema.canonical(setup))
@@ -464,7 +486,7 @@ class Verification:
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", type=Path, required=True, help="durable release_operator request JSON")
-    parser.add_argument("--run-id", type=int, required=True)
+    parser.add_argument("--run-id", type=int, help="hosted signing run; required only for the hosted attestation authority")
     parser.add_argument("--source", type=Path, required=True, help="exact clean frozen source checkout")
     parser.add_argument("--example", type=Path, required=True, help="qualified pinned example-env-typescript checkout")
     parser.add_argument("--output", type=Path, required=True, help="new retained private evidence directory")

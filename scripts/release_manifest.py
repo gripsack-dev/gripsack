@@ -8,6 +8,7 @@ The independent local-qualification witness admits original private receipts.
 from __future__ import annotations
 
 import argparse
+import base64
 import gzip
 import hashlib
 import json
@@ -224,6 +225,60 @@ def validate_manifest(value):
         require(package["path"].endswith(extension), "wrong publication payload format")
     require([p["name"] for p in value["packages"] if p["registry"] == "npm"] == ["@gripsack/core"], "missing or foreign SDK")
     package_order(value["packages"])
+    return value
+
+LOCAL_SIGNATURE_FORMAT = "gripsack.local-signature.v1"
+LOCAL_SIGNATURE_FIELDS = ("format", "repository", "policy", "manifest_sha256", "source_commit",
+                          "tag", "candidate_id", "key_fingerprint")
+MAX_PUBLIC_KEY_BYTES = 8192
+MAX_SIGNATURE_BYTES = 8192
+
+
+def signature_payload(manifest, manifest_sha256, key_fingerprint):
+    """The exact identity a gripsack.local-signature.v1 document must bind.
+
+    Every field is bound inside the signed bytes; a digest-only claim over the
+    manifest is never a valid owner-key signature subject.
+    """
+    return {"format": LOCAL_SIGNATURE_FORMAT, "repository": manifest["repository"],
+            "policy": manifest["policy"], "manifest_sha256": manifest_sha256,
+            "source_commit": manifest["source"]["commit"],
+            "tag": manifest["signer"]["ref"].removeprefix("refs/tags/"),
+            "candidate_id": manifest["candidate_id"], "key_fingerprint": key_fingerprint}
+
+
+def key_fingerprint(public_key):
+    require(isinstance(public_key, str) and public_key.isascii()
+            and public_key == public_key.strip()
+            and public_key.startswith("-----BEGIN PUBLIC KEY-----")
+            and public_key.endswith("-----END PUBLIC KEY-----")
+            and len(public_key.encode()) <= MAX_PUBLIC_KEY_BYTES, "unsupported owner public key")
+    return hashlib.sha256(public_key.encode()).hexdigest()
+
+
+def validate_signature_document(value):
+    keys(value, {"format", "payload", "public_key", "key_fingerprint", "signature"})
+    require(value["format"] == LOCAL_SIGNATURE_FORMAT, "unsupported local signature format")
+    payload = value["payload"]
+    keys(payload, LOCAL_SIGNATURE_FIELDS)
+    require(payload["format"] == LOCAL_SIGNATURE_FORMAT, "signed payload omits its format")
+    require(payload["repository"] == REPOSITORY and payload["policy"] == POLICY,
+            "foreign local signature authority")
+    for field in ("manifest_sha256", "candidate_id", "key_fingerprint"):
+        require(isinstance(payload[field], str) and HEX64.fullmatch(payload[field]),
+                f"invalid {field} in signed payload")
+    require(isinstance(payload["source_commit"], str) and HEX40.fullmatch(payload["source_commit"]),
+            "invalid signed source commit")
+    require(isinstance(payload["tag"], str) and re.fullmatch(r"core-v[0-9]+\.[0-9]+\.[0-9]+", payload["tag"]),
+            "invalid signed release tag")
+    require(isinstance(value["public_key"], str)
+            and key_fingerprint(value["public_key"]) == value["key_fingerprint"] == payload["key_fingerprint"],
+            "signature key fingerprint mismatch")
+    signature = value["signature"]
+    require(isinstance(signature, str) and 16 <= len(signature) <= MAX_SIGNATURE_BYTES
+            and re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", signature) is not None
+            and base64.b64encode(base64.b64decode(signature, validate=True)).decode() == signature,
+            "invalid encoded signature")
     return value
 
 

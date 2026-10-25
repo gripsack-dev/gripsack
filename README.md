@@ -53,6 +53,19 @@ Your first eval downloads the pinned, hash-verified Deno runtime
 (~40MB, once, into gripsack's own cache) — eval runs sandboxed in it.
 
 
+### Release signing authority
+
+Releases from 0.47 through 0.48 ship under the hosted GitHub attestation
+workflow. From 0.49 the owner signs each qualified release manifest offline
+with a dedicated signing host (`scripts/release_local_sign.py`; cosign key,
+never in this repository). The installer and `grip self-update` accept either
+authority during migration — each one fully verified, never a bare checksum —
+and refuse any release without a signature authority before any payload
+download.
+Verifying hosts provision the pinned owner public key as
+`GRIPSACK_OWNER_SIGNER_KEY` (absolute path), exactly as they provision the
+GitHub CLI for the hosted authority.
+
 ## What it does
 
 - **Modules** describe everything: how to get a tool, build it, where

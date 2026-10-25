@@ -282,6 +282,46 @@ the acceptance authority, GitHub remains the ~ten-minute signer for exactly
 these two releases, and no release ships without complete local gates —
 the installer would refuse its own unsigned bytes regardless.
 
+#### Local signer contract (implemented on `signer/local`)
+
+Trust chain: local qualification admits the bundle (`release_manifest.validate_bundle`)
+→ the owner key on the dedicated signer host signs a bounded identity document
+→ installers/self-update and the release observer fully verify that document
+(pinned key, identity binding, cosign cryptography) with the hosted GitHub
+attestation as a coexisting, independently fully-validated authority.
+
+- Signature document `gripsack.local-signature.v1` (schema in
+  `scripts/release_manifest.py`): a strict object `{format, payload,
+  public_key, key_fingerprint, signature}` whose `payload` binds
+  `format, repository, policy, manifest_sha256, source_commit, tag,
+  candidate_id, key_fingerprint`; `key_fingerprint` is sha256 of the PEM
+  public key and must be self-consistent across the document; `signature` is
+  canonical base64 over the canonical JSON payload bytes. Digest-only claims
+  are structurally invalid.
+- `scripts/release_local_sign.py` (signer host only): refuses any bundle that
+  fails full admission, refuses a nominated identity (manifest sha256, source
+  commit, tag, candidate id) that differs from the admitted bundle, refuses
+  relative keys or keys inside the bundle, emits a deterministic document via
+  `cosign sign-blob --tlog-upload=false`, and self-verifies before handoff.
+- Verifiers (`release_consumer.py`, reused by install.sh and the embedded
+  self-update verifier): `GRIPSACK_OWNER_SIGNER_KEY` names the pinned owner
+  public key (absolute path, host-provisioned like the GitHub CLI); wrong key
+  or unbound identity refuses before the cosign boundary; the cosign
+  `verify-blob --insecure-ignore-tlog` call is the only cryptographic
+  authority, and its scratch directory is stable so retained evidence replays
+  the exact recorded command.
+- Dual authority in `admit`/`release_verify`/`release_evidence`: every
+  signature asset present must fully validate; a release with no signature
+  asset refuses before any payload transport; hosted-only releases keep the
+  frozen 0.47/0.48 semantics.
+
+Signer-host provisioning (mini PC): install cosign >= 2.0; generate the owner
+key pair offline (`cosign generate-key-pair`, password in the owner's password
+manager; keep `cosign.key` on that host only, never in the repository or any
+bundle); export `cosign.pub` and pin it on every verifying host as
+`GRIPSACK_OWNER_SIGNER_KEY=/etc/gripsack/owner-signer.pub` (or equivalent
+absolute path). Record the key fingerprint in the release records.
+
 
 ## Queued milestone website and documentation refresh
 

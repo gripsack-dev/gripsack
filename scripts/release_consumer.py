@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Fail-closed release admission shared by installer and embedded self-update.
 
-GitHub CLI is an independently provisioned trust dependency, never bootstrapped
+The GitHub CLI and cosign are independently provisioned trust dependencies
+(hosted attestation and pinned owner key respectively), never bootstrapped
 from the candidate. Fixtures may replace its process boundary, but cannot serve
 as evidence of cryptographic verification. No downloaded program is executed.
 """
@@ -29,6 +30,9 @@ REPOSITORY = "gripsack-dev/gripsack"
 API = f"https://api.github.com/repos/{REPOSITORY}"
 WORKFLOW = ".github/workflows/release-core.yml"
 PREDICATE = "https://gripsack.dev/attestations/local-qualification/v1"
+LOCAL_SIGNATURE_SUFFIX = ".local-signature.json"
+OWNER_KEY_ENV = "GRIPSACK_OWNER_SIGNER_KEY"
+MAX_OWNER_KEY_BYTES = manifest_schema.MAX_PUBLIC_KEY_BYTES
 TARGET = "x86_64-unknown-linux-musl"
 MAX_JSON = 8 * 1024 * 1024
 MAX_ARTIFACT = 1024 * 1024 * 1024
@@ -91,6 +95,78 @@ def verifier():
     for flag in ("--source-ref", "--source-digest", "--signer-digest", "--cert-identity",
                  "--predicate-type", "--deny-self-hosted-runners"):
         require(flag in help_text, f"GitHub CLI verifier lacks required capability {flag}")
+
+def local_verifier():
+    require(shutil.which("cosign") is not None,
+            "cosign >= 2.0.0 with offline key verification is required; no unsigned fallback")
+    version = command(["cosign", "version"])
+    match = re.search(r"v?(\d+)\.(\d+)\.(\d+)", version)
+    require(match is not None and tuple(map(int, match.groups())) >= (2, 0, 0),
+            "cosign >= 2.0.0 is required for offline owner-key verification")
+    help_text = command(["cosign", "verify-blob", "--help"])
+    for flag in ("--key", "--signature", "--insecure-ignore-tlog"):
+        require(flag in help_text, f"cosign verifier lacks required capability {flag}")
+
+
+def pinned_owner_key(owner_key=None):
+    """The pinned owner public key is an independently provisioned trust root.
+
+    Like the GitHub CLI, cosign is provisioned by the verifying host, never
+    bootstrapped from the candidate release. The pinned key path must be
+    absolute; the private half exists only on the dedicated signer host.
+    """
+    if owner_key is None:
+        named = os.environ.get(OWNER_KEY_ENV, "")
+        require(named, f"{OWNER_KEY_ENV} must name the pinned owner public key; no digest-only fallback")
+        path = Path(named)
+        require(path.is_absolute(), "pinned owner public key path must be absolute")
+        path = manifest_schema.regular(path)
+        with path.open("rb") as stream:
+            owner_key = stream.read(MAX_OWNER_KEY_BYTES + 1).decode("ascii")
+    require(isinstance(owner_key, str) and len(owner_key.encode()) <= MAX_OWNER_KEY_BYTES,
+            "pinned owner public key exceeds bound")
+    return owner_key.strip()
+
+
+def verify_local_signature(path: Path, manifest, signature: Path, *, command_runner=None,
+                           owner_key=None, scratch=None):
+    """Full owner-key authority: pin check, identity binding, then cryptography.
+
+    A wrong key, a foreign authority or any unbound identity field refuses
+    before the cryptographic boundary; no checksum ever substitutes. With a
+    ``scratch`` directory the cosign invocation is byte-stable, so retained
+    evidence can replay the exact recorded command.
+    """
+    pinned = pinned_owner_key(owner_key)
+    fingerprint = manifest_schema.key_fingerprint(pinned)
+    document = manifest_schema.validate_signature_document(
+        manifest_schema.load_json(manifest_schema.regular(signature)))
+    require(document["public_key"] == pinned
+            and document["payload"]["key_fingerprint"] == fingerprint,
+            "local signature is not by the pinned owner key")
+    expected = manifest_schema.signature_payload(manifest, manifest_schema.digest(path), fingerprint)
+    require(document["payload"] == expected,
+            "local signature does not bind the admitted release identity")
+    runner = command if command_runner is None else command_runner
+    if scratch is None:
+        temporary = tempfile.TemporaryDirectory(prefix="gripsack-local-signature-")
+        root = Path(temporary.name)
+    else:
+        temporary = None
+        root = Path(scratch)
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        (root / "payload.json").write_bytes(manifest_schema.canonical(document["payload"]))
+        (root / "owner.pub").write_text(pinned + "\n")
+        (root / "signature.b64").write_text(document["signature"] + "\n")
+        output = runner(["cosign", "verify-blob", "--key", str(root / "owner.pub"),
+                         "--signature", str(root / "signature.b64"), "--insecure-ignore-tlog",
+                         str(root / "payload.json")])
+        require("Verified OK" in output, "owner key signature verification failed")
+    finally:
+        if temporary is not None:
+            temporary.cleanup()
+    return document
 
 
 def platform_check():
@@ -227,24 +303,41 @@ def extract_core(archive: Path, version: str, destination: Path):
 
 def admit(directory: Path, version=None, check_only=False):
     platform_check()
-    verifier()
     release = select_release(version)
     version = release["tag_name"].removeprefix("core-v")
     name = f"gripsack-release-{version}.json"
     assets = release_assets(release)
-    require(name in assets and f"{name}.sigstore.json" in assets,
+    # Dual accepted authorities during migration: the hosted GitHub attestation
+    # or the pinned owner-key local signature. Both are fully validated when
+    # present; neither is substitutable by digest-only claims. A release with
+    # no signature authority at all refuses before any payload transport.
+    hosted_name = f"{name}.sigstore.json"
+    local_name = name + LOCAL_SIGNATURE_SUFFIX
+    hosted = hosted_name in assets
+    local = local_name in assets
+    require(name in assets and (hosted or local),
             "release has no signed qualification manifest; no historical fallback")
+    if hosted:
+        verifier()
+    if local:
+        local_verifier()
     base = f"https://github.com/{REPOSITORY}/releases/download/core-v{version}"
     path = directory / name
     download(f"{base}/{name}", path, MAX_JSON)
     manifest = manifest_schema.validate_manifest(manifest_schema.load_json(path))
     require(manifest["compatible"]["core"] == version, "manifest core version mismatch")
     require(manifest["source"] == tag_source(release["tag_name"]), "tag source identity mismatch")
-    expected = {Path(item["path"]).name for item in manifest["artifacts"]} | {name, f"{name}.sigstore.json"}
+    expected = {Path(item["path"]).name for item in manifest["artifacts"]} | {name}
+    expected |= ({hosted_name} if hosted else set()) | ({local_name} if local else set())
     require(set(assets) == expected, "missing or extra public release assets")
-    bundle = directory / f"{name}.sigstore.json"
-    download(f"{base}/{bundle.name}", bundle, MAX_JSON)
-    verify_attestation(path, manifest, bundle)
+    if hosted:
+        bundle = directory / hosted_name
+        download(f"{base}/{bundle.name}", bundle, MAX_JSON)
+        verify_attestation(path, manifest, bundle)
+    if local:
+        signature = directory / local_name
+        download(f"{base}/{signature.name}", signature, MAX_JSON)
+        verify_local_signature(path, manifest, signature)
     if check_only:
         return {"version": version, "manifest_sha256": manifest_schema.digest(path)}
     for item in manifest["artifacts"]:

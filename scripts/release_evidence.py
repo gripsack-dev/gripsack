@@ -121,8 +121,10 @@ def resolve(root, item, maximum=schema.MAX_FILE_BYTES):
 
 
 def identity(record, run_id, release_id):
-    require(type(run_id) is int and run_id > 0 and type(release_id) is int and release_id > 0,
-            "invalid workflow/release identity")
+    # run_id is None only for the local owner-key authority, which has no
+    # hosted signing run to observe.
+    require(run_id is None or (type(run_id) is int and run_id > 0), "invalid workflow identity")
+    require(type(release_id) is int and release_id > 0, "invalid release identity")
     return {"request_id": record["request_id"], "binding": record["binding"],
             "run_id": run_id, "release_id": release_id}
 
@@ -243,10 +245,26 @@ def verify_completion(path, expected_digest, record, run):
     schema.keys(receipt, {"format", "identity", "status", "manifest", "surfaces"})
     require(receipt["format"] == FORMAT and receipt["status"] == "complete",
             "release consumers are pending or unknown")
+    # The signing authority is observed from the retained signature document
+    # itself: the hosted GitHub attestation or the pinned owner key. A hosted
+    # signing run exists only for the hosted authority.
+    signed_ref = receipt["surfaces"].get("signed_manifest")
+    require(isinstance(signed_ref, dict) and isinstance(signed_ref.get("path"), str),
+            "missing or invalid signed manifest reference")
+    signed_surface = schema.load_json(schema.regular(root / signed_ref["path"]))
+    bundle_ref = signed_surface.get("data", {}).get("bundle") if isinstance(signed_surface, dict) else None
+    require(isinstance(bundle_ref, dict) and isinstance(bundle_ref.get("path"), str),
+            "missing or invalid signature document reference")
+    local = Path(bundle_ref["path"]).name.endswith(consumer.LOCAL_SIGNATURE_SUFFIX)
     ident = receipt["identity"]
-    require(ident == identity(record, run["id"], ident["release_id"]), "completion release identity mismatch")
-    require(run.get("status") == "completed" and run.get("conclusion") == "success",
-            "completion cannot override unfinished or unsuccessful workflow")
+    if local:
+        require(run is None and ident["run_id"] is None, "local owner-key authority has no hosted signing run")
+        require(ident == identity(record, None, ident["release_id"]), "completion release identity mismatch")
+    else:
+        require(run is not None, "hosted attestation authority requires the signing run observation")
+        require(ident == identity(record, run["id"], ident["release_id"]), "completion release identity mismatch")
+        require(run.get("status") == "completed" and run.get("conclusion") == "success",
+                "completion cannot override unfinished or unsuccessful workflow")
     manifest_path = resolve(root, receipt["manifest"], schema.MAX_JSON_BYTES)
     manifest = schema.validate_manifest(schema.load_json(manifest_path))
     bound_manifest(manifest, receipt["manifest"]["sha256"], record)
@@ -261,11 +279,14 @@ def verify_completion(path, expected_digest, record, run):
         surfaces[name] = surface
     version = manifest["compatible"]["core"]
     signed = surfaces["signed_manifest"]
-    schema.keys(signed["data"], {"bundle", "release", "tag_source", "source_proof", "transport", "workflow_run"})
-    from release_operator import validate_run
-    observed_run = validate_run(schema.load_json(resolve(root, signed["data"]["workflow_run"])), record)
-    require(observed_run["id"] == run["id"] and observed_run.get("status") == "completed"
-            and observed_run.get("conclusion") == "success", "retained workflow observation differs")
+    if local:
+        schema.keys(signed["data"], {"bundle", "release", "tag_source", "source_proof", "transport"})
+    else:
+        schema.keys(signed["data"], {"bundle", "release", "tag_source", "source_proof", "transport", "workflow_run"})
+        from release_operator import validate_run
+        observed_run = validate_run(schema.load_json(resolve(root, signed["data"]["workflow_run"])), record)
+        require(observed_run["id"] == run["id"] and observed_run.get("status") == "completed"
+                and observed_run.get("conclusion") == "success", "retained workflow observation differs")
     tree, recipes = source_proof(root, signed["data"]["source_proof"], manifest["source"]["commit"], CORE_RECIPES)
     require(tree == manifest["source"]["tree"], "recipe source tree differs")
     release = schema.load_json(resolve(root, signed["data"]["release"], schema.MAX_JSON_BYTES))
@@ -285,17 +306,26 @@ def verify_completion(path, expected_digest, record, run):
     require(transport_steps["signature"][0]["argv"] == download_argv(public_asset_url(version, signature.name),
                                                                    signature, consumer.MAX_JSON),
             "signature transport was not observed")
-    argv(transport_steps["verifier_version"][0], ["gh", "--version"])
-    signed_steps = steps(root, signed, {"attestation_bundle", "attestation_repository"})
-    recorded = iter(signed_steps[name] for name in ("attestation_bundle", "attestation_repository"))
+    argv(transport_steps["verifier_version"][0], ["cosign", "--version"] if local else ["gh", "--version"])
+    if local:
+        names = ("local_signature",)
+    else:
+        names = ("attestation_bundle", "attestation_repository")
+    signed_steps = steps(root, signed, names)
+    recorded = iter(signed_steps[name] for name in names)
     def verify_command(args):
         entry, _ = next(recorded)
         require(entry["argv"] == list(map(str, args)), "signature verifier command differs")
-        # Never treat retained gh JSON as signature authority. Re-execute the
-        # independently provisioned verifier on the actual manifest and bundle.
+        # Never treat retained verifier JSON as signature authority. Re-execute
+        # the independently provisioned verifier on the actual bytes.
         return consumer.command(args)
-    consumer.verifier()
-    consumer.verify_attestation(manifest_path, manifest, signature, command_runner=verify_command)
+    if local:
+        consumer.local_verifier()
+        consumer.verify_local_signature(manifest_path, manifest, signature, command_runner=verify_command,
+                                        scratch=root / "cosign-local")
+    else:
+        consumer.verifier()
+        consumer.verify_attestation(manifest_path, manifest, signature, command_runner=verify_command)
 
     assets = surfaces["downloaded_assets"]
     schema.keys(assets["data"], {"artifacts", "core"})
