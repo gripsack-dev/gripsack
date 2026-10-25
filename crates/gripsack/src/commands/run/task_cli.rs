@@ -223,9 +223,18 @@ pub(super) fn finish(report: gripsack_exec::TaskReport, json: bool) -> ExitCode 
     print_report(&report, json);
     if matches!(report.status, TaskStatus::Failed | TaskStatus::Cancelled)
         && let Some(receipt) = report.last_receipt()
-        && (receipt.signal.is_some() || receipt.exit_code.is_some_and(|code| code != 0))
+        && receipt.disposition == gripsack_process::ProcessDisposition::Exited
     {
-        return propagate(receipt, report.root_retained);
+        // A task is a graph invocation, not an exec-style process replacement.
+        // Report a child's signal numerically; never crash the CLI itself.
+        // Supervisor cancellation/deadline/cleanup retain their own authority,
+        // even when bounded cleanup reaped the child with SIGKILL.
+        if let Some(signal) = receipt.signal {
+            return ExitCode::from(128 + signal as u8);
+        }
+        if let Some(code) = receipt.exit_code.filter(|code| *code != 0) {
+            return ExitCode::from(code as u8);
+        }
     }
     ExitCode::from(report.status.exit_code())
 }

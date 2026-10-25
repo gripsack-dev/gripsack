@@ -139,7 +139,7 @@ pub(super) fn run_context(
         .as_ref()
         .map(|value| {
             value
-                .path()
+                .pinned_path()
                 .to_str()
                 .ok_or_else(|| io::Error::other("file-check subject is not UTF-8"))
         })

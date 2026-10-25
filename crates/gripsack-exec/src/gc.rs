@@ -43,7 +43,11 @@ pub fn gc(
     // deletion set derives from this inventory, and "cannot read"
     // must never read as "nothing referenced". An unreadable journal
     // fails the same way (pending_recovery errors).
-    let home_cap = gripsack_fs::open_or_create(home)?;
+    let home_cap = if dry_run {
+        gripsack_fs::open(home)?
+    } else {
+        gripsack_fs::open_or_create(home)?
+    };
     let pending = store::journal::pending_recovery(&home_cap)?;
     let activation_pending = store::activation::has_pending(&home_cap)?;
     let generation_directory = store::generations::GenerationDirectory::open(&home_cap)?;
@@ -97,7 +101,9 @@ pub fn gc(
         gripsack_policy::retention::plan_prune(generations, current, keep)
             .into_iter()
             .collect();
-    let manifests = directory_roots::admit(&generation_directory, &home_cap, home, &mut pruned)?;
+    let manifests =
+        directory_roots::admit(&generation_directory, &home_cap, home, &mut pruned, dry_run)?;
+    let retirements = directory_roots::pending(&generation_directory, &home_cap, home, dry_run)?;
     report.generations_removed = pruned.iter().copied().collect();
 
     // Root computation (the trusted adapter around the proven deletion
@@ -140,9 +146,10 @@ pub fn gc(
     // before the first deletion. Effects use the very same pinned directories.
     if !dry_run {
         generation_directory.prune(&report.generations_removed)?;
-        // Receipt namespaces are retired only AFTER their generations are
-        // durably pruned; a crash must not strand a still-retained target.
-        directory_roots::retire(&manifests, &pruned)?;
+        // The durable rename preserves each pruned manifest as retirement
+        // authority. Retries include tombstones from earlier interrupted runs.
+        directory_roots::retire(&generation_directory, &manifests, &pruned, &retirements)?;
+        generation_directory.cleanup_retired()?;
     }
     store_plan.collect(dry_run, &mut report)?;
     prior_plan.collect(dry_run, &mut report)?;

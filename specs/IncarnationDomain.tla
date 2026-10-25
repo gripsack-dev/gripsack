@@ -9,6 +9,7 @@ CONSTANTS IncarnationIds, IncarnationRoot, IncarnationPredecessor,
           IncarnationStagePaths, IncarnationStageName, IncarnationStageAncestors, IncarnationInitialDeclarations,
           IncarnationNoReceipt
 IncarnationNone == <<"no-identity">>
+NoReceipt == <<"no-receipt">>
 IncarnationOwned(identity) == <<"directory", identity>>
 IncarnationForeign(root) == <<"foreign", root>>
 IncarnationBorrowed(identity) == <<"borrowed-directory", identity>>

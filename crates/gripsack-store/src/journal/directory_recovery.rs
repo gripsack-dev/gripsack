@@ -111,6 +111,9 @@ pub(super) fn recover_before_leaves(
     home: &Dir,
     retain_prepared: bool,
 ) -> io::Result<()> {
+    // Exchange targets, like Reactivate targets below, belong to retained
+    // history rather than this run's unpublished preparation. Never apply
+    // retain_prepared=false as deletion authority for those incarnations.
     super::directory_exchange::recover(records, entries, home)?;
     for (_, record) in records {
         if let Direction::Evolve { original } = &record.direction {

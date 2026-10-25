@@ -244,6 +244,30 @@ permission to call Gripsack done with hidden follow-ups.
   `grip update`, not by rewriting its fingerprints. Its resolution records and
   package archives remained identical. Final frozen installed-consumer acceptance
   and immutable external source pins still belong to candidate qualification.
+- Independent reviewer agents audited the frozen packet before release. The
+  migration review found a verify-then-reopen directory capability race,
+  foreign-content staging rename races, a generation-prune/retirement crash
+  window, and an exchange cleanup gap it could not reach. The capability race
+  was reproduced by probe (foreign capability returned under concurrent
+  component swaps); identity is now verified on the capability actually
+  opened (`DirectoryIdentity::open_verified`) across every journal walk, and
+  the probe passed clean over130630 swaps/32052 accepted traversals.
+  Foreign-content staging now blocks with explicit preserve-and-resolve
+  guidance and a regression proving manual resolution resumes recovery. GC
+  retirement is tombstoned (`.retiring-N`), descendant-first and resumable,
+  so a crash never strands staging authority. The exchange gap was refuted:
+  targets are retained-only; the contract is documented with a regression
+  pinning retention under `retain_prepared=false`.
+- The consumer review found file checks hard-failing under symlinked
+  store-home ancestors (subjects now bind the canonical parent, with
+  parent/leaf retargeting still refused) and crash-signal task deaths
+  misreported as operator cancellation (only HUP/INT/QUIT/TERM cancel now;
+  other terminating signals fail with truthful receipts and preserved
+  Indeterminate authority). Deterministic regressions accompany each fix.
+- The frozen candidate's dependency-audit gate failed on RUSTSEC-2026-0385
+  (`ctutils0.4.2`); both dependency locks advanced to0.4.4. ba948bc and
+  candidate8fbee020… are therefore ineligible for release; the corrected
+  source requalifies from a new frozen candidate under the same authority.
 
 
 ## Queued milestone website and documentation refresh

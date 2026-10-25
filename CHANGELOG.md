@@ -79,6 +79,8 @@ User-visible changes per release. Design archaeology lives in
 - Stage Rustls0.23.46 and ZIP9.0.5 in both the core and Conda helper dependency
   graphs. Existing archive containment, CRC, resource and permission checks
   remain independent; malformed ZIP filenames fail before materialization.
+- Advance ctutils0.4.4 in the core and Conda helper dependency graphs for
+  RUSTSEC-2026-0385 (non-constant-time mask generation and `u128` comparisons).
 - Keep the helper's compatible Rattler/Pixi family with an attributed upstream
   ZIP9 streaming backport. Helper distributions include its BSD license notice.
 - Update certificate verification to rustls-webpki0.103.16 and trusted roots to

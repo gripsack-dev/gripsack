@@ -27,6 +27,7 @@ pub(in crate::workspace) struct FileCheckInputs {
 
 pub(in crate::workspace) struct Observation {
     path: PathBuf,
+    pinned: PathBuf,
     resolved: PathBuf,
     entry: PayloadHash,
     target_content: Option<PayloadHash>,
@@ -91,13 +92,15 @@ impl Observation {
         let parent = path
             .parent()
             .ok_or_else(|| io::Error::other("file-check subject has no parent"))?;
-        if parent.canonicalize()? != parent {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "file-check destination parent changed its canonical identity",
-            ));
-        }
-        let resolved = path.canonicalize()?;
+        // Retain the declared spelling for revalidation, but bind the command
+        // to its admitted parent. Store homes and temporary roots may have
+        // stable symlink ancestors; those aliases confer no additional authority.
+        let canonical_parent = parent.canonicalize()?;
+        let pinned = canonical_parent.join(
+            path.file_name()
+                .ok_or_else(|| io::Error::other("file-check subject has no filename"))?,
+        );
+        let resolved = pinned.canonicalize()?;
         if !std::fs::symlink_metadata(&resolved)?.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -107,27 +110,38 @@ impl Observation {
         // Both the destination entry (including symlink spelling) and the
         // dereferenced bytes/mode participate. Shared managed-block destinations
         // deliberately observe the whole live file, never a cached merged body.
-        let entry = store::canonical_file_hash(&path)?;
-        let target_content = if std::fs::symlink_metadata(&path)?.file_type().is_symlink() {
+        let entry = store::canonical_file_hash(&pinned)?;
+        let target_content = if std::fs::symlink_metadata(&pinned)?.file_type().is_symlink() {
             Some(store::canonical_file_hash(&resolved)?)
         } else {
             None
         };
+        if parent.canonicalize()? != canonical_parent || pinned.canonicalize()? != resolved {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "file-check subject changed during validation",
+            ));
+        }
         Ok(Self {
             path,
+            pinned,
             resolved,
             entry,
             target_content,
         })
     }
 
-    pub(in crate::workspace) fn path(&self) -> &Path {
-        &self.path
+    /// The execution-bound spelling: canonical parent joined to the original
+    /// leaf. Distinct from `path`, the declared spelling re-observed by
+    /// `unchanged` to detect ancestor retargeting.
+    pub(in crate::workspace) fn pinned_path(&self) -> &Path {
+        &self.pinned
     }
 
     pub(in crate::workspace) fn unchanged(&self) -> io::Result<()> {
         let after = Self::capture(self.path.clone())?;
-        if after.resolved != self.resolved
+        if after.pinned != self.pinned
+            || after.resolved != self.resolved
             || after.entry != self.entry
             || after.target_content != self.target_content
         {

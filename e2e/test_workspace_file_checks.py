@@ -100,6 +100,70 @@ def test_source_and_rendered_checks_observe_different_captured_bytes(sandbox):
     assert selected(sandbox) != original
 
 
+@pytest.mark.parametrize("alias_kind", ["home", "tmp"])
+@pytest.mark.parametrize("subject", ["source", "rendered"])
+def test_file_checks_accept_stable_store_and_temporary_aliases(sandbox, monkeypatch, alias_kind, subject):
+    real = sandbox / "physical-root"
+    real.mkdir()
+    alias = sandbox / "declared-root"
+    alias.symlink_to(real, target_is_directory=True)
+    if alias_kind == "home":
+        monkeypatch.setenv("GRIPSACK_HOME", str(alias / "gripsack"))
+    else:
+        monkeypatch.setenv("TMPDIR", str(alias))
+    repo = sandbox / "checks"
+    expected = "value={{ value }}" if subject == "source" else "value=new"
+    declare(repo, ["/usr/bin/grep", "-Fx", expected, None], subject=subject)
+    (repo / "template").write_text("value={{ value }}\n")
+    run(repo, "apply")
+    assert (sandbox / ".file-checked").read_text() == "value=new\n"
+    run(repo, "apply")
+    if subject == "source":
+        # Replay retained source evidence through the same declared store alias.
+        declare(repo, ["/usr/bin/grep", "-Fx", expected, None],
+                subject="source", stage="post_activate")
+        run(repo, "apply")
+        store_home = alias / "gripsack" if alias_kind == "home" else sandbox / ".local/share/gripsack"
+        original = (store_home / "current").readlink()
+        declare(repo, ["/usr/bin/true"], source=False, checks=False, value="replacement")
+        run(repo, "apply")
+        (repo / "template").unlink()
+        (repo / "gripsack.ts").unlink()
+        run(repo, "rollback", original.name)
+        assert (sandbox / ".file-checked").read_text() == "value=new\n"
+
+
+def test_file_check_store_alias_retarget_refuses_candidate(sandbox, monkeypatch):
+    import sys
+
+    real = sandbox / "physical-store"
+    real.mkdir()
+    alias = sandbox / ".local/share/gripsack"
+    alias.parent.mkdir(parents=True)
+    alias.symlink_to(real, target_is_directory=True)
+    replacement = sandbox / "replacement-store"
+    monkeypatch.setenv("GRIPSACK_HOME", str(alias))
+    repo = sandbox / "checks"
+    declare(repo, ["/usr/bin/true"], source=False, checks=False, value="old")
+    run(repo, "apply")
+    previous = selected(sandbox)
+    # The real validator retargets only after observation and command binding.
+    # Copy identical leaves: refusal must be about identity, not changed bytes.
+    declare(repo, [sys.executable, "-c",
+                  "import pathlib,shutil,sys; "
+                  "assert pathlib.Path(sys.argv[1]).read_text() == 'new'; "
+                  "alias=pathlib.Path(sys.argv[2]); replacement=pathlib.Path(sys.argv[3]); "
+                  "shutil.copytree(alias.resolve(),replacement,symlinks=True); "
+                  "alias.unlink(); alias.symlink_to(replacement,target_is_directory=True)",
+                  None, str(alias), str(replacement)], source=False, value="new")
+    result = grip("apply", cwd=repo)
+    assert alias.resolve() == replacement
+    assert result.returncode != 0
+    assert "subject changed" in result.stderr
+    assert selected(sandbox) == previous
+    assert (sandbox / ".file-checked").read_text() == "old"
+
+
 def test_missing_check_runtime_is_preparation_failure(sandbox):
     repo = sandbox / "checks"
     declare(repo, ["/usr/bin/true"], source=False, checks=False, value="old")

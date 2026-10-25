@@ -144,8 +144,7 @@ pub fn plans(run: &JournalRun<'_>, destinations: &[PathBuf]) -> io::Result<Vec<E
                 .file_name()
                 .ok_or_else(|| invalid("missing root name"))?,
         );
-        plan.target.directories[Path::new("")].verify(&outer, root_name)?;
-        let root = gripsack_fs::open_dir_nofollow(&outer, root_name)?;
+        let root = plan.target.directories[Path::new("")].open_verified(&outer, root_name)?;
         let mut ordered: Vec<_> = needed
             .into_iter()
             .filter(|path| !path.as_os_str().is_empty())
@@ -286,8 +285,7 @@ pub fn finish(
         }
         let path = before.transition.destination.join(relative);
         let (parent, name) = before.transition.leaf_parent(&path)?;
-        before.transition.directories[relative].verify(&parent, &name)?;
-        let directory = gripsack_fs::open_dir_nofollow(&parent, &name)?;
+        let directory = before.transition.directories[relative].open_verified(&parent, &name)?;
         let mut empty_after_children = true;
         for entry in directory.read_dir(".")? {
             if !retiring.contains(&relative.join(entry?.file_name())) {

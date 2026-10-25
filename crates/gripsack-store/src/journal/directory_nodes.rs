@@ -45,8 +45,7 @@ pub(super) fn stage<'a>(receipt: &'a DirectoryTransition, relative: &Path) -> io
 }
 
 pub(super) fn empty(directory: &Dir, name: &Path, identity: DirectoryIdentity) -> io::Result<()> {
-    identity.verify(directory, name)?;
-    let node = gripsack_fs::open_dir_nofollow(directory, name)?;
+    let node = identity.open_verified(directory, name)?;
     match node.read_dir(".")?.next() {
         None => Ok(()),
         Some(Err(error)) => Err(error),
@@ -77,6 +76,57 @@ enum Installation {
     Original,
 }
 
+fn content_conflict(error: io::Error, location: &Path) -> io::Error {
+    if error.kind() != io::ErrorKind::DirectoryNotEmpty {
+        return error;
+    }
+    io::Error::new(
+        error.kind(),
+        format!(
+            "directory recovery blocked by foreign or remaining children at {}; \
+             contents and recovery evidence are preserved; stop concurrent writers, \
+             move the conflicting children to a safe location outside the managed tree \
+             and its staging directories, leave this directory inode in place, \
+             then retry the failed apply or rollback",
+            location.display()
+        ),
+    )
+}
+
+#[cfg(test)]
+thread_local! {
+    static BEFORE_RENAME: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(super) struct RenameHook;
+
+#[cfg(test)]
+impl Drop for RenameHook {
+    fn drop(&mut self) {
+        BEFORE_RENAME.with(|hook| {
+            hook.borrow_mut().take();
+        });
+    }
+}
+
+#[cfg(test)]
+pub(super) fn before_rename(perform: impl FnOnce() + 'static) -> RenameHook {
+    BEFORE_RENAME.with(|hook| {
+        assert!(hook.borrow_mut().replace(Box::new(perform)).is_none());
+    });
+    RenameHook
+}
+
+#[cfg(test)]
+fn rename_checkpoint() {
+    let hook = BEFORE_RENAME.with(|hook| hook.borrow_mut().take());
+    if let Some(hook) = hook {
+        hook();
+    }
+}
+
 pub(super) fn install(receipt: &DirectoryTransition, relative: &Path) -> io::Result<()> {
     install_as(receipt, relative, Installation::Target)
 }
@@ -95,7 +145,8 @@ fn install_as(
         .get(relative)
         .ok_or_else(|| invalid("missing owned node identity"))?;
     let outer = receipt.parent()?;
-    let staged = stage(receipt, relative)?
+    let staging = stage(receipt, relative)?;
+    let staged = staging
         .file_name()
         .ok_or_else(|| invalid("missing staging name"))?;
     let (parent, name) = logical_parent(receipt, relative)?;
@@ -117,12 +168,23 @@ fn install_as(
         Err(error) => return Err(error),
     }
     match role {
-        Installation::Target => empty(&outer, Path::new(staged), identity)?,
+        Installation::Target => empty(&outer, Path::new(staged), identity)
+            .map_err(|error| content_conflict(error, staging))?,
         Installation::Original => identity.verify(&outer, Path::new(staged))?,
     }
+    #[cfg(test)]
+    rename_checkpoint();
     gripsack_fs::rename_noreplace_between(&outer, Path::new(staged), &parent, &name)?;
     gripsack_fs::fsync_dir(&outer, Path::new("."))?;
-    gripsack_fs::fsync_dir(&parent, Path::new("."))
+    gripsack_fs::fsync_dir(&parent, Path::new("."))?;
+    // Rename cannot atomically require an empty source. A concurrent child
+    // travels with its inode; report its actual new location without deleting
+    // it or attempting an unjournaled reverse rename.
+    match role {
+        Installation::Target => empty(&parent, &name, identity)
+            .map_err(|error| content_conflict(error, &receipt.destination.join(relative))),
+        Installation::Original => identity.verify(&parent, &name),
+    }
 }
 
 pub(super) fn retire(receipt: &DirectoryTransition, relative: &Path) -> io::Result<()> {
@@ -131,23 +193,28 @@ pub(super) fn retire(receipt: &DirectoryTransition, relative: &Path) -> io::Resu
         .get(relative)
         .ok_or_else(|| invalid("missing owned node identity"))?;
     let outer = receipt.parent()?;
-    let staged = stage(receipt, relative)?
+    let staging = stage(receipt, relative)?;
+    let staged = staging
         .file_name()
         .ok_or_else(|| invalid("missing staging name"))?;
     match outer.symlink_metadata(staged) {
         Ok(_) => {
-            empty(&outer, Path::new(staged), identity)?;
+            empty(&outer, Path::new(staged), identity)
+                .map_err(|error| content_conflict(error, staging))?;
             return gripsack_fs::fsync_dir(&outer, Path::new("."));
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
     let (parent, name) = logical_parent(receipt, relative)?;
-    empty(&parent, &name, identity)?;
+    empty(&parent, &name, identity)
+        .map_err(|error| content_conflict(error, &receipt.destination.join(relative)))?;
+    #[cfg(test)]
+    rename_checkpoint();
     gripsack_fs::rename_noreplace_between(&parent, &name, &outer, Path::new(staged))?;
     gripsack_fs::fsync_dir(&outer, Path::new("."))?;
     gripsack_fs::fsync_dir(&parent, Path::new("."))?;
-    empty(&outer, Path::new(staged), identity)
+    empty(&outer, Path::new(staged), identity).map_err(|error| content_conflict(error, staging))
 }
 
 pub(super) fn ordered(receipt: &DirectoryTransition, reverse: bool) -> Vec<&PathBuf> {
@@ -183,10 +250,12 @@ pub(super) fn retire_all(receipt: &DirectoryTransition) -> io::Result<()> {
 pub(super) fn staged(receipt: &DirectoryTransition) -> io::Result<()> {
     let parent = receipt.parent()?;
     for (relative, identity) in &receipt.directories {
-        let name = stage(receipt, relative)?
+        let staging = stage(receipt, relative)?;
+        let name = staging
             .file_name()
             .ok_or_else(|| invalid("missing node staging name"))?;
-        empty(&parent, Path::new(name), *identity)?;
+        empty(&parent, Path::new(name), *identity)
+            .map_err(|error| content_conflict(error, staging))?;
     }
     Ok(())
 }

@@ -149,6 +149,92 @@ fn mode_change_and_destination_retarget_invalidate_observation() {
     assert!(observation.unchanged().is_err());
 }
 
+#[cfg(unix)]
+#[test]
+fn declared_ancestor_alias_is_pinned_and_retargeting_is_refused() {
+    use std::os::unix::fs::symlink;
+    let root = tempfile::tempdir().unwrap();
+    let first = root.path().join("first");
+    let second = root.path().join("second");
+    let alias = root.path().join("alias");
+    for directory in [&first, &second] {
+        std::fs::create_dir(directory).unwrap();
+        std::fs::write(directory.join("source"), "original").unwrap();
+    }
+    symlink(&first, &alias).unwrap();
+    for subject in [FileCheckSubject::Source, FileCheckSubject::Rendered] {
+        let inputs = FileCheckInputs {
+            check: "validate".into(),
+            subject,
+            stage: FileCheckStage::PreFlip,
+            span: span(),
+            file_span: span(),
+            captured: "source".into(),
+            command_span: span(),
+            captured_digest: gripsack_store::canonical_file_hash(&first.join("source")).unwrap(),
+            destination: root.path().join("destination"),
+        };
+        // Retained wire keeps relative captured paths, not the admitted alias.
+        let retained: FileCheckInputs =
+            serde_json::from_slice(&serde_json::to_vec(&inputs).unwrap()).unwrap();
+        let observation = retained.observe(&alias).unwrap();
+        assert_eq!(
+            observation.pinned_path(),
+            first.canonicalize().unwrap().join("source")
+        );
+        observation.unchanged().unwrap();
+        std::fs::remove_file(&alias).unwrap();
+        symlink(&second, &alias).unwrap();
+        assert!(observation.unchanged().is_err());
+        assert_eq!(
+            std::fs::read_to_string(observation.pinned_path()).unwrap(),
+            "original"
+        );
+        std::fs::remove_file(&alias).unwrap();
+        symlink(&first, &alias).unwrap();
+        let observation = retained.observe(&alias).unwrap();
+        std::fs::remove_file(first.join("source")).unwrap();
+        symlink(second.join("source"), first.join("source")).unwrap();
+        assert!(observation.unchanged().is_err());
+        assert!(retained.observe(&alias).is_err());
+        std::fs::remove_file(first.join("source")).unwrap();
+        std::fs::write(first.join("source"), "original").unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn parent_alias_retarget_is_refused_even_with_the_same_resolved_leaf() {
+    use std::os::unix::fs::symlink;
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    std::fs::write(&source, "original").unwrap();
+    let first = root.path().join("first");
+    let second = root.path().join("second");
+    for directory in [&first, &second] {
+        std::fs::create_dir(directory).unwrap();
+        symlink(&source, directory.join("destination")).unwrap();
+    }
+    let alias = root.path().join("alias");
+    symlink(&first, &alias).unwrap();
+    let inputs = FileCheckInputs {
+        check: "validate".into(),
+        subject: FileCheckSubject::Deployed,
+        stage: FileCheckStage::PreFlip,
+        span: span(),
+        file_span: span(),
+        captured: "source".into(),
+        command_span: span(),
+        captured_digest: gripsack_store::canonical_file_hash(&source).unwrap(),
+        destination: alias.join("destination"),
+    };
+    let observation = inputs.observe(root.path()).unwrap();
+    observation.unchanged().unwrap();
+    std::fs::remove_file(&alias).unwrap();
+    symlink(&second, &alias).unwrap();
+    assert!(observation.unchanged().is_err());
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn native_file_checks_preserve_operation_deadline() {

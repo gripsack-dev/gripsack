@@ -32,8 +32,11 @@ pub struct DirectoryIdentity {
 
 impl DirectoryIdentity {
     pub fn observe(directory: &Dir, name: &Path) -> io::Result<Self> {
-        let pinned = gripsack_fs::open_dir_nofollow(directory, name)?;
-        let object = gripsack_fs::directory_object_identity(&pinned)?;
+        Self::observe_pinned(&gripsack_fs::open_dir_nofollow(directory, name)?)
+    }
+
+    fn observe_pinned(pinned: &Dir) -> io::Result<Self> {
+        let object = gripsack_fs::directory_object_identity(pinned)?;
         Ok(Self {
             filesystem_kind: object.filesystem_kind,
             filesystem_id: object.filesystem_id,
@@ -49,6 +52,20 @@ impl DirectoryIdentity {
             ));
         }
         Ok(())
+    }
+
+    /// Open `name` once and admit it only as this exact verified inode. The
+    /// returned capability is the sole basis for later mutation: verifying the
+    /// name and then re-opening it would admit a replacement swapped in
+    /// between the check and the use.
+    pub fn open_verified(self, directory: &Dir, name: &Path) -> io::Result<Dir> {
+        let pinned = gripsack_fs::open_dir_nofollow(directory, name)?;
+        if Self::observe_pinned(&pinned)? != self {
+            return Err(invalid(
+                "owned directory inode changed; foreign replacement preserved",
+            ));
+        }
+        Ok(pinned)
     }
 }
 
@@ -220,8 +237,7 @@ impl DirectoryTransition {
                 .file_name()
                 .ok_or_else(|| invalid("missing root name"))?,
         );
-        self.directories[Path::new("")].verify(&outer, name)?;
-        let root = gripsack_fs::open_dir_nofollow(&outer, name)?;
+        let root = self.directories[Path::new("")].open_verified(&outer, name)?;
         for relative in self.borrowed_directories.keys() {
             self.open_relative(&root, relative)?;
         }
@@ -253,8 +269,7 @@ impl DirectoryTransition {
             .destination
             .file_name()
             .ok_or_else(|| invalid("missing directory name"))?;
-        self.directories[Path::new("")].verify(&parent, Path::new(root_name))?;
-        let root = gripsack_fs::open_dir_nofollow(&parent, Path::new(root_name))?;
+        let root = self.directories[Path::new("")].open_verified(&parent, Path::new(root_name))?;
         let directory = self.open_relative_with(
             &root,
             relative.parent().unwrap_or(Path::new("")),
@@ -291,9 +306,7 @@ impl DirectoryTransition {
                 .or_else(|| self.borrowed_directories.get(&walked))
                 .or_else(|| supplemental.get(&walked))
                 .ok_or_else(|| invalid("missing directory ancestor authority"))?;
-            identity.verify(&directory, Path::new(component.as_os_str()))?;
-            directory =
-                gripsack_fs::open_dir_nofollow(&directory, Path::new(component.as_os_str()))?;
+            directory = identity.open_verified(&directory, Path::new(component.as_os_str()))?;
         }
         Ok(directory)
     }
@@ -328,4 +341,33 @@ fn unique_map<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
         }
     }
     deserializer.deserialize_map(UniqueDirectories(std::marker::PhantomData))
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    #[test]
+    fn open_verified_admits_only_the_pinned_inode() {
+        let temporary = tempfile::tempdir().unwrap();
+        let parent = gripsack_fs::open_or_create(temporary.path()).unwrap();
+        std::fs::create_dir(temporary.path().join("owned")).unwrap();
+        let identity = DirectoryIdentity::observe(&parent, Path::new("owned")).unwrap();
+        std::fs::rename(
+            temporary.path().join("owned"),
+            temporary.path().join("staged"),
+        )
+        .unwrap();
+        // Same name, different inode: a name-based re-open would hand back the
+        // replacement; the verified open must refuse it.
+        std::fs::create_dir(temporary.path().join("owned")).unwrap();
+        assert!(identity.open_verified(&parent, Path::new("owned")).is_err());
+        let pinned = identity
+            .open_verified(&parent, Path::new("staged"))
+            .unwrap();
+        assert_eq!(
+            DirectoryIdentity::observe(&pinned, Path::new(".")).unwrap(),
+            identity
+        );
+    }
 }

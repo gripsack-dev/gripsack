@@ -93,8 +93,7 @@ pub fn inspect_parent(
             .file_name()
             .ok_or_else(|| invalid("missing root name"))?,
     );
-    receipt.directories[Path::new("")].verify(&outer, root_name)?;
-    let mut parent = gripsack_fs::open_dir_nofollow(&outer, root_name)?;
+    let mut parent = receipt.directories[Path::new("")].open_verified(&outer, root_name)?;
     let mut walked = PathBuf::new();
     for component in relative.parent().unwrap_or(Path::new("")).components() {
         walked.push(component.as_os_str());
@@ -104,7 +103,7 @@ pub fn inspect_parent(
             .get(&walked)
             .or_else(|| receipt.borrowed_directories.get(&walked))
         {
-            identity.verify(&parent, name)?;
+            parent = identity.open_verified(&parent, name)?;
         } else {
             match parent.symlink_metadata(name) {
                 Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
@@ -114,8 +113,8 @@ pub fn inspect_parent(
                 }
                 Err(error) => return Err(error),
             }
+            parent = gripsack_fs::open_dir_nofollow(&parent, name)?;
         }
-        parent = gripsack_fs::open_dir_nofollow(&parent, name)?;
     }
     Ok(ParentInspection::Existing(
         parent,

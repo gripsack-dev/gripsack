@@ -137,11 +137,10 @@ pub(super) fn original_namespace(
             .or_else(|| original.borrowed_directories.get(&walked))
             .or_else(|| target.borrowed_directories.get(&walked))
             .ok_or_else(|| invalid("foreign directory replaces an unowned original path"))?;
-        identity.verify(&parent, name)?;
+        parent = identity.open_verified(&parent, name)?;
         if components.peek().is_none() {
             return Ok(true);
         }
-        parent = gripsack_fs::open_dir_nofollow(&parent, name)?;
     }
     Ok(true)
 }

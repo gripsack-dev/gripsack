@@ -9,9 +9,16 @@ use gripsack_fs::{
 use std::io::{self, Read};
 use std::path::Path;
 
+const RETIRING: &str = ".retiring-";
+const RETIRED: &str = ".retired-";
+const MAX_RETIREMENTS: usize = 4096;
+const MAX_RETIREMENT_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
+
 pub struct GenerationDirectory {
     directory: Option<Dir>,
     generations: GenerationList,
+    retiring: Vec<GenerationId>,
+    retired: Vec<GenerationId>,
 }
 
 impl GenerationDirectory {
@@ -24,12 +31,36 @@ impl GenerationDirectory {
             Err(error) => return Err(error),
         };
         let mut ids = Vec::new();
+        let mut retiring = Vec::new();
+        let mut retired = Vec::new();
         if let Some(directory) = &directory {
             for entry in directory.entries()? {
                 let name = entry?.file_name();
                 let name = name
                     .to_str()
                     .ok_or_else(|| invalid("non-UTF-8 generation name"))?;
+                if let Some((prefix, suffix)) = name
+                    .strip_prefix(RETIRING)
+                    .map(|suffix| (RETIRING, suffix))
+                    .or_else(|| name.strip_prefix(RETIRED).map(|suffix| (RETIRED, suffix)))
+                {
+                    let id = suffix
+                        .parse::<GenerationId>()
+                        .map_err(|_| invalid("invalid generation retirement identity"))?;
+                    if suffix != id.to_string() {
+                        return Err(invalid("noncanonical generation retirement identity"));
+                    }
+                    open_dir_nofollow(directory, Path::new(name))?;
+                    if prefix == RETIRING {
+                        retiring.push(id);
+                    } else {
+                        retired.push(id);
+                    }
+                    if retiring.len() + retired.len() > MAX_RETIREMENTS {
+                        return Err(invalid("generation retirement inventory exceeds limit"));
+                    }
+                    continue;
+                }
                 match name.parse::<GenerationId>() {
                     Ok(id) => {
                         if name != id.to_string() {
@@ -49,9 +80,21 @@ impl GenerationDirectory {
         ids.sort_unstable();
         let generations = GenerationList::new(ids)
             .ok_or_else(|| invalid("generation inventory is not strictly ascending"))?;
+        retiring.sort_unstable();
+        retired.sort_unstable();
+        if retiring
+            .iter()
+            .chain(&retired)
+            .any(|id| generations.inventory().as_slice().binary_search(id).is_ok())
+            || retiring.iter().any(|id| retired.binary_search(id).is_ok())
+        {
+            return Err(invalid("generation and retirement identities overlap"));
+        }
         Ok(Self {
             directory,
             generations,
+            retiring,
+            retired,
         })
     }
 
@@ -74,14 +117,75 @@ impl GenerationDirectory {
             .directory
             .as_ref()
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
-        let manifest = read_manifest_in(directory, home, id, ManifestAccess::EffectAuthority)?;
+        let manifest = read_manifest_named(
+            directory,
+            home,
+            id,
+            &id.to_string(),
+            ManifestAccess::EffectAuthority,
+            Some(MAX_RETIREMENT_MANIFEST_BYTES),
+        )?;
         gripsack_fs::fsync_pinned_dir(home_directory, Path::new("."))?;
         Ok(manifest)
     }
 
-    /// Remove the admitted batch, then seal this exact inventory directory
-    /// before payload roots can be discarded. Even an empty batch must seal
-    /// observed absence left by an earlier interrupted pruning attempt.
+    /// Read-only GC inspection, through the same pinned inventory.
+    pub fn inspect_manifest(&self, home: &Path, id: GenerationId) -> io::Result<Generation> {
+        let directory = self
+            .directory
+            .as_ref()
+            .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+        read_manifest_named(
+            directory,
+            home,
+            id,
+            &id.to_string(),
+            ManifestAccess::Inspection,
+            Some(MAX_RETIREMENT_MANIFEST_BYTES),
+        )
+    }
+
+    pub fn retiring(&self) -> &[GenerationId] {
+        &self.retiring
+    }
+
+    /// Retirement authority is the original immutable manifest, not a copied
+    /// subset of its identities. Inspection does not chmod, create or sync.
+    pub fn retirement_manifest(
+        &self,
+        home_directory: &Dir,
+        home: &Path,
+        id: GenerationId,
+        dry_run: bool,
+    ) -> io::Result<Generation> {
+        if self.retiring.binary_search(&id).is_err() {
+            return Err(invalid("retirement is not in the admitted inventory"));
+        }
+        let directory = self
+            .directory
+            .as_ref()
+            .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+        let manifest = read_manifest_named(
+            directory,
+            home,
+            id,
+            &format!("{RETIRING}{id}"),
+            if dry_run {
+                ManifestAccess::Inspection
+            } else {
+                ManifestAccess::EffectAuthority
+            },
+            Some(MAX_RETIREMENT_MANIFEST_BYTES),
+        )?;
+        if !dry_run {
+            gripsack_fs::fsync_pinned_dir(home_directory, Path::new("."))?;
+        }
+        Ok(manifest)
+    }
+
+    /// Move the admitted batch out of retained history without destroying its
+    /// receipt authority, then seal absence before any staging/payload deletion.
+    /// Empty retries seal earlier interrupted renames as well.
     pub fn prune(&self, ids: &[GenerationId]) -> io::Result<()> {
         let Some(directory) = &self.directory else {
             return if ids.is_empty() {
@@ -90,20 +194,66 @@ impl GenerationDirectory {
                 Err(io::Error::from(io::ErrorKind::NotFound))
             };
         };
+        if ids.len() + self.retiring.len() + self.retired.len() > MAX_RETIREMENTS {
+            return Err(invalid("generation retirement inventory exceeds limit"));
+        }
         super::publication::preserve_allocation_floor(
             directory,
-            self.inventory().as_slice().last().copied(),
+            self.inventory()
+                .as_slice()
+                .last()
+                .copied()
+                .max(self.retiring.last().copied())
+                .max(self.retired.last().copied()),
         )?;
-        for id in ids {
+        // Receipt predecessors are strictly older. Remove descendants first:
+        // interruption must not leave a live receipt with a pruned predecessor.
+        for id in ids.iter().rev() {
             let name = id.to_string();
-            gripsack_fs::fault::operation(
-                gripsack_fs::fault::Boundary::Unlink,
+            gripsack_fs::rename_noreplace(
+                directory,
                 Path::new(&name),
-                || directory.remove_dir_all(&name),
+                Path::new(&format!("{RETIRING}{id}")),
             )?;
         }
         gripsack_fs::fsync_pinned_dir(directory, Path::new(GENERATIONS_DIR))
     }
+
+    /// Only call after every staging deletion (including observed absence) is
+    /// sealed. The second namespace is cleanup-only: partial recursive removal
+    /// can no longer destroy authority needed to finish directory retirement.
+    pub fn finish_retirement(&self, id: GenerationId) -> io::Result<()> {
+        let directory = self
+            .directory
+            .as_ref()
+            .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+        gripsack_fs::rename_noreplace(
+            directory,
+            Path::new(&format!("{RETIRING}{id}")),
+            Path::new(&format!("{RETIRED}{id}")),
+        )?;
+        gripsack_fs::fsync_pinned_dir(directory, Path::new(GENERATIONS_DIR))?;
+        remove_retired(directory, id)
+    }
+
+    pub fn cleanup_retired(&self) -> io::Result<()> {
+        if let Some(directory) = &self.directory {
+            // Seal a previous successful rename even if its sync failed.
+            gripsack_fs::fsync_pinned_dir(directory, Path::new(GENERATIONS_DIR))?;
+            for id in &self.retired {
+                remove_retired(directory, *id)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn remove_retired(directory: &Dir, id: GenerationId) -> io::Result<()> {
+    let name = format!("{RETIRED}{id}");
+    operation(Boundary::Unlink, Path::new(&name), || {
+        directory.remove_dir_all(&name)
+    })?;
+    gripsack_fs::fsync_pinned_dir(directory, Path::new(GENERATIONS_DIR))
 }
 
 enum ManifestAccess {
@@ -117,11 +267,30 @@ fn read_manifest_in(
     id: GenerationId,
     access: ManifestAccess,
 ) -> io::Result<Generation> {
-    let name = id.to_string();
-    let generation = open_dir_nofollow(directory, Path::new(&name))?;
+    read_manifest_named(directory, home, id, &id.to_string(), access, None)
+}
+
+fn read_manifest_named(
+    directory: &Dir,
+    home: &Path,
+    id: GenerationId,
+    name: &str,
+    access: ManifestAccess,
+    limit: Option<u64>,
+) -> io::Result<Generation> {
+    let generation = open_dir_nofollow(directory, Path::new(name))?;
     let mut file = open_file_nofollow(&generation, Path::new("manifest.json"))?;
     let mut raw = Vec::new();
-    file.read_to_end(&mut raw)?;
+    // Bound GC admission before pruning, so every admitted live receipt is
+    // also readable as retirement authority after a crash.
+    (&mut file)
+        .take(limit.map_or(u64::MAX, |limit| limit + 1))
+        .read_to_end(&mut raw)?;
+    if limit.is_some_and(|limit| raw.len() as u64 > limit) {
+        return Err(invalid(
+            "generation manifest exceeds retirement authority limit",
+        ));
+    }
     let manifest: Generation = serde_json::from_slice(&raw)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     validate(&manifest, id, home)?;
@@ -132,7 +301,7 @@ fn read_manifest_in(
             file.sync_all()
         })?;
         seal_observed_profile(&generation)?;
-        gripsack_fs::fsync_pinned_dir(&generation, Path::new(&name))?;
+        gripsack_fs::fsync_pinned_dir(&generation, Path::new(name))?;
         gripsack_fs::fsync_pinned_dir(directory, Path::new(GENERATIONS_DIR))?;
     }
     Ok(manifest)

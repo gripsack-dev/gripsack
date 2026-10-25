@@ -95,6 +95,62 @@ fn foreign_child_blocks_parent_removal_and_keeps_recovery_evidence() {
 }
 
 #[test]
+fn child_inserted_during_install_is_preserved_and_explicit_resolution_unblocks_recovery() {
+    let (temporary, home, receipt) = fixture();
+    let run = begin_run(
+        &home,
+        temporary.path(),
+        None,
+        crate::GenerationId::new(1),
+        RunOp::Apply,
+    )
+    .unwrap();
+    let incoming = receipt.staging.join("foreign");
+    let _rename_hook = crate::journal::directory_nodes::before_rename(move || {
+        std::fs::write(incoming, b"concurrent user addition").unwrap();
+    });
+    let error = directory::publish(&run, &receipt).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::DirectoryNotEmpty);
+    assert!(
+        error
+            .to_string()
+            .contains(receipt.destination.to_str().unwrap())
+    );
+    let foreign = receipt.destination.join("foreign");
+    let parent = receipt.parent().unwrap();
+    receipt.directories[Path::new("")]
+        .verify(&parent, Path::new(receipt.destination.file_name().unwrap()))
+        .unwrap();
+    drop(run);
+    for _ in 0..2 {
+        assert!(reconcile(&home, temporary.path()).is_err());
+        assert_eq!(
+            std::fs::read(&foreign).unwrap(),
+            b"concurrent user addition"
+        );
+        assert!(pending_recovery(&home).unwrap().is_some());
+    }
+    // The operator moves only the child out, not the owned directory inode.
+    let rescued = temporary.path().join("rescued-user-addition");
+    std::fs::rename(&foreign, &rescued).unwrap();
+    reconcile(&home, temporary.path()).unwrap();
+    assert_eq!(
+        std::fs::read_link(&receipt.destination).unwrap(),
+        receipt.predecessor_target
+    );
+    assert_eq!(
+        std::fs::read(&rescued).unwrap(),
+        b"concurrent user addition"
+    );
+    assert_eq!(
+        std::fs::read(receipt.predecessor_target.join("untouched")).unwrap(),
+        b"retained payload"
+    );
+    assert!(pending_recovery(&home).unwrap().is_none());
+    assert!(reconcile(&home, temporary.path()).unwrap().is_empty());
+}
+
+#[test]
 fn substituted_ancestor_cannot_redirect_child_capture_or_recovery() {
     let (temporary, home, receipt) = fixture();
     let run = begin_run(

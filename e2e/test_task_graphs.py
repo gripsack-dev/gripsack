@@ -1,11 +1,15 @@
 """E1 executable smoke: pytest -q e2e/test_task_graphs.py e2e/test_workspace_checks.py.
 All effects, process IDs and store-scoped locks belong to disposable sandboxes.
 """
+import fcntl
 import json
 import os
+import pty
 import shlex
 import signal
 import subprocess
+import sys
+import termios
 import time
 
 import pytest
@@ -33,6 +37,16 @@ def task(name, script, *, deps=(), env=None, checks=(), locks=False):
 def invoke(repo, name="root", *flags):
     result = grip("task", "run", name, "--json", *flags, cwd=repo)
     return result, json.loads(result.stdout)
+
+
+def signal_command(termination):
+    # Noninteractive shells can ignore QUIT; explicitly restore the fixture
+    # command's default disposition, without changing the supervisor's.
+    program = "import os, signal; "
+    if termination != signal.SIGKILL:
+        program += f"signal.signal({int(termination)}, signal.SIG_DFL); "
+    program += f"os.kill(os.getpid(), {int(termination)})"
+    return f"ulimit -c 0; exec {shlex.quote(sys.executable)} -c {shlex.quote(program)}"
 
 
 def test_diamond_dedup_is_per_invocation_and_environment_bindings_are_distinct(sandbox):
@@ -83,6 +97,59 @@ def test_failed_prerequisite_or_verification_blocks_successors(sandbox, verifica
     assert not report["root_retained"]
 
 
+@pytest.mark.parametrize("termination", [signal.SIGSEGV, signal.SIGKILL])
+def test_child_crash_fails_without_crashing_cli_or_cancelling_independent_work(sandbox, termination):
+    repo, effect = sandbox / "graph", sandbox / "effects"
+    crash = signal_command(termination)
+    workspace(repo, [
+        task("crash", crash),
+        task("dependent", "echo forbidden-dependent >> " + shlex.quote(str(effect)), deps=["crash"]),
+        task("independent", "echo independent >> " + shlex.quote(str(effect))),
+        task("root", "echo forbidden-root >> " + shlex.quote(str(effect)), deps=["dependent", "independent"]),
+    ])
+    direct, direct_report = invoke(repo, "crash")
+    assert direct.returncode == 128 + termination, direct.stderr
+    assert direct_report["status"] == "failed"
+    receipt = direct_report["nodes"][0]["processes"][0]
+    assert receipt["disposition"] == "exited"
+    assert receipt["signal"] == termination and receipt["exit_code"] is None
+    assert direct_report["nodes"][0]["completed_steps"] == 0
+    assert not direct_report["root_retained"]
+    saved = grip("task", "status", direct_report["invocation"], "--json", cwd=repo)
+    assert saved.returncode == 1
+    assert json.loads(saved.stdout) == direct_report
+
+    result, report = invoke(repo)
+    assert result.returncode == 3, result.stderr
+    assert report["status"] == "blocked"
+    assert [(node["task"], node["status"]) for node in report["nodes"]] == [
+        ("crash", "failed"), ("dependent", "blocked"),
+        ("independent", "succeeded"), ("root", "blocked"),
+    ]
+    assert report["nodes"][0]["processes"][0]["signal"] == termination
+    assert effect.read_text() == "independent\n"
+    assert not report["root_retained"]
+
+
+@pytest.mark.parametrize("termination", [signal.SIGHUP, signal.SIGINT, signal.SIGQUIT, signal.SIGTERM])
+def test_direct_child_control_signal_cancels_graph(sandbox, termination):
+    repo, forbidden = sandbox / "graph", sandbox / "forbidden"
+    workspace(repo, [
+        task("before", signal_command(termination)),
+        task("independent", "echo forbidden >> " + shlex.quote(str(forbidden))),
+        task("root", "echo forbidden >> " + shlex.quote(str(forbidden)), deps=["before", "independent"]),
+    ])
+    result, report = invoke(repo)
+    assert result.returncode == 128 + termination, result.stderr
+    assert report["status"] == "cancelled"
+    assert [node["status"] for node in report["nodes"]] == ["cancelled", "blocked", "blocked"]
+    receipt = report["nodes"][0]["processes"][0]
+    assert receipt["disposition"] == "exited"
+    assert receipt["signal"] == termination and receipt["exit_code"] is None
+    assert not forbidden.exists()
+    assert not report["root_retained"]
+
+
 def test_ordered_steps_stop_before_later_steps_and_postconditions(sandbox):
     repo, effect = sandbox / "graph", sandbox / "effects"
     destination = shlex.quote(str(effect))
@@ -123,10 +190,10 @@ def test_ensure_artifact_only_uses_common_reusable_store_without_fake_process(sa
 
 def wait_file(path, process):
     deadline = time.monotonic() + 30
-    while not path.exists() and time.monotonic() < deadline:
+    while (not path.exists() or path.stat().st_size == 0) and time.monotonic() < deadline:
         assert process.poll() is None, process.communicate()
         time.sleep(0.025)
-    assert path.exists(), "task did not reach bounded fixture barrier"
+    assert path.exists() and path.stat().st_size > 0, "task did not reach bounded fixture barrier"
 
 
 def locked_workspace(repo, marker, release):
@@ -206,29 +273,39 @@ def test_deadline_includes_postcondition_and_closed_stdin(sandbox):
         task("root", 'test -z "$(cat)"', checks=["slow"]),
     ])
     result, report = invoke(repo, "root", "--closed-stdin", "--timeout-seconds", "5")
-    assert result.returncode != 0
+    assert result.returncode == 1, result.stderr
     assert report["status"] == "failed"
     assert report["nodes"][0]["completed_steps"] == 1
     assert report["nodes"][0]["completed_checks"] == 0
     assert report["nodes"][0]["processes"][-1]["disposition"] == "deadline"
 
 
-def test_cancellation_blocks_dependents_and_releases_confirmed_claims(sandbox):
+@pytest.mark.parametrize("termination", [signal.SIGHUP, signal.SIGINT, signal.SIGQUIT, signal.SIGTERM])
+def test_cancellation_blocks_dependents_and_releases_confirmed_claims(sandbox, termination):
     repo, marker, forbidden = sandbox / "graph", sandbox / "started", sandbox / "forbidden"
     workspace(repo, [
-        task("before", f"echo $$ > {shlex.quote(str(marker))}; sleep 30", locks=True),
-        task("root", f"echo forbidden > {shlex.quote(str(forbidden))}", deps=["before"]),
+        # Ignoring the forwarded signal forces bounded SIGKILL cleanup. The
+        # supervisor disposition, not that cleanup signal, owns cancellation.
+        task("before", f"trap '' HUP INT QUIT TERM; echo $$ > {shlex.quote(str(marker))}; sleep 30", locks=True),
+        task("independent", f"echo forbidden > {shlex.quote(str(forbidden))}"),
+        task("root", f"echo forbidden > {shlex.quote(str(forbidden))}", deps=["before", "independent"]),
     ], 'const shared = lock("store", "cancelled-invocation");')
     process = start_grip([str(GRIP.resolve()), "task", "run", "root", "--json"], cwd=repo,
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         wait_file(marker, process)
-        process.send_signal(signal.SIGTERM)
+        process.send_signal(termination)
         stdout, stderr = process.communicate(timeout=15)
-        assert process.returncode != 0, stderr
+        assert process.returncode == 130, stderr
         report = json.loads(stdout)
         assert report["status"] == "cancelled"
-        assert [node["status"] for node in report["nodes"]] == ["cancelled", "blocked"]
+        assert [node["status"] for node in report["nodes"]] == ["cancelled", "blocked", "blocked"]
+        receipt = report["nodes"][0]["processes"][0]
+        assert receipt["disposition"] == "cancelled"
+        assert receipt["signal"] == signal.SIGKILL and receipt["exit_code"] is None
+        saved = grip("task", "status", report["invocation"], "--json", cwd=repo)
+        assert saved.returncode == 130
+        assert json.loads(saved.stdout) == report
         assert not forbidden.exists()
         assert not report["root_retained"]
         claims = sandbox / ".local/share/gripsack/task-mutation-locks"
@@ -237,6 +314,58 @@ def test_cancellation_blocks_dependents_and_releases_confirmed_claims(sandbox):
         if process.poll() is None:
             process.kill()
             process.communicate(timeout=10)
+
+
+@pytest.mark.parametrize("termination,control", [(signal.SIGINT, b"\x03"), (signal.SIGQUIT, b"\x1c")])
+def test_foreground_terminal_signal_cancels_without_supervisor_signal(sandbox, termination, control):
+    repo, marker, forbidden = sandbox / "graph", sandbox / "started", sandbox / "forbidden"
+    program = (
+        "import os, pathlib, signal; "
+        "signal.signal(signal.SIGINT, signal.SIG_DFL); "
+        "signal.signal(signal.SIGQUIT, signal.SIG_DFL); "
+        f"pathlib.Path({str(marker)!r}).write_text(str(os.getpid())); "
+        "signal.pause()"
+    )
+    workspace(repo, [
+        task("before", f"ulimit -c 0; exec {shlex.quote(sys.executable)} -c {shlex.quote(program)}"),
+        task("independent", "echo forbidden > " + shlex.quote(str(forbidden))),
+        task("root", "echo forbidden > " + shlex.quote(str(forbidden)), deps=["before", "independent"]),
+    ])
+    master, slave = pty.openpty()
+
+    def claim_terminal():
+        os.setsid()
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+    process = None
+    try:
+        process = start_grip([str(GRIP.resolve()), "task", "run", "root", "--json"],
+                             cwd=repo, stdin=slave, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, preexec_fn=claim_terminal)
+        wait_file(marker, process)
+        child = int(marker.read_text())
+        deadline = time.monotonic() + 5
+        while os.tcgetpgrp(master) != child and time.monotonic() < deadline:
+            assert process.poll() is None
+            time.sleep(0.025)
+        assert os.tcgetpgrp(master) == child
+        os.write(master, control)
+        stdout, stderr = process.communicate(timeout=15)
+        assert process.returncode == 128 + termination, stderr
+        report = json.loads(stdout)
+        assert report["status"] == "cancelled"
+        assert [node["status"] for node in report["nodes"]] == ["cancelled", "blocked", "blocked"]
+        receipt = report["nodes"][0]["processes"][0]
+        assert receipt["disposition"] == "exited"
+        assert receipt["signal"] == termination and receipt["exit_code"] is None
+        assert not report["root_retained"]
+        assert not forbidden.exists()
+    finally:
+        if process is not None and process.poll() is None:
+            process.terminate()
+            process.communicate(timeout=10)
+        os.close(master)
+        os.close(slave)
 
 
 def test_task_log_preserves_lines_without_replaying_terminal_controls(sandbox):

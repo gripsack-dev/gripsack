@@ -78,8 +78,7 @@ pub(super) fn ensure_empty_tree(
     name: &Path,
     transition: &DirectoryTransition,
 ) -> io::Result<()> {
-    transition.directories[Path::new("")].verify(parent, name)?;
-    let root = gripsack_fs::open_dir_nofollow(parent, name)?;
+    let root = transition.directories[Path::new("")].open_verified(parent, name)?;
     for relative in transition.directories.keys() {
         let directory = transition.open_relative(&root, relative)?;
         for entry in directory.read_dir(".")? {

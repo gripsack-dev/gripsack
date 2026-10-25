@@ -89,7 +89,17 @@ impl TaskStatus {
             {
                 Self::Succeeded
             }
-            ProcessDisposition::Exited if receipt.signal.is_some() => Self::Cancelled,
+            // Terminal-generated cancellation reaches the foreground child
+            // group directly, without a supervisor Cancelled disposition.
+            // Other terminating signals establish failure, not operator intent.
+            ProcessDisposition::Exited
+                if matches!(
+                    receipt.signal,
+                    Some(libc::SIGHUP | libc::SIGINT | libc::SIGQUIT | libc::SIGTERM)
+                ) =>
+            {
+                Self::Cancelled
+            }
             _ => Self::Failed,
         }
     }
@@ -321,6 +331,57 @@ mod tests {
             if disposition == ProcessDisposition::CleanupFailure {
                 assert_eq!(status, TaskStatus::Indeterminate);
             }
+        }
+    }
+    #[test]
+    fn signal_outcomes_preserve_supervision_authority() {
+        use gripsack_process::{ByteBinding, Enforcement};
+        for signal in [
+            libc::SIGHUP,
+            libc::SIGINT,
+            libc::SIGQUIT,
+            libc::SIGTERM,
+            libc::SIGSEGV,
+            libc::SIGKILL,
+            libc::SIGABRT,
+            libc::SIGPIPE,
+        ] {
+            let mut receipt = ProcessReceipt {
+                executable_sha256: Sha256Digest::of(b"fixture"),
+                script_sha256: None,
+                loader_sha256: None,
+                byte_binding: ByteBinding::ExecutableHandle,
+                enforcement: Enforcement::ProcessGroup,
+                environment_keys: Vec::new(),
+                deadline_millis: 1,
+                stdout_limit: 1,
+                stderr_limit: 1,
+                exit_code: None,
+                signal: Some(signal),
+                disposition: ProcessDisposition::Exited,
+                error: None,
+                cleanup_cause: None,
+            };
+            let expected = if matches!(
+                signal,
+                libc::SIGHUP | libc::SIGINT | libc::SIGQUIT | libc::SIGTERM
+            ) {
+                TaskStatus::Cancelled
+            } else {
+                TaskStatus::Failed
+            };
+            assert_eq!(TaskStatus::from_receipt(&receipt), expected);
+            receipt.disposition = ProcessDisposition::Cancelled;
+            assert_eq!(TaskStatus::from_receipt(&receipt), TaskStatus::Cancelled);
+            receipt.disposition = ProcessDisposition::Deadline;
+            assert_eq!(TaskStatus::from_receipt(&receipt), TaskStatus::Failed);
+            receipt.disposition = ProcessDisposition::CleanupFailure;
+            receipt.cleanup_cause = Some(ProcessDisposition::Cancelled);
+            assert_eq!(
+                TaskStatus::from_receipt(&receipt),
+                TaskStatus::Indeterminate
+            );
+            assert_eq!(receipt.signal, Some(signal));
         }
     }
     #[test]

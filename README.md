@@ -149,6 +149,27 @@ data until functional verification succeeds; late activation failures require
 explicit recovery. `--take-over` does not transfer recorded ownership. The older
 prune-first alternative requires a separately applied legacy generation.
 
+Directory migration and rollback fail closed if an owned directory contains
+foreign or remaining children. Stop concurrent writers before cutover: the
+filesystem cannot atomically require an empty rename source, so a racing child
+can travel with the owned inode into a sibling `.gripsack-directory-*` staging
+directory (or from staging into the live tree). An error reports the blocked
+directory's current path. Its contents and journal remain intact; repeated
+recovery and GC stay blocked rather than deleting unknown data.
+
+To resolve this conflict, stop writers, inspect the reported directory, and
+move only the conflicting children to a safe location outside both the managed
+tree and its staging siblings. Preserve the reported directory itself and its
+inode: do not delete/recreate it, recursively remove staging, or edit the journal
+or retained manifests. Retry the failed `grip apply` or `grip rollback` command;
+it first reconciles the interrupted transaction before starting new work.
+Check the rescued data before deciding where it belongs. A changed directory
+identity is a different conflict: restore the exact displaced owned inode, not
+an empty substitute. Keep historical staging even when empty; an aborted
+rollback returns the target incarnation there for later explicit rollback,
+and only generation retirement authorizes its removal. None of this implies
+automatic rollback after activation.
+
 Use `trackedCopyTo` for physical sibling trees and extension-sensitive fonts;
 per-file symlink targets do not promise the original filename. Profiles can
 declare an environment plus `launchers: { directory, commands }` for ordinary

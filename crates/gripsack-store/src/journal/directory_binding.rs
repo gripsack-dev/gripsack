@@ -20,8 +20,7 @@ pub fn bind_existing(run: &JournalRun<'_>, transition: &DirectoryTransition) -> 
             .file_name()
             .ok_or_else(|| invalid("missing destination"))?,
     );
-    transition.directories[Path::new("")].verify(&parent, name)?;
-    let root = gripsack_fs::open_dir_nofollow(&parent, name)?;
+    let root = transition.directories[Path::new("")].open_verified(&parent, name)?;
     for relative in transition.directories.keys() {
         transition.open_relative(&root, relative)?;
     }

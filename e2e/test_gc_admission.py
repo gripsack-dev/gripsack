@@ -229,6 +229,7 @@ def test_generation_prune_sync_failure_preserves_payloads_on_retry(sandbox, faul
     (repo / "env.toml").write_text('[env]\nname="fixture"\n[settings]\nkeep_generations=1\n')
     previous = (home / "current").readlink()
     generation = home / "generations/1"
+    retirement = home / "generations/.retiring-1"
     manifest = json.loads((generation / "manifest.json").read_text())
     payload = Path(manifest["modules"]["demo"]["store_path"])
     saved_generation = sandbox / "saved-generation"
@@ -243,17 +244,25 @@ def test_generation_prune_sync_failure_preserves_payloads_on_retry(sandbox, faul
             capture_output=True, text=True, timeout=30,
         )
 
-    def barrier_cut():
+    def barrier_cut(*, newly_pruned):
         trace.unlink(missing_ok=True)
         observed = collect({"GRIPSACK_FS_TRACE": str(trace)})
         assert observed.returncode == 0, observed.stdout + observed.stderr
         assert not generation.exists() and not payload.exists()
         rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
-        barriers = [int(row[0]) for row in rows
-                    if row[1:] == ["Before", "DirSync", '"generations"']]
+        if newly_pruned:
+            renamed = next(int(row[0]) for row in rows
+                           if row[1:] == ["After", "TreePublish", '".retiring-1"'])
+            return next(int(row[0]) for row in rows if int(row[0]) > renamed
+                        and row[1:] == ["Before", "DirSync", '"generations"'])
+        # Retry first admits/seals the pending manifest, then the high-water
+        # mark, then seals the empty prune batch. Cut that last barrier before
+        # the completed-retirement rename, not later metadata cleanup.
+        completed = next(int(row[0]) for row in rows
+                         if row[1:] == ["Before", "TreePublish", '".retired-1"'])
+        barriers = [int(row[0]) for row in rows if int(row[0]) < completed
+                    and row[1:] == ["Before", "DirSync", '"generations"']]
         assert barriers, "GC discarded generation roots without durable namespace pruning"
-        # Manifest and counter admission may also seal this directory. Cut the
-        # final post-prune barrier, not an earlier admission barrier.
         return barriers[-1]
 
     def refuse(cut):
@@ -262,22 +271,27 @@ def test_generation_prune_sync_failure_preserves_payloads_on_retry(sandbox, faul
         if fault == "kill":
             assert failed.returncode == -signal.SIGKILL
         assert not generation.exists()
+        assert (retirement / "manifest.json").is_file()
         assert (payload / "payload").read_text() == "one"
         assert (home / "current").readlink() == previous
         assert (sandbox / ".owned").read_text() == "two"
 
-    prune_cut = barrier_cut()
+    prune_cut = barrier_cut(newly_pruned=True)
     shutil.copytree(saved_generation, generation, symlinks=True)
     shutil.copytree(saved_payload, payload, symlinks=True)
     refuse(prune_cut)
-    # The removed generation is already invisible on retry. An empty prune
-    # list must still seal that observation before its payload can be collected.
-    empty_cut = barrier_cut()
+    # The removed generation is invisible, but its immutable manifest survives
+    # as the retry authority. Replay the same pending state for the empty-prune
+    # cut rather than silently testing a later cleanup barrier.
+    empty_cut = barrier_cut(newly_pruned=False)
+    shutil.copytree(saved_generation, retirement, symlinks=True)
     shutil.copytree(saved_payload, payload, symlinks=True)
     refuse(empty_cut)
     completed = collect()
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert not payload.exists()
+    assert not retirement.exists()
+    assert not (home / "generations/.retired-1").exists()
     assert (sandbox / ".owned").read_text() == "two"
 
 
@@ -324,6 +338,7 @@ def test_gc_preserves_legacy_allocation_history(sandbox, high_water):
 def test_allocation_floor_sync_failure_prevents_pruning(sandbox, high_water):
     repo, home = legacy_allocation_history(sandbox, high_water)
     generation = home / "generations/20"
+    retirement = home / "generations/.retiring-20"
     manifest = (generation / "manifest.json").read_bytes()
     orphan = home / "store/unreferenced"
     trace = sandbox / "allocation-floor-boundaries.tsv"
@@ -351,13 +366,20 @@ def test_allocation_floor_sync_failure_prevents_pruning(sandbox, high_water):
     assert not generation.exists() and not orphan.exists()
     rows = [line.split("\t", 3) for line in trace.read_text().splitlines()]
     pruning = next(i for i, row in enumerate(rows)
-                   if row[1:] == ["Before", "Unlink", '"20"'])
+                   if row[1:] == ["Before", "TreePublish", '".retiring-20"'])
     files = [i for i, row in enumerate(rows[:pruning])
              if row[1:] == ["Before", "FileSync", '"high-water"']]
     assert files, "generation pruning discarded allocation history without a durable counter"
     file_seal = files[-1]
     parent_seal = next(i for i in range(file_seal + 1, pruning)
                        if rows[i][1:3] == ["Before", "DirSync"])
+    # The no-clobber rename removes 20 from visible retained history while
+    # preserving its manifest as retirement authority. Both allocation-floor
+    # barriers must complete before that first history-removal boundary.
+    assert any(row[1:] == ["After", "FileSync", '"high-water"']
+               for row in rows[file_seal + 1:parent_seal])
+    assert any(row[1:] == ["After", "DirSync", rows[parent_seal][3]]
+               for row in rows[parent_seal + 1:pruning])
     for cut in [int(rows[file_seal][0]), int(rows[parent_seal][0])]:
         for fault in ["error", "kill"]:
             seed()
@@ -365,10 +387,17 @@ def test_allocation_floor_sync_failure_prevents_pruning(sandbox, high_water):
             assert refused.returncode != 0, refused.stdout + refused.stderr
             if fault == "kill":
                 assert refused.returncode == -signal.SIGKILL
+            # These cuts precede the rename, so demand the stronger result:
+            # original history remains intact, not merely a surviving tombstone.
             assert (generation / "manifest.json").read_bytes() == manifest
+            assert not retirement.exists()
+            if high_water is not None:
+                assert int(counter.read_text()) == high_water
             assert (orphan / "data").read_text() == "collect only after preserving allocation history\n"
             assert (home / "current").readlink() == Path("generations/10")
             completed = collect()
             assert completed.returncode == 0, completed.stdout + completed.stderr
             assert not generation.exists() and not orphan.exists()
+            assert not retirement.exists()
+            assert not (home / "generations/.retired-20").exists()
             assert int(counter.read_text()) == max(20, high_water or 0)

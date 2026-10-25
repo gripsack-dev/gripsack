@@ -1,5 +1,12 @@
 //! Exchange undo returns every target node to its own retained stage before
 //! restoring the original root and its hierarchy. Leaf priors replay afterward.
+//!
+//! Exchange is emitted only by retained-incarnation reactivation after Reverse,
+//! not by new preparation (which emits Forward). Rollback supplies the target
+//! receipt from an admitted retained generation. Its manifest remains authority
+//! for every target staging inode after this journal is removed. Unlike new
+//! prepared nodes, these historical nodes must survive aborted reactivation;
+//! only generation retirement may discard them.
 use super::directory_recovery::exact_link;
 use super::{
     Entry,

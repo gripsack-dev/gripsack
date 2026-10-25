@@ -425,6 +425,14 @@ but before the generation flip, within journal compensation. `post_link` and
 promise of automatic rollback. A profile-bound check cannot also be a recipe
 validator or task postcondition.
 
+Stable symlink ancestors in `GRIPSACK_HOME` or `TMPDIR` are supported for
+captured file checks. Each execution binds the subject through its resolved
+parent while retaining the declared path for revalidation; a changed parent,
+resolved target, leaf kind, bytes or mode refuses validation. This does not
+grant ambient paths additional authority or change retained manifest paths.
+Retained source checks use their captured evidence on replay, not a fresh read
+of the repository source.
+
 ```sh
 grip task list
 grip task plan format-now
@@ -446,6 +454,23 @@ from command text; locks grant no execution authority. `--skip-busy` permits
 skipping an active conflict, not bypassing an unknown interrupted owner.
 `--timeout-seconds` bounds realization, prerequisites and verification together.
 Interrupted outcomes remain unknown, not fabricated success.
+
+A child terminated by a crash signal (including `SIGSEGV` or `SIGKILL`) fails
+its task; dependent tasks are blocked, but independent prerequisites still run.
+HUP/INT/QUIT/TERM termination is treated as cancellation, including signals
+delivered directly to a foreground terminal child; this stops remaining graph
+work. A receipt preserves the actual terminating signal, not an inferred cause
+such as OOM or proof of who sent it. Supervisor-observed cancellation remains
+cancellation even if bounded cleanup needed `SIGKILL`. Unconfirmed cleanup
+remains indeterminate and retains process roots and mutation exclusion.
+
+`task run` returns a direct failed/cancelled child's ordinary nonzero exit code,
+or numeric `128 + signal` for an exited child, without re-raising the signal in
+the CLI. Supervisor cancellation returns 130, failed supervision (such as a
+deadline) returns 1, and indeterminate cleanup returns 70. A blocked selected
+task returns 3 even if a prerequisite failed. `task status` returns the stored
+aggregate status code (failed 1, cancelled 130, blocked 3, indeterminate 70),
+not a replay of the child's exit.
 
 `schedule(...)` and `profile({ schedules: [...] })` are declarations only:
 registration/execution is unavailable. Use explicit manual tasks; do not infer
