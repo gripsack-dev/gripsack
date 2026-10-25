@@ -516,7 +516,7 @@ def test_focus_filters_display_but_approval_binds_whole_bundle(sandbox):
         'export default module(value, { install: [] });\n'
         '// focused edit\n'
     )
-    value_file(repo / "value.ts", '"changed"')
+    value_file(repo / "value.ts", "changed")
     focused = grip("trust", "inspect", str(repo), "--focus", "modules", approve=False)
     assert focused.returncode == 0, focused.stderr
     text = focused.stdout
