@@ -271,20 +271,24 @@ impl SourceCapturePolicy {
         } else {
             relative
         };
-        if relative.ancestors().filter_map(Path::to_str).any(|path| {
+        self.excludes_literal(relative) || self.matches_pattern(relative)
+    }
+
+    fn excludes_literal(&self, relative: &Path) -> bool {
+        relative.ancestors().filter_map(Path::to_str).any(|path| {
             self.literals
                 .binary_search_by(|value| value.as_str().cmp(path))
                 .is_ok()
-        }) {
-            return true;
-        }
-        self.matches_pattern(relative)
+        })
     }
 
     /// Match the walked path and every ancestor against each glob, mirroring
     /// the literal subtree rule. Allocates bounded component slices only when
     /// the policy actually declares patterns.
     fn matches_pattern(&self, relative: &Path) -> bool {
+        if self.patterns.is_empty() {
+            return false;
+        }
         let Some(components) = component_spellings(relative) else {
             return false;
         };
@@ -456,10 +460,22 @@ pub(super) struct CaptureAdmission<'a> {
 
 impl CaptureAdmission<'_> {
     pub fn excludes(&self, root: &CaptureRoot, relative: &Path) -> bool {
+        self.builtin_excludes(root, relative)
+            || (root.kind == SourceRootKind::Repository && self.policy.excludes(relative))
+    }
+
+    /// Keep historical literal/builtin inventory observations authoritative.
+    /// Globs were previously rejected: their matched locations are not source
+    /// identity. The captured env.toml and approval policy bind their declaration.
+    pub fn records_exclusion(&self, root: &CaptureRoot, relative: &Path) -> bool {
+        self.builtin_excludes(root, relative)
+            || (root.kind == SourceRootKind::Repository && self.policy.excludes_literal(relative))
+    }
+
+    fn builtin_excludes(&self, root: &CaptureRoot, relative: &Path) -> bool {
         relative
             .components()
             .any(|component| component.as_os_str() == ".git")
-            || (root.kind == SourceRootKind::Repository && self.policy.excludes(relative))
             || (self.runtime_home != root.canonical
                 && self.runtime_home.starts_with(&root.canonical)
                 && root.canonical.join(relative).starts_with(self.runtime_home))

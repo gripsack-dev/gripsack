@@ -125,7 +125,10 @@ fn glob_exclusions_omit_nested_caches_exactly_like_literal_subtrees() {
         "repo/tools/__pycache__",
         "repo/.ruff_cache",
     ] {
-        assert!(exclusions.iter().any(|excluded| excluded == path), "{path}");
+        assert!(
+            !exclusions.iter().any(|excluded| excluded == path),
+            "{path}"
+        );
     }
     assert!(!captured.repository().join(".ruff_cache").exists());
     assert!(!captured.inventory().entries().iter().any(|entry| {
@@ -148,6 +151,164 @@ fn glob_exclusions_omit_nested_caches_exactly_like_literal_subtrees() {
             .kind(),
         io::ErrorKind::PermissionDenied
     );
+}
+
+#[test]
+fn glob_cache_lifecycle_preserves_identity_but_new_ordinary_directories_do_not() {
+    let fixture = Fixture::new();
+    // Both parents are already captured; only their excluded children change.
+    fs::create_dir_all(fixture.repo.join("pkg/sub")).unwrap();
+    fs::create_dir(fixture.repo.join("tools")).unwrap();
+    symlink("pkg", fixture.repo.join("package-alias")).unwrap();
+    fs::write(
+        fixture.repo.join("env.toml"),
+        b"[capture]\nexclude = [\"**/__pycache__\"]\n",
+    )
+    .unwrap();
+    let excluded = policy(&["**/__pycache__"]);
+    let original = capture(&fixture, &excluded).unwrap();
+    let cache = fixture.repo.join("pkg/sub/__pycache__");
+    fs::create_dir(&cache).unwrap();
+    let created = capture(&fixture, &excluded).unwrap();
+    assert_eq!(created.inventory_bytes(), original.inventory_bytes());
+    assert_eq!(created.digest(), original.digest());
+    assert_eq!(created.capture_policy(), original.capture_policy());
+
+    fs::create_dir_all(cache.join("more/nested")).unwrap();
+    fs::write(cache.join("more/nested/entry.pyc"), b"cache bytes").unwrap();
+    fs::set_permissions(
+        cache.join("more/nested/entry.pyc"),
+        fs::Permissions::from_mode(0o700),
+    )
+    .unwrap();
+    symlink("/outside/not-admitted", cache.join("external")).unwrap();
+    fs::set_permissions(&cache, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::create_dir(fixture.repo.join("tools/__pycache__")).unwrap();
+    let changed = capture(&fixture, &excluded).unwrap();
+    assert_eq!(changed.inventory_bytes(), original.inventory_bytes());
+    assert_eq!(changed.digest(), original.digest());
+    assert_eq!(
+        changed
+            .materialization_path(Path::new("pkg/sub/__pycache__/more/nested/entry.pyc"))
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::PermissionDenied
+    );
+    assert_eq!(
+        changed
+            .materialization_path(Path::new("package-alias/sub/__pycache__/missing"))
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::PermissionDenied
+    );
+    fs::remove_dir_all(&cache).unwrap();
+    fs::remove_dir(fixture.repo.join("tools/__pycache__")).unwrap();
+    assert_eq!(
+        capture(&fixture, &excluded).unwrap().digest(),
+        original.digest()
+    );
+
+    // A new nonexcluded parent is still a captured object, even if all its
+    // children are excluded. Do not prune empty directories to hide this.
+    fs::create_dir_all(fixture.repo.join("new-package/__pycache__")).unwrap();
+    let added = capture(&fixture, &excluded).unwrap();
+    assert_ne!(added.digest(), original.digest());
+    assert_eq!(
+        added.inventory().entry("repo/new-package").unwrap().object,
+        SourceObject::Directory
+    );
+    fs::remove_dir(fixture.repo.join("new-package/__pycache__")).unwrap();
+    assert_eq!(
+        capture(&fixture, &excluded).unwrap().digest(),
+        added.digest()
+    );
+}
+
+#[test]
+fn glob_identity_still_binds_captured_modes_bytes_aliases_and_policy() {
+    let fixture = Fixture::new();
+    let excluded = policy(&["**/__pycache__"]);
+    fs::write(
+        fixture.repo.join("env.toml"),
+        b"[capture]\nexclude = [\"**/__pycache__\"]\n",
+    )
+    .unwrap();
+    let original = capture(&fixture, &excluded).unwrap();
+    fs::set_permissions(
+        fixture.repo.join("ignored.ts"),
+        fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    assert_ne!(
+        capture(&fixture, &excluded).unwrap().digest(),
+        original.digest()
+    );
+    fs::set_permissions(
+        fixture.repo.join("ignored.ts"),
+        fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    fs::write(fixture.repo.join("ignored.ts"), b"changed code").unwrap();
+    assert_ne!(
+        capture(&fixture, &excluded).unwrap().digest(),
+        original.digest()
+    );
+    fs::write(
+        fixture.repo.join("ignored.ts"),
+        b"export const version = 1;\n",
+    )
+    .unwrap();
+    fs::remove_file(fixture.repo.join("alias.ts")).unwrap();
+    symlink(".gitignore", fixture.repo.join("alias.ts")).unwrap();
+    assert_ne!(
+        capture(&fixture, &excluded).unwrap().digest(),
+        original.digest()
+    );
+    fs::remove_file(fixture.repo.join("alias.ts")).unwrap();
+    symlink("ignored.ts", fixture.repo.join("alias.ts")).unwrap();
+    fs::write(
+        fixture.repo.join("env.toml"),
+        b"[capture]\nexclude = [\"**/__pycache__\", \"**/.cache\"]\n",
+    )
+    .unwrap();
+    let changed = capture(&fixture, &policy(&["**/__pycache__", "**/.cache"])).unwrap();
+    assert_ne!(changed.digest(), original.digest());
+    assert_ne!(changed.capture_policy(), original.capture_policy());
+}
+
+#[test]
+fn literal_observations_and_historical_inventory_encoding_remain_authoritative() {
+    let fixture = Fixture::new();
+    let literal = policy(&[".venv"]);
+    let absent = capture(&fixture, &literal).unwrap();
+    fs::create_dir(fixture.repo.join(".venv")).unwrap();
+    let present = capture(&fixture, &literal).unwrap();
+    assert_ne!(present.digest(), absent.digest());
+    assert!(
+        present
+            .inventory()
+            .exclusions()
+            .iter()
+            .any(|path| path == "repo/.venv")
+    );
+    // An overlapping new glob must not erase the literal's historical field.
+    let overlapping = capture(&fixture, &policy(&[".venv", "**/.venv"])).unwrap();
+    assert_eq!(overlapping.inventory_bytes(), present.inventory_bytes());
+    fs::remove_dir(fixture.repo.join(".venv")).unwrap();
+    assert_eq!(
+        capture(&fixture, &literal).unwrap().digest(),
+        absent.digest()
+    );
+
+    let bytes = br#"{"version":1,"roots":["repository","frontend"],"entries":[{"path":"frontend","object":{"kind":"directory"}},{"path":"repo","object":{"kind":"directory"}}],"exclusions":["repo/.venv"]}"#;
+    let digest = SourceBundleDigest::of_inventory(bytes);
+    let decoded = SourceInventory::decode(bytes, digest).unwrap();
+    assert_eq!(decoded.encode().unwrap(), bytes.as_slice());
+    let mut changed: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+    changed["exclusions"] = serde_json::json!([]);
+    let changed = serde_json::to_vec(&changed).unwrap();
+    assert!(SourceInventory::decode(&changed, digest).is_err());
+    assert_ne!(SourceBundleDigest::of_inventory(&changed), digest);
 }
 
 #[test]

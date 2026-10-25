@@ -236,7 +236,15 @@ struct Inspection<'a> {
 }
 
 fn check_focus(focus: Option<&str>) -> Option<ExitCode> {
-    (focus == Some("")).then(|| operational("focus prefix must not be empty"))
+    focus
+        .filter(|value| {
+            value.is_empty()
+                || Path::new(value).is_absolute()
+                || Path::new(value)
+                    .components()
+                    .any(|component| component == std::path::Component::ParentDir)
+        })
+        .map(|_| operational("focus must be a repository-relative path without parent traversal"))
 }
 
 fn inspect_json(prepared: &PreparedEvaluation, focus: Option<&str>) -> ExitCode {

@@ -18,12 +18,15 @@ contract; the image does.
 docker compose run --build --rm test      # fmt + clippy -D warnings + cargo test
 docker compose run --build --rm gnu-test  # real GNU loader + auxiliary-input boundaries
 docker compose run --build --rm ts-test   # typescript frontend tests (deno)
-docker compose run --build --rm e2e       # flow tests (real binary + real frontend)
+docker compose run --build --rm e2e uv run --locked --no-sync pytest --ignore=test_persistence_matrix.py --ignore=test_golden.py
 docker compose run --build --rm model     # TLC model check of the transaction spec (plan/0028)
 docker compose run --build --rm tlaps     # transaction induction + barrier-order calibration (plan/0048 M-V1; amd64)
 docker compose run --build --rm verify    # Verus proofs of policy kernels + mutant calibration (plan/0046; amd64 only)
 docker compose run --build --rm -e VERSION=x.y.z release   # musl tarball → ./dist/
 ```
+
+The local qualification profile runs the 96 persistence partitions separately.
+Do not run bare `e2e` or the golden corpus under the release's no-fuzz/corpus instruction.
 
 `--build` after every source change or the image runs stale code. Host
 `cargo test` / `pytest e2e` are fine for fast iteration; always finish

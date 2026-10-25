@@ -177,9 +177,9 @@ def test_glob_exclusions_cover_nested_caches_and_stay_reviewable(sandbox):
     reviewed = approve_source(repo)
     assert reviewed["capture_exclusions"] == ["**/__pycache__", ".ruff_cache/**"]
     exclusions = reviewed["inventory"]["exclusions"]
-    assert "repo/pkg/sub/__pycache__" in exclusions
-    assert "repo/tools/__pycache__" in exclusions
-    assert "repo/.ruff_cache" in exclusions
+    assert "repo/pkg/sub/__pycache__" not in exclusions
+    assert "repo/tools/__pycache__" not in exclusions
+    assert "repo/.ruff_cache" not in exclusions
     assert not any(
         entry["path"].startswith(
             ("repo/pkg/sub/__pycache__", "repo/tools/__pycache__", "repo/.ruff_cache")
@@ -202,6 +202,68 @@ def test_glob_exclusions_cover_nested_caches_and_stay_reviewable(sandbox):
     assert stale.returncode != 0
     rejected(repo)
     checked(repo, "legitimate", approve_source(repo))
+
+
+def test_new_glob_cache_lifecycle_keeps_exact_approval(sandbox):
+    repo = value_repo(sandbox / "repo")
+    value_file(repo / "value.ts", "legitimate")
+    (repo / "pkg/sub").mkdir(parents=True)
+    (repo / "tools").mkdir()
+    exclude(repo, "**/__pycache__")
+    reviewed = approve_source(repo)
+    checked(repo, "legitimate", reviewed)
+
+    def unchanged():
+        current = inspect_source(repo)
+        assert current["inventory"] == reviewed["inventory"]
+        assert current["bundle_digest"] == reviewed["bundle_digest"]
+        assert current["policy_digest"] == reviewed["policy_digest"]
+        checked(repo, "legitimate", reviewed)
+
+    cache = repo / "pkg/sub/__pycache__"
+    cache.mkdir()
+    unchanged()
+    value_file(cache / "nested/cache.pyc", "initial cache")
+    unchanged()
+    value_file(cache / "nested/cache.pyc", "changed cache")
+    (cache / "nested/cache.pyc").chmod(0o700)
+    cache.chmod(0o700)
+    (cache / "external").symlink_to("/outside/not-admitted")
+    (repo / "tools/__pycache__").mkdir()
+    unchanged()
+    shutil.rmtree(cache)
+    (repo / "tools/__pycache__").rmdir()
+    unchanged()
+
+    # The pattern does not excuse adding an ordinary captured parent.
+    (repo / "new-package/__pycache__").mkdir(parents=True)
+    current = inspect_source(repo)
+    assert current["bundle_digest"] != reviewed["bundle_digest"]
+    assert any(entry["path"] == "repo/new-package" for entry in current["inventory"]["entries"])
+    rejected(repo)
+    renewed = approve_source(repo)
+    checked(repo, "legitimate", renewed)
+    (repo / "new-package/__pycache__").rmdir()
+    checked(repo, "legitimate", renewed)
+
+
+@pytest.mark.parametrize("target", [
+    "pkg/__pycache__", "pkg/__pycache__/private.ts", "pkg/__pycache__/../value.ts",
+])
+def test_glob_aliases_cannot_reexpose_excluded_bytes(sandbox, target):
+    repo = value_repo(sandbox / "repo")
+    value_file(repo / "value.ts", "legitimate")
+    value_file(repo / "pkg/value.ts", "legitimate")
+    value_file(repo / "pkg/__pycache__/private.ts", "EXCLUDED_SECRET")
+    exclude(repo, "**/__pycache__")
+    reviewed = approve_source(repo)
+    checked(repo, "legitimate", reviewed)
+    (repo / "alternate").symlink_to(target)
+    before = receipt_paths()
+    failed = grip("trust", "inspect", str(repo), "--json", approve=False)
+    assert failed.returncode != 0
+    assert "excluded subtree repo/pkg/__pycache__" in failed.stderr, failed.stderr
+    assert receipt_paths() == before
 
 
 def test_glob_exclusions_still_refuse_required_roots_and_pins(sandbox):

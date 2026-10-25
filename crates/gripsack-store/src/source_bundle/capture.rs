@@ -147,7 +147,9 @@ impl Capture<'_> {
                         "capture exclusion {spelling:?} would omit required configuration, lock authority or entrypoints at {name_in_inventory}"
                     )));
                 }
-                self.exclusions.push(name_in_inventory.to_owned());
+                if self.admission.records_exclusion(root, &source_relative) {
+                    self.exclusions.push(name_in_inventory.to_owned());
+                }
                 continue;
             }
             require_absent(self.destination, &logical)?;

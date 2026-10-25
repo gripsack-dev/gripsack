@@ -112,7 +112,9 @@ pub struct SourceInventory {
     version: u32,
     roots: Vec<SourceRootKind>,
     entries: Vec<SourceEntry>,
-    /// Actual excluded paths, never an implicit gitignore filter.
+    /// Historical observed literal/builtin exclusions, never an implicit
+    /// gitignore filter. Glob matches are omitted at capture, not erased when
+    /// encoding: every stored field remains authoritative for old digests.
     exclusions: Vec<String>,
 }
 

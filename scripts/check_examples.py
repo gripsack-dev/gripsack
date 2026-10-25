@@ -130,7 +130,7 @@ def main() -> int:
     failed = False
     base = Path(tempfile.mkdtemp(prefix="grip-examples-"))
     try:
-        blocks = extract.pair_with_manifest(extract.extract_blocks(site), EXAMPLES)
+        blocks = extract.pair_with_manifest(extract.extract_blocks(site, core_repo), EXAMPLES)
     except CheckFailure as e:
         print(f"FAIL {e}", file=sys.stderr)
         return 1

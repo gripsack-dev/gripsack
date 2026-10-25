@@ -23,8 +23,8 @@ from examples_check.extract import CheckFailure
 ROOT = Path(__file__).resolve().parent.parent
 TARGET = "x86_64-unknown-linux-musl"
 EXTERNAL = {
-    "site": ("https://github.com/gripsack-dev/gripsack-dev.github.io", "0a7dfcdb536ba582788255f384f5a9158e3ea250"),
-    "example": ("https://github.com/gripsack-dev/example-env-typescript", "23a2ac452249c3d4ed5c169110bf5cc088dd0a3f"),
+    "site": ("https://github.com/gripsack-dev/gripsack-dev.github.io", "14d9b1453ef0975d151ce2e74007c9436cafa79b"),
+    "example": ("https://github.com/gripsack-dev/example-env-typescript", "dc0e5140b422d2fb9d37971615051556d70f7bed"),
 }
 
 

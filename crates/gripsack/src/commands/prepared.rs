@@ -397,16 +397,17 @@ impl PreparedEvaluation {
         Vec<&'a trust::InventoryChange>,
         Vec<&'a trust::InventoryChange>,
     ) {
-        // Inventory paths carry their capture root (`repo/…`, `frontend/…`).
-        // Authors think in repository-relative paths, so the focus prefix is
-        // matched against the root-stripped spelling; the listing itself still
-        // prints the full inventory path verbatim.
+        // Focus is a repository subtree, not a lexical string prefix or an SDK
+        // capture-root selector. The complete inventory stays in JSON/approval.
+        let focus = Path::new(focus);
+        let focus = focus.strip_prefix(".").unwrap_or(focus);
         changes.iter().partition(|change| {
-            change
-                .path
-                .strip_prefix("repo/")
-                .unwrap_or(&change.path)
-                .starts_with(focus)
+            let relative = if change.path == "repo" {
+                Some("")
+            } else {
+                change.path.strip_prefix("repo/")
+            };
+            relative.is_some_and(|path| Path::new(path).starts_with(focus))
         })
     }
 

@@ -4,6 +4,7 @@ import shlex
 
 import pytest
 from conftest import grip
+from test_workspace_files import manifest
 
 
 IMPORTS = '''import {
@@ -87,27 +88,26 @@ def test_complete_noop_preserves_identity_but_repair_is_a_new_activation(sandbox
     destination = sandbox / ".workspace-hook-owned"
     declare(repo, [("after", "post_link", append(effect))])
     run(repo, "apply")
-    home = sandbox / ".local/share/gripsack"
-    original = json.loads((home / "current/manifest.json").read_text())
+    original = manifest(sandbox)
     metadata = destination.stat()
     original_rows = outcomes(repo)
     for _ in range(2):
         run(repo, "apply")
-        assert json.loads((home / "current/manifest.json").read_text()) == original
+        assert manifest(sandbox) == original
         assert (destination.stat().st_ino, destination.stat().st_mtime_ns) == (
             metadata.st_ino, metadata.st_mtime_ns)
         assert outcomes(repo) == original_rows
     # Identical retained identity does not erase an actual host repair event.
     destination.unlink()
     run(repo, "apply")
-    repaired = json.loads((home / "current/manifest.json").read_text())
-    assert repaired != original
-    assert repaired.get("modules") == original.get("modules")
+    repaired = manifest(sandbox)
+    assert repaired["modules"] == original["modules"]
+    assert repaired["number"] != original["number"]
     assert destination.read_text() == "active"
     assert len(effect.read_text().splitlines()) == 2
     assert len(outcomes(repo)) == 2
     run(repo, "apply")
-    assert json.loads((home / "current/manifest.json").read_text()) == repaired
+    assert manifest(sandbox) == repaired
     assert len(effect.read_text().splitlines()) == 2
 
 

@@ -432,17 +432,18 @@
     "dist/gripsack-conda-0.48.0-x86_64-unknown-linux-musl.LICENSE-pixi",
     "dist/gripsack-conda-0.48.0-x86_64-unknown-linux-musl.LICENSE-UV-MIT",
     "dist/gripsack-conda-0.48.0-x86_64-unknown-linux-musl.LICENSE-rattler",
-    "dist/gripsack-core-0.48.0.tgz"
+    "dist/gripsack-core-0.48.0.tgz",
+    "dist/install.sh"
   ],
   "external_inputs": {
     "repositories": {
       "site": {
         "url": "https://github.com/gripsack-dev/gripsack-dev.github.io.git",
-        "commit": "0a7dfcdb536ba582788255f384f5a9158e3ea250"
+        "commit": "14d9b1453ef0975d151ce2e74007c9436cafa79b"
       },
       "example": {
         "url": "https://github.com/gripsack-dev/example-env-typescript.git",
-        "commit": "23a2ac452249c3d4ed5c169110bf5cc088dd0a3f"
+        "commit": "dc0e5140b422d2fb9d37971615051556d70f7bed"
       }
     },
     "sdk": {

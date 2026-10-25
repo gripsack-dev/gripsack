@@ -42,6 +42,20 @@ FACTORY_FIXTURE_MODULE = (
 
 EXAMPLES = [
     {
+        "id": "readme-dotfiles-workspace",
+        "source": "core/README.md",
+        "locator": {"fence": 0},
+        "kind": "workspace",
+        "expect_outputs": {"dotfiles": "profile"},
+    },
+    {
+        "id": "homepage-dotfiles-workspace",
+        "source": "website/index.html",
+        "locator": {"window": "gripsack.ts"},
+        "kind": "workspace",
+        "expect_outputs": {"dotfiles": "profile"},
+    },
+    {
         "id": "modules-helix-data-style",
         "file": "modules.md",
         "locator": {"window": "modules/helix.ts"},
@@ -170,7 +184,7 @@ EXAMPLES = [
     },
     {
         "id": "changelog-factory-langserver",
-        "file": "changelog.md",
+        "source": "core/CHANGELOG.md",
         "locator": {"fence": 0},
         "kind": "factory",
         "module_file": "lang-server.ts",

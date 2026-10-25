@@ -1,7 +1,6 @@
-"""Extraction from the website source: every published TypeScript
-block in doc/**/*.md, plus exhaustive pairing against the manifest —
-any unclassified block, or any manifest entry without its block, is
-drift and fails loudly."""
+"""Extract published TypeScript from canonical docs, homepage and core README.
+Exhaustive manifest pairing fails loudly on any unclassified or missing block.
+"""
 
 from __future__ import annotations
 
@@ -26,15 +25,17 @@ class Block:
     code: str
 
 
-def extract_blocks(site: Path) -> list[Block]:
-    """Every TypeScript block in doc/**/*.md, in document order.
-
-    Two published spellings: fenced ```ts / ```typescript blocks, and
-    the site's <div class="window"> code cards (language-typescript).
-    """
+def extract_blocks(site: Path, core: Path) -> list[Block]:
+    """Every fenced or language-typescript window example, in document order."""
     blocks: list[Block] = []
-    for md in sorted((site / "doc").rglob("*.md")):
-        rel = md.relative_to(site).as_posix()
+    sources = [(md, md.relative_to(site).as_posix())
+               for md in sorted((site / "doc").rglob("*.md"))
+               if md.relative_to(site).as_posix() != "doc/changelog.md"]
+    sources.append((site / "website" / "index.html", "website/index.html"))
+    sources.append((core / "README.md", "core/README.md"))
+    # The site renders authenticated core changelog bytes, not its old mirror.
+    sources.append((core / "CHANGELOG.md", "core/CHANGELOG.md"))
+    for md, rel in sources:
         text = md.read_text(encoding="utf-8")
         lines = text.split("\n")
 
@@ -83,7 +84,7 @@ def pair_with_manifest(blocks: list[Block], examples: list[dict]) -> dict[str, B
     unclaimed = list(blocks)
     problems: list[str] = []
     for entry in examples:
-        want_file = f"doc/{entry['file']}"
+        want_file = entry.get("source", f"doc/{entry['file']}" if "file" in entry else "")
         loc = entry["locator"]
         found = None
         fenced_same_file = [

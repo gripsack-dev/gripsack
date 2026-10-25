@@ -507,6 +507,9 @@ def test_round_file_grant_does_not_grant_its_parent_directory(sandbox):
 def test_focus_filters_display_but_approval_binds_whole_bundle(sandbox):
     repo = value_repo(sandbox / "repo")
     value_file(repo / "value.ts", "before")
+    sibling = repo / "modules-extra/note.txt"
+    sibling.parent.mkdir()
+    sibling.write_text("before\n")
     approved = approve_source(repo)
     checked(repo, "before", approved)
     # Two edited subtrees: modules/ (in focus) and the root value.ts (out of focus).
@@ -517,13 +520,15 @@ def test_focus_filters_display_but_approval_binds_whole_bundle(sandbox):
         '// focused edit\n'
     )
     value_file(repo / "value.ts", "changed")
+    sibling.write_text("outside the selected subtree\n")
     focused = grip("trust", "inspect", str(repo), "--focus", "modules", approve=False)
     assert focused.returncode == 0, focused.stderr
     text = focused.stdout
     assert "focus: modules" in text
     assert "modules/selected.ts" in text
     assert "value.ts" not in text, "focused view must not list out-of-focus paths"
-    assert re.search(r"unhidden: 1 out-of-focus changes \(digest [0-9a-f]{64}\)", text)
+    assert "modules-extra/note.txt" not in text
+    assert re.search(r"unhidden: 2 out-of-focus changes \(digest [0-9a-f]{64}\)", text)
     # Policy, runtime and native disclosure survives the focused view.
     assert "runtime: " in text and "native policy: " in text
     assert "native configuration: " in text
@@ -535,6 +540,13 @@ def test_focus_filters_display_but_approval_binds_whole_bundle(sandbox):
     assert narrowed["bundle_digest"] == plain["bundle_digest"]
     assert narrowed["policy_digest"] == plain["policy_digest"]
     assert narrowed["approval"]["changes"] == plain["approval"]["changes"]
+    root_focus = grip("trust", "inspect", str(repo), "--focus", ".", approve=False)
+    assert root_focus.returncode == 0, root_focus.stderr
+    assert "repo/modules/selected.ts" in root_focus.stdout
+    assert "repo/modules-extra/note.txt" in root_focus.stdout
+    for invalid_focus in ("../modules", "/modules"):
+        refused = grip("trust", "inspect", str(repo), "--focus", invalid_focus, approve=False)
+        assert refused.returncode != 0
     # Stale digests are refused with --focus exactly as without it.
     stale = grip("trust", "add", str(repo), "--focus", "modules",
                  "--bundle", approved["bundle_digest"], "--policy", approved["policy_digest"],
@@ -545,5 +557,5 @@ def test_focus_filters_display_but_approval_binds_whole_bundle(sandbox):
     # out-of-focus edit still forces renewal.
     current = approve_source(repo)
     checked(repo, "changed", current)
-    value_file(repo / "value.ts", '"changed again"')
+    value_file(repo / "value.ts", "changed-again")
     rejected(repo)

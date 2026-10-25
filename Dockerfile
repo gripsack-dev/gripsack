@@ -97,9 +97,15 @@ RUN apk add --no-cache python3 \
     && python3 scripts/check_process_bounds.py \
     && python3 scripts/check_update_survey.py
 
-# The debug binary for stages that need a runnable grip (e2e).
+# Keep the full debug image for tooling, but omit DWARF from the e2e runner
+# copy: fixture subprocess admission copies/hashes the entire executable under
+# its existing deadline. Debug assertions and crash/fault seams remain enabled;
+# --strip-debug preserves executable code and symbols, unlike a release build.
 FROM builder AS bin
-RUN cargo build --locked -p gripsack
+RUN cargo build --locked -p gripsack \
+    && apk add --no-cache binutils \
+    && mkdir -p /app/e2e-bin \
+    && objcopy --strip-debug /app/target/debug/grip /app/e2e-bin/grip
 
 # Required GNU-native admission regressions; these cannot execute on Alpine.
 # The e2e stage separately exercises the shipped musl core on a GNU host.
@@ -221,7 +227,7 @@ RUN printf 'uv==%s --hash=sha256:f7d6248ad9f2d282fea795f248da8fa666ab382df50d838
     && uv --version \
     && rm -f /tmp/uv.req
 ENV GRIPSACK_DENO=/root/.local/share/gripsack/tools/deno-${DENO_VERSION}/deno
-COPY --from=bin /app/target/debug/grip /usr/local/bin/grip
+COPY --from=bin /app/e2e-bin/grip /usr/local/bin/grip
 COPY e2e/pyproject.toml e2e/uv.lock ./e2e/
 RUN cd e2e && uv sync --locked
 COPY e2e ./e2e

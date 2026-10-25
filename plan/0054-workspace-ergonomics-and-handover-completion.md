@@ -125,9 +125,9 @@ to silently omit an incompatible package from a selected environment.
 ## Current-writer and ergonomic design
 
 New declaration authority uses **IR8**. Strict v7/v6/v5 execution retains its
-original meanings; v4/v3 historical contracts are not reinterpreted. The next
-feature candidate is0.47.0, with all actual component versions and helper pins
-coordinated before candidate freezing. No existing0.46 release bytes change.
+original meanings; v4/v3 historical contracts are not reinterpreted. The0.47
+reviewer prerelease is published;0.48 is the next candidate, with coordinated
+component versions and measured helper pins. No existing release bytes change.
 
 - `templateFile(variables, resultDigest?)` renders its orthogonal captured file
   source. Identity includes source bytes, normalized executable classification,
@@ -189,12 +189,13 @@ formal evidence; A3-03 already has its two-name catalog, while the other38 and
 G-03's per-milestone mappings require genuine obligation review. No synthetic
 calibration fixture, fabricated count or umbrella Verus total supplies closure.
 
-Known missing product boundaries include task prerequisites/mutation locks,
-profile file-check stages, schedule registration/job lifecycle, semantic
-comparison/saved-plan execution and trusted portable-artifact sharing. These
-remain in scope in dependency order. Immediate ergonomic work maps to
-A1-03/08/10/11, A2-06, A2-P and A5-06/07; unrelated future C/D implementations
-are not artificial prerequisites for captured templates or managed launchers.
+Schedule registration/job lifecycle, semantic comparison/saved-plan execution
+and trusted portable-artifact sharing remain missing product boundaries.
+Manual task prerequisites/mutation locks and profile file-check stages are
+implemented in0.47, but their original conjunctive handover obligations still
+need evidence reconciliation. Ergonomic work maps to A1-03/08/10/11, A2-06,
+A2-P and A5-06/07; future C/D implementations are not artificial prerequisites
+for captured templates or managed launchers.
 
 ## Evidence and release admission
 
@@ -269,18 +270,60 @@ permission to call Gripsack done with hidden follow-ups.
   candidate8fbee020… are therefore ineligible for release; the corrected
   source requalifies from a new frozen candidate under the same authority.
 
-### Owner direction 2026-10-25 — local signer next cycle
+### Owner direction 2026-10-25 — reviewer release now, verification on0.48
 
-After0.47/0.48 ship through the existing signing workflow, the owner wants
-GitHub removed from the release path entirely: a dedicated mini PC becomes
-the signer/verifier host. Concretely for0.49+: implement an owner-key
-Sigstore signing path (local key on the signer host, no GitHub OIDC), a
-matching verifier contract in install/self-update (fail closed on either
-authority during migration), and retire the hosted attestation workflow.
-The0.47/0.48 releases are NOT held for this: local qualification remains
-the acceptance authority, GitHub remains the ~ten-minute signer for exactly
-these two releases, and no release ships without complete local gates —
-the installer would refuse its own unsigned bytes regardless.
+The owner explicitly authorized releasing0.47 **unverified** for external review
+and completing verification on0.48. This supersedes the earlier requirement that
+0.47 wait for every local gate and hosted signing. It does not authorize false
+pass receipts, fake attestations, or a checksum fallback in the verified updater.
+
+`core-v0.47.0` was published as an **UNVERIFIED reviewer prerelease** at source
+`96ce8e4c75c35f282ffe88c847fd6181c0ed75bd`, without any Actions dispatch:
+https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.47.0 .
+All14 assets were downloaded back and matched. The actual core tarball plus
+packed SDK passed check/plan/apply, executable template, internal alias, no-op
+generation reuse and store-integrity smoke. The status asset records10 passed
+source-bound gates, a flows result of682 passed/1 intentional-crash-fixture
+timeout, and all incomplete gates. No signature or registry publication is
+claimed. Installation is explicitly manual and leaves existing binaries intact.
+
+The0.48 candidate originally queued as `fa2bfda1…` was cancelled because it
+missed the later0.47 flow-harness fixes and installer artifact inventory, and its
+new capture-glob identity needed a cache-appearance/removal correction. New
+source needs a new candidate; old receipts must not be relabelled.
+
+The owner intends to supply a mini PC for independent verification/signing.
+`signer/local` is an experimental owner-key implementation, not a deployed trust
+root or a qualified0.49 release. Provisioning, actual cryptographic acceptance,
+consumer trust distribution and authority cutover remain separate prerequisites.
+
+### 0.48 pre-freeze observations — not full qualification
+
+- The Rust gate passed fmt, warning-denying Clippy, workspace/helper tests and
+  required semantic calibrations. The e2e development image is
+  `sha256:562a16460f9e0395f3c6e3bfff2ab1bc1b1989e3a0cc44374f170fca8604a009`;
+  its core SHA256 is
+  `f7889ca8ed577a9741d18f1b61d57f78d8bffc511f1e907c9e75db61cef64fd3`.
+  Stripping only DWARF reduced the runner from323851360 to79230184 bytes.
+  This is a measured size reduction, not proof that every deadline now passes.
+- Two independent helper release builds reproduced SHA256
+  `2040d10d1c6f6842252f55b50f79319716e3d584a50962e755a1bc7cccd00c51`.
+- The real0.48 core and packed SDK accepted13 executable documentation examples,
+  including the actual homepage/README and broken-factory calibration;4
+  fragments remain explicitly unexecuted. Changelog checking now reads the
+  actual core source, matching site rendering rather than a stale second copy.
+- The external Conda consumer was renewed through real `grip update` and fresh
+  approval/check. Its resolution records stayed unchanged; only frontend
+  identity moved from `caafff8b…` to `7ecf3680…`. Frozen example source:
+  `dc0e5140b422d2fb9d37971615051556d70f7bed`.
+- Site source `14d9b1453ef0975d151ce2e74007c9436cafa79b` passed local rendered
+  link/anchor checks across16 canonical docs, homepage and2 legacy URLs,
+  desktop/mobile, script-free visibility and reduced motion. Legacy fragments
+  and queries survive normal redirects; script-free aliases retain usable
+  content/anchors. The preview deliberately skipped release admission, disabled
+  installation and was not published. Actual signed-source admission/deployment
+  remains a distinct requirement.
+
 
 
 ## Queued milestone website and documentation refresh

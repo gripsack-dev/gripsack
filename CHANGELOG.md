@@ -4,7 +4,11 @@ User-visible changes per release. Design archaeology lives in
 `plan/`; this file is for "what's new for me".
 
 
-## [0.48.0] — 2026-10-25
+## [0.48.0] — release candidate
+
+Publication and qualification are recorded with the
+[release artifacts](https://github.com/gripsack-dev/gripsack/releases).
+This source version alone is not a passing gate or signature.
 
 ### Added
 
@@ -15,8 +19,12 @@ User-visible changes per release. Design archaeology lives in
   by `grip trust inspect` and bound to bundle/policy identity exactly like
   literals. Git ignore rules stay unread; required configuration, lock
   authority, entrypoints and admitted SDK roots refuse glob matches instead
-  of being omitted, and an excluded path disappears from the inventory just
-  as a literal exclusion.
+  of being omitted. Glob-only match locations are not captured identity:
+  creating/removing nested caches beneath existing directories or changing
+  their contents/modes keeps approval valid. New ordinary parent directories
+  still change identity. Historical inventory encoding and observed literal
+  exclusion behavior are unchanged; every stored inventory field remains
+  digest-bound.
 - `grip trust inspect|add --focus PREFIX` filters the changed-inventory
   display to one repository subtree. The focused listing keeps full
   inventory paths, prints an unhidden summary (count plus a digest of the
@@ -31,11 +39,24 @@ User-visible changes per release. Design archaeology lives in
   `trackedCopyTo` deployment, manual re-capture into reviewed source,
   re-apply — and no workspace command snapshots a live destination; the lock
   pins resolutions, never destination content.
-- Install matching core/helper/SDK0.48.0. The Linux Conda helper is measured
-  at SHA-256 `2040d10d1c6f6842252f55b50f79319716e3d584a50962e755a1bc7cccd00c51`
-  (two reproducible pinned builds); the bridge pin rides `core-v0.48.0` with
-  its measured artifact unchanged.
-## [Unreleased]
+- Core/helper/SDK versions are coordinated at0.48.0. The helper was measured
+  in two independent native builds at SHA256
+  `2040d10d1c6f6842252f55b50f79319716e3d584a50962e755a1bc7cccd00c51`.
+  Full exact-source qualification remains required before verified promotion.
+- The test runner keeps debug assertions and fault controls, but excludes
+  DWARF from its executable copy. Complete-image sealing/hashing no longer
+  needs to process debugger-only sections; deadlines and gate inventory stay
+  unchanged.
+
+## [0.47.0] — 2026-10-25 — UNVERIFIED reviewer prerelease
+
+Owner-authorized prerelease from `96ce8e4`, not a signed or fully qualified
+release. Ten local gates passed; flows reported682 passed/1 hook-fixture
+deadline failure. The actual archive and matching SDK passed an isolated
+installation smoke. Formal/persistence/core-repro and complete consumer gates
+remain incomplete. Checksums are not signatures. Use the explicit manual
+instructions in the [release notes](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.47.0);
+the verified installer/updater deliberately retains its refusal of this build.
 
 ### Added
 

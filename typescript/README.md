@@ -35,11 +35,18 @@ environment, so `Inputs → Environment` is testable and cacheable.
 
 ## A workspace is a function (IR v8)
 
-Use matching **0.47.0 core and SDK** releases for captured templates/trees,
+Use matching **0.47.0 core and SDK reviewer-prerelease assets** for captured templates/trees,
 archive-root selection and managed profile launchers. Older strict cores do not
 admit v8. The new core retains strict v7/v6/v5 execution with each version's
 original field set, v4 read-only workspaces and v3 historical modules; older
 envelopes never acquire v8 authority.
+
+0.47 is an unsigned, unverified prerelease with
+[manual installation instructions](https://github.com/gripsack-dev/gripsack/releases/tag/core-v0.47.0),
+not the authenticated signed-installer selection or a claim of registry
+publication. Capture globs and focused approval display require **core/SDK 0.48**.
+Check the [release records](https://github.com/gripsack-dev/gripsack/releases)
+for publication and qualification evidence; a version string is not proof.
 
 Linux and WSL2 on x86_64 are the supported host scope. Installing the npm package does
 not upgrade the core binary. Workspace locks capture frontend identity, so
@@ -311,21 +318,20 @@ Selection does **not** bypass whole-source capture. Capture rejects unsafe
 aliases/cycles before `repoTree` can filter them. Exclude an irrelevant outbound
 `.venv` link at the capture boundary with `env.toml`:
 
+The glob entries below require core 0.48; 0.47 supports literal subtree
+exclusions only.
+
 ```toml
 [capture]
 exclude = [".venv", "**/__pycache__", ".ruff_cache/**"]
 ```
 
-These repository-relative exclusions — literal subtrees or explicit bounded
-glob patterns (`*` within one path component, `?` one character,
-whole-component `**`) — become approved capture policy; they are not
-`.gitignore` rules, nothing is read from Git ignore files, and they are no
-grant to read the excluded tree. Patterns are recorded verbatim, shown by
-`grip trust inspect` (terminal and JSON) and change the bundle/policy
-identity exactly as literal entries do. Required entrypoints, lock authority
-and admitted SDK roots refuse glob matches instead of being omitted. Keep an
-alias's target in the approved bundle. The current SDK replaces `treeFiles`
-with `repoTree`; no compatibility walker or generated manifest is needed.
+These repository-relative exclusions become approved capture policy, not
+Git-ignore rules or a grant to read excluded files. Keep an alias's target
+in the approved bundle. See [source approval and migration](#source-approval-and-migration)
+for pattern semantics, cache lifecycle identity and protected inputs.
+Use `repoTree` for captured trees; no compatibility walker or generated
+manifest is needed.
 
 For a release archive with one versioned top-level directory:
 
@@ -531,7 +537,7 @@ and may have no structured diagnostic in the JSON document.
 | Versioned archive prefixes repeated in commands/artifact selectors | Opt-in `archiveRoot`, then root-relative literal selectors |
 | Dereferenced font-copy cache solely to recover filename extensions | Deploy the font tree with `trackedCopyTo` and point the consumer at that physical destination |
 
-1. Install matching 0.47.0 core/SDK (or remove a deliberate npm pin to use the
+1. Install matching 0.47.0 reviewer-prerelease core/SDK assets (or remove a deliberate npm pin to use the
    matching embedded frontend). Retain the previous generation and recovery
    data; an SDK change is not itself a lock refresh or source approval.
 2. Replace declarations as above. Keep captured template bodies and executable
@@ -605,9 +611,9 @@ shows at most 20 paths; use `grip trust inspect --json` for the complete
 `.approval.changes` list and policy. Review the actual changed content too:
 inventory changes are not a line-by-line content diff.
 
-`grip trust inspect --focus PREFIX` (and `grip trust add --focus PREFIX` in the
-interactive flow) narrows only the displayed change listing to one subtree. The
-focused view still prints every policy, runtime and native line plus an
+With core 0.48, `grip trust inspect --focus PREFIX` (and interactive
+`grip trust add --focus PREFIX`) narrows only the displayed change listing.
+The focused view still prints every policy, runtime and native line plus an
 unhidden summary — the count and a digest of the out-of-focus changes — and
 `--json` output stays complete, merely adding a `focus` field. A focused
 approval records the exact whole bundle and policy digests: `--focus` never
@@ -616,10 +622,71 @@ narrows what is approved, and a later out-of-focus edit still requires renewal.
 Approval still covers the exact whole source bundle and policy. Changes outside
 the selected profile remain visible and require review; a text file or
 non-executable mode is not a trust exemption. Subtree approval (narrowing
-what an approval binds) is not an API of this release; `--focus` is a display
-filter only. `[capture].exclude` accepts literal subtrees and explicit
-bounded glob patterns, and capture never automatically inherits
+what an approval binds) is not implemented; `--focus` is a display
+filter only. `[capture].exclude` accepts literal subtrees, with explicit
+bounded glob patterns added in 0.48; capture never automatically inherits
 `.gitignore`.
+
+## Source approval and migration
+
+Glob exclusion semantics below require core 0.48. Earlier cores accept literal
+subtree exclusions, not patterns.
+
+Evaluation reads one private, read-only snapshot, including ignored/untracked
+files, dirty submodules and the admitted frontend pin. Every probe round uses
+that same snapshot with a separate immutable host-input file. `.git` and the
+selected gripsack runtime-state subtree are excluded and unavailable to eval.
+Lockfiles inside the repository are source too: an apply/update that changes
+them can require renewed approval on the next command.
+Ignored and untracked files are captured by design; Git ignore rules never
+decide source selection and are never read. Declare repository-relative
+exclusions in `env.toml` — literal subtrees (`[capture] exclude = [".venv"]`)
+or explicit bounded glob patterns such as `**/__pycache__` and
+`.ruff_cache/**` — for ordinary build trees or editor-only SDK links. In a
+pattern, `*` stays within one path component, `?` matches one character and a
+whole `**` component spans components; matching is deterministic and
+bounded. Pattern declarations are recorded verbatim, shown by `grip trust
+inspect` (terminal and JSON) and bound to bundle/policy identity. With
+`exclude = ["**/__pycache__"]`, creating or removing a cache beneath an
+already-captured directory, or changing anything inside it, needs no renewed
+approval. Matched glob locations are not inventory identity; adding an
+ordinary parent directory still changes the captured inventory. Historical
+literal exclusions retain their observed-path identity (including appearance
+and disappearance); use a pattern for lifecycle-stable caches. Changing the
+declared policy, captured bytes/modes or aliases still requires review.
+Required configuration, lock authority, entrypoints and admitted SDK roots
+refuse glob matches instead of being omitted by any spelling. The captured
+configuration binds those rules to the approved bundle, and evaluator runtime
+grants never overlap the repository or its exclusions.
+
+Old path-only trust entries do not authorize execution. Unset
+`GRIPSACK_TRUST_ALL`; `=1` now fails with migration guidance. Interactive
+commands show the captured digest and policy before asking. For a reviewed
+disposable CI fixture, pass both expected fingerprints explicitly:
+
+```sh
+source=$(grip trust inspect --json)
+printf '%s\n' "$source"  # review the inventory, changes and actual policy
+grip trust add \
+  --bundle "$(printf '%s' "$source" | jq -r .bundle_digest)" \
+  --policy "$(printf '%s' "$source" | jq -r .policy_digest)"
+grip check
+```
+
+Inspection and approval do not evaluate repository code. A change between them
+fails approval rather than blessing newer bytes. Remote/HEAD are sanitized
+provenance, not trust keys. `grip trust inspect --receipt ID --json` inspects
+private source/input/process evidence; `completed` covers frontend evaluation,
+not a later build or deployment.
+
+`adopt --yes` skips only apply confirmation. Generated source needs its own
+approval. After reviewing and approving it, repeat adoption with `--resume`
+and omit `--mode`; the approved module supplies the mode, no repo files are
+rewritten, and takeover remains restricted to the requested target.
+
+Source capture is not a sandbox for native plugins or protection against a
+privileged/same-UID attacker modifying trusted runtime storage. It identifies
+the bytes actually copied, not an atomic Git checkout or proof of source intent.
 
 ## Probes are requests, not effects
 
