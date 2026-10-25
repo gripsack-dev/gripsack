@@ -506,6 +506,7 @@ def test_round_file_grant_does_not_grant_its_parent_directory(sandbox):
 
 def test_focus_filters_display_but_approval_binds_whole_bundle(sandbox):
     repo = value_repo(sandbox / "repo")
+    value_file(repo / "value.ts", "before")
     approved = approve_source(repo)
     checked(repo, "before", approved)
     # Two edited subtrees: modules/ (in focus) and the root value.ts (out of focus).
